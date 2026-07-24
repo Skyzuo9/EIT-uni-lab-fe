@@ -1,0 +1,43 @@
+/**
+ * ============================================================
+ * AI-GENERATED CODE METADATA
+ * ============================================================
+ * Model: Claude Opus 4.8
+ * Generation Date: 2026-07-22
+ * Prompt Summary: 工作流结构的共享类型定义(节点/连接/步骤/整体结构)
+ * Context: 工作流方向结构预览的公共类型,供 JSON 解析器与 DAG 布局复用
+ * Human Review Status: [ ] Pending  [ ] Reviewed  [ ] Approved
+ * ============================================================
+ */
+export interface WorkflowNode {
+  id: string
+  // 展示名称(JSON 导出格式携带中文名;无则回退 id)
+  name: string
+  type: string
+  className: string
+  // 大 web 语义节点类型(Sample/Labware/Reagent/Transport/Device),决定分色
+  labNodeType: string
+  // 显式坐标(JSON 导出格式自带 pose.position;无则由 layoutDag 计算)
+  x?: number
+  y?: number
+}
+
+export interface WorkflowLink {
+  source: string
+  target: string
+  type: string
+}
+
+export interface WorkflowStep {
+  action: string
+  args: Record<string, unknown>
+  // 步骤动作的 JSON Schema(对齐大 web schema.properties.goal),供 RJSF 渲染
+  schema: Record<string, unknown> | null
+}
+
+export interface WorkflowStructure {
+  nodes: WorkflowNode[]
+  links: WorkflowLink[]
+  steps: WorkflowStep[]
+  error: string | null
+}
