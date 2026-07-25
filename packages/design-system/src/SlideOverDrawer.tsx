@@ -39,17 +39,42 @@ export function SlideOverDrawer({
   }, [open, onClose])
 
   return (
-    <div className={`drawer ${open ? 'is-open' : ''}`} aria-hidden={!open}>
-      <div className="drawer__mask" onClick={onClose} />
-      <div className="drawer__panel" role="dialog" aria-modal="true">
-        <header className="drawer__header">
-          <div className="drawer__title">{title}</div>
-          <button type="button" className="drawer__close" onClick={onClose} aria-label="关闭">
+    <div
+      className={`pointer-events-none absolute inset-0 z-30 ${open ? 'pointer-events-auto' : ''}`}
+      aria-hidden={!open}
+    >
+      <div
+        className={`absolute inset-0 bg-[rgba(15,23,42,0.35)] transition-opacity duration-300 ${
+          open ? 'opacity-100' : 'opacity-0'
+        }`}
+        onClick={onClose}
+      />
+      <div
+        className={`absolute inset-y-0 right-0 flex w-[480px] max-w-[90%] flex-col bg-white shadow-[-8px_0_24px_rgba(15,23,42,0.18)] transition-transform duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${
+          open ? 'translate-x-0' : 'translate-x-full'
+        }`}
+        role="dialog"
+        aria-modal="true"
+      >
+        <header className="flex items-center justify-between border-b border-[#e8ebef] bg-[#fbfcfe] px-[18px] py-3.5">
+          <div className="text-[15px] font-semibold text-[#1f2329]">{title}</div>
+          <button
+            type="button"
+            className="h-7 w-7 cursor-pointer rounded-md border-0 bg-transparent text-xl leading-none text-[#6b7280] transition-colors hover:bg-[#eceff3]"
+            onClick={onClose}
+            aria-label="关闭"
+          >
             ×
           </button>
         </header>
-        <div className="drawer__body">{children}</div>
-        {footer && <footer className="drawer__footer">{footer}</footer>}
+        <div className="min-h-0 flex-1 overflow-y-auto bg-[#f8fafc] px-[18px] py-4">
+          {children}
+        </div>
+        {footer && (
+          <footer className="flex justify-end gap-2 border-t border-[#e8ebef] bg-[#fbfcfe] px-[18px] py-3">
+            {footer}
+          </footer>
+        )}
       </div>
     </div>
   )

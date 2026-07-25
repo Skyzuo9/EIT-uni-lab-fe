@@ -25,7 +25,7 @@ function AuthGate(): React.JSX.Element {
 
   // 会话读取完成前避免闪烁
   if (!isReady) {
-    return <div className="app-loading">加载中…</div>
+    return <div className="flex h-full w-full items-center justify-center text-[13px] text-[#6b7280]">加载中…</div>
   }
 
   if (!isLogged) {

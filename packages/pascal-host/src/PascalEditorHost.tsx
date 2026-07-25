@@ -125,8 +125,8 @@ export function PascalEditorHost({
 
   if (prepareError) {
     return (
-      <div className="panel">
-        <div className="material__error">
+      <div className="flex h-full w-full flex-col bg-white">
+        <div className="border-b border-[#fda29b] bg-[#fef3f2] px-3.5 py-1.5 text-xs text-[#b42318]">
           3D 插件初始化失败：{prepareError.message}
         </div>
       </div>
@@ -134,7 +134,7 @@ export function PascalEditorHost({
   }
 
   if (!isPrepared) {
-    return <div className="app-loading">正在加载 Pascal Editor…</div>
+    return <div className="flex h-full w-full items-center justify-center text-[13px] text-[#6b7280]">正在加载 Pascal Editor…</div>
   }
 
   return (

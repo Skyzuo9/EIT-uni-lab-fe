@@ -2,7 +2,7 @@ import {
   createDefaultPanelLayout,
   parsePanelLayoutDocument,
   type PanelLayoutDocument
-} from '@unilab/panel-runtime'
+} from '@unilab/workbench-layout'
 
 export type LabPanelPreset = 'lab' | 'scene' | 'workflow'
 

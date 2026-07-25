@@ -1,6 +1,6 @@
 import {
   reducePanelLayout
-} from '@unilab/panel-runtime'
+} from '@unilab/workbench-layout'
 import { describe, expect, it } from 'vitest'
 
 import { panelPresetDocument } from './panelLayouts'

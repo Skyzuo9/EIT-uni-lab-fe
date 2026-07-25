@@ -11,7 +11,6 @@ import type {
   PanelLayoutNode,
   PanelSplitNode,
 } from "./types";
-import styles from "./PanelGroup.module.scss";
 
 const CANONICAL_PANEL_ID_SET: ReadonlySet<string> = new Set(
   CANONICAL_PANEL_IDS,
@@ -77,7 +76,7 @@ function GroupRenderer<Scope>({
       closable,
       content: (
         <div
-          className={styles.contribution}
+          className="flex min-h-0 min-w-0 flex-1 flex-col"
           data-panel-contribution={
             CANONICAL_PANEL_ID_SET.has(instance.panelType)
               ? undefined
@@ -192,7 +191,11 @@ function ResizeSeparator({
   };
   return (
     <div
-      className={styles.separator}
+      className={`flex-[0_0_0.5rem] bg-transparent ${
+        split.direction === "horizontal"
+          ? "cursor-col-resize"
+          : "cursor-row-resize"
+      }`}
       role="separator"
       aria-label={`Resize ${split.id}`}
       aria-orientation={
@@ -275,13 +278,11 @@ function SplitRenderer<Scope>({
   onCommand,
   onSplitResize,
 }: SharedProps<Scope> & { split: PanelSplitNode }): React.ReactElement {
-  const directionClass =
-    split.direction === "horizontal"
-      ? styles["split-horizontal"]
-      : styles["split-vertical"];
   return (
     <div
-      className={`${styles.split} ${directionClass}`}
+      className={`flex min-h-0 min-w-0 flex-1 ${
+        split.direction === "horizontal" ? "flex-row" : "flex-col"
+      }`}
       data-split-id={split.id}
       data-split-direction={split.direction}
       data-split-sizes={split.sizes?.join(",")}
@@ -289,7 +290,7 @@ function SplitRenderer<Scope>({
       {split.children.map((child, index) => (
         <React.Fragment key={child.id}>
           <div
-            className={styles["split-child"]}
+            className="flex min-h-0 min-w-0 flex-1"
             style={
               split.sizes ? { flexBasis: `${split.sizes[index]}%` } : undefined
             }
@@ -360,7 +361,7 @@ export function PanelLayoutRenderer<Scope = unknown>({
   }
   return (
     <div
-      className={styles.group}
+      className="flex min-h-0 min-w-0 flex-1 flex-col bg-[var(--unilab-panel-surface,transparent)]"
       data-testid="panel-layout-renderer"
       data-panel-registry-ids={adapter.registry
         .list()

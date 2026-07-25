@@ -13,6 +13,7 @@ import Form from '@rjsf/core'
 import validator from '@rjsf/validator-ajv8'
 import type { IChangeEvent } from '@rjsf/core'
 import type { RJSFSchema } from '@rjsf/utils'
+import styles from './vendor.module.scss'
 
 interface SchemaFormProps {
   // 步骤的完整 action_schema(含 properties.goal)
@@ -38,11 +39,15 @@ export default function SchemaForm({ schema, formData, onChange }: SchemaFormPro
   const goalSchema = extractGoalSchema(schema)
 
   if (!goalSchema) {
-    return <p className="section__hint">该步骤没有可用的参数 Schema,无法生成表单。</p>
+    return (
+      <p className="px-3.5 py-3 text-xs text-[#9ca3af]">
+        该步骤没有可用的参数 Schema,无法生成表单。
+      </p>
+    )
   }
 
   return (
-    <div className="schema-form">
+    <div className={styles.schemaForm}>
       <Form
         schema={goalSchema}
         validator={validator}

@@ -26,7 +26,7 @@
 ```text
 apps/kernel-web
   ├─ integrations/lab-workbench
-  │    ├─ panel-runtime
+  │    ├─ workbench-layout
   │    ├─ services
   │    ├─ material
   │    ├─ scene-runtime（目标）
@@ -37,7 +37,7 @@ apps/kernel-web
 apps/desktop ── packages kernel-web as its renderer input
 ```
 
-`panel-runtime` 不导入任何业务 package。`pascal-lab-plugin` 只允许依赖
+`workbench-layout` 不导入任何业务 package。`pascal-lab-plugin` 只允许依赖
 `@unilab/material/domain` 的类型、规则和几何函数，不能依赖 Material Store
 或 UI；其余跨业务动作由
 `apps/kernel-web/src/integrations/lab-workbench` 组合。
@@ -48,7 +48,7 @@ apps/desktop ── packages kernel-web as its renderer input
 | --- | --- | --- |
 | 非 Material Graph 的服务端缓存、请求状态 | `services` 的消费者 | TanStack Query |
 | 后端选择与连接状态 | `kernel-web` | React context |
-| panel 布局文档 | `panel-runtime` | 纯 reducer + storage port |
+| panel 布局文档 | `workbench-layout` | 纯 reducer + storage port |
 | 物料文档与编辑历史 | `material`（目标） | feature store |
 | 高频关节与 pose 热状态 | `scene-runtime`（目标） | Zustand vanilla frame buffer |
 | 工作流文档、画布与编辑历史 | `workflow-editor` | Uni-Lab FE 内部引擎 |
@@ -77,7 +77,7 @@ Cloud、本地 Go 或本地 Python 后端返回的工作流数据如有字段差
 
 ## Panel 调用机制
 
-`panel-runtime` 提供四个 port：
+`workbench-layout` 提供四个 port：
 
 - registry：panel 定义。
 - renderers：根据 panel 类型解析 renderer。
@@ -86,7 +86,7 @@ Cloud、本地 Go 或本地 Python 后端返回的工作流数据如有字段差
 
 应用侧的 `useLabPanelAdapter` 实现这些 port。这样 panel 之间不通过
 组件 ref、DOM 事件或全局 Redux 互调，新增 package 也不需要修改
-`panel-runtime`。
+`workbench-layout`。
 
 `AppShell` 的 Material、3D 和 Workflow 入口都使用
 `LabPanelWorkspace`/`PanelLayoutRenderer`，不再各自直连第二套 feature 页面。

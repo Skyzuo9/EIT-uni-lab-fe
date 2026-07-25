@@ -11,7 +11,7 @@ import {
   type PanelAppAdapter,
   type PanelRendererProps,
   type PanelStoragePort
-} from '@unilab/panel-runtime'
+} from '@unilab/workbench-layout'
 import {
   MaterialCapabilityNotice,
   MaterialWorkbench
@@ -160,7 +160,7 @@ function UnifiedLayoutRenderer(
 
 /**
  * The app adapter is the only place where feature packages meet each other.
- * panel-runtime stays application-neutral and each feature remains independently
+ * workbench-layout stays application-neutral and each feature remains independently
  * testable.
  */
 export function useLabPanelAdapter(): PanelAppAdapter<LabPanelScope> {

@@ -38,7 +38,7 @@ uni-lab-fe/
     ├── services/               # BackendConfig、HTTP/WS 与业务服务
     ├── design-system/          # 主题 token 和通用 UI
     ├── app-shell/              # 应用外壳与布局原语
-    ├── panel-runtime/          # 可组合 panel 布局运行时
+    ├── workbench-layout/       # 可拆分、拖拽和持久化的工作台布局
     ├── material/               # 物料模型、模板逻辑和物料 UI
     ├── workflow-editor/        # Uni-Lab FE 唯一工作流引擎与编辑器
     ├── code-editor/            # CodeMirror 封装

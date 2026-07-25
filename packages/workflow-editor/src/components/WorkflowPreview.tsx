@@ -35,19 +35,23 @@ export default function WorkflowPreview({
   }
 
   return (
-    <section className="panel">
-      <header className="panel__header">
-        <span className="panel__dot panel__dot--material" />
-        <span className="panel__title">拓扑预览</span>
-        <span className="panel__meta">
+    <section className="flex h-full w-full flex-col bg-white">
+      <header className="flex items-center gap-2 border-b border-[#e5e7eb] bg-[#f9fafb] px-3.5 py-2">
+        <span className="h-[9px] w-[9px] rounded-full bg-[#12b886]" />
+        <span className="text-[13px] font-semibold text-[#1f2329]">拓扑预览</span>
+        <span className="ml-auto text-[11px] text-[#6b7280]">
           {structure.nodes.length} 节点 · {structure.links.length} 连接 · {structure.steps.length} 步骤
         </span>
       </header>
 
-      {structure.error && <div className="material__error">解析错误:{structure.error}</div>}
+      {structure.error && (
+        <div className="border-b border-[#fda29b] bg-[#fef3f2] px-3.5 py-1.5 text-xs text-[#b42318]">
+          解析错误:{structure.error}
+        </div>
+      )}
 
-      <div className="wf-preview">
-        <div className="wf-preview__dag">
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="relative min-h-0 flex-1">
           <WorkflowDag
             nodes={structure.nodes}
             links={structure.links}
@@ -55,8 +59,10 @@ export default function WorkflowPreview({
           />
         </div>
 
-        <div className="wf-preview__block">
-          <h4 className="wf-preview__title">调试执行</h4>
+        <div className="max-h-[40%] overflow-y-auto border-t border-[#e8ebef] bg-[#fbfcfe] px-4 py-3">
+          <h4 className="mb-2.5 mt-0 text-xs font-semibold uppercase tracking-[0.02em] text-[#6b7684]">
+            调试执行
+          </h4>
           <DebugToolbar debug={debug} />
         </div>
       </div>

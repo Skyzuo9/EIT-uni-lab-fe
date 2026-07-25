@@ -9,7 +9,11 @@
  * Human Review Status: [ ] Pending  [ ] Reviewed  [ ] Approved
  * ============================================================
  */
-import type { UseWorkflowDebugResult, DebugStartMode } from '../hooks/useWorkflowDebug'
+import type {
+  UseWorkflowDebugResult,
+  DebugStartMode,
+  DebugStatus
+} from '../hooks/useWorkflowDebug'
 
 interface DebugToolbarProps {
   debug: UseWorkflowDebugResult
@@ -21,17 +25,30 @@ const START_MODE_OPTIONS: { value: DebugStartMode; label: string }[] = [
   { value: 'from-current', label: '从当前节点' }
 ]
 
+const STATUS_CLASS: Record<DebugStatus, string> = {
+  idle: 'bg-[#f1f3f5] text-[#868e96]',
+  running: 'bg-[#e6fcf5] text-[#0ca678]',
+  paused: 'bg-[#fff9db] text-[#f08c00]',
+  error: 'bg-[#fff0f0] text-[#e03131]',
+  finished: 'bg-[#edf2ff] text-[#4263eb]'
+}
+
+const BUTTON_CLASS =
+  'h-[30px] cursor-pointer rounded-md border border-[#dee2e6] bg-white px-3 text-[13px] font-medium text-[#1f2329] transition-colors enabled:hover:border-[#adb5bd] enabled:hover:bg-[#f8f9fa] enabled:active:translate-y-px disabled:cursor-not-allowed disabled:text-[#adb5bd] disabled:opacity-70'
+
 // 调试工具栏:macOS 分段风格,危险操作(终止/急停)红色标注
 export default function DebugToolbar({ debug }: DebugToolbarProps): React.JSX.Element {
   const { status, statusLabel, startMode, stopAfterCurrent, flags } = debug
 
   return (
-    <div className="debug-bar">
-      <span className="debug-bar__tid">TID: DEBUG</span>
-      <span className={`debug-bar__status debug-bar__status--${status}`}>{statusLabel}</span>
+    <div className="flex flex-wrap items-center gap-2 rounded-[10px] border border-[#e8ebef] bg-white px-3 py-2.5 shadow-[0_1px_3px_rgba(15,23,42,0.05)]">
+      <span className="font-mono text-[13px] font-semibold text-[#4dabf7]">TID: DEBUG</span>
+      <span className={`rounded-[10px] px-2 py-0.5 text-[11px] font-semibold ${STATUS_CLASS[status]}`}>
+        {statusLabel}
+      </span>
 
       <select
-        className="debug-bar__select"
+        className="h-[30px] cursor-pointer rounded-md border border-[#dee2e6] bg-white px-2 text-[13px] text-[#1f2329]"
         value={startMode}
         onChange={(event) =>
           debug.setStartMode(event.target.value === 'from-current' ? 'from-current' : 'from-start')
@@ -44,11 +61,11 @@ export default function DebugToolbar({ debug }: DebugToolbarProps): React.JSX.El
         ))}
       </select>
 
-      <span className="debug-bar__divider" />
+      <span className="h-5 w-px bg-[#e8ebef]" />
 
       <button
         type="button"
-        className="debug-bar__btn"
+        className={BUTTON_CLASS}
         disabled={!flags.canStepOver}
         onClick={debug.stepOver}
       >
@@ -56,7 +73,7 @@ export default function DebugToolbar({ debug }: DebugToolbarProps): React.JSX.El
       </button>
       <button
         type="button"
-        className="debug-bar__btn"
+        className={BUTTON_CLASS}
         disabled={!flags.canStepInto}
         onClick={debug.stepInto}
       >
@@ -64,7 +81,7 @@ export default function DebugToolbar({ debug }: DebugToolbarProps): React.JSX.El
       </button>
       <button
         type="button"
-        className="debug-bar__btn"
+        className={BUTTON_CLASS}
         disabled={!flags.canRun}
         onClick={debug.run}
       >
@@ -72,7 +89,7 @@ export default function DebugToolbar({ debug }: DebugToolbarProps): React.JSX.El
       </button>
       <button
         type="button"
-        className="debug-bar__btn"
+        className={BUTTON_CLASS}
         disabled={!flags.canPause}
         onClick={debug.pause}
       >
@@ -80,7 +97,9 @@ export default function DebugToolbar({ debug }: DebugToolbarProps): React.JSX.El
       </button>
       <button
         type="button"
-        className={`debug-bar__btn ${stopAfterCurrent ? 'is-active' : ''}`}
+        className={`${BUTTON_CLASS} ${
+          stopAfterCurrent ? 'border-[#748ffc] bg-[#edf2ff] text-[#4263eb]' : ''
+        }`}
         disabled={!flags.canStopAfter}
         onClick={debug.toggleStopAfter}
       >
@@ -88,18 +107,18 @@ export default function DebugToolbar({ debug }: DebugToolbarProps): React.JSX.El
       </button>
       <button
         type="button"
-        className="debug-bar__btn"
+        className={BUTTON_CLASS}
         disabled={!flags.canContinue}
         onClick={debug.resume}
       >
         继续
       </button>
 
-      <span className="debug-bar__divider" />
+      <span className="h-5 w-px bg-[#e8ebef]" />
 
       <button
         type="button"
-        className="debug-bar__btn debug-bar__btn--danger"
+        className={`${BUTTON_CLASS} text-[#e03131] enabled:hover:border-[#ffa8a8] enabled:hover:bg-[#fff0f0]`}
         disabled={!flags.canTerminate}
         onClick={debug.terminate}
       >
@@ -107,7 +126,7 @@ export default function DebugToolbar({ debug }: DebugToolbarProps): React.JSX.El
       </button>
       <button
         type="button"
-        className="debug-bar__btn debug-bar__btn--danger"
+        className={`${BUTTON_CLASS} text-[#e03131] enabled:hover:border-[#ffa8a8] enabled:hover:bg-[#fff0f0]`}
         disabled={!flags.canEmergencyStop}
         onClick={debug.emergencyStop}
       >
@@ -115,7 +134,7 @@ export default function DebugToolbar({ debug }: DebugToolbarProps): React.JSX.El
       </button>
       <button
         type="button"
-        className="debug-bar__btn"
+        className={BUTTON_CLASS}
         disabled={!flags.canReset}
         onClick={debug.reset}
       >

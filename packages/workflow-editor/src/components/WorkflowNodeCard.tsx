@@ -11,6 +11,7 @@
  */
 import { Handle, Position } from 'reactflow'
 import type { NodeProps } from 'reactflow'
+import styles from './vendor.module.scss'
 
 // 自定义节点承载的数据
 export interface WorkflowNodeData {
@@ -25,7 +26,9 @@ export interface WorkflowNodeData {
 // 节点卡片:无头部,仅名称 + 上下 handle
 export default function WorkflowNodeCard({ data }: NodeProps<WorkflowNodeData>): React.JSX.Element {
   return (
-    <div className="wf-node">
+    <div
+      className={`${styles.node} wf-node min-w-[150px] max-w-[220px] cursor-pointer overflow-visible rounded-lg border border-[#cbd5e1] bg-white shadow-[0_2px_8px_rgba(15,23,42,0.08)] transition-[box-shadow,transform] duration-200 hover:shadow-[0_4px_14px_rgba(15,23,42,0.14)]`}
+    >
       {/* 顶部目标端点(上下流向,连入) */}
       <Handle type="target" position={Position.Left} className="wf-node__handle" />
 

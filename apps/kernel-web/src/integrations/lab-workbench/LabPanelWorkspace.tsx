@@ -3,7 +3,7 @@ import {
   reducePanelLayout,
   type PanelLayoutCommand,
   type PanelLayoutDocument
-} from '@unilab/panel-runtime'
+} from '@unilab/workbench-layout'
 import {
   useCallback,
   useEffect,

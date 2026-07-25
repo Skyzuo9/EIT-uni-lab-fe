@@ -1,10 +1,16 @@
 import React, { type DragEvent, type ReactNode, useState } from "react";
 import { decodePanelDragPayload } from "./dragPayload";
 import { PANEL_DRAG_MIME } from "./PanelGroup";
-import styles from "./PanelDropOverlay.module.scss";
 
 type Side = "left" | "right" | "top" | "bottom";
 type DropZone = Side | "center";
+const DROP_ZONE_CLASS: Record<DropZone, string> = {
+  center: "inset-[25%]",
+  left: "inset-y-0 left-0 right-[75%]",
+  right: "inset-y-0 right-0 left-[75%]",
+  top: "inset-x-0 top-0 bottom-[75%]",
+  bottom: "inset-x-0 bottom-0 top-[75%]",
+};
 export interface PanelDropOverlayProps {
   children: ReactNode;
   groupId: string;
@@ -80,7 +86,7 @@ export const PanelDropOverlay: React.FC<PanelDropOverlayProps> = ({
   };
   return (
     <div
-      className={styles.overlay}
+      className="relative flex min-h-0 min-w-0 flex-1"
       data-panel-drop-overlay
       onDragOverCapture={(event) => {
         if (hasMime(event) && isNestedTabOwner(event.target)) setDropZone(null);
@@ -104,11 +110,13 @@ export const PanelDropOverlay: React.FC<PanelDropOverlayProps> = ({
       {children}
       {dropZone ? (
         <div
-          className={styles.indicators}
+          className="pointer-events-none absolute inset-0 z-10"
           aria-hidden="true"
           data-panel-drop-indicator={dropZone}
         >
-          <div className={`${styles.zone} ${styles[`zone-${dropZone}`]}`} />
+          <div
+            className={`absolute border-2 border-[var(--unilab-panel-accent,currentColor)] bg-[color-mix(in_srgb,var(--unilab-panel-accent,currentColor)_16%,transparent)] ${DROP_ZONE_CLASS[dropZone]}`}
+          />
         </div>
       ) : null}
     </div>

@@ -47,12 +47,12 @@ export default function ParamListEditor({
   }
 
   return (
-    <div className="param-editor">
-      <div className="param-editor__head">
-        <span className="param-editor__title">{title}</span>
+    <div className="rounded-lg border border-[#e5e7eb] bg-white p-3">
+      <div className="mb-2.5 flex items-center justify-between">
+        <span className="text-[13px] font-semibold text-[#334155]">{title}</span>
         <button
           type="button"
-          className="param-editor__add"
+          className="inline-flex h-[22px] w-[22px] cursor-pointer items-center justify-center rounded-md border-0 bg-[#eef2ff] text-base leading-none text-[#4f46e5] transition-colors hover:bg-[#e0e7ff]"
           onClick={handleAdd}
           aria-label={`新增${title}`}
         >
@@ -61,23 +61,23 @@ export default function ParamListEditor({
       </div>
 
       {fields.length === 0 ? (
-        <p className="param-editor__empty">暂无{title}，点击右上角 + 添加</p>
+        <p className="m-0 px-0.5 py-1.5 text-xs text-[#94a3b8]">暂无{title}，点击右上角 + 添加</p>
       ) : (
-        <ul className="param-editor__list">
+        <ul className="m-0 flex list-none flex-col gap-2 p-0">
           {fields.map((field, index) => (
-            <li key={index} className="param-editor__row">
-              <span className="param-editor__icon">{'{x}'}</span>
+            <li key={index} className="flex items-center gap-2 rounded-md border border-[#eef0f2] bg-[#f8fafc] px-2 py-1.5">
+              <span className="shrink-0 text-[11px] font-semibold text-[#6366f1]">{'{x}'}</span>
 
               <input
                 type="text"
-                className="param-editor__name"
+                className="h-7 min-w-0 flex-1 rounded border border-[#dbe0e6] bg-white px-2 text-xs text-[#1e293b] outline-none focus:border-[#6366f1]"
                 value={field.name}
                 placeholder="变量名"
                 onChange={(event) => handleFieldChange(index, { name: event.target.value })}
               />
 
               <select
-                className="param-editor__type"
+                className="h-7 shrink-0 cursor-pointer rounded border border-[#dbe0e6] bg-white px-1.5 text-xs text-[#475569]"
                 value={field.type}
                 onChange={(event) =>
                   handleFieldChange(index, { type: event.target.value as ParamValueType })
@@ -90,12 +90,18 @@ export default function ParamListEditor({
                 ))}
               </select>
 
-              <span className="param-editor__badge">{getParamTypeBadge(field.type)}</span>
+              <span className="min-w-7 shrink-0 rounded bg-[#eef2f6] px-1.5 py-0.5 text-center text-[11px] text-[#64748b]">
+                {getParamTypeBadge(field.type)}
+              </span>
 
               {showRequired && (
                 <button
                   type="button"
-                  className={`param-editor__required${field.required ? ' is-active' : ''}`}
+                  className={`shrink-0 cursor-pointer rounded border px-2 py-[3px] text-[11px] transition-colors ${
+                    field.required
+                      ? 'border-[#fecaca] bg-[#fef2f2] text-[#dc2626]'
+                      : 'border-[#e2e8f0] bg-[#f1f5f9] text-[#94a3b8]'
+                  }`}
                   onClick={() => handleFieldChange(index, { required: !field.required })}
                 >
                   必填
@@ -104,7 +110,7 @@ export default function ParamListEditor({
 
               <button
                 type="button"
-                className="param-editor__remove"
+                className="inline-flex h-[22px] w-[22px] shrink-0 cursor-pointer items-center justify-center rounded border-0 bg-transparent text-base leading-none text-[#94a3b8] transition-colors hover:bg-[#fef2f2] hover:text-[#dc2626]"
                 onClick={() => handleRemove(index)}
                 aria-label="删除该参数"
               >

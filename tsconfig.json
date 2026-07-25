@@ -6,7 +6,7 @@
     { "path": "./packages/services" },
     { "path": "./packages/design-system" },
     { "path": "./packages/app-shell" },
-    { "path": "./packages/panel-runtime" },
+    { "path": "./packages/workbench-layout" },
     { "path": "./packages/material" },
     { "path": "./packages/workflow-editor" },
     { "path": "./packages/code-editor" },

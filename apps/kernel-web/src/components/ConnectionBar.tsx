@@ -11,6 +11,9 @@ const STATUS_META: Record<ConnectionStatus, { label: string; color: string }> = 
   error: { label: '连接失败', color: '#ef4444' }
 }
 
+const INPUT_CLASS =
+  'w-[220px] rounded border border-[#d1d5db] px-2 py-[3px] font-mono text-[11px]'
+
 export default function ConnectionBar(): React.JSX.Element {
   const {
     backend,
@@ -35,17 +38,21 @@ export default function ConnectionBar(): React.JSX.Element {
   }
 
   return (
-    <div className="connbar">
+    <div className="ml-auto flex items-center gap-3">
       <button
         type="button"
-        className={`connbar__mode connbar__mode--${backendEnabled ? 'online' : 'offline'}`}
+        className={`cursor-pointer rounded-xl border px-3 py-[3px] text-xs transition-colors ${
+          backendEnabled
+            ? 'border-[#22c55e] bg-[#22c55e] text-white'
+            : 'border-[#d1d5db] bg-white text-[#6b7280]'
+        }`}
         onClick={() => setBackendEnabled(!backendEnabled)}
       >
         {backendEnabled ? '在线' : '离线'}
       </button>
 
       <select
-        className="connbar__input"
+        className={INPUT_CLASS}
         aria-label="后端配置"
         value={backend.id}
         onChange={(event) => selectBackend(event.target.value)}
@@ -58,9 +65,9 @@ export default function ConnectionBar(): React.JSX.Element {
       </select>
 
       {backendEnabled && (
-        <div className="connbar__endpoint">
+        <div className="flex items-center gap-2.5">
           <input
-            className="connbar__input"
+            className={INPUT_CLASS}
             value={draftUrl}
             spellCheck={false}
             placeholder="后端 API 地址"
@@ -70,16 +77,16 @@ export default function ConnectionBar(): React.JSX.Element {
               if (event.key === 'Enter') handleApplyUrl()
             }}
           />
-          <span className="connbar__status">
+          <span className="flex items-center gap-1.5 text-xs text-[#6b7280]">
             <span
-              className="connbar__dot"
+              className="h-2 w-2 rounded-full"
               style={{ backgroundColor: meta.color }}
             />
             {meta.label}
           </span>
           <button
             type="button"
-            className="connbar__reconnect"
+            className="cursor-pointer rounded border border-[#d1d5db] bg-white px-2.5 py-[3px] text-xs disabled:cursor-not-allowed disabled:opacity-60"
             disabled={!backend.apiUrl}
             onClick={() => void reconnect()}
           >

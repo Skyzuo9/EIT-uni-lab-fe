@@ -18,7 +18,7 @@
 - 从原 `uni-lab-fe` 拆出 design system、app shell、code editor、material
   和 workflow editor。
 - 确认原 `uni-lab-fe` 工作流引擎为唯一实现；Cloud 工作流画布不迁移。
-- 从 Cloud 当前工作树迁入独立的 `panel-runtime`。
+- 从 Cloud 当前工作树迁入独立的 `workbench-layout`。
 - 建立 BackendConfig、Services、默认后端切换和 QueryClient 生命周期。
 - 为 Services 建立静态、deny-by-default 的 capability matrix、统一
   capability key、可展示禁用原因和 `UnsupportedCapabilityError`。

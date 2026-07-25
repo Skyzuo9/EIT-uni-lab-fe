@@ -12,10 +12,9 @@
   },
   "dependencies": {
     "@unilab/app-shell": "workspace:*",
-    "@unilab/code-editor": "workspace:*",
     "@unilab/design-system": "workspace:*",
     "@unilab/material": "workspace:*",
-    "@unilab/panel-runtime": "workspace:*",
+    "@unilab/workbench-layout": "workspace:*",
     "@unilab/pascal-lab-plugin": "workspace:*",
     "@unilab/services": "workspace:*",
     "@unilab/workflow-editor": "workspace:*",

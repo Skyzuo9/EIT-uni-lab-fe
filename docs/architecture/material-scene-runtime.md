@@ -71,7 +71,7 @@ uni-lab-fe/
     ├── services/               # Backend Profile、HTTP/WS、业务服务
     ├── design-system/          # 主题 token 和通用组件
     ├── app-shell/              # 应用外壳
-    ├── panel-runtime/          # 与业务无关的 panel 布局运行时
+    ├── workbench-layout/       # 与业务无关的 panel 布局运行时
     ├── material/               # Material domain、store、2D 物料编辑
     ├── scene-runtime/          # 目标：高频关节/pose 热缓存与帧求值
     ├── workflow-editor/        # 唯一工作流引擎与画布
@@ -94,11 +94,11 @@ apps/kernel-web/integrations
   ├── pascal-host + pascal-lab-plugin
   ├── workflow-editor
   ├── services
-  └── panel-runtime
+  └── workbench-layout
 
 material ─X─> scene-runtime
 material ─X─> Pascal Editor store
-panel-runtime ─X─> 任意业务 package
+workbench-layout ─X─> 任意业务 package
 ```
 
 `material` 不依赖 `scene-runtime`，这是保证 React Flow 不受关节更新影响的
@@ -803,7 +803,7 @@ interface KinematicsRuntime {
 | 手动 joint control lease | `packages/scene-runtime` | 非持久化 runtime 状态 |
 | Pascal 编辑会话 | Pascal Editor | 上游 store |
 | 跨 panel 选择/高亮 | kernel integration | Zustand vanilla store |
-| panel layout | `panel-runtime` | reducer + storage port |
+| panel layout | `workbench-layout` | reducer + storage port |
 | 表单/hover/drag preview | 对应 feature | local/untracked state |
 
 Material Store 是客户端编辑会话中的唯一 Material 业务真相。Material Graph

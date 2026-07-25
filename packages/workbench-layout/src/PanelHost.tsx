@@ -17,7 +17,9 @@ import type {
   PanelRendererReady,
   PanelRendererResolution,
 } from "./types";
-import styles from "./PanelGroup.module.scss";
+
+const PANEL_STATE_CLASS =
+  "grid min-h-20 place-content-center gap-2 p-4 text-center";
 
 export interface PanelHostProps<Scope = unknown> {
   panelId: string;
@@ -66,7 +68,7 @@ class PanelErrorBoundary extends Component<BoundaryProps, BoundaryState> {
   render(): ReactNode {
     if (!this.state.failure) return this.props.children;
     return (
-      <div className={styles.state} role="alert">
+      <div className={PANEL_STATE_CLASS} role="alert">
         <strong>PANEL_RENDERER_FAILED</strong>
         {this.props.failureTitle ? <span>{this.props.failureTitle}</span> : null}
         <span>{this.state.failure.message}</span>
@@ -175,13 +177,13 @@ export function PanelHost<Scope = unknown>({
   let content: ReactNode;
   if (view.status === "loading")
     content = (
-      <div className={styles.state} role="status" aria-live="polite">
+      <div className={PANEL_STATE_CLASS} role="status" aria-live="polite">
         PANEL_LOADING
       </div>
     );
   else if (view.status === "failed")
     content = (
-      <div className={styles.state} role="alert">
+      <div className={PANEL_STATE_CLASS} role="alert">
         <strong>{view.failure.code}</strong>
         <span>{view.failure.message}</span>
         <button type="button" onClick={retry}>
@@ -191,7 +193,7 @@ export function PanelHost<Scope = unknown>({
     );
   else if (view.resolution.status === "empty")
     content = (
-      <div className={styles.state}>
+      <div className={PANEL_STATE_CLASS}>
         <strong>PANEL_EMPTY</strong>
         <span>{view.resolution.message ?? "No panel content"}</span>
       </div>
@@ -199,7 +201,7 @@ export function PanelHost<Scope = unknown>({
   else if (view.resolution.status === "unavailable")
     content = (
       <div
-        className={styles.state}
+        className={PANEL_STATE_CLASS}
         role="status"
         aria-label={`${view.resolution.error.code} ${view.resolution.error.panelId}`}
       >
@@ -229,7 +231,7 @@ export function PanelHost<Scope = unknown>({
     );
   return (
     <div
-      className={styles.host}
+      className="flex min-h-0 min-w-0 flex-1 flex-col"
       data-panel-type={panelId}
       data-panel-instance-id={panelInstanceId}
     >

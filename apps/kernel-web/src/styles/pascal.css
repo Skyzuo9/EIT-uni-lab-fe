@@ -1,9 +1,10 @@
 @import "tailwindcss/theme" layer(theme);
 @import "tailwindcss/utilities" layer(utilities);
 
+@source "../**/*.{ts,tsx}";
+@source "../../../../packages/**/*.{ts,tsx}";
 @source "../../../../packages/pascal-host/node_modules/@pascal-app/editor/src/**/*.{ts,tsx}";
-@source "../../../../packages/pascal-host/src/**/*.{ts,tsx}";
-@source "../../../../packages/pascal-lab-plugin/src/**/*.{ts,tsx}";
+@source "../../../../node_modules/@pascal-app/editor/src/**/*.{ts,tsx}";
 
 @theme inline {
   --color-background: var(--pascal-background);

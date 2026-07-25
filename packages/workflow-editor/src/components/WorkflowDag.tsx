@@ -17,6 +17,7 @@ import WorkflowNodeCard from './WorkflowNodeCard'
 import type { WorkflowNodeData } from './WorkflowNodeCard'
 import type { WorkflowLink, WorkflowNode } from '../utils/parseWorkflow'
 import 'reactflow/dist/style.css'
+import styles from './vendor.module.scss'
 
 interface WorkflowDagProps {
   nodes: WorkflowNode[]
@@ -61,11 +62,11 @@ export default function WorkflowDag({
   )
 
   if (flowNodes.length === 0) {
-    return <p className="section__hint">当前 JSON 未定义 nodes,无法生成拓扑图</p>
+    return <p className="px-3.5 py-3 text-xs text-[#9ca3af]">当前 JSON 未定义 nodes,无法生成拓扑图</p>
   }
 
   return (
-    <div className="wf-dag">
+    <div className={styles.dag}>
       <ReactFlow
         nodes={runtimeNodes}
         edges={flowEdges}

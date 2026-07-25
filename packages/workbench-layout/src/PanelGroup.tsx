@@ -7,9 +7,10 @@ import React, {
 } from "react";
 import { decodePanelDragPayload, encodePanelDragPayload } from "./dragPayload";
 import { createPanelDomId } from "./rendererUtils";
-import styles from "./PanelGroup.module.scss";
 
 export const PANEL_DRAG_MIME = "application/x-unilab-panel";
+const PANEL_STATE_CLASS =
+  "grid min-h-20 place-content-center gap-2 p-4 text-center";
 export interface PanelGroupTab {
   id: string;
   title: string;
@@ -127,11 +128,14 @@ export const PanelGroup: React.FC<PanelGroupProps> = ({
     }
   };
   if (!tabs.length)
-    return <div className={styles.state}>PANEL_GROUP_EMPTY</div>;
+    return <div className={PANEL_STATE_CLASS}>PANEL_GROUP_EMPTY</div>;
   return (
-    <section className={styles.group} data-panel-group-id={groupId}>
+    <section
+      className="flex min-h-0 min-w-0 flex-1 flex-col bg-[var(--unilab-panel-surface,transparent)]"
+      data-panel-group-id={groupId}
+    >
       <div
-        className={styles.header}
+        className="flex items-center border-b border-[var(--unilab-panel-border,currentColor)]"
         data-panel-tab-drop-owner
         onDragOver={(event) => {
           if (!onTabMove || !hasMime(event)) return;
@@ -149,7 +153,10 @@ export const PanelGroup: React.FC<PanelGroupProps> = ({
           setDragOverIndex(null);
         }}
       >
-        <div className={styles["tab-list"]} role="tablist">
+        <div
+          className="flex min-h-8 flex-1 items-center gap-1"
+          role="tablist"
+        >
           {tabs.map((tab, index) => {
             const tabId = createPanelDomId("panel", groupId, tab.id, "tab");
             const panelId = createPanelDomId(
@@ -162,7 +169,7 @@ export const PanelGroup: React.FC<PanelGroupProps> = ({
             return (
               <div
                 key={tab.id}
-                className={styles["tab-item"]}
+                className="flex items-center"
                 data-panel-instance-id={tab.id}
                 data-drop-before={dragOverIndex === index || undefined}
                 data-drop-after={dragOverIndex === index + 1 || undefined}
@@ -199,7 +206,7 @@ export const PanelGroup: React.FC<PanelGroupProps> = ({
               >
                 <button
                   id={tabId}
-                  className={styles.tab}
+                  className="cursor-pointer border-0 border-b-2 border-transparent bg-transparent px-2.5 py-1.5 text-inherit aria-selected:border-b-[var(--unilab-panel-accent,currentColor)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--unilab-panel-focus,currentColor)]"
                   type="button"
                   role="tab"
                   aria-controls={panelId}
@@ -213,7 +220,7 @@ export const PanelGroup: React.FC<PanelGroupProps> = ({
                 {tab.closable && onTabClose ? (
                   <button
                     type="button"
-                    className={styles.close}
+                    className="cursor-pointer border-0 bg-transparent text-inherit"
                     aria-label={
                       getCloseLabel?.(tab.title) ?? `Close ${tab.title}`
                     }
@@ -231,14 +238,14 @@ export const PanelGroup: React.FC<PanelGroupProps> = ({
           })}
         </div>
         {toolbar !== null && toolbar !== undefined ? (
-          <div className={styles.toolbar}>
+          <div className="flex items-center px-2">
             <ToolbarBoundary key={toolbarKey ?? activeTabId}>
               {toolbar}
             </ToolbarBoundary>
           </div>
         ) : null}
       </div>
-      <div className={styles.body}>
+      <div className="flex min-h-0 min-w-0 flex-1 overflow-auto">
         {tabs.map((tab) => {
           const tabId = createPanelDomId("panel", groupId, tab.id, "tab");
           const panelId = createPanelDomId(
@@ -249,7 +256,7 @@ export const PanelGroup: React.FC<PanelGroupProps> = ({
           );
           return (
             <div
-              className={styles["tab-panel"]}
+              className="flex min-h-0 min-w-0 flex-1 flex-col"
               key={tab.id}
               id={panelId}
               role="tabpanel"
