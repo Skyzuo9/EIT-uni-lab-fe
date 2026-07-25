@@ -1,0 +1,162 @@
+import {
+  Euler,
+  Matrix4,
+  Quaternion,
+  Vector3,
+  type Object3D
+} from 'three'
+
+import { positionThreeToMm, type Vector3Tuple } from './units'
+
+export interface LocalMountPose {
+  position: Vector3Tuple
+  rotation: Vector3Tuple
+}
+
+function clean(value: number): number {
+  return Math.abs(value) < 1e-10 ? 0 : value
+}
+
+/**
+ * Convert a child's world transform to the target link's local Cloud pose.
+ * This is the same matrix operation used by the Cloud 3D mount flow.
+ */
+export function calculateLocalMountPose(
+  childObject: Object3D,
+  parentLinkObject: Object3D
+): LocalMountPose {
+  childObject.updateWorldMatrix(true, false)
+  parentLinkObject.updateWorldMatrix(true, false)
+
+  const localMatrix = new Matrix4()
+    .copy(parentLinkObject.matrixWorld)
+    .invert()
+    .multiply(childObject.matrixWorld)
+  const localPosition = new Vector3()
+  const localQuaternion = new Quaternion()
+  const localScale = new Vector3()
+  localMatrix.decompose(localPosition, localQuaternion, localScale)
+  const rotation = new Euler().setFromQuaternion(localQuaternion, 'XYZ')
+
+  return {
+    position: positionThreeToMm([
+      clean(localPosition.x),
+      clean(localPosition.y),
+      clean(localPosition.z)
+    ]),
+    rotation: [
+      clean(rotation.x),
+      clean(rotation.y),
+      clean(rotation.z)
+    ]
+  }
+}
+
+export function calculateHorizontalSnapDistance(
+  cursorPosition: Vector3,
+  linkPosition: Vector3
+): number {
+  const deltaX = cursorPosition.x - linkPosition.x
+  const deltaZ = cursorPosition.z - linkPosition.z
+  return Math.sqrt(deltaX * deltaX + deltaZ * deltaZ)
+}
+
+interface MountOption {
+  link: string
+  label: string
+  mountPoint?: string | null
+}
+
+export interface HorizontalMountMatch<Node> {
+  parentNode: Node
+  parentLink: string
+  mountPoint?: string
+  linkObject: Object3D
+  distance: number
+}
+
+export interface FindNearestHorizontalMountMatchOptions<
+  Node extends { id?: string }
+> {
+  childNode: Node
+  childPosition: Vector3
+  candidateNodes: readonly Node[]
+  threshold: number
+  getNodeId?: (node: Node) => string
+  getParentObject: (node: Node) => Object3D | null
+  getMountOptions: (node: Node) => readonly MountOption[]
+  acceptsChild: (option: MountOption, childNode: Node) => boolean
+  findLinkObject: (
+    parentObject: Object3D,
+    linkName: string
+  ) => Object3D | null
+  shouldSkipCandidate?: (candidateNode: Node, childNode: Node) => boolean
+}
+
+export function findNearestHorizontalMountMatch<
+  Node extends { id?: string }
+>({
+  childNode,
+  childPosition,
+  candidateNodes,
+  threshold,
+  getNodeId = (node) => node.id ?? '',
+  getParentObject,
+  getMountOptions,
+  acceptsChild,
+  findLinkObject,
+  shouldSkipCandidate
+}: FindNearestHorizontalMountMatchOptions<Node>): HorizontalMountMatch<Node> | null {
+  const childId = getNodeId(childNode)
+  let nearest: HorizontalMountMatch<Node> | null = null
+
+  for (const candidateNode of candidateNodes) {
+    if (getNodeId(candidateNode) === childId) continue
+    if (shouldSkipCandidate?.(candidateNode, childNode)) continue
+
+    const parentObject = getParentObject(candidateNode)
+    if (!parentObject) continue
+
+    for (const option of getMountOptions(candidateNode)) {
+      if (!acceptsChild(option, childNode)) continue
+      const linkObject = findLinkObject(parentObject, option.link)
+      if (!linkObject) continue
+
+      const linkPosition = new Vector3()
+      linkObject.getWorldPosition(linkPosition)
+      const distance = calculateHorizontalSnapDistance(
+        childPosition,
+        linkPosition
+      )
+      if (distance > threshold || (nearest && distance >= nearest.distance)) {
+        continue
+      }
+
+      nearest = {
+        parentNode: candidateNode,
+        parentLink: option.link,
+        mountPoint: option.mountPoint ?? undefined,
+        linkObject,
+        distance
+      }
+    }
+  }
+
+  return nearest
+}
+
+export function findLinkObject(
+  parentObject: Object3D,
+  linkName: string
+): Object3D | null {
+  const robot = parentObject as Object3D & {
+    links?: Record<string, Object3D>
+  }
+  if (robot.links?.[linkName]) return robot.links[linkName]
+
+  let match: Object3D | null = null
+  parentObject.traverse((object) => {
+    if (!match && object.name === linkName) match = object
+  })
+  return match
+}

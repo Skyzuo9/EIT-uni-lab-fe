@@ -1,116 +1,70 @@
-# Lab PC Client
+# Uni-Lab Frontend
 
-一个基于 Electron 的桌面应用外壳，主界面为左右分栏画布：左侧展示液体工作站设备配置 `liquid_handler.yaml`，右侧展示对应的物料（deck 耗材布局）界面，中间分隔条可拖拽调整比例。
-
-## 技术栈
-
-- 构建脚手架：[electron-vite](https://electron-vite.org/)（Vite 驱动，主进程 / 预加载 / 渲染进程三段式）
-- 前端框架：React 18 + TypeScript
-- 画布：纯 React 组件实现（YAML 只读高亮视图 + deck 物料布局，无额外可视化依赖）
-- 打包工具：[electron-builder](https://www.electron.build/)
-
-## 目录结构
-
-```text
-.
-├── electron.vite.config.ts     # 主/预加载/渲染 三段构建配置
-├── electron-builder.yml        # 打包配置（appId、mac target、图标等）
-├── build                       # 打包资源
-│   ├── icon.png                # 源图标（1024x1024）
-│   └── icon.icns               # macOS 图标（由 icon.png 生成）
-├── src
-│   ├── main/index.ts           # 主进程：创建 BrowserWindow
-│   ├── preload/index.ts        # 预加载：contextBridge 暴露安全 API
-│   └── renderer                # 渲染进程（React 应用）
-│       ├── index.html
-│       └── src
-│           ├── main.tsx        # React 入口
-│           ├── App.tsx         # 应用外壳（标题栏 + 画布）
-│           ├── components
-│           │   ├── Workbench.tsx      # 左右分栏画布（可拖拽分隔条）
-│           │   ├── YamlPanel.tsx      # 左侧：liquid_handler.yaml 只读高亮视图
-│           │   ├── MaterialPanel.tsx  # 右侧：物料界面（deck 布局 + 试剂图例）
-│           │   ├── DeckSlotCard.tsx   # deck 单个槽位卡片
-│           │   └── LabwareGrid.tsx    # 物料孔位/枪头网格
-│           ├── hooks/useResizableSplit.ts  # 分栏比例拖拽逻辑
-│           ├── data/liquidHandler.ts  # 液体工作站配置数据 + YAML 序列化
-│           └── styles/global.css
-├── out/                        # electron-vite 构建产物（自动生成）
-└── release/                    # electron-builder 打包产物（自动生成）
-```
-
-## 环境要求
-
-- Node.js 18+（建议 20/22）
-- macOS（当前打包目标为 macOS arm64）
-
-## 安装
-
-```bash
-npm install
-```
-
-> 国内网络下 Electron 二进制默认从 GitHub 下载可能很慢，本项目已在 `.npmrc` 中配置 npmmirror 镜像。
+Uni-Lab 的长期维护前端仓库。项目使用 pnpm workspace 管理 Vite React
+应用、Electron 桌面外壳和可复用业务包。
 
 ## 开发
 
-```bash
-npm run dev
-```
-
-启动后 electron-vite 会同时构建主进程/预加载、拉起渲染进程 dev server（默认 `http://localhost:5173`）并打开应用窗口，支持热更新。
-
-## 类型检查
+环境要求：Node.js 20 或 22、pnpm 10.13.1。
 
 ```bash
-npm run typecheck
+corepack enable
+pnpm install
+pnpm dev
 ```
 
-## 打包（macOS）
+常用命令：
 
 ```bash
-npm run build:mac
+pnpm dev             # Vite kernel-web
+pnpm dev:desktop     # Electron 外壳 + 同一个 kernel-web renderer
+pnpm typecheck       # 全工作区类型检查
+pnpm test            # 全工作区单元测试
+pnpm build:web       # 浏览器产物
+pnpm build:desktop   # Electron main/preload/renderer 产物
+pnpm build           # 构建所有包含 build 脚本的项目
 ```
 
-流程：先 `electron-vite build` 产出 `out/`，再 `electron-builder --mac` 产出安装包。
+## 目录
 
-产物路径：
-
-- `release/Lab PC Client-<version>-arm64.dmg` — 可分发的安装镜像
-- `release/mac-arm64/Lab PC Client.app` — 未压缩的应用包
-
-> 本项目未做代码签名与公证（notarization），首次打开需在 Finder 中右键点击应用选择「打开」。
-
-## 应用图标
-
-图标源文件为 `build/icon.png`（1024x1024），macOS 使用由它生成的 `build/icon.icns`，并在 `electron-builder.yml` 中通过 `mac.icon` 引用。
-
-如需替换图标，替换 `build/icon.png` 后重新生成 `.icns`：
-
-```bash
-ICONSET=build/icon.iconset
-mkdir -p "$ICONSET"
-for spec in "16:icon_16x16" "32:icon_16x16@2x" "32:icon_32x32" "64:icon_32x32@2x" \
-  "128:icon_128x128" "256:icon_128x128@2x" "256:icon_256x256" "512:icon_256x256@2x" "512:icon_512x512"; do
-  sz=${spec%%:*}; name=${spec##*:}
-  sips -z "$sz" "$sz" build/icon.png --out "$ICONSET/$name.png"
-done
-cp build/icon.png "$ICONSET/icon_512x512@2x.png"
-iconutil -c icns "$ICONSET" -o build/icon.icns
-rm -rf "$ICONSET"
+```text
+uni-lab-fe/
+├── apps/
+│   ├── kernel-web/             # 唯一 Vite React SPA / renderer 源码
+│   ├── desktop/                # Electron main、preload、打包配置
+│   └── cloud-web/              # 未来云端应用入口，目前仅占位
+└── packages/
+    ├── services/               # BackendConfig、HTTP/WS 与业务服务
+    ├── design-system/          # 主题 token 和通用 UI
+    ├── app-shell/              # 应用外壳与布局原语
+    ├── panel-runtime/          # 可组合 panel 布局运行时
+    ├── material/               # 物料模型、模板逻辑和物料 UI
+    ├── workflow-editor/        # Uni-Lab FE 唯一工作流引擎与编辑器
+    ├── code-editor/            # CodeMirror 封装
+    ├── pascal-host/            # Pascal Editor 上游加载与 React 宿主
+    ├── pascal-lab-plugin/      # Uni-Lab 场景能力适配
+    └── testing/                # 跨包测试工具
 ```
 
-## 常见问题
+`apps/desktop` 没有自己的 renderer 源码。它的 electron-vite 配置直接以
+`apps/kernel-web/index.html` 为输入，因此 Web 和桌面不会形成两套前端。
+项目不使用 SSR。
 
-- 若运行 `npm run dev` 或直接 `electron .` 时报 `Cannot read properties of undefined (reading 'isPackaged')`，通常是环境变量 `ELECTRON_RUN_AS_NODE=1` 使 Electron 以纯 Node 模式启动所致。取消该变量即可：
+工作流引擎以 `packages/workflow-editor` 中从原 `uni-lab-fe` 拆出的实现为
+唯一来源。Uni-Lab-Cloud 的 workflow canvas、revision store 和 authoring
+engine 不迁入本仓库；如需兼容 Cloud，只在 `services` 中适配接口数据。
 
-```bash
-unset ELECTRON_RUN_AS_NODE
-```
+3D 编辑器直接使用固定版本的 Pascal 官方包，Uni-Lab 的物料节点、模型加载、
+坐标转换和挂载规则集中在 `packages/pascal-lab-plugin`。`kernel-web` 的
+“3D 场景”按需加载该能力，Electron 复用同一个入口。仓库没有 Pascal 源码
+副本，也不引入 Next 或 SSR。
 
-## 后续可扩展
+## 后端切换
 
-- 增加 Windows / Linux 打包 target
-- 接入真实业务的 `liquid_handler.yaml` 与物料数据（当前为内置示例）
-- 支持 YAML 编辑与物料布局的双向联动
-- 通过主进程 IPC 扩展文件读写、系统能力等
+应用通过完整的 `BackendConfig` 切换服务实例，内置 Local Go、Local
+Python OS 和 Uni-Lab Cloud 三种默认配置。切换配置后会重新创建
+`Services` 和 TanStack Query 缓存；UI 与业务包不直接依赖某一种部署形态。
+
+详细依赖规则、状态所有权和跨 panel 通信方式见
+[架构说明](docs/architecture.md)。迁移范围和当前进度见
+[迁移记录](docs/migration.md)。

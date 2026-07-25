@@ -1,0 +1,50 @@
+{
+  "name": "@unilab/kernel-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@codemirror/commands": "^6.10.4",
+    "@codemirror/lang-python": "^6.2.1",
+    "@codemirror/lang-yaml": "^6.1.3",
+    "@codemirror/language": "^6.12.4",
+    "@codemirror/state": "^6.7.1",
+    "@codemirror/theme-one-dark": "^6.1.3",
+    "@codemirror/view": "^6.43.6",
+    "@rjsf/core": "^5.19.3",
+    "@rjsf/utils": "^5.19.3",
+    "@rjsf/validator-ajv8": "^5.19.3",
+    "@unilab/app-shell": "workspace:*",
+    "@unilab/code-editor": "workspace:*",
+    "@unilab/design-system": "workspace:*",
+    "@unilab/material": "workspace:*",
+    "@unilab/panel-runtime": "workspace:*",
+    "@unilab/pascal-host": "workspace:*",
+    "@unilab/pascal-lab-plugin": "workspace:*",
+    "@unilab/services": "workspace:*",
+    "@unilab/workflow-editor": "workspace:*",
+    "js-yaml": "^5.2.1",
+    "react": "^19.2.1",
+    "react-dom": "^19.2.1",
+    "reactflow": "^11.11.2",
+    "zustand": "^5.0.8"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "4.1.14",
+    "@types/js-yaml": "^4.0.9",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.6.3",
+    "tailwindcss": "4.1.14",
+    "vite": "^5.4.11",
+    "vitest": "^2.1.9"
+  }
+}

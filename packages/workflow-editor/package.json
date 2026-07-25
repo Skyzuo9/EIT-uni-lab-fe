@@ -1,0 +1,35 @@
+{
+  "name": "@unilab/workflow-editor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": [
+    "**/*.css"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@rjsf/core": "^5.19.3",
+    "@rjsf/utils": "^5.19.3",
+    "@rjsf/validator-ajv8": "^5.19.3",
+    "@unilab/app-shell": "workspace:*",
+    "@unilab/code-editor": "workspace:*",
+    "@unilab/design-system": "workspace:*",
+    "reactflow": "^11.11.2"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "react": "^19.2.1",
+    "react-dom": "^19.2.1",
+    "typescript": "^5.6.3"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

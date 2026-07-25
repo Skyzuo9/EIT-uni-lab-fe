@@ -1,0 +1,33 @@
+:root {
+  color-scheme: light;
+  --unilab-color-bg: #ffffff;
+  --unilab-color-bg-subtle: #f9fafb;
+  --unilab-color-bg-muted: #f3f4f6;
+  --unilab-color-border: #e5e7eb;
+  --unilab-color-border-strong: #d1d5db;
+  --unilab-color-text: #1f2329;
+  --unilab-color-text-muted: #6b7280;
+  --unilab-color-primary: #4dabf7;
+  --unilab-color-success: #12b886;
+  --unilab-color-warning: #f59f00;
+  --unilab-color-danger: #ef4444;
+  --unilab-radius-sm: 4px;
+  --unilab-radius-md: 8px;
+  --unilab-shadow-panel: 0 12px 32px rgb(15 23 42 / 12%);
+  --unilab-font-sans:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --unilab-font-mono:
+    "JetBrains Mono", "SF Mono", "Menlo", "Consolas", monospace;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --unilab-color-bg: #111827;
+  --unilab-color-bg-subtle: #182132;
+  --unilab-color-bg-muted: #243044;
+  --unilab-color-border: #334155;
+  --unilab-color-border-strong: #475569;
+  --unilab-color-text: #f8fafc;
+  --unilab-color-text-muted: #94a3b8;
+}

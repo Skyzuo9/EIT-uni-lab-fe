@@ -1,0 +1,139 @@
+@import "tailwindcss/theme" layer(theme);
+@import "tailwindcss/utilities" layer(utilities);
+
+@source "../../../../node_modules/@pascal-app/editor/src/**/*.{ts,tsx}";
+@source "../../../../packages/pascal-host/src/**/*.{ts,tsx}";
+@source "../../../../packages/pascal-lab-plugin/src/**/*.{ts,tsx}";
+
+@theme inline {
+  --color-background: var(--pascal-background);
+  --color-foreground: var(--pascal-foreground);
+  --color-card: var(--pascal-card);
+  --color-card-foreground: var(--pascal-card-foreground);
+  --color-popover: var(--pascal-popover);
+  --color-popover-foreground: var(--pascal-popover-foreground);
+  --color-primary: var(--pascal-primary);
+  --color-primary-foreground: var(--pascal-primary-foreground);
+  --color-secondary: var(--pascal-secondary);
+  --color-secondary-foreground: var(--pascal-secondary-foreground);
+  --color-muted: var(--pascal-muted);
+  --color-muted-foreground: var(--pascal-muted-foreground);
+  --color-accent: var(--pascal-accent);
+  --color-accent-foreground: var(--pascal-accent-foreground);
+  --color-destructive: var(--pascal-destructive);
+  --color-border: var(--pascal-border);
+  --color-input: var(--pascal-input);
+  --color-ring: var(--pascal-ring);
+  --color-sidebar: var(--pascal-sidebar);
+  --color-sidebar-foreground: var(--pascal-sidebar-foreground);
+  --color-sidebar-primary: var(--pascal-sidebar-primary);
+  --color-sidebar-primary-foreground: var(--pascal-sidebar-primary-foreground);
+  --color-sidebar-accent: var(--pascal-sidebar-accent);
+  --color-sidebar-accent-foreground: var(--pascal-sidebar-accent-foreground);
+  --color-sidebar-border: var(--pascal-sidebar-border);
+  --color-sidebar-ring: var(--pascal-sidebar-ring);
+  --radius-sm: calc(var(--pascal-radius) - 4px);
+  --radius-md: calc(var(--pascal-radius) - 2px);
+  --radius-lg: var(--pascal-radius);
+  --font-sans: var(--unilab-font-sans);
+  --font-barlow: var(--unilab-font-sans);
+}
+
+.pascal-editor-host {
+  --pascal-radius: 0.5rem;
+  --pascal-background: #ffffff;
+  --pascal-foreground: #1f2329;
+  --pascal-card: #ffffff;
+  --pascal-card-foreground: #1f2329;
+  --pascal-popover: #ffffff;
+  --pascal-popover-foreground: #1f2329;
+  --pascal-primary: #4dabf7;
+  --pascal-primary-foreground: #ffffff;
+  --pascal-secondary: #f3f4f6;
+  --pascal-secondary-foreground: #374151;
+  --pascal-muted: #f3f4f6;
+  --pascal-muted-foreground: #6b7280;
+  --pascal-accent: #edf7ff;
+  --pascal-accent-foreground: #1c6ca1;
+  --pascal-destructive: #ef4444;
+  --pascal-border: #e5e7eb;
+  --pascal-input: #d1d5db;
+  --pascal-ring: #4dabf7;
+  --pascal-sidebar: #f9fafb;
+  --pascal-sidebar-foreground: #1f2329;
+  --pascal-sidebar-primary: #4dabf7;
+  --pascal-sidebar-primary-foreground: #ffffff;
+  --pascal-sidebar-accent: #edf7ff;
+  --pascal-sidebar-accent-foreground: #1c6ca1;
+  --pascal-sidebar-border: #e5e7eb;
+  --pascal-sidebar-ring: #4dabf7;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  color: var(--pascal-foreground);
+  background: var(--pascal-background);
+}
+
+.pascal-editor-host [data-pascal-viewer-3d],
+.pascal-editor-host canvas {
+  outline: none;
+}
+
+.pascal-lab-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--unilab-color-border);
+  background: color-mix(in srgb, var(--unilab-color-bg) 94%, transparent);
+}
+
+.pascal-lab-toolbar__title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.pascal-lab-toolbar__status {
+  color: var(--unilab-color-text-muted);
+  font-size: 11px;
+}
+
+.pascal-lab-toolbar__actions {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.pascal-lab-toolbar__button {
+  padding: 4px 10px;
+  border: 1px solid var(--unilab-color-border-strong);
+  border-radius: var(--unilab-radius-sm);
+  color: var(--unilab-color-text);
+  background: var(--unilab-color-bg);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.pascal-lab-toolbar__button:hover {
+  border-color: var(--unilab-color-primary);
+  background: var(--unilab-color-bg-muted);
+}
+
+.pascal-lab-editor {
+  height: calc(100% - 40px);
+}
+
+.pascal-model-label {
+  padding: 3px 7px;
+  border: 1px solid rgb(255 255 255 / 20%);
+  border-radius: 4px;
+  color: #ffffff;
+  background: rgb(31 35 41 / 78%);
+  box-shadow: 0 2px 8px rgb(15 23 42 / 18%);
+  font: 11px/1.2 var(--unilab-font-sans);
+  white-space: nowrap;
+  pointer-events: none;
+}
