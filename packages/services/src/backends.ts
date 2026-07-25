@@ -1,4 +1,6 @@
 export type BackendAuthKind = 'none' | 'token' | 'oauth'
+export type BackendServerKind = 'backend' | 'edge'
+export type BackendWorkspaceMode = 'singleton' | 'laboratory'
 
 export interface BackendConfig {
   id: string
@@ -8,6 +10,8 @@ export interface BackendConfig {
   realtimeUrl?: string
   assetUrl?: string
   auth: BackendAuthKind
+  serverKind: BackendServerKind
+  workspaceMode: BackendWorkspaceMode
 }
 
 export const DEFAULT_BACKENDS: readonly BackendConfig[] = [
@@ -16,21 +20,27 @@ export const DEFAULT_BACKENDS: readonly BackendConfig[] = [
     name: 'Local Go',
     protocol: 'unilab/v1',
     apiUrl: 'http://127.0.0.1:8000',
-    auth: 'none'
+    auth: 'none',
+    serverKind: 'backend',
+    workspaceMode: 'singleton'
   },
   {
     id: 'local-python',
     name: 'Local Python OS',
     protocol: 'unilab/v1',
     apiUrl: 'http://127.0.0.1:8002',
-    auth: 'none'
+    auth: 'none',
+    serverKind: 'edge',
+    workspaceMode: 'singleton'
   },
   {
     id: 'cloud',
     name: 'Uni-Lab Cloud',
     protocol: 'unilab/v1',
     apiUrl: '',
-    auth: 'oauth'
+    auth: 'oauth',
+    serverKind: 'backend',
+    workspaceMode: 'laboratory'
   }
 ]
 

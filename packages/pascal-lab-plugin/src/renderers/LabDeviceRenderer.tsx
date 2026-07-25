@@ -171,9 +171,12 @@ export default function LabDeviceRenderer({
     }
 
     const parentObject = sceneRegistry.nodes.get(parentDeviceId)
-    const linkObject = parentObject
-      ? findLinkObject(parentObject, parentLinkName)
-      : null
+    const linkObject =
+      parentLinkName === '__root__'
+        ? parentObject
+        : parentObject
+          ? findLinkObject(parentObject, parentLinkName)
+          : null
     if (!linkObject) return
 
     if (group.parent !== linkObject) linkObject.add(group)

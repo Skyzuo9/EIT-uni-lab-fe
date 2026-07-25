@@ -99,6 +99,13 @@ const labDeviceDefinition = {
       parentLinkName: null,
       mountPoint: null
     },
+    placementRef: {
+      kind: 'world',
+      parentMaterialId: null,
+      siteId: null,
+      anchorKind: 'root',
+      anchorLinkName: null
+    },
     parentId: null,
     visible: true,
     metadata: {}
@@ -118,9 +125,9 @@ const labDeviceDefinition = {
       ]
     },
     selectable: { hitVolume: 'bbox' },
-    deletable: true,
-    duplicable: true,
-    groupable: true,
+    deletable: false,
+    duplicable: false,
+    groupable: false,
     floorPlaced: {
       footprint: (node: LabDeviceNode) => ({
         dimensions: node.dimensions,
@@ -164,6 +171,13 @@ const labTableDefinition = {
     position: [0, 0, 0],
     rotation: [0, 0, 0],
     dimensions: [1.5, 0.9, 0.75],
+    placementRef: {
+      kind: 'world',
+      parentMaterialId: null,
+      siteId: null,
+      anchorKind: 'root',
+      anchorLinkName: null
+    },
     parentId: null,
     visible: true,
     metadata: {}
@@ -183,9 +197,9 @@ const labTableDefinition = {
       ]
     },
     selectable: { hitVolume: 'bbox' },
-    deletable: true,
-    duplicable: true,
-    groupable: true,
+    deletable: false,
+    duplicable: false,
+    groupable: false,
     floorPlaced: {
       footprint: (node: LabTableNode) => ({
         dimensions: node.dimensions,

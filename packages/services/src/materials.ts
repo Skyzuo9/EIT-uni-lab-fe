@@ -1,61 +1,133 @@
+import type {
+  MaterialGraphPort,
+  MaterialScope,
+  MaterialTemplateCatalogPort,
+  MaterialTemplateDetail,
+  MaterialTemplatePage,
+  MaterialTemplateQuery,
+  MaterialTemplateSummary,
+  MaterialTemplateWell
+} from '@unilab/material'
+
+import type { BackendConfig } from './backends'
+import {
+  getCapabilityStatus,
+  type ServerCapabilities
+} from './capabilities'
+import { assertCapability, ServiceError } from './errors'
 import { requestData, type HttpClient } from './http'
 
-export interface MaterialTemplateSummary {
-  uuid: string
-  name: string
-  tags: readonly string[]
-  resourceType: 'device' | 'resource'
-  icon?: string
-  description?: string
-}
+export type {
+  MaterialScope,
+  MaterialTemplateDetail,
+  MaterialTemplatePage,
+  MaterialTemplateQuery,
+  MaterialTemplateSummary
+} from '@unilab/material'
 
-export interface MaterialTemplateDetail extends MaterialTemplateSummary {
-  configInfos: readonly Record<string, unknown>[]
-  model?: Record<string, unknown>
-}
+export type MaterialService =
+  MaterialTemplateCatalogPort &
+  MaterialGraphPort
 
-export interface MaterialGraphPayload {
-  nodes: readonly Record<string, unknown>[]
-}
+export function createMaterialService(
+  http: HttpClient,
+  backend: BackendConfig,
+  capabilities: ServerCapabilities
+): MaterialService {
+  const requireReadTemplates = (): void => {
+    assertCapability(
+      getCapabilityStatus(
+        backend,
+        capabilities,
+        'material.readTemplates'
+      ),
+      'material.readTemplates'
+    )
+  }
 
-export interface MaterialService {
-  getTemplates: (laboratoryId: string) => Promise<MaterialTemplateSummary[]>
-  getTemplate: (templateId: string) => Promise<MaterialTemplateDetail>
-  saveGraph: (
-    laboratoryId: string,
-    graph: MaterialGraphPayload
-  ) => Promise<void>
-}
-
-export function createMaterialService(http: HttpClient): MaterialService {
   return {
-    getTemplates: async (laboratoryId) => {
+    listTemplates: async (scope, query = {}) => {
+      requireReadTemplates()
+      assertSingletonScope(scope)
+
       const response = await requestData<{
-        templates?: Record<string, unknown>[]
-      }>(
-        http,
-        `/api/v1/lab/material/template?lab_uuid=${encodeURIComponent(laboratoryId)}`
-      )
-      return (response.templates ?? []).map(mapTemplateSummary)
+        items?: Record<string, unknown>[]
+        total?: number
+        page?: number
+        page_size?: number
+      }>(http, `/api/v1/resource-templates${templateQuery(query)}`)
+
+      return {
+        items: (response.items ?? []).map(mapTemplateSummary),
+        total: finiteNumber(response.total),
+        page: finiteNumber(response.page, 1),
+        pageSize: finiteNumber(response.page_size, 20)
+      }
     },
-    getTemplate: async (templateId) => {
+
+    getTemplate: async (scope, templateId) => {
+      requireReadTemplates()
+      assertSingletonScope(scope)
+
       const response = await requestData<Record<string, unknown>>(
         http,
-        `/api/v1/lab/material/template/${encodeURIComponent(templateId)}`
+        `/api/v1/resource-templates/${encodeURIComponent(templateId)}`
       )
       return mapTemplateDetail(response)
     },
-    saveGraph: async (laboratoryId, graph) => {
-      await requestData<unknown>(http, '/api/v1/lab/material/save', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          graph,
-          lab_uuid: laboratoryId
-        })
-      })
-    }
+
+    getGraph: async (_scope) =>
+      unavailableGraphOperation('material.readGraph'),
+    createMaterial: async (_scope, _input) =>
+      unavailableGraphOperation('material.create'),
+    undoCreate: async (_command) =>
+      unavailableGraphOperation('edge.undoCreate'),
+    updateConfig: async (_command) =>
+      unavailableGraphOperation('material.updateConfig'),
+    move: async (_command) =>
+      unavailableGraphOperation('material.move'),
+    attach: async (_command) =>
+      unavailableGraphOperation('material.attach'),
+    detach: async (_command) =>
+      unavailableGraphOperation('material.detach'),
+    updateSite: async (_command) =>
+      unavailableGraphOperation('material.updateSite'),
+    getEdgeOperations: async (_scope, _operationIds) =>
+      unavailableGraphOperation('edge.provisioning')
   }
+
+  function unavailableGraphOperation(
+    capability: import('./capabilities').ServerCapability
+  ): never {
+    assertCapability(
+      getCapabilityStatus(backend, capabilities, capability),
+      capability
+    )
+    throw new ServiceError({
+      code: 'MATERIAL_GRAPH_ADAPTER_NOT_IMPLEMENTED',
+      message: `${capability} 已声明，但当前 adapter 尚未实现`,
+      retryable: false
+    })
+  }
+}
+
+function assertSingletonScope(scope: MaterialScope): void {
+  if (scope.kind === 'singleton') return
+  throw new ServiceError({
+    code: 'UNSUPPORTED_MATERIAL_SCOPE',
+    message: '当前 Material adapter 只支持 singleton scope',
+    retryable: false
+  })
+}
+
+function templateQuery(query: MaterialTemplateQuery): string {
+  const params = new URLSearchParams()
+  if (query.page != null) params.set('page', String(query.page))
+  if (query.pageSize != null) params.set('page_size', String(query.pageSize))
+  if (query.name) params.set('name', query.name)
+  if (query.resourceType) params.set('resource_type', query.resourceType)
+  const value = params.toString()
+  return value ? `?${value}` : ''
 }
 
 function mapTemplateSummary(
@@ -78,8 +150,8 @@ function mapTemplateDetail(
 ): MaterialTemplateDetail {
   return {
     ...mapTemplateSummary(raw),
-    configInfos: Array.isArray(raw.config_infos)
-      ? raw.config_infos.filter(isRecord)
+    configInfos: Array.isArray(raw.config_info)
+      ? (raw.config_info.filter(isRecord) as MaterialTemplateWell[])
       : [],
     model: isRecord(raw.model) ? raw.model : undefined
   }
@@ -91,6 +163,11 @@ function stringValue(value: unknown): string {
 
 function optionalString(value: unknown): string | undefined {
   return value == null ? undefined : String(value)
+}
+
+function finiteNumber(value: unknown, fallback = 0): number {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : fallback
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

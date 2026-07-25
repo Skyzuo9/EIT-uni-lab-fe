@@ -22,11 +22,15 @@ describe('lab mounting', () => {
     parent.position.set(1, 0, 0)
     const child = new Group()
     child.position.set(1.2, 0.4, 0.6)
+    child.rotation.z = Math.PI / 2
     parent.updateMatrixWorld(true)
     child.updateMatrixWorld(true)
 
     const pose = calculateLocalMountPose(child, parent)
-    expect(pose.position).toEqual([200, 600, 400])
+    expect(pose.positionMm[0]).toBeCloseTo(200)
+    expect(pose.positionMm[1]).toBeCloseTo(400)
+    expect(pose.positionMm[2]).toBeCloseTo(600)
+    expect(pose.rotationDegXYZ[2]).toBeCloseTo(90)
   })
 
   it('chooses the nearest accepted mount option', () => {

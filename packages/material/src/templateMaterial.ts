@@ -15,6 +15,45 @@ export interface MaterialTemplateInput {
   configInfos?: readonly MaterialTemplateWell[]
 }
 
+export interface MaterialTemplateSummary {
+  uuid: string
+  name: string
+  tags: readonly string[]
+  resourceType: 'device' | 'resource'
+  icon?: string
+  description?: string
+}
+
+export interface MaterialTemplateDetail extends MaterialTemplateSummary {
+  configInfos: readonly MaterialTemplateWell[]
+  model?: Record<string, unknown>
+}
+
+export interface MaterialTemplateQuery {
+  page?: number
+  pageSize?: number
+  name?: string
+  resourceType?: 'device' | 'resource'
+}
+
+export interface MaterialTemplatePage {
+  items: readonly MaterialTemplateSummary[]
+  total: number
+  page: number
+  pageSize: number
+}
+
+export interface MaterialTemplateCatalogPort {
+  listTemplates: (
+    scope: import('./types').MaterialScope,
+    query?: MaterialTemplateQuery
+  ) => Promise<MaterialTemplatePage>
+  getTemplate: (
+    scope: import('./types').MaterialScope,
+    templateId: string
+  ) => Promise<MaterialTemplateDetail>
+}
+
 export interface CreateMaterialNodeInput {
   displayName: string
   name: string
@@ -37,9 +76,13 @@ const DEFAULT_LIQUID_HISTORY = ['Water'] as const
  */
 export function createMaterialDraftFromTemplate(
   template: MaterialTemplateInput,
-  existingNames: readonly string[]
+  existingNames: readonly string[],
+  requestedName = template.name
 ): TemplateMaterialDraft {
-  const name = nextAvailableName(template.name, existingNames)
+  const name = nextAvailableName(
+    requestedName.trim() || template.name,
+    existingNames
+  )
   const wells = template.configInfos ?? []
   const requiresLiquidConfiguration = wells.some(hasLiquidField)
 

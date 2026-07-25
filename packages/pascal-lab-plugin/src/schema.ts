@@ -17,6 +17,22 @@ export const LabAttachPointSchema = z.object({
   rotation: Vector3Schema.optional()
 })
 
+export const LabPlacementRefSchema = z
+  .object({
+    kind: z.enum(['unplaced', 'world', 'parent', 'site']),
+    parentMaterialId: z.string().nullable().default(null),
+    siteId: z.string().nullable().default(null),
+    anchorKind: z.enum(['root', 'link']).default('root'),
+    anchorLinkName: z.string().nullable().default(null)
+  })
+  .default({
+    kind: 'world',
+    parentMaterialId: null,
+    siteId: null,
+    anchorKind: 'root',
+    anchorLinkName: null
+  })
+
 export const LabDeviceNodeSchema = BaseNode.extend({
   type: z.literal('lab-device'),
   materialNodeId: z.string(),
@@ -57,6 +73,7 @@ export const LabDeviceNodeSchema = BaseNode.extend({
       parentLinkName: null,
       mountPoint: null
     }),
+  placementRef: LabPlacementRefSchema,
   graphMeta: z.record(z.string(), z.unknown()).optional()
 })
 
@@ -68,10 +85,12 @@ export const LabTableNodeSchema = BaseNode.extend({
   position: Vector3Schema.default([0, 0, 0]),
   rotation: Vector3Schema.default([0, 0, 0]),
   dimensions: Vector3Schema.default([1.5, 0.9, 0.75]),
+  placementRef: LabPlacementRefSchema,
   graphMeta: z.record(z.string(), z.unknown()).optional()
 })
 
 export type LabAttachPoint = z.infer<typeof LabAttachPointSchema>
+export type LabPlacementRef = z.infer<typeof LabPlacementRefSchema>
 export type LabDeviceNode = z.infer<typeof LabDeviceNodeSchema>
 export type LabTableNode = z.infer<typeof LabTableNodeSchema>
 export type LabSceneNode = LabDeviceNode | LabTableNode

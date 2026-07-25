@@ -9,10 +9,6 @@
  * Human Review Status: [ ] Pending  [ ] Reviewed  [ ] Approved
  * ============================================================
  */
-import {
-  lazy,
-  Suspense
-} from 'react'
 import { useWorkbench } from '../context/WorkbenchContext'
 import { useAuth } from '../context/AuthContext'
 import {
@@ -22,14 +18,8 @@ import {
 import ConnectionBar from './ConnectionBar'
 import UserMenu from './auth/UserMenu'
 import DevicePanel from './device/DevicePanel'
-import { MaterialWorkbench } from '@unilab/material'
-import { WorkflowPanel } from '@unilab/workflow-editor'
+import { LabPanelWorkspace } from '../integrations/lab-workbench/LabPanelWorkspace'
 import type { WorkbenchSection } from '../data/lab'
-
-const SceneWorkbench = lazy(async () => {
-  const module = await import('../integrations/lab-workbench/SceneWorkbench')
-  return { default: module.SceneWorkbench }
-})
 
 // 左侧导航项定义
 const NAV_ITEMS: readonly AppShellNavigationItem[] = [
@@ -67,13 +57,7 @@ export default function AppShell(): React.JSX.Element {
 // 根据当前方向渲染对应面板
 function SectionView({ section }: { section: WorkbenchSection }): React.JSX.Element {
   if (section === 'device') return <DevicePanel />
-  if (section === 'material') return <MaterialWorkbench />
-  if (section === 'scene') {
-    return (
-      <Suspense fallback={<div className="app-loading">正在加载 3D 编辑器…</div>}>
-        <SceneWorkbench />
-      </Suspense>
-    )
-  }
-  return <WorkflowPanel />
+  if (section === 'material') return <LabPanelWorkspace preset="lab" />
+  if (section === 'scene') return <LabPanelWorkspace preset="scene" />
+  return <LabPanelWorkspace preset="workflow" />
 }

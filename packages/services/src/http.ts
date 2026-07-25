@@ -9,9 +9,13 @@ export interface HttpClient {
 }
 
 export interface ApiEnvelope<Value> {
-  code: number
+  code?: number
   data: Value
-  message: string
+  message?: string
+  error?: {
+    code?: string
+    message?: string
+  }
 }
 
 export interface CreateHttpClientOptions {
@@ -72,10 +76,24 @@ export async function requestData<Value>(
   init?: RequestInit
 ): Promise<Value> {
   const envelope = await http.request<ApiEnvelope<Value>>(path, init)
-  if (envelope.code !== 0) {
+  if (envelope.error) {
+    throw new ServiceError({
+      code: envelope.error.code || 'API_REQUEST_REJECTED',
+      message: envelope.error.message || '服务端拒绝请求',
+      retryable: false
+    })
+  }
+  if (envelope.code != null && envelope.code !== 0) {
     throw new ServiceError({
       code: 'API_REQUEST_REJECTED',
       message: envelope.message || `后端返回错误码 ${envelope.code}`,
+      retryable: false
+    })
+  }
+  if (!Object.prototype.hasOwnProperty.call(envelope, 'data')) {
+    throw new ServiceError({
+      code: 'INVALID_API_RESPONSE',
+      message: '服务端响应缺少 data 字段',
       retryable: false
     })
   }

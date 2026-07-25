@@ -14,5 +14,6 @@ It contains:
 - Mount-point metadata, local transform and snapping calculations.
 
 Keep backend clients and application-wide selection stores out of this package.
-The application passes material nodes in and receives material updates and
-selected IDs back.
+The application passes authoritative Material aggregates in and receives
+placement commands and selected IDs back. Pascal scene state remains a view
+projection, never a second Material entity store.

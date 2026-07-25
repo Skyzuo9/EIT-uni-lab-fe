@@ -22,12 +22,14 @@ interface WorkbenchContextValue {
   backendEnabled: boolean
   connection: ConnectionStatus
   section: WorkbenchSection
+  laboratoryId: string | null
   availableBackends: readonly BackendConfig[]
   selectBackend: (backendId: string) => void
   updateBackend: (patch: Partial<BackendConfig>) => void
   setBackendEnabled: (enabled: boolean) => void
   setConnection: (status: ConnectionStatus) => void
   setSection: (section: WorkbenchSection) => void
+  setLaboratoryId: (laboratoryId: string | null) => void
 }
 
 const WorkbenchContext = createContext<WorkbenchContextValue | null>(null)
@@ -40,9 +42,11 @@ export function WorkbenchProvider({ children }: { children: ReactNode }): React.
   const [connection, setConnection] =
     useState<ConnectionStatus>('disconnected')
   const [section, setSection] = useState<WorkbenchSection>('device')
+  const [laboratoryId, setLaboratoryId] = useState<string | null>(null)
 
   const selectBackend = useCallback((backendId: string) => {
     setBackend(getDefaultBackend(backendId))
+    setLaboratoryId(null)
     setConnection('disconnected')
   }, [])
 
@@ -62,18 +66,21 @@ export function WorkbenchProvider({ children }: { children: ReactNode }): React.
       backendEnabled,
       connection,
       section,
+      laboratoryId,
       availableBackends: DEFAULT_BACKENDS,
       selectBackend,
       updateBackend,
       setBackendEnabled,
       setConnection,
-      setSection
+      setSection,
+      setLaboratoryId
     }),
     [
       backend,
       backendEnabled,
       connection,
       section,
+      laboratoryId,
       selectBackend,
       updateBackend,
       setBackendEnabled

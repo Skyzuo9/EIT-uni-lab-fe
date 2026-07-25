@@ -6,20 +6,19 @@ import {
   type Object3D
 } from 'three'
 
-import { positionThreeToMm, type Vector3Tuple } from './units'
+import type { LabPose } from '@unilab/material/domain'
+import {
+  METERS_TO_MILLIMETERS
+} from './units'
 
-export interface LocalMountPose {
-  position: Vector3Tuple
-  rotation: Vector3Tuple
-}
+export type LocalMountPose = LabPose
 
 function clean(value: number): number {
   return Math.abs(value) < 1e-10 ? 0 : value
 }
 
 /**
- * Convert a child's world transform to the target link's local Cloud pose.
- * This is the same matrix operation used by the Cloud 3D mount flow.
+ * Convert a child's world transform to canonical link-local LabPose.
  */
 export function calculateLocalMountPose(
   childObject: Object3D,
@@ -39,15 +38,15 @@ export function calculateLocalMountPose(
   const rotation = new Euler().setFromQuaternion(localQuaternion, 'XYZ')
 
   return {
-    position: positionThreeToMm([
-      clean(localPosition.x),
-      clean(localPosition.y),
-      clean(localPosition.z)
-    ]),
-    rotation: [
-      clean(rotation.x),
-      clean(rotation.y),
-      clean(rotation.z)
+    positionMm: [
+      clean(localPosition.x * METERS_TO_MILLIMETERS),
+      clean(localPosition.y * METERS_TO_MILLIMETERS),
+      clean(localPosition.z * METERS_TO_MILLIMETERS)
+    ],
+    rotationDegXYZ: [
+      clean(rotation.x * 180 / Math.PI),
+      clean(rotation.y * 180 / Math.PI),
+      clean(rotation.z * 180 / Math.PI)
     ]
   }
 }

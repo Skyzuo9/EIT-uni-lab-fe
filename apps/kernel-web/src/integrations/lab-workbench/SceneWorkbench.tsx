@@ -1,83 +1,87 @@
 import {
-  DEMO_LAB_MATERIAL_NODES,
+  MaterialCapabilityNotice,
+  useMaterialStore,
+  useMaterialStoreApi
+} from '@unilab/material'
+import {
   PascalLabWorkbench,
-  type LabMaterialNode,
-  type MaterialNodeUpdate
+  type MaterialSceneMove
 } from '@unilab/pascal-lab-plugin'
-import { useCallback, useState } from 'react'
+import { useEffect, useMemo } from 'react'
 
 import { useWorkbench } from '../../context/WorkbenchContext'
 import { useLabInteraction } from './LabInteractionProvider'
-
-const LOCAL_SCENE_KEY = 'unilab.material-scene.v1'
-
-function readLocalScene(): readonly LabMaterialNode[] {
-  try {
-    const raw = globalThis.localStorage?.getItem(LOCAL_SCENE_KEY)
-    if (!raw) return DEMO_LAB_MATERIAL_NODES
-    const parsed = JSON.parse(raw)
-    return Array.isArray(parsed)
-      ? (parsed as LabMaterialNode[])
-      : DEMO_LAB_MATERIAL_NODES
-  } catch {
-    return DEMO_LAB_MATERIAL_NODES
-  }
-}
-
-function mergeMaterialUpdate(
-  node: LabMaterialNode,
-  update: MaterialNodeUpdate
-): LabMaterialNode {
-  return {
-    ...node,
-    ...update.changes,
-    pose: update.changes.pose
-      ? {
-          ...node.pose,
-          ...update.changes.pose,
-          extra: {
-            ...node.pose?.extra,
-            ...update.changes.pose.extra
-          }
-        }
-      : node.pose
-  }
-}
+import { useMaterialRuntime } from './MaterialRuntimeProvider'
 
 export function SceneWorkbench(): React.JSX.Element {
-  const [materialNodes, setMaterialNodes] =
-    useState<readonly LabMaterialNode[]>(readLocalScene)
   const { backend } = useWorkbench()
+  const runtime = useMaterialRuntime()
+  const store = useMaterialStoreApi()
+  const aggregatesById = useMaterialStore(
+    (state) => state.aggregatesById
+  )
+  const loadState = useMaterialStore((state) => state.loadState)
+  const selectedMaterialIds = useLabInteraction(
+    (state) => state.selectedMaterialIds
+  )
+  const highlightedMaterialIds = useLabInteraction(
+    (state) => state.highlightedMaterialIds
+  )
   const selectMaterials = useLabInteraction(
     (state) => state.selectMaterials
   )
   const selectSceneObjects = useLabInteraction(
     (state) => state.selectSceneObjects
   )
-
-  const handleUpdates = useCallback(
-    (updates: readonly MaterialNodeUpdate[]) => {
-      setMaterialNodes((current) => {
-        const byId = new Map(updates.map((update) => [update.uuid, update]))
-        const next = current.map((node) => {
-          const update = byId.get(node.uuid)
-          return update ? mergeMaterialUpdate(node, update) : node
-        })
-        globalThis.localStorage?.setItem(
-          LOCAL_SCENE_KEY,
-          JSON.stringify(next)
-        )
-        return next
-      })
-    },
-    []
+  const aggregates = useMemo(
+    () => Object.values(aggregatesById),
+    [aggregatesById]
   )
+  const readStatus = runtime.getStatus('material.readGraph')
+  const moveStatus = runtime.getStatus('material.move')
+
+  useEffect(() => {
+    if (!readStatus.available || loadState !== 'idle') return
+    void store.getState().loadGraph()
+  }, [loadState, readStatus.available, store])
+
+  if (!readStatus.available) {
+    return (
+      <div className="material-scene-unavailable">
+        <MaterialCapabilityNotice
+          title="3D Material Scene 不可用"
+          status={readStatus}
+        />
+      </div>
+    )
+  }
+
+  if (loadState === 'idle' || loadState === 'loading') {
+    return <div className="app-loading">正在加载 3D 物料场景…</div>
+  }
+
+  const applyMoves = async (
+    moves: readonly MaterialSceneMove[]
+  ): Promise<void> => {
+    for (const move of moves) {
+      await store.getState().move(move.materialId, move.placement)
+    }
+  }
+  const scopeKey =
+    runtime.scope?.kind === 'laboratory'
+      ? runtime.scope.laboratoryId
+      : 'singleton'
 
   return (
     <PascalLabWorkbench
-      materialNodes={materialNodes}
-      projectId={`unilab-${backend.id}-local`}
-      onMaterialUpdates={handleUpdates}
+      aggregates={aggregates}
+      projectId={`unilab-${backend.id}-${scopeKey}`}
+      editable={moveStatus.available}
+      selectedMaterialIds={selectedMaterialIds}
+      highlightedMaterialIds={highlightedMaterialIds}
+      onMaterialMoves={(moves) => {
+        void applyMoves(moves)
+      }}
       onSelectionChange={(materialIds, sceneObjectIds) => {
         selectMaterials(materialIds)
         selectSceneObjects(sceneObjectIds)

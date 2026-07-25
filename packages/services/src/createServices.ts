@@ -1,4 +1,11 @@
 import type { BackendConfig } from './backends'
+import {
+  getCapabilityStatus,
+  resolveServerCapabilities,
+  type CapabilityStatus,
+  type ServerCapabilities,
+  type ServerCapability
+} from './capabilities'
 import { createHttpClient, type CreateHttpClientOptions } from './http'
 import {
   createLaboratoryService,
@@ -15,6 +22,8 @@ import {
 
 export interface Services {
   backend: BackendConfig
+  capabilities: ServerCapabilities
+  getCapabilityStatus: (capability: ServerCapability) => CapabilityStatus
   laboratory: LaboratoryService
   materials: MaterialService
   realtime: RealtimeService
@@ -30,11 +39,19 @@ export interface CreateServicesOptions {
 export function createServices(options: CreateServicesOptions): Services {
   const http = createHttpClient(options)
   const realtime = createRealtimeService(options.backend)
+  const capabilities = resolveServerCapabilities(options.backend)
 
   return {
     backend: options.backend,
+    capabilities,
+    getCapabilityStatus: (capability) =>
+      getCapabilityStatus(options.backend, capabilities, capability),
     laboratory: createLaboratoryService(http),
-    materials: createMaterialService(http),
+    materials: createMaterialService(
+      http,
+      options.backend,
+      capabilities
+    ),
     realtime,
     dispose: () => realtime.dispose()
   }

@@ -8,16 +8,16 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@unilab/app-shell": "workspace:*",
-    "@unilab/code-editor": "workspace:*",
-    "js-yaml": "^5.2.1"
+    "@tanstack/react-query": "^5.90.7",
+    "reactflow": "^11.11.2",
+    "zundo": "^2.3.0",
+    "zustand": "^5.0.8"
   },
   "peerDependencies": {
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
-    "@types/js-yaml": "^4.0.9",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
     "react": "^19.2.1",
@@ -26,6 +26,7 @@
     "vitest": "^2.1.9"
   },
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./domain": "./src/domain.ts"
   }
 }

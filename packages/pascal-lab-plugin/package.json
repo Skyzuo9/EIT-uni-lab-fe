@@ -12,6 +12,7 @@
     "@pascal-app/viewer": "0.9.2",
     "@react-three/drei": "10.7.7",
     "@react-three/fiber": "9.4.0",
+    "@unilab/material": "workspace:*",
     "@unilab/pascal-host": "workspace:*",
     "three": "0.185.0",
     "urdf-loader": "0.12.6",

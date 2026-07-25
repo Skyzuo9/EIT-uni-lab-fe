@@ -2,8 +2,10 @@ import {
   Editor,
   type EditorProps,
   type SceneGraph,
+  useScene,
   useViewer
 } from '@pascal-app/editor'
+import { clearSceneHistory } from '@pascal-app/core'
 import {
   useCallback,
   useEffect,
@@ -19,6 +21,7 @@ export interface PascalEditorHostProps {
   onDirty?: () => void
   onSave?: (scene: SceneGraph) => Promise<void> | void
   onSelectionChange?: (sceneObjectIds: readonly string[]) => void
+  readOnly?: boolean
   toolbar?: ReactNode
   editorProps?: Omit<
     EditorProps,
@@ -37,6 +40,7 @@ export function PascalEditorHost({
   onDirty,
   onSave,
   onSelectionChange,
+  readOnly = false,
   toolbar,
   editorProps
 }: PascalEditorHostProps): React.JSX.Element {
@@ -44,6 +48,7 @@ export function PascalEditorHost({
   const onSaveRef = useRef(onSave)
   const onSelectionChangeRef = useRef(onSelectionChange)
   const [isPrepared, setIsPrepared] = useState(!prepare)
+  const [hasLoadedScene, setHasLoadedScene] = useState(false)
   const [prepareError, setPrepareError] = useState<Error | null>(null)
 
   sceneRef.current = scene
@@ -80,7 +85,40 @@ export function PascalEditorHost({
     })
   }, [])
 
-  const loadScene = useCallback(async () => sceneRef.current, [])
+  useEffect(() => {
+    if (!isPrepared) return
+    useScene.getState().setReadOnly(readOnly)
+    return () => useScene.getState().setReadOnly(false)
+  }, [isPrepared, readOnly])
+
+  useEffect(() => {
+    if (!isPrepared || !hasLoadedScene) return
+    const state = useScene.getState()
+    const extra = {
+      collections: scene.collections,
+      materials: scene.materials,
+      installedPlugins: scene.installedPlugins,
+      hasExplicitPluginInstallState:
+        scene.installedPlugins !== undefined
+    } as Parameters<typeof state.setScene>[2]
+    state.setScene(
+      scene.nodes as Parameters<typeof state.setScene>[0],
+      scene.rootNodeIds as Parameters<typeof state.setScene>[1],
+      extra
+    )
+    clearSceneHistory()
+
+    const selectedIds = useViewer.getState().selection.selectedIds
+    if (selectedIds.some((id) => !(id in scene.nodes))) {
+      useViewer.getState().resetSelection()
+    }
+  }, [hasLoadedScene, isPrepared, scene])
+
+  const loadScene = useCallback(async () => {
+    const initialScene = sceneRef.current
+    requestAnimationFrame(() => setHasLoadedScene(true))
+    return initialScene
+  }, [])
   const saveScene = useCallback(async (nextScene: SceneGraph) => {
     await onSaveRef.current?.(nextScene)
   }, [])

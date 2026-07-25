@@ -4,21 +4,19 @@ import {
   PascalEditorHost,
   type SceneGraph
 } from '@unilab/pascal-host'
+import type { MaterialAggregate } from '@unilab/material/domain'
 import {
   useCallback,
+  useEffect,
   useMemo,
-  useRef,
   useState
 } from 'react'
 
-import type {
-  LabMaterialNode,
-  MaterialNodeUpdate
-} from './material'
 import {
-  materialNodesToSceneGraph,
-  sceneGraphToMaterialUpdates
-} from './materialSceneBridge'
+  type MaterialSceneMove,
+  materialAggregatesToSceneGraph,
+  sceneGraphToMaterialMoves
+} from './materialAggregateSceneBridge'
 import {
   configureLabModelRuntime,
   type LabModelRuntime
@@ -30,10 +28,13 @@ import {
 } from './schema'
 
 export interface PascalLabWorkbenchProps {
-  materialNodes: readonly LabMaterialNode[]
+  aggregates: readonly MaterialAggregate[]
   projectId?: string
   modelRuntime?: LabModelRuntime
-  onMaterialUpdates?: (updates: readonly MaterialNodeUpdate[]) => void
+  editable?: boolean
+  selectedMaterialIds?: readonly string[]
+  highlightedMaterialIds?: readonly string[]
+  onMaterialMoves?: (moves: readonly MaterialSceneMove[]) => void
   onSelectionChange?: (
     materialIds: readonly string[],
     sceneObjectIds: readonly string[]
@@ -41,17 +42,49 @@ export interface PascalLabWorkbenchProps {
 }
 
 export function PascalLabWorkbench({
-  materialNodes,
+  aggregates,
   projectId = 'unilab-local-scene',
   modelRuntime,
-  onMaterialUpdates,
+  editable = false,
+  selectedMaterialIds = [],
+  highlightedMaterialIds = [],
+  onMaterialMoves,
   onSelectionChange
 }: PascalLabWorkbenchProps): React.JSX.Element {
-  const initialSceneRef = useRef<SceneGraph | null>(null)
-  initialSceneRef.current ??= materialNodesToSceneGraph(materialNodes)
+  const scene = useMemo(
+    () => materialAggregatesToSceneGraph(aggregates),
+    [aggregates]
+  )
   const [saveStatus, setSaveStatus] = useState<
     'saved' | 'dirty' | 'saving'
   >('saved')
+
+  const selectedSceneObjectIds = useMemo(
+    () => materialIdsToSceneObjectIds(scene, selectedMaterialIds),
+    [scene, selectedMaterialIds]
+  )
+  const highlightedSceneObjectIds = useMemo(
+    () => materialIdsToSceneObjectIds(scene, highlightedMaterialIds),
+    [highlightedMaterialIds, scene]
+  )
+
+  useEffect(() => {
+    const state = useViewer.getState()
+    if (!sameIds(state.selection.selectedIds, selectedSceneObjectIds)) {
+      state.setSelection({
+        selectedIds: [...selectedSceneObjectIds] as never[]
+      })
+    }
+  }, [selectedSceneObjectIds])
+
+  useEffect(() => {
+    const state = useViewer.getState()
+    if (!sameIds(state.previewSelectedIds, highlightedSceneObjectIds)) {
+      state.setPreviewSelectedIds(
+        [...highlightedSceneObjectIds] as never[]
+      )
+    }
+  }, [highlightedSceneObjectIds])
 
   const prepare = useCallback(async () => {
     if (modelRuntime) configureLabModelRuntime(modelRuntime)
@@ -61,17 +94,16 @@ export function PascalLabWorkbench({
   const handleSave = useCallback(
     async (scene: SceneGraph) => {
       setSaveStatus('saving')
-      const updates = sceneGraphToMaterialUpdates(scene)
-      onMaterialUpdates?.(updates)
+      onMaterialMoves?.(
+        sceneGraphToMaterialMoves(scene, aggregates)
+      )
       setSaveStatus('saved')
     },
-    [onMaterialUpdates]
+    [aggregates, onMaterialMoves]
   )
 
   const handleSelectionChange = useCallback(
     (sceneObjectIds: readonly string[]) => {
-      const scene = initialSceneRef.current
-      if (!scene) return
       const materialIds = sceneObjectIds.flatMap((id) => {
         const node = scene.nodes[id]
         return isLabDeviceNode(node) || isLabTableNode(node)
@@ -80,14 +112,17 @@ export function PascalLabWorkbench({
       })
       onSelectionChange?.(materialIds, sceneObjectIds)
     },
-    [onSelectionChange]
+    [onSelectionChange, scene.nodes]
   )
 
   const statusLabel = useMemo(() => {
     if (saveStatus === 'saving') return '正在保存'
     if (saveStatus === 'dirty') return '有未保存修改'
-    return `${materialNodes.length} 个物料 · 已保存`
-  }, [materialNodes.length, saveStatus])
+    const count = aggregates.length
+    return editable
+      ? `${count} 个物料 · 已保存`
+      : `${count} 个物料 · 只读`
+  }, [aggregates.length, editable, saveStatus])
 
   const toolbar = (
     <div className="pascal-lab-toolbar">
@@ -120,13 +155,39 @@ export function PascalLabWorkbench({
 
   return (
     <PascalEditorHost
-      scene={initialSceneRef.current}
+      scene={scene}
       projectId={projectId}
       prepare={prepare}
+      readOnly={!editable}
       toolbar={toolbar}
-      onDirty={() => setSaveStatus('dirty')}
+      onDirty={() => {
+        if (editable) setSaveStatus('dirty')
+      }}
       onSave={handleSave}
       onSelectionChange={handleSelectionChange}
     />
+  )
+}
+
+function materialIdsToSceneObjectIds(
+  scene: SceneGraph,
+  materialIds: readonly string[]
+): string[] {
+  const wanted = new Set(materialIds)
+  return Object.values(scene.nodes).flatMap((node) =>
+    (isLabDeviceNode(node) || isLabTableNode(node)) &&
+    wanted.has(node.materialNodeId)
+      ? [node.id]
+      : []
+  )
+}
+
+function sameIds(
+  left: readonly string[],
+  right: readonly string[]
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((value, index) => value === right[index])
   )
 }

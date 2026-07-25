@@ -7,6 +7,7 @@ import {
 } from './context/WorkbenchContext'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { LabInteractionProvider } from './integrations/lab-workbench/LabInteractionProvider'
+import { MaterialRuntimeProvider } from './integrations/lab-workbench/MaterialRuntimeProvider'
 import AppShell from './components/AppShell'
 import LoginScreen from './components/auth/LoginScreen'
 
@@ -34,11 +35,33 @@ function AuthGate(): React.JSX.Element {
   return (
     <WorkbenchProvider>
       <ActiveServices>
-        <LabInteractionProvider>
-          <AppShell />
-        </LabInteractionProvider>
+        <MaterialRuntimeProvider>
+          <ActiveInteraction>
+            <AppShell />
+          </ActiveInteraction>
+        </MaterialRuntimeProvider>
       </ActiveServices>
     </WorkbenchProvider>
+  )
+}
+
+function ActiveInteraction({
+  children
+}: {
+  children: ReactNode
+}): React.JSX.Element {
+  const { backend } = useWorkbench()
+  return (
+    <LabInteractionProvider
+      key={[
+        backend.id,
+        backend.apiUrl,
+        backend.realtimeUrl,
+        backend.workspaceMode
+      ].join(':')}
+    >
+      {children}
+    </LabInteractionProvider>
   )
 }
 

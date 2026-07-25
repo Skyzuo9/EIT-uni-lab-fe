@@ -9,7 +9,11 @@
  * Human Review Status: [ ] Pending  [ ] Reviewed  [ ] Approved
  * ============================================================
  */
-import { useCallback, useState } from 'react'
+import {
+  useCallback,
+  useMemo,
+  useState
+} from 'react'
 import { CodeEditor, useCodeMirror } from '@unilab/code-editor'
 import { useResizableSplit } from '@unilab/app-shell'
 import { SlideOverDrawer } from '@unilab/design-system'
@@ -29,8 +33,19 @@ const WORKFLOW_FILE_NAME = 'workflow.json'
 // 抽屉草稿初始值(取值 + 输入/输出参数字段)
 const EMPTY_DRAFT: NodeDraft = { values: {}, inputParams: [], outputParams: [] }
 
+export interface WorkflowStepFocus {
+  stepId: string
+  args: Readonly<Record<string, unknown>>
+}
+
+export interface WorkflowPanelProps {
+  onStepFocus?: (focus: WorkflowStepFocus) => void
+}
+
 // 工作流方向:左侧 JSON 编辑,右侧 DAG 预览,点步骤弹抽屉 RJSF 编参
-export default function WorkflowPanel(): React.JSX.Element {
+export default function WorkflowPanel({
+  onStepFocus
+}: WorkflowPanelProps = {}): React.JSX.Element {
   // 当前抽屉编辑的步骤索引;null 表示抽屉关闭
   const [editingStep, setEditingStep] = useState<number | null>(null)
   // 抽屉内的节点草稿(取值 + 输入/输出参数字段)
@@ -48,7 +63,10 @@ export default function WorkflowPanel(): React.JSX.Element {
   const { readNodeDraft, writeNodeDraft } = useWorkflowStepEditor()
   const { download } = useWorkflowDownload()
 
-  const structure = parseWorkflowJson(editor.value)
+  const structure = useMemo(
+    () => parseWorkflowJson(editor.value),
+    [editor.value]
+  )
   const editingStepData = editingStep != null ? structure.steps[editingStep] ?? null : null
 
   // 打开抽屉时,从当前 JSON 载入该节点草稿(取值 + 输入/输出参数)
@@ -56,8 +74,22 @@ export default function WorkflowPanel(): React.JSX.Element {
     (stepIndex: number) => {
       setDraft(readNodeDraft(editor.value, stepIndex))
       setEditingStep(stepIndex)
+      const node = structure.nodes[stepIndex]
+      const step = structure.steps[stepIndex]
+      if (node && step) {
+        onStepFocus?.({
+          stepId: node.id,
+          args: step.args
+        })
+      }
     },
-    [editor.value, readNodeDraft]
+    [
+      editor.value,
+      onStepFocus,
+      readNodeDraft,
+      structure.nodes,
+      structure.steps
+    ]
   )
 
   // 保存草稿:回写 JSON 并替换编辑器内容

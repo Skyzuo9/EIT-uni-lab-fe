@@ -1,83 +1,132 @@
+import {
+  Euler,
+  Matrix4,
+  Quaternion,
+  Vector3
+} from 'three'
+
+import type { LabPose } from '@unilab/material/domain'
+
 export const MILLIMETERS_TO_METERS = 0.001
 export const METERS_TO_MILLIMETERS = 1000
+const DEGREES_TO_RADIANS = Math.PI / 180
+const RADIANS_TO_DEGREES = 180 / Math.PI
 
 export type Vector3Tuple = [number, number, number]
 
-/** Cloud/ROS Z-up millimeters to Three.js Y-up meters. */
-export function positionMmToThree(
+const LAB_TO_PASCAL = new Matrix4().makeRotationX(-Math.PI / 2)
+const PASCAL_TO_LAB = LAB_TO_PASCAL.clone().invert()
+
+/**
+ * Convert a canonical Uni-Lab Z-up/mm/degree pose into Pascal's
+ * Y-up/metre/radian frame. This basis conversion is valid for world poses and
+ * for local poses whose parent is another Pascal scene object.
+ */
+export function labPoseToPascal(pose: LabPose): {
   position: Vector3Tuple
-): Vector3Tuple {
-  return [
-    position[0] * MILLIMETERS_TO_METERS,
-    position[2] * MILLIMETERS_TO_METERS,
-    position[1] * MILLIMETERS_TO_METERS
-  ]
+  rotation: Vector3Tuple
+} {
+  const labMatrix = poseMatrix(
+    pose.positionMm.map(
+      (value) => value * MILLIMETERS_TO_METERS
+    ) as Vector3Tuple,
+    pose.rotationDegXYZ.map(
+      (value) => value * DEGREES_TO_RADIANS
+    ) as Vector3Tuple
+  )
+  return matrixPose(
+    LAB_TO_PASCAL.clone().multiply(labMatrix).multiply(PASCAL_TO_LAB)
+  )
 }
 
-/** Three.js Y-up meters to Cloud/ROS Z-up millimeters. */
-export function positionThreeToMm(
-  position: Vector3Tuple
-): Vector3Tuple {
-  return [
-    Math.round(position[0] * METERS_TO_MILLIMETERS),
-    Math.round(position[2] * METERS_TO_MILLIMETERS),
-    Math.round(position[1] * METERS_TO_MILLIMETERS)
-  ]
+export function pascalPoseToLab(
+  position: Vector3Tuple,
+  rotation: Vector3Tuple
+): LabPose {
+  const pascalMatrix = poseMatrix(position, rotation)
+  const lab = matrixPose(
+    PASCAL_TO_LAB.clone().multiply(pascalMatrix).multiply(LAB_TO_PASCAL)
+  )
+  return {
+    positionMm: lab.position.map(
+      (value) => clean(value * METERS_TO_MILLIMETERS)
+    ) as Vector3Tuple,
+    rotationDegXYZ: lab.rotation.map(
+      (value) => clean(value * RADIANS_TO_DEGREES)
+    ) as Vector3Tuple
+  }
 }
 
 /**
- * Keep the orientation used by the original Cloud Pascal bridge. The extra
- * half-turn matches legacy Lab3D model fronts.
+ * URDF link objects retain their ROS local axes inside the model. A pose
+ * parented directly below such a link therefore changes units/angles only;
+ * it must not run through the Pascal world-basis conversion again.
  */
-export function topLevelPoseToPascal(
-  positionMm: Vector3Tuple,
-  rotationRad: Vector3Tuple
-): { position: Vector3Tuple; rotation: Vector3Tuple } {
-  const position = positionMmToThree(positionMm)
+export function labLinkPoseToThree(pose: LabPose): {
+  position: Vector3Tuple
+  rotation: Vector3Tuple
+} {
   return {
-    position: [-position[0], position[1], -position[2]],
-    rotation: [
-      rotationRad[0],
-      rotationRad[2] + Math.PI,
-      rotationRad[1]
-    ]
+    position: pose.positionMm.map(
+      (value) => value * MILLIMETERS_TO_METERS
+    ) as Vector3Tuple,
+    rotation: pose.rotationDegXYZ.map(
+      (value) => value * DEGREES_TO_RADIANS
+    ) as Vector3Tuple
   }
 }
 
-export function pascalPoseToTopLevel(
+export function threePoseToLabLink(
   position: Vector3Tuple,
   rotation: Vector3Tuple
-): { position: Vector3Tuple; rotation: Vector3Tuple } {
+): LabPose {
+  return {
+    positionMm: position.map(
+      (value) => clean(value * METERS_TO_MILLIMETERS)
+    ) as Vector3Tuple,
+    rotationDegXYZ: rotation.map(
+      (value) => clean(value * RADIANS_TO_DEGREES)
+    ) as Vector3Tuple
+  }
+}
+
+function poseMatrix(
+  position: Vector3Tuple,
+  rotation: Vector3Tuple
+): Matrix4 {
+  const quaternion = new Quaternion().setFromEuler(
+    new Euler(rotation[0], rotation[1], rotation[2], 'XYZ')
+  )
+  return new Matrix4().compose(
+    new Vector3(...position),
+    quaternion,
+    new Vector3(1, 1, 1)
+  )
+}
+
+function matrixPose(matrix: Matrix4): {
+  position: Vector3Tuple
+  rotation: Vector3Tuple
+} {
+  const position = new Vector3()
+  const quaternion = new Quaternion()
+  const scale = new Vector3()
+  matrix.decompose(position, quaternion, scale)
+  const rotation = new Euler().setFromQuaternion(quaternion, 'XYZ')
   return {
     position: [
-      Math.round(-position[0] * METERS_TO_MILLIMETERS),
-      Math.round(-position[2] * METERS_TO_MILLIMETERS),
-      Math.round(position[1] * METERS_TO_MILLIMETERS)
+      clean(position.x),
+      clean(position.y),
+      clean(position.z)
     ],
     rotation: [
-      rotation[0],
-      rotation[2],
-      rotation[1] - Math.PI
+      clean(rotation.x),
+      clean(rotation.y),
+      clean(rotation.z)
     ]
   }
 }
 
-export function mountedPoseToPascal(
-  positionMm: Vector3Tuple,
-  rotationRad: Vector3Tuple
-): { position: Vector3Tuple; rotation: Vector3Tuple } {
-  return {
-    position: positionMmToThree(positionMm),
-    rotation: rotationRad
-  }
-}
-
-export function pascalPoseToMounted(
-  position: Vector3Tuple,
-  rotation: Vector3Tuple
-): { position: Vector3Tuple; rotation: Vector3Tuple } {
-  return {
-    position: positionThreeToMm(position),
-    rotation
-  }
+function clean(value: number): number {
+  return Math.abs(value) < 1e-10 ? 0 : value
 }

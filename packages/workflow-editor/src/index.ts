@@ -1,3 +1,7 @@
-export { default as WorkflowPanel } from './components/WorkflowPanel'
+export {
+  default as WorkflowPanel,
+  type WorkflowPanelProps,
+  type WorkflowStepFocus
+} from './components/WorkflowPanel'
 export * from './utils/parseWorkflow'
 export * from './utils/parseWorkflowJson'
