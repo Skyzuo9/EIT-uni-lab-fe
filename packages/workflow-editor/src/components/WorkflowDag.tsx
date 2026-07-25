@@ -28,7 +28,10 @@ const nodeTypes = { wfNode: WorkflowNodeCard }
 
 // 拓扑 DAG:只读展示,支持缩放/平移/minimap,节点为大 web 风格卡片
 export default function WorkflowDag({ nodes, links, onNodeSelect }: WorkflowDagProps): React.JSX.Element {
-  const { nodes: flowNodes, edges: flowEdges } = useWorkflowDag(nodes, links)
+  const { nodes: flowNodes, edges: flowEdges, onNodesChange, onEdgesChange } = useWorkflowDag(
+    nodes,
+    links
+  )
 
   if (flowNodes.length === 0) {
     return <p className="section__hint">当前 JSON 未定义 nodes,无法生成拓扑图</p>
@@ -39,6 +42,8 @@ export default function WorkflowDag({ nodes, links, onNodeSelect }: WorkflowDagP
       <ReactFlow
         nodes={flowNodes}
         edges={flowEdges}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
         nodeTypes={nodeTypes}
         fitView
         nodesDraggable

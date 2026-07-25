@@ -12,7 +12,7 @@
 import { app, BrowserWindow, session } from 'electron'
 import { join } from 'node:path'
 import { readFileSync, writeFileSync, rmSync, existsSync } from 'node:fs'
-import { TOKEN_COOKIE_NAMES, buildOAuthUrl, createOAuthState } from './authConfig'
+import { TOKEN_COOKIE_NAMES, buildOAuthUrl } from './authConfig'
 
 // 登录会话:token 为云端 brmToken,userInfo 为尽力从 JWT 解出的展示信息
 export interface AuthUserInfo {
@@ -136,16 +136,15 @@ async function extractTokenFromCookies(): Promise<string | null> {
  *
  * @ai-model Claude Opus 4.8
  * @ai-date 2026-07-24
- * @ai-prompt Electron 弹窗执行 Bohrium OAuth,并在跳转过程中捕获 token
- * @ai-changes 监听导航/重定向,从 URL 或 cookie 捕获 token,成功即关闭弹窗
+ * @ai-prompt Electron 弹窗执行 Bohrium 统一登录,并在跳转过程中捕获 token
+ * @ai-changes 监听导航/重定向,从回跳 URL 的 ?token= 或 cookie 捕获 brmToken,成功即关闭弹窗
  *
  * @param parent 父窗口,用于模态弹窗归属
  * @returns 登录成功返回 AuthSession,用户取消返回 null
  */
 export function runOAuthLogin(parent: BrowserWindow | null): Promise<AuthSession | null> {
   return new Promise((resolve, reject) => {
-    const state = createOAuthState()
-    const authUrl = buildOAuthUrl(state)
+    const authUrl = buildOAuthUrl()
 
     const popup = new BrowserWindow({
       width: 480,

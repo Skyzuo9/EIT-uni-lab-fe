@@ -9,8 +9,9 @@
  * Human Review Status: [ ] Pending  [ ] Reviewed  [ ] Approved
  * ============================================================
  */
-import { useMemo } from 'react'
-import type { Edge, Node } from 'reactflow'
+import { useEffect, useMemo } from 'react'
+import type { Edge, Node, OnNodesChange, OnEdgesChange } from 'reactflow'
+import { useNodesState, useEdgesState } from 'reactflow'
 import { layoutDag } from '../utils/dagLayout'
 import { getNodeColor } from '../utils/nodeColors'
 import type { WorkflowLink, WorkflowNode } from '../utils/parseWorkflow'
@@ -19,6 +20,8 @@ import type { WorkflowNodeData } from '../components/WorkflowNodeCard'
 interface UseWorkflowDagResult {
   nodes: Node<WorkflowNodeData>[]
   edges: Edge[]
+  onNodesChange: OnNodesChange
+  onEdgesChange: OnEdgesChange
 }
 
 // 通信连接用虚线,物理连接用实线
@@ -27,9 +30,19 @@ const COMM_EDGE_TYPE = 'communication'
 // 连接线统一颜色
 const EDGE_COLOR = '#BB78A9'
 
-// 将工作流 nodes/links 转为 ReactFlow 可渲染的自定义节点与边
+/**
+ * [AI-MODIFIED] useWorkflowDag
+ *
+ * @ai-model Claude Opus 4.8
+ * @ai-date 2026-07-25
+ * @ai-modifications 由「仅返回受控 nodes/edges」改为内部用 useNodesState/useEdgesState 管理状态,
+ *   并暴露 onNodesChange/onEdgesChange;输入(nodes/links)变化时重新布局并同步。
+ * @ai-reason 此前 ReactFlow 以受控方式传入 nodes 但缺少 onNodesChange 变更回写通道,
+ *   导致拖动产生的位置变更无法应用,节点无法拖动。
+ */
 export function useWorkflowDag(nodes: WorkflowNode[], links: WorkflowLink[]): UseWorkflowDagResult {
-  return useMemo(() => {
+  // 依据输入重新布局,生成 ReactFlow 节点/边(输入不变时结果稳定)
+  const computed = useMemo(() => {
     const { nodes: laidOut, links: edges } = layoutDag(nodes, links)
 
     const flowNodes: Node<WorkflowNodeData>[] = laidOut.map((node) => ({
@@ -60,6 +73,18 @@ export function useWorkflowDag(nodes: WorkflowNode[], links: WorkflowLink[]): Us
       }
     })
 
-    return { nodes: flowNodes, edges: flowEdges }
+    return { flowNodes, flowEdges }
   }, [nodes, links])
+
+  // 用 ReactFlow 内置状态管理节点/边,使拖动等交互变更可回写
+  const [flowNodes, setNodes, onNodesChange] = useNodesState(computed.flowNodes)
+  const [flowEdges, setEdges, onEdgesChange] = useEdgesState(computed.flowEdges)
+
+  // 输入(重新布局结果)变化时同步到内部状态
+  useEffect(() => {
+    setNodes(computed.flowNodes)
+    setEdges(computed.flowEdges)
+  }, [computed, setNodes, setEdges])
+
+  return { nodes: flowNodes, edges: flowEdges, onNodesChange, onEdgesChange }
 }
