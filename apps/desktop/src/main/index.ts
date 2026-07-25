@@ -1,8 +1,16 @@
-import { app, shell, BrowserWindow, ipcMain } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
 import { join } from 'path'
 import { appendFileSync } from 'node:fs'
+import { readFile, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { readSession, clearSession, runOAuthLogin } from './authManager'
+
+// 保存文件的入参:path 为 null 时弹出"另存为"对话框
+interface SaveFilePayload {
+  path: string | null
+  content: string
+  defaultName?: string
+}
 
 // 诊断日志：写到家目录 ~/lab-pc-client.log，便于定位启动/渲染错误
 const LOG_PATH = join(homedir(), 'lab-pc-client.log')
@@ -101,6 +109,41 @@ app.whenReady().then(() => {
   ipcMain.handle('auth:logout', async () => {
     await clearSession()
     return true
+  })
+
+  // 打开本地 JSON 文件:弹出选择框并读取文本内容
+  ipcMain.handle('file:open', async () => {
+    const options: Electron.OpenDialogOptions = {
+      title: '打开 JSON 文件',
+      filters: [{ name: 'JSON', extensions: ['json'] }],
+      properties: ['openFile']
+    }
+    const result = mainWindow
+      ? await dialog.showOpenDialog(mainWindow, options)
+      : await dialog.showOpenDialog(options)
+    if (result.canceled || result.filePaths.length === 0) return null
+    const filePath = result.filePaths[0]
+    const content = await readFile(filePath, 'utf-8')
+    return { path: filePath, content }
+  })
+
+  // 保存文本到本地文件:有 path 时直接写回,否则弹出"另存为"
+  ipcMain.handle('file:save', async (_event, payload: SaveFilePayload) => {
+    let filePath = payload.path
+    if (!filePath) {
+      const options: Electron.SaveDialogOptions = {
+        title: '保存 JSON 文件',
+        defaultPath: payload.defaultName || 'station.json',
+        filters: [{ name: 'JSON', extensions: ['json'] }]
+      }
+      const result = mainWindow
+        ? await dialog.showSaveDialog(mainWindow, options)
+        : await dialog.showSaveDialog(options)
+      if (result.canceled || !result.filePath) return null
+      filePath = result.filePath
+    }
+    await writeFile(filePath, payload.content, 'utf-8')
+    return { path: filePath }
   })
 
   createWindow()

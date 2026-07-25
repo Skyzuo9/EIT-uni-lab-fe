@@ -25,6 +25,7 @@ export interface UseCodeMirrorResult {
   isDirty: boolean
   containerRef: React.RefObject<HTMLDivElement | null>
   replaceContent: (next: string) => void
+  markSaved: () => void
 }
 
 // 按语言返回对应的语法扩展;JSON 复用 YAML 高亮(JSON 是 YAML 子集)
@@ -88,10 +89,17 @@ export function useCodeMirror(
     setBaseline(next)
   }, [])
 
+  // 标记为已保存:把当前内容设为新基准(isDirty 归零),不改动文档
+  const markSaved = useCallback(() => {
+    const current = viewRef.current?.state.doc.toString()
+    if (current != null) setBaseline(current)
+  }, [])
+
   return {
     value,
     isDirty: value !== baseline,
     containerRef,
-    replaceContent
+    replaceContent,
+    markSaved
   }
 }

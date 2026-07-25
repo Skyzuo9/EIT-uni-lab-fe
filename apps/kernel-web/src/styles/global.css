@@ -1131,6 +1131,229 @@ body {
   color: #e03131;
 }
 
+.workflow__save-ok {
+  font-size: 12px;
+  color: #0ca678;
+}
+
+.workflow__upload:disabled {
+  color: #adb5bd;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+/* ============ 工作站拓扑可视化 ============ */
+.station {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 12px;
+  padding: 14px;
+  overflow: auto;
+}
+
+.station__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.station__side {
+  flex: 0 0 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.station__block {
+  padding: 10px 12px;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+}
+
+.station__block-title {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #1f2329;
+}
+
+.station-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.station-node {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 8px;
+  font-size: 12px;
+  color: #24292f;
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.station-node:hover {
+  background: #f1f3f5;
+}
+
+.station-node.is-active {
+  border-color: #74c0fc;
+  background: #e7f5ff;
+}
+
+.station-node__dot {
+  flex: 0 0 auto;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+
+.station-node__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.station-node__type {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: #868e96;
+}
+
+.mat-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mat-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  font-size: 12px;
+  text-align: left;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.mat-item:hover {
+  border-color: #cbd5e1;
+}
+
+.mat-item.is-active {
+  border-color: #4dabf7;
+  box-shadow: 0 0 0 1px rgba(77, 171, 247, 0.4);
+}
+
+.mat-item__name {
+  flex: 0 0 auto;
+  color: #1f2329;
+}
+
+.mat-item__reagent {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: #495057;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mat-item__amount {
+  flex: 0 0 auto;
+  font-family: 'SF Mono', 'Menlo', 'Consolas', monospace;
+  font-size: 11px;
+  color: #0a7b57;
+}
+
+.mat-item__state {
+  flex: 0 0 auto;
+  padding: 1px 7px;
+  font-size: 10px;
+  color: #6b7280;
+  background: #f1f3f5;
+  border-radius: 4px;
+}
+
+.station-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.station-group__head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #364152;
+}
+
+.station-group__dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+
+.station-group__count {
+  padding: 0 6px;
+  font-size: 10px;
+  font-weight: 500;
+  color: #6b7280;
+  background: #eceff3;
+  border-radius: 8px;
+}
+
+.station-group__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.station-chip {
+  padding: 3px 9px;
+  font-size: 11px;
+  color: #364152;
+  background: #ffffff;
+  border: 1px solid #d0d7de;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.station-chip:hover {
+  background: #f1f3f5;
+}
+
+.station-chip.is-active {
+  color: #ffffff;
+  background: #4dabf7;
+  border-color: #4dabf7;
+}
+
 /* ============ 工作流结构预览 ============ */
 .wf-preview {
   flex: 1;

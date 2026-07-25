@@ -13,6 +13,22 @@ export interface AuthSession {
   loggedInAt: number
 }
 
+// 本地文件读写结果
+export interface OpenedFile {
+  path: string
+  content: string
+}
+
+export interface SavedFile {
+  path: string
+}
+
+export interface SaveFilePayload {
+  path: string | null
+  content: string
+  defaultName?: string
+}
+
 const api = {
   getVersion: (): Promise<string> => ipcRenderer.invoke('app:getVersion'),
   auth: {
@@ -22,6 +38,13 @@ const api = {
     login: (): Promise<AuthSession | null> => ipcRenderer.invoke('auth:login'),
     // 登出并清除本地会话
     logout: (): Promise<boolean> => ipcRenderer.invoke('auth:logout')
+  },
+  file: {
+    // 打开本地 JSON 文件,取消返回 null
+    open: (): Promise<OpenedFile | null> => ipcRenderer.invoke('file:open'),
+    // 保存文本到本地文件(path 为 null 时弹出"另存为"),取消返回 null
+    save: (payload: SaveFilePayload): Promise<SavedFile | null> =>
+      ipcRenderer.invoke('file:save', payload)
   }
 }
 
