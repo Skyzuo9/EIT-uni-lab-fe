@@ -25,4 +25,23 @@ describe('lab interaction store', () => {
       selectedSceneObjectIds: []
     })
   })
+
+  it('does not publish duplicate identity selections', () => {
+    const store = createLabInteractionStore()
+    let notifications = 0
+    const unsubscribe = store.subscribe(() => {
+      notifications += 1
+    })
+
+    store.getState().selectMaterials([])
+    store.getState().selectSceneObjects([])
+    store.getState().highlightMaterials([])
+    expect(notifications).toBe(0)
+
+    store.getState().selectMaterials(['material-1'])
+    store.getState().selectMaterials(['material-1'])
+    expect(notifications).toBe(1)
+
+    unsubscribe()
+  })
 })

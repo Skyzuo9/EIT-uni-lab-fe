@@ -28,7 +28,8 @@ export const DEFAULT_BACKENDS: readonly BackendConfig[] = [
     id: 'local-python',
     name: 'Local Python OS',
     protocol: 'unilab/v1',
-    apiUrl: 'http://127.0.0.1:8002',
+    apiUrl: 'http://127.0.0.1:8014',
+    realtimeUrl: 'ws://127.0.0.1:8014',
     auth: 'none',
     serverKind: 'edge',
     workspaceMode: 'singleton'

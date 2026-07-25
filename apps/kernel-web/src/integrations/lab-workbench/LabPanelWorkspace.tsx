@@ -61,10 +61,12 @@ export function LabPanelWorkspace({
   )
 
   return (
-    <PanelLayoutRenderer
-      adapter={adapter}
-      document={document}
-      onCommand={handleCommand}
-    />
+    <div className="lab-panel-workspace">
+      <PanelLayoutRenderer
+        adapter={adapter}
+        document={document}
+        onCommand={handleCommand}
+      />
+    </div>
   )
 }

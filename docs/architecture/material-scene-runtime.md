@@ -2,6 +2,7 @@
 
 状态：Accepted
 日期：2026-07-25
+最近更新：2026-07-26
 适用范围：`uni-lab-fe`、`uni-lab-backend`、Uni-Lab-OS 的物料与 3D 迁移
 
 ## 1. 目标
@@ -21,12 +22,14 @@
 - Pascal 保持上游可升级，Uni-Lab 语义只进入 host/plugin 防腐层。
 - Material 编辑支持后端 revision、原子命令和可持久化的 undo/redo。
 
-本轮交付边界：
+当前交付边界：
 
-- 只修改 `uni-lab-fe`。
-- 不修改 `uni-lab-backend` 或 Uni-Lab-OS/Edge 代码。
-- 本文中的 Backend/Edge schema、operation、ticket、lease 和 control channel
-  是目标契约与未来前置工作，不代表本轮会在外部仓库实现。
+- 长期前端实现进入 `uni-lab-fe`；Uni-Lab-OS 本地桥只补入统一的只读
+  Material 列表/详情投影。
+- 不修改 `uni-lab-backend`，也不在 Uni-Lab-OS/Edge 实现 Material 写命令
+  或 realtime 控制。
+- 本文中的其余 Backend/Edge schema、operation、ticket、lease 和 control
+  channel 是目标契约与未来前置工作。
 - 前端可以先完成 package 边界、domain、Store、projection 和现有
   `push_joint_state` 接入；依赖缺失服务端能力的功能不能伪装成功。
 
@@ -34,7 +37,7 @@
 
 本阶段明确不做：
 
-- 在本轮前端迁移中修改 Backend 或 Edge 仓库。
+- 修改 Backend，或在 Edge 实现 Material 写命令与 realtime 控制。
 - 兼容 Uni-Lab-Cloud 旧物料协议。
 - 迁移 Cloud 工作流画布、Redux store 或 revision document store。
 - 引入第二套 renderer、Next 或服务端渲染。
@@ -245,11 +248,11 @@ CRUD/WS 接口”：
 
 基于本轮只读代码盘点，当前默认矩阵是：
 
-| 默认 Profile | `readTemplates` | 其余 Material 8 项 | Realtime 3 项 | Edge 2 项 |
-|---|---:|---:|---:|---:|
-| Local Go | `true` | 全部 `false` | 全部 `false` | 全部 `false` |
-| Local Python OS | `false` | 全部 `false` | 全部 `false` | 全部 `false` |
-| Uni-Lab Cloud | `false` | 全部 `false` | 全部 `false` | 全部 `false` |
+| 默认 Profile | `readTemplates` | `readGraph` | Material 写入 7 项 | Realtime 3 项 | Edge 2 项 |
+|---|---:|---:|---:|---:|---:|
+| Local Go | `true` | `false` | 全部 `false` | 全部 `false` | 全部 `false` |
+| Local Python OS | `false` | `true` | 全部 `false` | 全部 `false` | 全部 `false` |
+| Uni-Lab Cloud | `false` | `false` | 全部 `false` | 全部 `false` | 全部 `false` |
 
 这不是说现有 Server 完全没有相关代码，而是它们尚未满足上表的新契约：
 
@@ -259,9 +262,11 @@ CRUD/WS 接口”：
   Aggregate/revision、Template 原子展开、hierarchical Placement、原子
   attach/detach、realtime WS 或 Edge compensation，所以这些相似接口不会
   打开其他 capability。
-- 当前 Uni-Lab-OS 有 `/api/v1/ws/device_status` 的 1 Hz 设备状态广播，以及
-  设备/资源/Job API；它不是 `push_joint_state`，也没有面向前端的统一
-  Material Graph、joint command/lease 或 provisioning compensation API。
+- 当前 Uni-Lab-OS 本地桥通过启动参数 `--material-graph` 提供统一只读
+  Material Aggregate 列表/详情，包含 Placement、owned Sites 与稳定 revision，
+  因此打开 `material.readGraph`。它另有 `/api/v1/ws/device_status` 的 1 Hz
+  设备状态广播，但该广播不是 `push_joint_state`；Material 写命令、
+  joint command/lease 与 provisioning compensation 仍未开放。
 - 旧 Cloud Material/WS 接口被明确排除，不作为新协议的 capability 依据。
 
 `packages/services/src/capabilities.ts` 是当前代码事实的唯一静态矩阵。未知或
@@ -1385,13 +1390,14 @@ Templates
   订阅同一个 Store；跨 panel store 只保存 material/scene/workflow ID。
 - `packages/scene-runtime` 尚未创建。
 - `packages/services/src/materials.ts` 已移除旧 Cloud laboratory API 和整图
-  保存，只接入 Local Go 的新 ResourceTemplate 列表/详情接口；Material Graph
-  port 已定义并按 capability 防御，但各 Server adapter 尚未实现目标命令。
+  保存，接入 Local Go 的 ResourceTemplate 列表/详情，以及 Local Python OS
+  的分页 Material Aggregate 列表；所有写命令仍按 capability 防御。
 - `BackendConfig` 已包含 `serverKind` 和 `workspaceMode`；非 Cloud 默认
   singleton，Cloud laboratory scope 未选择时不制造 laboratory ID。
 - `Services` 已有 deny-by-default capability matrix、禁用原因和
-  `UnsupportedCapabilityError`；当前只打开 Local Go
-  `material.readTemplates`，其余目标能力关闭。
+  `UnsupportedCapabilityError`；当前打开 Local Go
+  `material.readTemplates` 与 Local Python OS `material.readGraph`，
+  其余目标能力关闭。
 - Material/Scene UI 与 Store action 已消费同一个 capability key；能力关闭时
   展示原因且不发 transport 请求。
 - zundo 已作为 `packages/material` 直接依赖接入，但 persistent undo 仍等待
@@ -1424,8 +1430,8 @@ Templates
 - 已有 resource tree remove 和 device remove 路径，但缺少用于
   `undoCreate` 的持久化操作 ID、幂等 ACK 与可靠重试契约。
 - 在线 `add_device` 当前未实现，P1 不能宣称支持 `dynamic-device` 创建。
-- Uni-Lab-OS 尚未完整实现与 Backend 相同的 `unilab/v1` HTTP 和
-  `unilab/realtime-v1` 公开 Server contract。
+- Uni-Lab-OS 已实现本地只读 Material 列表/详情子集，尚未完整实现与 Backend
+  相同的 Material 写命令，以及 `unilab/realtime-v1` 公开 Server contract。
 - 现有 Edge→Backend WS 尚未形成带 operationId、ACK 和 outbox 重放的双向
   Material control channel。
 - Edge Server realtime WS 尚无 `unilab/realtime-v1` 首帧鉴权、ticket、
@@ -1463,9 +1469,8 @@ Templates
    - 补齐 Site/Placement。
    - 增加原子 create/undoCreate/attach/detach/reparent 命令和 Edge 补偿
      outbox。
-2. 在 Uni-Lab-OS 增加统一 Server contract、幂等 undoCreate 删除 ACK、
-   joint control lease、低频上报与 MCAP
-   recording manager。
+2. 在 Uni-Lab-OS 继续增加统一 Material 写命令、幂等 undoCreate 删除 ACK、
+   joint control lease、低频上报与 MCAP recording manager。
 3. 为 Edge Server 和 Backend Server 增加统一 contract/conformance tests。
 
 ## 18. 尚未决

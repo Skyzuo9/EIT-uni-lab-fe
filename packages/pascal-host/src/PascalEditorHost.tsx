@@ -138,11 +138,16 @@ export function PascalEditorHost({
   }
 
   return (
-    <div className="pascal-editor-host">
+    <div
+      className={`pascal-editor-host${
+        readOnly ? ' pascal-editor-host--read-only' : ''
+      }`}
+    >
       {toolbar}
       <div className={toolbar ? 'pascal-lab-editor' : 'h-full'}>
         <Editor
           {...editorProps}
+          isVersionPreviewMode={readOnly}
           layoutVersion="v1"
           onDirty={onDirty}
           onLoad={loadScene}

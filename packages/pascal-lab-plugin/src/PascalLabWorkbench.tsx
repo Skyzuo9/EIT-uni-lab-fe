@@ -93,13 +93,17 @@ export function PascalLabWorkbench({
 
   const handleSave = useCallback(
     async (scene: SceneGraph) => {
+      if (!editable) {
+        setSaveStatus('saved')
+        return
+      }
       setSaveStatus('saving')
       onMaterialMoves?.(
         sceneGraphToMaterialMoves(scene, aggregates)
       )
       setSaveStatus('saved')
     },
-    [aggregates, onMaterialMoves]
+    [aggregates, editable, onMaterialMoves]
   )
 
   const handleSelectionChange = useCallback(
@@ -126,7 +130,9 @@ export function PascalLabWorkbench({
 
   const toolbar = (
     <div className="pascal-lab-toolbar">
-      <span className="pascal-lab-toolbar__title">实验室 3D</span>
+      <span className="pascal-lab-toolbar__title">
+        实验室 3D · Pascal
+      </span>
       <span className="pascal-lab-toolbar__status">{statusLabel}</span>
       <div className="pascal-lab-toolbar__actions">
         <button
@@ -134,7 +140,9 @@ export function PascalLabWorkbench({
           className="pascal-lab-toolbar__button"
           onClick={() => {
             useViewer.getState().setCameraMode('orthographic')
-            emitter.emit('camera-controls:fit-scene', {} as never)
+            emitter.emit('camera-controls:view', {
+              nodeId: 'level_unilab'
+            } as never)
           }}
         >
           顶视图
@@ -144,7 +152,9 @@ export function PascalLabWorkbench({
           className="pascal-lab-toolbar__button"
           onClick={() => {
             useViewer.getState().setCameraMode('perspective')
-            emitter.emit('camera-controls:fit-scene', {} as never)
+            emitter.emit('camera-controls:view', {
+              nodeId: 'level_unilab'
+            } as never)
           }}
         >
           适配场景

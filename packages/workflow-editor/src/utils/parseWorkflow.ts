@@ -26,6 +26,7 @@ export interface WorkflowLink {
   source: string
   target: string
   type: string
+  branch?: string | null
 }
 
 export interface WorkflowStep {

@@ -797,6 +797,15 @@ body {
   overflow: hidden;
 }
 
+.lab-panel-workspace {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
 /* ============ 连接条 ============ */
 .connbar {
   display: flex;
@@ -1589,6 +1598,426 @@ body {
 .debug-bar__btn--danger:hover:not(:disabled) {
   background: #fff0f0;
   border-color: #ffa8a8;
+}
+
+/* ============ 统一工作流 Runtime / Debugger ============ */
+.workflow-runtime {
+  color: #172033;
+  background: #f4f6fa;
+}
+
+.workflow-runtime__run-state {
+  padding: 3px 9px;
+  border: 1px solid #d7dce5;
+  border-radius: 999px;
+  color: #687386;
+  background: #fff;
+  font: 600 10px/1.4 'SF Mono', Menlo, monospace;
+  text-transform: uppercase;
+}
+
+.workflow-runtime__run-state--running,
+.workflow-runtime__run-state--pending {
+  color: #1864ab;
+  border-color: #a5d8ff;
+  background: #e7f5ff;
+}
+
+.workflow-runtime__run-state--completed {
+  color: #087f5b;
+  border-color: #96f2d7;
+  background: #e6fcf5;
+}
+
+.workflow-runtime__run-state--failed,
+.workflow-runtime__run-state--reconciling {
+  color: #c92a2a;
+  border-color: #ffc9c9;
+  background: #fff5f5;
+}
+
+.workflow-runtime__message {
+  max-width: 260px;
+  overflow: hidden;
+  color: #758096;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workflow-runtime__primary,
+.workflow-runtime__debug-start {
+  height: 30px;
+  padding: 0 14px;
+  border: 1px solid #3b5bdb;
+  border-radius: 6px;
+  color: #fff;
+  background: #4263eb;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.workflow-runtime__debug-start {
+  color: #5f3dc4;
+  border-color: #b197fc;
+  background: #f3f0ff;
+}
+
+.workflow-runtime__primary:disabled,
+.workflow-runtime__debug-start:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+.workflow-runtime__problem {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  color: #c92a2a;
+  border-bottom: 1px solid #ffc9c9;
+  background: #fff5f5;
+  font-size: 12px;
+}
+
+.workflow-runtime__problem span {
+  flex: 1;
+  white-space: pre-wrap;
+}
+
+.workflow-runtime__problem button {
+  border: 0;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
+.workflow-runtime__workbench {
+  background: #fff;
+}
+
+.workflow-runtime__stage {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: #f7f8fb;
+}
+
+.workflow-runtime__stage-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 48px;
+  padding: 0 16px;
+  border-bottom: 1px solid #e5e9f0;
+  background: #fff;
+}
+
+.workflow-runtime__stage-header div {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.workflow-runtime__stage-header strong {
+  font-size: 13px;
+}
+
+.workflow-runtime__stage-header span,
+.workflow-runtime__hint {
+  color: #8a94a6;
+  font-size: 10px;
+}
+
+.workflow-runtime__canvas {
+  position: relative;
+  flex: 1 1 42%;
+  min-height: 260px;
+}
+
+.workflow-runtime__empty {
+  display: grid;
+  flex: 1;
+  place-items: center;
+  color: #c92a2a;
+}
+
+.workflow-runtime .wf-dag {
+  background-color: #f8f9fc;
+  background-image:
+    linear-gradient(rgba(92, 105, 125, .035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(92, 105, 125, .035) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.workflow-runtime .wf-node {
+  min-width: 158px;
+  border-top: 3px solid #748ffc;
+  border-color: #dce1e9;
+  border-top-color: #748ffc;
+  border-radius: 7px;
+  box-shadow: 0 5px 16px rgba(40, 52, 76, .09);
+}
+
+.workflow-runtime .wf-node__body {
+  gap: 5px;
+  padding: 9px 11px 10px;
+}
+
+.wf-node__kind {
+  color: #8a94a6;
+  font: 700 8px/1.2 'SF Mono', Menlo, monospace;
+  letter-spacing: .08em;
+}
+
+.wf-node__state {
+  color: #98a1b2;
+  font: 600 9px/1.2 'SF Mono', Menlo, monospace;
+}
+
+.wf-node__state--running {
+  color: #1971c2;
+}
+
+.wf-node__state--success {
+  color: #087f5b;
+}
+
+.wf-node__state--skipped {
+  color: #868e96;
+}
+
+.wf-node__state--failed,
+.wf-node__state--reconciling {
+  color: #c92a2a;
+}
+
+.wf-flow-node--running .wf-node {
+  border-top-color: #339af0;
+  box-shadow: 0 0 0 3px rgba(51, 154, 240, .13), 0 5px 16px rgba(40, 52, 76, .09);
+}
+
+.wf-flow-node--success .wf-node {
+  border-top-color: #20c997;
+}
+
+.wf-flow-node--skipped .wf-node {
+  opacity: .52;
+  border-top-color: #adb5bd;
+}
+
+.wf-flow-node--failed .wf-node,
+.wf-flow-node--reconciling .wf-node {
+  border-top-color: #fa5252;
+}
+
+.wf-flow-node--breakpoint .wf-node::after {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 13px;
+  height: 13px;
+  border: 3px solid #fff;
+  border-radius: 50%;
+  background: #fa5252;
+  box-shadow: 0 1px 4px rgba(201, 42, 42, .35);
+  content: '';
+}
+
+.workflow-runtime__debugger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 8px 12px;
+  border-block: 1px solid #e4e8ef;
+  background: #151b28;
+}
+
+.workflow-runtime__debug-status,
+.workflow-runtime__debug-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.workflow-runtime__debug-status {
+  color: #8f9bb0;
+  font: 500 10px/1.4 'SF Mono', Menlo, monospace;
+}
+
+.workflow-runtime__debug-status > span:first-child {
+  color: #d0d7e4;
+  font-weight: 700;
+}
+
+.workflow-runtime__debug-status strong {
+  padding: 2px 7px;
+  border-radius: 4px;
+  color: #adb5bd;
+  background: #293142;
+  text-transform: uppercase;
+}
+
+.workflow-runtime__debug-status strong.is-paused {
+  color: #ffd43b;
+  background: rgba(245, 159, 0, .17);
+}
+
+.workflow-runtime__debug-status strong.is-running,
+.workflow-runtime__debug-status strong.is-stepping {
+  color: #63e6be;
+  background: rgba(18, 184, 134, .17);
+}
+
+.workflow-runtime__debug-actions button {
+  height: 26px;
+  padding: 0 9px;
+  border: 1px solid #3a4354;
+  border-radius: 4px;
+  color: #dbe1eb;
+  background: #252d3d;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.workflow-runtime__debug-actions button:hover:not(:disabled) {
+  border-color: #748ffc;
+  color: #fff;
+}
+
+.workflow-runtime__debug-actions button:disabled {
+  opacity: .32;
+  cursor: not-allowed;
+}
+
+.workflow-runtime__debug-actions button.is-danger {
+  color: #ffa8a8;
+}
+
+.workflow-runtime__results {
+  display: grid;
+  flex: 0 0 190px;
+  grid-template-columns: minmax(0, 1.4fr) minmax(260px, .8fr);
+  min-height: 0;
+  background: #fff;
+}
+
+.workflow-runtime__results > section {
+  min-width: 0;
+  overflow: hidden;
+  border-right: 1px solid #e6e9ef;
+}
+
+.workflow-runtime__results header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 35px;
+  padding: 0 12px;
+  color: #59657a;
+  border-bottom: 1px solid #edf0f4;
+  font-size: 10px;
+}
+
+.workflow-runtime__node-list {
+  display: flex;
+  gap: 5px;
+  padding: 7px 9px;
+  overflow-x: auto;
+}
+
+.workflow-runtime__node-list button {
+  display: grid;
+  flex: 0 0 105px;
+  grid-template-columns: 8px 1fr;
+  gap: 2px 6px;
+  padding: 6px 7px;
+  text-align: left;
+  border: 1px solid #e2e6ed;
+  border-radius: 5px;
+  background: #fafbfc;
+  cursor: pointer;
+}
+
+.workflow-runtime__node-list button.is-selected {
+  border-color: #91a7ff;
+  background: #f1f3ff;
+}
+
+.workflow-runtime__node-list i {
+  align-self: center;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #adb5bd;
+}
+
+.workflow-runtime__node-list i.is-success {
+  background: #20c997;
+}
+
+.workflow-runtime__node-list i.is-running {
+  background: #339af0;
+}
+
+.workflow-runtime__node-list i.is-failed {
+  background: #fa5252;
+}
+
+.workflow-runtime__node-list span {
+  overflow: hidden;
+  color: #343a40;
+  font-size: 10px;
+  text-overflow: ellipsis;
+}
+
+.workflow-runtime__node-list em {
+  grid-column: 2;
+  color: #9099a8;
+  font: normal 8px/1.2 'SF Mono', Menlo, monospace;
+}
+
+.workflow-runtime__node-result {
+  max-height: 65px;
+  margin: 0 9px;
+  padding: 6px;
+  overflow: auto;
+  color: #445;
+  background: #f5f6f8;
+  font-size: 9px;
+}
+
+.workflow-runtime__events {
+  height: 150px;
+  padding: 5px 9px;
+  overflow: auto;
+  font: 9px/1.55 'SF Mono', Menlo, monospace;
+}
+
+.workflow-runtime__events div {
+  display: grid;
+  grid-template-columns: 42px 1fr 70px;
+  gap: 5px;
+  padding: 2px 0;
+  color: #606b7e;
+  border-bottom: 1px solid #f1f3f5;
+}
+
+.workflow-runtime__events code {
+  color: #748ffc;
+}
+
+.workflow-runtime__events em {
+  overflow: hidden;
+  color: #a0a8b5;
+  font-style: normal;
+  text-overflow: ellipsis;
+}
+
+.workflow-runtime__events p {
+  color: #a0a8b5;
 }
 
 /* ============ 右侧滑出抽屉(对齐大 web InteractivePanel)============ */

@@ -1,0 +1,111 @@
+import { expect, test } from '@playwright/test'
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+
+test('full control DAG edit, dispatch, node feedback and debugger', async ({
+  page
+}) => {
+  const browserErrors: string[] = []
+  const apiCalls: Array<{ method: string; status: number; url: string }> = []
+  page.on('console', (message) => {
+    if (message.type() === 'error') browserErrors.push(message.text())
+  })
+  page.on('pageerror', (error) => browserErrors.push(error.message))
+  page.on('response', (response) => {
+    if (!response.url().includes('/api/v1/')) return
+    apiCalls.push({
+      method: response.request().method(),
+      status: response.status(),
+      url: response.url()
+    })
+  })
+
+  await page.goto('/')
+  await page.getByText('工作流', { exact: true }).first().click()
+  await expect(page.getByText('完整控制流 DAG')).toBeVisible()
+  await expect(page.locator('.react-flow__node-wfNode')).toHaveCount(6)
+  await expect(page.getByText('TRUE', { exact: true })).toBeVisible()
+  await expect(page.getByText('FALSE', { exact: true })).toBeVisible()
+
+  await page.getByRole('button', { name: '校验', exact: true }).click()
+  await expect(page.getByText(/校验通过/)).toBeVisible()
+
+  await page.getByRole('button', { name: '保存 Revision' }).click()
+  await expect(page.getByText(/已保存 Revision/)).toBeVisible()
+
+  await page.getByRole('button', { name: /调试启动/ }).click()
+  const debugStatus = page.locator('.workflow-runtime__debug-status strong')
+  await expect(debugStatus).toHaveText('paused')
+  await expect(page.locator('.workflow-runtime__run-state')).toHaveText('pending')
+
+  await page.getByRole('button', { name: /单步/ }).click()
+  await expect(debugStatus).toHaveText('paused')
+  await expect(
+    page.locator('.workflow-runtime__node-list button', { hasText: 'measure' })
+  ).toContainText('success')
+  await expect(page.getByText(/暂停于 branch 之前/)).toBeVisible()
+
+  await page.getByRole('button', { name: /步过/ }).click()
+  await expect(debugStatus).toHaveText('paused')
+  await expect(
+    page.locator('.workflow-runtime__node-list button', { hasText: 'branch' })
+  ).toContainText('success')
+  await expect(
+    page.locator('.workflow-runtime__node-list button', { hasText: 'inspect' })
+  ).toContainText('skipped')
+
+  await page.getByRole('button', { name: /继续/ }).click()
+  await expect(page.locator('.workflow-runtime__run-state')).toHaveText('completed')
+  await expect(debugStatus).toHaveText('completed')
+  await expect(
+    page.locator('.workflow-runtime__node-list button', { hasText: 'heat' })
+  ).toContainText('success')
+  await expect(page.locator('.workflow-runtime__events')).toContainText(
+    'run.status'
+  )
+
+  const artifactDir = resolve(process.cwd(), '../e2e-artifacts')
+  mkdirSync(artifactDir, { recursive: true })
+  const screenshot = resolve(
+    artifactDir,
+    'workflow-runtime-e2e-completed.png'
+  )
+  const stageScreenshot = resolve(
+    artifactDir,
+    'workflow-runtime-e2e-stage.png'
+  )
+  await page.screenshot({
+    path: screenshot,
+    fullPage: false
+  })
+  await page.locator('.workflow-runtime__stage').screenshot({
+    path: stageScreenshot
+  })
+  writeFileSync(
+    resolve(artifactDir, 'workflow-runtime-e2e-result.json'),
+    JSON.stringify(
+      {
+        outcome: 'passed',
+        screenshot,
+        stageScreenshot,
+        apiCalls,
+        browserErrors
+      },
+      null,
+      2
+    )
+  )
+
+  expect(
+    apiCalls.some(
+      (call) =>
+        call.method === 'POST' &&
+        call.status === 200 &&
+        call.url.endsWith('/api/v1/runtime/runs')
+    )
+  ).toBe(true)
+  expect(
+    apiCalls.filter((call) => call.url.endsWith('/commands')).length
+  ).toBeGreaterThanOrEqual(3)
+  expect(browserErrors).toEqual([])
+})

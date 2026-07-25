@@ -48,6 +48,17 @@ describe('Material Aggregate / Pascal bridge', () => {
     ])
     expect(node).not.toHaveProperty('material')
     expect(node).not.toHaveProperty('config')
+    const level = scene.nodes.level_unilab as {
+      camera?: {
+        position: readonly number[]
+        target: readonly number[]
+        mode: string
+      }
+    }
+    expect(level.camera?.mode).toBe('perspective')
+    expect(level.camera?.position[1]).toBeGreaterThan(1)
+    expect(level.camera?.target[0]).toBeCloseTo(0.1, 8)
+    expect(level.camera?.target[2]).toBeCloseTo(-0.2, 8)
     expect(sceneGraphToMaterialMoves(scene, [robot])).toEqual([])
   })
 

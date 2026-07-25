@@ -63,7 +63,7 @@ export default function LabTableRenderer({
           />
         </mesh>
       ))}
-      <Html position={[0, height + 0.08, 0]} center distanceFactor={6}>
+      <Html position={[0, height + 0.08, 0]} center distanceFactor={1.4}>
         <div className="pascal-model-label">{node.displayName}</div>
       </Html>
     </group>

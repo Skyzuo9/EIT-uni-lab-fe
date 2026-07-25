@@ -57,20 +57,22 @@ export function MaterialWorkbench({
 
   return (
     <div className="material-workbench">
-      <MaterialTemplateLibrary
-        catalog={catalog}
-        profileId={profileId}
-        scope={scope}
-        readStatus={capabilities.readTemplates}
-        createStatus={capabilities.create}
-        existingNames={existingNames}
-        onCreate={async (template, draft) => {
-          await store.getState().createMaterial({
-            templateId: template.uuid,
-            name: draft.createInput.name
-          })
-        }}
-      />
+      {capabilities.readTemplates.available ? (
+        <MaterialTemplateLibrary
+          catalog={catalog}
+          profileId={profileId}
+          scope={scope}
+          readStatus={capabilities.readTemplates}
+          createStatus={capabilities.create}
+          existingNames={existingNames}
+          onCreate={async (template, draft) => {
+            await store.getState().createMaterial({
+              templateId: template.uuid,
+              name: draft.createInput.name
+            })
+          }}
+        />
+      ) : null}
       <MaterialCanvas
         readStatus={capabilities.readGraph}
         moveStatus={capabilities.move}

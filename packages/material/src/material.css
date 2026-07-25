@@ -305,8 +305,8 @@
 }
 
 .material-flow-node {
-  width: 168px;
-  padding: 10px 12px;
+  width: 128px;
+  padding: 8px 10px;
   color: var(--unilab-color-text);
   background: color-mix(in srgb, var(--unilab-color-bg) 94%, transparent);
   border: 1px solid var(--unilab-color-border-strong);
@@ -331,7 +331,7 @@
 
 .material-flow-node strong {
   display: block;
-  margin: 7px 0 10px;
+  margin: 5px 0 7px;
   overflow: hidden;
   font-size: 12px;
   text-overflow: ellipsis;

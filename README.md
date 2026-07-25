@@ -20,6 +20,7 @@ pnpm dev             # Vite kernel-web
 pnpm dev:desktop     # Electron 外壳 + 同一个 kernel-web renderer
 pnpm typecheck       # 全工作区类型检查
 pnpm test            # 全工作区单元测试
+pnpm test:e2e:materials # 启动真实 OS 图场景并验证 2D/3D（Linux 需 Xvfb）
 pnpm build:web       # 浏览器产物
 pnpm build:desktop   # Electron main/preload/renderer 产物
 pnpm build           # 构建所有包含 build 脚本的项目

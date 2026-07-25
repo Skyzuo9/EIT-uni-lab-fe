@@ -63,7 +63,7 @@ describe('Material React Flow projection', () => {
     expect(nodes[1]).toMatchObject({
       id: 'child',
       parentId: 'parent',
-      position: { x: 0, y: -50 }
+      position: { x: 0, y: -100 * MATERIAL_FLOW_SCALE }
     })
     expect(resolveMaterialWorldPose('child', { child, parent }).positionMm)
       .toEqual([200, 200, 0])
@@ -93,7 +93,7 @@ describe('Material React Flow projection', () => {
 
     const placement = flowPositionToPlacement({
       materialId: 'child',
-      flowPosition: { x: 50, y: 0 },
+      flowPosition: { x: 100 * MATERIAL_FLOW_SCALE, y: 0 },
       aggregatesById: { child, parent }
     })
 
@@ -150,7 +150,10 @@ describe('Material React Flow projection', () => {
     expectTupleCloseTo(pose.positionMm, [110, 30, 30])
     expect(childNode).toMatchObject({
       parentId: 'parent',
-      position: { x: 50, y: -5 }
+      position: {
+        x: 100 * MATERIAL_FLOW_SCALE,
+        y: -10 * MATERIAL_FLOW_SCALE
+      }
     })
   })
 
@@ -170,7 +173,10 @@ describe('Material React Flow projection', () => {
       }
     })
 
-    expect(node.position).toEqual({ x: 40, y: -10 })
+    expect(node.position).toEqual({
+      x: 80 * MATERIAL_FLOW_SCALE,
+      y: -20 * MATERIAL_FLOW_SCALE
+    })
     expect(aggregate.placement).toEqual({
       kind: 'world',
       pose: {
@@ -178,6 +184,29 @@ describe('Material React Flow projection', () => {
         rotationDegXYZ: [0, 0, 0]
       }
     })
+  })
+
+  it('uses a collision-free world layout for a read-only review', () => {
+    const parent = materialAggregate('parent')
+    const child = materialAggregate('child', {
+      placement: {
+        kind: 'parent',
+        parentId: 'parent',
+        anchor: { kind: 'root' },
+        localPose: {
+          positionMm: [0, 0, 0],
+          rotationDegXYZ: [0, 0, 0]
+        }
+      }
+    })
+
+    const nodes = projectMaterialFlowNodes({
+      aggregatesById: { child, parent },
+      reviewLayout: true
+    })
+
+    expect(nodes.every((node) => node.parentId === undefined)).toBe(true)
+    expect(nodes[0].position).not.toEqual(nodes[1].position)
   })
 })
 

@@ -21,8 +21,10 @@ describe('server capability matrix', () => {
 
       for (const capability of SERVER_CAPABILITY_KEYS) {
         const expected =
-          backendId === 'local-go' &&
-          capability === 'material.readTemplates'
+          (backendId === 'local-go' &&
+            capability === 'material.readTemplates') ||
+          (backendId === 'local-python' &&
+            capability === 'material.readGraph')
         expect(hasServerCapability(capabilities, capability)).toBe(expected)
 
         const status = getCapabilityStatus(

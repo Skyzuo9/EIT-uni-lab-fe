@@ -25,17 +25,40 @@ const EMPTY_INTERACTION = {
  * feature packages and are never mirrored here.
  */
 export function createLabInteractionStore(): StoreApi<LabInteractionState> {
-  return createStore<LabInteractionState>((set) => ({
+  return createStore<LabInteractionState>((set, get) => ({
     ...EMPTY_INTERACTION,
-    selectMaterials: (selectedMaterialIds) => set({ selectedMaterialIds }),
-    highlightMaterials: (highlightedMaterialIds) =>
-      set({ highlightedMaterialIds }),
-    selectSceneObjects: (selectedSceneObjectIds) =>
-      set({ selectedSceneObjectIds }),
-    selectWorkflowStep: (selectedWorkflowStepId) =>
-      set({ selectedWorkflowStepId }),
+    selectMaterials: (selectedMaterialIds) => {
+      if (sameIds(get().selectedMaterialIds, selectedMaterialIds)) return
+      set({ selectedMaterialIds: [...selectedMaterialIds] })
+    },
+    highlightMaterials: (highlightedMaterialIds) => {
+      if (
+        sameIds(get().highlightedMaterialIds, highlightedMaterialIds)
+      ) return
+      set({ highlightedMaterialIds: [...highlightedMaterialIds] })
+    },
+    selectSceneObjects: (selectedSceneObjectIds) => {
+      if (
+        sameIds(get().selectedSceneObjectIds, selectedSceneObjectIds)
+      ) return
+      set({ selectedSceneObjectIds: [...selectedSceneObjectIds] })
+    },
+    selectWorkflowStep: (selectedWorkflowStepId) => {
+      if (get().selectedWorkflowStepId === selectedWorkflowStepId) return
+      set({ selectedWorkflowStepId })
+    },
     clearInteraction: () => set(EMPTY_INTERACTION)
   }))
 }
 
 export type LabInteractionStore = ReturnType<typeof createLabInteractionStore>
+
+function sameIds(
+  left: readonly string[],
+  right: readonly string[]
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((value, index) => value === right[index])
+  )
+}

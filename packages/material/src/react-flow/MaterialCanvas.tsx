@@ -64,7 +64,8 @@ export function MaterialCanvas({
         dragPreviewByMaterialId,
         selectedMaterialIds,
         highlightedMaterialIds,
-        draggable: moveStatus.available
+        draggable: moveStatus.available,
+        reviewLayout: !moveStatus.available
       }),
     [
       aggregatesById,

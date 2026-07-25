@@ -157,13 +157,105 @@ export function materialAggregatesToSceneGraph(
     parentId: BUILDING_ID,
     visible: true,
     level: 0,
-    children: labNodeIds
+    children: labNodeIds,
+    camera: materialSceneCamera(aggregates)
   }
 
   return {
     nodes,
     rootNodeIds: [SITE_ID],
     installedPlugins: ['unilab.lab']
+  }
+}
+
+function materialSceneCamera(
+  aggregates: readonly MaterialAggregate[]
+): {
+  position: Vector3Tuple
+  target: Vector3Tuple
+  mode: 'perspective'
+} {
+  const aggregatesById = Object.fromEntries(
+    aggregates.map((aggregate) => [aggregate.material.id, aggregate])
+  )
+  const resolved = new Map<MaterialId, LabPose>()
+  const visiting = new Set<MaterialId>()
+  let minX = Number.POSITIVE_INFINITY
+  let minZ = Number.POSITIVE_INFINITY
+  let maxX = Number.NEGATIVE_INFINITY
+  let maxZ = Number.NEGATIVE_INFINITY
+  let maxHeight = 0
+
+  const worldPose = (materialId: MaterialId): LabPose => {
+    const cached = resolved.get(materialId)
+    if (cached) return cached
+    if (visiting.has(materialId)) return IDENTITY_POSE
+    const aggregate = aggregatesById[materialId]
+    if (!aggregate) return IDENTITY_POSE
+    visiting.add(materialId)
+    const placement = aggregate.placement
+    let pose: LabPose
+    if (placement.kind === 'unplaced') {
+      pose = IDENTITY_POSE
+    } else if (placement.kind === 'world') {
+      pose = placement.pose
+    } else if (placement.kind === 'parent') {
+      pose = composePoses(
+        worldPose(placement.parentId),
+        placement.localPose
+      )
+    } else {
+      const parent = aggregatesById[placement.parentId]
+      const site = parent?.sites.find(
+        (candidate) => candidate.id === placement.siteId
+      )
+      pose = composePoses(
+        composePoses(
+          worldPose(placement.parentId),
+          site?.poseInAnchor ?? IDENTITY_POSE
+        ),
+        placement.offsetPose
+      )
+    }
+    visiting.delete(materialId)
+    resolved.set(materialId, pose)
+    return pose
+  }
+
+  for (const aggregate of aggregates) {
+    const rendering = readMaterialRendering(aggregate)
+    const pose = labPoseToPascal(worldPose(aggregate.material.id))
+    const width = Math.max(rendering.dimensionsMm[0] / 1000, 0.05)
+    const height = Math.max(rendering.dimensionsMm[1] / 1000, 0.05)
+    const depth = Math.max(rendering.dimensionsMm[2] / 1000, 0.05)
+    minX = Math.min(minX, pose.position[0] - width / 2)
+    maxX = Math.max(maxX, pose.position[0] + width / 2)
+    minZ = Math.min(minZ, pose.position[2] - depth / 2)
+    maxZ = Math.max(maxZ, pose.position[2] + depth / 2)
+    maxHeight = Math.max(maxHeight, pose.position[1] + height)
+  }
+
+  if (!Number.isFinite(minX)) {
+    return {
+      position: [2.4, 1.8, 2.4],
+      target: [0, 0.3, 0],
+      mode: 'perspective'
+    }
+  }
+
+  const centerX = (minX + maxX) / 2
+  const centerZ = (minZ + maxZ) / 2
+  const extent = Math.max(maxX - minX, maxZ - minZ, 0.8)
+  const distance = Math.max(extent * 1.25, 1.8)
+  const targetY = Math.max(Math.min(maxHeight * 0.4, 0.8), 0.15)
+  return {
+    position: [
+      centerX + distance * 0.75,
+      Math.max(maxHeight + distance * 0.55, 1.25),
+      centerZ + distance * 0.75
+    ],
+    target: [centerX, targetY, centerZ],
+    mode: 'perspective'
   }
 }
 

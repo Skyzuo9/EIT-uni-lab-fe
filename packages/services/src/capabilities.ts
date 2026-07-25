@@ -56,7 +56,7 @@ const CURRENT_DEFAULT_CAPABILITIES: Readonly<
   Record<string, ServerCapabilities>
 > = {
   'local-go': localGoCapabilities(),
-  'local-python': unavailableCapabilities(),
+  'local-python': localPythonCapabilities(),
   cloud: unavailableCapabilities()
 }
 
@@ -154,6 +154,12 @@ function localGoCapabilities(): ServerCapabilities {
   return capabilities
 }
 
+function localPythonCapabilities(): ServerCapabilities {
+  const capabilities = unavailableCapabilities()
+  capabilities.material.readGraph = true
+  return capabilities
+}
+
 function cloneCapabilities(
   capabilities: ServerCapabilities
 ): ServerCapabilities {
@@ -180,7 +186,7 @@ function unavailableReason(
 
   if (backend.id === 'local-python') {
     if (capability.startsWith('material.')) {
-      return '当前 Uni-Lab-OS 公共 API 尚未提供统一 Material Graph 契约'
+      return '当前 Uni-Lab-OS Material Graph 仅开放只读查询，写操作尚未提供统一命令契约'
     }
     if (capability === 'realtime.pushJointState') {
       return '当前 Uni-Lab-OS 仅提供 1 Hz device_status，尚未提供 push_joint_state'

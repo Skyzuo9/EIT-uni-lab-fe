@@ -1,7 +1,7 @@
 @import "tailwindcss/theme" layer(theme);
 @import "tailwindcss/utilities" layer(utilities);
 
-@source "../../../../node_modules/@pascal-app/editor/src/**/*.{ts,tsx}";
+@source "../../../../packages/pascal-host/node_modules/@pascal-app/editor/src/**/*.{ts,tsx}";
 @source "../../../../packages/pascal-host/src/**/*.{ts,tsx}";
 @source "../../../../packages/pascal-lab-plugin/src/**/*.{ts,tsx}";
 
@@ -81,6 +81,8 @@
 }
 
 .pascal-lab-toolbar {
+  position: relative;
+  z-index: 30;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -124,6 +126,25 @@
 
 .pascal-lab-editor {
   height: calc(100% - 40px);
+}
+
+.pascal-editor-host--read-only .pascal-lab-editor > .dark {
+  gap: 0;
+  padding: 0;
+}
+
+.pascal-editor-host--read-only
+  .pascal-lab-editor
+  > .dark
+  > :not(:has([data-pascal-viewer-3d])) {
+  display: none !important;
+}
+
+.pascal-editor-host--read-only
+  .pascal-lab-editor
+  > .dark
+  > :has([data-pascal-viewer-3d]) {
+  border-radius: 0;
 }
 
 .pascal-model-label {

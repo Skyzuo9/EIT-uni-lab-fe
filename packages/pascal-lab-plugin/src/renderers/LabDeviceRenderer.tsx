@@ -104,7 +104,11 @@ function ModelLabel({
   }, [node.dimensions, node.model.format, object])
 
   return (
-    <Html position={[0, Math.max(height, 0.2) + 0.08, 0]} center distanceFactor={6}>
+    <Html
+      position={[0, Math.max(height, 0.2) + 0.08, 0]}
+      center
+      distanceFactor={1.4}
+    >
       <div className="pascal-model-label">{node.displayName}</div>
     </Html>
   )

@@ -7,7 +7,8 @@
     "**/*.css"
   ],
   "scripts": {
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run"
   },
   "dependencies": {
     "@rjsf/core": "^5.19.3",
@@ -16,6 +17,7 @@
     "@unilab/app-shell": "workspace:*",
     "@unilab/code-editor": "workspace:*",
     "@unilab/design-system": "workspace:*",
+    "@unilab/services": "workspace:*",
     "reactflow": "^11.11.2"
   },
   "peerDependencies": {
@@ -27,7 +29,8 @@
     "@types/react-dom": "^19.2.3",
     "react": "^19.2.1",
     "react-dom": "^19.2.1",
-    "typescript": "^5.6.3"
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.9"
   },
   "exports": {
     ".": "./src/index.ts"

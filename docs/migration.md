@@ -4,11 +4,11 @@
 开始本轮迁移时的 HEAD 为 `9f915b29`；读取的是该分支包含未提交最新修改的
 工作树，源仓库没有被修改。
 
-本轮实现范围只包含 `uni-lab-fe`。`uni-lab-backend` 与 Uni-Lab-OS/Edge
-不会在本轮修改；架构文档中列出的外部协议能力作为未来前置工作。前端不得用
-本地成功状态伪装服务端尚未具备的 revision、原子命令、补偿或设备控制能力。
-本轮由 `Services.capabilities` 静态声明各 adapter 的实际能力；feature 只按
-capability 降级，不按 Server 类型分支，也不通过 404 探测。
+初始迁移范围只包含 `uni-lab-fe`。后续 E2E 验证为 Uni-Lab-OS 本地桥增加了
+统一的只读 Material 查询，但没有修改 `uni-lab-backend`，也没有开放服务端
+尚未具备的原子命令、补偿或设备控制能力。`Services.capabilities` 静态声明
+各 adapter 的实际能力；feature 只按 capability 降级，不按 Server 类型分支，
+也不通过 404 探测。
 
 ## 已完成
 
@@ -51,13 +51,21 @@ capability 降级，不按 Server 类型分支，也不通过 404 探测。
 - Electron 构建复用 `kernel-web` 的同一 3D renderer、样式和 Vite 兼容层。
 - 按 Cloud 的模板创建行为提取纯物料逻辑：读取模板详情、生成唯一节点名、
   识别含液体孔位、注入默认液体并在创建前要求配置。
+- Uni-Lab-OS 本地桥可通过 `--material-graph` 读取实验图，并提供统一
+  `GET /health`、`GET /api/v1/materials` 与
+  `GET /api/v1/materials/{uuid}`；Well/TipSpot 被投影为所属物料的 Site，
+  revision 由设备图内容稳定计算，不建立第二份物料数据库。
+- Local Python OS adapter 已打开 `material.readGraph`；2D React Flow 与
+  Pascal 3D 从同一个 Material Store 读取，OS 模式保持只读。
+- Playwright E2E 会分别启动 `plr_test.json` 和
+  `plr_test_converted.json` 的真实 OS 本地服务，并验证两套场景同屏显示
+  2D/3D、统一 API 返回值和浏览器无异常。
 
 ## 尚待接入
 
-1. Local Go、Local Python OS 和 Cloud 实现统一 Material Aggregate、
-   revision、原子 attach/detach、persistent undo 与 Edge compensation
-   Server contract；前端 capability 当前保持关闭，不试探请求、不回退旧
-   Cloud API。
+1. Local Go 和 Cloud 实现统一 Material Aggregate 读取；三个 Server 继续
+   补齐原子 create/move/attach/detach、persistent undo 与 Edge compensation
+   contract。对应写 capability 保持关闭，不试探请求、不回退旧 Cloud API。
 2. 在后续 3D 专题中补齐挂载确认/取消、关节控制、控制租约、实时轨迹与
    `scene-runtime` 高频 frame buffer。静态 2D/3D 选择和高亮已经接通。
 3. 为 Cloud laboratory workspace 接入 Laboratory 选择器；选择前不制造
@@ -78,7 +86,7 @@ capability 降级，不按 Server 类型分支，也不通过 404 探测。
 后续若需要读取 Cloud 工作流，只迁移接口 DTO 与转换逻辑，转换后的文档仍由
 本仓库 `packages/workflow-editor` 负责编辑和渲染。
 
-本轮迁移把 Material/2D/3D/Panel 的前端长期维护边界收敛完成；当前默认
-Profile 只有 Local Go 的模板读取达到新协议语义，因此 Material Graph、
-持久创建和 3D 场景会明确显示 capability 不可用，不能用本地状态冒充服务端
-成功。
+本轮迁移把 Material/2D/3D/Panel 的前端长期维护边界收敛完成。当前默认
+Profile 中，Local Go 只开放模板读取，Local Python OS 只开放 Material Graph
+读取；持久创建、移动和其他写操作仍明确显示 capability 不可用，不能用本地
+状态冒充服务端成功。

@@ -17,8 +17,9 @@
 - Pascal Editor 保持上游依赖，Uni-Lab 扩展不进入上游源码副本。
 - 工作流引擎以 `uni-lab-fe/packages/workflow-editor` 为唯一实现，不保留或
   迁移 Uni-Lab-Cloud 的工作流画布与 authoring engine。
-- 当前迁移实施只修改 `uni-lab-fe`；Backend/Edge 的统一契约是未来前置工作，
-  前端不能伪装服务端尚未具备的能力。
+- 初始迁移只修改 `uni-lab-fe`；当前 Uni-Lab-OS 本地桥仅补入统一的只读
+  Material 查询。其余 Backend/Edge 契约仍是未来前置工作，前端不能伪装
+  服务端尚未具备的能力。
 
 ## 依赖方向
 

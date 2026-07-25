@@ -98,6 +98,7 @@ function WorkflowRenderer(
 ): React.JSX.Element {
   return (
     <WorkflowPanel
+      runtime={props.scope.services.workflow}
       onStepFocus={(focus) => {
         const interaction = props.scope.interaction.getState()
         interaction.selectWorkflowStep(focus.stepId)

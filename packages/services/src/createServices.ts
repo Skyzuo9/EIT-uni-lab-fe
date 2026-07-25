@@ -19,6 +19,10 @@ import {
   createMaterialService,
   type MaterialService
 } from './materials'
+import {
+  createWorkflowRuntime,
+  type WorkflowRuntimePort
+} from './workflow'
 
 export interface Services {
   backend: BackendConfig
@@ -27,6 +31,7 @@ export interface Services {
   laboratory: LaboratoryService
   materials: MaterialService
   realtime: RealtimeService
+  workflow: WorkflowRuntimePort
   dispose: () => void
 }
 
@@ -40,6 +45,7 @@ export function createServices(options: CreateServicesOptions): Services {
   const http = createHttpClient(options)
   const realtime = createRealtimeService(options.backend)
   const capabilities = resolveServerCapabilities(options.backend)
+  const workflow = createWorkflowRuntime(http, options.backend)
 
   return {
     backend: options.backend,
@@ -53,6 +59,10 @@ export function createServices(options: CreateServicesOptions): Services {
       capabilities
     ),
     realtime,
-    dispose: () => realtime.dispose()
+    workflow,
+    dispose: () => {
+      realtime.dispose()
+      workflow.dispose()
+    }
   }
 }

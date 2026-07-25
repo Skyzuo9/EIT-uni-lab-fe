@@ -47,9 +47,27 @@ export function createHttpClient(options: CreateHttpClientOptions): HttpClient {
           signal: init.signal ?? controller.signal
         })
         if (!response.ok) {
+          let problem: unknown
+          try {
+            problem = await response.json()
+          } catch {
+            problem = null
+          }
+          const problemRecord = asRecord(problem)
+          const detail = asRecord(problemRecord.detail)
+          const message = String(
+            detail.detail ||
+            problemRecord.message ||
+            problemRecord.detail ||
+            `请求失败: ${response.status} ${response.statusText}`
+          )
           throw new ServiceError({
-            code: 'HTTP_REQUEST_FAILED',
-            message: `请求失败: ${response.status} ${response.statusText}`,
+            code: String(
+              detail.code ||
+              problemRecord.code ||
+              'HTTP_REQUEST_FAILED'
+            ),
+            message,
             status: response.status,
             retryable: response.status >= 500
           })
@@ -68,6 +86,12 @@ export function createHttpClient(options: CreateHttpClientOptions): HttpClient {
       }
     }
   }
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object'
+    ? value as Record<string, unknown>
+    : {}
 }
 
 export async function requestData<Value>(

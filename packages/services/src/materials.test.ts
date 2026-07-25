@@ -159,6 +159,142 @@ describe('material template adapter', () => {
 
     expect(request).not.toHaveBeenCalled()
   })
+
+  it('maps the OS Material list into shared aggregates', async () => {
+    const { http, request } = mockHttp({
+      data: {
+        items: [
+          {
+            uuid: 'material-root',
+            resource_template_uuid: 'template-device',
+            code: 'liquid_handler',
+            name: 'Liquid Handler',
+            create_time: '2026-07-26T00:00:00Z',
+            update_time: '2026-07-26T00:00:00Z',
+            config: {
+              placement: {
+                kind: 'world',
+                pose: {
+                  positionMm: [100, 200, 0],
+                  rotationDegXYZ: [0, 0, 0]
+                }
+              },
+              rendering: {
+                kind: 'table',
+                dimensionsMm: [1400, 180, 720]
+              },
+              sites: [
+                {
+                  id: 'site-a1',
+                  ownerMaterialId: 'material-root',
+                  key: 'A1',
+                  name: 'A1',
+                  anchor: { kind: 'root' },
+                  poseInAnchor: {
+                    positionMm: [10, 20, 30],
+                    rotationDegXYZ: [0, 0, 0]
+                  },
+                  sizeMm: [9, 9, 1],
+                  capacity: 1,
+                  allowedTemplateIds: [],
+                  occupiedMaterialIds: []
+                }
+              ]
+            }
+          }
+        ],
+        total: 1,
+        page: 1,
+        page_size: 100
+      }
+    })
+    const backend = getDefaultBackend('local-python')
+    const service = createMaterialService(
+      http,
+      backend,
+      resolveServerCapabilities(backend)
+    )
+
+    await expect(
+      service.getGraph({ kind: 'singleton' })
+    ).resolves.toEqual([
+      {
+        material: {
+          id: 'material-root',
+          sourceTemplateId: 'template-device',
+          code: 'liquid_handler',
+          name: 'Liquid Handler',
+          description: undefined,
+          config: expect.objectContaining({
+            rendering: expect.objectContaining({ kind: 'table' })
+          }),
+          createdAt: '2026-07-26T00:00:00Z',
+          updatedAt: '2026-07-26T00:00:00Z'
+        },
+        placement: {
+          kind: 'world',
+          pose: {
+            positionMm: [100, 200, 0],
+            rotationDegXYZ: [0, 0, 0]
+          }
+        },
+        sites: [
+          expect.objectContaining({
+            id: 'site-a1',
+            ownerMaterialId: 'material-root',
+            poseInAnchor: {
+              positionMm: [10, 20, 30],
+              rotationDegXYZ: [0, 0, 0]
+            }
+          })
+        ],
+        revision: 1
+      }
+    ])
+    expect(request).toHaveBeenCalledWith(
+      '/api/v1/materials?page=1&page_size=100',
+      undefined
+    )
+  })
+
+  it('rejects malformed OS Material placement data', async () => {
+    const { http } = mockHttp({
+      data: {
+        items: [
+          {
+            uuid: 'material-bad',
+            resource_template_uuid: 'template-device',
+            code: 'bad',
+            name: 'Bad material',
+            create_time: '2026-07-26T00:00:00Z',
+            update_time: '2026-07-26T00:00:00Z',
+            config: {
+              placement: {
+                kind: 'world',
+                pose: {
+                  positionMm: [0, 0],
+                  rotationDegXYZ: [0, 0, 0]
+                }
+              }
+            }
+          }
+        ],
+        total: 1
+      }
+    })
+    const backend = getDefaultBackend('local-python')
+    const service = createMaterialService(
+      http,
+      backend,
+      resolveServerCapabilities(backend)
+    )
+
+    await expect(
+      service.getGraph({ kind: 'singleton' })
+    ).rejects.toMatchObject({
+      code: 'INVALID_MATERIAL_GRAPH_RESPONSE'
+    })
+  })
 })
 
 function mockHttp(response: unknown): {

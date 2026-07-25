@@ -25,6 +25,10 @@ export type MaterialFlowNode = Node<
 >
 
 export const MATERIAL_FLOW_SCALE = 0.5
+const MATERIAL_REVIEW_SCALE = 0.28
+const REVIEW_NODE_WIDTH = 128
+const REVIEW_NODE_HEIGHT = 66
+const REVIEW_NODE_GAP = 14
 
 export function projectMaterialFlowNodes(options: {
   aggregatesById: Readonly<Record<MaterialId, MaterialAggregate>>
@@ -32,6 +36,7 @@ export function projectMaterialFlowNodes(options: {
   selectedMaterialIds?: readonly MaterialId[]
   highlightedMaterialIds?: readonly MaterialId[]
   draggable?: boolean
+  reviewLayout?: boolean
 }): MaterialFlowNode[] {
   const selected = new Set(options.selectedMaterialIds ?? [])
   const highlighted = new Set(options.highlightedMaterialIds ?? [])
@@ -40,7 +45,7 @@ export function projectMaterialFlowNodes(options: {
     options.dragPreviewByMaterialId ?? {}
   )
 
-  return Object.values(options.aggregatesById)
+  const nodes = Object.values(options.aggregatesById)
     .map((aggregate) => {
       const materialId = aggregate.material.id
       const placement = withPreview(
@@ -50,18 +55,24 @@ export function projectMaterialFlowNodes(options: {
       const parentId = placementParentId(placement)
       const worldMatrix = worldMatrices[materialId]
       const parentMatrix = parentId ? worldMatrices[parentId] : undefined
-      const position = parentMatrix
-        ? worldDeltaToFlow(worldMatrix, parentMatrix)
-        : worldPointToFlow([
+      const position = options.reviewLayout
+        ? worldPointToReview([
             worldMatrix[3],
             worldMatrix[7],
             worldMatrix[11]
           ])
+        : parentMatrix
+          ? worldDeltaToFlow(worldMatrix, parentMatrix)
+          : worldPointToFlow([
+              worldMatrix[3],
+              worldMatrix[7],
+              worldMatrix[11]
+            ])
 
       return {
         id: materialId,
         type: 'material',
-        parentId: parentId ?? undefined,
+        parentId: options.reviewLayout ? undefined : parentId ?? undefined,
         position,
         data: { materialId },
         selected: selected.has(materialId),
@@ -77,6 +88,8 @@ export function projectMaterialFlowNodes(options: {
         materialDepth(right.id, options.aggregatesById)
       return depthDifference || left.id.localeCompare(right.id)
     })
+
+  return options.reviewLayout ? avoidReviewCollisions(nodes) : nodes
 }
 
 export function flowPositionToPlacement(options: {
@@ -285,6 +298,59 @@ function worldPointToFlow(
     x: point[0] * MATERIAL_FLOW_SCALE,
     y: -point[1] * MATERIAL_FLOW_SCALE
   }
+}
+
+function worldPointToReview(
+  point: readonly [number, number, number]
+): XYPosition {
+  return {
+    x: point[0] * MATERIAL_REVIEW_SCALE,
+    y: -point[1] * MATERIAL_REVIEW_SCALE
+  }
+}
+
+function avoidReviewCollisions(
+  nodes: readonly MaterialFlowNode[]
+): MaterialFlowNode[] {
+  const placed: MaterialFlowNode[] = []
+  for (const node of nodes) {
+    let position = node.position
+    for (let ring = 0; overlapsAny(position, placed); ring += 1) {
+      const step = Math.floor(ring / 4) + 1
+      const direction = ring % 4
+      const xOffset =
+        direction === 0
+          ? step * (REVIEW_NODE_WIDTH + REVIEW_NODE_GAP)
+          : direction === 1
+            ? -step * (REVIEW_NODE_WIDTH + REVIEW_NODE_GAP)
+            : 0
+      const yOffset =
+        direction === 2
+          ? step * (REVIEW_NODE_HEIGHT + REVIEW_NODE_GAP)
+          : direction === 3
+            ? -step * (REVIEW_NODE_HEIGHT + REVIEW_NODE_GAP)
+            : 0
+      position = {
+        x: node.position.x + xOffset,
+        y: node.position.y + yOffset
+      }
+    }
+    placed.push({ ...node, position })
+  }
+  return placed
+}
+
+function overlapsAny(
+  position: XYPosition,
+  nodes: readonly MaterialFlowNode[]
+): boolean {
+  return nodes.some(
+    (node) =>
+      Math.abs(node.position.x - position.x) <
+        REVIEW_NODE_WIDTH + REVIEW_NODE_GAP &&
+      Math.abs(node.position.y - position.y) <
+        REVIEW_NODE_HEIGHT + REVIEW_NODE_GAP
+  )
 }
 
 function flowPointToWorld(

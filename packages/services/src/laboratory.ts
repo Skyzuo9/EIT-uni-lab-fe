@@ -64,7 +64,7 @@ export function createLaboratoryService(http: HttpClient) {
   return {
     async ping(): Promise<boolean> {
       try {
-        await requestData<unknown>(http, '/api/v1/online-devices')
+        await http.request<unknown>('/health')
         return true
       } catch {
         return false
