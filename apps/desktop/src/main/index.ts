@@ -71,18 +71,26 @@ function createWindow(): void {
     if (level >= 2) logLine(`renderer console: ${message} (${sourceId}:${line})`)
   })
 
-  // Pascal 的工具栏图标使用站点根路径 `/icons/*`。在 Electron 的
-  // file:// 页面中该路径会落到系统根目录，这里只允许文件名并重定向到
-  // Vite 已打包的 renderer/icons，既兼容桌面端也避免任意路径访问。
+  // Pascal 的工具栏图标与平面图光标使用站点根路径。在 Electron 的
+  // file:// 页面中这些路径会落到系统根目录；这里只允许已知路径，
+  // 并重定向到 Vite 打包资源，既兼容桌面端也避免任意路径访问。
   mainWindow.webContents.session.webRequest.onBeforeRequest(
-    { urls: ['file:///icons/*'] },
+    { urls: ['file:///icons/*', 'file:///cursor.svg'] },
     (details, callback) => {
       const requestedName = basename(
         fileURLToPath(new URL(details.url))
       )
+      const assetDirectory = details.url.startsWith('file:///icons/')
+        ? 'icons'
+        : ''
       callback({
         redirectURL: pathToFileURL(
-          join(__dirname, '../renderer/icons', requestedName)
+          join(
+            __dirname,
+            '../renderer',
+            assetDirectory,
+            requestedName
+          )
         ).toString()
       })
     }

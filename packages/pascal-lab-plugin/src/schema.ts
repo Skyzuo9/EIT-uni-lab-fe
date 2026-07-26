@@ -41,6 +41,35 @@ export const LabAttachPointSchema = z.object({
   rotation: Vector3Schema.optional()
 })
 
+export const LabFloorplanSiteSchema = z.object({
+  id: z.string(),
+  key: z.string(),
+  name: z.string(),
+  kind: z
+    .enum(['site', 'deck-slot', 'well', 'tip-spot'])
+    .optional(),
+  shape: z.enum(['circle', 'rectangle']).optional(),
+  positionMm: Vector3Schema,
+  sizeMm: Vector3Schema,
+  visible: z.boolean().default(true),
+  visualState: z
+    .enum(['empty', 'occupied', 'filled', 'tip-present'])
+    .default('empty')
+})
+
+/**
+ * Read-only projection data for Pascal's native floor-plan plugin hook.
+ * Material remains authoritative; this snapshot only prevents the Pascal
+ * plugin from importing the application store or duplicating pose rules.
+ */
+export const LabFloorplanSnapshotSchema = z.object({
+  kind: z.string(),
+  worldPositionMm: Vector3Schema,
+  worldRotationDegXYZ: Vector3Schema,
+  footprintMm: z.tuple([z.number(), z.number()]),
+  sites: z.array(LabFloorplanSiteSchema).default([])
+})
+
 export const LabPlacementRefSchema = z
   .object({
     kind: z.enum(['unplaced', 'world', 'parent', 'site']),
@@ -102,6 +131,7 @@ export const LabDeviceNodeSchema = BaseNode.extend({
       mountPoint: null
     }),
   placementRef: LabPlacementRefSchema,
+  floorplanSnapshot: LabFloorplanSnapshotSchema.optional(),
   graphMeta: z.record(z.string(), z.unknown()).optional()
 })
 
@@ -114,10 +144,15 @@ export const LabTableNodeSchema = BaseNode.extend({
   rotation: Vector3Schema.default([0, 0, 0]),
   dimensions: Vector3Schema.default([1.5, 0.9, 0.75]),
   placementRef: LabPlacementRefSchema,
+  floorplanSnapshot: LabFloorplanSnapshotSchema.optional(),
   graphMeta: z.record(z.string(), z.unknown()).optional()
 })
 
 export type LabAttachPoint = z.infer<typeof LabAttachPointSchema>
+export type LabFloorplanSite = z.infer<typeof LabFloorplanSiteSchema>
+export type LabFloorplanSnapshot = z.infer<
+  typeof LabFloorplanSnapshotSchema
+>
 export type LabPlacementRef = z.infer<typeof LabPlacementRefSchema>
 export type LabDeviceNode = z.infer<typeof LabDeviceNodeSchema>
 export type LabTableNode = z.infer<typeof LabTableNodeSchema>

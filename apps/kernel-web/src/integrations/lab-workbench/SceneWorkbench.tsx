@@ -12,8 +12,13 @@ import { useEffect, useMemo } from 'react'
 import { useWorkbench } from '../../context/WorkbenchContext'
 import { useLabInteraction } from './LabInteractionProvider'
 import { useMaterialRuntime } from './MaterialRuntimeProvider'
+import type { LabViewMode } from './UnifiedLabViewport'
 
-export function SceneWorkbench(): React.JSX.Element {
+export function SceneWorkbench({
+  viewMode = '3d'
+}: {
+  viewMode?: LabViewMode
+}): React.JSX.Element {
   const { backend } = useWorkbench()
   const runtime = useMaterialRuntime()
   const store = useMaterialStoreApi()
@@ -87,6 +92,7 @@ export function SceneWorkbench(): React.JSX.Element {
   return (
     <PascalLabWorkbench
       aggregates={aggregates}
+      viewMode={viewMode}
       projectId={`unilab-${backend.id}-${scopeKey}`}
       editable={moveStatus.available}
       selectedMaterialIds={selectedMaterialIds}

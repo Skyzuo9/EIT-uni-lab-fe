@@ -76,6 +76,30 @@
   background: var(--pascal-background);
 }
 
+.pascal-lab-workbench,
+.pascal-lab-workbench__native,
+.pascal-lab-workbench__oblique {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.pascal-lab-workbench__oblique {
+  position: absolute;
+  z-index: 5;
+  inset: 0;
+}
+
+.pascal-lab-workbench.is-oblique .pascal-lab-workbench__native {
+  position: absolute;
+  inset: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .pascal-editor-host [data-pascal-viewer-3d],
 .pascal-editor-host canvas {
   outline: none;
@@ -126,7 +150,26 @@
 }
 
 .pascal-lab-editor {
+  position: relative;
   height: calc(100% - 40px);
+}
+
+.pascal-floorplan-overlay {
+  position: absolute;
+  z-index: 50;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.pascal-lab-editor:has(.pascal-floorplan-overlay)
+  .floorplan-registry-layer {
+  opacity: 0;
+  pointer-events: none;
 }
 
 .pascal-editor-host--read-only .pascal-lab-editor > .dark {

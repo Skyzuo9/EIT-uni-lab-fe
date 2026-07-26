@@ -289,6 +289,226 @@
   color: var(--unilab-color-text-muted);
 }
 
+.material-canvas.is-floorplan-overlay {
+  background: rgb(248 250 252 / 68%);
+  backdrop-filter: blur(0.35px);
+}
+
+.material-canvas.is-floorplan-overlay .react-flow__pane {
+  cursor: grab;
+}
+
+.material-canvas.is-floorplan-overlay .react-flow__pane:active {
+  cursor: grabbing;
+}
+
+.material-oblique-canvas {
+  position: relative;
+  display: flex;
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  color: var(--unilab-color-text);
+  background:
+    radial-gradient(
+      circle at 50% 12%,
+      color-mix(in srgb, var(--unilab-color-primary) 9%, transparent),
+      transparent 48%
+    ),
+    linear-gradient(180deg, #f8fafc, #edf2f7);
+  overflow: hidden;
+}
+
+.material-oblique-canvas__header {
+  position: absolute;
+  z-index: 2;
+  top: 12px;
+  left: 12px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 7px 10px;
+  font-size: 11px;
+  color: var(--unilab-color-text-muted);
+  background: color-mix(in srgb, var(--unilab-color-bg) 88%, transparent);
+  border: 1px solid color-mix(
+    in srgb,
+    var(--unilab-color-border-strong) 65%,
+    transparent
+  );
+  border-radius: var(--unilab-radius-md);
+  box-shadow: 0 5px 18px rgb(15 23 42 / 10%);
+  backdrop-filter: blur(12px);
+}
+
+.material-oblique-canvas__header strong {
+  color: var(--unilab-color-text);
+}
+
+.material-oblique-canvas__svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  shape-rendering: geometricPrecision;
+}
+
+.material-oblique-canvas__grid {
+  color: rgb(100 116 139 / 16%);
+  pointer-events: all;
+}
+
+.material-oblique-canvas__empty {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  font-size: 12px;
+  color: var(--unilab-color-text-muted);
+}
+
+.material-oblique-object {
+  cursor: pointer;
+  outline: none;
+}
+
+.material-oblique-object polygon {
+  stroke: #64748b;
+  stroke-width: 1.3;
+  vector-effect: non-scaling-stroke;
+}
+
+.material-oblique-object__shadow {
+  fill: rgb(15 23 42 / 14%);
+  stroke: none !important;
+  transform: translate(8px, 12px);
+}
+
+.material-oblique-object__front {
+  fill: #cbd5e1;
+}
+
+.material-oblique-object__side {
+  fill: #94a3b8;
+}
+
+.material-oblique-object__top {
+  fill: #f8fafc;
+}
+
+.material-oblique-object.is-deck .material-oblique-object__front {
+  fill: #dbe7e2;
+}
+
+.material-oblique-object.is-deck .material-oblique-object__side {
+  fill: #9fbbb0;
+}
+
+.material-oblique-object.is-deck .material-oblique-object__top {
+  fill: #f3faf7;
+  stroke: #22c55e;
+}
+
+.material-oblique-object.is-labware .material-oblique-object__front {
+  fill: #cbd5e1;
+}
+
+.material-oblique-object.is-labware .material-oblique-object__side {
+  fill: #94a3b8;
+}
+
+.material-oblique-object.is-trash .material-oblique-object__front {
+  fill: #334155;
+}
+
+.material-oblique-object.is-trash .material-oblique-object__side {
+  fill: #1e293b;
+}
+
+.material-oblique-object.is-trash .material-oblique-object__top {
+  fill: #475569;
+}
+
+.material-oblique-object:is(.is-selected, .is-highlighted) polygon {
+  stroke-width: 2.5;
+}
+
+.material-oblique-object.is-selected polygon {
+  stroke: var(--unilab-color-primary);
+}
+
+.material-oblique-object.is-highlighted polygon {
+  stroke: var(--unilab-color-warning);
+}
+
+.material-oblique-site {
+  fill: #f8fafc;
+  stroke: #cbd5e1;
+  stroke-width: 1;
+}
+
+.material-oblique-site.is-deck-slot {
+  fill: rgb(248 250 252 / 52%);
+  stroke: #3b82f6;
+  stroke-dasharray: 7 5;
+}
+
+.material-oblique-site.is-tip-present {
+  fill: #d9f99d;
+  stroke: #22c55e;
+}
+
+.material-oblique-site.is-filled {
+  fill: #60a5fa;
+  stroke: #2563eb;
+}
+
+.material-oblique-site.is-occupied {
+  fill: #93c5fd;
+  stroke: #3b82f6;
+}
+
+.material-oblique-site__label {
+  fill: #334155;
+  font-size: 22px;
+  font-weight: 650;
+  pointer-events: none;
+}
+
+.material-oblique-object__tag {
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.material-oblique-object:hover .material-oblique-object__tag,
+.material-oblique-object:is(.is-equipment, .is-selected, .is-highlighted)
+  .material-oblique-object__tag {
+  opacity: 1;
+}
+
+.material-oblique-object__tag line {
+  stroke: rgb(15 23 42 / 45%);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.material-oblique-object__tag rect {
+  fill: rgb(15 23 42 / 84%);
+  stroke: rgb(255 255 255 / 38%);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.material-oblique-object__tag text {
+  fill: #ffffff;
+  font-size: 16px;
+  font-weight: 650;
+  text-anchor: middle;
+  dominant-baseline: middle;
+}
+
 .material-canvas .material__error {
   position: absolute;
   z-index: 5;

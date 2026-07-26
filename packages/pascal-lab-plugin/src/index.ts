@@ -30,15 +30,20 @@ export {
   type LocalMountPose
 } from './mounting'
 export { preparePascalLabPlugin } from './plugin'
+export { buildLabFloorplan } from './floorplan'
 export {
   LabAttachPointSchema,
   LabDeviceNodeSchema,
+  LabFloorplanSiteSchema,
+  LabFloorplanSnapshotSchema,
   LabPlacementRefSchema,
   LabTableNodeSchema,
   isLabDeviceNode,
   isLabTableNode,
   type LabAttachPoint,
   type LabDeviceNode,
+  type LabFloorplanSite,
+  type LabFloorplanSnapshot,
   type LabPlacementRef,
   type LabSceneNode,
   type LabTableNode

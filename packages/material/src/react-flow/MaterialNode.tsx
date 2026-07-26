@@ -91,7 +91,9 @@ export function MaterialNode({
                     style={materialSiteStyle(site, visual.footprintMm)}
                     title={siteTitle(site)}
                   >
-                    {site.name}
+                    {Math.min(site.sizeMm[0], site.sizeMm[1]) >= 40
+                      ? site.name
+                      : null}
                   </span>
                 ))
             )}

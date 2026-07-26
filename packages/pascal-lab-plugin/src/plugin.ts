@@ -14,6 +14,7 @@ import {
   type LabDeviceNode,
   type LabTableNode
 } from './schema'
+import { buildLabFloorplan } from './floorplan'
 
 const hierarchyRenderer = {
   kind: 'parametric' as const,
@@ -152,6 +153,7 @@ const labDeviceDefinition = {
     label: (node: LabDeviceNode) =>
       String(node.displayName ?? node.name ?? '设备')
   },
+  floorplan: buildLabFloorplan,
   renderer: {
     kind: 'parametric',
     module: () => import('./renderers/LabDeviceRenderer')
@@ -223,6 +225,7 @@ const labTableDefinition = {
     label: (node: LabTableNode) =>
       String(node.displayName ?? node.name ?? '工作台')
   },
+  floorplan: buildLabFloorplan,
   renderer: {
     kind: 'parametric',
     module: () => import('./renderers/LabTableRenderer')

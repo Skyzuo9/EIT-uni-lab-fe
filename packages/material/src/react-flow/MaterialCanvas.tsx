@@ -31,6 +31,8 @@ const NODE_TYPES = {
 export interface MaterialCanvasProps {
   readStatus: CapabilityStatus
   moveStatus: CapabilityStatus
+  floorplanOverlay?: boolean
+  physicalLayout?: boolean
   selectedMaterialIds?: readonly MaterialId[]
   highlightedMaterialIds?: readonly MaterialId[]
   onSelectionChange?: (materialIds: readonly MaterialId[]) => void
@@ -39,6 +41,8 @@ export interface MaterialCanvasProps {
 export function MaterialCanvas({
   readStatus,
   moveStatus,
+  floorplanOverlay = false,
+  physicalLayout,
   selectedMaterialIds = [],
   highlightedMaterialIds = [],
   onSelectionChange
@@ -70,13 +74,14 @@ export function MaterialCanvas({
         selectedMaterialIds,
         highlightedMaterialIds,
         draggable: moveStatus.available,
-        physicalLayout: !moveStatus.available
+        physicalLayout: physicalLayout ?? !moveStatus.available
       }),
     [
       aggregatesById,
       dragPreviewByMaterialId,
       highlightedMaterialIds,
       moveStatus.available,
+      physicalLayout,
       selectedMaterialIds
     ]
   )
@@ -118,7 +123,12 @@ export function MaterialCanvas({
   }
 
   return (
-    <section ref={canvasRef} className="material-canvas">
+    <section
+      ref={canvasRef}
+      className={`material-canvas${
+        floorplanOverlay ? ' is-floorplan-overlay' : ''
+      }`}
+    >
       {error ? <div className="material__error">{error}</div> : null}
       <ReactFlow
         nodes={nodes}
@@ -128,6 +138,7 @@ export function MaterialCanvas({
         fitViewOptions={{ padding: 0.12 }}
         minZoom={0.15}
         maxZoom={2}
+        proOptions={{ hideAttribution: true }}
         nodesConnectable={false}
         onInit={(instance) => {
           flowInstanceRef.current = instance
@@ -159,9 +170,9 @@ export function MaterialCanvas({
             )) as OnSelectionChangeFunc
         }
       >
-        <Background gap={24} size={1} />
-        <MiniMap pannable zoomable />
-        <Controls />
+        {!floorplanOverlay && <Background gap={24} size={1} />}
+        {!floorplanOverlay && <MiniMap pannable zoomable />}
+        {!floorplanOverlay && <Controls />}
       </ReactFlow>
     </section>
   )

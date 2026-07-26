@@ -4,6 +4,10 @@ import {
   PascalEditorHost,
   type SceneGraph
 } from '@unilab/pascal-host'
+import {
+  MaterialCanvas,
+  MaterialObliqueCanvas
+} from '@unilab/material'
 import type { MaterialAggregate } from '@unilab/material/domain'
 import {
   useCallback,
@@ -29,6 +33,7 @@ import {
 
 export interface PascalLabWorkbenchProps {
   aggregates: readonly MaterialAggregate[]
+  viewMode?: '2d' | '2.5d' | '3d' | 'split'
   projectId?: string
   modelRuntime?: LabModelRuntime
   editable?: boolean
@@ -43,6 +48,7 @@ export interface PascalLabWorkbenchProps {
 
 export function PascalLabWorkbench({
   aggregates,
+  viewMode = '3d',
   projectId = 'unilab-local-scene',
   modelRuntime,
   editable = false,
@@ -131,57 +137,107 @@ export function PascalLabWorkbench({
       ? `${count} 个物料 · 已保存`
       : `${count} 个物料 · 只读`
   }, [aggregates.length, editable, saveStatus])
+  const pascalViewMode = viewMode === '2.5d' ? '3d' : viewMode
 
   const toolbar = (
     <div className="pascal-lab-toolbar">
       <span className="pascal-lab-toolbar__title">
-        实验室 3D · Pascal
+        实验室 {viewMode.toUpperCase()} · Pascal
       </span>
       <span className="pascal-lab-toolbar__status">{statusLabel}</span>
-      <div className="pascal-lab-toolbar__actions">
-        <button
-          type="button"
-          className="pascal-lab-toolbar__button"
-          onClick={() => {
-            useViewer.getState().setCameraMode('orthographic')
-            requestAnimationFrame(() => {
-              emitter.emit('camera-controls:top-view')
-              setFitSceneRevision((revision) => revision + 1)
-            })
-          }}
-        >
-          顶视图
-        </button>
-        <button
-          type="button"
-          className="pascal-lab-toolbar__button"
-          onClick={() => {
-            useViewer.getState().setCameraMode('perspective')
-            requestAnimationFrame(() => {
-              setFitSceneRevision((revision) => revision + 1)
-            })
-          }}
-        >
-          适配场景
-        </button>
-      </div>
+      {viewMode !== '2d' && (
+        <div className="pascal-lab-toolbar__actions">
+          <button
+            type="button"
+            className="pascal-lab-toolbar__button"
+            onClick={() => {
+              useViewer.getState().setCameraMode('orthographic')
+              requestAnimationFrame(() => {
+                emitter.emit('camera-controls:top-view')
+                setFitSceneRevision((revision) => revision + 1)
+              })
+            }}
+          >
+            顶视图
+          </button>
+          <button
+            type="button"
+            className="pascal-lab-toolbar__button"
+            onClick={() => {
+              useViewer.getState().setCameraMode('perspective')
+              requestAnimationFrame(() => {
+                setFitSceneRevision((revision) => revision + 1)
+              })
+            }}
+          >
+            适配场景
+          </button>
+        </div>
+      )}
     </div>
   )
 
   return (
-    <PascalEditorHost
-      scene={scene}
-      projectId={projectId}
-      prepare={prepare}
-      readOnly={!editable}
-      editorViewMode="3d"
-      toolbar={toolbar}
-      onDirty={() => {
-        if (editable) setSaveStatus('dirty')
-      }}
-      onSave={handleSave}
-      onSelectionChange={handleSelectionChange}
-    />
+    <div
+      className={`pascal-lab-workbench${
+        viewMode === '2.5d' ? ' is-oblique' : ''
+      }`}
+    >
+      <div
+        aria-hidden={viewMode === '2.5d'}
+        className="pascal-lab-workbench__native"
+      >
+        <PascalEditorHost
+          scene={scene}
+          projectId={projectId}
+          prepare={prepare}
+          readOnly={!editable}
+          editorViewMode={pascalViewMode}
+          floorplanOverlay={
+            <MaterialCanvas
+              floorplanOverlay
+              physicalLayout
+              readStatus={{ available: true }}
+              moveStatus={{
+                available: editable,
+                reason: editable
+                  ? undefined
+                  : '当前服务不支持移动物料'
+              }}
+              selectedMaterialIds={selectedMaterialIds}
+              highlightedMaterialIds={highlightedMaterialIds}
+              onSelectionChange={(materialIds) => {
+                onSelectionChange?.(
+                  materialIds,
+                  materialIdsToSceneObjectIds(scene, materialIds)
+                )
+              }}
+            />
+          }
+          toolbar={toolbar}
+          onDirty={() => {
+            if (editable) setSaveStatus('dirty')
+          }}
+          onSave={handleSave}
+          onSelectionChange={handleSelectionChange}
+        />
+      </div>
+      {viewMode === '2.5d' && (
+        <div className="pascal-lab-workbench__oblique">
+          <MaterialObliqueCanvas
+            aggregates={aggregates}
+            selectedMaterialIds={selectedMaterialIds}
+            highlightedMaterialIds={highlightedMaterialIds}
+            onSelectionChange={(materialIds) => {
+              onSelectionChange?.(
+                materialIds,
+                materialIdsToSceneObjectIds(scene, materialIds)
+              )
+            }}
+          />
+        </div>
+      )}
+    </div>
   )
 }
 

@@ -30,6 +30,7 @@ body {
 }
 
 .lab-unified-viewport__surface {
+  position: relative;
   display: flex;
   flex: 1;
   width: 100%;
@@ -39,45 +40,15 @@ body {
   overflow: hidden;
 }
 
-.lab-unified-viewport__pane {
-  position: relative;
-  display: flex;
-  flex: 1 1 50%;
+.lab-unified-viewport__surface > * {
+  flex: 1;
   min-width: 0;
   min-height: 0;
-  overflow: hidden;
-}
-
-.lab-unified-viewport.is-2d
-  .lab-unified-viewport__pane--3d,
-.lab-unified-viewport.is-3d
-  .lab-unified-viewport__pane--2d,
-.lab-unified-viewport:not(.is-split)
-  .lab-unified-viewport__divider {
-  position: absolute;
-  width: 0;
-  height: 0;
-  overflow: hidden;
-  visibility: hidden;
-}
-
-.lab-unified-viewport.is-2d
-  .lab-unified-viewport__pane--2d,
-.lab-unified-viewport.is-3d
-  .lab-unified-viewport__pane--3d {
-  flex-basis: 100%;
-}
-
-.lab-unified-viewport__divider {
-  position: relative;
-  z-index: 4;
-  flex: 0 0 1px;
-  background: var(--unilab-color-border);
 }
 
 .lab-view-mode-toggle {
   position: absolute;
-  z-index: 35;
+  z-index: 80;
   bottom: 18px;
   left: 50%;
   display: inline-flex;

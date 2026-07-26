@@ -14,7 +14,6 @@ import {
 } from '@unilab/workbench-layout'
 import {
   MaterialCapabilityNotice,
-  MaterialCanvas,
   MaterialWorkbench
 } from '@unilab/material'
 import { useServices, type Services } from '@unilab/services'
@@ -26,7 +25,10 @@ import {
 import { useMaterialRuntime } from './MaterialRuntimeProvider'
 import { materialIdsFromWorkflowArgs } from './workflowMaterialRefs'
 import type { LabInteractionStore } from './interactionStore'
-import { UnifiedLabViewport } from './UnifiedLabViewport'
+import {
+  UnifiedLabViewport,
+  type LabViewMode
+} from './UnifiedLabViewport'
 
 export interface LabPanelScope {
   services: Services
@@ -95,10 +97,14 @@ function MaterialRenderer(
       }}
       renderViewport={
         props.unified
-          ? (viewportProps) => (
+          ? (_viewportProps) => (
               <UnifiedLabViewport
-                view2d={<MaterialCanvas {...viewportProps} />}
-                view3d={<SceneRenderer {...props} />}
+                renderView={(viewMode) => (
+                  <SceneRenderer
+                    {...props}
+                    viewMode={viewMode}
+                  />
+                )}
               />
             )
           : undefined
@@ -125,7 +131,9 @@ function WorkflowRenderer(
 }
 
 function SceneRenderer(
-  _props: PanelRendererProps<LabPanelScope>
+  props: PanelRendererProps<LabPanelScope> & {
+    viewMode?: LabViewMode
+  }
 ): React.JSX.Element {
   const runtime = useMaterialRuntime()
   if (!runtime.store || !runtime.scope) {
@@ -152,7 +160,9 @@ function SceneRenderer(
     <Suspense
       fallback={<div className="app-loading">正在加载 3D 编辑器…</div>}
     >
-      <SceneWorkbench />
+      <SceneWorkbench
+        viewMode={props.viewMode}
+      />
     </Suspense>
   )
 }

@@ -4,23 +4,21 @@ import {
   type ReactNode
 } from 'react'
 
-export type LabViewMode = '2d' | '3d' | 'split'
+export type LabViewMode = '2d' | '2.5d' | '3d' | 'split'
 
 const STORAGE_KEY = 'unilab.lab.view-mode'
 
 export interface UnifiedLabViewportProps {
-  view2d: ReactNode
-  view3d: ReactNode
+  renderView: (mode: LabViewMode) => ReactNode
 }
 
 /**
- * Cloud's unified lab view keeps both projections mounted and switches only
- * their viewport visibility. That preserves React Flow and WebGL state while
- * both projections continue to consume the same Material Store.
+ * One host-owned mode switch drives Pascal's native 2D/3D/split state. The
+ * app-owned 2.5D projection consumes the same Material aggregates while the
+ * Pascal/WebGL tree stays mounted underneath.
  */
 export function UnifiedLabViewport({
-  view2d,
-  view3d
+  renderView
 }: UnifiedLabViewportProps): React.JSX.Element {
   const [mode, setMode] = useState<LabViewMode>(readStoredMode)
 
@@ -30,26 +28,11 @@ export function UnifiedLabViewport({
 
   return (
     <div
-      className={`lab-unified-viewport is-${mode}`}
+      className="lab-unified-viewport"
       data-lab-view-mode={mode}
     >
       <div className="lab-unified-viewport__surface">
-        <section
-          aria-hidden={mode === '3d'}
-          className="lab-unified-viewport__pane lab-unified-viewport__pane--2d"
-        >
-          {view2d}
-        </section>
-        <div
-          aria-hidden={mode !== 'split'}
-          className="lab-unified-viewport__divider"
-        />
-        <section
-          aria-hidden={mode === '2d'}
-          className="lab-unified-viewport__pane lab-unified-viewport__pane--3d"
-        >
-          {view3d}
-        </section>
+        {renderView(mode)}
       </div>
       <div
         aria-label="实验室视图"
@@ -61,6 +44,12 @@ export function UnifiedLabViewport({
           icon={<GridIcon />}
           label="2D"
           onClick={() => setMode('2d')}
+        />
+        <ViewModeButton
+          active={mode === '2.5d'}
+          icon={<ObliqueIcon />}
+          label="2.5D"
+          onClick={() => setMode('2.5d')}
         />
         <ViewModeButton
           active={mode === '3d'}
@@ -76,6 +65,15 @@ export function UnifiedLabViewport({
         />
       </div>
     </div>
+  )
+}
+
+function ObliqueIcon(): React.JSX.Element {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 18 16">
+      <path d="m2 6 8-4 6 3-8 4-6-3Z" />
+      <path d="M2 6v5l6 3 8-4V5M8 9v5" />
+    </svg>
   )
 }
 
@@ -136,7 +134,10 @@ function SplitIcon(): React.JSX.Element {
 
 function readStoredMode(): LabViewMode {
   const value = globalThis.localStorage?.getItem(STORAGE_KEY)
-  return value === '2d' || value === '3d' || value === 'split'
+  return value === '2d' ||
+    value === '2.5d' ||
+    value === '3d' ||
+    value === 'split'
     ? value
     : '2d'
 }

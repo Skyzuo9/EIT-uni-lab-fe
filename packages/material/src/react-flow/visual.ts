@@ -9,6 +9,7 @@ export const MATERIAL_PHYSICAL_SCALE = 0.7
 export interface Material2DVisual {
   kind: string
   footprintMm: readonly [number, number]
+  heightMm: number
   physical: boolean
 }
 
@@ -33,6 +34,7 @@ export function readMaterial2DVisual(
     footprint?.[1] ?? dimensions?.[2],
     120
   )
+  const elevation = positive(dimensions?.[1], 120)
   const physical =
     footprint != null ||
     dimensions != null ||
@@ -49,6 +51,7 @@ export function readMaterial2DVisual(
   return {
     kind,
     footprintMm: [width, height],
+    heightMm: elevation,
     physical
   }
 }

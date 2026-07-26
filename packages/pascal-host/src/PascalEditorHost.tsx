@@ -24,6 +24,7 @@ export interface PascalEditorHostProps {
   onSelectionChange?: (sceneObjectIds: readonly string[]) => void
   readOnly?: boolean
   toolbar?: ReactNode
+  floorplanOverlay?: ReactNode
   editorViewMode?: '2d' | '3d' | 'split'
   editorProps?: Omit<
     EditorProps,
@@ -44,6 +45,7 @@ export function PascalEditorHost({
   onSelectionChange,
   readOnly = false,
   toolbar,
+  floorplanOverlay,
   editorViewMode,
   editorProps
 }: PascalEditorHostProps): React.JSX.Element {
@@ -127,9 +129,36 @@ export function PascalEditorHost({
     )
     clearSceneHistory()
 
-    const selectedIds = useViewer.getState().selection.selectedIds
+    const viewer = useViewer.getState()
+    const sceneNodes = scene.nodes as Record<
+      string,
+      {
+        id: string
+        type: string
+        parentId?: string | null
+      }
+    >
+    const activeLevel = viewer.selection.levelId
+      ? sceneNodes[viewer.selection.levelId]
+      : undefined
+    if (activeLevel?.type !== 'level') {
+      const defaultLevel = Object.values(sceneNodes).find(
+        (node) => node.type === 'level'
+      )
+      const building = defaultLevel?.parentId
+        ? sceneNodes[defaultLevel.parentId]
+        : undefined
+      if (defaultLevel && building?.type === 'building') {
+        viewer.setSelection({
+          buildingId: building.id as never,
+          levelId: defaultLevel.id as never
+        })
+      }
+    }
+
+    const selectedIds = viewer.selection.selectedIds
     if (selectedIds.some((id) => !(id in scene.nodes))) {
-      useViewer.getState().resetSelection()
+      viewer.resetSelection()
     }
   }, [hasLoadedScene, isPrepared, scene])
 
@@ -173,7 +202,41 @@ export function PascalEditorHost({
           onSave={saveScene}
           projectId={projectId}
         />
+        {floorplanOverlay && (
+          <PascalFloorplanOverlay>
+            {floorplanOverlay}
+          </PascalFloorplanOverlay>
+        )}
       </div>
+    </div>
+  )
+}
+
+function PascalFloorplanOverlay({
+  children
+}: {
+  children: ReactNode
+}): React.JSX.Element {
+  const viewMode = useEditor((state) => state.viewMode)
+  const floorplanPaneRatio = useEditor(
+    (state) => state.floorplanPaneRatio
+  )
+  const visible = viewMode === '2d' || viewMode === 'split'
+
+  return (
+    <div
+      aria-hidden={!visible}
+      className="pascal-floorplan-overlay"
+      data-pascal-floorplan-overlay
+      style={{
+        display: visible ? undefined : 'none',
+        width:
+          viewMode === 'split'
+            ? `calc(${floorplanPaneRatio * 100}% - 3px)`
+            : '100%'
+      }}
+    >
+      {children}
     </div>
   )
 }

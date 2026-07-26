@@ -44,6 +44,7 @@ export interface MaterialSceneProjectionOptions {
 export interface MaterialRenderingSnapshot {
   kind: string
   dimensionsMm: MaterialVector3Tuple
+  footprintMm: readonly [number, number]
   scale: MaterialVector3Tuple
   model: {
     path: string
@@ -99,6 +100,10 @@ export function materialAggregatesToSceneGraph(
       aggregatesById,
       sceneObjectIdByMaterialId
     )
+    const worldPose = resolveAggregateWorldPose(
+      aggregate.material.id,
+      aggregatesById
+    )
     const common = {
       id,
       parentId: LEVEL_ID,
@@ -109,7 +114,24 @@ export function materialAggregatesToSceneGraph(
       dimensions: rendering.dimensionsMm.map(
         (value) => Math.max(value / 1000, 0.01)
       ) as Vector3Tuple,
-      placementRef: projected.placementRef
+      placementRef: projected.placementRef,
+      floorplanSnapshot: {
+        kind: rendering.kind,
+        worldPositionMm: worldPose.positionMm,
+        worldRotationDegXYZ: worldPose.rotationDegXYZ,
+        footprintMm: rendering.footprintMm,
+        sites: aggregate.sites.map((site) => ({
+          id: site.id,
+          key: site.key,
+          name: site.name,
+          kind: site.kind,
+          shape: site.shape,
+          positionMm: site.poseInAnchor.positionMm,
+          sizeMm: site.sizeMm,
+          visible: site.visible !== false,
+          visualState: site.visual?.state ?? 'empty'
+        }))
+      }
     }
 
     if (rendering.kind === 'table') {
@@ -243,15 +265,21 @@ export function readMaterialRendering(
     'custom'
   ).toLowerCase()
 
+  const dimensionsMm =
+    vectorTuple(source.dimensionsMm ?? source.sizeMm) ??
+    [
+      finiteNumber(size.width, kind === 'table' ? 1500 : 600),
+      finiteNumber(size.height, kind === 'table' ? 900 : 500),
+      finiteNumber(size.depth, kind === 'table' ? 750 : 600)
+    ]
+  const footprintMm =
+    pairTuple(source.footprintMm) ??
+    [dimensionsMm[0], dimensionsMm[2]]
+
   return {
     kind: kind === 'lab-table' || kind === 'workbench' ? 'table' : kind,
-    dimensionsMm:
-      vectorTuple(source.dimensionsMm ?? source.sizeMm) ??
-      [
-        finiteNumber(size.width, kind === 'table' ? 1500 : 600),
-        finiteNumber(size.height, kind === 'table' ? 900 : 500),
-        finiteNumber(size.depth, kind === 'table' ? 750 : 600)
-      ],
+    dimensionsMm,
+    footprintMm,
     scale: vectorTuple(source.scale) ?? [1, 1, 1],
     model: {
       path: stringValue(model.path ?? model.mesh),
@@ -669,6 +697,14 @@ function vectorTuple(value: unknown): Vector3Tuple | undefined {
   const tuple = [record.x, record.y, record.z]
   return tuple.every((item) => Number.isFinite(Number(item)))
     ? tuple.map(Number) as Vector3Tuple
+    : undefined
+}
+
+function pairTuple(value: unknown): readonly [number, number] | undefined {
+  return Array.isArray(value) &&
+    value.length >= 2 &&
+    value.slice(0, 2).every((item) => Number.isFinite(Number(item)))
+    ? [Number(value[0]), Number(value[1])]
     : undefined
 }
 

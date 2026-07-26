@@ -68,7 +68,7 @@ const SCENARIOS: readonly Scenario[] = [
 test.describe.configure({ mode: 'serial' })
 
 for (const scenario of SCENARIOS) {
-  test(`${scenario.title} 在统一视图切换 2D / 3D / Split`, async ({
+  test(`${scenario.title} 在同一场景切换 2D / 2.5D / 3D / Split`, async ({
     page
   }) => {
     mkdirSync(ARTIFACT_ROOT, { recursive: true })
@@ -102,8 +102,26 @@ for (const scenario of SCENARIOS) {
       await page.getByRole('button', { name: /物料/ }).click()
       await connectToOs(page)
 
-      const nodes = page.locator('.material-flow-node')
-      await expect(nodes).toHaveCount(scenario.expectedCodes.length)
+      await expect(
+        page.locator('.lab-unified-viewport')
+      ).toHaveAttribute('data-lab-view-mode', '2d')
+      await expect(page.locator('.pascal-editor-host')).toHaveCount(1)
+      await expect(page.locator('.pascal-editor-host')).toBeVisible()
+      await expect(
+        page.locator(
+          '.floorplan-registry-base .floorplan-registry-entry[data-node-id^="lab-"]'
+        )
+      ).toHaveCount(scenario.expectedCodes.length)
+      await expect(
+        page.locator('[data-pascal-floorplan-overlay]')
+      ).toBeVisible()
+      await expect(
+        page.locator('.pascal-lab-toolbar__actions')
+      ).toHaveCount(0)
+      await expect(page.locator('.material-flow-node')).toHaveCount(
+        scenario.expectedCodes.length
+      )
+      await expect(page.locator('.material-flow-node').first()).toBeVisible()
       for (const code of scenario.expectedCodes) {
         await expect(
           page
@@ -111,25 +129,41 @@ for (const scenario of SCENARIOS) {
             .getByText(code, { exact: true })
         ).toHaveCount(1)
       }
+      await captureViewport(page, scenario.id, '2d')
 
+      await page.getByRole('button', { name: '2.5D', exact: true }).click()
       await expect(
         page.locator('.lab-unified-viewport')
-      ).toHaveAttribute('data-lab-view-mode', '2d')
-      await expect(page.locator('.material-canvas')).toBeVisible()
-      await expect(page.locator('.pascal-editor-host')).toBeHidden()
+      ).toHaveAttribute('data-lab-view-mode', '2.5d')
+      await expect(page.locator('[data-material-oblique-view]')).toBeVisible()
+      await expect(page.locator('.material-oblique-object')).toHaveCount(
+        scenario.expectedCodes.length
+      )
+      for (const code of scenario.expectedCodes) {
+        await expect(
+          page.locator(
+            `.material-oblique-object[data-material-code="${code}"]`
+          )
+        ).toHaveCount(1)
+      }
+      await captureViewport(page, scenario.id, '2.5d')
 
       await page.getByRole('button', { name: 'Split', exact: true }).click()
       await expect(
         page.locator('.lab-unified-viewport')
       ).toHaveAttribute('data-lab-view-mode', 'split')
-      await expect(page.locator('.material-canvas')).toBeVisible()
       await expect(page.locator('.pascal-editor-host')).toBeVisible()
+      await expect(page.locator('.floorplan-registry-layer')).toBeVisible()
+      await expect(
+        page.locator('[data-pascal-floorplan-overlay]')
+      ).toBeVisible()
       await expect(
         page.locator('.pascal-lab-toolbar__status')
       ).toHaveText(`${scenario.expectedCodes.length} 个物料 · 只读`)
       await expect(
         page.locator('.pascal-editor-host canvas').first()
       ).toBeVisible()
+      await resizeNativeSplitPane(page)
       const dismissCameraHint = page.getByRole('button', {
         name: 'Dismiss camera controls hint'
       })
@@ -140,13 +174,18 @@ for (const scenario of SCENARIOS) {
         .getByRole('button', { name: '适配场景' })
         .click()
       await page.waitForTimeout(2_000)
+      await captureViewport(page, scenario.id, 'split')
 
       await page.getByRole('button', { name: '3D', exact: true }).click()
       await expect(
         page.locator('.lab-unified-viewport')
       ).toHaveAttribute('data-lab-view-mode', '3d')
-      await expect(page.locator('.material-canvas')).toBeHidden()
       await expect(page.locator('.pascal-editor-host')).toBeVisible()
+      await expect(page.locator('.floorplan-registry-layer')).toBeHidden()
+      await expect(
+        page.locator('[data-pascal-floorplan-overlay]')
+      ).toBeHidden()
+      await captureViewport(page, scenario.id, '3d')
 
       await page.getByRole('button', { name: 'Split', exact: true }).click()
 
@@ -201,6 +240,54 @@ for (const scenario of SCENARIOS) {
   })
 }
 
+async function resizeNativeSplitPane(page: Page): Promise<void> {
+  const editor = page.locator('.pascal-lab-editor')
+  const overlay = page.locator('[data-pascal-floorplan-overlay]')
+  const divider = editor.locator('.cursor-col-resize:visible').first()
+  await expect(divider).toBeVisible()
+
+  const [editorBox, overlayBefore, dividerBox] = await Promise.all([
+    editor.boundingBox(),
+    overlay.boundingBox(),
+    divider.boundingBox()
+  ])
+  expect(editorBox).not.toBeNull()
+  expect(overlayBefore).not.toBeNull()
+  expect(dividerBox).not.toBeNull()
+  if (!editorBox || !overlayBefore || !dividerBox) return
+
+  const targetRatio = 0.42
+  await page.mouse.move(
+    dividerBox.x + dividerBox.width - 1,
+    dividerBox.y + dividerBox.height / 2
+  )
+  await page.mouse.down()
+  await page.mouse.move(
+    editorBox.x + editorBox.width * targetRatio,
+    dividerBox.y + dividerBox.height / 2,
+    { steps: 8 }
+  )
+  await page.mouse.up()
+
+  await expect
+    .poll(async () => {
+      const box = await overlay.boundingBox()
+      return box ? box.width / editorBox.width : 0
+    })
+    .toBeCloseTo(targetRatio, 1)
+}
+
+async function captureViewport(
+  page: Page,
+  scenarioId: string,
+  mode: '2d' | '2.5d' | '3d' | 'split'
+): Promise<void> {
+  await page.locator('.lab-unified-viewport').screenshot({
+    path: resolve(ARTIFACT_ROOT, `${scenarioId}-${mode}.png`),
+    animations: 'disabled'
+  })
+}
+
 async function installReviewLayout(page: Page): Promise<void> {
   await page.addInitScript(() => {
     localStorage.setItem(
@@ -220,6 +307,7 @@ async function installReviewLayout(page: Page): Promise<void> {
         }
       })
     )
+    localStorage.setItem('unilab.lab.view-mode', '2d')
   })
 }
 
