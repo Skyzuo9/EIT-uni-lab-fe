@@ -5,6 +5,7 @@ import {
   CONTROL_DAG_REVISION,
   createWorkflowExecutionScope,
   parseCanonicalWorkflow,
+  projectNestedWorkflow,
   remapWorkflowBreakpoints,
   remapWorkflowNodeId
 } from './canonicalWorkflow'
@@ -81,4 +82,98 @@ describe('Canonical workflow projection', () => {
       'inspect'
     ])
   })
+
+  it('derives nested subworkflow parents from Canonical group source ranges', () => {
+    const parsed = parseCanonicalWorkflow(JSON.stringify(NESTED_REVISION))
+    const byId = new Map(parsed.nodes.map((node) => [node.id, node]))
+
+    expect(byId.get('outer')?.name).toBe('sampling_cycle')
+    expect(byId.get('outer')?.groupKind).toBe('subworkflow')
+    expect(byId.get('outer')?.collapsedByDefault).toBe(true)
+    expect(byId.get('outer')?.childNodeIds).toEqual(['prepare', 'inner'])
+    expect(byId.get('inner')?.parentGroupId).toBe('outer')
+    expect(byId.get('dose')?.parentGroupId).toBe('inner')
+  })
+
+  it('collapses nested groups and rewires only boundary-crossing edges', () => {
+    const parsed = parseCanonicalWorkflow(JSON.stringify(NESTED_REVISION))
+
+    const collapsed = projectNestedWorkflow(
+      parsed.nodes,
+      parsed.links,
+      new Set()
+    )
+    expect(collapsed.nodes.map((node) => node.id)).toEqual(['outer', 'finish'])
+    expect(collapsed.links).toMatchObject([
+      { source: 'outer', target: 'finish' }
+    ])
+    expect([...collapsed.hiddenNodeIds]).toEqual(['prepare', 'inner', 'dose'])
+
+    const outerExpanded = projectNestedWorkflow(
+      parsed.nodes,
+      parsed.links,
+      new Set(['outer'])
+    )
+    expect(outerExpanded.nodes.map((node) => node.id)).toEqual([
+      'outer',
+      'prepare',
+      'inner',
+      'finish'
+    ])
+    expect(outerExpanded.links.map(({ source, target }) => [source, target]))
+      .toEqual([
+        ['outer', 'prepare'],
+        ['prepare', 'inner'],
+        ['inner', 'finish']
+      ])
+
+    const allExpanded = projectNestedWorkflow(
+      parsed.nodes,
+      parsed.links,
+      new Set(['outer', 'inner'])
+    )
+    expect(allExpanded.nodes).toHaveLength(5)
+    expect(allExpanded.links).toHaveLength(4)
+  })
 })
+
+const NESTED_REVISION = {
+  schema_version: '2',
+  revision_id: 'nested-rev-1',
+  workflow_id: 'nested-demo',
+  invocations: [
+    {
+      node_id: 'outer',
+      action_ref: 'os_control.group',
+      node_type: 'group',
+      control: { name: 'subworkflow::sampling_cycle' }
+    },
+    { node_id: 'prepare', action_ref: 'sampling.prepare' },
+    {
+      node_id: 'inner',
+      action_ref: 'os_control.group',
+      node_type: 'group',
+      control: { name: 'subworkflow::sampling_execute' }
+    },
+    { node_id: 'dose', action_ref: 'sampling.dose' },
+    { node_id: 'finish', action_ref: 'sampling.finish' }
+  ],
+  control_edges: [
+    { edge_id: 'e1', source: 'outer', target: 'prepare' },
+    { edge_id: 'e2', source: 'prepare', target: 'inner' },
+    { edge_id: 'e3', source: 'inner', target: 'dose' },
+    { edge_id: 'e4', source: 'dose', target: 'finish' }
+  ],
+  source_map: {
+    entries: [
+      {
+        node_id: 'outer',
+        compiled_node_ids: ['outer', 'prepare', 'inner', 'dose']
+      },
+      {
+        node_id: 'inner',
+        compiled_node_ids: ['inner', 'dose']
+      }
+    ]
+  }
+}

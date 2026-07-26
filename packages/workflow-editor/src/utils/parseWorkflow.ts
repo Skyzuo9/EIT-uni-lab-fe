@@ -20,6 +20,12 @@ export interface WorkflowNode {
   // 显式坐标(JSON 导出格式自带 pose.position;无则由 layoutDag 计算)
   x?: number
   y?: number
+  // Canonical group/source_map 派生的嵌套范围；不改变 OS 的平面执行 DAG。
+  groupKind?: 'group' | 'subworkflow'
+  parentGroupId?: string
+  childNodeIds?: string[]
+  descendantNodeIds?: string[]
+  collapsedByDefault?: boolean
 }
 
 export interface WorkflowLink {

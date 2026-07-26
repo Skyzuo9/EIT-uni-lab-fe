@@ -2097,6 +2097,37 @@ body {
   font: 600 9px/1.2 'SF Mono', Menlo, monospace;
 }
 
+.wf-node__group-toggle {
+  display: inline-flex;
+  width: max-content;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 7px;
+  color: #4263a8;
+  border: 1px solid #bac8ff;
+  border-radius: 4px;
+  background: #edf2ff;
+  font: 650 9px/1.2 'SF Mono', Menlo, monospace;
+  cursor: pointer;
+}
+
+.wf-node__group-toggle:hover {
+  border-color: #748ffc;
+  background: #dbe4ff;
+}
+
+.wf-flow-node--subworkflow .wf-node {
+  min-width: 196px;
+  border-color: #bac8ff;
+  border-top-color: #5c7cfa;
+  background: #f8f9ff;
+  box-shadow: 0 5px 18px rgba(66, 99, 168, .14);
+}
+
+.wf-flow-node--subworkflow .wf-node__kind {
+  color: #4263a8;
+}
+
 .wf-node__state--running {
   color: #d9480f;
 }

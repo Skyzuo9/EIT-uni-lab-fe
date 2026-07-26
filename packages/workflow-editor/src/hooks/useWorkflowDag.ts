@@ -48,12 +48,15 @@ export function useWorkflowDag(nodes: WorkflowNode[], links: WorkflowLink[]): Us
     const flowNodes: Node<WorkflowNodeData>[] = laidOut.map((node) => ({
       id: node.id,
       type: 'wfNode',
+      focusable: node.groupKind !== 'subworkflow',
       position: { x: node.x, y: node.y },
       data: {
         id: node.id,
         name: node.name,
         color: getNodeColor(node.labNodeType, node.type),
-        kind: node.type
+        kind: node.type,
+        groupKind: node.groupKind,
+        descendantCount: node.descendantNodeIds?.length
       }
     }))
 

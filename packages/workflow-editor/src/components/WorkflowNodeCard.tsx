@@ -24,8 +24,12 @@ export interface WorkflowNodeData {
   startNode?: boolean
   beforeStart?: boolean
   pausedBefore?: boolean
+  groupKind?: 'group' | 'subworkflow'
+  groupExpanded?: boolean
+  descendantCount?: number
   onSetStart?: (nodeId: string) => void
   onToggleBreakpoint?: (nodeId: string) => void
+  onToggleGroup?: (nodeId: string) => void
 }
 
 // 节点卡片:无头部,仅名称 + 上下 handle
@@ -53,9 +57,34 @@ export default function WorkflowNodeCard({ data }: NodeProps<WorkflowNodeData>):
           )}
         </div>
         <span className="wf-node__kind">
-          {data.kind === 'branch' ? '◇ BRANCH' : data.kind === 'join' ? '◆ JOIN' : 'ACTION'}
+          {data.groupKind === 'subworkflow'
+            ? '▣ SUBWORKFLOW'
+            : data.kind === 'branch'
+              ? '◇ BRANCH'
+              : data.kind === 'join'
+                ? '◆ JOIN'
+                : data.kind === 'group'
+                  ? '▣ GROUP'
+                  : 'ACTION'}
         </span>
         <span className="wf-node__id">{data.name || data.id}</span>
+        {data.groupKind === 'subworkflow' && (
+          <button
+            type="button"
+            className="wf-node__group-toggle"
+            data-subworkflow-toggle
+            aria-expanded={Boolean(data.groupExpanded)}
+            aria-label={`${data.groupExpanded ? '折叠' : '展开'}子工作流 ${data.name || data.id}`}
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation()
+              data.onToggleGroup?.(data.id)
+            }}
+          >
+            <span aria-hidden="true">{data.groupExpanded ? '▾' : '▸'}</span>
+            {data.descendantCount || 0} 个内部节点
+          </button>
+        )}
         <span className={`wf-node__state wf-node__state--${data.status || 'pending'}`}>
           {stateLabel(data.status || 'pending')}
         </span>

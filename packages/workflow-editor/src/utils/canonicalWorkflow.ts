@@ -9,6 +9,8 @@ export interface CanonicalWorkflowParseResult extends WorkflowStructure {
   revision: WorkflowRevision | null
 }
 
+const SUBWORKFLOW_GROUP_PREFIX = 'subworkflow::'
+
 export function parseCanonicalWorkflow(
   text: string
 ): CanonicalWorkflowParseResult {
@@ -41,21 +43,76 @@ export function parseCanonicalWorkflow(
   }
   const layout = isRecord(revision.layout) ? revision.layout : {}
   const layoutNodes = isRecord(layout.nodes) ? layout.nodes : {}
-  const nodes: WorkflowNode[] = revision.invocations.map((invocation) => {
+  const preliminaryNodes: WorkflowNode[] = revision.invocations.map((invocation) => {
     const position = isRecord(layoutNodes[invocation.node_id])
       ? layoutNodes[invocation.node_id] as Record<string, unknown>
       : {}
     const nodeType = String(invocation.node_type || 'action')
+    const control = isRecord(invocation.control) ? invocation.control : {}
+    const groupName = nodeType === 'group' ? String(control.name || '') : ''
+    const subworkflow = groupName.startsWith(SUBWORKFLOW_GROUP_PREFIX)
+    const displayName = subworkflow
+      ? groupName.slice(SUBWORKFLOW_GROUP_PREFIX.length)
+      : String(invocation.name || groupName || invocation.action_ref)
     return {
       id: invocation.node_id,
-      name: String(invocation.name || invocation.action_ref),
+      name: displayName,
       type: nodeType,
       className: invocation.action_ref,
       labNodeType: nodeType,
       x: finite(position.x),
-      y: finite(position.y)
+      y: finite(position.y),
+      ...(nodeType === 'group'
+        ? {
+            groupKind: subworkflow ? 'subworkflow' as const : 'group' as const,
+            collapsedByDefault: subworkflow
+          }
+        : {})
     }
   })
+  const nodeIds = new Set(preliminaryNodes.map((node) => node.id))
+  const sourceMap = isRecord(revision.source_map) ? revision.source_map : {}
+  const sourceEntries = Array.isArray(sourceMap.entries)
+    ? sourceMap.entries.filter(isRecord)
+    : []
+  const descendantsByGroup = new Map<string, string[]>()
+  for (const node of preliminaryNodes) {
+    if (node.type !== 'group') continue
+    const sourceEntry = sourceEntries.find(
+      (entry) => entry.node_id === node.id
+    )
+    descendantsByGroup.set(
+      node.id,
+      stringArray(sourceEntry?.compiled_node_ids).filter(
+        (nodeId) => nodeId !== node.id && nodeIds.has(nodeId)
+      )
+    )
+  }
+  const parentByNode = new Map<string, string>()
+  for (const node of preliminaryNodes) {
+    const containingGroups = [...descendantsByGroup.entries()]
+      .filter(([, descendants]) => descendants.includes(node.id))
+      .sort((left, right) => left[1].length - right[1].length)
+    if (containingGroups[0]) parentByNode.set(node.id, containingGroups[0][0])
+  }
+  const childrenByGroup = new Map(
+    [...descendantsByGroup].map(([groupId]) => [groupId, [] as string[]])
+  )
+  for (const [nodeId, groupId] of parentByNode) {
+    childrenByGroup.get(groupId)?.push(nodeId)
+  }
+  const nodes = preliminaryNodes.map((node) => ({
+    ...node,
+    ...(parentByNode.has(node.id)
+      ? { parentGroupId: parentByNode.get(node.id) }
+      : {}),
+    ...(node.type === 'group'
+      ? {
+          childNodeIds: childrenByGroup.get(node.id) || [],
+          descendantNodeIds: descendantsByGroup.get(node.id) || []
+        }
+      : {})
+  }))
   const links: WorkflowLink[] = revision.control_edges.map((edge) => ({
     source: edge.source,
     target: edge.target,
@@ -74,6 +131,71 @@ export function parseCanonicalWorkflow(
       schema: null
     })),
     error: null
+  }
+}
+
+export interface NestedWorkflowProjection {
+  nodes: WorkflowNode[]
+  links: WorkflowLink[]
+  collapsedGroupIds: Set<string>
+  hiddenNodeIds: Set<string>
+}
+
+/**
+ * Keep Canonical execution flat while presenting subworkflow groups as
+ * collapsible nested nodes. Edges crossing a collapsed boundary are rewired
+ * to the visible group marker; internal self-edges are removed.
+ */
+export function projectNestedWorkflow(
+  nodes: ReadonlyArray<WorkflowNode>,
+  links: ReadonlyArray<WorkflowLink>,
+  expandedGroupIds: ReadonlySet<string>
+): NestedWorkflowProjection {
+  const nodeById = new Map(nodes.map((node) => [node.id, node]))
+  const collapsedGroupIds = new Set(
+    nodes
+      .filter(
+        (node) =>
+          node.groupKind === 'subworkflow' &&
+          node.collapsedByDefault &&
+          !expandedGroupIds.has(node.id)
+      )
+      .map((node) => node.id)
+  )
+  const representative = (nodeId: string): string => {
+    let result = nodeId
+    let current = nodeById.get(nodeId)
+    const visited = new Set<string>()
+    while (current?.parentGroupId && !visited.has(current.parentGroupId)) {
+      const parentId = current.parentGroupId
+      visited.add(parentId)
+      if (collapsedGroupIds.has(parentId)) result = parentId
+      current = nodeById.get(parentId)
+    }
+    return result
+  }
+  const hiddenNodeIds = new Set(
+    nodes
+      .filter((node) => representative(node.id) !== node.id)
+      .map((node) => node.id)
+  )
+  const projectedLinks: WorkflowLink[] = []
+  const linkKeys = new Set<string>()
+  for (const link of links) {
+    if (!nodeById.has(link.source) || !nodeById.has(link.target)) continue
+    const source = representative(link.source)
+    const target = representative(link.target)
+    if (source === target) continue
+    const key = JSON.stringify([source, target, link.type, link.branch ?? null])
+    if (linkKeys.has(key)) continue
+    linkKeys.add(key)
+    projectedLinks.push({ ...link, source, target })
+  }
+  return {
+    nodes: nodes.filter((node) => !hiddenNodeIds.has(node.id)),
+    links: projectedLinks,
+    collapsedGroupIds,
+    hiddenNodeIds
   }
 }
 
@@ -168,6 +290,12 @@ export function createWorkflowExecutionScope(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string')
+    : []
 }
 
 function sameInvocationKind(

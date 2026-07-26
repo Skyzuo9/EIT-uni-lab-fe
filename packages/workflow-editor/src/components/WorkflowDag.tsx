@@ -11,11 +11,12 @@
  */
 import ReactFlow, { Background, Controls, MiniMap } from 'reactflow'
 import type { Node } from 'reactflow'
-import { useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useWorkflowDag } from '../hooks/useWorkflowDag'
 import WorkflowNodeCard from './WorkflowNodeCard'
 import type { WorkflowNodeData } from './WorkflowNodeCard'
 import type { WorkflowLink, WorkflowNode } from '../utils/parseWorkflow'
+import { projectNestedWorkflow } from '../utils/canonicalWorkflow'
 import 'reactflow/dist/style.css'
 import styles from './vendor.module.scss'
 
@@ -48,13 +49,45 @@ export default function WorkflowDag({
   beforeStartNodeIds = new Set(),
   pausedBeforeNodeId = null
 }: WorkflowDagProps): React.JSX.Element {
+  const [expandedGroupIds, setExpandedGroupIds] = useState<Set<string>>(
+    () => new Set()
+  )
+  const groupSignature = useMemo(
+    () => nodes
+      .filter((node) => node.groupKind === 'subworkflow')
+      .map((node) => `${node.id}:${node.descendantNodeIds?.length || 0}`)
+      .join('|'),
+    [nodes]
+  )
+  useEffect(() => {
+    setExpandedGroupIds(new Set())
+  }, [groupSignature])
+  const nestedProjection = useMemo(
+    () => projectNestedWorkflow(nodes, links, expandedGroupIds),
+    [expandedGroupIds, links, nodes]
+  )
+  const toggleGroup = useCallback((nodeId: string) => {
+    setExpandedGroupIds((current) => {
+      const next = new Set(current)
+      if (next.has(nodeId)) next.delete(nodeId)
+      else next.add(nodeId)
+      return next
+    })
+  }, [])
   const { nodes: flowNodes, edges: flowEdges, onNodesChange, onEdgesChange } = useWorkflowDag(
-    nodes,
-    links
+    nestedProjection.nodes,
+    nestedProjection.links
+  )
+  const nodeById = useMemo(
+    () => new Map(nodes.map((node) => [node.id, node])),
+    [nodes]
   )
   const runtimeNodes = useMemo(
     () => flowNodes.map((node) => {
-      const status = nodeStates[node.id] || 'pending'
+      const sourceNode = nodeById.get(node.id)
+      const status = sourceNode?.groupKind === 'subworkflow'
+        ? nestedGroupStatus(sourceNode, nodeStates)
+        : nodeStates[node.id] || 'pending'
       const beforeStart = beforeStartNodeIds.has(node.id)
       const pausedBefore = pausedBeforeNodeId === node.id
       const startNode = startNodeId === node.id
@@ -66,7 +99,10 @@ export default function WorkflowDag({
           beforeStart ? 'wf-flow-node--before-start' : '',
           startNode ? 'wf-flow-node--start' : '',
           pausedBefore ? 'wf-flow-node--paused-before' : '',
-          breakpoints.has(node.id) ? 'wf-flow-node--breakpoint' : ''
+          breakpoints.has(node.id) ? 'wf-flow-node--breakpoint' : '',
+          sourceNode?.groupKind === 'subworkflow'
+            ? 'wf-flow-node--subworkflow'
+            : ''
         ].filter(Boolean).join(' '),
         data: {
           ...node.data,
@@ -84,6 +120,8 @@ export default function WorkflowDag({
           startNode,
           beforeStart,
           pausedBefore,
+          groupExpanded: expandedGroupIds.has(node.id),
+          onToggleGroup: toggleGroup,
           onSetStart,
           onToggleBreakpoint
         }
@@ -93,11 +131,14 @@ export default function WorkflowDag({
       beforeStartNodeIds,
       breakpoints,
       flowNodes,
+      expandedGroupIds,
+      nodeById,
       nodeStates,
       onSetStart,
       onToggleBreakpoint,
       pausedBeforeNodeId,
-      startNodeId
+      startNodeId,
+      toggleGroup
     ]
   )
   const runtimeEdges = useMemo(
@@ -146,4 +187,24 @@ export default function WorkflowDag({
       </ReactFlow>
     </div>
   )
+}
+
+function nestedGroupStatus(
+  node: WorkflowNode,
+  nodeStates: Readonly<Record<string, string>>
+): string {
+  const statuses = [node.id, ...(node.descendantNodeIds || [])]
+    .map((nodeId) => nodeStates[nodeId])
+    .filter((status): status is string => Boolean(status))
+  if (statuses.includes('failed')) return 'failed'
+  if (statuses.includes('reconciling')) return 'reconciling'
+  if (statuses.includes('running')) return 'running'
+  if (statuses.includes('cancelled')) return 'cancelled'
+  if (
+    statuses.length > 0 &&
+    statuses.every((status) => ['success', 'skipped'].includes(status))
+  ) {
+    return 'success'
+  }
+  return nodeStates[node.id] || 'pending'
 }
