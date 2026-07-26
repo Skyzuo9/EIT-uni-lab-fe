@@ -36,7 +36,7 @@ const WorkbenchContext = createContext<WorkbenchContextValue | null>(null)
 
 export function WorkbenchProvider({ children }: { children: ReactNode }): React.JSX.Element {
   const [backend, setBackend] = useState<BackendConfig>(() =>
-    getDefaultBackend('local-python')
+    initialBackend()
   )
   const [backendEnabled, setBackendEnabledState] = useState(false)
   const [connection, setConnection] =
@@ -51,7 +51,17 @@ export function WorkbenchProvider({ children }: { children: ReactNode }): React.
   }, [])
 
   const updateBackend = useCallback((patch: Partial<BackendConfig>) => {
-    setBackend((current) => ({ ...current, ...patch }))
+    setBackend((current) => {
+      const next = { ...current, ...patch }
+      if (
+        current.id === 'local-python' &&
+        patch.apiUrl &&
+        patch.realtimeUrl === undefined
+      ) {
+        next.realtimeUrl = realtimeUrlFor(patch.apiUrl)
+      }
+      return next
+    })
     setConnection('disconnected')
   }, [])
 
@@ -100,4 +110,39 @@ export function useWorkbench(): WorkbenchContextValue {
     throw new Error('useWorkbench must be used within WorkbenchProvider')
   }
   return contextValue
+}
+
+function initialBackend(): BackendConfig {
+  const backend = getDefaultBackend('local-python')
+  if (typeof globalThis.location === 'undefined') return backend
+  const override = new URLSearchParams(globalThis.location.search)
+    .get('localOsUrl')
+  if (!override) return backend
+  try {
+    const url = new URL(override)
+    if (
+      !['http:', 'https:'].includes(url.protocol) ||
+      !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)
+    ) {
+      return backend
+    }
+    const apiUrl = url.toString().replace(/\/$/, '')
+    return {
+      ...backend,
+      apiUrl,
+      realtimeUrl: realtimeUrlFor(apiUrl)
+    }
+  } catch {
+    return backend
+  }
+}
+
+function realtimeUrlFor(apiUrl: string): string {
+  try {
+    const url = new URL(apiUrl)
+    url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
+    return url.toString().replace(/\/$/, '')
+  } catch {
+    return apiUrl
+  }
 }

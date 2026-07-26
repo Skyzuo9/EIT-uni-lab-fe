@@ -18,9 +18,10 @@ body {
   overflow: hidden;
 }
 
-.lab-unified-layout {
-  display: grid;
-  grid-template-rows: minmax(320px, 1fr) minmax(260px, 0.8fr);
+.lab-unified-viewport {
+  position: relative;
+  display: flex;
+  flex: 1;
   width: 100%;
   height: 100%;
   min-width: 0;
@@ -28,16 +29,113 @@ body {
   overflow: hidden;
 }
 
-.lab-unified-layout__material,
-.lab-unified-layout__scene {
+.lab-unified-viewport__surface {
   display: flex;
+  flex: 1;
+  width: 100%;
+  height: 100%;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
 }
 
-.lab-unified-layout__scene {
-  border-top: 1px solid var(--unilab-color-border);
+.lab-unified-viewport__pane {
+  position: relative;
+  display: flex;
+  flex: 1 1 50%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.lab-unified-viewport.is-2d
+  .lab-unified-viewport__pane--3d,
+.lab-unified-viewport.is-3d
+  .lab-unified-viewport__pane--2d,
+.lab-unified-viewport:not(.is-split)
+  .lab-unified-viewport__divider {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+}
+
+.lab-unified-viewport.is-2d
+  .lab-unified-viewport__pane--2d,
+.lab-unified-viewport.is-3d
+  .lab-unified-viewport__pane--3d {
+  flex-basis: 100%;
+}
+
+.lab-unified-viewport__divider {
+  position: relative;
+  z-index: 4;
+  flex: 0 0 1px;
+  background: var(--unilab-color-border);
+}
+
+.lab-view-mode-toggle {
+  position: absolute;
+  z-index: 35;
+  bottom: 18px;
+  left: 50%;
+  display: inline-flex;
+  gap: 2px;
+  align-items: center;
+  padding: 3px;
+  background: color-mix(
+    in srgb,
+    var(--unilab-color-bg) 90%,
+    transparent
+  );
+  border: 1px solid color-mix(
+    in srgb,
+    var(--unilab-color-border-strong) 72%,
+    transparent
+  );
+  border-radius: 12px;
+  box-shadow: 0 8px 30px rgb(15 23 42 / 18%);
+  backdrop-filter: blur(14px);
+  transform: translateX(-50%);
+}
+
+.lab-view-mode-toggle button {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 11px;
+  font: 600 12px/1 var(--unilab-font-sans);
+  color: var(--unilab-color-text-muted);
+  background: transparent;
+  border: 0;
+  border-radius: 9px;
+  cursor: pointer;
+  transition:
+    color 140ms ease,
+    background 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.lab-view-mode-toggle button:hover {
+  color: var(--unilab-color-text);
+}
+
+.lab-view-mode-toggle button.is-active {
+  color: var(--unilab-color-primary);
+  background: var(--unilab-color-bg);
+  box-shadow: 0 1px 5px rgb(15 23 42 / 14%);
+}
+
+.lab-view-mode-toggle svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.35;
 }
 
 .app {
@@ -920,6 +1018,86 @@ body {
   height: 100%;
 }
 
+.code-editor__surface .cm-workflow-line {
+  box-shadow: inset 3px 0 0 transparent;
+}
+
+.code-editor__surface .cm-workflow-line--before-start,
+.code-editor__surface .cm-workflow-line--skipped {
+  color: #747b87;
+  background: rgba(148, 163, 184, .12);
+  box-shadow: inset 3px 0 0 #64748b;
+}
+
+.code-editor__surface .cm-workflow-line--success {
+  background: rgba(32, 201, 151, .1);
+  box-shadow: inset 3px 0 0 #20c997;
+}
+
+.code-editor__surface .cm-workflow-line--running {
+  background: rgba(245, 159, 0, .17);
+  box-shadow: inset 3px 0 0 #f59f00;
+}
+
+.code-editor__surface .cm-workflow-line--failed {
+  background: rgba(250, 82, 82, .13);
+  box-shadow: inset 3px 0 0 #fa5252;
+}
+
+.code-editor__surface .cm-workflow-line--start {
+  box-shadow: inset 3px 0 0 #845ef7;
+}
+
+.code-editor__surface .cm-workflow-line--paused {
+  background: rgba(51, 154, 240, .18);
+  box-shadow: inset 3px 0 0 #339af0;
+}
+
+.cm-workflow-marker {
+  display: inline-flex;
+  align-items: center;
+  height: 15px;
+  margin: 0 4px 0 3px;
+  padding: 0 5px;
+  border-radius: 3px;
+  color: #d8dee9;
+  background: #495057;
+  font: 700 8px/15px 'SF Mono', Menlo, monospace;
+  vertical-align: 1px;
+}
+
+.cm-workflow-marker--start {
+  color: #e5dbff;
+  background: #6741d9;
+}
+
+.cm-workflow-marker--breakpoint,
+.cm-workflow-marker--failed {
+  color: #fff5f5;
+  background: #e03131;
+}
+
+.cm-workflow-marker--paused {
+  color: #e7f5ff;
+  background: #1971c2;
+}
+
+.cm-workflow-marker--running {
+  color: #fff9db;
+  background: #e67700;
+}
+
+.cm-workflow-marker--success {
+  color: #e6fcf5;
+  background: #087f5b;
+}
+
+.cm-workflow-marker--before-start,
+.cm-workflow-marker--skipped {
+  color: #e9ecef;
+  background: #5c6778;
+}
+
 /* ============ 通用分栏 section ============ */
 .section {
   width: 100%;
@@ -1118,7 +1296,38 @@ body {
   color: #364152;
 }
 
-/* 格式徽标:固定 JSON 工作流 */
+.workflow__mode-switch {
+  display: inline-flex;
+  padding: 2px;
+  border: 1px solid #cbd5e1;
+  border-radius: 7px;
+  background: #e9eef5;
+}
+
+.workflow__mode-switch button {
+  min-width: 58px;
+  padding: 3px 9px;
+  border: 0;
+  border-radius: 5px;
+  color: #64748b;
+  background: transparent;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.workflow__mode-switch button.is-active {
+  color: #0f5fa8;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.16);
+}
+
+.workflow__mode-switch button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+/* 当前编写格式/编译器徽标 */
 .workflow__format {
   padding: 4px 10px;
   font-size: 12px;
@@ -1730,6 +1939,67 @@ body {
   font-size: 10px;
 }
 
+.workflow-runtime__legend {
+  display: flex;
+  flex: 0 0 31px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  overflow-x: auto;
+  border-bottom: 1px solid #e5e9f0;
+  background: #fbfcfe;
+  white-space: nowrap;
+}
+
+.workflow-runtime__legend span {
+  display: inline-flex;
+  align-items: center;
+  height: 19px;
+  padding: 0 7px;
+  border: 1px solid #dfe4ec;
+  border-radius: 10px;
+  color: #667085;
+  background: #fff;
+  font-size: 9px;
+  font-weight: 650;
+}
+
+.workflow-runtime__legend .is-start {
+  color: #6741d9;
+  border-color: #d0bfff;
+  background: #f3f0ff;
+}
+
+.workflow-runtime__legend .is-breakpoint {
+  color: #c92a2a;
+  border-color: #ffc9c9;
+  background: #fff5f5;
+}
+
+.workflow-runtime__legend .is-paused {
+  color: #1864ab;
+  border-color: #a5d8ff;
+  background: #e7f5ff;
+}
+
+.workflow-runtime__legend .is-running {
+  color: #d9480f;
+  border-color: #ffd8a8;
+  background: #fff4e6;
+}
+
+.workflow-runtime__legend .is-success {
+  color: #087f5b;
+  border-color: #96f2d7;
+  background: #e6fcf5;
+}
+
+.workflow-runtime__legend .is-excluded {
+  color: #5c6778;
+  border-color: #d8dee8;
+  background: #edf0f4;
+}
+
 .workflow-runtime__canvas {
   position: relative;
   flex: 1 1 42%;
@@ -1752,17 +2022,97 @@ body {
 }
 
 .workflow-runtime .wf-node {
-  min-width: 158px;
-  border-top: 3px solid #748ffc;
+  min-width: 174px;
+  border-top: 3px solid #cbd5e1;
   border-color: #dce1e9;
-  border-top-color: #748ffc;
+  border-top-color: #cbd5e1;
   border-radius: 7px;
   box-shadow: 0 5px 16px rgba(40, 52, 76, .09);
 }
 
 .workflow-runtime .wf-node__body {
   gap: 5px;
-  padding: 9px 11px 10px;
+  min-height: 64px;
+  padding: 9px 48px 10px 11px;
+}
+
+.wf-node__markers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.wf-node__markers:empty {
+  display: none;
+}
+
+.wf-node__marker {
+  display: inline-flex;
+  align-items: center;
+  height: 15px;
+  padding: 0 5px;
+  border-radius: 3px;
+  font: 750 8px/15px 'SF Mono', Menlo, monospace;
+}
+
+.wf-node__marker--start {
+  color: #5f3dc4;
+  background: #e5dbff;
+}
+
+.wf-node__marker--breakpoint {
+  color: #c92a2a;
+  background: #ffe3e3;
+}
+
+.wf-node__marker--paused {
+  color: #1864ab;
+  background: #d0ebff;
+}
+
+.wf-node__marker--excluded {
+  color: #5c6778;
+  background: #e9ecef;
+}
+
+.wf-node__marker-actions {
+  position: absolute;
+  right: 7px;
+  bottom: 7px;
+  display: flex;
+  gap: 3px;
+}
+
+.wf-node__marker-actions button {
+  display: grid;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  place-items: center;
+  color: #98a2b3;
+  border: 1px solid #d7dde7;
+  border-radius: 4px;
+  background: #fff;
+  font-size: 9px;
+  cursor: pointer;
+  opacity: .48;
+}
+
+.wf-node:hover .wf-node__marker-actions button,
+.wf-node__marker-actions button.is-active {
+  opacity: 1;
+}
+
+.wf-node__marker-actions button.is-start {
+  color: #6741d9;
+  border-color: #b197fc;
+  background: #f3f0ff;
+}
+
+.wf-node__marker-actions button.is-breakpoint {
+  color: #e03131;
+  border-color: #ffa8a8;
+  background: #fff5f5;
 }
 
 .wf-node__kind {
@@ -1777,7 +2127,7 @@ body {
 }
 
 .wf-node__state--running {
-  color: #1971c2;
+  color: #d9480f;
 }
 
 .wf-node__state--success {
@@ -1794,8 +2144,9 @@ body {
 }
 
 .wf-flow-node--running .wf-node {
-  border-top-color: #339af0;
-  box-shadow: 0 0 0 3px rgba(51, 154, 240, .13), 0 5px 16px rgba(40, 52, 76, .09);
+  border-top-color: #f59f00;
+  box-shadow: 0 0 0 3px rgba(245, 159, 0, .18), 0 5px 16px rgba(40, 52, 76, .09);
+  animation: workflow-running-pulse 1.2s ease-in-out infinite;
 }
 
 .wf-flow-node--success .wf-node {
@@ -1805,6 +2156,31 @@ body {
 .wf-flow-node--skipped .wf-node {
   opacity: .52;
   border-top-color: #adb5bd;
+}
+
+.wf-flow-node--before-start .wf-node {
+  opacity: .34;
+  border-color: #cbd5e1;
+  border-top-color: #94a3b8;
+  background: #edf0f4;
+  box-shadow: none;
+  filter: grayscale(1);
+}
+
+.wf-flow-node--start .wf-node {
+  border-left: 3px solid #845ef7;
+}
+
+.wf-flow-node--paused-before .wf-node {
+  border-top-color: #339af0;
+  box-shadow:
+    0 0 0 3px rgba(51, 154, 240, .2),
+    0 5px 16px rgba(40, 52, 76, .09);
+}
+
+.react-flow__edge.wf-flow-edge--before-start {
+  opacity: .2;
+  filter: grayscale(1);
 }
 
 .wf-flow-node--failed .wf-node,
@@ -1823,6 +2199,20 @@ body {
   background: #fa5252;
   box-shadow: 0 1px 4px rgba(201, 42, 42, .35);
   content: '';
+}
+
+@keyframes workflow-running-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 2px rgba(245, 159, 0, .14),
+      0 5px 16px rgba(40, 52, 76, .09);
+  }
+  50% {
+    box-shadow:
+      0 0 0 5px rgba(245, 159, 0, .25),
+      0 7px 20px rgba(40, 52, 76, .13);
+  }
 }
 
 .workflow-runtime__debugger {
@@ -1946,6 +2336,11 @@ body {
   background: #f1f3ff;
 }
 
+.workflow-runtime__node-list button.is-paused-before {
+  border-color: #74c0fc;
+  background: #e7f5ff;
+}
+
 .workflow-runtime__node-list i {
   align-self: center;
   width: 6px;
@@ -1959,7 +2354,16 @@ body {
 }
 
 .workflow-runtime__node-list i.is-running {
+  background: #f59f00;
+}
+
+.workflow-runtime__node-list i.is-paused-before {
   background: #339af0;
+}
+
+.workflow-runtime__node-list i.is-excluded,
+.workflow-runtime__node-list i.is-skipped {
+  background: #94a3b8;
 }
 
 .workflow-runtime__node-list i.is-failed {

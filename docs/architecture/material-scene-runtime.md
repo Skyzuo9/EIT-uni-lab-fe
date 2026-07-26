@@ -690,6 +690,11 @@ reattach:
 
 React Flow 表达静态装配/authoring 状态，不表达机械臂当前运动。
 
+当前已实现的 PRCXI 4×4 台面、96 孔板、96 枪头盒、Opentrons 11 个
+SBS Site 的完整尺寸与坐标快照见
+[`material-geometry-catalog.md`](./material-geometry-catalog.md)。几何数据由
+OS Material Aggregate 提供，不在 React Flow 节点组件中复制常量。
+
 ```text
 MaterialGraphStore
        │ pure projection selector
@@ -740,6 +745,14 @@ Pascal Editor 继续作为外部、固定版本依赖：
 - 不 vendoring `pascalorg/editor`。
 - 不把实验室业务提交进上游源码副本。
 - 上游升级通过依赖版本、host 兼容和 plugin adapter 完成。
+
+3D scene 的视觉环境由上游 Pascal 独占。Uni-Lab integration 不新增或覆盖
+grid、ground、background、light、environment、tone mapping、post-processing
+或 scene theme，也不强制初始观察方向。实验室 plugin 只注入业务 node
+renderer、用户要求的浮动标签，以及按真实模型包围盒调用 Pascal
+CameraControls `fitToBox` 的通用自适应。Pascal 原生 grid 保持上游语义：
+只在 grid-snap 交互中显示，floor grid 使用 depth test；只读/空闲态不为了
+“常驻网格”额外创建第二张 grid。
 
 Pascal scene graph 是 Material 的会话投影：
 
@@ -1402,8 +1415,11 @@ Templates
   展示原因且不发 transport 请求。
 - zundo 已作为 `packages/material` 直接依赖接入，但 persistent undo 仍等待
   Server contract。
+- React Flow 已按 OS Aggregate 的物理 footprint/Site 坐标渲染 PRCXI 4×4
+  台面、96 孔板和 96 枪头盒；T1…T16 旧壳节点已归一为 deck Sites。
 - Pascal plugin 已使用 Aggregate projection、上游 `setScene`、root/link frame
-  和共享选择状态；live joint path 仍未迁入。
+  和共享选择状态，并可从当前 OS Profile 加载 Xacro/URDF/STL、96 枪头实例与
+  PLR 完整场景；live joint path 仍未迁入。
 - 旧示例图、scene localStorage、Cloud-shaped Pascal DTO 和本地 Material
   JSON/YAML 编辑器已删除。
 
@@ -1432,6 +1448,8 @@ Templates
 - 在线 `add_device` 当前未实现，P1 不能宣称支持 `dynamic-device` 创建。
 - Uni-Lab-OS 已实现本地只读 Material 列表/详情子集，尚未完整实现与 Backend
   相同的 Material 写命令，以及 `unilab/realtime-v1` 公开 Server contract。
+- 本地桥启动时已独立于 Material Graph 登记并校验 OS 包内的 5 组模型入口，
+  通过受控同源 URL 提供 Xacro、YAML 与 STL；这不等同于 realtime 控制能力。
 - 现有 Edge→Backend WS 尚未形成带 operationId、ACK 和 outbox 重放的双向
   Material control channel。
 - Edge Server realtime WS 尚无 `unilab/realtime-v1` 首帧鉴权、ticket、

@@ -7,6 +7,30 @@ export const Vector3Schema = z.tuple([
   z.number()
 ])
 
+const LabModelFormatSchema = z.enum([
+  'xacro',
+  'urdf',
+  'gltf',
+  'stl',
+  'fbx',
+  'obj'
+])
+
+const LabModelInstancesSchema = z.object({
+  path: z.string(),
+  format: LabModelFormatSchema,
+  color: z.string().optional(),
+  position: Vector3Schema.default([0, 0, 0]),
+  rotation: Vector3Schema.default([0, 0, 0]),
+  items: z.array(
+    z.object({
+      id: z.string(),
+      position: Vector3Schema,
+      rotation: Vector3Schema
+    })
+  )
+})
+
 export const LabAttachPointSchema = z.object({
   link: z.string(),
   label: z.string().optional(),
@@ -48,18 +72,22 @@ export const LabDeviceNodeSchema = BaseNode.extend({
   model: z
     .object({
       path: z.string().default(''),
-      format: z
-        .enum(['xacro', 'urdf', 'gltf', 'stl', 'fbx', 'obj'])
-        .default('gltf'),
+      format: LabModelFormatSchema.default('gltf'),
       meshDir: z.string().optional(),
       ossDir: z.string().optional(),
       version: z.string().optional(),
       type: z.string().optional(),
-      attachPoints: z.array(LabAttachPointSchema).default([])
+      color: z.string().optional(),
+      position: Vector3Schema.default([0, 0, 0]),
+      rotation: Vector3Schema.default([0, 0, 0]),
+      attachPoints: z.array(LabAttachPointSchema).default([]),
+      instances: LabModelInstancesSchema.optional()
     })
     .default({
       path: '',
       format: 'gltf',
+      position: [0, 0, 0],
+      rotation: [0, 0, 0],
       attachPoints: []
     }),
   attach: z

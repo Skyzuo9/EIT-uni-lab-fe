@@ -14,6 +14,7 @@ import {
 } from '@unilab/workbench-layout'
 import {
   MaterialCapabilityNotice,
+  MaterialCanvas,
   MaterialWorkbench
 } from '@unilab/material'
 import { useServices, type Services } from '@unilab/services'
@@ -25,6 +26,7 @@ import {
 import { useMaterialRuntime } from './MaterialRuntimeProvider'
 import { materialIdsFromWorkflowArgs } from './workflowMaterialRefs'
 import type { LabInteractionStore } from './interactionStore'
+import { UnifiedLabViewport } from './UnifiedLabViewport'
 
 export interface LabPanelScope {
   services: Services
@@ -48,7 +50,9 @@ const storage: PanelStoragePort = {
 }
 
 function MaterialRenderer(
-  props: PanelRendererProps<LabPanelScope>
+  props: PanelRendererProps<LabPanelScope> & {
+    unified?: boolean
+  }
 ): React.JSX.Element {
   const runtime = useMaterialRuntime()
   const selectedMaterialIds = useStore(
@@ -89,6 +93,16 @@ function MaterialRenderer(
       onSelectionChange={(materialIds) => {
         props.scope.interaction.getState().selectMaterials(materialIds)
       }}
+      renderViewport={
+        props.unified
+          ? (viewportProps) => (
+              <UnifiedLabViewport
+                view2d={<MaterialCanvas {...viewportProps} />}
+                view3d={<SceneRenderer {...props} />}
+              />
+            )
+          : undefined
+      }
     />
   )
 }
@@ -146,16 +160,7 @@ function SceneRenderer(
 function UnifiedLayoutRenderer(
   props: PanelRendererProps<LabPanelScope>
 ): React.JSX.Element {
-  return (
-    <div className="lab-unified-layout">
-      <div className="lab-unified-layout__material">
-        <MaterialRenderer {...props} />
-      </div>
-      <div className="lab-unified-layout__scene">
-        <SceneRenderer {...props} />
-      </div>
-    </div>
-  )
+  return <MaterialRenderer {...props} unified />
 }
 
 /**

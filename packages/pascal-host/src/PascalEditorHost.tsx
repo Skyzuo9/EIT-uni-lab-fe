@@ -2,6 +2,7 @@ import {
   Editor,
   type EditorProps,
   type SceneGraph,
+  useEditor,
   useScene,
   useViewer
 } from '@pascal-app/editor'
@@ -23,6 +24,7 @@ export interface PascalEditorHostProps {
   onSelectionChange?: (sceneObjectIds: readonly string[]) => void
   readOnly?: boolean
   toolbar?: ReactNode
+  editorViewMode?: '2d' | '3d' | 'split'
   editorProps?: Omit<
     EditorProps,
     'layoutVersion' | 'onDirty' | 'onLoad' | 'onSave' | 'projectId'
@@ -42,6 +44,7 @@ export function PascalEditorHost({
   onSelectionChange,
   readOnly = false,
   toolbar,
+  editorViewMode,
   editorProps
 }: PascalEditorHostProps): React.JSX.Element {
   const sceneRef = useRef(scene)
@@ -90,6 +93,22 @@ export function PascalEditorHost({
     useScene.getState().setReadOnly(readOnly)
     return () => useScene.getState().setReadOnly(false)
   }, [isPrepared, readOnly])
+
+  useEffect(() => {
+    if (!editorViewMode) return
+    const applyViewMode = (): void => {
+      useEditor.getState().setViewMode(editorViewMode)
+    }
+    applyViewMode()
+    const frame = requestAnimationFrame(applyViewMode)
+    const timer = window.setTimeout(applyViewMode, 100)
+    const unsubscribe = useEditor.persist.onFinishHydration(applyViewMode)
+    return () => {
+      cancelAnimationFrame(frame)
+      window.clearTimeout(timer)
+      unsubscribe()
+    }
+  }, [editorViewMode])
 
   useEffect(() => {
     if (!isPrepared || !hasLoadedScene) return

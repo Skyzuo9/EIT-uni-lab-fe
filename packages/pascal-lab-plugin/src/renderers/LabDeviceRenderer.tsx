@@ -6,14 +6,20 @@ import { useNodeEvents, useViewer } from '@pascal-app/viewer'
 import { Html } from '@react-three/drei'
 import {
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState
 } from 'react'
 import {
   Box3,
+  Euler,
   type Group,
+  type InstancedMesh,
+  Matrix4,
+  type Mesh,
   type Object3D,
+  Quaternion,
   Vector3
 } from 'three'
 
@@ -24,7 +30,7 @@ import {
 import { findLinkObject } from '../mounting'
 import type { LabDeviceNode } from '../schema'
 
-const MODEL_READY_EVENT = 'unilab:pascal-model-ready'
+export const MODEL_READY_EVENT = 'unilab:pascal-model-ready'
 
 const useCustomNodeEvents = useNodeEvents as unknown as (
   node: LabDeviceNode,
@@ -89,28 +95,94 @@ function useLabModel(node: LabDeviceNode): {
 
 function ModelLabel({
   node,
-  object
+  position,
+  selected
 }: {
   node: LabDeviceNode
-  object: Object3D | null
+  position: [number, number, number]
+  selected: boolean
 }): React.JSX.Element {
-  const height = useMemo(() => {
-    if (!object) return node.dimensions[1]
-    const size = new Vector3()
-    new Box3().setFromObject(object).getSize(size)
-    return node.model.format === 'xacro' || node.model.format === 'urdf'
-      ? size.z
-      : size.y
-  }, [node.dimensions, node.model.format, object])
-
   return (
-    <Html
-      position={[0, Math.max(height, 0.2) + 0.08, 0]}
-      center
-      distanceFactor={1.4}
-    >
-      <div className="pascal-model-label">{node.displayName}</div>
+    <Html position={position} center>
+      <div
+        className={`pascal-model-label${
+          selected ? ' is-selected' : ''
+        }`}
+      >
+        {node.displayName}
+      </div>
     </Html>
+  )
+}
+
+function SiteInstanceRenderer({
+  node
+}: {
+  node: LabDeviceNode
+}): React.JSX.Element | null {
+  const instanceSource = node.model.instances
+  const sourceNode = useMemo<LabDeviceNode | null>(() => {
+    if (!instanceSource) return null
+    return {
+      ...node,
+      id: `${node.id}:site-instances`,
+      model: {
+        path: instanceSource.path,
+        format: instanceSource.format,
+        color: instanceSource.color,
+        position: [0, 0, 0],
+        rotation: [0, 0, 0],
+        attachPoints: []
+      }
+    }
+  }, [instanceSource, node])
+  const loaded = useLabModel(sourceNode ?? node)
+  const mesh = useMemo(
+    () =>
+      (loaded.object?.getObjectByProperty(
+        'isMesh',
+        true
+      ) as Mesh | undefined) ?? null,
+    [loaded.object]
+  )
+  const instancesRef = useRef<InstancedMesh>(null!)
+
+  useLayoutEffect(() => {
+    if (!instanceSource || !mesh || !instancesRef.current) return
+    const sourceTransform = new Matrix4().compose(
+      new Vector3(...instanceSource.position),
+      new Quaternion().setFromEuler(
+        new Euler(...instanceSource.rotation, 'XYZ')
+      ),
+      new Vector3(1, 1, 1)
+    )
+    const matrix = new Matrix4()
+    for (const [index, item] of instanceSource.items.entries()) {
+      matrix
+        .compose(
+          new Vector3(...item.position),
+          new Quaternion().setFromEuler(
+            new Euler(...item.rotation, 'XYZ')
+          ),
+          new Vector3(1, 1, 1)
+        )
+        .multiply(sourceTransform)
+      instancesRef.current.setMatrixAt(index, matrix)
+    }
+    instancesRef.current.instanceMatrix.needsUpdate = true
+    instancesRef.current.computeBoundingSphere()
+  }, [instanceSource, mesh])
+
+  if (!instanceSource || !mesh || instanceSource.items.length === 0) {
+    return null
+  }
+  return (
+    <instancedMesh
+      ref={instancesRef}
+      args={[mesh.geometry, mesh.material, instanceSource.items.length]}
+      castShadow
+      receiveShadow
+    />
   )
 }
 
@@ -120,8 +192,13 @@ export default function LabDeviceRenderer({
   node: LabDeviceNode
 }): React.JSX.Element {
   const groupRef = useRef<Group>(null!)
+  const modelGroupRef = useRef<Group>(null!)
   const originalParentRef = useRef<Object3D | null>(null)
   const [parentModelRevision, setParentModelRevision] = useState(0)
+  const [isHovered, setIsHovered] = useState(false)
+  const [labelPosition, setLabelPosition] = useState<
+    [number, number, number]
+  >([0, Math.max(node.dimensions[1], 0.2) + 0.08, 0])
   const { object, error, loading } = useLabModel(node)
   const events = useCustomNodeEvents(node, node.type)
   const isSelected = useViewer((state) =>
@@ -129,6 +206,10 @@ export default function LabDeviceRenderer({
   )
   const isZUp =
     node.model.format === 'xacro' || node.model.format === 'urdf'
+  const isDeck = node.deviceType.includes('deck')
+  const deckSurfaceProvidedByParent =
+    isDeck && Boolean(node.attach.parentDeviceId)
+  const showPersistentTag = isEquipmentKind(node.deviceType)
 
   useRegistry(node.id, node.type, groupRef)
 
@@ -145,6 +226,35 @@ export default function LabDeviceRenderer({
       })
     )
   }, [node.id, object])
+
+  useLayoutEffect(() => {
+    const root = groupRef.current
+    const modelGroup = modelGroupRef.current
+    if (!object || !root || !modelGroup) {
+      setLabelPosition([
+        0,
+        Math.max(node.dimensions[1], 0.2) + 0.08,
+        0
+      ])
+      return
+    }
+
+    root.updateWorldMatrix(true, true)
+    modelGroup.updateWorldMatrix(true, true)
+    const bounds = new Box3().setFromObject(modelGroup)
+    if (bounds.isEmpty()) return
+    const topCenter = bounds.getCenter(new Vector3())
+    topCenter.y = bounds.max.y + 0.08
+    root.worldToLocal(topCenter)
+    setLabelPosition([topCenter.x, topCenter.y, topCenter.z])
+  }, [
+    node.dimensions,
+    node.model.position,
+    node.model.rotation,
+    node.rotation,
+    node.scale,
+    object
+  ])
 
   useEffect(() => {
     const parentDeviceId = node.attach.parentDeviceId
@@ -203,29 +313,68 @@ export default function LabDeviceRenderer({
       scale={node.scale}
       visible={node.visible !== false}
       {...events}
+      onPointerEnter={(event) => {
+        setIsHovered(true)
+        events.onPointerEnter(event)
+      }}
+      onPointerLeave={(event) => {
+        setIsHovered(false)
+        events.onPointerLeave(event)
+      }}
     >
-      {!object && (
+      {!object && !deckSurfaceProvidedByParent && (
         <mesh
-          position={[0, node.dimensions[1] / 2, 0]}
+          position={
+            isDeck
+              ? [
+                  node.dimensions[0] / 2,
+                  node.dimensions[1] / 2,
+                  -node.dimensions[2] / 2
+                ]
+              : [0, node.dimensions[1] / 2, 0]
+          }
           castShadow
           receiveShadow
         >
           <boxGeometry args={node.dimensions} />
           <meshStandardMaterial
-            color={error ? '#ef4444' : isSelected ? '#4dabf7' : '#94a3b8'}
+            color={
+              error
+                ? '#ef4444'
+                : isSelected
+                  ? '#4dabf7'
+                  : isDeck
+                    ? '#6b7280'
+                    : '#94a3b8'
+            }
             metalness={0.12}
-            opacity={loading ? 0.45 : 0.82}
+            opacity={loading ? 0.45 : isDeck ? 0.72 : 0.82}
             roughness={0.68}
             transparent
           />
         </mesh>
       )}
       {object && (
-        <group rotation={isZUp ? [-Math.PI / 2, 0, 0] : undefined}>
-          <primitive object={object} />
+        <group
+          ref={modelGroupRef}
+          rotation={isZUp ? [-Math.PI / 2, 0, 0] : undefined}
+        >
+          <group
+            position={node.model.position}
+            rotation={node.model.rotation}
+          >
+            <primitive object={object} />
+          </group>
         </group>
       )}
-      <ModelLabel node={node} object={object} />
+      {node.model.instances && <SiteInstanceRenderer node={node} />}
+      {(showPersistentTag || isHovered || isSelected) && (
+        <ModelLabel
+          node={node}
+          position={labelPosition}
+          selected={isSelected}
+        />
+      )}
       {error && (
         <Html position={[0, 0.1, 0]} center distanceFactor={6}>
           <div className="pascal-model-label" title={error}>
@@ -235,4 +384,19 @@ export default function LabDeviceRenderer({
       )}
     </group>
   )
+}
+
+function isEquipmentKind(deviceType: string): boolean {
+  const kind = deviceType.replaceAll('_', '-').toLowerCase()
+  return ![
+    'plate',
+    'tip-rack',
+    'tiprack',
+    'labware',
+    'container',
+    'reagent',
+    'sample',
+    'tube',
+    'trash'
+  ].some((token) => kind.includes(token))
 }

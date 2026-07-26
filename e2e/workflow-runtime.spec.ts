@@ -20,7 +20,10 @@ test('full control DAG edit, dispatch, node feedback and debugger', async ({
     })
   })
 
-  await page.goto('/')
+  const osUrl = process.env.UNILAB_OS_E2E_URL
+  await page.goto(
+    osUrl ? `/?localOsUrl=${encodeURIComponent(osUrl)}` : '/'
+  )
   await page.getByText('工作流', { exact: true }).first().click()
   await expect(page.getByText('完整控制流 DAG')).toBeVisible()
   await expect(page.locator('.react-flow__node-wfNode')).toHaveCount(6)
@@ -81,6 +84,38 @@ test('full control DAG edit, dispatch, node feedback and debugger', async ({
   await page.locator('.workflow-runtime__stage').screenshot({
     path: stageScreenshot
   })
+
+  const pythonMode = page.getByRole('button', { name: 'Python', exact: true })
+  await pythonMode.click()
+  await expect(pythonMode).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.locator('.cm-content')).toContainText(
+    "device('balance-1').measure()"
+  )
+  await page.locator('.cm-content').click()
+  await page.keyboard.press('Control+End')
+  await page.keyboard.insertText('\n# e2e authoring compile')
+  await page.getByRole('button', { name: '编译 Python' }).click()
+  await expect(page.getByText(/Python 已编译/)).toBeVisible()
+  await expect(page.locator('.wf-flow-node--breakpoint')).toHaveCount(1)
+  await page.getByRole('button', { name: '校验', exact: true }).click()
+  await expect(page.getByText(/校验通过/)).toBeVisible()
+  await page.getByRole('button', { name: '保存 Revision' }).click()
+  await expect(page.getByText(/已保存 Revision/)).toBeVisible()
+
+  const pythonScreenshot = resolve(
+    artifactDir,
+    'workflow-authoring-python-e2e.png'
+  )
+  await page.screenshot({
+    path: pythonScreenshot,
+    fullPage: false
+  })
+
+  const jsonMode = page.getByRole('button', { name: 'JSON', exact: true })
+  await jsonMode.click()
+  await expect(jsonMode).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.locator('.react-flow__node-wfNode')).toHaveCount(6)
+
   writeFileSync(
     resolve(artifactDir, 'workflow-runtime-e2e-result.json'),
     JSON.stringify(
@@ -88,6 +123,7 @@ test('full control DAG edit, dispatch, node feedback and debugger', async ({
         outcome: 'passed',
         screenshot,
         stageScreenshot,
+        pythonScreenshot,
         apiCalls,
         browserErrors
       },
@@ -107,5 +143,21 @@ test('full control DAG edit, dispatch, node feedback and debugger', async ({
   expect(
     apiCalls.filter((call) => call.url.endsWith('/commands')).length
   ).toBeGreaterThanOrEqual(3)
+  expect(
+    apiCalls.some(
+      (call) =>
+        call.method === 'POST' &&
+        call.status === 200 &&
+        call.url.endsWith('/api/v1/authoring/generate-python')
+    )
+  ).toBe(true)
+  expect(
+    apiCalls.some(
+      (call) =>
+        call.method === 'POST' &&
+        call.status === 200 &&
+        call.url.endsWith('/api/v1/authoring/compile')
+    )
+  ).toBe(true)
   expect(browserErrors).toEqual([])
 })

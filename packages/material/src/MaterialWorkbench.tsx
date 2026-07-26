@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, type ReactNode } from 'react'
 
 import type { CapabilityStatus } from './MaterialCapabilityNotice'
 import { MaterialInspector } from './MaterialInspector'
@@ -27,6 +27,15 @@ export interface MaterialWorkbenchProps {
   selectedMaterialIds?: readonly MaterialId[]
   highlightedMaterialIds?: readonly MaterialId[]
   onSelectionChange?: (materialIds: readonly MaterialId[]) => void
+  renderViewport?: (props: MaterialWorkbenchViewportProps) => ReactNode
+}
+
+export interface MaterialWorkbenchViewportProps {
+  readStatus: CapabilityStatus
+  moveStatus: CapabilityStatus
+  selectedMaterialIds: readonly MaterialId[]
+  highlightedMaterialIds: readonly MaterialId[]
+  onSelectionChange?: (materialIds: readonly MaterialId[]) => void
 }
 
 /**
@@ -40,7 +49,8 @@ export function MaterialWorkbench({
   capabilities,
   selectedMaterialIds = [],
   highlightedMaterialIds = [],
-  onSelectionChange
+  onSelectionChange,
+  renderViewport
 }: MaterialWorkbenchProps): React.JSX.Element {
   const store = useMaterialStoreApi()
   const aggregatesById = useMaterialStore(
@@ -73,13 +83,23 @@ export function MaterialWorkbench({
           }}
         />
       ) : null}
-      <MaterialCanvas
-        readStatus={capabilities.readGraph}
-        moveStatus={capabilities.move}
-        selectedMaterialIds={selectedMaterialIds}
-        highlightedMaterialIds={highlightedMaterialIds}
-        onSelectionChange={onSelectionChange}
-      />
+      {renderViewport ? (
+        renderViewport({
+          readStatus: capabilities.readGraph,
+          moveStatus: capabilities.move,
+          selectedMaterialIds,
+          highlightedMaterialIds,
+          onSelectionChange
+        })
+      ) : (
+        <MaterialCanvas
+          readStatus={capabilities.readGraph}
+          moveStatus={capabilities.move}
+          selectedMaterialIds={selectedMaterialIds}
+          highlightedMaterialIds={highlightedMaterialIds}
+          onSelectionChange={onSelectionChange}
+        />
+      )}
       <MaterialInspector
         materialId={inspectedMaterialId}
         updateStatus={capabilities.updateConfig}

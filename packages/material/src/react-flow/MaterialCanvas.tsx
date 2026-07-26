@@ -1,10 +1,11 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import ReactFlow, {
   Background,
   Controls,
   MiniMap,
   type Node,
-  type OnSelectionChangeFunc
+  type OnSelectionChangeFunc,
+  type ReactFlowInstance
 } from 'reactflow'
 import 'reactflow/dist/style.css'
 
@@ -42,6 +43,10 @@ export function MaterialCanvas({
   highlightedMaterialIds = [],
   onSelectionChange
 }: MaterialCanvasProps): React.JSX.Element {
+  const canvasRef = useRef<HTMLElement>(null)
+  const flowInstanceRef = useRef<ReactFlowInstance<
+    MaterialFlowNode['data']
+  > | null>(null)
   const store = useMaterialStoreApi()
   const aggregatesById = useMaterialStore(
     (state) => state.aggregatesById
@@ -65,7 +70,7 @@ export function MaterialCanvas({
         selectedMaterialIds,
         highlightedMaterialIds,
         draggable: moveStatus.available,
-        reviewLayout: !moveStatus.available
+        physicalLayout: !moveStatus.available
       }),
     [
       aggregatesById,
@@ -75,6 +80,27 @@ export function MaterialCanvas({
       selectedMaterialIds
     ]
   )
+  const nodeSetKey = nodes.map((node) => node.id).sort().join('|')
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas || loadState !== 'ready') return
+    let frame = 0
+    const fitVisibleViewport = (): void => {
+      window.cancelAnimationFrame(frame)
+      frame = window.requestAnimationFrame(() => {
+        if (canvas.clientWidth <= 0 || canvas.clientHeight <= 0) return
+        void flowInstanceRef.current?.fitView({ padding: 0.12 })
+      })
+    }
+    const observer = new ResizeObserver(fitVisibleViewport)
+    observer.observe(canvas)
+    fitVisibleViewport()
+    return () => {
+      observer.disconnect()
+      window.cancelAnimationFrame(frame)
+    }
+  }, [loadState, nodeSetKey])
 
   if (!readStatus.available) {
     return (
@@ -92,16 +118,20 @@ export function MaterialCanvas({
   }
 
   return (
-    <section className="material-canvas">
+    <section ref={canvasRef} className="material-canvas">
       {error ? <div className="material__error">{error}</div> : null}
       <ReactFlow
         nodes={nodes}
         edges={[]}
         nodeTypes={NODE_TYPES}
         fitView
+        fitViewOptions={{ padding: 0.12 }}
         minZoom={0.15}
         maxZoom={2}
         nodesConnectable={false}
+        onInit={(instance) => {
+          flowInstanceRef.current = instance
+        }}
         onNodeDrag={(_, node) => {
           const placement = flowPositionToPlacement({
             materialId: node.id,

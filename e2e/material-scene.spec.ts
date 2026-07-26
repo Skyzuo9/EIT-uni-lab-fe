@@ -19,6 +19,13 @@ const OS_PYTHON =
   process.env.UNILAB_OS_PYTHON ||
   '/home/changjunhan/.micromamba/envs/unilab/bin/python'
 const API_URL = 'http://127.0.0.1:8014'
+// Xvfb/SwiftShader cannot execute Pascal 0.9.2's native WebGPU post-FX
+// pipeline reliably. This is a test-only escape hatch; product URLs keep the
+// native Pascal pipeline enabled. Hardware-backed CI can opt in to it.
+const MATERIAL_SCENE_URL =
+  process.env.UNILAB_E2E_NATIVE_POSTFX === '1'
+    ? '/'
+    : '/?disable=postFx'
 
 interface Scenario {
   id: string
@@ -61,7 +68,7 @@ const SCENARIOS: readonly Scenario[] = [
 test.describe.configure({ mode: 'serial' })
 
 for (const scenario of SCENARIOS) {
-  test(`${scenario.title} 同屏显示 2D 与 3D 物料`, async ({
+  test(`${scenario.title} 在统一视图切换 2D / 3D / Split`, async ({
     page
   }) => {
     mkdirSync(ARTIFACT_ROOT, { recursive: true })
@@ -91,7 +98,7 @@ for (const scenario of SCENARIOS) {
       })
 
       await installReviewLayout(page)
-      await page.goto('/?disable=postFx')
+      await page.goto(MATERIAL_SCENE_URL)
       await page.getByRole('button', { name: /物料/ }).click()
       await connectToOs(page)
 
@@ -105,6 +112,17 @@ for (const scenario of SCENARIOS) {
         ).toHaveCount(1)
       }
 
+      await expect(
+        page.locator('.lab-unified-viewport')
+      ).toHaveAttribute('data-lab-view-mode', '2d')
+      await expect(page.locator('.material-canvas')).toBeVisible()
+      await expect(page.locator('.pascal-editor-host')).toBeHidden()
+
+      await page.getByRole('button', { name: 'Split', exact: true }).click()
+      await expect(
+        page.locator('.lab-unified-viewport')
+      ).toHaveAttribute('data-lab-view-mode', 'split')
+      await expect(page.locator('.material-canvas')).toBeVisible()
       await expect(page.locator('.pascal-editor-host')).toBeVisible()
       await expect(
         page.locator('.pascal-lab-toolbar__status')
@@ -123,6 +141,15 @@ for (const scenario of SCENARIOS) {
         .click()
       await page.waitForTimeout(2_000)
 
+      await page.getByRole('button', { name: '3D', exact: true }).click()
+      await expect(
+        page.locator('.lab-unified-viewport')
+      ).toHaveAttribute('data-lab-view-mode', '3d')
+      await expect(page.locator('.material-canvas')).toBeHidden()
+      await expect(page.locator('.pascal-editor-host')).toBeVisible()
+
+      await page.getByRole('button', { name: 'Split', exact: true }).click()
+
       const materialResponse = await page.request.get(
         `${API_URL}/api/v1/materials?page=1&page_size=100`
       )
@@ -138,7 +165,7 @@ for (const scenario of SCENARIOS) {
         ARTIFACT_ROOT,
         `${scenario.id}-2d-3d.png`
       )
-      await page.locator('.lab-unified-layout').screenshot({
+      await page.locator('.lab-unified-viewport').screenshot({
         path: screenshot,
         animations: 'disabled'
       })
@@ -197,10 +224,10 @@ async function installReviewLayout(page: Page): Promise<void> {
 }
 
 async function connectToOs(page: Page): Promise<void> {
-  const mode = page.locator('.connbar__mode')
-  await expect(mode).toHaveText('离线')
-  await mode.click()
-  await expect(mode).toHaveText('在线')
+  await page.getByRole('button', { name: '离线', exact: true }).click()
+  await expect(
+    page.getByRole('button', { name: '在线', exact: true })
+  ).toBeVisible()
   await expect(
     page.getByText('已连接', { exact: true })
   ).toBeVisible()

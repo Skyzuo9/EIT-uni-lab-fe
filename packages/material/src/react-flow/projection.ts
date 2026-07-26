@@ -1,6 +1,7 @@
 import type { Node, XYPosition } from 'reactflow'
 
 import {
+  composePoses,
   invertRigidMatrix,
   matrixToPose,
   multiplyMatrices,
@@ -14,6 +15,11 @@ import type {
   MaterialId,
   MaterialPlacement
 } from '../types'
+import {
+  materialNodeSize,
+  MATERIAL_PHYSICAL_SCALE,
+  readMaterial2DVisual
+} from './visual'
 
 export interface MaterialFlowNodeData {
   materialId: MaterialId
@@ -37,6 +43,7 @@ export function projectMaterialFlowNodes(options: {
   highlightedMaterialIds?: readonly MaterialId[]
   draggable?: boolean
   reviewLayout?: boolean
+  physicalLayout?: boolean
 }): MaterialFlowNode[] {
   const selected = new Set(options.selectedMaterialIds ?? [])
   const highlighted = new Set(options.highlightedMaterialIds ?? [])
@@ -44,6 +51,9 @@ export function projectMaterialFlowNodes(options: {
     options.aggregatesById,
     options.dragPreviewByMaterialId ?? {}
   )
+  const physicalRootPositions = options.physicalLayout
+    ? createPhysicalRootPositions(options.aggregatesById)
+    : {}
 
   const nodes = Object.values(options.aggregatesById)
     .map((aggregate) => {
@@ -61,6 +71,13 @@ export function projectMaterialFlowNodes(options: {
             worldMatrix[7],
             worldMatrix[11]
           ])
+        : options.physicalLayout && parentId
+          ? physicalChildPosition(
+              aggregate,
+              options.aggregatesById[parentId]
+            )
+        : options.physicalLayout && physicalRootPositions[materialId]
+          ? physicalRootPositions[materialId]
         : parentMatrix
           ? worldDeltaToFlow(worldMatrix, parentMatrix)
           : worldPointToFlow([
@@ -69,12 +86,20 @@ export function projectMaterialFlowNodes(options: {
               worldMatrix[11]
             ])
 
+      const size = materialNodeSize(
+        aggregate,
+        options.physicalLayout ?? false
+      )
       return {
         id: materialId,
         type: 'material',
         parentId: options.reviewLayout ? undefined : parentId ?? undefined,
         position,
         data: { materialId },
+        style: {
+          width: size.width,
+          height: size.height
+        },
         selected: selected.has(materialId),
         draggable: options.draggable ?? false,
         className: highlighted.has(materialId)
@@ -90,6 +115,82 @@ export function projectMaterialFlowNodes(options: {
     })
 
   return options.reviewLayout ? avoidReviewCollisions(nodes) : nodes
+}
+
+function createPhysicalRootPositions(
+  aggregatesById: Readonly<Record<MaterialId, MaterialAggregate>>
+): Record<MaterialId, XYPosition> {
+  const roots = Object.values(aggregatesById)
+    .filter(
+      (aggregate) =>
+        aggregate.placement.kind !== 'parent' &&
+        aggregate.placement.kind !== 'site'
+    )
+    .sort((left, right) =>
+      left.material.id.localeCompare(right.material.id)
+    )
+  const primary =
+    roots.find(
+      (aggregate) =>
+        readMaterial2DVisual(aggregate).kind === 'liquid-handler'
+    ) ??
+    roots.find((aggregate) =>
+      readMaterial2DVisual(aggregate).kind.includes('deck')
+    ) ??
+    roots.find((aggregate) => readMaterial2DVisual(aggregate).physical)
+
+  if (!primary) return {}
+  const primarySize = materialNodeSize(primary, true)
+  const result: Record<MaterialId, XYPosition> = {
+    [primary.material.id]: { x: 0, y: 0 }
+  }
+  const secondary = roots.filter(
+    (aggregate) => aggregate.material.id !== primary.material.id
+  )
+  secondary.forEach((aggregate, index) => {
+    const column = Math.floor(index / 4)
+    const row = index % 4
+    result[aggregate.material.id] = {
+      x: primarySize.width + 44 + column * 146,
+      y: row * 82
+    }
+  })
+  return result
+}
+
+function physicalChildPosition(
+  aggregate: MaterialAggregate,
+  parent: MaterialAggregate | undefined
+): XYPosition {
+  const placement = aggregate.placement
+  if (!parent) return { x: 0, y: 0 }
+  const localPose =
+    placement.kind === 'parent'
+      ? placement.localPose
+      : placement.kind === 'site'
+        ? composePoses(
+            parent.sites.find(
+              (site) => site.id === placement.siteId
+            )?.poseInAnchor ?? {
+              positionMm: [0, 0, 0],
+              rotationDegXYZ: [0, 0, 0]
+            },
+            placement.offsetPose
+          )
+        : undefined
+  if (!localPose) return { x: 0, y: 0 }
+
+  const parentVisual = readMaterial2DVisual(parent)
+  const childVisual = readMaterial2DVisual(aggregate)
+  return {
+    x: localPose.positionMm[0] * MATERIAL_PHYSICAL_SCALE,
+    y:
+      (
+        parentVisual.footprintMm[1] -
+        localPose.positionMm[1] -
+        childVisual.footprintMm[1]
+      ) * MATERIAL_PHYSICAL_SCALE
+  }
 }
 
 export function flowPositionToPlacement(options: {

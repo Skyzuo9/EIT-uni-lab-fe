@@ -149,13 +149,34 @@
 }
 
 .pascal-model-label {
-  padding: 3px 7px;
-  border: 1px solid rgb(255 255 255 / 20%);
-  border-radius: 4px;
+  position: relative;
+  padding: 4px 8px;
+  border: 1px solid rgb(255 255 255 / 24%);
+  border-radius: 6px;
   color: #ffffff;
-  background: rgb(31 35 41 / 78%);
-  box-shadow: 0 2px 8px rgb(15 23 42 / 18%);
+  background: rgb(15 23 42 / 82%);
+  box-shadow: 0 4px 14px rgb(15 23 42 / 24%);
   font: 11px/1.2 var(--unilab-font-sans);
   white-space: nowrap;
   pointer-events: none;
+  backdrop-filter: blur(6px);
+}
+
+.pascal-model-label::after {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  width: 1px;
+  height: 7px;
+  content: '';
+  background: rgb(15 23 42 / 58%);
+}
+
+.pascal-model-label.is-selected {
+  border-color: rgb(255 255 255 / 46%);
+  background: color-mix(
+    in srgb,
+    var(--unilab-color-primary) 86%,
+    #0f172a
+  );
 }

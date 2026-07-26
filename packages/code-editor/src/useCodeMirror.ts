@@ -10,15 +10,37 @@
  * ============================================================
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { EditorState } from '@codemirror/state'
-import { EditorView, keymap, lineNumbers, highlightActiveLine } from '@codemirror/view'
+import { Compartment, EditorState } from '@codemirror/state'
+import {
+  Decoration,
+  EditorView,
+  WidgetType,
+  highlightActiveLine,
+  keymap,
+  lineNumbers
+} from '@codemirror/view'
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
 import { bracketMatching, indentOnInput } from '@codemirror/language'
+import { python } from '@codemirror/lang-python'
 import { yaml } from '@codemirror/lang-yaml'
 import { oneDark } from '@codemirror/theme-one-dark'
 import type { Extension } from '@codemirror/state'
 
-export type EditorLanguage = 'yaml' | 'json'
+export type EditorLanguage = 'yaml' | 'json' | 'python'
+
+export interface CodeLineMarker {
+  line: number
+  kind:
+    | 'before-start'
+    | 'start'
+    | 'breakpoint'
+    | 'paused'
+    | 'running'
+    | 'success'
+    | 'failed'
+    | 'skipped'
+  label: string
+}
 
 export interface UseCodeMirrorResult {
   value: string
@@ -26,11 +48,66 @@ export interface UseCodeMirrorResult {
   containerRef: React.RefObject<HTMLDivElement | null>
   replaceContent: (next: string) => void
   markSaved: () => void
+  setLineMarkers: (markers: ReadonlyArray<CodeLineMarker>) => void
+  revealLine: (line: number) => void
+}
+
+class CodeMarkerWidget extends WidgetType {
+  constructor(private readonly marker: CodeLineMarker) {
+    super()
+  }
+
+  eq(other: CodeMarkerWidget): boolean {
+    return (
+      other.marker.kind === this.marker.kind &&
+      other.marker.label === this.marker.label
+    )
+  }
+
+  toDOM(): HTMLElement {
+    const element = document.createElement('span')
+    element.className = `cm-workflow-marker cm-workflow-marker--${this.marker.kind}`
+    element.textContent = this.marker.label
+    element.title = this.marker.label
+    return element
+  }
+}
+
+function markerExtension(markers: ReadonlyArray<CodeLineMarker>): Extension {
+  return EditorView.decorations.compute([], (state) => {
+    const grouped = new Map<number, CodeLineMarker[]>()
+    for (const marker of markers) {
+      const line = Math.max(1, Math.min(marker.line, state.doc.lines))
+      const current = grouped.get(line) || []
+      current.push(marker)
+      grouped.set(line, current)
+    }
+    const ranges = [...grouped.entries()]
+      .sort(([left], [right]) => left - right)
+      .flatMap(([lineNumber, lineMarkers]) => {
+        const line = state.doc.line(lineNumber)
+        const classes = lineMarkers
+          .map((marker) => `cm-workflow-line--${marker.kind}`)
+          .join(' ')
+        return [
+          Decoration.line({
+            attributes: { class: `cm-workflow-line ${classes}` }
+          }).range(line.from),
+          ...lineMarkers.map((marker, index) => (
+            Decoration.widget({
+              widget: new CodeMarkerWidget(marker),
+              side: -20 + index
+            }).range(line.from)
+          ))
+        ]
+      })
+    return Decoration.set(ranges, true)
+  })
 }
 
 // 按语言返回对应的语法扩展;JSON 复用 YAML 高亮(JSON 是 YAML 子集)
-function languageExtension(_language: EditorLanguage): Extension {
-  return yaml()
+function languageExtension(language: EditorLanguage): Extension {
+  return language === 'python' ? python() : yaml()
 }
 
 // 管理 CodeMirror 6 实例:挂载、内容同步、isDirty 判定、语言切换
@@ -40,6 +117,8 @@ export function useCodeMirror(
 ): UseCodeMirrorResult {
   const containerRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
+  const markerCompartment = useRef(new Compartment())
+  const markersRef = useRef<ReadonlyArray<CodeLineMarker>>([])
   const [value, setValue] = useState(initialValue)
   const [baseline, setBaseline] = useState(initialValue)
 
@@ -61,6 +140,7 @@ export function useCodeMirror(
         indentOnInput(),
         keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
         languageExtension(language),
+        markerCompartment.current.of(markerExtension(markersRef.current)),
         oneDark,
         EditorView.lineWrapping,
         updateListener
@@ -95,11 +175,40 @@ export function useCodeMirror(
     if (current != null) setBaseline(current)
   }, [])
 
+  const setLineMarkers = useCallback((
+    markers: ReadonlyArray<CodeLineMarker>
+  ) => {
+    markersRef.current = [...markers]
+    const view = viewRef.current
+    if (view) {
+      view.dispatch({
+        effects: markerCompartment.current.reconfigure(
+          markerExtension(markersRef.current)
+        )
+      })
+    }
+  }, [])
+
+  const revealLine = useCallback((lineNumber: number) => {
+    const view = viewRef.current
+    if (!view) return
+    const line = view.state.doc.line(
+      Math.max(1, Math.min(lineNumber, view.state.doc.lines))
+    )
+    view.dispatch({
+      selection: { anchor: line.from },
+      effects: EditorView.scrollIntoView(line.from, { y: 'center' })
+    })
+    view.focus()
+  }, [])
+
   return {
     value,
     isDirty: value !== baseline,
     containerRef,
     replaceContent,
-    markSaved
+    markSaved,
+    setLineMarkers,
+    revealLine
   }
 }

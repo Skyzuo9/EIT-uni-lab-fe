@@ -23,9 +23,13 @@ interface WorkflowDagProps {
   nodes: WorkflowNode[]
   links: WorkflowLink[]
   onNodeSelect: (nodeId: string) => void
+  onSetStart?: (nodeId: string) => void
   onToggleBreakpoint?: (nodeId: string) => void
   nodeStates?: Readonly<Record<string, string>>
   breakpoints?: ReadonlySet<string>
+  startNodeId?: string | null
+  beforeStartNodeIds?: ReadonlySet<string>
+  pausedBeforeNodeId?: string | null
 }
 
 // 注册自定义节点类型(在组件外定义,避免每次渲染重建)
@@ -36,29 +40,78 @@ export default function WorkflowDag({
   nodes,
   links,
   onNodeSelect,
+  onSetStart,
   onToggleBreakpoint,
   nodeStates = {},
-  breakpoints = new Set()
+  breakpoints = new Set(),
+  startNodeId = null,
+  beforeStartNodeIds = new Set(),
+  pausedBeforeNodeId = null
 }: WorkflowDagProps): React.JSX.Element {
   const { nodes: flowNodes, edges: flowEdges, onNodesChange, onEdgesChange } = useWorkflowDag(
     nodes,
     links
   )
   const runtimeNodes = useMemo(
-    () => flowNodes.map((node) => ({
-      ...node,
-      className: [
-        node.className,
-        `wf-flow-node--${nodeStates[node.id] || 'pending'}`,
-        breakpoints.has(node.id) ? 'wf-flow-node--breakpoint' : ''
-      ].filter(Boolean).join(' '),
-      data: {
-        ...node.data,
-        status: nodeStates[node.id] || 'pending',
-        breakpoint: breakpoints.has(node.id)
+    () => flowNodes.map((node) => {
+      const status = nodeStates[node.id] || 'pending'
+      const beforeStart = beforeStartNodeIds.has(node.id)
+      const pausedBefore = pausedBeforeNodeId === node.id
+      const startNode = startNodeId === node.id
+      return {
+        ...node,
+        className: [
+          node.className,
+          `wf-flow-node--${status}`,
+          beforeStart ? 'wf-flow-node--before-start' : '',
+          startNode ? 'wf-flow-node--start' : '',
+          pausedBefore ? 'wf-flow-node--paused-before' : '',
+          breakpoints.has(node.id) ? 'wf-flow-node--breakpoint' : ''
+        ].filter(Boolean).join(' '),
+        data: {
+          ...node.data,
+          color: beforeStart
+            ? '#cbd5e1'
+            : status === 'success'
+              ? '#20c997'
+              : status === 'running'
+                ? '#f59f00'
+                : pausedBefore
+                  ? '#3b82f6'
+                  : '#94a3b8',
+          status,
+          breakpoint: breakpoints.has(node.id),
+          startNode,
+          beforeStart,
+          pausedBefore,
+          onSetStart,
+          onToggleBreakpoint
+        }
       }
+    }),
+    [
+      beforeStartNodeIds,
+      breakpoints,
+      flowNodes,
+      nodeStates,
+      onSetStart,
+      onToggleBreakpoint,
+      pausedBeforeNodeId,
+      startNodeId
+    ]
+  )
+  const runtimeEdges = useMemo(
+    () => flowEdges.map((edge) => ({
+      ...edge,
+      className: [
+        edge.className,
+        beforeStartNodeIds.has(edge.source) ||
+        beforeStartNodeIds.has(edge.target)
+          ? 'wf-flow-edge--before-start'
+          : ''
+      ].filter(Boolean).join(' ')
     })),
-    [breakpoints, flowNodes, nodeStates]
+    [beforeStartNodeIds, flowEdges]
   )
 
   if (flowNodes.length === 0) {
@@ -69,7 +122,7 @@ export default function WorkflowDag({
     <div className={styles.dag}>
       <ReactFlow
         nodes={runtimeNodes}
-        edges={flowEdges}
+        edges={runtimeEdges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         nodeTypes={nodeTypes}
@@ -79,6 +132,10 @@ export default function WorkflowDag({
         elementsSelectable
         proOptions={{ hideAttribution: true }}
         onNodeClick={(_event, node: Node<WorkflowNodeData>) => onNodeSelect(node.id)}
+        onNodeContextMenu={(event, node: Node<WorkflowNodeData>) => {
+          event.preventDefault()
+          onSetStart?.(node.id)
+        }}
         onNodeDoubleClick={(_event, node: Node<WorkflowNodeData>) =>
           onToggleBreakpoint?.(node.id)
         }

@@ -37,6 +37,18 @@ export function SceneWorkbench(): React.JSX.Element {
     () => Object.values(aggregatesById),
     [aggregatesById]
   )
+  const modelRuntime = useMemo(
+    () => ({
+      resolveUrl: (model: { path: string }) => {
+        if (!model.path || /^https?:\/\//.test(model.path)) {
+          return model.path
+        }
+        const base = backend.assetUrl || backend.apiUrl
+        return new URL(model.path, `${base.replace(/\/+$/, '')}/`).toString()
+      }
+    }),
+    [backend.apiUrl, backend.assetUrl]
+  )
   const readStatus = runtime.getStatus('material.readGraph')
   const moveStatus = runtime.getStatus('material.move')
 
@@ -79,6 +91,7 @@ export function SceneWorkbench(): React.JSX.Element {
       editable={moveStatus.available}
       selectedMaterialIds={selectedMaterialIds}
       highlightedMaterialIds={highlightedMaterialIds}
+      modelRuntime={modelRuntime}
       onMaterialMoves={(moves) => {
         void applyMoves(moves)
       }}

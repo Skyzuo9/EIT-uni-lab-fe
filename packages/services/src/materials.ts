@@ -293,6 +293,7 @@ function parseAnchor(value: unknown): MaterialAnchor {
 
 function parseSite(value: unknown): MaterialSite {
   const raw = recordValue(value)
+  const visual = isRecord(raw.visual) ? raw.visual : undefined
   return {
     id: requiredString(raw.id, 'site.id'),
     ownerMaterialId: requiredString(
@@ -306,8 +307,46 @@ function parseSite(value: unknown): MaterialSite {
     sizeMm: parseTuple(raw.sizeMm, 'site.sizeMm'),
     capacity: Math.max(1, finiteNumber(raw.capacity, 1)),
     allowedTemplateIds: stringArray(raw.allowedTemplateIds),
-    occupiedMaterialIds: stringArray(raw.occupiedMaterialIds)
+    occupiedMaterialIds: stringArray(raw.occupiedMaterialIds),
+    kind: siteKind(raw.kind),
+    shape:
+      raw.shape === 'circle' || raw.shape === 'rectangle'
+        ? raw.shape
+        : undefined,
+    visible: raw.visible == null ? true : Boolean(raw.visible),
+    maxVolumeUl:
+      raw.maxVolumeUl == null
+        ? undefined
+        : Math.max(0, finiteNumber(raw.maxVolumeUl)),
+    visual: visual
+      ? {
+          state: siteVisualState(visual.state),
+          fillFraction: Math.min(
+            Math.max(finiteNumber(visual.fillFraction), 0),
+            1
+          )
+        }
+      : undefined
   }
+}
+
+function siteKind(value: unknown): MaterialSite['kind'] {
+  return value === 'site' ||
+    value === 'deck-slot' ||
+    value === 'well' ||
+    value === 'tip-spot'
+    ? value
+    : undefined
+}
+
+function siteVisualState(
+  value: unknown
+): NonNullable<MaterialSite['visual']>['state'] {
+  return value === 'occupied' ||
+    value === 'filled' ||
+    value === 'tip-present'
+    ? value
+    : 'empty'
 }
 
 function parsePose(value: unknown, field: string): LabPose {

@@ -38,7 +38,8 @@ describe('workflow runtime port', () => {
       },
       debug: {
         pause_on_start: true,
-        breakpoints: ['branch']
+        breakpoints: ['branch'],
+        start_node_id: 'branch'
       }
     })).resolves.toMatchObject({ id: 'run-1' })
 
@@ -53,7 +54,8 @@ describe('workflow runtime port', () => {
           },
           debug: {
             pause_on_start: true,
-            breakpoints: ['branch']
+            breakpoints: ['branch'],
+            start_node_id: 'branch'
           }
         })
       })
@@ -116,6 +118,84 @@ describe('workflow runtime port', () => {
     expect(request).toHaveBeenCalledWith(
       '/api/v1/runtime/runs/run-1/events?after_seq=8',
       undefined
+    )
+  })
+
+  it('uses the OS authoring boundary for JSON and Python conversion', async () => {
+    const candidate = {
+      revision_id: 'authoring-code-1',
+      parent_revision_id: 'rev-1',
+      canonical_ir: revision,
+      python_source: 'pump.dose(volume=5)',
+      diagnostics: []
+    }
+    const request = vi.fn()
+      .mockResolvedValueOnce({
+        base_revision_id: 'rev-1',
+        candidate,
+        diagnostics: []
+      })
+      .mockResolvedValueOnce({
+        base_revision_id: 'rev-1',
+        candidate,
+        diagnostics: []
+      })
+      .mockResolvedValueOnce({
+        base_revision_id: 'rev-1',
+        candidate,
+        diagnostics: []
+      })
+    const runtime = createWorkflowRuntime(
+      mockHttp(request),
+      getDefaultBackend('local-python')
+    )
+
+    await runtime.generatePythonWorkflow(
+      'rev-1',
+      revision,
+      'workflows/wf-1.py'
+    )
+    await runtime.compilePythonWorkflow(
+      'rev-1',
+      candidate.python_source,
+      'workflows/wf-1.py'
+    )
+    await runtime.validateAuthoringCandidate('rev-1', candidate)
+
+    expect(request).toHaveBeenNthCalledWith(
+      1,
+      '/api/v1/authoring/generate-python',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          base_revision_id: 'rev-1',
+          canonical_ir: revision,
+          source_uri: 'workflows/wf-1.py'
+        })
+      })
+    )
+    expect(request).toHaveBeenNthCalledWith(
+      2,
+      '/api/v1/authoring/compile',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          base_revision_id: 'rev-1',
+          python_source: candidate.python_source,
+          source_uri: 'workflows/wf-1.py'
+        })
+      })
+    )
+    expect(request).toHaveBeenNthCalledWith(
+      3,
+      '/api/v1/authoring/validate',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          base_revision_id: 'rev-1',
+          candidate
+        })
+      })
     )
   })
 })

@@ -37,6 +37,10 @@ export interface MaterialSceneMove {
   placement: MaterialPlacement
 }
 
+export interface MaterialSceneProjectionOptions {
+  fitSceneRevision?: number
+}
+
 export interface MaterialRenderingSnapshot {
   kind: string
   dimensionsMm: MaterialVector3Tuple
@@ -48,7 +52,22 @@ export interface MaterialRenderingSnapshot {
     ossDir?: string
     version?: string
     type?: string
+    color?: string
+    position: Vector3Tuple
+    rotation: Vector3Tuple
     attachPoints: readonly LabAttachPoint[]
+    instances?: {
+      path: string
+      format: 'xacro' | 'urdf' | 'gltf' | 'stl' | 'fbx' | 'obj'
+      color?: string
+      position: Vector3Tuple
+      rotation: Vector3Tuple
+      items: readonly {
+        id: string
+        position: Vector3Tuple
+        rotation: Vector3Tuple
+      }[]
+    }
   }
 }
 
@@ -58,7 +77,8 @@ export interface MaterialRenderingSnapshot {
  * snapshot. Direct config fields are accepted only as a migration fallback.
  */
 export function materialAggregatesToSceneGraph(
-  aggregates: readonly MaterialAggregate[]
+  aggregates: readonly MaterialAggregate[],
+  options: MaterialSceneProjectionOptions = {}
 ): SceneGraph {
   const aggregatesById = Object.fromEntries(
     aggregates.map((aggregate) => [aggregate.material.id, aggregate])
@@ -71,7 +91,6 @@ export function materialAggregatesToSceneGraph(
   )
   const nodes: Record<string, unknown> = {}
   const labNodeIds: string[] = []
-
   for (const aggregate of aggregates) {
     const id = sceneObjectIdByMaterialId[aggregate.material.id]
     const rendering = readMaterialRendering(aggregate)
@@ -121,7 +140,11 @@ export function materialAggregatesToSceneGraph(
           ossDir: rendering.model.ossDir,
           version: rendering.model.version,
           type: rendering.model.type,
-          attachPoints: rendering.model.attachPoints
+          color: rendering.model.color,
+          position: rendering.model.position,
+          rotation: rendering.model.rotation,
+          attachPoints: rendering.model.attachPoints,
+          instances: rendering.model.instances
         },
         attach: projected.attach
       })
@@ -136,7 +159,8 @@ export function materialAggregatesToSceneGraph(
     name: 'Uni-Lab',
     parentId: null,
     visible: true,
-    children: [BUILDING_ID]
+    children: [BUILDING_ID],
+    fitSceneRevision: options.fitSceneRevision ?? 0
   }
   nodes[BUILDING_ID] = {
     id: BUILDING_ID,
@@ -157,105 +181,13 @@ export function materialAggregatesToSceneGraph(
     parentId: BUILDING_ID,
     visible: true,
     level: 0,
-    children: labNodeIds,
-    camera: materialSceneCamera(aggregates)
+    children: labNodeIds
   }
 
   return {
     nodes,
     rootNodeIds: [SITE_ID],
     installedPlugins: ['unilab.lab']
-  }
-}
-
-function materialSceneCamera(
-  aggregates: readonly MaterialAggregate[]
-): {
-  position: Vector3Tuple
-  target: Vector3Tuple
-  mode: 'perspective'
-} {
-  const aggregatesById = Object.fromEntries(
-    aggregates.map((aggregate) => [aggregate.material.id, aggregate])
-  )
-  const resolved = new Map<MaterialId, LabPose>()
-  const visiting = new Set<MaterialId>()
-  let minX = Number.POSITIVE_INFINITY
-  let minZ = Number.POSITIVE_INFINITY
-  let maxX = Number.NEGATIVE_INFINITY
-  let maxZ = Number.NEGATIVE_INFINITY
-  let maxHeight = 0
-
-  const worldPose = (materialId: MaterialId): LabPose => {
-    const cached = resolved.get(materialId)
-    if (cached) return cached
-    if (visiting.has(materialId)) return IDENTITY_POSE
-    const aggregate = aggregatesById[materialId]
-    if (!aggregate) return IDENTITY_POSE
-    visiting.add(materialId)
-    const placement = aggregate.placement
-    let pose: LabPose
-    if (placement.kind === 'unplaced') {
-      pose = IDENTITY_POSE
-    } else if (placement.kind === 'world') {
-      pose = placement.pose
-    } else if (placement.kind === 'parent') {
-      pose = composePoses(
-        worldPose(placement.parentId),
-        placement.localPose
-      )
-    } else {
-      const parent = aggregatesById[placement.parentId]
-      const site = parent?.sites.find(
-        (candidate) => candidate.id === placement.siteId
-      )
-      pose = composePoses(
-        composePoses(
-          worldPose(placement.parentId),
-          site?.poseInAnchor ?? IDENTITY_POSE
-        ),
-        placement.offsetPose
-      )
-    }
-    visiting.delete(materialId)
-    resolved.set(materialId, pose)
-    return pose
-  }
-
-  for (const aggregate of aggregates) {
-    const rendering = readMaterialRendering(aggregate)
-    const pose = labPoseToPascal(worldPose(aggregate.material.id))
-    const width = Math.max(rendering.dimensionsMm[0] / 1000, 0.05)
-    const height = Math.max(rendering.dimensionsMm[1] / 1000, 0.05)
-    const depth = Math.max(rendering.dimensionsMm[2] / 1000, 0.05)
-    minX = Math.min(minX, pose.position[0] - width / 2)
-    maxX = Math.max(maxX, pose.position[0] + width / 2)
-    minZ = Math.min(minZ, pose.position[2] - depth / 2)
-    maxZ = Math.max(maxZ, pose.position[2] + depth / 2)
-    maxHeight = Math.max(maxHeight, pose.position[1] + height)
-  }
-
-  if (!Number.isFinite(minX)) {
-    return {
-      position: [2.4, 1.8, 2.4],
-      target: [0, 0.3, 0],
-      mode: 'perspective'
-    }
-  }
-
-  const centerX = (minX + maxX) / 2
-  const centerZ = (minZ + maxZ) / 2
-  const extent = Math.max(maxX - minX, maxZ - minZ, 0.8)
-  const distance = Math.max(extent * 1.25, 1.8)
-  const targetY = Math.max(Math.min(maxHeight * 0.4, 0.8), 0.15)
-  return {
-    position: [
-      centerX + distance * 0.75,
-      Math.max(maxHeight + distance * 0.55, 1.25),
-      centerZ + distance * 0.75
-    ],
-    target: [centerX, targetY, centerZ],
-    mode: 'perspective'
   }
 }
 
@@ -328,8 +260,50 @@ export function readMaterialRendering(
       ossDir: optionalString(model.ossDir ?? model.oss_dir),
       version: optionalString(model.version),
       type: optionalString(model.type),
-      attachPoints: readAttachPoints(model, aggregate)
+      color: optionalString(model.color),
+      position: vectorTuple(model.position) ?? [0, 0, 0],
+      rotation: vectorTuple(model.rotation) ?? [0, 0, 0],
+      attachPoints: readAttachPoints(model, aggregate),
+      instances: readModelInstances(model, aggregate)
     }
+  }
+}
+
+function readModelInstances(
+  model: Record<string, unknown>,
+  aggregate: MaterialAggregate
+): MaterialRenderingSnapshot['model']['instances'] {
+  const source = recordValue(model.instances)
+  if (!source) return undefined
+  const path = optionalString(source.path)
+  if (!path) return undefined
+  const siteKinds = stringArray(source.siteKinds) ?? []
+  const visibleStates = stringArray(source.visibleStates) ?? []
+  const items = aggregate.sites
+    .filter(
+      (site) =>
+        site.visible !== false &&
+        (siteKinds.length === 0 ||
+          (site.kind != null && siteKinds.includes(site.kind))) &&
+        (visibleStates.length === 0 ||
+          (site.visual != null &&
+            visibleStates.includes(site.visual.state)))
+    )
+    .map((site) => {
+      const pose = labPoseToPascal(site.poseInAnchor)
+      return {
+        id: site.id,
+        position: pose.position,
+        rotation: pose.rotation
+      }
+    })
+  return {
+    path,
+    format: inferModelFormat(path, optionalString(source.format)),
+    color: optionalString(source.color),
+    position: vectorTuple(source.position) ?? [0, 0, 0],
+    rotation: vectorTuple(source.rotation) ?? [0, 0, 0],
+    items
   }
 }
 
@@ -378,6 +352,17 @@ function projectPlacement(
           findSite(aggregate, aggregatesById)?.poseInAnchor ?? IDENTITY_POSE,
           placement.offsetPose
         )
+  if (
+    anchor.kind === 'root' &&
+    !requiresLiveParenting(aggregate.material.id, aggregatesById)
+  ) {
+    return {
+      ...base,
+      ...labPoseToPascal(
+        resolveAggregateWorldPose(aggregate.material.id, aggregatesById)
+      )
+    }
+  }
   const pose =
     anchor.kind === 'link'
       ? labLinkPoseToThree(localPose)
@@ -413,6 +398,30 @@ function placementFromSceneNode(
     current.kind === 'parent'
       ? current.anchor
       : findSite(aggregate, aggregatesById)?.anchor ?? { kind: 'root' }
+  if (
+    anchor.kind === 'root' &&
+    !requiresLiveParenting(aggregate.material.id, aggregatesById)
+  ) {
+    const worldPose = pascalPoseToLab(position, rotation)
+    if (current.kind === 'parent') {
+      return {
+        ...current,
+        localPose: relativePose(
+          worldPose,
+          resolveAggregateWorldPose(current.parentId, aggregatesById)
+        )
+      }
+    }
+    const site = findSite(aggregate, aggregatesById)
+    const siteWorldPose = composePoses(
+      resolveAggregateWorldPose(current.parentId, aggregatesById),
+      site?.poseInAnchor ?? IDENTITY_POSE
+    )
+    return {
+      ...current,
+      offsetPose: relativePose(worldPose, siteWorldPose)
+    }
+  }
   const localPose =
     anchor.kind === 'link'
       ? threePoseToLabLink(position, rotation)
@@ -432,6 +441,85 @@ function placementFromSceneNode(
       ? relativePose(localPose, site.poseInAnchor)
       : localPose
   }
+}
+
+function resolveAggregateWorldPose(
+  materialId: MaterialId,
+  aggregatesById: Readonly<Record<MaterialId, MaterialAggregate>>,
+  resolved = new Map<MaterialId, LabPose>(),
+  visiting = new Set<MaterialId>()
+): LabPose {
+  const cached = resolved.get(materialId)
+  if (cached) return cached
+  if (visiting.has(materialId)) return IDENTITY_POSE
+  const aggregate = aggregatesById[materialId]
+  if (!aggregate) return IDENTITY_POSE
+  visiting.add(materialId)
+  const placement = aggregate.placement
+  let pose: LabPose
+  if (placement.kind === 'unplaced') {
+    pose = IDENTITY_POSE
+  } else if (placement.kind === 'world') {
+    pose = placement.pose
+  } else if (placement.kind === 'parent') {
+    pose = composePoses(
+      resolveAggregateWorldPose(
+        placement.parentId,
+        aggregatesById,
+        resolved,
+        visiting
+      ),
+      placement.localPose
+    )
+  } else {
+    const parent = aggregatesById[placement.parentId]
+    const site = parent?.sites.find(
+      (candidate) => candidate.id === placement.siteId
+    )
+    pose = composePoses(
+      composePoses(
+        resolveAggregateWorldPose(
+          placement.parentId,
+          aggregatesById,
+          resolved,
+          visiting
+        ),
+        site?.poseInAnchor ?? IDENTITY_POSE
+      ),
+      placement.offsetPose
+    )
+  }
+  visiting.delete(materialId)
+  resolved.set(materialId, pose)
+  return pose
+}
+
+/**
+ * Link-anchored subtrees stay parented in Three so high-frequency joint
+ * updates propagate without rebuilding Material Graph view state. Pure
+ * root-anchor chains are flattened to level/world space; this avoids
+ * imperative reparenting races between independently rendered Pascal nodes.
+ */
+function requiresLiveParenting(
+  materialId: MaterialId,
+  aggregatesById: Readonly<Record<MaterialId, MaterialAggregate>>,
+  visiting = new Set<MaterialId>()
+): boolean {
+  if (visiting.has(materialId)) return false
+  visiting.add(materialId)
+  const aggregate = aggregatesById[materialId]
+  const placement = aggregate?.placement
+  if (!placement || placement.kind === 'unplaced' || placement.kind === 'world') {
+    return false
+  }
+  const anchor =
+    placement.kind === 'parent'
+      ? placement.anchor
+      : findSite(aggregate, aggregatesById)?.anchor ?? { kind: 'root' }
+  return (
+    anchor.kind === 'link' ||
+    requiresLiveParenting(placement.parentId, aggregatesById, visiting)
+  )
 }
 
 function placementRef(

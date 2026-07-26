@@ -51,9 +51,13 @@ export function PascalLabWorkbench({
   onMaterialMoves,
   onSelectionChange
 }: PascalLabWorkbenchProps): React.JSX.Element {
+  const [fitSceneRevision, setFitSceneRevision] = useState(0)
   const scene = useMemo(
-    () => materialAggregatesToSceneGraph(aggregates),
-    [aggregates]
+    () =>
+      materialAggregatesToSceneGraph(aggregates, {
+        fitSceneRevision
+      }),
+    [aggregates, fitSceneRevision]
   )
   const [saveStatus, setSaveStatus] = useState<
     'saved' | 'dirty' | 'saving'
@@ -140,9 +144,10 @@ export function PascalLabWorkbench({
           className="pascal-lab-toolbar__button"
           onClick={() => {
             useViewer.getState().setCameraMode('orthographic')
-            emitter.emit('camera-controls:view', {
-              nodeId: 'level_unilab'
-            } as never)
+            requestAnimationFrame(() => {
+              emitter.emit('camera-controls:top-view')
+              setFitSceneRevision((revision) => revision + 1)
+            })
           }}
         >
           顶视图
@@ -152,9 +157,9 @@ export function PascalLabWorkbench({
           className="pascal-lab-toolbar__button"
           onClick={() => {
             useViewer.getState().setCameraMode('perspective')
-            emitter.emit('camera-controls:view', {
-              nodeId: 'level_unilab'
-            } as never)
+            requestAnimationFrame(() => {
+              setFitSceneRevision((revision) => revision + 1)
+            })
           }}
         >
           适配场景
@@ -169,6 +174,7 @@ export function PascalLabWorkbench({
       projectId={projectId}
       prepare={prepare}
       readOnly={!editable}
+      editorViewMode="3d"
       toolbar={toolbar}
       onDirty={() => {
         if (editable) setSaveStatus('dirty')

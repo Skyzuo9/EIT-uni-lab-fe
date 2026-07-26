@@ -52,6 +52,14 @@ export interface MaterialSite {
   capacity: number
   allowedTemplateIds: readonly MaterialTemplateId[]
   occupiedMaterialIds: readonly MaterialId[]
+  kind?: 'site' | 'deck-slot' | 'well' | 'tip-spot'
+  shape?: 'circle' | 'rectangle'
+  visible?: boolean
+  maxVolumeUl?: number
+  visual?: {
+    state: 'empty' | 'occupied' | 'filled' | 'tip-present'
+    fillFraction: number
+  }
 }
 
 export interface MaterialAggregate {

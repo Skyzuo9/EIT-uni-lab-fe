@@ -14,6 +14,7 @@
     "@react-three/fiber": "9.4.0",
     "@unilab/material": "workspace:*",
     "@unilab/pascal-host": "workspace:*",
+    "js-yaml": "4.3.0",
     "three": "0.185.0",
     "urdf-loader": "0.12.6",
     "xacro-parser": "0.3.9",
@@ -26,6 +27,7 @@
   "devDependencies": {
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
+    "@types/js-yaml": "4.0.9",
     "@types/three": "^0.184.0",
     "react": "^19.2.1",
     "react-dom": "^19.2.1",

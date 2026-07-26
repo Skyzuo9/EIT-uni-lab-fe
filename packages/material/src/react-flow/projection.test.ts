@@ -157,6 +157,61 @@ describe('Material React Flow projection', () => {
     })
   })
 
+  it('places physical labware at its exact deck Site coordinates', () => {
+    const parent = materialAggregate('deck', {
+      config: {
+        rendering: {
+          kind: 'deck',
+          footprintMm: [542, 374]
+        }
+      },
+      sites: [
+        {
+          id: 'site-t16',
+          ownerMaterialId: 'deck',
+          key: 'T16',
+          name: 'T16',
+          anchor: { kind: 'root' },
+          poseInAnchor: {
+            positionMm: [414, 288, 0],
+            rotationDegXYZ: [0, 0, 0]
+          },
+          sizeMm: [128, 86, 0],
+          capacity: 1,
+          allowedTemplateIds: [],
+          occupiedMaterialIds: ['plate']
+        }
+      ]
+    })
+    const child = materialAggregate('plate', {
+      config: {
+        rendering: {
+          kind: 'plate',
+          footprintMm: [128, 86]
+        }
+      },
+      placement: {
+        kind: 'site',
+        parentId: 'deck',
+        siteId: 'site-t16',
+        offsetPose: {
+          positionMm: [0, 0, 0],
+          rotationDegXYZ: [0, 0, 0]
+        }
+      }
+    })
+
+    const childNode = projectMaterialFlowNodes({
+      aggregatesById: { deck: parent, plate: child },
+      physicalLayout: true
+    }).find((node) => node.id === 'plate')
+
+    expect(childNode?.position).toEqual({
+      x: 414 * 0.7,
+      y: 0
+    })
+  })
+
   it('uses a drag preview without mutating or copying an aggregate', () => {
     const aggregate = materialAggregate('material-1')
     const aggregates: Record<string, MaterialAggregate> = {

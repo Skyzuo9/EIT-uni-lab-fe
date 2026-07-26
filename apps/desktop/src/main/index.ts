@@ -1,8 +1,9 @@
 import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
-import { join } from 'path'
+import { basename, join } from 'path'
 import { appendFileSync } from 'node:fs'
 import { readFile, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { readSession, clearSession, runOAuthLogin } from './authManager'
 
 // 保存文件的入参:path 为 null 时弹出"另存为"对话框
@@ -69,6 +70,23 @@ function createWindow(): void {
   mainWindow.webContents.on('console-message', (_e, level, message, line, sourceId) => {
     if (level >= 2) logLine(`renderer console: ${message} (${sourceId}:${line})`)
   })
+
+  // Pascal 的工具栏图标使用站点根路径 `/icons/*`。在 Electron 的
+  // file:// 页面中该路径会落到系统根目录，这里只允许文件名并重定向到
+  // Vite 已打包的 renderer/icons，既兼容桌面端也避免任意路径访问。
+  mainWindow.webContents.session.webRequest.onBeforeRequest(
+    { urls: ['file:///icons/*'] },
+    (details, callback) => {
+      const requestedName = basename(
+        fileURLToPath(new URL(details.url))
+      )
+      callback({
+        redirectURL: pathToFileURL(
+          join(__dirname, '../renderer/icons', requestedName)
+        ).toString()
+      })
+    }
+  )
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
     void shell.openExternal(details.url)

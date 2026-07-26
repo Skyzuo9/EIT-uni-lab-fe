@@ -77,8 +77,107 @@ export function parseCanonicalWorkflow(
   }
 }
 
+export function remapWorkflowBreakpoints(
+  previous: WorkflowRevision,
+  next: WorkflowRevision,
+  breakpoints: ReadonlySet<string>
+): Set<string> {
+  const nextIds = new Set(next.invocations.map((item) => item.node_id))
+  const mapped = new Set<string>()
+  for (const nodeId of breakpoints) {
+    if (nextIds.has(nodeId)) {
+      mapped.add(nodeId)
+      continue
+    }
+    const previousInvocation = previous.invocations.find(
+      (item) => item.node_id === nodeId
+    )
+    if (!previousInvocation) continue
+    const samePrevious = previous.invocations.filter(
+      (item) => sameInvocationKind(item, previousInvocation)
+    )
+    const ordinal = samePrevious.findIndex((item) => item.node_id === nodeId)
+    const sameNext = next.invocations.filter(
+      (item) => sameInvocationKind(item, previousInvocation)
+    )
+    const replacement = sameNext[Math.max(0, ordinal)]
+    if (replacement) mapped.add(replacement.node_id)
+  }
+  return mapped
+}
+
+export function remapWorkflowNodeId(
+  previous: WorkflowRevision,
+  next: WorkflowRevision,
+  nodeId: string | null
+): string | null {
+  if (!nodeId) return null
+  return remapWorkflowBreakpoints(previous, next, new Set([nodeId]))
+    .values()
+    .next()
+    .value ?? null
+}
+
+export function createWorkflowExecutionScope(
+  nodes: ReadonlyArray<WorkflowNode>,
+  links: ReadonlyArray<WorkflowLink>,
+  startNodeId: string | null
+): {
+  startNodeId: string | null
+  executableNodeIds: Set<string>
+  beforeStartNodeIds: Set<string>
+} {
+  const nodeIds = new Set(nodes.map((node) => node.id))
+  const normalizedStart = startNodeId && nodeIds.has(startNodeId)
+    ? startNodeId
+    : null
+  if (!normalizedStart) {
+    return {
+      startNodeId: null,
+      executableNodeIds: nodeIds,
+      beforeStartNodeIds: new Set()
+    }
+  }
+
+  const outgoing = new Map(
+    nodes.map((node) => [node.id, [] as string[]])
+  )
+  for (const link of links) {
+    if (nodeIds.has(link.source) && nodeIds.has(link.target)) {
+      outgoing.get(link.source)?.push(link.target)
+    }
+  }
+  const executableNodeIds = new Set<string>()
+  const pending = [normalizedStart]
+  while (pending.length > 0) {
+    const current = pending.pop() as string
+    if (executableNodeIds.has(current)) continue
+    executableNodeIds.add(current)
+    pending.push(...(outgoing.get(current) || []))
+  }
+  return {
+    startNodeId: normalizedStart,
+    executableNodeIds,
+    beforeStartNodeIds: new Set(
+      nodes
+        .map((node) => node.id)
+        .filter((nodeId) => !executableNodeIds.has(nodeId))
+    )
+  }
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+function sameInvocationKind(
+  left: WorkflowRevision['invocations'][number],
+  right: WorkflowRevision['invocations'][number]
+): boolean {
+  return (
+    left.action_ref === right.action_ref &&
+    String(left.node_type || 'action') === String(right.node_type || 'action')
+  )
 }
 
 function finite(value: unknown): number | undefined {

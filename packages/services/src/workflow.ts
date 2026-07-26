@@ -47,6 +47,38 @@ export interface WorkflowValidationResult {
   edgeCount?: number
 }
 
+export interface WorkflowAuthoringDiagnostic {
+  severity: 'error' | 'warning'
+  code: string
+  message: string
+  node_id?: string
+  start_line?: number
+  start_column?: number
+  end_line?: number
+  end_column?: number
+}
+
+export type WorkflowAuthoringCandidate = Record<string, unknown> & {
+  revision_id: string
+  parent_revision_id: string
+  canonical_ir: WorkflowRevision
+  python_source: string
+  source_map?: Array<{
+    node_id: string
+    start_line: number
+    start_column?: number
+    end_line?: number
+    end_column?: number
+  }>
+  diagnostics: WorkflowAuthoringDiagnostic[]
+}
+
+export interface WorkflowAuthoringResult {
+  base_revision_id: string
+  candidate: WorkflowAuthoringCandidate | null
+  diagnostics: WorkflowAuthoringDiagnostic[]
+}
+
 export interface WorkflowDebugProjection {
   enabled: boolean
   status:
@@ -61,6 +93,7 @@ export interface WorkflowDebugProjection {
     | 'cancelled'
     | 'terminated'
   breakpoints?: string[]
+  startNodeId?: string | null
   pausedBeforeNodeId?: string | null
   runToNodeId?: string | null
   stateVersion?: number
@@ -123,6 +156,7 @@ export interface WorkflowRunRequest {
   debug?: {
     pause_on_start?: boolean
     breakpoints?: string[]
+    start_node_id?: string
   }
 }
 
@@ -141,6 +175,20 @@ export interface WorkflowRuntimePort {
     revision: WorkflowRevision,
     parameters?: Record<string, unknown>
   ) => Promise<WorkflowValidationResult>
+  compilePythonWorkflow: (
+    baseRevisionId: string,
+    pythonSource: string,
+    sourceUri: string
+  ) => Promise<WorkflowAuthoringResult>
+  generatePythonWorkflow: (
+    baseRevisionId: string,
+    revision: WorkflowRevision,
+    sourceUri: string
+  ) => Promise<WorkflowAuthoringResult>
+  validateAuthoringCandidate: (
+    baseRevisionId: string,
+    candidate: WorkflowAuthoringCandidate
+  ) => Promise<WorkflowAuthoringResult>
   createRun: (request: WorkflowRunRequest) => Promise<WorkflowRun>
   getRun: (runId: string) => Promise<WorkflowRun>
   listRunNodes: (runId: string) => Promise<WorkflowRunNode[]>
@@ -193,6 +241,35 @@ export function createWorkflowRuntime(
         method: 'POST',
         headers: jsonHeaders(),
         body: JSON.stringify({ revision, parameters })
+      }),
+    compilePythonWorkflow: (baseRevisionId, pythonSource, sourceUri) =>
+      request('/api/v1/authoring/compile', {
+        method: 'POST',
+        headers: jsonHeaders(),
+        body: JSON.stringify({
+          base_revision_id: baseRevisionId,
+          python_source: pythonSource,
+          source_uri: sourceUri
+        })
+      }),
+    generatePythonWorkflow: (baseRevisionId, revision, sourceUri) =>
+      request('/api/v1/authoring/generate-python', {
+        method: 'POST',
+        headers: jsonHeaders(),
+        body: JSON.stringify({
+          base_revision_id: baseRevisionId,
+          canonical_ir: revision,
+          source_uri: sourceUri
+        })
+      }),
+    validateAuthoringCandidate: (baseRevisionId, candidate) =>
+      request('/api/v1/authoring/validate', {
+        method: 'POST',
+        headers: jsonHeaders(),
+        body: JSON.stringify({
+          base_revision_id: baseRevisionId,
+          candidate
+        })
       }),
     createRun: (body) =>
       request('/api/v1/runtime/runs', {

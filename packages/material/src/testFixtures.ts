@@ -12,6 +12,7 @@ export function materialAggregate(
     revision?: number
     placement?: MaterialPlacement
     sites?: readonly MaterialSite[]
+    config?: Record<string, unknown>
   } = {}
 ): MaterialAggregate {
   return {
@@ -20,7 +21,7 @@ export function materialAggregate(
       sourceTemplateId: options.templateId ?? `template-${id}`,
       code: id.toUpperCase(),
       name: id,
-      config: {},
+      config: options.config ?? {},
       createdAt: '2026-01-01T00:00:00.000Z',
       updatedAt: '2026-01-01T00:00:00.000Z'
     },

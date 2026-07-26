@@ -33,7 +33,9 @@ describe('Material Aggregate / Pascal bridge', () => {
       }
     })
 
-    const scene = materialAggregatesToSceneGraph([robot])
+    const scene = materialAggregatesToSceneGraph([robot], {
+      fitSceneRevision: 7
+    })
     const node = scene.nodes['lab-robot']
 
     expect(isLabDeviceNode(node)).toBe(true)
@@ -48,17 +50,12 @@ describe('Material Aggregate / Pascal bridge', () => {
     ])
     expect(node).not.toHaveProperty('material')
     expect(node).not.toHaveProperty('config')
-    const level = scene.nodes.level_unilab as {
-      camera?: {
-        position: readonly number[]
-        target: readonly number[]
-        mode: string
-      }
+    const site = scene.nodes.site_unilab as {
+      fitSceneRevision?: number
     }
-    expect(level.camera?.mode).toBe('perspective')
-    expect(level.camera?.position[1]).toBeGreaterThan(1)
-    expect(level.camera?.target[0]).toBeCloseTo(0.1, 8)
-    expect(level.camera?.target[2]).toBeCloseTo(-0.2, 8)
+    expect(site.fitSceneRevision).toBe(7)
+    expect(site).not.toHaveProperty('camera')
+    expect(scene.nodes.level_unilab).not.toHaveProperty('camera')
     expect(sceneGraphToMaterialMoves(scene, [robot])).toEqual([])
   })
 
@@ -155,9 +152,72 @@ describe('Material Aggregate / Pascal bridge', () => {
     )
   })
 
-  it('parents a root-anchored child to the parent scene object', () => {
+  it('projects visible site models from exact material-local coordinates', () => {
+    const tipSite: MaterialSite = {
+      id: 'tip-a1',
+      ownerMaterialId: 'rack',
+      key: 'A1',
+      name: 'A1',
+      anchor: { kind: 'root' },
+      poseInAnchor: {
+        positionMm: [10, 20, 3],
+        rotationDegXYZ: [0, 0, 0]
+      },
+      sizeMm: [5, 5, 95],
+      capacity: 1,
+      allowedTemplateIds: [],
+      occupiedMaterialIds: [],
+      kind: 'tip-spot',
+      visible: true,
+      visual: {
+        state: 'tip-present',
+        fillFraction: 1
+      }
+    }
+    const rack = aggregate('rack', {
+      sites: [tipSite],
+      config: {
+        rendering: {
+          kind: 'tip_rack',
+          model: {
+            path: '/assets/rack.stl',
+            instances: {
+              path: '/assets/tip.stl',
+              format: 'stl',
+              color: '#22c55e',
+              siteKinds: ['tip-spot'],
+              visibleStates: ['tip-present'],
+              rotation: [-Math.PI / 2, 0, 0]
+            }
+          }
+        }
+      }
+    })
+
+    const scene = materialAggregatesToSceneGraph([rack])
+    const node = scene.nodes['lab-rack']
+    if (!isLabDeviceNode(node)) throw new Error('Expected lab device')
+    expect(node.model.instances?.items).toHaveLength(1)
+    expectTupleCloseTo(
+      node.model.instances?.items[0]?.position ?? [],
+      [0.01, 0.003, -0.02]
+    )
+    expect(node.model.instances?.rotation[0]).toBeCloseTo(
+      -Math.PI / 2,
+      8
+    )
+  })
+
+  it('flattens a static root-anchored child into world space', () => {
     const parent = aggregate('table', {
-      config: { rendering: { kind: 'table' } }
+      config: { rendering: { kind: 'table' } },
+      placement: {
+        kind: 'world',
+        pose: {
+          positionMm: [500, 100, 0],
+          rotationDegXYZ: [0, 0, 0]
+        }
+      }
     })
     const child = aggregate('reader', {
       placement: {
@@ -175,11 +235,12 @@ describe('Material Aggregate / Pascal bridge', () => {
     const node = scene.nodes['lab-reader']
     if (!isLabDeviceNode(node)) throw new Error('Expected lab device')
     expect(node.attach).toEqual({
-      parentDeviceId: 'lab-table-table',
-      parentLinkName: '__root__',
+      parentDeviceId: null,
+      parentLinkName: null,
       mountPoint: null
     })
-    expectTupleCloseTo(node.position, [0.1, 0.3, -0.2])
+    expectTupleCloseTo(node.position, [0.6, 0.3, -0.3])
+    expect(sceneGraphToMaterialMoves(scene, [parent, child])).toEqual([])
   })
 })
 
