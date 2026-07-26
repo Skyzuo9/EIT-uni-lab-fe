@@ -83,6 +83,10 @@ describe('oblique material projection', () => {
       'slot-1',
       'slot-2'
     ])
+    expect(shelves?.map((shelf) => shelf.siteKey)).toEqual([
+      'slot-1',
+      'slot-2'
+    ])
   })
 })
 
@@ -133,7 +137,7 @@ function stackSite(
     id: `site-${key}`,
     ownerMaterialId: 'hotel',
     key,
-    name: key,
+    name: `Shelf ${key}`,
     anchor: { kind: 'root' },
     poseInAnchor: {
       positionMm: [0, 0, heightMm],

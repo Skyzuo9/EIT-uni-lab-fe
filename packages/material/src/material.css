@@ -313,11 +313,11 @@
   color: var(--unilab-color-text);
   background:
     radial-gradient(
-      circle at 50% 12%,
-      color-mix(in srgb, var(--unilab-color-primary) 9%, transparent),
-      transparent 48%
+      circle at 50% 8%,
+      rgb(224 231 255 / 34%),
+      transparent 52%
     ),
-    linear-gradient(180deg, #f8fafc, #edf2f7);
+    linear-gradient(180deg, #ffffff, #f8f9fc);
   overflow: hidden;
 }
 
@@ -354,11 +354,6 @@
   shape-rendering: geometricPrecision;
 }
 
-.material-oblique-canvas__grid {
-  color: rgb(100 116 139 / 16%);
-  pointer-events: all;
-}
-
 .material-oblique-canvas__empty {
   display: grid;
   width: 100%;
@@ -374,112 +369,112 @@
 }
 
 .material-oblique-object polygon {
-  stroke: #64748b;
-  stroke-width: 1.3;
+  stroke: rgb(165 170 184 / 68%);
+  stroke-width: 0.9;
   vector-effect: non-scaling-stroke;
 }
 
 .material-oblique-object__shadow {
-  fill: rgb(15 23 42 / 14%);
+  fill: rgb(100 116 139 / 6%);
   stroke: none !important;
-  transform: translate(8px, 12px);
+  transform: translate(5px, 7px);
 }
 
 .material-oblique-object__front {
-  fill: #cbd5e1;
+  fill: rgb(235 237 244 / 72%);
 }
 
 .material-oblique-object__side {
-  fill: #94a3b8;
+  fill: rgb(221 224 234 / 68%);
 }
 
 .material-oblique-object__top {
-  fill: #f8fafc;
+  fill: rgb(252 252 254 / 88%);
 }
 
 .material-oblique-object.is-deck .material-oblique-object__front {
-  fill: #dbe7e2;
+  fill: rgb(236 241 242 / 62%);
 }
 
 .material-oblique-object.is-deck .material-oblique-object__side {
-  fill: #9fbbb0;
+  fill: rgb(222 231 232 / 62%);
 }
 
 .material-oblique-object.is-deck .material-oblique-object__top {
-  fill: #f3faf7;
-  stroke: #22c55e;
+  fill: rgb(253 254 254 / 86%);
+  stroke: rgb(148 163 184 / 62%);
 }
 
 .material-oblique-object.is-labware .material-oblique-object__front {
-  fill: #d8e0e9;
+  fill: rgb(231 233 241 / 82%);
 }
 
 .material-oblique-object.is-labware .material-oblique-object__side {
-  fill: #aab8c8;
+  fill: rgb(216 219 230 / 78%);
 }
 
 .material-oblique-object.is-labware .material-oblique-object__top {
-  fill: #f8fafc;
-  stroke: #7c8da3;
+  fill: rgb(253 253 255 / 92%);
+  stroke: rgb(167 172 187 / 74%);
 }
 
 .material-oblique-labware__layer {
-  stroke: rgb(71 85 105 / 62%);
-  stroke-width: 1;
+  stroke: rgb(148 153 170 / 55%);
+  stroke-width: 0.8;
   pointer-events: none;
 }
 
 .material-oblique-labware__rim {
-  fill: rgb(255 255 255 / 22%);
-  stroke: #8fa0b4;
-  stroke-width: 1.2;
+  fill: rgb(255 255 255 / 44%);
+  stroke: rgb(181 185 198 / 72%);
+  stroke-width: 0.9;
   pointer-events: none;
 }
 
 .material-oblique-stack__rail {
-  stroke: #8796aa;
+  stroke: rgb(196 200 211 / 90%);
   stroke-linecap: round;
-  stroke-width: 5;
+  stroke-width: 3;
 }
 
 .material-oblique-stack__rail.is-rear {
-  stroke: #aeb9c7;
-  stroke-width: 4;
+  stroke: rgb(221 224 232 / 88%);
+  stroke-width: 2.5;
 }
 
 .material-oblique-stack__shelf {
-  fill: rgb(248 250 252 / 92%);
-  stroke: #94a3b8;
-  stroke-width: 1.1;
+  fill: rgb(252 252 254 / 82%);
+  stroke: rgb(190 194 207 / 72%);
+  stroke-width: 0.8;
 }
 
 .material-oblique-stack__shelf-lip {
-  fill: #b9c4d2;
-  stroke: #8492a5;
-  stroke-width: 1;
+  fill: rgb(222 225 234 / 78%);
+  stroke: rgb(181 185 198 / 70%);
+  stroke-width: 0.75;
 }
 
 .material-oblique-stack__shelf-group.is-base
   .material-oblique-stack__shelf-lip,
 .material-oblique-stack__shelf-group.is-cap
   .material-oblique-stack__shelf-lip {
-  fill: #94a3b8;
+  fill: rgb(209 213 224 / 82%);
 }
 
 .material-oblique-stack__occupied {
-  fill: #93c5fd;
-  stroke: #2563eb;
-  stroke-width: 1.2;
+  fill: rgb(191 219 254 / 72%);
+  stroke: rgb(96 165 250 / 82%);
+  stroke-width: 0.9;
 }
 
 .material-oblique-stack__label {
-  fill: #475569;
-  font-size: 11px;
-  font-weight: 650;
+  fill: #777b89;
+  font-size: 10px;
+  font-weight: 550;
   text-anchor: middle;
   paint-order: stroke;
-  stroke: rgb(255 255 255 / 92%);
-  stroke-width: 3px;
+  stroke: rgb(255 255 255 / 88%);
+  stroke-width: 2px;
   pointer-events: none;
 }
 
@@ -496,7 +491,7 @@
 }
 
 .material-oblique-object:is(.is-selected, .is-highlighted) polygon {
-  stroke-width: 2.5;
+  stroke-width: 1.8;
 }
 
 .material-oblique-object.is-selected polygon {
@@ -508,36 +503,39 @@
 }
 
 .material-oblique-site {
-  fill: #f8fafc;
-  stroke: #cbd5e1;
-  stroke-width: 1;
+  fill: rgb(245 246 251 / 78%);
+  stroke: rgb(203 207 219 / 74%);
+  stroke-width: 0.8;
 }
 
 .material-oblique-site.is-deck-slot {
-  fill: rgb(248 250 252 / 52%);
-  stroke: #3b82f6;
-  stroke-dasharray: 7 5;
+  fill: rgb(249 249 252 / 55%);
+  stroke: rgb(186 190 204 / 82%);
+  stroke-dasharray: 4 3;
 }
 
 .material-oblique-site.is-tip-present {
-  fill: #d9f99d;
-  stroke: #22c55e;
+  fill: rgb(187 247 208 / 78%);
+  stroke: rgb(74 222 128 / 86%);
 }
 
 .material-oblique-site.is-filled {
-  fill: #60a5fa;
-  stroke: #2563eb;
+  fill: rgb(147 197 253 / 78%);
+  stroke: rgb(96 165 250 / 88%);
 }
 
 .material-oblique-site.is-occupied {
-  fill: #93c5fd;
-  stroke: #3b82f6;
+  fill: rgb(191 219 254 / 76%);
+  stroke: rgb(96 165 250 / 84%);
 }
 
 .material-oblique-site__label {
-  fill: #334155;
-  font-size: 22px;
-  font-weight: 650;
+  fill: #767a88;
+  font-weight: 550;
+  letter-spacing: 0.01em;
+  paint-order: stroke;
+  stroke: rgb(255 255 255 / 82%);
+  stroke-width: 1.5px;
   pointer-events: none;
 }
 
@@ -554,22 +552,22 @@
 }
 
 .material-oblique-object__tag line {
-  stroke: rgb(15 23 42 / 45%);
-  stroke-width: 1;
+  stroke: rgb(107 114 128 / 32%);
+  stroke-width: 0.8;
   vector-effect: non-scaling-stroke;
 }
 
 .material-oblique-object__tag rect {
-  fill: rgb(15 23 42 / 84%);
-  stroke: rgb(255 255 255 / 38%);
-  stroke-width: 1;
+  fill: rgb(255 255 255 / 82%);
+  stroke: rgb(180 184 197 / 58%);
+  stroke-width: 0.8;
   vector-effect: non-scaling-stroke;
 }
 
 .material-oblique-object__tag text {
-  fill: #ffffff;
-  font-size: 16px;
-  font-weight: 650;
+  fill: #686c79;
+  font-size: 13px;
+  font-weight: 550;
   text-anchor: middle;
   dominant-baseline: middle;
 }

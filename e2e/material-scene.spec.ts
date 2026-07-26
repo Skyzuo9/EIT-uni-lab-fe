@@ -154,6 +154,12 @@ for (const scenario of SCENARIOS) {
       expect(
         await page.locator('.material-oblique-site').count()
       ).toBeGreaterThanOrEqual(96)
+      expect(
+        await page.locator('[data-site-label]').count()
+      ).toBeGreaterThan(0)
+      await expect(
+        page.locator('[data-site-label]').first()
+      ).not.toHaveAttribute('data-site-label', '')
       for (const code of scenario.expectedStackCodes ?? []) {
         const stack = page.locator(
           `.material-oblique-object[data-material-code="${code}"][data-oblique-render-style="stack"]`

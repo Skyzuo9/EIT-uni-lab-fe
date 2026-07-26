@@ -25,6 +25,7 @@ export interface MaterialObliqueShelf {
   key: string
   heightMm: number
   occupied: boolean
+  siteKey?: string
   label?: string
 }
 
@@ -226,7 +227,8 @@ function buildStackShelves(
         site.visual?.state === 'occupied' ||
         site.visual?.state === 'filled' ||
         site.visual?.state === 'tip-present',
-      label: site.name
+      siteKey: site.key,
+      label: site.key || site.name
     }))
     .sort((left, right) => left.heightMm - right.heightMm)
   if (siteShelves.length > 0) return siteShelves

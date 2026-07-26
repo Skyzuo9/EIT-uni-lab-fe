@@ -85,20 +85,6 @@ export function MaterialObliqueCanvas({
           onClick={() => onSelectionChange?.([])}
         >
           <defs>
-            <pattern
-              id="material-oblique-grid"
-              width="50"
-              height="50"
-              patternUnits="userSpaceOnUse"
-            >
-              <path
-                d="M 50 0 L 0 0 0 50"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1"
-                vectorEffect="non-scaling-stroke"
-              />
-            </pattern>
             <filter
               id="material-oblique-shadow"
               x="-30%"
@@ -108,21 +94,13 @@ export function MaterialObliqueCanvas({
             >
               <feDropShadow
                 dx="0"
-                dy="8"
+                dy="5"
                 floodColor="#0f172a"
-                floodOpacity="0.18"
-                stdDeviation="7"
+                floodOpacity="0.08"
+                stdDeviation="5"
               />
             </filter>
           </defs>
-          <rect
-            className="material-oblique-canvas__grid"
-            x={scene.bounds.minX}
-            y={scene.bounds.minY}
-            width={scene.bounds.width}
-            height={scene.bounds.height}
-            fill="url(#material-oblique-grid)"
-          />
           {scene.objects.map((object) => {
             const isSelected = selected.has(object.materialId)
             const isHighlighted = highlighted.has(object.materialId)
@@ -312,6 +290,13 @@ function ObliqueSolidBody({
           <ObliqueSite key={site.id} site={site} />
         ))}
       </g>
+      {object.sites.map((site) => (
+        <ObliqueSiteLabel
+          key={`label-${site.id}`}
+          site={site}
+          transform={object.topTransform}
+        />
+      ))}
     </>
   )
 }
@@ -353,6 +338,7 @@ function ObliqueStackBody({
           label={shelf.label}
           occupied={shelf.occupied}
           plane={planeAtHeight(object.base, shelf.heightMm)}
+          siteKey={shelf.siteKey}
           thickness={shelfThickness}
         />
       ))}
@@ -394,12 +380,14 @@ function StackShelf({
   plane,
   thickness,
   occupied = false,
+  siteKey,
   label
 }: {
   className?: string
   plane: readonly ObliquePoint[]
   thickness: number
   occupied?: boolean
+  siteKey?: string
   label?: string
 }): React.JSX.Element {
   const frontStart = plane[0]
@@ -434,6 +422,8 @@ function StackShelf({
       {label && labelPoint && (
         <text
           className="material-oblique-stack__label"
+          data-site-key={siteKey}
+          data-site-label={label}
           x={labelPoint[0]}
           y={labelPoint[1] - 4}
         >
@@ -457,46 +447,86 @@ function ObliqueSite({
     `is-${site.visual?.state ?? 'empty'}`
   ].join(' ')
 
-  return site.shape === 'circle' ? (
-    <circle
-      className={className}
-      cx={x + width / 2}
-      cy={y + depth / 2}
-      data-site-key={site.key}
-      r={Math.min(width, depth) / 2}
-      vectorEffect="non-scaling-stroke"
-    >
-      <title>{site.name}</title>
-    </circle>
-  ) : (
-    <g>
-      <rect
-        className={className}
-        data-site-key={site.key}
-        x={x}
-        y={y}
-        width={width}
-        height={depth}
-        rx={Math.min(width, depth) * 0.08}
-        vectorEffect="non-scaling-stroke"
-      >
-        <title>{site.name}</title>
-      </rect>
-      {site.kind === 'deck-slot' &&
-        Math.min(width, depth) >= 40 && (
-        <text
-          className="material-oblique-site__label"
-          x={x + width / 2}
-          y={y + depth / 2}
-          dominantBaseline="middle"
-          textAnchor="middle"
+  return (
+    <g className="material-oblique-site-group">
+      {site.shape === 'circle' ? (
+        <circle
+          className={className}
+          cx={x + width / 2}
+          cy={y + depth / 2}
+          data-site-key={site.key}
+          r={Math.min(width, depth) / 2}
           vectorEffect="non-scaling-stroke"
         >
-          {site.name}
-        </text>
+          <title>{site.name}</title>
+        </circle>
+      ) : (
+        <rect
+          className={className}
+          data-site-key={site.key}
+          x={x}
+          y={y}
+          width={width}
+          height={depth}
+          rx={Math.min(width, depth) * 0.08}
+          vectorEffect="non-scaling-stroke"
+        >
+          <title>{site.name}</title>
+        </rect>
       )}
     </g>
   )
+}
+
+function ObliqueSiteLabel({
+  site,
+  transform
+}: {
+  site: MaterialSite
+  transform: readonly [number, number, number, number, number, number]
+}): React.JSX.Element | null {
+  const [width, depth] = site.sizeMm
+  const label = site.key || site.name
+  if (
+    !label ||
+    site.kind === 'well' ||
+    site.kind === 'tip-spot' ||
+    Math.max(width, depth) < 18
+  ) {
+    return null
+  }
+  const [x, y] = site.poseInAnchor.positionMm
+  const [labelX, labelY] = applyAffinePoint(
+    transform,
+    x + width / 2,
+    y + depth / 2
+  )
+  const labelSize = clamp(Math.min(width, depth) * 0.18, 11, 16)
+
+  return (
+    <text
+      className="material-oblique-site__label"
+      data-site-key={site.key}
+      data-site-label={label}
+      fontSize={labelSize}
+      x={labelX}
+      y={labelY}
+      dominantBaseline="middle"
+      textAnchor="middle"
+      vectorEffect="non-scaling-stroke"
+    >
+      {label}
+    </text>
+  )
+}
+
+function applyAffinePoint(
+  transform: readonly [number, number, number, number, number, number],
+  x: number,
+  y: number
+): ObliquePoint {
+  const [a, b, c, d, e, f] = transform
+  return [a * x + c * y + e, b * x + d * y + f]
 }
 
 function planeAtHeight(
