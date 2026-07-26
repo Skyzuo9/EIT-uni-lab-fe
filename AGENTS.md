@@ -134,8 +134,9 @@
 - `POST /api/v1/runtime/runs/{run_id}/cancel`
 - `WS /api/v1/runtime/events?run_id=...&after_seq=...`
 
-兼容端点只能留在 adapter/bridge 内部；新 UI 功能不得依赖 `/api/run`、
-`/api/runtime/local/*`、Cloud panel 的旧 WS 报文或 backend 私有接口。
+兼容 HTTP 端点只能留在 adapter/bridge 内部；新 UI 功能不得依赖 `/api/run`、
+`/api/runtime/local/*` 或 backend 私有接口。旧 Cloud panel
+`/ws/workflow/{uuid}` 已从 OS 删除，禁止重新引入 client、proxy 或协议类型。
 
 ## 异常与实时事件
 

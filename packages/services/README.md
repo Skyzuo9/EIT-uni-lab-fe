@@ -13,7 +13,7 @@ Profile 是一组完整连接配置，不是单个 base URL。它至少确定 ba
 
 | Profile | 物料能力 | 说明 |
 |---|---|---|
-| `local-python` / edge | `material.readGraph` | OS 从本地图快照投影统一 `MaterialAggregate`，只读 |
+| `local-python` / edge | `material.readGraph` | OS 从当前内存 `ResourceTreeSet` 投影统一 `MaterialAggregate`，只读 |
 | `local-go` / backend | `material.readTemplates` | Go backend 有模板与行级 CRUD，但尚未提供统一 Material Graph 命令 |
 | cloud | fail closed | 未来迁移；未实现能力不得显示为可用 |
 
@@ -28,11 +28,15 @@ Profile 是一组完整连接配置，不是单个 base URL。它至少确定 ba
 |---|---|---|
 | 模板列表 | `listTemplates` | Go backend `/api/v1/resource-templates` |
 | 模板详情 | `getTemplate` | Go backend `/api/v1/resource-templates/{uuid}` |
-| Material Graph | `getGraph` | OS `/api/v1/materials` 分页聚合投影 |
+| Material Graph | `getGraph` | OS 当前内存态经 `/api/v1/materials` 分页聚合投影 |
 
 `getGraph` 要求每一行能还原完整 `placement`、`rendering` 和 `sites`，并合并为一个
 `MaterialAggregate`。普通 Go backend `materials` 行虽然也位于 `/api/v1/materials`，
 但当前并不保证这些聚合字段，因此不能把它冒充 `material.readGraph`。
+
+OS 侧由 `unilab -g/--graph` 在启动时选择设备图。graph 文件只读一次，随后 OS 内部可继续
+修改同一个 `ResourceTreeSet`；services 每次读取都通过 bridge 刷新这份当前内存态，
+不会把文件或 bridge cache 当作第二事实源。
 
 当前三种 Profile 都没有可声明的统一物料写能力。不得在 adapter 内依次调用 material、
 relative-position 和 site 的行级 CRUD 来伪装一个原子命令；在 revision、幂等、失败补偿
@@ -71,7 +75,8 @@ REST；调用方仍要按 `seq` 处理幂等更新。
 
 - 组件不得根据 backend id 分支请求。
 - 不得为 local OS 与 backend 复制 `WorkflowRun`、`WorkflowRunNode` 或命令枚举。
-- 旧 `/api/run`、`/api/runtime/local/*` 和 Cloud panel WS 不得暴露给新组件。
+- 旧 `/api/run`、`/api/runtime/local/*` 不得暴露给新组件。Cloud panel
+  `/ws/workflow/{uuid}` 已删除，禁止重新增加 adapter。
 - adapter 可解包外层 `data`，但不能改变 Canonical revision 或运行语义。
 
 ## 运行与错误语义
