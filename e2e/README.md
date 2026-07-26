@@ -1,0 +1,61 @@
+# 前端端到端测试
+
+这里验证浏览器通过统一 v1 接口连接真实 local bridge/OS 的关键用户路径。测试不是
+API mock 演示；工作流场景必须同时观察 UI、真实 HTTP/WS 调用和 OS 的权威投影。
+
+## 工作流场景
+
+- `workflow-runtime.spec.ts`：完整控制 DAG、校验/保存、调试启动、单步、继续、
+  逐节点反馈，以及 JSON ↔ Python 编写往返。
+- `workflow-debug-scenarios.spec.ts`：起始点、两个断点、连续单步、异常/终止等调试语义，
+  并保存 API 快照和截图证据。
+- `material-scene.spec.ts`：材料场景，与工作流测试分开运行。
+
+## 运行
+
+先在 `unilab` Python 3.11 环境启动 OS local bridge，例如：
+
+```bash
+cd ../Uni-Lab-OS
+UNILAB_PY=/home/changjunhan/.micromamba/envs/unilab/bin/python
+"$UNILAB_PY" -m unilabos.app.local_bridge.server --offline
+```
+
+再从前端仓库运行：
+
+```bash
+UNILAB_OS_E2E_URL=http://127.0.0.1:8014 pnpm test:e2e:workflow
+UNILAB_OS_E2E_URL=http://127.0.0.1:8014 pnpm test:e2e:workflow-debug
+UNILAB_OS_E2E_URL=http://127.0.0.1:8014 pnpm test:e2e:materials
+```
+
+没有设置 `UNILAB_FE_E2E_URL` 时，Playwright 会构建并启动 `kernel-web` preview；
+设置后则复用指定前端。产物写入相邻的 `../e2e-artifacts`。
+
+## 证据要求
+
+工作流调试用例至少断言：
+
+- 下发的是包含控制节点的完整 Canonical v2 DAG。
+- 起始点之前/不可达节点被置灰，并最终由 OS 报告 `skipped`。
+- 断点命中时节点仍为 `pending`，UI 显示“暂停于节点之前”。
+- `step` 每次只推进一个逻辑节点。
+- 运行中为橙色、成功为绿色、暂停为蓝色，且都有文字状态。
+- 事件 `seq` 单调、REST/WS 投影可核对。
+- `console.error` 和 `pageerror` 为空。
+
+禁止用 `page.route()` 伪造工作流运行成功，也禁止只凭截图判断执行语义。
+
+物料场景至少要核对：
+
+- `/api/v1/materials` 和 `/api/v1/material-models` 来自真实 OS local server。
+- floorplan、孔板外形、孔径、孔距、行列数和内部偏移来自服务或模型数据。
+- 2D、2.5D、3D、split 共享同一 material ID、选择、高亮与 tag。
+- 2.5D 使用统一斜二测投影与真实高度排序，堆叠遮挡可见。
+- 3D 保持 Pascal 原生 scene、灯光和位于模型下方的网格。
+- 相机按通用 bounds 自适应，不出现测试模型名称、固定位置或固定缩放分支。
+- OS 注册的 URDF/XACRO 及其 mesh 子资源都能通过安全 asset route 加载。
+- 浏览器无 `console.error`、`pageerror`、模型 404 或越界资源请求。
+
+`plr_test` 是覆盖复杂模型的验收样例，不是生产默认值来源。测试可以比较其参考图，但不得
+把该图对应的 camera、尺寸、mesh 路径或 floorplan 写入应用代码。

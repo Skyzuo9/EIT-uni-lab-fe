@@ -17,3 +17,18 @@ Keep backend clients and application-wide selection stores out of this package.
 The application passes authoritative Material aggregates in and receives
 placement commands and selected IDs back. Pascal scene state remains a view
 projection, never a second Material entity store.
+
+## Runtime rules
+
+- Static placement comes from the Material Graph; articulated joint pose comes
+  from the dedicated realtime stream.
+- Joint updates mutate only Pascal/Three runtime objects and must not invalidate
+  ReactFlow or the Material Graph query.
+- Missing realtime state may fall back to URDF initial joint values.
+- Equipment tags are persistent scene overlays; ordinary material tags appear
+  for hover/selection and reuse application-level IDs.
+- Asset loaders resolve model-relative resources through the registered OS model
+  root. They must not guess host filesystem paths or fetch arbitrary files.
+
+Well and tip-spot compatibility metadata may be present in current OS snapshots,
+but it must not be promoted into a long-term domain Site contract here.

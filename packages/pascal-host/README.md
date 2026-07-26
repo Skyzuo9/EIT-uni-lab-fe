@@ -12,3 +12,13 @@ The host currently validates `@pascal-app/core`, `@pascal-app/editor` and
 `kernel-web`. The Vite application supplies small `next/image` and `next/link`
 compatibility components for the upstream imports; this package does not require
 Next or server-side rendering.
+
+## Scene 保真边界
+
+host 只负责安装 upstream editor/viewer 和 Uni-Lab plugin。Pascal 原生 scene、网格、
+灯光、控制器与 view-mode 组件应原样保留；实验室模型必须放在网格之上，而不是用额外
+overlay 覆盖网格。相机 framing 必须依据所有可见对象的 bounds 通用计算，禁止对设备名、
+测试文件名或 `plr_test` 写特例。
+
+升级 Pascal 时先更新固定版本并运行 host/plugin/desktop 验证。不要直接修改
+`node_modules`、复制 upstream 源码或维护私有 fork 来解决可由 adapter 完成的问题。
