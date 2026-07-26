@@ -16,6 +16,17 @@ const DEPTH_Y = Math.sin(ANGLE_RAD) * OBLIQUE_DEPTH_SCALE
 
 export type ObliquePoint = readonly [number, number]
 export type ObliqueWorldPoint = readonly [number, number, number]
+export type MaterialObliqueRenderStyle =
+  | 'solid'
+  | 'labware'
+  | 'stack'
+
+export interface MaterialObliqueShelf {
+  key: string
+  heightMm: number
+  occupied: boolean
+  label?: string
+}
 
 export interface MaterialObliqueObject {
   materialId: MaterialId
@@ -27,11 +38,13 @@ export interface MaterialObliqueObject {
   widthMm: number
   depthMm: number
   heightMm: number
+  renderStyle: MaterialObliqueRenderStyle
   worldCorners: readonly ObliqueWorldPoint[]
   base: readonly ObliquePoint[]
   top: readonly ObliquePoint[]
   topTransform: readonly [number, number, number, number, number, number]
   sites: readonly MaterialSite[]
+  shelves: readonly MaterialObliqueShelf[]
   sortDepth: number
 }
 
@@ -117,6 +130,7 @@ function materialToObliqueObject(
   )
   const [widthMm, depthMm] = visual.footprintMm
   const heightMm = visual.heightMm
+  const renderStyle = obliqueRenderStyle(visual.kind)
   const yawRad = (pose.rotationDegXYZ[2] * Math.PI) / 180
   const cosine = Math.cos(yawRad)
   const sine = Math.sin(yawRad)
@@ -149,15 +163,94 @@ function materialToObliqueObject(
     widthMm,
     depthMm,
     heightMm,
+    renderStyle,
     worldCorners,
     base,
     top,
     topTransform: topPlaneTransform(pose, heightMm),
     sites: aggregate.sites.filter((site) => site.visible !== false),
+    shelves: buildStackShelves(aggregate, heightMm, renderStyle),
     sortDepth:
       worldCorners.reduce((total, point) => total + point[1], 0) /
       worldCorners.length
   }
+}
+
+function obliqueRenderStyle(
+  kind: string
+): MaterialObliqueRenderStyle {
+  const normalized = normalizeKind(kind)
+  if (
+    normalized.includes('hotel') ||
+    normalized.includes('stacker') ||
+    normalized.includes('plate-stack') ||
+    normalized.includes('labware-stack') ||
+    normalized.includes('storage-tower')
+  ) {
+    return 'stack'
+  }
+  if (
+    normalized.includes('plate') ||
+    normalized.includes('tip-rack') ||
+    normalized.includes('tiprack') ||
+    normalized.includes('labware')
+  ) {
+    return 'labware'
+  }
+  return 'solid'
+}
+
+function buildStackShelves(
+  aggregate: MaterialAggregate,
+  heightMm: number,
+  renderStyle: MaterialObliqueRenderStyle
+): MaterialObliqueShelf[] {
+  if (renderStyle !== 'stack') return []
+
+  const siteShelves = aggregate.sites
+    .filter(
+      (site) =>
+        site.visible !== false &&
+        site.kind !== 'well' &&
+        site.kind !== 'tip-spot'
+    )
+    .map((site) => ({
+      key: site.id,
+      heightMm: clamp(
+        site.poseInAnchor.positionMm[2],
+        heightMm * 0.06,
+        heightMm * 0.94
+      ),
+      occupied:
+        site.occupiedMaterialIds.length > 0 ||
+        site.visual?.state === 'occupied' ||
+        site.visual?.state === 'filled' ||
+        site.visual?.state === 'tip-present',
+      label: site.name
+    }))
+    .sort((left, right) => left.heightMm - right.heightMm)
+  if (siteShelves.length > 0) return siteShelves
+
+  // Some edge models currently expose only the stack's physical envelope.
+  // In that case shelves are an unoccupied visual scale inferred from height;
+  // no material occupancy is invented.
+  const count = Math.round(clamp(heightMm / 65, 4, 12))
+  const lower = heightMm * 0.1
+  const upper = heightMm * 0.9
+  const step = count > 1 ? (upper - lower) / (count - 1) : 0
+  return Array.from({ length: count }, (_, index) => ({
+    key: `inferred-shelf-${index + 1}`,
+    heightMm: lower + step * index,
+    occupied: false
+  }))
+}
+
+function normalizeKind(kind: string): string {
+  return kind.replaceAll('_', '-').toLowerCase()
+}
+
+function clamp(value: number, minimum: number, maximum: number): number {
+  return Math.min(Math.max(value, minimum), maximum)
 }
 
 function topPlaneTransform(

@@ -411,11 +411,76 @@
 }
 
 .material-oblique-object.is-labware .material-oblique-object__front {
-  fill: #cbd5e1;
+  fill: #d8e0e9;
 }
 
 .material-oblique-object.is-labware .material-oblique-object__side {
+  fill: #aab8c8;
+}
+
+.material-oblique-object.is-labware .material-oblique-object__top {
+  fill: #f8fafc;
+  stroke: #7c8da3;
+}
+
+.material-oblique-labware__layer {
+  stroke: rgb(71 85 105 / 62%);
+  stroke-width: 1;
+  pointer-events: none;
+}
+
+.material-oblique-labware__rim {
+  fill: rgb(255 255 255 / 22%);
+  stroke: #8fa0b4;
+  stroke-width: 1.2;
+  pointer-events: none;
+}
+
+.material-oblique-stack__rail {
+  stroke: #8796aa;
+  stroke-linecap: round;
+  stroke-width: 5;
+}
+
+.material-oblique-stack__rail.is-rear {
+  stroke: #aeb9c7;
+  stroke-width: 4;
+}
+
+.material-oblique-stack__shelf {
+  fill: rgb(248 250 252 / 92%);
+  stroke: #94a3b8;
+  stroke-width: 1.1;
+}
+
+.material-oblique-stack__shelf-lip {
+  fill: #b9c4d2;
+  stroke: #8492a5;
+  stroke-width: 1;
+}
+
+.material-oblique-stack__shelf-group.is-base
+  .material-oblique-stack__shelf-lip,
+.material-oblique-stack__shelf-group.is-cap
+  .material-oblique-stack__shelf-lip {
   fill: #94a3b8;
+}
+
+.material-oblique-stack__occupied {
+  fill: #93c5fd;
+  stroke: #2563eb;
+  stroke-width: 1.2;
+}
+
+.material-oblique-stack__label {
+  fill: #475569;
+  font-size: 11px;
+  font-weight: 650;
+  text-anchor: middle;
+  paint-order: stroke;
+  stroke: rgb(255 255 255 / 92%);
+  stroke-width: 3px;
+  pointer-events: none;
 }
 
 .material-oblique-object.is-trash .material-oblique-object__front {

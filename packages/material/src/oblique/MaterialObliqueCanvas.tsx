@@ -204,6 +204,7 @@ function ObliqueMaterial({
       className={stateClass}
       data-material-code={object.code}
       data-material-id={object.materialId}
+      data-oblique-render-style={object.renderStyle}
       role="button"
       tabIndex={0}
       onClick={onClick}
@@ -215,6 +216,44 @@ function ObliqueMaterial({
         {object.name} · {object.widthMm}×{object.depthMm}×
         {object.heightMm} mm
       </title>
+      {object.renderStyle === 'stack' ? (
+        <ObliqueStackBody object={object} />
+      ) : (
+        <ObliqueSolidBody object={object} />
+      )}
+      {showTag && (
+        <g
+          className="material-oblique-object__tag"
+          transform={`translate(${tagPoint[0]} ${tagPoint[1]})`}
+        >
+          <line y1="0" y2="13" />
+          <rect
+            x={-tagWidth / 2}
+            y={-31}
+            width={tagWidth}
+            height="30"
+            rx="8"
+          />
+          <text y="-16">{label}</text>
+        </g>
+      )}
+    </g>
+  )
+}
+
+function ObliqueSolidBody({
+  object
+}: {
+  object: MaterialObliqueObject
+}): React.JSX.Element {
+  const labwareLayerHeight = object.heightMm * 0.28
+  const layerStart = elevatePoint(object.base[0], labwareLayerHeight)
+  const layerEnd = elevatePoint(object.base[1], labwareLayerHeight)
+  const rimInsetX = object.widthMm * 0.035
+  const rimInsetY = object.depthMm * 0.055
+
+  return (
+    <>
       <polygon
         className="material-oblique-object__shadow"
         filter="url(#material-oblique-shadow)"
@@ -242,29 +281,164 @@ function ObliqueMaterial({
         className="material-oblique-object__top"
         points={pointsAttr(object.top)}
       />
+      {object.renderStyle === 'labware' &&
+        layerStart &&
+        layerEnd && (
+          <line
+            className="material-oblique-labware__layer"
+            x1={layerStart[0]}
+            y1={layerStart[1]}
+            x2={layerEnd[0]}
+            y2={layerEnd[1]}
+            vectorEffect="non-scaling-stroke"
+          />
+        )}
       <g
         className="material-oblique-object__plan"
         transform={`matrix(${object.topTransform.join(' ')})`}
       >
+        {object.renderStyle === 'labware' && (
+          <rect
+            className="material-oblique-labware__rim"
+            x={rimInsetX}
+            y={rimInsetY}
+            width={Math.max(object.widthMm - rimInsetX * 2, 0)}
+            height={Math.max(object.depthMm - rimInsetY * 2, 0)}
+            rx={Math.min(object.widthMm, object.depthMm) * 0.055}
+            vectorEffect="non-scaling-stroke"
+          />
+        )}
         {object.sites.map((site) => (
           <ObliqueSite key={site.id} site={site} />
         ))}
       </g>
-      {showTag && (
-        <g
-          className="material-oblique-object__tag"
-          transform={`translate(${tagPoint[0]} ${tagPoint[1]})`}
+    </>
+  )
+}
+
+function ObliqueStackBody({
+  object
+}: {
+  object: MaterialObliqueObject
+}): React.JSX.Element {
+  const shelfThickness = clamp(object.heightMm * 0.009, 4, 10)
+  const basePlane = planeAtHeight(object.base, 0)
+  const topPlane = planeAtHeight(object.base, object.heightMm)
+
+  return (
+    <>
+      <polygon
+        className="material-oblique-object__shadow"
+        filter="url(#material-oblique-shadow)"
+        points={pointsAttr(object.base)}
+      />
+      <StackRail
+        className="is-rear"
+        from={object.base[2]}
+        to={object.top[2]}
+      />
+      <StackRail
+        className="is-rear"
+        from={object.base[3]}
+        to={object.top[3]}
+      />
+      <StackShelf
+        className="is-base"
+        plane={basePlane}
+        thickness={shelfThickness}
+      />
+      {object.shelves.map((shelf) => (
+        <StackShelf
+          key={shelf.key}
+          label={shelf.label}
+          occupied={shelf.occupied}
+          plane={planeAtHeight(object.base, shelf.heightMm)}
+          thickness={shelfThickness}
+        />
+      ))}
+      <StackShelf
+        className="is-cap"
+        plane={topPlane}
+        thickness={shelfThickness}
+      />
+      <StackRail from={object.base[0]} to={object.top[0]} />
+      <StackRail from={object.base[1]} to={object.top[1]} />
+    </>
+  )
+}
+
+function StackRail({
+  className = '',
+  from,
+  to
+}: {
+  className?: string
+  from?: ObliquePoint
+  to?: ObliquePoint
+}): React.JSX.Element | null {
+  if (!from || !to) return null
+  return (
+    <line
+      className={`material-oblique-stack__rail ${className}`}
+      x1={from[0]}
+      y1={from[1]}
+      x2={to[0]}
+      y2={to[1]}
+      vectorEffect="non-scaling-stroke"
+    />
+  )
+}
+
+function StackShelf({
+  className = '',
+  plane,
+  thickness,
+  occupied = false,
+  label
+}: {
+  className?: string
+  plane: readonly ObliquePoint[]
+  thickness: number
+  occupied?: boolean
+  label?: string
+}): React.JSX.Element {
+  const frontStart = plane[0]
+  const frontEnd = plane[1]
+  const occupiedPlane = insetPlane(plane, 0.1)
+  const labelPoint =
+    frontStart && frontEnd
+      ? midpoint(frontStart, frontEnd)
+      : undefined
+
+  return (
+    <g className={`material-oblique-stack__shelf-group ${className}`}>
+      <polygon
+        className="material-oblique-stack__shelf"
+        points={pointsAttr(plane)}
+      />
+      <polygon
+        className="material-oblique-stack__shelf-lip"
+        points={pointsAttr([
+          frontStart,
+          frontEnd,
+          dropPoint(frontEnd, thickness),
+          dropPoint(frontStart, thickness)
+        ])}
+      />
+      {occupied && (
+        <polygon
+          className="material-oblique-stack__occupied"
+          points={pointsAttr(occupiedPlane)}
+        />
+      )}
+      {label && labelPoint && (
+        <text
+          className="material-oblique-stack__label"
+          x={labelPoint[0]}
+          y={labelPoint[1] - 4}
         >
-          <line y1="0" y2="13" />
-          <rect
-            x={-tagWidth / 2}
-            y={-31}
-            width={tagWidth}
-            height="30"
-            rx="8"
-          />
-          <text y="-16">{label}</text>
-        </g>
+          {label}
+        </text>
       )}
     </g>
   )
@@ -325,6 +499,56 @@ function ObliqueSite({
   )
 }
 
+function planeAtHeight(
+  base: readonly ObliquePoint[],
+  heightMm: number
+): ObliquePoint[] {
+  return base.map(([x, y]) => [x, y - heightMm])
+}
+
+function elevatePoint(
+  point: ObliquePoint | undefined,
+  heightMm: number
+): ObliquePoint | undefined {
+  return point ? [point[0], point[1] - heightMm] : undefined
+}
+
+function dropPoint(
+  point: ObliquePoint | undefined,
+  distance: number
+): ObliquePoint | undefined {
+  return point ? [point[0], point[1] + distance] : undefined
+}
+
+function insetPlane(
+  plane: readonly ObliquePoint[],
+  ratio: number
+): ObliquePoint[] {
+  if (plane.length === 0) return []
+  const center: ObliquePoint = [
+    plane.reduce((total, point) => total + point[0], 0) / plane.length,
+    plane.reduce((total, point) => total + point[1], 0) / plane.length
+  ]
+  return plane.map(([x, y]) => [
+    x + (center[0] - x) * ratio,
+    y + (center[1] - y) * ratio
+  ])
+}
+
+function midpoint(
+  left: ObliquePoint,
+  right: ObliquePoint
+): ObliquePoint {
+  return [
+    (left[0] + right[0]) / 2,
+    (left[1] + right[1]) / 2
+  ]
+}
+
+function clamp(value: number, minimum: number, maximum: number): number {
+  return Math.min(Math.max(value, minimum), maximum)
+}
+
 function tagAnchor(points: readonly ObliquePoint[]): ObliquePoint {
   return [
     points.reduce((total, point) => total + point[0], 0) / points.length,
@@ -340,6 +564,7 @@ function pointsAttr(points: readonly (ObliquePoint | undefined)[]): string {
 }
 
 function isEquipmentKind(kind: string): boolean {
+  const normalized = kind.replaceAll('_', '-').toLowerCase()
   return ![
     'plate',
     'tip-rack',
@@ -351,16 +576,23 @@ function isEquipmentKind(kind: string): boolean {
     'tube',
     'trash',
     'deck'
-  ].some((token) => kind.includes(token))
+  ].some((token) => normalized.includes(token))
 }
 
 function materialKindClass(kind: string): string {
-  if (kind.includes('trash')) return 'trash'
-  if (kind.includes('deck')) return 'deck'
+  const normalized = kind.replaceAll('_', '-').toLowerCase()
   if (
-    kind.includes('plate') ||
-    kind.includes('tip-rack') ||
-    kind.includes('tiprack')
+    normalized.includes('hotel') ||
+    normalized.includes('stack')
+  ) {
+    return 'stack'
+  }
+  if (normalized.includes('trash')) return 'trash'
+  if (normalized.includes('deck')) return 'deck'
+  if (
+    normalized.includes('plate') ||
+    normalized.includes('tip-rack') ||
+    normalized.includes('tiprack')
   ) {
     return 'labware'
   }

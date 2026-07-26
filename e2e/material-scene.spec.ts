@@ -32,6 +32,7 @@ interface Scenario {
   title: string
   graph: string
   expectedCodes: readonly string[]
+  expectedStackCodes?: readonly string[]
 }
 
 const SCENARIOS: readonly Scenario[] = [
@@ -61,7 +62,8 @@ const SCENARIOS: readonly Scenario[] = [
       'plate_well',
       'arm_slider',
       'hotel'
-    ]
+    ],
+    expectedStackCodes: ['hotel']
   }
 ]
 
@@ -145,6 +147,21 @@ for (const scenario of SCENARIOS) {
             `.material-oblique-object[data-material-code="${code}"]`
           )
         ).toHaveCount(1)
+      }
+      await expect(
+        page.locator('.material-oblique-labware__rim').first()
+      ).toBeVisible()
+      expect(
+        await page.locator('.material-oblique-site').count()
+      ).toBeGreaterThanOrEqual(96)
+      for (const code of scenario.expectedStackCodes ?? []) {
+        const stack = page.locator(
+          `.material-oblique-object[data-material-code="${code}"][data-oblique-render-style="stack"]`
+        )
+        await expect(stack).toHaveCount(1)
+        expect(
+          await stack.locator('.material-oblique-stack__shelf').count()
+        ).toBeGreaterThanOrEqual(4)
       }
       await captureViewport(page, scenario.id, '2.5d')
 
