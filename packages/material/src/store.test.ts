@@ -56,16 +56,18 @@ describe('material store', () => {
         }
       }
     })
+    const move = vi.fn(async () => moved)
     const store = createMaterialStore({
       scope: { kind: 'singleton' },
       graph: materialGraphPort({
         getGraph: async () => [initial],
-        move: async () => moved
+        move
       }),
       requireCapability: allowCapabilities(
         'material.readGraph',
         'material.move'
-      )
+      ),
+      createIdempotencyKey: () => 'move-robot-1'
     })
     await store.getState().loadGraph()
 
@@ -76,9 +78,50 @@ describe('material store', () => {
     expect(store.getState().canUndo()).toBe(false)
 
     await store.getState().move('robot', moved.placement)
+    expect(move).toHaveBeenCalledWith({
+      materialId: 'robot',
+      expectedRevision: 1,
+      idempotencyKey: 'move-robot-1',
+      placement: moved.placement
+    })
     expect(store.getState().canUndo()).toBe(true)
     expect(store.getState().dragPreviewByMaterialId.robot).toBeUndefined()
     expect(store.getState().aggregatesById.robot.revision).toBe(2)
+  })
+
+  it('keeps the drag preview until a move settles and rolls it back on failure', async () => {
+    const initial = materialAggregate('robot')
+    let rejectMove: ((reason: Error) => void) | undefined
+    const store = createMaterialStore({
+      scope: { kind: 'singleton' },
+      graph: materialGraphPort({
+        getGraph: async () => [initial],
+        move: () =>
+          new Promise((_, reject) => {
+            rejectMove = reject
+          })
+      }),
+      requireCapability: allowCapabilities(
+        'material.readGraph',
+        'material.move'
+      ),
+      createIdempotencyKey: () => 'move-robot-failure'
+    })
+    await store.getState().loadGraph()
+    store.getState().setDragPreview('robot', {
+      positionMm: [50, 60, 0],
+      rotationDegXYZ: [0, 0, 0]
+    })
+
+    const movement = store.getState().move('robot', initial.placement)
+    expect(store.getState().dragPreviewByMaterialId.robot).toBeDefined()
+
+    rejectMove?.(new Error('revision conflict'))
+    await expect(movement).rejects.toThrow('revision conflict')
+
+    expect(store.getState().dragPreviewByMaterialId.robot).toBeUndefined()
+    expect(store.getState().aggregatesById.robot.revision).toBe(1)
+    expect(store.getState().error).toBe('revision conflict')
   })
 
   it('checks capability before invoking the port', async () => {

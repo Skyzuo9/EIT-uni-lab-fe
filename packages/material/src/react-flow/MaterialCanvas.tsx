@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import ReactFlow, {
   Background,
   Controls,
@@ -47,6 +47,7 @@ export function MaterialCanvas({
   highlightedMaterialIds = [],
   onSelectionChange
 }: MaterialCanvasProps): React.JSX.Element {
+  const [isEditing, setIsEditing] = useState(false)
   const canvasRef = useRef<HTMLElement>(null)
   const flowInstanceRef = useRef<ReactFlowInstance<
     MaterialFlowNode['data']
@@ -60,6 +61,11 @@ export function MaterialCanvas({
   )
   const loadState = useMaterialStore((state) => state.loadState)
   const error = useMaterialStore((state) => state.error)
+  const canDrag = moveStatus.available && isEditing
+
+  useEffect(() => {
+    if (!moveStatus.available) setIsEditing(false)
+  }, [moveStatus.available])
 
   useEffect(() => {
     if (!readStatus.available || loadState !== 'idle') return
@@ -73,14 +79,14 @@ export function MaterialCanvas({
         dragPreviewByMaterialId,
         selectedMaterialIds,
         highlightedMaterialIds,
-        draggable: moveStatus.available,
+        draggable: canDrag,
         physicalLayout: physicalLayout ?? !moveStatus.available
       }),
     [
       aggregatesById,
+      canDrag,
       dragPreviewByMaterialId,
       highlightedMaterialIds,
-      moveStatus.available,
       physicalLayout,
       selectedMaterialIds
     ]
@@ -130,6 +136,29 @@ export function MaterialCanvas({
       }`}
     >
       {error ? <div className="material__error">{error}</div> : null}
+      <div
+        className="material-canvas__edit-control"
+        data-move-available={moveStatus.available}
+      >
+        <button
+          type="button"
+          aria-pressed={isEditing}
+          disabled={!moveStatus.available}
+          onClick={() => setIsEditing((current) => !current)}
+          title={
+            moveStatus.available
+              ? isEditing
+                ? '退出物料位置编辑'
+                : '进入物料位置编辑'
+              : moveStatus.reason
+          }
+        >
+          {isEditing ? '完成移动' : '移动物料'}
+        </button>
+        {!moveStatus.available ? (
+          <span>{moveStatus.reason ?? '当前服务仅提供只读物料图'}</span>
+        ) : null}
+      </div>
       <ReactFlow
         nodes={nodes}
         edges={[]}
@@ -144,6 +173,7 @@ export function MaterialCanvas({
           flowInstanceRef.current = instance
         }}
         onNodeDrag={(_, node) => {
+          if (!canDrag) return
           const placement = flowPositionToPlacement({
             materialId: node.id,
             flowPosition: node.position,
@@ -153,15 +183,18 @@ export function MaterialCanvas({
           if (pose) store.getState().setDragPreview(node.id, pose)
         }}
         onNodeDragStop={(_, node) => {
+          if (!canDrag) {
+            store.getState().clearDragPreview(node.id)
+            return
+          }
           const placement = flowPositionToPlacement({
             materialId: node.id,
             flowPosition: node.position,
             aggregatesById
           })
-          store.getState().clearDragPreview(node.id)
-          if (moveStatus.available) {
-            void store.getState().move(node.id, placement)
-          }
+          void store.getState().move(node.id, placement).catch(() => {
+            // The store owns the actionable error and preview rollback.
+          })
         }}
         onSelectionChange={
           ((selection) =>

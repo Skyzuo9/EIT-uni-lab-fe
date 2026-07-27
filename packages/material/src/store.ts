@@ -239,14 +239,18 @@ export function createMaterialStore(
           const result = await dependencies.graph.move({
             materialId,
             expectedRevision: aggregate.revision,
+            idempotencyKey:
+              dependencies.createIdempotencyKey?.() ??
+              `material-${Date.now()}-${commandId}`,
             placement
           })
           applyAggregates([result])
-          get().clearDragPreview(materialId)
           finish(commandId)
           return result
         } catch (error) {
           return fail(commandId, error)
+        } finally {
+          get().clearDragPreview(materialId)
         }
       },
 

@@ -123,6 +123,7 @@ export interface UpdateMaterialConfigCommand {
 export interface MoveMaterialCommand {
   materialId: MaterialId
   expectedRevision: MaterialRevision
+  idempotencyKey: string
   placement: MaterialPlacement
 }
 

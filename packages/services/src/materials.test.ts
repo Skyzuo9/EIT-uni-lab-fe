@@ -142,6 +142,7 @@ describe('material template adapter', () => {
       service.move({
         materialId: 'material-1',
         expectedRevision: 1,
+        idempotencyKey: 'move-material-1',
         placement: { kind: 'unplaced' }
       })
     ).rejects.toBeInstanceOf(UnsupportedCapabilityError)

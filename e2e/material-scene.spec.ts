@@ -101,8 +101,38 @@ for (const scenario of SCENARIOS) {
 
       await installReviewLayout(page)
       await page.goto(MATERIAL_SCENE_URL)
+      const materialGraphLoaded = page.waitForResponse(
+        (response) =>
+          response.url().startsWith(`${API_URL}/api/v1/materials?`) &&
+          response.status() === 200
+      )
       await page.getByRole('button', { name: /物料/ }).click()
-      await connectToOs(page)
+      const offlineToggle = page.getByRole('button', {
+        name: '离线',
+        exact: true
+      })
+      if (await offlineToggle.isVisible()) {
+        await offlineToggle.click()
+      }
+      await materialGraphLoaded
+
+      if (scenario.id === 'liquid-handler-original') {
+        await page.getByRole('button', { name: /工作流/ }).click()
+        await expect(
+          page.locator('[data-panel-type="workflow-dag"]')
+        ).toBeVisible()
+        await expect(
+          page.locator('[data-panel-type="layout-unified"]')
+        ).toHaveCount(0)
+
+        await page.getByRole('button', { name: /物料/ }).click()
+        await expect(
+          page.locator('[data-panel-type="layout-unified"]')
+        ).toBeVisible()
+        await expect(
+          page.locator('[data-panel-type="workflow-dag"]')
+        ).toHaveCount(0)
+      }
 
       await expect(
         page.locator('.lab-unified-viewport')
@@ -171,7 +201,9 @@ for (const scenario of SCENARIOS) {
       }
       await captureViewport(page, scenario.id, '2.5d')
 
-      await page.getByRole('button', { name: 'Split', exact: true }).click()
+      await page
+        .getByRole('button', { name: /^(Split|分屏)$/ })
+        .click()
       await expect(
         page.locator('.lab-unified-viewport')
       ).toHaveAttribute('data-lab-view-mode', 'split')
@@ -210,7 +242,9 @@ for (const scenario of SCENARIOS) {
       ).toBeHidden()
       await captureViewport(page, scenario.id, '3d')
 
-      await page.getByRole('button', { name: 'Split', exact: true }).click()
+      await page
+        .getByRole('button', { name: /^(Split|分屏)$/ })
+        .click()
 
       const materialResponse = await page.request.get(
         `${API_URL}/api/v1/materials?page=1&page_size=100`
@@ -334,16 +368,6 @@ async function installReviewLayout(page: Page): Promise<void> {
   })
 }
 
-async function connectToOs(page: Page): Promise<void> {
-  await page.getByRole('button', { name: '离线', exact: true }).click()
-  await expect(
-    page.getByRole('button', { name: '在线', exact: true })
-  ).toBeVisible()
-  await expect(
-    page.getByText('已连接', { exact: true })
-  ).toBeVisible()
-}
-
 async function startOs(scenario: Scenario): Promise<{
   process: ChildProcess
   command: readonly string[]
@@ -374,11 +398,9 @@ async function startOs(scenario: Scenario): Promise<{
     '8014',
     '--schedule-port',
     '18890',
-    '--workflow-port',
-    '18891',
     '--journal-path',
     journalPath,
-    '--material-graph',
+    '--graph',
     graphPath
   ] as const
   const log = createWriteStream(logPath, { flags: 'w' })

@@ -21,6 +21,14 @@ export function LabPanelWorkspace({
 }: {
   preset: LabPanelPreset
 }): React.JSX.Element {
+  return <LabPanelWorkspaceSession key={preset} preset={preset} />
+}
+
+function LabPanelWorkspaceSession({
+  preset
+}: {
+  preset: LabPanelPreset
+}): React.JSX.Element {
   const adapter = useLabPanelAdapter()
   const storageKey = `unilab.panel-layout.${preset}.v1`
   const [document, setDocument] = useState<PanelLayoutDocument>(

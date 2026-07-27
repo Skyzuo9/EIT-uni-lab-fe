@@ -587,6 +587,64 @@
   transform: translateX(-50%);
 }
 
+.material-canvas__edit-control {
+  position: absolute;
+  z-index: 6;
+  right: 12px;
+  top: 12px;
+  display: flex;
+  max-width: min(420px, calc(100% - 24px));
+  align-items: center;
+  gap: 8px;
+  padding: 6px;
+  color: var(--unilab-color-text-muted);
+  background: color-mix(
+    in srgb,
+    var(--unilab-color-surface) 92%,
+    transparent
+  );
+  border: 1px solid var(--unilab-color-border);
+  border-radius: var(--unilab-radius-md);
+  box-shadow: var(--unilab-shadow-control);
+  backdrop-filter: blur(10px);
+}
+
+.material-canvas__edit-control button {
+  flex: 0 0 auto;
+  min-height: 30px;
+  padding: 0 12px;
+  color: var(--unilab-color-text);
+  background: var(--unilab-color-surface);
+  border: 1px solid var(--unilab-color-border-strong);
+  border-radius: var(--unilab-radius-control);
+  cursor: pointer;
+  font: 600 12px/1 var(--unilab-font-sans);
+}
+
+.material-canvas__edit-control button[aria-pressed='true'] {
+  color: #fff;
+  background: var(--unilab-color-material);
+  border-color: var(--unilab-color-material);
+}
+
+.material-canvas__edit-control button:focus-visible {
+  outline: 2px solid var(--unilab-color-focus);
+  outline-offset: 2px;
+}
+
+.material-canvas__edit-control button:disabled {
+  cursor: not-allowed;
+  opacity: .55;
+}
+
+.material-canvas__edit-control span {
+  overflow: hidden;
+  font-size: 11px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .material-flow-node {
   box-sizing: border-box;
   width: 128px;
