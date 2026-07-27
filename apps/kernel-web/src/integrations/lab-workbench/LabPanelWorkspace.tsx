@@ -69,7 +69,7 @@ function LabPanelWorkspaceSession({
   )
 
   return (
-    <div className="lab-panel-workspace">
+    <div className={`lab-panel-workspace lab-panel-workspace--${preset}`}>
       <PanelLayoutRenderer
         adapter={adapter}
         document={document}

@@ -36,7 +36,7 @@ export interface WorkflowNodeData {
 export default function WorkflowNodeCard({ data }: NodeProps<WorkflowNodeData>): React.JSX.Element {
   return (
     <div
-      className={`${styles.node} wf-node min-w-[150px] max-w-[220px] cursor-pointer overflow-visible rounded-lg border border-[#cbd5e1] bg-white shadow-[0_2px_8px_rgba(15,23,42,0.08)] transition-[box-shadow,transform] duration-200 hover:shadow-[0_4px_14px_rgba(15,23,42,0.14)]`}
+      className={`${styles.node} wf-node min-w-[150px] max-w-[220px] cursor-pointer overflow-visible rounded-[var(--unilab-radius-md)] border border-[var(--unilab-color-border)] bg-[var(--unilab-color-surface)] transition-[border-color,box-shadow] duration-200`}
     >
       {/* 顶部目标端点(上下流向,连入) */}
       <Handle type="target" position={Position.Left} className="wf-node__handle" />
@@ -58,14 +58,14 @@ export default function WorkflowNodeCard({ data }: NodeProps<WorkflowNodeData>):
         </div>
         <span className="wf-node__kind">
           {data.groupKind === 'subworkflow'
-            ? '▣ SUBWORKFLOW'
+            ? '▣ 子工作流'
             : data.kind === 'branch'
-              ? '◇ BRANCH'
+              ? '◇ 分支节点'
               : data.kind === 'join'
-                ? '◆ JOIN'
+                ? '◆ 汇合节点'
                 : data.kind === 'group'
-                  ? '▣ GROUP'
-                  : 'ACTION'}
+                  ? '▣ 节点组'
+                  : '操作节点'}
         </span>
         <span className="wf-node__id">{data.name || data.id}</span>
         {data.groupKind === 'subworkflow' && (

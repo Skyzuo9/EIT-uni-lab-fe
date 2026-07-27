@@ -15,6 +15,8 @@
 - Node/Electron 能力只通过 preload 暴露窄接口；renderer 不启用任意 Node 权限。
 - 本地 OS 连接仍走 Services Profile，不在主进程实现第二套物料或工作流 client。
 - 桌面环境差异应限制在窗口、文件选择、协议唤起等宿主能力。
+- 本地 `dev`/`preview` 使用 `build/icon.png` 作为窗口图标，并在 macOS 显式设置
+  Dock 图标；安装包继续使用 `electron-builder.yml` 声明的 `icon.icns/icon.png`。
 
 ## 绝对不能做
 

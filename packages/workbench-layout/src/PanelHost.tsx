@@ -19,7 +19,9 @@ import type {
 } from "./types";
 
 const PANEL_STATE_CLASS =
-  "grid min-h-20 place-content-center gap-2 p-4 text-center";
+  "grid min-h-20 place-content-center gap-2 p-4 text-center text-[13px] text-[var(--unilab-color-text-muted)]";
+const PANEL_ACTION_CLASS =
+  "mx-auto cursor-pointer rounded-[var(--unilab-radius-control)] border border-[var(--unilab-color-border-strong)] bg-[var(--unilab-color-surface)] px-3 py-1.5 text-[12px] font-semibold text-[var(--unilab-color-text)] hover:bg-[var(--unilab-color-surface-muted)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--unilab-color-focus)]";
 
 export interface PanelHostProps<Scope = unknown> {
   panelId: string;
@@ -69,11 +71,16 @@ class PanelErrorBoundary extends Component<BoundaryProps, BoundaryState> {
     if (!this.state.failure) return this.props.children;
     return (
       <div className={PANEL_STATE_CLASS} role="alert">
-        <strong>PANEL_RENDERER_FAILED</strong>
+        <strong className="text-[var(--unilab-color-text)]">面板加载失败</strong>
         {this.props.failureTitle ? <span>{this.props.failureTitle}</span> : null}
-        <span>{this.state.failure.message}</span>
-        <button type="button" onClick={this.retry}>
-          {this.props.retryLabel ?? "Retry"}
+        <details>
+          <summary className="cursor-pointer">查看技术信息</summary>
+          <code className="block max-w-[60ch] [overflow-wrap:anywhere] pt-1 text-left text-[10px]">
+            {this.state.failure.message}
+          </code>
+        </details>
+        <button className={PANEL_ACTION_CLASS} type="button" onClick={this.retry}>
+          {this.props.retryLabel ?? "重新加载"}
         </button>
       </div>
     );
@@ -178,24 +185,29 @@ export function PanelHost<Scope = unknown>({
   if (view.status === "loading")
     content = (
       <div className={PANEL_STATE_CLASS} role="status" aria-live="polite">
-        PANEL_LOADING
+        正在加载面板…
       </div>
     );
   else if (view.status === "failed")
     content = (
       <div className={PANEL_STATE_CLASS} role="alert">
-        <strong>{view.failure.code}</strong>
-        <span>{view.failure.message}</span>
-        <button type="button" onClick={retry}>
-          Retry
+        <strong className="text-[var(--unilab-color-text)]">面板加载失败</strong>
+        <details>
+          <summary className="cursor-pointer">查看技术信息</summary>
+          <code className="block max-w-[60ch] [overflow-wrap:anywhere] pt-1 text-left text-[10px]">
+            {view.failure.code}: {view.failure.message}
+          </code>
+        </details>
+        <button className={PANEL_ACTION_CLASS} type="button" onClick={retry}>
+          重新加载
         </button>
       </div>
     );
   else if (view.resolution.status === "empty")
     content = (
       <div className={PANEL_STATE_CLASS}>
-        <strong>PANEL_EMPTY</strong>
-        <span>{view.resolution.message ?? "No panel content"}</span>
+        <strong className="text-[var(--unilab-color-text)]">暂无面板内容</strong>
+        {view.resolution.message ? <span>{view.resolution.message}</span> : null}
       </div>
     );
   else if (view.resolution.status === "unavailable")
@@ -205,11 +217,13 @@ export function PanelHost<Scope = unknown>({
         role="status"
         aria-label={`${view.resolution.error.code} ${view.resolution.error.panelId}`}
       >
-        <strong>{view.resolution.error.code}</strong>
-        <span>{view.resolution.error.panelId}</span>
+        <strong className="text-[var(--unilab-color-text)]">当前面板不可用</strong>
         {view.resolution.error.recoveryCondition ? (
           <span>{view.resolution.error.recoveryCondition}</span>
         ) : null}
+        <code className="text-[10px]">
+          {view.resolution.error.code} · {view.resolution.error.panelId}
+        </code>
       </div>
     );
   else

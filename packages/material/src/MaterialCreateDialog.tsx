@@ -81,13 +81,13 @@ export function MaterialCreateDialog({
 
           {draft.requiresLiquidConfiguration ? (
             <p className="material-dialog__notice">
-              已按 Cloud 创建规则为液体孔位填入默认 Water 500。
+              已按云端创建规则为液体孔位填入默认 Water 500 配置。
             </p>
           ) : null}
 
           {!createStatus.available ? (
             <p className="material-dialog__disabled">
-              {createStatus.reason ?? '当前 Profile 不支持创建物料'}
+              {createStatus.reason ?? '当前服务配置不支持创建物料'}
             </p>
           ) : null}
         </div>

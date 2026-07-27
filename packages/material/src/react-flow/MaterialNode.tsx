@@ -70,7 +70,7 @@ export function MaterialNode({
         {isTrash && (
           <div className="material-flow-node__trash-mark">
             <span aria-hidden="true">🗑</span>
-            <strong>Trash</strong>
+            <strong>废弃物</strong>
           </div>
         )}
         {(isDeck || isLabware) && (
@@ -110,7 +110,7 @@ export function MaterialNode({
       data-material-kind={visual.kind}
     >
       <header>
-        <span>{aggregate.material.code || 'Material'}</span>
+        <span>{aggregate.material.code || '物料'}</span>
         <small>r{aggregate.revision}</small>
       </header>
       <strong>{aggregate.material.name}</strong>
@@ -118,8 +118,8 @@ export function MaterialNode({
         <span>{placementLabel(aggregate.placement.kind)}</span>
         <span>
           {aggregate.sites.length
-            ? `${occupied}/${aggregate.sites.length} Site`
-            : '无 Site'}
+            ? `${occupied}/${aggregate.sites.length} 个安装位`
+            : '无安装位'}
         </span>
       </footer>
     </article>
@@ -224,8 +224,8 @@ function formatDimension(value: number): string {
 }
 
 function placementLabel(kind: string): string {
-  if (kind === 'world') return 'World'
-  if (kind === 'parent') return 'Parent'
-  if (kind === 'site') return 'Site'
+  if (kind === 'world') return '全局'
+  if (kind === 'parent') return '父级'
+  if (kind === 'site') return '安装位'
   return '未放置'
 }

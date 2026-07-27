@@ -10,6 +10,7 @@
 - 在应用入口创建当前 `Services`、Query Client 和页面级 Provider。
 - 组合工作流、物料、代码编辑器、2D、2.5D 与 Pascal 3D。
 - 保存当前连接 Profile，并在用户切换完整 Profile 时重建服务作用域。
+- 启动时自动连接默认 Edge Profile；连接配置仅在探测失败后作为恢复入口显示。
 - 承担跨 panel 的轻量交互状态，例如当前选择、悬停、高亮和视图模式。
 
 Electron 只加载本应用。禁止再创建一套 desktop renderer，也禁止为 cloud 复制一套页面树。

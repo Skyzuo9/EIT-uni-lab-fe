@@ -54,8 +54,8 @@ test('marked start continues through breakpoint 1 and breakpoint 2', async ({
 
   const runId = await startDebug(page)
   const debugStatus = page.locator('.workflow-runtime__debug-status strong')
-  await expect(debugStatus).toHaveText('paused')
-  await expect(page.getByText(/暂停于 measure 之前/)).toBeVisible()
+  await expect(debugStatus).toHaveText('已暂停')
+  await expect(page.getByText(/暂停于 measure 执行之前/)).toBeVisible()
   const start = await snapshot(request, osUrl, runId, 'marked-start')
   expectPausedBefore(start, 'measure')
   expect(nodeStates(start)).toMatchObject({
@@ -65,7 +65,7 @@ test('marked start continues through breakpoint 1 and breakpoint 2', async ({
   })
 
   await page.getByRole('button', { name: /继续/ }).click()
-  await expect(page.getByText(/暂停于 branch 之前/)).toBeVisible()
+  await expect(page.getByText(/暂停于 branch 执行之前/)).toBeVisible()
   const breakpoint1 = await snapshot(
     request,
     osUrl,
@@ -81,7 +81,7 @@ test('marked start continues through breakpoint 1 and breakpoint 2', async ({
   })
 
   await page.getByRole('button', { name: /继续/ }).click()
-  await expect(page.getByText(/暂停于 join 之前/)).toBeVisible()
+  await expect(page.getByText(/暂停于 join 执行之前/)).toBeVisible()
   const breakpoint2 = await snapshot(
     request,
     osUrl,
@@ -107,9 +107,9 @@ test('marked start continues through breakpoint 1 and breakpoint 2', async ({
 
   await page.getByRole('button', { name: /继续/ }).click()
   await expect(page.locator('.workflow-runtime__run-state')).toHaveText(
-    'completed'
+    '整体：已完成'
   )
-  await expect(debugStatus).toHaveText('completed')
+  await expect(debugStatus).toHaveText('已完成')
   const completed = await snapshot(request, osUrl, runId, 'completed')
   expect(nodeStates(completed)).toMatchObject({
     measure: 'success',
@@ -147,13 +147,13 @@ test('breakpoint 1 then steps exactly two logical nodes', async ({
   await expect(page.locator('.wf-flow-node--breakpoint')).toHaveCount(1)
   const runId = await startDebug(page)
   const debugStatus = page.locator('.workflow-runtime__debug-status strong')
-  await expect(debugStatus).toHaveText('paused')
-  await expect(page.getByText(/暂停于 measure 之前/)).toBeVisible()
+  await expect(debugStatus).toHaveText('已暂停')
+  await expect(page.getByText(/暂停于 measure 执行之前/)).toBeVisible()
   const start = await snapshot(request, osUrl, runId, 'marked-start')
   expectPausedBefore(start, 'measure')
 
   await page.getByRole('button', { name: /继续/ }).click()
-  await expect(page.getByText(/暂停于 branch 之前/)).toBeVisible()
+  await expect(page.getByText(/暂停于 branch 执行之前/)).toBeVisible()
   const breakpoint1 = await snapshot(
     request,
     osUrl,
@@ -163,7 +163,7 @@ test('breakpoint 1 then steps exactly two logical nodes', async ({
   expectPausedBefore(breakpoint1, 'branch')
 
   await page.getByRole('button', { name: /单步/ }).click()
-  await expect(page.getByText(/暂停于 dose 之前/)).toBeVisible()
+  await expect(page.getByText(/暂停于 dose 执行之前/)).toBeVisible()
   const afterStep1 = await snapshot(request, osUrl, runId, 'after-step-1')
   expectPausedBefore(afterStep1, 'dose')
   expect(nodeStates(afterStep1)).toMatchObject({
@@ -176,7 +176,7 @@ test('breakpoint 1 then steps exactly two logical nodes', async ({
   })
 
   await page.getByRole('button', { name: /单步/ }).click()
-  await expect(page.getByText(/暂停于 join 之前/)).toBeVisible()
+  await expect(page.getByText(/暂停于 join 执行之前/)).toBeVisible()
   const afterStep2 = await snapshot(request, osUrl, runId, 'after-step-2')
   expectPausedBefore(afterStep2, 'join')
   expect(nodeStates(afterStep2)).toMatchObject({
@@ -197,9 +197,9 @@ test('breakpoint 1 then steps exactly two logical nodes', async ({
 
   await page.getByRole('button', { name: /继续/ }).click()
   await expect(page.locator('.workflow-runtime__run-state')).toHaveText(
-    'completed'
+    '整体：已完成'
   )
-  await expect(debugStatus).toHaveText('completed')
+  await expect(debugStatus).toHaveText('已完成')
   const completed = await snapshot(request, osUrl, runId, 'completed')
   expectPausedEventPositions(
     completed,
@@ -269,7 +269,7 @@ test('start, breakpoint and runtime colors stay synchronized in code and DAG', a
   await expect(page.locator('.cm-content')).toContainText('# join: join')
 
   const runId = await startDebug(page)
-  await expect(page.getByText(/暂停于 branch 之前/)).toBeVisible()
+  await expect(page.getByText(/暂停于 branch 执行之前/)).toBeVisible()
   const markedStart = await snapshot(
     request,
     osUrl,
@@ -298,7 +298,7 @@ test('start, breakpoint and runtime colors stay synchronized in code and DAG', a
   })
 
   await page.getByRole('button', { name: /继续/ }).click()
-  await expect(page.getByText(/暂停于 join 之前/)).toBeVisible()
+  await expect(page.getByText(/暂停于 join 执行之前/)).toBeVisible()
   const breakpoint2 = await snapshot(
     request,
     osUrl,
@@ -320,9 +320,8 @@ test('start, breakpoint and runtime colors stay synchronized in code and DAG', a
   await expect(page.locator('.wf-flow-node--paused-before')).toHaveCount(1)
   await expect(page.locator('.cm-workflow-marker--success')).toHaveCount(2)
   await expect(page.locator('.cm-workflow-marker--paused')).toHaveCount(1)
-  await expect(page.getByLabel('节点颜色图例')).toContainText(
-    '橙色 · 正在运行'
-  )
+  await page.getByRole('button', { name: '状态图例' }).click()
+  await expect(page.getByLabel('节点状态图例')).toContainText('正在运行')
 
   const artifactDir = artifactDirectory()
   const fullScreenshot = resolve(
@@ -349,7 +348,7 @@ test('start, breakpoint and runtime colors stay synchronized in code and DAG', a
 
   await page.getByRole('button', { name: /继续/ }).click()
   await expect(page.locator('.workflow-runtime__run-state')).toHaveText(
-    'completed'
+    '整体：已完成'
   )
   expect(evidence.browserErrors).toEqual([])
   writeEvidence('workflow-debug-markers-detail-result.json', {

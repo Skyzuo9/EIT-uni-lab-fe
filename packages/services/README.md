@@ -45,6 +45,13 @@ relative-position 和 site 的行级 CRUD 来伪装一个原子命令；在 revi
 OS 与 Go backend 的逐路由、字段和调用链对照记录在 Uni-Lab-OS：
 `unilabos/app/local_bridge/MATERIAL_API.md`。
 
+## 设备端口
+
+设备目录与低频 `device_status` 也服从 capability matrix。当前 unified v1 bridge
+尚未实现 `devices.listOnline` 和 `devices.subscribeStatus`，因此选择 Edge Profile
+时不得试探旧 `/api/v1/online-devices` 或 `/ws/device_status`；未声明的能力直接降级，
+避免把预期的 404/WS 握手失败污染为运行时异常。
+
 ## 工作流端口
 
 `src/workflow.ts` 的 `WorkflowRuntimePort` 是前端工作流唯一契约：

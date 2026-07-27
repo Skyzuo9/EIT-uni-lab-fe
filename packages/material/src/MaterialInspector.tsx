@@ -16,7 +16,7 @@ export function MaterialInspector({
   return (
     <aside className="material-inspector">
       <header>
-        <span>Inspector</span>
+        <span>属性检查</span>
         <h2>物料属性</h2>
       </header>
       {!aggregate ? (
@@ -28,14 +28,14 @@ export function MaterialInspector({
             <dd>{aggregate.material.name}</dd>
             <dt>代码</dt>
             <dd>{aggregate.material.code || '—'}</dd>
-            <dt>Template</dt>
+            <dt>模板</dt>
             <dd>{aggregate.material.sourceTemplateId}</dd>
-            <dt>Placement</dt>
-            <dd>{aggregate.placement.kind}</dd>
-            <dt>Revision</dt>
+            <dt>放置方式</dt>
+            <dd>{placementLabel(aggregate.placement.kind)}</dd>
+            <dt>修订版本</dt>
             <dd>{aggregate.revision}</dd>
           </dl>
-          <h3>Config</h3>
+          <h3>配置</h3>
           <pre>{JSON.stringify(aggregate.material.config, null, 2)}</pre>
           {!updateStatus.available ? (
             <small>{updateStatus.reason}</small>
@@ -44,4 +44,11 @@ export function MaterialInspector({
       )}
     </aside>
   )
+}
+
+function placementLabel(kind: string): string {
+  if (kind === 'world') return '全局坐标'
+  if (kind === 'parent') return '父级对象'
+  if (kind === 'site') return '安装位'
+  return kind
 }

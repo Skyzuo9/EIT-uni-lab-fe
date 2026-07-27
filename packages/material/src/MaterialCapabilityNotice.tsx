@@ -14,7 +14,7 @@ export function MaterialCapabilityNotice({
   return (
     <div className="material-capability" role="status">
       <strong>{title}</strong>
-      <span>{status.reason ?? '当前 Profile 不支持此功能'}</span>
+      <span>{status.reason ?? '当前服务配置不支持此功能'}</span>
     </div>
   )
 }

@@ -35,7 +35,21 @@ export interface LabPanelScope {
   interaction: LabInteractionStore
 }
 
-const registry = createPanelRegistry(CANONICAL_PANEL_MANIFEST)
+const PANEL_TITLES: Readonly<Record<string, string>> = {
+  'layout-unified': '实验室视图',
+  'layout-2d': '二维物料',
+  'layout-3d': '三维场景',
+  'workflow-dag': '工作流',
+  'workflow-steps': '工作流步骤',
+  'workflow-dag-picker': '工作流调试'
+}
+
+const registry = createPanelRegistry(
+  CANONICAL_PANEL_MANIFEST.map((definition) => ({
+    ...definition,
+    title: PANEL_TITLES[definition.id] ?? definition.title
+  }))
+)
 const SceneWorkbench = lazy(async () => {
   const module = await import('./SceneWorkbench')
   return { default: module.SceneWorkbench }
@@ -69,10 +83,10 @@ function MaterialRenderer(
   if (!runtime.store || !runtime.scope) {
     return (
       <MaterialCapabilityNotice
-        title="请选择 Laboratory"
+        title="请选择实验室"
         status={{
           available: false,
-          reason: '当前 Profile 使用 laboratory scope，需先选择 Laboratory'
+          reason: '当前服务配置使用实验室范围，请先选择实验室'
         }}
       />
     )
@@ -139,10 +153,10 @@ function SceneRenderer(
   if (!runtime.store || !runtime.scope) {
     return (
       <MaterialCapabilityNotice
-        title="请选择 Laboratory"
+        title="请选择实验室"
         status={{
           available: false,
-          reason: '当前 Profile 使用 laboratory scope，需先选择 Laboratory'
+          reason: '当前服务配置使用实验室范围，请先选择实验室'
         }}
       />
     )
@@ -151,7 +165,7 @@ function SceneRenderer(
   if (!readStatus.available) {
     return (
       <MaterialCapabilityNotice
-        title="3D Material Scene 不可用"
+        title="三维物料场景不可用"
         status={readStatus}
       />
     )
@@ -210,7 +224,7 @@ export function useLabPanelAdapter(): PanelAppAdapter<LabPanelScope> {
           }
           return createPanelCapabilityUnavailable(
             panelInstance.panelType,
-            'This panel capability has not been migrated yet'
+            '该面板能力尚未完成迁移'
           )
         }
       }

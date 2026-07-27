@@ -114,10 +114,15 @@
   height: 40px;
   padding: 0 12px;
   border-bottom: 1px solid var(--unilab-color-border);
-  background: color-mix(in srgb, var(--unilab-color-bg) 94%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--unilab-color-scene-soft) 64%,
+    var(--unilab-color-surface)
+  );
 }
 
 .pascal-lab-toolbar__title {
+  color: var(--unilab-color-scene);
   font-size: 13px;
   font-weight: 600;
 }
@@ -145,8 +150,9 @@
 }
 
 .pascal-lab-toolbar__button:hover {
-  border-color: var(--unilab-color-primary);
-  background: var(--unilab-color-bg-muted);
+  color: var(--unilab-color-scene);
+  border-color: var(--unilab-color-scene);
+  background: var(--unilab-color-scene-soft);
 }
 
 .pascal-lab-editor {

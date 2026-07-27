@@ -16,6 +16,7 @@ import type {
   ConnectionStatus,
   WorkbenchSection
 } from '../data/lab'
+import { DEFAULT_BACKEND_ENABLED } from './connectionPolicy'
 
 interface WorkbenchContextValue {
   backend: BackendConfig
@@ -38,7 +39,9 @@ export function WorkbenchProvider({ children }: { children: ReactNode }): React.
   const [backend, setBackend] = useState<BackendConfig>(() =>
     initialBackend()
   )
-  const [backendEnabled, setBackendEnabledState] = useState(false)
+  const [backendEnabled, setBackendEnabledState] = useState(
+    DEFAULT_BACKEND_ENABLED
+  )
   const [connection, setConnection] =
     useState<ConnectionStatus>('disconnected')
   const [section, setSection] = useState<WorkbenchSection>('device')

@@ -9,7 +9,7 @@
  * Human Review Status: [ ] Pending  [ ] Reviewed  [ ] Approved
  * ============================================================
  */
-import { useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import type { AuthUserInfo } from '../../types/auth'
 
 interface UserMenuProps {
@@ -21,37 +21,60 @@ interface UserMenuProps {
 export default function UserMenu({ userInfo, onLogout }: UserMenuProps): React.JSX.Element {
   // 纯本地 UI 开关:控制下拉展开(简单布尔,无需抽 Hook)
   const [isOpen, setIsOpen] = useState(false)
+  const menuId = useId()
 
   const displayName = userInfo?.name || userInfo?.email || '已登录用户'
   const initial = displayName.slice(0, 1).toUpperCase()
 
+  useEffect(() => {
+    if (!isOpen) return
+    const closeOnEscape = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') setIsOpen(false)
+    }
+    document.addEventListener('keydown', closeOnEscape)
+    return () => document.removeEventListener('keydown', closeOnEscape)
+  }, [isOpen])
+
   return (
-    <div className="relative">
+    <div className="user-menu">
       <button
         type="button"
-        className="flex cursor-pointer items-center gap-2 rounded-2xl border border-[#e5e7eb] bg-white py-[3px] pl-[3px] pr-2.5 transition-colors hover:border-[#cbd5e1]"
+        className="user-menu__trigger"
+        aria-controls={menuId}
+        aria-expanded={isOpen}
+        aria-haspopup="menu"
         onClick={() => setIsOpen((prev) => !prev)}
       >
-        <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[linear-gradient(135deg,#6366f1,#4dabf7)] text-xs font-semibold text-white">
+        <span className="user-menu__avatar" aria-hidden="true">
           {initial}
         </span>
-        <span className="max-w-[140px] overflow-hidden text-ellipsis whitespace-nowrap text-xs text-[#1f2329]">
+        <span className="user-menu__name">
           {displayName}
         </span>
+        <span className="user-menu__chevron" aria-hidden="true">⌄</span>
       </button>
 
       {isOpen && (
         <>
-          <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
-          <div className="absolute right-0 top-[calc(100%+6px)] z-[41] min-w-[180px] rounded-lg border border-[#e5e7eb] bg-white p-1.5 shadow-[0_6px_20px_rgba(15,23,42,0.14)]">
+          <div
+            className="user-menu__mask"
+            aria-hidden="true"
+            onClick={() => setIsOpen(false)}
+          />
+          <div
+            className="user-menu__dropdown"
+            id={menuId}
+            role="menu"
+          >
             {userInfo?.email && (
-              <div className="overflow-hidden text-ellipsis whitespace-nowrap border-b border-[#f1f3f5] px-2.5 py-1.5 text-[11px] text-[#6b7280]">
+              <div className="user-menu__email">
                 {userInfo.email}
               </div>
             )}
             <button
               type="button"
-              className="mt-1 w-full cursor-pointer rounded-md border-0 bg-transparent px-2.5 py-2 text-left text-[13px] text-[#dc2626] transition-colors hover:bg-[#fef2f2]"
+              className="user-menu__logout"
+              role="menuitem"
               onClick={() => {
                 setIsOpen(false)
                 void onLogout()

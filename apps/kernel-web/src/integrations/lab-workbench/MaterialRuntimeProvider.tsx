@@ -49,7 +49,7 @@ export function MaterialRuntimeProvider({
       if (!backendEnabled) {
         return {
           available: false,
-          reason: '当前 Profile 连接未启用'
+          reason: '当前服务配置未启用连接'
         }
       }
       return services.getCapabilityStatus(capability)

@@ -50,11 +50,11 @@ export interface UseWorkflowDebugResult {
 
 // 状态中文标签
 const STATUS_LABEL: Record<DebugStatus, string> = {
-  idle: 'idle',
-  running: 'running',
-  paused: 'paused',
-  finished: 'finished',
-  error: 'error'
+  idle: '未开始',
+  running: '正在运行',
+  paused: '已暂停',
+  finished: '已完成',
+  error: '执行失败'
 }
 
 // 工作流调试状态机:管理运行状态与各按钮启用态(纯前端 UI,后续可对接后端)

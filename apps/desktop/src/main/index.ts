@@ -31,6 +31,9 @@ process.on('unhandledRejection', (reason) => {
 logLine(`main 加载 electron=${process.versions.electron ?? 'unknown'} node=${process.versions.node}`)
 
 const isDev = !app.isPackaged
+// electron-vite 的开发态 main bundle 位于 out/main；本地图标保留在
+// apps/desktop/build。安装包继续由 electron-builder 的 icns/png 配置负责。
+const localAppIcon = join(__dirname, '../../build/icon.png')
 
 // 主窗口引用,供 OAuth 弹窗作为模态父窗口使用
 let mainWindow: BrowserWindow | null = null
@@ -44,6 +47,7 @@ function createWindow(): void {
     show: false,
     autoHideMenuBar: true,
     title: 'Lab PC Client',
+    ...(isDev ? { icon: localAppIcon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
@@ -116,6 +120,11 @@ function createWindow(): void {
 
 app.whenReady().then(() => {
   logLine('app ready')
+  // macOS 开发态运行的是 Electron 可执行文件，BrowserWindow.icon 不会改变
+  // Dock 图标；安装包则从 icon.icns 自动获得图标。
+  if (isDev && process.platform === 'darwin') {
+    app.dock.setIcon(localAppIcon)
+  }
   ipcMain.handle('app:getVersion', () => app.getVersion())
 
   // 读取当前登录会话(启动/刷新时使用)

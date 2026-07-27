@@ -26,7 +26,9 @@ interface UseDeviceStatusResult {
 // 订阅设备实时状态:仅在线模式连接 /ws/device_status,离线返回空表
 export function useDeviceStatus(): UseDeviceStatusResult {
   const { backendEnabled, connection } = useWorkbench()
-  const realtime = useServices().realtime
+  const services = useServices()
+  const realtime = services.realtime
+  const canSubscribeStatus = services.capabilities.devices.subscribeStatus
   const [statusMap, setStatusMap] = useState<Map<string, DeviceStatus>>(new Map())
   const [connected, setConnected] = useState(false)
   const [lastUpdate, setLastUpdate] = useState<number | null>(null)
@@ -34,7 +36,10 @@ export function useDeviceStatus(): UseDeviceStatusResult {
   // 用 ref 保存最新状态表,避免每条推送都重建订阅
   const mapRef = useRef<Map<string, DeviceStatus>>(new Map())
 
-  const canConnect = backendEnabled && connection === 'connected'
+  const canConnect =
+    backendEnabled &&
+    connection === 'connected' &&
+    canSubscribeStatus
 
   useEffect(() => {
     if (!canConnect) {

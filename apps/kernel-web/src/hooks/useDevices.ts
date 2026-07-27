@@ -10,8 +10,8 @@
  * ============================================================
  */
 import { useCallback, useEffect, useState } from 'react'
+import { useServices } from '@unilab/services'
 import { useWorkbench } from '../context/WorkbenchContext'
-import { useBackendConnection } from './useBackendConnection'
 import type { OnlineDevice } from '../data/lab'
 
 interface UseDevicesResult {
@@ -48,8 +48,11 @@ const OFFLINE_DEVICES: OnlineDevice[] = [
 
 // 获取设备列表:在线拉取,离线回退示例数据
 export function useDevices(): UseDevicesResult {
-  const { backendEnabled } = useWorkbench()
-  const { client, isOnline } = useBackendConnection()
+  const { backendEnabled, connection } = useWorkbench()
+  const services = useServices()
+  const client = services.laboratory
+  const canListOnlineDevices = services.capabilities.devices.listOnline
+  const isOnline = backendEnabled && connection === 'connected'
   const [devices, setDevices] = useState<OnlineDevice[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -57,6 +60,11 @@ export function useDevices(): UseDevicesResult {
   const refresh = useCallback(async () => {
     if (!backendEnabled) {
       setDevices(OFFLINE_DEVICES)
+      setError(null)
+      return
+    }
+    if (!canListOnlineDevices) {
+      setDevices([])
       setError(null)
       return
     }
@@ -71,7 +79,7 @@ export function useDevices(): UseDevicesResult {
     } finally {
       setLoading(false)
     }
-  }, [backendEnabled, client])
+  }, [backendEnabled, canListOnlineDevices, client])
 
   // 模式或连接状态变化时刷新
   useEffect(() => {

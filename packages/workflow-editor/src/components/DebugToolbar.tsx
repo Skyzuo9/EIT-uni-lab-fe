@@ -26,29 +26,31 @@ const START_MODE_OPTIONS: { value: DebugStartMode; label: string }[] = [
 ]
 
 const STATUS_CLASS: Record<DebugStatus, string> = {
-  idle: 'bg-[#f1f3f5] text-[#868e96]',
-  running: 'bg-[#e6fcf5] text-[#0ca678]',
-  paused: 'bg-[#fff9db] text-[#f08c00]',
-  error: 'bg-[#fff0f0] text-[#e03131]',
-  finished: 'bg-[#edf2ff] text-[#4263eb]'
+  idle: 'bg-[var(--unilab-color-skipped-soft)] text-[var(--unilab-color-skipped)]',
+  running: 'bg-[var(--unilab-color-warning-soft)] text-[var(--unilab-color-warning)]',
+  paused: 'bg-[var(--unilab-color-paused-soft)] text-[var(--unilab-color-paused)]',
+  error: 'bg-[var(--unilab-color-danger-soft)] text-[var(--unilab-color-danger)]',
+  finished: 'bg-[var(--unilab-color-success-soft)] text-[var(--unilab-color-success)]'
 }
 
 const BUTTON_CLASS =
-  'h-[30px] cursor-pointer rounded-md border border-[#dee2e6] bg-white px-3 text-[13px] font-medium text-[#1f2329] transition-colors enabled:hover:border-[#adb5bd] enabled:hover:bg-[#f8f9fa] enabled:active:translate-y-px disabled:cursor-not-allowed disabled:text-[#adb5bd] disabled:opacity-70'
+  'h-8 cursor-pointer rounded-[var(--unilab-radius-control)] border border-[var(--unilab-color-border)] bg-[var(--unilab-color-surface)] px-3 text-[13px] font-medium text-[var(--unilab-color-text)] transition-colors enabled:hover:border-[var(--unilab-color-border-strong)] enabled:hover:bg-[var(--unilab-color-surface-subtle)] enabled:active:translate-y-px disabled:cursor-not-allowed disabled:text-[var(--unilab-color-text-subtle)] disabled:opacity-70'
 
 // 调试工具栏:macOS 分段风格,危险操作(终止/急停)红色标注
 export default function DebugToolbar({ debug }: DebugToolbarProps): React.JSX.Element {
   const { status, statusLabel, startMode, stopAfterCurrent, flags } = debug
 
   return (
-    <div className="flex flex-wrap items-center gap-2 rounded-[10px] border border-[#e8ebef] bg-white px-3 py-2.5 shadow-[0_1px_3px_rgba(15,23,42,0.05)]">
-      <span className="font-mono text-[13px] font-semibold text-[#4dabf7]">TID: DEBUG</span>
+    <div className="flex flex-wrap items-center gap-2 rounded-[var(--unilab-radius-md)] border border-[var(--unilab-color-border)] bg-[var(--unilab-color-surface)] px-3 py-2.5 shadow-[var(--unilab-shadow-control)]">
+      <span className="text-[13px] font-semibold text-[var(--unilab-color-text)]">
+        工作流调试器
+      </span>
       <span className={`rounded-[10px] px-2 py-0.5 text-[11px] font-semibold ${STATUS_CLASS[status]}`}>
         {statusLabel}
       </span>
 
       <select
-        className="h-[30px] cursor-pointer rounded-md border border-[#dee2e6] bg-white px-2 text-[13px] text-[#1f2329]"
+        className="h-8 cursor-pointer rounded-[var(--unilab-radius-control)] border border-[var(--unilab-color-border)] bg-[var(--unilab-color-surface)] px-2 text-[13px] text-[var(--unilab-color-text)]"
         value={startMode}
         onChange={(event) =>
           debug.setStartMode(event.target.value === 'from-current' ? 'from-current' : 'from-start')
@@ -61,7 +63,7 @@ export default function DebugToolbar({ debug }: DebugToolbarProps): React.JSX.El
         ))}
       </select>
 
-      <span className="h-5 w-px bg-[#e8ebef]" />
+      <span className="h-5 w-px bg-[var(--unilab-color-border)]" />
 
       <button
         type="button"
@@ -98,7 +100,9 @@ export default function DebugToolbar({ debug }: DebugToolbarProps): React.JSX.El
       <button
         type="button"
         className={`${BUTTON_CLASS} ${
-          stopAfterCurrent ? 'border-[#748ffc] bg-[#edf2ff] text-[#4263eb]' : ''
+          stopAfterCurrent
+            ? 'border-[var(--unilab-color-focus)] bg-[var(--unilab-color-primary-soft)] text-[var(--unilab-color-primary)]'
+            : ''
         }`}
         disabled={!flags.canStopAfter}
         onClick={debug.toggleStopAfter}
@@ -114,11 +118,11 @@ export default function DebugToolbar({ debug }: DebugToolbarProps): React.JSX.El
         继续
       </button>
 
-      <span className="h-5 w-px bg-[#e8ebef]" />
+      <span className="h-5 w-px bg-[var(--unilab-color-border)]" />
 
       <button
         type="button"
-        className={`${BUTTON_CLASS} text-[#e03131] enabled:hover:border-[#ffa8a8] enabled:hover:bg-[#fff0f0]`}
+        className={`${BUTTON_CLASS} text-[var(--unilab-color-danger)] enabled:hover:border-[var(--unilab-color-danger)] enabled:hover:bg-[var(--unilab-color-danger-soft)]`}
         disabled={!flags.canTerminate}
         onClick={debug.terminate}
       >
@@ -126,7 +130,7 @@ export default function DebugToolbar({ debug }: DebugToolbarProps): React.JSX.El
       </button>
       <button
         type="button"
-        className={`${BUTTON_CLASS} text-[#e03131] enabled:hover:border-[#ffa8a8] enabled:hover:bg-[#fff0f0]`}
+        className={`${BUTTON_CLASS} text-[var(--unilab-color-danger)] enabled:hover:border-[var(--unilab-color-danger)] enabled:hover:bg-[var(--unilab-color-danger-soft)]`}
         disabled={!flags.canEmergencyStop}
         onClick={debug.emergencyStop}
       >

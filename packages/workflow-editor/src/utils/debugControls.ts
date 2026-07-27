@@ -83,8 +83,8 @@ export function workflowDebugControls(
       command: 'step_over',
       label: '步过',
       glyph: '⇥',
-      title: '调试器 v1：与单步相同，放行一个逻辑节点',
-      message: 'OS 已按 v1 步过语义放行一个逻辑节点',
+      title: '调试器第一版：与单步相同，放行一个逻辑节点',
+      message: 'OS 已按第一版步过语义放行一个逻辑节点',
       danger: false,
       disabled: blocked || !paused
     },
@@ -92,8 +92,8 @@ export function workflowDebugControls(
       command: 'step_into',
       label: '步入',
       glyph: '↳',
-      title: '调试器 v1：与单步相同，放行一个逻辑节点',
-      message: 'OS 已按 v1 步入语义放行一个逻辑节点',
+      title: '调试器第一版：与单步相同，放行一个逻辑节点',
+      message: 'OS 已按第一版步入语义放行一个逻辑节点',
       danger: false,
       disabled: blocked || !paused
     },
@@ -110,8 +110,8 @@ export function workflowDebugControls(
       command: 'terminate',
       label: '终止',
       glyph: '■',
-      title: '终止当前 run，并取消其尚未完成的节点',
-      message: '终止请求已由 OS 接受；等待当前 run 收敛',
+      title: '终止当前运行，并取消尚未完成的节点',
+      message: '终止请求已由 OS 接受；等待当前运行收敛',
       danger: true,
       disabled: blocked || (!paused && !running)
     },
@@ -119,8 +119,8 @@ export function workflowDebugControls(
       command: 'emergency_stop',
       label: '急停',
       glyph: '⚠',
-      title: '立即触发当前 run 的设备清理并停止后续调度（非全站硬件急停）',
-      message: '当前 run 的急停请求已由 OS 接受',
+      title: '立即触发当前运行的设备清理并停止后续调度（非全站硬件急停）',
+      message: '当前运行的急停请求已由 OS 接受',
       danger: true,
       disabled: blocked
     }

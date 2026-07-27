@@ -43,12 +43,20 @@ export interface WorkflowPanelProps {
 
 const TERMINAL_RUN_STATES = new Set(['completed', 'failed', 'cancelled'])
 type AuthoringMode = 'json' | 'python'
+type RunMode = 'run' | 'debug'
+type OutputTab = 'nodes' | 'events' | 'errors'
+type CompactPane = 'code' | 'dag'
 
 export default function WorkflowPanel({
   runtime,
   onStepFocus
 }: WorkflowPanelProps): React.JSX.Element {
   const [authoringMode, setAuthoringMode] = useState<AuthoringMode>('json')
+  const [runMode, setRunMode] = useState<RunMode>('debug')
+  const [legendOpen, setLegendOpen] = useState(false)
+  const [outputExpanded, setOutputExpanded] = useState(true)
+  const [outputTab, setOutputTab] = useState<OutputTab>('nodes')
+  const [compactPane, setCompactPane] = useState<CompactPane>('dag')
   const editor = useCodeMirror(CONTROL_DAG_JSON, authoringMode)
   const [canonicalSource, setCanonicalSource] = useState(CONTROL_DAG_JSON)
   const pythonBaseline = useRef<string | null>(null)
@@ -69,7 +77,7 @@ export default function WorkflowPanel({
   )
   const [startNodeId, setStartNodeId] = useState<string | null>('measure')
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
-  const [message, setMessage] = useState('完整 Canonical DAG 已就绪')
+  const [message, setMessage] = useState('标准工作流 DAG 已就绪')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const latestSequence = useRef(0)
@@ -123,6 +131,12 @@ export default function WorkflowPanel({
     editor.setLineMarkers(codeMarkers)
   }, [codeMarkers, editor.setLineMarkers])
 
+  useEffect(() => {
+    if (!error) return
+    setOutputExpanded(true)
+    setOutputTab('errors')
+  }, [error])
+
   const selectedNode = runNodes.find(
     (node) =>
       node.nodeId === selectedNodeId ||
@@ -152,7 +166,7 @@ export default function WorkflowPanel({
             event.payload.code ||
             'OS 返回节点执行失败'
           )
-          setError(`节点 ${event.nodeId || 'unknown'} 执行异常：${detail}`)
+          setError(`节点 ${event.nodeId || '未知节点'} 执行异常：${detail}`)
         }
         setEvents((current) => (
           current.some((item) => item.seq === event.seq)
@@ -199,7 +213,7 @@ export default function WorkflowPanel({
         revision,
         sourceUri
       ),
-      'Canonical → Python 转换失败'
+      '标准工作流转换为 Python 失败'
     )
     return requireAuthoringCandidate(
       await runtime.validateAuthoringCandidate(baseRevisionId, generated),
@@ -213,7 +227,7 @@ export default function WorkflowPanel({
     if (authoringMode === 'json') {
       const current = parseCanonicalWorkflow(editor.value)
       if (!current.revision) {
-        throw new Error(current.error || 'Canonical DAG 无法解析')
+        throw new Error(current.error || '标准工作流 DAG 无法解析')
       }
       setCanonicalSource(editor.value)
       return current.revision
@@ -221,7 +235,7 @@ export default function WorkflowPanel({
 
     const current = parseCanonicalWorkflow(canonicalSource)
     if (!current.revision) {
-      throw new Error(current.error || '缺少可供 Python 编译的基础 Revision')
+      throw new Error(current.error || '缺少可供 Python 编译的基础修订版本')
     }
     if (!forcePythonCompile && editor.value === pythonBaseline.current) {
       return current.revision
@@ -235,7 +249,7 @@ export default function WorkflowPanel({
         editor.value,
         sourceUri
       ),
-      'Python → Canonical 编译失败'
+      'Python 编译为标准工作流失败'
     )
     const validated = requireAuthoringCandidate(
       await runtime.validateAuthoringCandidate(baseRevisionId, compiled),
@@ -244,7 +258,7 @@ export default function WorkflowPanel({
     const nextCanonical = JSON.stringify(validated.canonical_ir, null, 2)
     const next = parseCanonicalWorkflow(nextCanonical)
     if (!next.revision) {
-      throw new Error(next.error || 'OS 返回了无效的 Canonical Revision')
+      throw new Error(next.error || 'OS 返回了无效的标准工作流修订版本')
     }
     setBreakpoints((currentBreakpoints) =>
       remapWorkflowBreakpoints(
@@ -306,7 +320,7 @@ export default function WorkflowPanel({
       setCanonicalSource(nextCanonical)
       setAuthoringMode('json')
       editor.replaceContent(nextCanonical)
-      setMessage('Python 已通过 OS 编译并切换为 Canonical JSON')
+      setMessage('Python 已通过 OS 编译并切换为标准 JSON')
     })
   }
 
@@ -322,7 +336,7 @@ export default function WorkflowPanel({
         JSON.stringify(document.revision.canonical, null, 2)
       )
       editor.markSaved()
-      setMessage(`已保存 Revision ${document.revision.id}`)
+      setMessage(`已保存修订版本 ${document.revision.id}`)
     })
   }
 
@@ -341,7 +355,7 @@ export default function WorkflowPanel({
         setCanonicalSource(nextCanonical)
         editor.replaceContent(nextCanonical)
       }
-      setMessage(`已载入 OS Revision ${document.revision.id}`)
+      setMessage(`已从 OS 载入修订版本 ${document.revision.id}`)
     })
   }
 
@@ -443,16 +457,37 @@ export default function WorkflowPanel({
     runStatus: run?.status || 'draft',
     busy
   })
+  const runStatus = run?.status || 'draft'
+  const debugStatusLabel = workflowDebugStatusLabel(debugStatus)
+  const runStatusLabel = workflowRunStatusLabel(runStatus)
+  const completedNodeCount = runNodes.filter(
+    (node) => ['success', 'skipped'].includes(node.state)
+  ).length
   const sourceInvalid = authoringMode === 'json' && Boolean(parsed.error)
 
   return (
     <div className="workflow workflow-runtime">
       <div className="workflow__toolbar">
-        <span className="workflow__toolbar-label">Workflow Runtime</span>
+        <div className="workflow__context">
+          <div className="workflow__title-row">
+            <span className="workflow__toolbar-label">工作流运行</span>
+            <span className="workflow__format">
+              {authoringMode === 'json' ? '标准工作流 v2' : 'Python 编写模式'}
+            </span>
+          </div>
+          <span
+            className="workflow-runtime__message"
+            role="status"
+            aria-live="polite"
+          >
+            {message}
+          </span>
+        </div>
+
         <div
           className="workflow__mode-switch"
           role="group"
-          aria-label="工作流代码格式"
+          aria-label="工作流编写格式"
         >
           <button
             type="button"
@@ -473,13 +508,30 @@ export default function WorkflowPanel({
             Python
           </button>
         </div>
-        <span className="workflow__format">
-          {authoringMode === 'json' ? 'Canonical v2' : 'from_python_script'}
-        </span>
-        <span className={`workflow-runtime__run-state workflow-runtime__run-state--${run?.status || 'draft'}`}>
-          {run?.status || 'draft'}
-        </span>
-        <span className="workflow-runtime__message">{message}</span>
+
+        <div
+          className="workflow__mode-switch workflow__mobile-view"
+          role="group"
+          aria-label="紧凑屏幕工作区"
+        >
+          <button
+            type="button"
+            className={compactPane === 'code' ? 'is-active' : ''}
+            aria-pressed={compactPane === 'code'}
+            onClick={() => setCompactPane('code')}
+          >
+            代码
+          </button>
+          <button
+            type="button"
+            className={compactPane === 'dag' ? 'is-active' : ''}
+            aria-pressed={compactPane === 'dag'}
+            onClick={() => setCompactPane('dag')}
+          >
+            DAG
+          </button>
+        </div>
+
         <div className="workflow__toolbar-actions">
           <button type="button" className="workflow__upload" disabled={busy} onClick={load}>
             从 OS 载入
@@ -505,23 +557,50 @@ export default function WorkflowPanel({
             校验
           </button>
           <button type="button" className="workflow__upload" disabled={busy} onClick={save}>
-            保存 Revision
+            保存修订版本
           </button>
+
+          <span className="workflow__toolbar-divider" aria-hidden="true" />
+          <div
+            className="workflow__mode-switch workflow__run-mode"
+            role="group"
+            aria-label="运行方式"
+          >
+            <button
+              type="button"
+              className={runMode === 'run' ? 'is-active' : ''}
+              aria-pressed={runMode === 'run'}
+              disabled={busy}
+              onClick={() => setRunMode('run')}
+            >
+              整图运行
+            </button>
+            <button
+              type="button"
+              className={runMode === 'debug' ? 'is-active' : ''}
+              aria-pressed={runMode === 'debug'}
+              disabled={busy}
+              onClick={() => setRunMode('debug')}
+            >
+              调试运行
+            </button>
+          </div>
           <button
             type="button"
             className="workflow-runtime__primary"
+            aria-label={
+              runMode === 'debug'
+                ? '调试启动：开始调试'
+                : '整图执行：开始运行'
+            }
             disabled={busy || sourceInvalid}
-            onClick={() => startRun(false)}
+            onClick={() => startRun(runMode === 'debug')}
           >
-            ▶ 整图执行
-          </button>
-          <button
-            type="button"
-            className="workflow-runtime__debug-start"
-            disabled={busy || sourceInvalid}
-            onClick={() => startRun(true)}
-          >
-            ◆ 调试启动
+            {busy
+              ? '处理中…'
+              : runMode === 'debug'
+                ? '开始调试'
+                : '开始运行'}
           </button>
         </div>
       </div>
@@ -536,9 +615,12 @@ export default function WorkflowPanel({
 
       <div
         ref={containerRef}
-        className={`workbench workflow-runtime__workbench${
-          isDragging ? ' workbench--dragging' : ''
-        }`}
+        className={[
+          'workbench',
+          'workflow-runtime__workbench',
+          `workflow-runtime__workbench--${compactPane}`,
+          isDragging ? 'workbench--dragging' : ''
+        ].filter(Boolean).join(' ')}
       >
         <div className="workbench__pane" style={{ flexBasis: `${leftRatio * 100}%` }}>
           <CodeEditor
@@ -566,20 +648,37 @@ export default function WorkflowPanel({
           <header className="workflow-runtime__stage-header">
             <div>
               <strong>完整控制流 DAG</strong>
-              <span>{parsed.nodes.length} 节点 · {parsed.links.length} 控制边</span>
+              <span>
+                {parsed.nodes.length} 个节点 · {parsed.links.length} 条控制边
+              </span>
             </div>
-            <span className="workflow-runtime__hint">
-              单击同步代码 · 右键/⚑ 设置起点 · 双击/● 设置断点
-            </span>
+            <div className="workflow-runtime__stage-tools">
+              <button
+                type="button"
+                aria-expanded={legendOpen}
+                onClick={() => setLegendOpen((current) => !current)}
+              >
+                状态图例
+              </button>
+              <details className="workflow-runtime__help">
+                <summary>操作帮助</summary>
+                <div>
+                  单击节点可同步定位代码。起始点与断点可通过节点内按钮设置；
+                  右键和双击仅作为快捷操作。
+                </div>
+              </details>
+            </div>
           </header>
-          <div className="workflow-runtime__legend" aria-label="节点颜色图例">
-            <span className="is-start">⚑ 起始点</span>
-            <span className="is-breakpoint">● 断点</span>
-            <span className="is-paused">蓝色 · 下一步/暂停位置</span>
-            <span className="is-running">橙色 · 正在运行</span>
-            <span className="is-success">绿色 · 执行成功</span>
-            <span className="is-excluded">灰色 · 起点前不执行/已跳过</span>
-          </div>
+          {legendOpen && (
+            <div className="workflow-runtime__legend" aria-label="节点状态图例">
+              <span className="is-start">⚑ 起始点</span>
+              <span className="is-breakpoint">● 断点</span>
+              <span className="is-paused">Ⅱ 暂停位置</span>
+              <span className="is-running">● 正在运行</span>
+              <span className="is-success">✓ 执行成功</span>
+              <span className="is-excluded">— 不执行或已跳过</span>
+            </div>
+          )}
           {parsed.error ? (
             <div className="workflow-runtime__empty">{parsed.error}</div>
           ) : (
@@ -601,100 +700,298 @@ export default function WorkflowPanel({
 
           <div className="workflow-runtime__debugger">
             <div className="workflow-runtime__debug-status">
-              <span>Debugger</span>
-              <strong className={`is-${debugStatus}`}>{debugStatus}</strong>
-              {run?.debug?.pausedBeforeNodeId && (
-                <span>暂停于 {run.debug.pausedBeforeNodeId} 之前</span>
-              )}
-              <span>起点 {executionScope.startNodeId || 'DAG 根节点'}</span>
-              <span>{breakpoints.size} 个断点</span>
+              <div className="workflow-runtime__debug-heading">
+                <span
+                  className={`workflow-runtime__debug-mark is-${debugStatus}`}
+                  aria-hidden="true"
+                />
+                <div>
+                  <span>工作流调试器</span>
+                  <small>OS 运行控制</small>
+                </div>
+              </div>
+              <div className="workflow-runtime__debug-summary">
+                <strong
+                  className={`is-${debugStatus}`}
+                  data-debug-status={debugStatus}
+                >
+                  {debugStatusLabel}
+                </strong>
+                <span
+                  className={`workflow-runtime__run-state workflow-runtime__run-state--${runStatus}`}
+                  data-run-status={runStatus}
+                >
+                  整体：{runStatusLabel}
+                </span>
+                {run?.debug?.pausedBeforeNodeId && (
+                  <span className="is-location">
+                    暂停于 {run.debug.pausedBeforeNodeId} 执行之前
+                  </span>
+                )}
+                <span className="is-meta">
+                  <i>起点</i>
+                  {executionScope.startNodeId || 'DAG 根节点'}
+                </span>
+                <span className="is-meta">
+                  <i>断点</i>
+                  {breakpoints.size}
+                </span>
+              </div>
             </div>
             <div className="workflow-runtime__debug-actions">
-              {debugControls.map((control) => (
-                <button
-                  key={control.command}
-                  type="button"
-                  className={control.danger ? 'is-danger' : undefined}
-                  data-debug-command={control.command}
-                  aria-label={control.label}
-                  title={control.title}
-                  disabled={control.disabled}
-                  onClick={() => command(
-                    control.command,
-                    {},
-                    control.message
-                  )}
-                >
-                  {control.glyph} {control.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="workflow-runtime__results">
-            <section>
-              <header>
-                <strong>节点反馈 / 结果</strong>
-                <span>{runNodes.filter((node) => ['success', 'skipped'].includes(node.state)).length}/{runNodes.length || parsed.nodes.length}</span>
-              </header>
-              <div className="workflow-runtime__node-list">
-                {(runNodes.length ? runNodes : parsed.nodes.map((node) => ({
-                  nodeId: node.id,
-                  sourceNodeId: node.id,
-                  nodeType: node.type,
-                  deviceId: '',
-                  action: node.className,
-                  state: executionScope.beforeStartNodeIds.has(node.id)
-                    ? 'excluded'
-                    : 'pending',
-                  result: {},
-                  attempt: 0
-                }))).map((node) => (
+              <div
+                className="workflow-runtime__debug-action-group"
+                aria-label="调试执行控制"
+              >
+                {debugControls.filter((control) => !control.danger).map((control) => (
                   <button
-                    key={node.nodeId}
+                    key={control.command}
                     type="button"
-                    className={[
-                      selectedNodeId === node.sourceNodeId ? 'is-selected' : '',
-                      run?.debug?.pausedBeforeNodeId === node.sourceNodeId
-                        ? 'is-paused-before'
-                        : ''
-                    ].filter(Boolean).join(' ')}
-                    onClick={() => selectNode(node.sourceNodeId)}
+                    className={
+                      control.command === 'continue'
+                        ? 'is-primary'
+                        : undefined
+                    }
+                    data-debug-command={control.command}
+                    aria-label={control.label}
+                    title={control.title}
+                    disabled={control.disabled}
+                    onClick={() => command(
+                      control.command,
+                      {},
+                      control.message
+                    )}
                   >
-                    <i
-                      className={
-                        run?.debug?.pausedBeforeNodeId === node.sourceNodeId
-                          ? 'is-paused-before'
-                          : `is-${node.state}`
-                      }
-                    />
-                    <span>{node.sourceNodeId}</span>
-                    <em>{node.state}</em>
+                    <span
+                      className="workflow-runtime__debug-glyph"
+                      aria-hidden="true"
+                    >
+                      {control.glyph}
+                    </span>
+                    <span>{control.label}</span>
                   </button>
                 ))}
               </div>
-              {selectedNode && (
-                <pre className="workflow-runtime__node-result">
-                  {JSON.stringify(selectedNode.result, null, 2)}
-                </pre>
-              )}
-            </section>
-            <section>
-              <header>
-                <strong>事件流</strong>
-                <span>seq {latestSequence.current || '—'}</span>
-              </header>
-              <div className="workflow-runtime__events">
-                {[...events].reverse().slice(0, 7).map((event) => (
-                  <div key={event.seq}>
-                    <code>#{event.seq}</code>
-                    <span>{event.type}</span>
-                    <em>{event.nodeId || 'run'}</em>
-                  </div>
+              <div
+                className="workflow-runtime__debug-action-group is-danger"
+                aria-label="调试停止控制"
+              >
+                {debugControls.filter((control) => control.danger).map((control) => (
+                  <button
+                    key={control.command}
+                    type="button"
+                    className={
+                      control.command === 'emergency_stop'
+                        ? 'is-emergency'
+                        : 'is-danger'
+                    }
+                    data-debug-command={control.command}
+                    aria-label={control.label}
+                    title={control.title}
+                    disabled={control.disabled}
+                    onClick={() => command(
+                      control.command,
+                      {},
+                      control.message
+                    )}
+                  >
+                    <span
+                      className="workflow-runtime__debug-glyph"
+                      aria-hidden="true"
+                    >
+                      {control.glyph}
+                    </span>
+                    <span>{control.label}</span>
+                  </button>
                 ))}
-                {events.length === 0 && <p>等待 OS 节点反馈…</p>}
               </div>
-            </section>
+            </div>
+          </div>
+
+          <div
+            className={`workflow-runtime__results${
+              outputExpanded ? ' is-expanded' : ' is-collapsed'
+            }`}
+          >
+            <header className="workflow-runtime__output-header">
+              <div className="workflow-runtime__output-title">
+                <strong>运行输出</strong>
+                <span>
+                  {completedNodeCount}/{runNodes.length || parsed.nodes.length}
+                  {' '}个节点已有结果
+                </span>
+              </div>
+              {outputExpanded && (
+                <div
+                  className="workflow-runtime__output-tabs"
+                  role="tablist"
+                  aria-label="运行输出类型"
+                >
+                  <button
+                    id="workflow-output-tab-nodes"
+                    type="button"
+                    role="tab"
+                    aria-controls="workflow-output-panel-nodes"
+                    aria-selected={outputTab === 'nodes'}
+                    className={outputTab === 'nodes' ? 'is-active' : ''}
+                    onClick={() => setOutputTab('nodes')}
+                  >
+                    节点结果
+                    <span>{runNodes.length || parsed.nodes.length}</span>
+                  </button>
+                  <button
+                    id="workflow-output-tab-events"
+                    type="button"
+                    role="tab"
+                    aria-controls="workflow-output-panel-events"
+                    aria-selected={outputTab === 'events'}
+                    className={outputTab === 'events' ? 'is-active' : ''}
+                    onClick={() => setOutputTab('events')}
+                  >
+                    事件流
+                    <span>{events.length}</span>
+                  </button>
+                  <button
+                    id="workflow-output-tab-errors"
+                    type="button"
+                    role="tab"
+                    aria-controls="workflow-output-panel-errors"
+                    aria-selected={outputTab === 'errors'}
+                    className={outputTab === 'errors' ? 'is-active' : ''}
+                    onClick={() => setOutputTab('errors')}
+                  >
+                    运行异常
+                    {error && <span className="is-error">1</span>}
+                  </button>
+                </div>
+              )}
+              <button
+                type="button"
+                className="workflow-runtime__output-toggle"
+                aria-expanded={outputExpanded}
+                aria-label={
+                  outputExpanded ? '收起运行输出' : '展开运行输出'
+                }
+                onClick={() => setOutputExpanded((current) => !current)}
+              >
+                {outputExpanded ? '收起' : '展开'}
+              </button>
+            </header>
+
+            {outputExpanded && (
+              <div className="workflow-runtime__output-body">
+                <section
+                  id="workflow-output-panel-nodes"
+                  className="workflow-runtime__output-panel"
+                  role="tabpanel"
+                  aria-labelledby="workflow-output-tab-nodes"
+                  tabIndex={0}
+                  hidden={outputTab !== 'nodes'}
+                >
+                  <div className="workflow-runtime__node-list">
+                    {(runNodes.length ? runNodes : parsed.nodes.map((node) => ({
+                      nodeId: node.id,
+                      sourceNodeId: node.id,
+                      nodeType: node.type,
+                      deviceId: '',
+                      action: node.className,
+                      state: executionScope.beforeStartNodeIds.has(node.id)
+                        ? 'excluded'
+                        : 'pending',
+                      result: {},
+                      attempt: 0
+                    }))).map((node) => {
+                      const pausedBefore =
+                        run?.debug?.pausedBeforeNodeId === node.sourceNodeId
+                      return (
+                        <button
+                          key={node.nodeId}
+                          type="button"
+                          data-node-state={
+                            pausedBefore ? 'paused-before' : node.state
+                          }
+                          className={[
+                            selectedNodeId === node.sourceNodeId
+                              ? 'is-selected'
+                              : '',
+                            pausedBefore ? 'is-paused-before' : ''
+                          ].filter(Boolean).join(' ')}
+                          onClick={() => selectNode(node.sourceNodeId)}
+                        >
+                          <i
+                            className={
+                              pausedBefore
+                                ? 'is-paused-before'
+                                : `is-${node.state}`
+                            }
+                          />
+                          <span className="is-node-id">{node.sourceNodeId}</span>
+                          <span className="is-node-type">
+                            {workflowNodeTypeLabel(node.nodeType)}
+                          </span>
+                          <em>
+                            {pausedBefore
+                              ? '暂停位置'
+                              : workflowNodeStateLabel(node.state)}
+                          </em>
+                        </button>
+                      )
+                    })}
+                  </div>
+                  {selectedNode && (
+                    <pre className="workflow-runtime__node-result">
+                      {JSON.stringify(selectedNode.result, null, 2)}
+                    </pre>
+                  )}
+                </section>
+
+                <section
+                  id="workflow-output-panel-events"
+                  className="workflow-runtime__output-panel"
+                  role="tabpanel"
+                  aria-labelledby="workflow-output-tab-events"
+                  tabIndex={0}
+                  hidden={outputTab !== 'events'}
+                >
+                  <div className="workflow-runtime__events">
+                    {[...events].reverse().slice(0, 50).map((event) => (
+                      <div key={event.seq}>
+                        <code>#{event.seq}</code>
+                        <span>
+                          <strong>{workflowEventLabel(event.type)}</strong>
+                          <small>{event.type}</small>
+                        </span>
+                        <em>{event.nodeId || '整体运行'}</em>
+                      </div>
+                    ))}
+                    {events.length === 0 && <p>等待 OS 节点反馈……</p>}
+                  </div>
+                </section>
+
+                <section
+                  id="workflow-output-panel-errors"
+                  className="workflow-runtime__output-panel"
+                  role="tabpanel"
+                  aria-labelledby="workflow-output-tab-errors"
+                  tabIndex={0}
+                  hidden={outputTab !== 'errors'}
+                >
+                  {error ? (
+                    <div className="workflow-runtime__error-detail">
+                      <strong>运行或编写过程中发生异常</strong>
+                      <p>{error}</p>
+                      <button type="button" onClick={() => setError(null)}>
+                        清除异常
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="workflow-runtime__output-empty">
+                      当前没有运行异常
+                    </div>
+                  )}
+                </section>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -730,6 +1027,89 @@ function workflowSourceUri(workflowId: string): string {
     .replace(/[^A-Za-z0-9_-]+/g, '-')
     .replace(/^-+|-+$/g, '') || 'workflow'
   return `workflows/${safeName}.py`
+}
+
+const DEBUG_STATUS_LABELS: Readonly<Record<string, string>> = {
+  disabled: '未开始',
+  pending: '启动中',
+  running: '正在运行',
+  pause_pending: '等待暂停',
+  paused: '已暂停',
+  stepping: '单步执行中',
+  completed: '已完成',
+  failed: '执行失败',
+  cancelled: '已取消',
+  terminated: '已终止'
+}
+
+const RUN_STATUS_LABELS: Readonly<Record<string, string>> = {
+  draft: '草稿',
+  pending: '等待执行',
+  running: '运行中',
+  completed: '已完成',
+  failed: '执行失败',
+  cancelled: '已取消',
+  reconciling: '状态核对中'
+}
+
+const NODE_STATE_LABELS: Readonly<Record<string, string>> = {
+  pending: '等待执行',
+  ready: '已就绪',
+  running: '正在运行',
+  success: '执行成功',
+  skipped: '已跳过',
+  excluded: '不执行',
+  failed: '执行失败',
+  cancelled: '已取消',
+  reconciling: '状态核对中'
+}
+
+const NODE_TYPE_LABELS: Readonly<Record<string, string>> = {
+  action: '操作节点',
+  branch: '分支节点',
+  join: '汇合节点',
+  group: '节点组',
+  subworkflow: '子工作流'
+}
+
+const EVENT_TYPE_LABELS: Readonly<Record<string, string>> = {
+  'run.created': '运行已创建',
+  'run.started': '运行已开始',
+  'run.status': '运行状态已更新',
+  'run.completed': '运行已完成',
+  'run.failed': '运行失败',
+  'node.ready': '节点已就绪',
+  'node.started': '节点开始执行',
+  'node.completed': '节点执行成功',
+  'node.skipped': '节点已跳过',
+  'node.exception': '节点执行异常',
+  'debug.paused': '调试已暂停',
+  'debug.pause_pending': '正在等待安全暂停',
+  'debug.stepping': '正在单步执行',
+  'debug.continued': '调试已继续',
+  'debug.terminate_requested': '已请求终止运行',
+  'debug.emergency_stop_requested': '已请求当前运行急停',
+  'debug.cancelled': '调试运行已取消'
+}
+
+function workflowDebugStatusLabel(status: string): string {
+  return DEBUG_STATUS_LABELS[status] || status
+}
+
+function workflowRunStatusLabel(status: string): string {
+  return RUN_STATUS_LABELS[status] || status
+}
+
+function workflowNodeStateLabel(status: string): string {
+  return NODE_STATE_LABELS[status] || status
+}
+
+function workflowNodeTypeLabel(type: string): string {
+  return NODE_TYPE_LABELS[type] || type || '操作节点'
+}
+
+function workflowEventLabel(type: string): string {
+  return EVENT_TYPE_LABELS[type] || '运行事件'
 }
 
 interface WorkflowCodeMarkerOptions {

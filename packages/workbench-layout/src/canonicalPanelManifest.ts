@@ -38,7 +38,7 @@ const CANONICAL_PANEL_DEFINITIONS: CanonicalPanelDefinition[] = [
     category: "layout",
     singleton: true,
     defaultSize: { minWidth: 400 },
-    closability: "always",
+    closability: "when-multiple-tabs",
     capabilityPolicy: REQUIRED_RENDERER,
   },
   {

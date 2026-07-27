@@ -75,7 +75,7 @@ describe('workflowDebugControls', () => {
     const emergency = controls('paused').find(
       (control) => control.command === 'emergency_stop'
     )
-    expect(emergency?.title).toContain('当前 run')
+    expect(emergency?.title).toContain('当前运行')
     expect(emergency?.title).toContain('非全站硬件急停')
   })
 })

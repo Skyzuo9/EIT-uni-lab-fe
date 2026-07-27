@@ -11,11 +11,23 @@
 
 .material-workbench {
   display: flex;
+  position: relative;
   width: 100%;
   height: 100%;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
+}
+
+.material-workbench__viewport {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.material-workbench__compact-switch {
+  display: none;
 }
 
 .material-template-library > header {
@@ -24,6 +36,11 @@
   justify-content: space-between;
   padding: 16px;
   border-bottom: 1px solid var(--unilab-color-border);
+  background: color-mix(
+    in srgb,
+    var(--unilab-color-material-soft) 64%,
+    var(--unilab-color-surface)
+  );
 }
 
 .material-template-library > header span,
@@ -45,7 +62,8 @@
   min-width: 28px;
   height: 28px;
   place-items: center;
-  background: var(--unilab-color-bg-muted);
+  color: var(--unilab-color-material);
+  background: var(--unilab-color-material-soft);
   border-radius: 999px;
 }
 
@@ -56,6 +74,13 @@
   background: var(--unilab-color-bg);
   border: 1px solid var(--unilab-color-border);
   border-radius: var(--unilab-radius-md);
+}
+
+.material-template-library__search:focus-visible,
+.material-dialog__content input:focus-visible {
+  border-color: var(--unilab-color-material);
+  outline: 2px solid var(--unilab-color-focus);
+  outline-offset: 1px;
 }
 
 .material-template-library__list {
@@ -94,17 +119,27 @@
 
 .material-template-card:hover,
 .material-template-card.is-selected {
-  border-color: var(--unilab-color-primary);
+  border-color: var(--unilab-color-material);
+  background: color-mix(
+    in srgb,
+    var(--unilab-color-material-soft) 54%,
+    var(--unilab-color-surface)
+  );
+}
+
+.material-template-card:focus-visible,
+.material-template-library__detail button:focus-visible,
+.material-dialog button:focus-visible {
+  outline: 2px solid var(--unilab-color-focus);
+  outline-offset: 2px;
 }
 
 .material-template-card__icon {
   display: grid;
-  width: 34px;
-  height: 34px;
+  width: 24px;
+  height: 24px;
   place-items: center;
-  color: var(--unilab-color-primary);
-  background: var(--unilab-color-bg-muted);
-  border-radius: var(--unilab-radius-md);
+  color: var(--unilab-color-material);
 }
 
 .material-template-card__body {
@@ -156,7 +191,7 @@
   padding: 10px;
   font-size: 12px;
   color: var(--unilab-color-text-muted);
-  background: var(--unilab-color-bg-muted);
+  background: var(--unilab-color-surface-muted);
   border: 1px solid var(--unilab-color-border);
   border-radius: var(--unilab-radius-md);
 }
@@ -274,10 +309,10 @@
   background:
     radial-gradient(
       circle at 50% 0%,
-      color-mix(in srgb, var(--unilab-color-primary) 8%, transparent),
+      color-mix(in srgb, var(--unilab-color-material) 9%, transparent),
       transparent 44%
     ),
-    var(--unilab-color-bg-subtle);
+    var(--unilab-color-canvas);
 }
 
 .material-canvas.is-loading,
@@ -577,14 +612,50 @@
   z-index: 5;
   top: 12px;
   left: 50%;
-  max-width: min(560px, calc(100% - 32px));
-  padding: 8px 12px;
+  display: flex;
+  width: min(520px, calc(100% - 32px));
+  max-width: calc(100% - 32px);
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
   font-size: 12px;
   color: var(--unilab-color-danger);
-  background: var(--unilab-color-bg);
-  border: 1px solid var(--unilab-color-danger);
+  background: var(--unilab-color-danger-soft);
+  border: 1px solid color-mix(
+    in srgb,
+    var(--unilab-color-danger) 32%,
+    var(--unilab-color-border)
+  );
   border-radius: var(--unilab-radius-md);
   transform: translateX(-50%);
+}
+
+.material-canvas .material__error strong {
+  color: var(--unilab-color-danger);
+}
+
+.material-canvas .material__error span {
+  color: color-mix(
+    in srgb,
+    var(--unilab-color-danger) 74%,
+    var(--unilab-color-text)
+  );
+  line-height: 1.5;
+}
+
+.material-canvas .material__error details {
+  color: var(--unilab-color-text-muted);
+}
+
+.material-canvas .material__error summary {
+  cursor: pointer;
+}
+
+.material-canvas .material__error code {
+  display: block;
+  margin-top: 6px;
+  overflow-wrap: anywhere;
+  font: 10px/1.5 var(--unilab-font-mono);
 }
 
 .material-canvas__edit-control {
@@ -932,6 +1003,8 @@
 }
 
 .material-inspector {
+  display: flex;
+  flex-direction: column;
   width: 280px;
   min-width: 240px;
   height: 100%;
@@ -943,13 +1016,16 @@
 .material-inspector > header {
   padding: 16px;
   border-bottom: 1px solid var(--unilab-color-border);
+  background: color-mix(
+    in srgb,
+    var(--unilab-color-material-soft) 58%,
+    var(--unilab-color-surface)
+  );
 }
 
 .material-inspector > header span {
   font-size: 10px;
   color: var(--unilab-color-text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
 }
 
 .material-inspector h2 {
@@ -998,4 +1074,80 @@
   background: var(--unilab-color-bg-subtle);
   border: 1px solid var(--unilab-color-border);
   border-radius: var(--unilab-radius-md);
+}
+
+@media (max-width: 960px) {
+  .material-workbench {
+    flex-direction: column;
+  }
+
+  .material-workbench__compact-switch {
+    display: flex;
+    flex: 0 0 40px;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    padding: 4px;
+    background: color-mix(
+      in srgb,
+      var(--unilab-color-material-soft) 48%,
+      var(--unilab-color-surface)
+    );
+    border-bottom: 1px solid var(--unilab-color-border);
+  }
+
+  .material-workbench__compact-switch button {
+    min-width: 64px;
+    height: 30px;
+    padding: 0 12px;
+    color: var(--unilab-color-text-muted);
+    background: transparent;
+    border: 0;
+    border-radius: var(--unilab-radius-control);
+    cursor: pointer;
+    font: 600 12px/1 var(--unilab-font-sans);
+  }
+
+  .material-workbench__compact-switch button:hover:not(:disabled) {
+    color: var(--unilab-color-material);
+    background: var(--unilab-color-material-soft);
+  }
+
+  .material-workbench__compact-switch button[aria-pressed='true'] {
+    color: var(--unilab-color-material);
+    background: var(--unilab-color-material-soft);
+  }
+
+  .material-workbench__compact-switch button:focus-visible {
+    outline: 2px solid var(--unilab-color-focus);
+    outline-offset: -2px;
+  }
+
+  .material-workbench__compact-switch button:disabled {
+    opacity: .45;
+    cursor: not-allowed;
+  }
+
+  .material-template-library,
+  .material-workbench__viewport,
+  .material-inspector {
+    display: none;
+    width: 100%;
+    min-width: 0;
+    height: auto;
+    min-height: 0;
+    flex: 1;
+    border-right: 0;
+    border-left: 0;
+  }
+
+  .material-workbench--compact-templates .material-template-library,
+  .material-workbench--compact-viewport .material-workbench__viewport,
+  .material-workbench--compact-inspector .material-inspector {
+    display: flex;
+  }
+
+  .material-inspector {
+    overflow: auto;
+  }
 }

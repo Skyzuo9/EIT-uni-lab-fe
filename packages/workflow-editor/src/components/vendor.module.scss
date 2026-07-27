@@ -1,7 +1,7 @@
 .dag {
   position: absolute;
   inset: 0;
-  background: #f9f9f9;
+  background: var(--unilab-color-canvas);
 
   :global(.react-flow__node-wfNode.selected),
   :global(.react-flow__node-wfNode:focus),
@@ -11,7 +11,9 @@
   }
 
   :global(.react-flow__node-wfNode.selected) .node {
-    box-shadow: 0 4px 16px rgba(15, 23, 42, 0.2);
+    box-shadow:
+      var(--unilab-shadow-selected),
+      var(--unilab-shadow-control);
   }
 }
 

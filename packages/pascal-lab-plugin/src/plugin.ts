@@ -50,7 +50,7 @@ const baseDefinitions: AnyNodeDefinition[] = [
     capabilities: {},
     dirtyTracking: false,
     presentation: {
-      label: 'Laboratory',
+      label: '实验室',
       icon: { kind: 'iconify', name: 'lucide:warehouse' },
       hidden: true
     },

@@ -33,36 +33,41 @@ test('full control DAG edit, dispatch, node feedback and debugger', async ({
   await page.getByRole('button', { name: '校验', exact: true }).click()
   await expect(page.getByText(/校验通过/)).toBeVisible()
 
-  await page.getByRole('button', { name: '保存 Revision' }).click()
-  await expect(page.getByText(/已保存 Revision/)).toBeVisible()
+  await page.getByRole('button', { name: '保存修订版本' }).click()
+  await expect(page.getByText(/已保存修订版本/)).toBeVisible()
 
   await page.getByRole('button', { name: /调试启动/ }).click()
   const debugStatus = page.locator('.workflow-runtime__debug-status strong')
-  await expect(debugStatus).toHaveText('paused')
-  await expect(page.locator('.workflow-runtime__run-state')).toHaveText('pending')
+  await expect(debugStatus).toHaveText('已暂停')
+  await expect(debugStatus).toHaveAttribute('data-debug-status', 'paused')
+  await expect(page.locator('.workflow-runtime__run-state'))
+    .toHaveText('整体：等待执行')
+  await expect(page.locator('.workflow-runtime__run-state'))
+    .toHaveAttribute('data-run-status', 'pending')
 
   await page.getByRole('button', { name: /单步/ }).click()
-  await expect(debugStatus).toHaveText('paused')
+  await expect(debugStatus).toHaveText('已暂停')
   await expect(
     page.locator('.workflow-runtime__node-list button', { hasText: 'measure' })
-  ).toContainText('success')
-  await expect(page.getByText(/暂停于 branch 之前/)).toBeVisible()
+  ).toHaveAttribute('data-node-state', 'success')
+  await expect(page.getByText(/暂停于 branch 执行之前/)).toBeVisible()
 
   await page.getByRole('button', { name: /步过/ }).click()
-  await expect(debugStatus).toHaveText('paused')
+  await expect(debugStatus).toHaveText('已暂停')
   await expect(
     page.locator('.workflow-runtime__node-list button', { hasText: 'branch' })
-  ).toContainText('success')
+  ).toHaveAttribute('data-node-state', 'success')
   await expect(
     page.locator('.workflow-runtime__node-list button', { hasText: 'inspect' })
-  ).toContainText('skipped')
+  ).toHaveAttribute('data-node-state', 'skipped')
 
   await page.getByRole('button', { name: /继续/ }).click()
-  await expect(page.locator('.workflow-runtime__run-state')).toHaveText('completed')
-  await expect(debugStatus).toHaveText('completed')
+  await expect(page.locator('.workflow-runtime__run-state'))
+    .toHaveText('整体：已完成')
+  await expect(debugStatus).toHaveText('已完成')
   await expect(
     page.locator('.workflow-runtime__node-list button', { hasText: 'heat' })
-  ).toContainText('success')
+  ).toHaveAttribute('data-node-state', 'success')
   await expect(page.locator('.workflow-runtime__events')).toContainText(
     'run.status'
   )
@@ -99,8 +104,8 @@ test('full control DAG edit, dispatch, node feedback and debugger', async ({
   await expect(page.locator('.wf-flow-node--breakpoint')).toHaveCount(1)
   await page.getByRole('button', { name: '校验', exact: true }).click()
   await expect(page.getByText(/校验通过/)).toBeVisible()
-  await page.getByRole('button', { name: '保存 Revision' }).click()
-  await expect(page.getByText(/已保存 Revision/)).toBeVisible()
+  await page.getByRole('button', { name: '保存修订版本' }).click()
+  await expect(page.getByText(/已保存修订版本/)).toBeVisible()
 
   const pythonScreenshot = resolve(
     artifactDir,

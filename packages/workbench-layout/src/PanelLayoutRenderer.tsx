@@ -197,7 +197,7 @@ function ResizeSeparator({
           : "cursor-row-resize"
       }`}
       role="separator"
-      aria-label={`Resize ${split.id}`}
+      aria-label={`调整${split.id}分栏大小`}
       aria-orientation={
         split.direction === "horizontal" ? "vertical" : "horizontal"
       }
@@ -353,9 +353,18 @@ export function PanelLayoutRenderer<Scope = unknown>({
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     return (
-      <div role="alert" data-testid="panel-layout-renderer">
-        <strong>PANEL_LAYOUT_INVALID</strong>
-        <span>{message}</span>
+      <div
+        className="grid min-h-20 place-content-center gap-2 p-4 text-center text-[13px] text-[var(--unilab-color-text-muted)]"
+        role="alert"
+        data-testid="panel-layout-renderer"
+      >
+        <strong className="text-[var(--unilab-color-text)]">面板布局无效</strong>
+        <details>
+          <summary className="cursor-pointer">查看技术信息</summary>
+          <code className="block max-w-[60ch] [overflow-wrap:anywhere] pt-1 text-left text-[10px]">
+            {message}
+          </code>
+        </details>
       </div>
     );
   }

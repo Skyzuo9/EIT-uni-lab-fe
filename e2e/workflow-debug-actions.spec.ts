@@ -57,14 +57,15 @@ test.describe.serial('seven workflow debugger actions', () => {
     await expectPausedBefore(page, 'measure')
 
     await page.getByRole('button', { name: '继续', exact: true }).click()
-    await expect(nodeRow(page, 'measure')).toContainText('running')
+    await expect(nodeRow(page, 'measure'))
+      .toHaveAttribute('data-node-state', 'running')
     await expect(
       page.getByRole('button', { name: '暂停', exact: true })
     ).toBeEnabled()
     await page.getByRole('button', { name: '暂停', exact: true }).click()
 
     await expect(page.locator('.workflow-runtime__debug-status strong'))
-      .toHaveText(/pause_pending|paused/)
+      .toHaveText(/等待暂停|已暂停/)
     await expectPausedBefore(page, 'branch')
     const paused = await snapshot(request, bridge.url, runId)
     expect(states(paused)).toMatchObject({
@@ -82,7 +83,7 @@ test.describe.serial('seven workflow debugger actions', () => {
 
     await page.getByRole('button', { name: '继续', exact: true }).click()
     await expect(page.locator('.workflow-runtime__run-state'))
-      .toHaveText('completed', { timeout: 15_000 })
+      .toHaveText('整体：已完成', { timeout: 15_000 })
     expect(observation.commands).toEqual([
       { command: 'continue', status: 200 },
       { command: 'pause', status: 200 },
@@ -135,7 +136,7 @@ test.describe.serial('seven workflow debugger actions', () => {
 
     await page.getByRole('button', { name: '继续', exact: true }).click()
     await expect(page.locator('.workflow-runtime__run-state'))
-      .toHaveText('completed', { timeout: 10_000 })
+      .toHaveText('整体：已完成', { timeout: 10_000 })
     expect(observation.commands.map((call) => call.command)).toEqual([
       'step',
       'step_over',
@@ -161,7 +162,7 @@ test.describe.serial('seven workflow debugger actions', () => {
 
     await page.getByRole('button', { name: '终止', exact: true }).click()
     await expect(page.locator('.workflow-runtime__run-state'))
-      .toHaveText('cancelled')
+      .toHaveText('整体：已取消')
     const stopped = await snapshot(request, bridge.url, runId)
     expect(stopped.run.debug?.stopReason).toBe('terminate')
     expect(states(stopped)).toEqual({
@@ -200,19 +201,20 @@ test.describe.serial('seven workflow debugger actions', () => {
     await expectPausedBefore(page, 'measure')
 
     await page.getByRole('button', { name: '继续', exact: true }).click()
-    await expect(nodeRow(page, 'measure')).toContainText('running')
+    await expect(nodeRow(page, 'measure'))
+      .toHaveAttribute('data-node-state', 'running')
     const emergency = page.getByRole('button', {
       name: '急停',
       exact: true
     })
     await expect(emergency).toHaveAttribute(
       'title',
-      /当前 run.*非全站硬件急停/
+      /当前运行.*非全站硬件急停/
     )
     await emergency.click()
 
     await expect(page.locator('.workflow-runtime__run-state'))
-      .toHaveText('cancelled')
+      .toHaveText('整体：已取消')
     const stopped = await snapshot(request, bridge.url, runId)
     expect(stopped.run.debug?.stopReason).toBe('emergency_stop')
     expect(states(stopped).measure).toBe('cancelled')
@@ -269,8 +271,8 @@ async function startDebug(page: Page): Promise<string> {
 
 async function expectPausedBefore(page: Page, nodeId: string): Promise<void> {
   await expect(page.locator('.workflow-runtime__debug-status strong'))
-    .toHaveText('paused', { timeout: 10_000 })
-  await expect(page.getByText(`暂停于 ${nodeId} 之前`)).toBeVisible()
+    .toHaveText('已暂停', { timeout: 10_000 })
+  await expect(page.getByText(`暂停于 ${nodeId} 执行之前`)).toBeVisible()
 }
 
 async function clickAndExpectPause(

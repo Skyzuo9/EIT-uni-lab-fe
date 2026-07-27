@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 
 import type { CapabilityStatus } from './MaterialCapabilityNotice'
 import { MaterialInspector } from './MaterialInspector'
@@ -52,6 +52,9 @@ export function MaterialWorkbench({
   onSelectionChange,
   renderViewport
 }: MaterialWorkbenchProps): React.JSX.Element {
+  const [compactView, setCompactView] = useState<
+    'templates' | 'viewport' | 'inspector'
+  >('viewport')
   const store = useMaterialStoreApi()
   const aggregatesById = useMaterialStore(
     (state) => state.aggregatesById
@@ -66,7 +69,37 @@ export function MaterialWorkbench({
   const inspectedMaterialId = selectedMaterialIds[0] ?? null
 
   return (
-    <div className="material-workbench">
+    <div
+      className={`material-workbench material-workbench--compact-${compactView}`}
+    >
+      <div
+        aria-label="物料工作区视图"
+        className="material-workbench__compact-switch"
+        role="group"
+      >
+        <button
+          type="button"
+          aria-pressed={compactView === 'templates'}
+          disabled={!capabilities.readTemplates.available}
+          onClick={() => setCompactView('templates')}
+        >
+          模板
+        </button>
+        <button
+          type="button"
+          aria-pressed={compactView === 'viewport'}
+          onClick={() => setCompactView('viewport')}
+        >
+          画布
+        </button>
+        <button
+          type="button"
+          aria-pressed={compactView === 'inspector'}
+          onClick={() => setCompactView('inspector')}
+        >
+          属性
+        </button>
+      </div>
       {capabilities.readTemplates.available ? (
         <MaterialTemplateLibrary
           catalog={catalog}
@@ -83,23 +116,25 @@ export function MaterialWorkbench({
           }}
         />
       ) : null}
-      {renderViewport ? (
-        renderViewport({
-          readStatus: capabilities.readGraph,
-          moveStatus: capabilities.move,
-          selectedMaterialIds,
-          highlightedMaterialIds,
-          onSelectionChange
-        })
-      ) : (
-        <MaterialCanvas
-          readStatus={capabilities.readGraph}
-          moveStatus={capabilities.move}
-          selectedMaterialIds={selectedMaterialIds}
-          highlightedMaterialIds={highlightedMaterialIds}
-          onSelectionChange={onSelectionChange}
-        />
-      )}
+      <div className="material-workbench__viewport">
+        {renderViewport ? (
+          renderViewport({
+            readStatus: capabilities.readGraph,
+            moveStatus: capabilities.move,
+            selectedMaterialIds,
+            highlightedMaterialIds,
+            onSelectionChange
+          })
+        ) : (
+          <MaterialCanvas
+            readStatus={capabilities.readGraph}
+            moveStatus={capabilities.move}
+            selectedMaterialIds={selectedMaterialIds}
+            highlightedMaterialIds={highlightedMaterialIds}
+            onSelectionChange={onSelectionChange}
+          />
+        )}
+      </div>
       <MaterialInspector
         materialId={inspectedMaterialId}
         updateStatus={capabilities.updateConfig}

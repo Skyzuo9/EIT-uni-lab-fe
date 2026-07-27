@@ -26,38 +26,64 @@ export default function DevicePanel(): React.JSX.Element {
     : null
 
   return (
-    <div className="flex h-full w-full">
-      <div className="flex basis-[280px] flex-col overflow-y-auto border-r border-[#e5e7eb]">
-        <div className="flex items-center justify-between border-b border-[#e5e7eb] bg-[#f9fafb] px-3.5 py-2.5">
-          <span className="text-[13px] font-semibold">设备</span>
-          <span className={`ml-auto mr-2 inline-flex items-center gap-[5px] text-[11px] ${
-            connected ? 'text-[#16a34a]' : 'text-[#9ca3af]'
-          }`}>
+    <section
+      className={`section section--split device-page ${
+        selected ? 'has-selection' : 'is-empty'
+      }`}
+    >
+      <aside className="section__list" aria-label="仪器设备列表">
+        <header className="section__list-head">
+          <div>
+            <h1 className="section__list-title">仪器设备</h1>
+            <span className="section__list-meta">
+              {devices.length ? `${devices.length} 台设备` : '等待设备接入'}
+            </span>
+          </div>
+          <div className="section__list-actions">
             <span
-              className={`h-[7px] w-[7px] rounded-full ${
-                connected
-                  ? 'bg-[#22c55e] shadow-[0_0_0_3px_rgba(34,197,94,0.18)]'
-                  : 'bg-[#ced4da]'
-              }`}
-            />
-            {connected ? '实时' : '未订阅'}
-          </span>
-          <button
-            type="button"
-            className="cursor-pointer rounded border border-[#d1d5db] bg-white px-2.5 py-0.5 text-xs"
-            onClick={() => void refresh()}
-          >
-            刷新
-          </button>
-        </div>
+              className={`device-live${connected ? ' is-live' : ''}`}
+              role="status"
+            >
+              <span className="device-live__dot" aria-hidden="true" />
+              {connected ? '实时状态' : '未订阅'}
+            </span>
+            <button
+              type="button"
+              className="section__refresh"
+              onClick={() => void refresh()}
+              disabled={loading}
+            >
+              {loading ? '刷新中…' : '刷新'}
+            </button>
+          </div>
+        </header>
 
-        {loading && <Hint>加载设备中…</Hint>}
-        {error && <Hint error>{error}</Hint>}
+        {loading && (
+          <div className="device-loading" role="status">
+            正在获取设备…
+          </div>
+        )}
+        {error && (
+          <div className="device-empty device-empty--compact" role="alert">
+            <strong>设备加载失败</strong>
+            <p>请检查服务连接后重新加载。</p>
+            <details>
+              <summary>查看技术信息</summary>
+              <code>{error}</code>
+            </details>
+            <button type="button" onClick={() => void refresh()}>
+              重新加载
+            </button>
+          </div>
+        )}
         {!loading && !error && devices.length === 0 && (
-          <Hint>暂无设备。切换到在线模式并连接后端可查看真实设备。</Hint>
+          <div className="device-empty device-empty--compact" role="status">
+            <strong>暂无设备</strong>
+            <p>连接在线服务后，可在这里查看设备及其实时状态。</p>
+          </div>
         )}
 
-        <ul className="m-0 list-none p-1.5">
+        <ul className="device-list">
           {devices.map((device) => {
             const online = findDeviceStatus(statusMap, [
               device.uuid,
@@ -68,38 +94,40 @@ export default function DevicePanel(): React.JSX.Element {
               <li key={device.uuid}>
                 <button
                   type="button"
-                  className={`flex w-full cursor-pointer flex-col gap-0.5 rounded-md border px-2.5 py-2 text-left transition-colors hover:bg-[#f3f4f6] ${
-                    device.uuid === selectedUuid
-                      ? 'border-[#74c0fc] bg-[#e7f5ff]'
-                      : 'border-transparent bg-transparent'
+                  className={`device-list__item${
+                    device.uuid === selectedUuid ? ' is-active' : ''
                   }`}
+                  aria-pressed={device.uuid === selectedUuid}
                   onClick={() => setSelectedUuid(device.uuid)}
                 >
-                  <span className="flex items-center gap-2">
+                  <span className="device-list__row">
                     <span
-                      className={`h-2 w-2 shrink-0 rounded-full ${
-                        online
-                          ? 'bg-[#22c55e] shadow-[0_0_0_3px_rgba(34,197,94,0.18)]'
-                          : 'bg-[#ced4da]'
+                      className={`device-list__status ${
+                        online ? 'is-online' : 'is-offline'
                       }`}
                       title={online ? '有实时状态推送' : '无实时状态'}
                     />
-                    <span className="text-[13px] text-[#1f2329]">{device.machineName}</span>
+                    <span className="device-list__name">{device.machineName}</span>
                   </span>
-                  <span className="font-mono text-[11px] text-[#868e96]">{device.deviceKey}</span>
+                  <span className="device-list__key">{device.deviceKey}</span>
                 </button>
               </li>
             )
           })}
         </ul>
-      </div>
+      </aside>
 
-      <div className="min-w-0 flex-1 overflow-y-auto px-5 py-4">
-        {selected ? <DeviceDetail device={selected} status={selectedStatus} /> : (
-          <Hint>从左侧选择一个设备查看详情与可用动作</Hint>
+      <main className="section__detail">
+        {selected ? (
+          <DeviceDetail device={selected} status={selectedStatus} />
+        ) : (
+          <div className="device-empty device-empty--detail">
+            <strong>尚未选择设备</strong>
+            <p>从设备列表选择一项，即可查看基础信息、实时状态和可用动作。</p>
+          </div>
         )}
-      </div>
-    </div>
+      </main>
+    </section>
   )
 }
 
@@ -111,27 +139,30 @@ interface DeviceDetailProps {
 // 设备详情:基础信息 + 实时状态 + 动作区占位(下一步接入 /actions 与 JSON Schema 表单)
 function DeviceDetail({ device, status }: DeviceDetailProps): React.JSX.Element {
   return (
-    <div>
-      <h3 className="mb-3 mt-0 text-base">{device.machineName}</h3>
-      <dl className="m-0">
+    <article className="device-detail">
+      <header className="device-detail__header">
+        <span>设备详情</span>
+        <h2 className="device-detail__title">{device.machineName}</h2>
+      </header>
+      <dl className="device-detail__list">
         <DetailRow label="设备类">{device.deviceKey}</DetailRow>
         <DetailRow label="UUID">{device.uuid}</DetailRow>
         <DetailRow label="命名空间">{device.namespace}</DetailRow>
         <DetailRow label="节点">{device.nodeName}</DetailRow>
       </dl>
 
-      <div className="mt-5 border-t border-[#e5e7eb] pt-4">
-        <h4 className="mb-2 mt-0 text-[13px] text-[#495057]">实时状态</h4>
+      <section className="device-detail__section">
+        <h3 className="device-detail__subtitle">实时状态</h3>
         <DeviceLiveStatus status={status} />
-      </div>
+      </section>
 
-      <div className="mt-5 border-t border-[#e5e7eb] pt-4">
-        <h4 className="mb-2 mt-0 text-[13px] text-[#495057]">可用动作</h4>
+      <section className="device-detail__section">
+        <h3 className="device-detail__subtitle">可用动作</h3>
         <Hint>
-          在线连接后,此处将按设备 JSON Schema 渲染动作参数表单并支持下发。
+          在线连接后，此处将按设备 JSON Schema 渲染动作参数表单并支持下发。
         </Hint>
-      </div>
-    </div>
+      </section>
+    </article>
   )
 }
 
@@ -147,11 +178,11 @@ function DeviceLiveStatus({ status }: DeviceLiveStatusProps): React.JSX.Element 
 
   const entries = Object.entries(status.status)
   if (entries.length === 0) {
-    return <Hint>已连接,但该设备当前无状态字段。</Hint>
+    return <Hint>已连接，但该设备当前无状态字段。</Hint>
   }
 
   return (
-    <dl className="m-0">
+    <dl className="device-detail__list">
       {entries.map(([field, value]) => (
         <DetailRow key={field} label={field}>{formatStatusValue(value)}</DetailRow>
       ))}
@@ -160,17 +191,11 @@ function DeviceLiveStatus({ status }: DeviceLiveStatusProps): React.JSX.Element 
 }
 
 function Hint({
-  children,
-  error = false
+  children
 }: {
   children: ReactNode
-  error?: boolean
 }): React.JSX.Element {
-  return (
-    <p className={`px-3.5 py-3 text-xs ${error ? 'text-[#ef4444]' : 'text-[#9ca3af]'}`}>
-      {children}
-    </p>
-  )
+  return <p className="section__hint">{children}</p>
 }
 
 function DetailRow({
@@ -181,9 +206,9 @@ function DetailRow({
   children: ReactNode
 }): React.JSX.Element {
   return (
-    <div className="flex gap-2 py-[3px] text-xs">
-      <dt className="basis-[52px] text-[#6b7280]">{label}</dt>
-      <dd className="m-0 break-all font-mono text-[11px] text-[#24292f]">{children}</dd>
+    <div className="device-detail__row">
+      <dt>{label}</dt>
+      <dd>{children}</dd>
     </div>
   )
 }

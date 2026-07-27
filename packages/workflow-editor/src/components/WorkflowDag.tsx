@@ -107,14 +107,14 @@ export default function WorkflowDag({
         data: {
           ...node.data,
           color: beforeStart
-            ? '#cbd5e1'
-            : status === 'success'
-              ? '#20c997'
-              : status === 'running'
-                ? '#f59f00'
-                : pausedBefore
-                  ? '#3b82f6'
-                  : '#94a3b8',
+            ? 'var(--unilab-color-skipped)'
+            : pausedBefore
+              ? 'var(--unilab-color-paused)'
+              : status === 'success'
+                ? 'var(--unilab-color-success)'
+                : status === 'running'
+                  ? 'var(--unilab-color-warning)'
+                  : 'var(--unilab-color-text-subtle)',
           status,
           breakpoint: breakpoints.has(node.id),
           startNode,
@@ -156,7 +156,11 @@ export default function WorkflowDag({
   )
 
   if (flowNodes.length === 0) {
-    return <p className="px-3.5 py-3 text-xs text-[#9ca3af]">当前 JSON 未定义 nodes,无法生成拓扑图</p>
+    return (
+      <p className="px-3.5 py-3 text-xs text-[var(--unilab-color-text-muted)]">
+        当前 JSON 未定义节点，无法生成拓扑图
+      </p>
+    )
   }
 
   return (
@@ -168,6 +172,8 @@ export default function WorkflowDag({
         onEdgesChange={onEdgesChange}
         nodeTypes={nodeTypes}
         fitView
+        fitViewOptions={{ padding: 0.16, minZoom: 0.2, maxZoom: 1 }}
+        minZoom={0.2}
         nodesDraggable
         nodesConnectable={false}
         elementsSelectable
@@ -181,9 +187,15 @@ export default function WorkflowDag({
           onToggleBreakpoint?.(node.id)
         }
       >
-        <Background gap={16} color="#eef0f2" />
+        <Background gap={16} color="var(--unilab-color-border)" />
         <Controls showInteractive={false} />
-        <MiniMap pannable zoomable nodeColor={(node) => node.data?.color ?? '#94A3B8'} />
+        <MiniMap
+          pannable
+          zoomable
+          nodeColor={(node) =>
+            node.data?.color ?? 'var(--unilab-color-text-subtle)'
+          }
+        />
       </ReactFlow>
     </div>
   )

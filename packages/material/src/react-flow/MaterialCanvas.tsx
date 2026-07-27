@@ -117,7 +117,7 @@ export function MaterialCanvas({
     return (
       <section className="material-canvas is-unavailable">
         <MaterialCapabilityNotice
-          title="Material Graph 不可用"
+          title="物料图不可用"
           status={readStatus}
         />
       </section>
@@ -135,7 +135,7 @@ export function MaterialCanvas({
         floorplanOverlay ? ' is-floorplan-overlay' : ''
       }`}
     >
-      {error ? <div className="material__error">{error}</div> : null}
+      {error ? <MaterialLoadError technicalMessage={error} /> : null}
       <div
         className="material-canvas__edit-control"
         data-move-available={moveStatus.available}
@@ -208,5 +208,32 @@ export function MaterialCanvas({
         {!floorplanOverlay && <Controls />}
       </ReactFlow>
     </section>
+  )
+}
+
+function MaterialLoadError({
+  technicalMessage
+}: {
+  technicalMessage: string
+}): React.JSX.Element {
+  const sessionUnavailable = technicalMessage.includes(
+    'has not published its current in-memory material snapshot'
+  )
+
+  return (
+    <div className="material__error" role="alert">
+      <strong>
+        {sessionUnavailable ? '物料数据尚未就绪' : '物料图加载失败'}
+      </strong>
+      <span>
+        {sessionUnavailable
+          ? '当前实验室会话尚未发布物料快照，请确认服务已启动并稍后重试。'
+          : '请检查服务连接，恢复后重新打开物料页面。'}
+      </span>
+      <details>
+        <summary>查看技术信息</summary>
+        <code>{technicalMessage}</code>
+      </details>
+    </div>
   )
 }

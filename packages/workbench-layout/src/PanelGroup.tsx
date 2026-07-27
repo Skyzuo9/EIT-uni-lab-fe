@@ -10,7 +10,9 @@ import { createPanelDomId } from "./rendererUtils";
 
 export const PANEL_DRAG_MIME = "application/x-unilab-panel";
 const PANEL_STATE_CLASS =
-  "grid min-h-20 place-content-center gap-2 p-4 text-center";
+  "grid min-h-20 place-content-center gap-2 p-4 text-center text-[13px] text-[var(--unilab-color-text-muted)]";
+const PANEL_ACTION_CLASS =
+  "mx-auto cursor-pointer rounded-[var(--unilab-radius-control)] border border-[var(--unilab-color-border-strong)] bg-[var(--unilab-color-surface)] px-3 py-1.5 text-[12px] font-semibold text-[var(--unilab-color-text)] hover:bg-[var(--unilab-color-surface-muted)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--unilab-color-focus)]";
 export interface PanelGroupTab {
   id: string;
   title: string;
@@ -46,10 +48,10 @@ class ToolbarBoundary extends Component<
   };
   render(): ReactNode {
     return this.state.failed ? (
-      <span role="alert">
-        PANEL_RENDERER_FAILED
-        <button type="button" onClick={this.retry}>
-          Retry
+      <span className={PANEL_STATE_CLASS} role="alert">
+        工具栏加载失败
+        <button className={PANEL_ACTION_CLASS} type="button" onClick={this.retry}>
+          重新加载
         </button>
       </span>
     ) : (
@@ -128,7 +130,7 @@ export const PanelGroup: React.FC<PanelGroupProps> = ({
     }
   };
   if (!tabs.length)
-    return <div className={PANEL_STATE_CLASS}>PANEL_GROUP_EMPTY</div>;
+    return <div className={PANEL_STATE_CLASS}>该区域暂无面板</div>;
   return (
     <section
       className="flex min-h-0 min-w-0 flex-1 flex-col bg-[var(--unilab-panel-surface,transparent)]"
@@ -222,7 +224,7 @@ export const PanelGroup: React.FC<PanelGroupProps> = ({
                     type="button"
                     className="cursor-pointer border-0 bg-transparent text-inherit"
                     aria-label={
-                      getCloseLabel?.(tab.title) ?? `Close ${tab.title}`
+                      getCloseLabel?.(tab.title) ?? `关闭${tab.title}`
                     }
                     data-panel-close-instance-id={tab.id}
                     onClick={(event) => {

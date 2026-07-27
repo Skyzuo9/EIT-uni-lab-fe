@@ -188,7 +188,7 @@ export function materialAggregatesToSceneGraph(
     id: BUILDING_ID,
     type: 'building',
     object: 'node',
-    name: 'Laboratory',
+    name: '实验室',
     parentId: SITE_ID,
     visible: true,
     position: [0, 0, 0],

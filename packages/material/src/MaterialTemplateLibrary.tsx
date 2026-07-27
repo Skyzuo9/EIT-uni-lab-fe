@@ -79,7 +79,7 @@ export function MaterialTemplateLibrary({
     <aside className="material-template-library">
       <header>
         <div>
-          <span>Material Catalog</span>
+          <span>物料目录</span>
           <h2>物料模板</h2>
         </div>
         <span className="material-template-library__count">
@@ -107,9 +107,7 @@ export function MaterialTemplateLibrary({
               <p>正在加载模板…</p>
             ) : templates.isError ? (
               <p className="is-error">
-                {templates.error instanceof Error
-                  ? templates.error.message
-                  : '模板加载失败'}
+                模板加载失败，请检查服务连接后重试。
               </p>
             ) : templates.data?.items.length ? (
               templates.data.items.map((template) => (
@@ -147,7 +145,9 @@ export function MaterialTemplateLibrary({
                   从该模板创建
                 </button>
                 {!createStatus.available ? (
-                  <small>{createStatus.reason}</small>
+                  <small>
+                    {createStatus.reason ?? '当前服务配置不支持创建物料'}
+                  </small>
                 ) : null}
               </>
             ) : (

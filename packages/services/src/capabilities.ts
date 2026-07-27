@@ -1,6 +1,10 @@
 import type { BackendConfig } from './backends'
 
 export interface ServerCapabilities {
+  devices: {
+    listOnline: boolean
+    subscribeStatus: boolean
+  }
   material: {
     readTemplates: boolean
     readGraph: boolean
@@ -24,6 +28,8 @@ export interface ServerCapabilities {
 }
 
 export const SERVER_CAPABILITY_KEYS = [
+  'devices.listOnline',
+  'devices.subscribeStatus',
   'material.readTemplates',
   'material.readGraph',
   'material.create',
@@ -77,6 +83,10 @@ export function hasServerCapability(
   capability: ServerCapability
 ): boolean {
   switch (capability) {
+    case 'devices.listOnline':
+      return capabilities.devices.listOnline
+    case 'devices.subscribeStatus':
+      return capabilities.devices.subscribeStatus
     case 'material.readTemplates':
       return capabilities.material.readTemplates
     case 'material.readGraph':
@@ -125,6 +135,10 @@ export function getCapabilityStatus(
 
 function unavailableCapabilities(): ServerCapabilities {
   return {
+    devices: {
+      listOnline: false,
+      subscribeStatus: false
+    },
     material: {
       readTemplates: false,
       readGraph: false,
@@ -164,6 +178,7 @@ function cloneCapabilities(
   capabilities: ServerCapabilities
 ): ServerCapabilities {
   return {
+    devices: { ...capabilities.devices },
     material: { ...capabilities.material },
     realtime: { ...capabilities.realtime },
     edge: { ...capabilities.edge }
@@ -175,18 +190,24 @@ function unavailableReason(
   capability: ServerCapability
 ): string {
   if (backend.id === 'local-go') {
+    if (capability.startsWith('devices.')) {
+      return '当前 Go 后端尚未声明统一设备目录与实时状态订阅契约'
+    }
     if (capability.startsWith('material.')) {
-      return '当前 Go Backend 只有行级物料接口，尚未实现统一 Material Aggregate、revision 与原子命令契约'
+      return '当前 Go 后端只有行级物料接口，尚未实现统一物料聚合、修订版本与原子命令契约'
     }
     if (capability.startsWith('realtime.')) {
-      return '当前 Go Backend 尚未提供 unilab/realtime-v1 实时接口'
+      return '当前 Go 后端尚未提供 unilab/realtime-v1 实时接口'
     }
-    return '当前 Go Backend 尚未提供统一 Edge provisioning 与创建补偿契约'
+    return '当前 Go 后端尚未提供统一边缘端配置与创建补偿契约'
   }
 
   if (backend.id === 'local-python') {
+    if (capability.startsWith('devices.')) {
+      return '当前 Uni-Lab-OS unified v1 bridge 尚未提供设备目录与 device_status 订阅'
+    }
     if (capability.startsWith('material.')) {
-      return '当前 Uni-Lab-OS Material Graph 仅开放只读查询，写操作尚未提供统一命令契约'
+      return '当前 Uni-Lab-OS 物料图仅开放只读查询，写操作尚未提供统一命令契约'
     }
     if (capability === 'realtime.pushJointState') {
       return '当前 Uni-Lab-OS 仅提供 1 Hz device_status，尚未提供 push_joint_state'
@@ -198,7 +219,7 @@ function unavailableReason(
   }
 
   if (backend.id === 'cloud') {
-    return '旧 Cloud 接口不属于统一新协议；新 Cloud Server 契约尚未接入'
+    return '旧版云端接口不属于统一新协议；新版云端服务契约尚未接入'
   }
 
   return `${backend.name} 尚未声明 ${capability} 能力`

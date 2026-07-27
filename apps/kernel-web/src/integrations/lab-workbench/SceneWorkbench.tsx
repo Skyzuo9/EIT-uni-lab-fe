@@ -66,7 +66,7 @@ export function SceneWorkbench({
     return (
       <div className="material-scene-unavailable">
         <MaterialCapabilityNotice
-          title="3D Material Scene 不可用"
+          title="三维物料场景不可用"
           status={readStatus}
         />
       </div>
@@ -75,6 +75,23 @@ export function SceneWorkbench({
 
   if (loadState === 'idle' || loadState === 'loading') {
     return <div className="app-loading">正在加载 3D 物料场景…</div>
+  }
+
+  if (
+    (viewMode === '3d' || viewMode === 'split') &&
+    !supportsWebGl()
+  ) {
+    return (
+      <div className="material-scene-unavailable">
+        <MaterialCapabilityNotice
+          title="三维视图不可用"
+          status={{
+            available: false,
+            reason: '当前浏览器或图形环境未启用 WebGL，请开启硬件加速后重试'
+          }}
+        />
+      </div>
+    )
   }
 
   const applyMoves = async (
@@ -106,5 +123,13 @@ export function SceneWorkbench({
         selectSceneObjects(sceneObjectIds)
       }}
     />
+  )
+}
+
+function supportsWebGl(): boolean {
+  if (typeof document === 'undefined') return true
+  const canvas = document.createElement('canvas')
+  return Boolean(
+    canvas.getContext('webgl2') || canvas.getContext('webgl')
   )
 }

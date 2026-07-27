@@ -60,7 +60,7 @@ export function UnifiedLabViewport({
         <ViewModeButton
           active={mode === 'split'}
           icon={<SplitIcon />}
-          label="Split"
+          label="分屏"
           onClick={() => setMode('split')}
         />
       </div>
