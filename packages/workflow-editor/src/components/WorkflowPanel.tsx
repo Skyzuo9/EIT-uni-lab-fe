@@ -29,6 +29,7 @@ import {
   remapWorkflowBreakpoints,
   remapWorkflowNodeId
 } from '../utils/canonicalWorkflow'
+import { workflowDebugControls } from '../utils/debugControls'
 
 export interface WorkflowStepFocus {
   stepId: string
@@ -380,13 +381,17 @@ export default function WorkflowPanel({
     })
   }
 
-  const command = (name: WorkflowDebugCommand, payload = {}): void => {
+  const command = (
+    name: WorkflowDebugCommand,
+    payload: Record<string, unknown> = {},
+    acceptedMessage?: string
+  ): void => {
     if (!run) return
     void withBusy(async () => {
       const next = await runtime.command(run.id, name, payload)
       setRun(next)
       await refreshRun(run.id)
-      setMessage(`调试命令 ${name} 已由 OS 接受`)
+      setMessage(acceptedMessage || `调试命令 ${name} 已由 OS 接受`)
     })
   }
 
@@ -432,10 +437,12 @@ export default function WorkflowPanel({
   }
 
   const debugStatus = run?.debug?.status || 'disabled'
-  const paused = debugStatus === 'paused'
-  const running = ['running', 'pause_pending', 'stepping'].includes(debugStatus)
-  const canCommand = Boolean(run?.debug?.enabled) &&
-    !TERMINAL_RUN_STATES.has(run?.status || '')
+  const debugControls = workflowDebugControls({
+    debugEnabled: Boolean(run?.debug?.enabled),
+    debugStatus,
+    runStatus: run?.status || 'draft',
+    busy
+  })
   const sourceInvalid = authoringMode === 'json' && Boolean(parsed.error)
 
   return (
@@ -603,35 +610,24 @@ export default function WorkflowPanel({
               <span>{breakpoints.size} 个断点</span>
             </div>
             <div className="workflow-runtime__debug-actions">
-              <button disabled={!canCommand || paused || busy} onClick={() => command('pause')}>
-                Ⅱ 暂停
-              </button>
-              <button disabled={!paused || busy} onClick={() => command('step')}>
-                ↦ 单步
-              </button>
-              <button disabled={!paused || busy} onClick={() => command('step_over')}>
-                ⇥ 步过
-              </button>
-              <button disabled={!paused || busy} onClick={() => command('step_into')}>
-                ↳ 步入
-              </button>
-              <button disabled={!paused || busy} onClick={() => command('continue')}>
-                ▶ 继续
-              </button>
-              <button
-                className="is-danger"
-                disabled={!canCommand || (!paused && !running) || busy}
-                onClick={() => command('terminate')}
-              >
-                ■ 终止
-              </button>
-              <button
-                className="is-danger"
-                disabled={!canCommand || busy}
-                onClick={() => command('emergency_stop')}
-              >
-                ⚠ 急停
-              </button>
+              {debugControls.map((control) => (
+                <button
+                  key={control.command}
+                  type="button"
+                  className={control.danger ? 'is-danger' : undefined}
+                  data-debug-command={control.command}
+                  aria-label={control.label}
+                  title={control.title}
+                  disabled={control.disabled}
+                  onClick={() => command(
+                    control.command,
+                    {},
+                    control.message
+                  )}
+                >
+                  {control.glyph} {control.label}
+                </button>
+              ))}
             </div>
           </div>
 

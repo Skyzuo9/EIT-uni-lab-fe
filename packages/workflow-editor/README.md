@@ -63,6 +63,19 @@ Python 发生编辑后，切回 JSON、保存、校验或运行前调用：
   语义相同，不代表已实现子工作流调用栈。
 - 继续/单步只临时越过当前断点一次，不会清除断点。
 
+### 七个运行控制动作
+
+`src/utils/debugControls.ts` 是暂停、单步、步过、步入、继续、终止、急停的唯一前端
+控制定义，集中维护命令名、启用条件、危险样式和用户提示。组件只能把动作发送给
+`WorkflowRuntimePort.command`，不能在本地推进节点状态。
+
+- `pause` 停止新节点 admission，当前运行中的物理动作收敛后才进入 `paused`。
+- `terminate` 终止当前 run 并取消其未完成节点。
+- `emergency_stop` 立即请求当前 run 的设备清理并停止后续调度；它不是全站硬件急停，
+  UI 和测试都不得把它描述为硬件安全回路。
+- OS 用 `stopReason`、`debug.terminate_requested` 和
+  `debug.emergency_stop_requested` 保留两种停止原因，HTTP 命令成功不等于 run 已终止。
+
 ### 视觉语义
 
 | 展示 | 含义 |
@@ -82,6 +95,7 @@ Python 发生编辑后，切回 JSON、保存、校验或运行前调用：
 - `src/components/WorkflowDag.tsx`：只读拓扑投影及节点快捷交互。
 - `src/components/WorkflowNodeCard.tsx`：节点状态、起始点和断点的可访问入口。
 - `src/utils/canonicalWorkflow.ts`：Canonical revision 与 UI 投影辅助。
+- `src/utils/debugControls.ts`：七个调试动作的命令、启用矩阵与文案。
 - `src/utils/parseWorkflow.ts`：画布所需的只读解析。
 - `src/hooks/useWorkflowDag.ts`：ReactFlow 布局与视图状态。
 
@@ -92,6 +106,7 @@ pnpm --filter @unilab/workflow-editor typecheck
 pnpm --filter @unilab/workflow-editor test
 pnpm test:e2e:workflow
 pnpm test:e2e:workflow-debug
+pnpm test:e2e:workflow-actions
 ```
 
 涉及运行和调试时，E2E 必须连接真实 v1 local bridge/OS，且检查浏览器

@@ -96,6 +96,7 @@ export interface WorkflowDebugProjection {
   startNodeId?: string | null
   pausedBeforeNodeId?: string | null
   runToNodeId?: string | null
+  stopReason?: 'terminate' | 'emergency_stop' | null
   stateVersion?: number
   semantics?: string
 }

@@ -9,6 +9,9 @@ API mock 演示；工作流场景必须同时观察 UI、真实 HTTP/WS 调用�
   逐节点反馈，以及 JSON ↔ Python 编写往返。
 - `workflow-debug-scenarios.spec.ts`：起始点、两个断点、连续单步、异常/终止等调试语义，
   并保存 API 快照和截图证据。
+- `workflow-debug-actions.spec.ts`：自动拉起隔离的真实 offline local bridge，逐项覆盖
+  暂停、单步、步过、步入、继续、终止、急停，并核对节点收敛、命令请求和区分后的
+  `debug.terminate_requested` / `debug.emergency_stop_requested` 事件。
 - `material-scene.spec.ts`：材料场景，与工作流测试分开运行。
 
 ## 运行
@@ -26,8 +29,13 @@ UNILAB_PY=/home/changjunhan/.micromamba/envs/unilab/bin/python
 ```bash
 UNILAB_OS_E2E_URL=http://127.0.0.1:8014 pnpm test:e2e:workflow
 UNILAB_OS_E2E_URL=http://127.0.0.1:8014 pnpm test:e2e:workflow-debug
+pnpm test:e2e:workflow-actions
 UNILAB_OS_E2E_URL=http://127.0.0.1:8014 pnpm test:e2e:materials
 ```
+
+七动作测试默认自己分配 loopback 端口，并以 `--offline-node-delay` 启动 OS bridge，
+从而可确定性观察 running → pause_pending → paused。只有明确设置
+`UNILAB_DEBUG_ACTIONS_E2E_URL` 时才复用外部测试 bridge；不要指向真实生产设备。
 
 没有设置 `UNILAB_FE_E2E_URL` 时，Playwright 会构建并启动 `kernel-web` preview；
 设置后则复用指定前端。产物写入相邻的 `../e2e-artifacts`。
