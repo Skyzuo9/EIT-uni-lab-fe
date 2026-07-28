@@ -40,7 +40,7 @@ export default function AppShell(): React.JSX.Element {
       brand="Uni-Lab 调试台"
       topbar={
         <>
-          <ConnectionBar />
+          {section === 'device' ? null : <ConnectionBar />}
           {session ? (
             <UserMenu userInfo={session.userInfo} onLogout={logout} />
           ) : null}
