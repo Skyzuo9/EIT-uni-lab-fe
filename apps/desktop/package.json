@@ -10,7 +10,8 @@
     "preview": "unset ELECTRON_RUN_AS_NODE; electron-vite preview",
     "package:mac": "electron-vite build && electron-builder --mac",
     "package:win": "electron-vite build && electron-builder --win",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node scripts/verify-icons.mjs"
   },
   "dependencies": {
     "@unilab/kernel-web": "workspace:*"
