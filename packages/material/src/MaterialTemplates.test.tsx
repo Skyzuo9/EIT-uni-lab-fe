@@ -15,15 +15,38 @@ import type {
 
 const TEMPLATE: MaterialTemplateDetail = {
   uuid: 'template-1',
-  name: '96 Well Plate',
-  resourceType: 'resource',
+  key: 'plate-96',
+  sourceNamespace: 'unilabos',
+  displayName: '96 Well Plate',
+  kind: 'resource',
   tags: ['plate', 'liquid'],
-  configInfos: [
-    {
-      type: 'well',
-      data: { liquids: [['Buffer', 100]] }
+  categoryPath: ['plates'],
+  status: 'ready',
+  contentHash: 'sha256:template-1',
+  creation: {
+    mode: 'resource-tree',
+    available: false,
+    reason: '当前 Edge 尚未开放物料创建'
+  },
+  containerLayout: {
+    type: 'grid',
+    containerKind: 'well',
+    rows: ['A', 'B'],
+    columns: 2,
+    columnLabels: [1, 2],
+    naming: 'row-column',
+    geometry: {
+      dimensionsMm: { x: 8, y: 8, z: 10 },
+      depthMm: 10,
+      shape: 'circle',
+      pitchMm: { x: 9, y: -9 },
+      offsetMm: { x: 10, y: 20, z: 2 },
+      firstKey: 'A1'
     }
-  ]
+  },
+  compatibility: {},
+  configuration: { schema: {}, uiSchema: {} },
+  assets: {}
 }
 
 describe('material template components', () => {
@@ -41,7 +64,7 @@ describe('material template components', () => {
     expect(markup).toContain('aria-pressed="true"')
   })
 
-  it('keeps creation disabled and explains the capability', () => {
+  it('keeps creation disabled without restoring Cloud liquid defaults', () => {
     const markup = renderToStaticMarkup(
       <MaterialCreateDialog
         template={TEMPLATE}
@@ -57,7 +80,23 @@ describe('material template components', () => {
 
     expect(markup).toContain('当前 Go Backend 不支持原子创建')
     expect(markup).toContain('disabled=""')
-    expect(markup).toContain('默认 Water 500')
+    expect(markup).not.toContain('Water 500')
+  })
+
+  it('shows a duplicate-name error instead of changing the name', () => {
+    const markup = renderToStaticMarkup(
+      <MaterialCreateDialog
+        template={TEMPLATE}
+        existingNames={['96 WELL PLATE']}
+        createStatus={{ available: true }}
+        onCancel={() => undefined}
+        onCreate={() => undefined}
+      />
+    )
+
+    expect(markup).toContain('当前物料图中已存在同名物料')
+    expect(markup).toContain('aria-invalid="true"')
+    expect(markup).not.toContain('96 Well Plate 2')
   })
 
   it('does not query an unsupported template catalog', () => {

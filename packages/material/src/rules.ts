@@ -46,6 +46,7 @@ export function assertValidMaterialGraph(
   aggregatesById: Readonly<Record<MaterialId, MaterialAggregate>>
 ): void {
   const siteIds = new Set<SiteId>()
+  const componentKeysByParent = new Map<MaterialId, Set<string>>()
 
   for (const aggregate of Object.values(aggregatesById)) {
     const id = aggregate.material.id
@@ -56,6 +57,10 @@ export function assertValidMaterialGraph(
         `Material ${id} references missing parent ${parentId}`
       )
     }
+    assertValidManagedComponent(
+      aggregate,
+      componentKeysByParent
+    )
 
     for (const site of aggregate.sites) {
       assertValidSite(site, aggregate)
@@ -109,6 +114,41 @@ export function assertCanAttach(
       `Site ${siteId} does not accept template ${child.material.sourceTemplateId}`
     )
   }
+}
+
+function assertValidManagedComponent(
+  aggregate: MaterialAggregate,
+  componentKeysByParent: Map<MaterialId, Set<string>>
+): void {
+  const component = aggregate.material.component
+  if (!component) return
+
+  if (aggregate.placement.kind !== 'parent') {
+    throw new MaterialRuleError(
+      'MATERIAL_COMPONENT_PARENT_REQUIRED',
+      `Managed component ${aggregate.material.id} must use parent placement`
+    )
+  }
+
+  const key = component.key.trim()
+  if (!key || key !== component.key) {
+    throw new MaterialRuleError(
+      'MATERIAL_COMPONENT_KEY_INVALID',
+      `Managed component ${aggregate.material.id} has an invalid key`
+    )
+  }
+
+  const parentId = aggregate.placement.parentId
+  const keys = componentKeysByParent.get(parentId) ?? new Set<string>()
+  const comparableKey = key.toLocaleUpperCase('en-US')
+  if (keys.has(comparableKey)) {
+    throw new MaterialRuleError(
+      'MATERIAL_COMPONENT_KEY_DUPLICATE',
+      `Parent ${parentId} has duplicate component key ${key}`
+    )
+  }
+  keys.add(comparableKey)
+  componentKeysByParent.set(parentId, keys)
 }
 
 export function placementParentId(

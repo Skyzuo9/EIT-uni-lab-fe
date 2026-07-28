@@ -19,8 +19,10 @@
 follow-site。高频关节 pose 不写回静态 `relative_position`，也不驱动 ReactFlow 重渲染。
 关节流缺失时 3D 可以回退 URDF 初始值。
 
-`well` 与 `tip-spot` 当前可能出现在 OS 兼容投影中，但它们不是长期领域 `Site`。
-新代码不得依赖其 `Site` 身份；后续应迁入容器内容/耗材自身模型。
+`well` 不是领域 `Site`。每个孔是由父孔板管理的真实子 Material，通过 parent
+placement 进入同一 Material Graph，并使用稳定 component key（例如 `A1`）定位。
+孔容器可以承载试剂或样品，但不能独立移动、重命名或管理生命周期。`tip-spot`
+当前仍不进入长期领域模型。
 
 ## 状态分层
 
@@ -43,16 +45,43 @@ undo 必须发送对应 delete；失败时保留可解释的 pending/error 状�
 - `src/rules.ts`：领域约束。
 - `src/templateMaterial.ts`：模板创建时的一次性物化；创建后不跟随模板变化。
 - `src/react-flow/`：2D floorplan/ReactFlow 投影。
+  缺少专用物理外形时使用语义默认卡；优先读取
+  `config.presentation/resourceConfig/source`，再兼容旧图标识符，并按
+  “控制节点 / 仪器设备 / 物料节点”显示图标与名词。
 - `src/oblique/`：正面斜二测 2.5D SVG 投影。
 - `src/MaterialWorkbench.tsx`：物料工作台入口。
+- `src/MaterialTreeSidebar.tsx`：由同一 store 派生的左侧父子目录树。
+- `src/MaterialTemplateLauncher.tsx`：右上“仪器设备/物料耗材”模板入口；能力
+  不可用时显式禁用，不能用静态假数据伪装。
+- `src/MaterialTemplateLibrary.tsx`：按设备/耗材过滤的模板目录与单实例创建入口。
+
+模板目录由 Edge Registry 提供。TanStack Query 一次获取全量轻量 summary，UI 在本地
+搜索、分类和计数；只有用户选中某一项时才懒加载 geometry、container layout、配置 schema
+与显式资源。Query key 必须包含 Profile/实际 Edge 地址和 scope，切换连接后不能复用旧
+端点目录。
+
+模板状态处理：
+
+- `ready`：可展示详情，但是否能创建仍以 `creation.available` 和 capability 为准；
+- `unresolved`：显示原因并禁用创建；
+- `stale=true`：显示缓存/重连提示，允许浏览，所有创建禁用；
+- 无缓存且服务失败：显示结构化错误与重试，不回退到 Cloud 或 bundle 静态模板。
+
+模板只是类型目录，不进入 Material Zustand store；创建成功后的独立
+`MaterialAggregate` 才进入实例图。列表入口必须位于 Pascal floorplan overlay 之上并能
+真实点击，不能只保证视觉上可见。
 
 试剂、样品和容器内容优先进入对应后端表；其他低频状态进入
-`material_state_history`。不要重新增加通用 `data` 袋来承载所有业务。
+`material_state_history`。模板中的旧 `config_info.liquids` 只能作为兼容元数据，
+创建实例时不得据此默认填充 Water 或其他内容。不要重新增加通用 `data` 袋来承载
+所有业务。
 
 ## 渲染约束
 
 - 2D、2.5D、3D 和 split 必须共享同一 Material Graph、选择与 tag 语义。
 - 2D floorplan 可与 ReactFlow 叠加，但不能制造后端不存在的 site 或尺寸。
+- `num_rails` 声明的 Hamilton R1…Rn rail 是台面背景几何，不是独立安装位：
+  2D 只显示弱化轨道，2.5D 不生成 Site 和 Site 标签。
 - 2.5D 使用通用 SVG 平面图、统一投影和真实高度处理遮挡，禁止测试案例定制。
 - 每个设备可常驻浮动 tag；普通物料在 hover/selection 时显示。
 - 所有尺寸来自服务/模型元数据；缺失时明确显示降级，不得用“看起来合适”的数据冒充。
@@ -71,12 +100,16 @@ undo 必须发送对应 delete；失败时保留可解释的 pending/error 状�
 - 不得在前端创建或删除 Site。
 - 不得把高频 joint 数据写回静态 placement/state history。
 - 不得把模板更新自动传播到已创建物料。
+- 不得把模板 summary 与 Material instance 混存，或在 stale/unresolved 状态创建。
+- 不得用强制点击的 E2E 掩盖 ReactFlow/Pascal overlay 对模板入口的事件拦截。
 
 ## 验证
 
 ```bash
 pnpm --filter @unilab/material typecheck
 pnpm --filter @unilab/material test
+pnpm test:e2e:material-create
+pnpm test:e2e:materials
 ```
 
 视图变更还必须运行真实 OS 的 material E2E，核对 floorplan/孔板尺寸、2.5D 遮挡、

@@ -6,7 +6,7 @@ import { useBackendConnection } from '../hooks/useBackendConnection'
 
 const INPUT_CLASS = 'connection-bar__field'
 
-export default function ConnectionBar(): React.JSX.Element | null {
+export default function ConnectionBar(): React.JSX.Element {
   const {
     backend,
     backendEnabled,
@@ -22,7 +22,15 @@ export default function ConnectionBar(): React.JSX.Element | null {
     setDraftUrl(backend.apiUrl)
   }, [backend.id, backend.apiUrl])
 
-  const handleRetry = (): void => {
+  const showRecovery = shouldShowConnectionRecovery(
+    backendEnabled,
+    connection
+  )
+  const trimmedDraftUrl = draftUrl.trim()
+  const hasDraftChange = trimmedDraftUrl !== backend.apiUrl
+  const targetName = backend.serverKind === 'edge' ? 'Edge' : backend.name
+
+  const handleApply = (): void => {
     const trimmed = draftUrl.trim()
     if (!trimmed) return
     if (trimmed !== backend.apiUrl) {
@@ -32,20 +40,19 @@ export default function ConnectionBar(): React.JSX.Element | null {
     void reconnect()
   }
 
-  if (!shouldShowConnectionRecovery(backendEnabled, connection)) return null
-
-  const targetName = backend.serverKind === 'edge' ? 'Edge' : backend.name
-
   return (
     <div
-      className="connection-bar"
-      role="alert"
-      aria-label={`${targetName} 连接失败`}
+      className={`connection-bar${showRecovery ? ' is-error' : ''}`}
+      role="group"
+      aria-label={`${targetName} 连接配置`}
+      data-connection-state={connection}
     >
-      <span className="connection-bar__status">
-        <span className="connection-bar__status-dot" aria-hidden="true" />
-        {targetName} 连接失败
-      </span>
+      {showRecovery ? (
+        <span className="connection-bar__status" role="alert">
+          <span className="connection-bar__status-dot" aria-hidden="true" />
+          {targetName} 连接失败
+        </span>
+      ) : null}
       <select
         className={INPUT_CLASS}
         aria-label="切换服务配置"
@@ -64,22 +71,25 @@ export default function ConnectionBar(): React.JSX.Element | null {
         value={draftUrl}
         spellCheck={false}
         placeholder="服务 API 地址"
+        aria-invalid={showRecovery || undefined}
         onChange={(event) => setDraftUrl(event.target.value)}
         onKeyDown={(event) => {
           if (event.key === 'Enter') {
             event.preventDefault()
-            handleRetry()
+            if (hasDraftChange || showRecovery) handleApply()
           }
         }}
       />
-      <button
-        type="button"
-        className="connection-bar__retry"
-        disabled={!draftUrl.trim()}
-        onClick={handleRetry}
-      >
-        重试
-      </button>
+      {hasDraftChange || showRecovery ? (
+        <button
+          type="button"
+          className="connection-bar__action"
+          disabled={!trimmedDraftUrl}
+          onClick={handleApply}
+        >
+          {hasDraftChange ? '应用' : '重试'}
+        </button>
+      ) : null}
     </div>
   )
 }

@@ -13,8 +13,8 @@ Profile 是一组完整连接配置，不是单个 base URL。它至少确定 ba
 
 | Profile | 物料能力 | 说明 |
 |---|---|---|
-| `local-python` / edge | `material.readGraph` | OS 从当前内存 `ResourceTreeSet` 投影统一 `MaterialAggregate`，只读 |
-| `local-go` / backend | `material.readTemplates` | Go backend 有模板与行级 CRUD，但尚未提供统一 Material Graph 命令 |
+| `local-python` / edge | `material.readGraph`、`material.readTemplates` | OS 当前内存图只读投影；模板来自已构建 Registry |
+| `local-go` / backend | 当前物料能力 fail closed | 现有模板/行级 CRUD 未满足统一目录与 Material Graph contract |
 | cloud | fail closed | 未来迁移；未实现能力不得显示为可用 |
 
 非云本地作用域是 singleton，不发送伪造的 `laboratoryId`。同一路径或相同 JSON 字段不代表
@@ -26,9 +26,18 @@ Profile 是一组完整连接配置，不是单个 base URL。它至少确定 ba
 
 | 能力 | Services 方法 | 当前来源 |
 |---|---|---|
-| 模板列表 | `listTemplates` | Go backend `/api/v1/resource-templates` |
-| 模板详情 | `getTemplate` | Go backend `/api/v1/resource-templates/{uuid}` |
+| 模板列表 | `listTemplates` | Edge `/api/v1/resource-templates`，一次读取全量 summary |
+| 模板详情 | `getTemplate` | Edge `/api/v1/resource-templates/{uuid}`，按需读取 |
 | Material Graph | `getGraph` | OS 当前内存态经 `/api/v1/materials` 分页聚合投影 |
+
+模板 adapter 将服务端 snake_case DTO 映射为领域 camelCase，保留 catalog
+`revision/stale`、模板 `contentHash/status/creation`，并归一化
+`geometry/containerLayout/configuration/assets`。相对 asset URL 必须基于当前
+`BackendConfig.apiUrl` 解析，组件不得自行拼接。
+
+模板列表是轻量、全量目录，不发送 Cloud 风格分页参数。前端 Query cache 以完整
+Profile 身份（包含实际 Edge HTTP 地址）和 scope 隔离；搜索、设备/耗材分类在本地进行，
+详情只有在用户选中模板后才请求。`stale=true` 只允许浏览，创建必须禁用。
 
 `getGraph` 要求每一行能还原完整 `placement`、`rendering` 和 `sites`，并合并为一个
 `MaterialAggregate`。普通 Go backend `materials` 行虽然也位于 `/api/v1/materials`，
@@ -102,6 +111,8 @@ REST；调用方仍要按 `seq` 处理幂等更新。
 - 不得静默补造 placement、Site、模型尺寸或 revision。
 - 不得把 `well`/`tip-spot` 兼容项升级为长期领域 `Site`。
 - 不得把高频 joint pose 混入 Material Graph 查询缓存。
+- 不得为 Edge 模板请求恢复分页/Cloud 私有 DTO，或在请求失败时返回 bundle 内置目录。
+- 不得忽略 `stale`、`unresolved` 或 `creation.available=false` 而打开创建按钮。
 
 ## 修改检查
 

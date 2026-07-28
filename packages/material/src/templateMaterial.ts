@@ -1,131 +1,204 @@
-export interface MaterialTemplateWell {
-  type?: string
-  data?: {
-    liquids?: readonly (readonly [string, number] | null)[]
-    pendingLiquids?: readonly (readonly [string, number] | null)[]
-    liquidHistory?: readonly string[]
-    [key: string]: unknown
-  }
-  [key: string]: unknown
-}
+import type {
+  CreateMaterialInput,
+  InitialMaterialContentDraft,
+  MaterialDropIntent
+} from './types'
 
 export interface MaterialTemplateInput {
   uuid: string
-  name: string
-  configInfos?: readonly MaterialTemplateWell[]
+  displayName: string
+}
+
+export type MaterialTemplateKind = 'device' | 'resource'
+export type MaterialTemplateStatus = 'ready' | 'unresolved'
+
+export interface MaterialTemplateCreation {
+  mode: 'dynamic-device' | 'resource-tree'
+  available: boolean
+  reason?: string
+}
+
+export interface MaterialTemplatePoint {
+  x: number
+  y: number
+}
+
+export interface MaterialTemplateVector3 {
+  x: number
+  y: number
+  z: number
+}
+
+export interface MaterialTemplateGeometry {
+  dimensionsMm: MaterialTemplateVector3
+  originMm: MaterialTemplateVector3
+  footprint?: {
+    pointsMm: readonly MaterialTemplatePoint[]
+  }
+  stackHeightMm?: number
+}
+
+export interface MaterialContainerGeometry {
+  dimensionsMm: MaterialTemplateVector3
+  depthMm: number
+  shape: 'circle' | 'rectangle'
+  maxVolumeUl?: number
+}
+
+export type MaterialContainerLayout =
+  | {
+      type: 'grid'
+      containerKind: 'well' | 'tip-spot' | 'container'
+      rows: readonly string[]
+      columns: number
+      columnLabels: readonly number[]
+      naming: 'row-column'
+      geometry: MaterialContainerGeometry & {
+        pitchMm: MaterialTemplatePoint
+        offsetMm: MaterialTemplateVector3
+        firstKey: string
+      }
+    }
+  | {
+      type: 'explicit'
+      containers: readonly {
+        key: string
+        kind: 'well' | 'tip-spot' | 'container'
+        positionMm: MaterialTemplateVector3
+        geometry: Partial<MaterialContainerGeometry>
+      }[]
+    }
+
+export interface MaterialTemplateCompatibility {
+  allowedParentTypes?: readonly string[]
+  allowedSiteTypes?: readonly string[]
+  requiredCapabilities?: readonly string[]
+  forbiddenSiteTypes?: readonly string[]
+}
+
+export interface MaterialTemplateConfiguration {
+  schema: Record<string, unknown>
+  uiSchema: Record<string, unknown>
 }
 
 export interface MaterialTemplateSummary {
   uuid: string
-  name: string
+  key: string
+  sourceNamespace: string
+  kind: MaterialTemplateKind
+  displayName: string
   tags: readonly string[]
-  resourceType: 'device' | 'resource'
+  categoryPath: readonly string[]
   icon?: string
   description?: string
+  status: MaterialTemplateStatus
+  statusReason?: string
+  contentHash: string
+  creation: MaterialTemplateCreation
 }
 
 export interface MaterialTemplateDetail extends MaterialTemplateSummary {
-  configInfos: readonly MaterialTemplateWell[]
-  model?: Record<string, unknown>
+  geometry?: MaterialTemplateGeometry
+  containerLayout?: MaterialContainerLayout
+  compatibility: MaterialTemplateCompatibility
+  configuration: MaterialTemplateConfiguration
+  assets: Readonly<Record<string, string>>
 }
 
-export interface MaterialTemplateQuery {
-  page?: number
-  pageSize?: number
-  name?: string
-  resourceType?: 'device' | 'resource'
-}
-
-export interface MaterialTemplatePage {
+export interface MaterialTemplateCatalog {
+  revision: string
+  stale: boolean
   items: readonly MaterialTemplateSummary[]
-  total: number
-  page: number
-  pageSize: number
 }
 
 export interface MaterialTemplateCatalogPort {
   listTemplates: (
-    scope: import('./types').MaterialScope,
-    query?: MaterialTemplateQuery
-  ) => Promise<MaterialTemplatePage>
+    scope: import('./types').MaterialScope
+  ) => Promise<MaterialTemplateCatalog>
   getTemplate: (
     scope: import('./types').MaterialScope,
     templateId: string
   ) => Promise<MaterialTemplateDetail>
 }
 
-export interface CreateMaterialNodeInput {
-  displayName: string
-  name: string
-  resourceTemplateId: string
-  plateWellData: Record<string, unknown>
+export type MaterialNameValidation =
+  | {
+      valid: true
+      value: string
+    }
+  | {
+      valid: false
+      value: string
+      code: 'required' | 'duplicate'
+      message: string
+    }
+
+export interface CreateMaterialDraftOptions {
+  existingNames: readonly string[]
+  requestedName?: string
+  placement?: MaterialDropIntent
+  initialContents?: readonly InitialMaterialContentDraft[]
 }
 
 export interface TemplateMaterialDraft {
-  createInput: CreateMaterialNodeInput
-  wells: readonly MaterialTemplateWell[]
-  requiresLiquidConfiguration: boolean
+  createInput: CreateMaterialInput
+  nameValidation: MaterialNameValidation
 }
 
-const DEFAULT_LIQUID = [['Water', 500]] as const
-const DEFAULT_LIQUID_HISTORY = ['Water'] as const
-
 /**
- * Ports the behavior of Cloud's DeviceMaterialTemplate without its component,
- * modal, Redux, or transport dependencies.
+ * 创建传输无关草稿。模板几何和容器布局只描述结构，不会隐式初始化试剂、
+ * 样品或孔位内容。
  */
 export function createMaterialDraftFromTemplate(
   template: MaterialTemplateInput,
-  existingNames: readonly string[],
-  requestedName = template.name
+  options: CreateMaterialDraftOptions
 ): TemplateMaterialDraft {
-  const name = nextAvailableName(
-    requestedName.trim() || template.name,
-    existingNames
+  const nameValidation = validateMaterialName(
+    options.requestedName ?? template.displayName,
+    options.existingNames
   )
-  const wells = template.configInfos ?? []
-  const requiresLiquidConfiguration = wells.some(hasLiquidField)
 
   return {
     createInput: {
-      displayName: name,
-      name,
-      resourceTemplateId: template.uuid,
-      plateWellData: {}
+      templateId: template.uuid,
+      name: nameValidation.value,
+      placement: options.placement ?? { kind: 'unplaced' },
+      initialContents: structuredClone(options.initialContents ?? [])
     },
-    wells: requiresLiquidConfiguration
-      ? wells.map(withDefaultLiquid)
-      : structuredClone(wells),
-    requiresLiquidConfiguration
+    nameValidation
   }
 }
 
-function hasLiquidField(well: MaterialTemplateWell): boolean {
-  const liquids = well.data?.liquids
-  return Array.isArray(liquids) && liquids[0] != null
-}
-
-function withDefaultLiquid(well: MaterialTemplateWell): MaterialTemplateWell {
-  if (well.type !== 'well') return structuredClone(well)
-  return {
-    ...structuredClone(well),
-    data: {
-      ...structuredClone(well.data ?? {}),
-      liquids: DEFAULT_LIQUID,
-      pendingLiquids: DEFAULT_LIQUID,
-      liquidHistory: DEFAULT_LIQUID_HISTORY
-    }
-  }
-}
-
-function nextAvailableName(
+export function validateMaterialName(
   requestedName: string,
   existingNames: readonly string[]
-): string {
-  const occupied = new Set(existingNames)
-  if (!occupied.has(requestedName)) return requestedName
+): MaterialNameValidation {
+  const value = requestedName.trim().normalize('NFKC')
+  if (!value) {
+    return {
+      valid: false,
+      value,
+      code: 'required',
+      message: '请输入实例名称'
+    }
+  }
 
-  let suffix = 2
-  while (occupied.has(`${requestedName} ${suffix}`)) suffix += 1
-  return `${requestedName} ${suffix}`
+  const comparable = comparableMaterialName(value)
+  const duplicate = existingNames.some(
+    (name) => comparableMaterialName(name) === comparable
+  )
+  if (duplicate) {
+    return {
+      valid: false,
+      value,
+      code: 'duplicate',
+      message: '当前物料图中已存在同名物料'
+    }
+  }
+
+  return { valid: true, value }
+}
+
+function comparableMaterialName(value: string): string {
+  return value.trim().normalize('NFKC').toLowerCase()
 }

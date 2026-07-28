@@ -202,15 +202,21 @@ body {
   gap: var(--unilab-space-2);
   margin-left: auto;
   padding: 4px 8px;
+  color: var(--unilab-color-text-muted);
+  border: 1px solid var(--unilab-color-border);
+  border-radius: var(--unilab-radius-control);
+  background: var(--unilab-color-surface-subtle);
+  font-size: 12px;
+}
+
+.connection-bar.is-error {
   color: var(--unilab-color-danger);
-  border: 1px solid color-mix(
+  border-color: color-mix(
     in srgb,
     var(--unilab-color-danger) 28%,
     transparent
   );
-  border-radius: var(--unilab-radius-control);
   background: var(--unilab-color-danger-soft);
-  font-size: 12px;
 }
 
 .connection-bar__status {
@@ -235,11 +241,7 @@ body {
   height: 28px;
   padding: 0 8px;
   color: var(--unilab-color-text);
-  border: 1px solid color-mix(
-    in srgb,
-    var(--unilab-color-danger) 36%,
-    var(--unilab-color-border)
-  );
+  border: 1px solid var(--unilab-color-border-strong);
   border-radius: var(--unilab-radius-sm);
   outline: none;
   background: var(--unilab-color-surface);
@@ -247,23 +249,27 @@ body {
 }
 
 .connection-bar__field:focus {
-  border-color: var(--unilab-color-danger);
+  border-color: var(--unilab-color-primary);
   box-shadow: 0 0 0 2px color-mix(
     in srgb,
-    var(--unilab-color-danger) 18%,
+    var(--unilab-color-primary) 18%,
     transparent
   );
 }
 
-.connection-bar__retry {
-  height: 28px;
-  padding: 0 10px;
-  color: var(--unilab-color-danger);
-  border: 1px solid color-mix(
+.connection-bar.is-error .connection-bar__field {
+  border-color: color-mix(
     in srgb,
     var(--unilab-color-danger) 36%,
     var(--unilab-color-border)
   );
+}
+
+.connection-bar__action {
+  height: 28px;
+  padding: 0 10px;
+  color: var(--unilab-color-primary);
+  border: 1px solid var(--unilab-color-border-strong);
   border-radius: var(--unilab-radius-sm);
   background: var(--unilab-color-surface);
   font-size: 12px;
@@ -271,7 +277,25 @@ body {
   cursor: pointer;
 }
 
-.connection-bar__retry:hover:not(:disabled) {
+.connection-bar__action:hover:not(:disabled) {
+  border-color: var(--unilab-color-primary);
+  background: color-mix(
+    in srgb,
+    var(--unilab-color-primary-soft) 72%,
+    var(--unilab-color-surface)
+  );
+}
+
+.connection-bar.is-error .connection-bar__action {
+  color: var(--unilab-color-danger);
+  border-color: color-mix(
+    in srgb,
+    var(--unilab-color-danger) 36%,
+    var(--unilab-color-border)
+  );
+}
+
+.connection-bar.is-error .connection-bar__action:hover:not(:disabled) {
   border-color: var(--unilab-color-danger);
   background: color-mix(
     in srgb,
@@ -280,12 +304,12 @@ body {
   );
 }
 
-.connection-bar__retry:focus-visible {
+.connection-bar__action:focus-visible {
   outline: 2px solid var(--unilab-color-focus);
   outline-offset: 2px;
 }
 
-.connection-bar__retry:disabled {
+.connection-bar__action:disabled {
   opacity: .55;
   cursor: not-allowed;
 }
@@ -4900,9 +4924,13 @@ body {
   .connection-bar {
     display: grid;
     width: 100%;
-    grid-template-columns: max-content minmax(0, 1fr) max-content;
+    grid-template-columns: minmax(0, 160px) minmax(0, 1fr) max-content;
     order: 2;
     margin-left: 0;
+  }
+
+  .connection-bar__status {
+    grid-column: 1 / -1;
   }
 
   .connection-bar__field {
@@ -4910,7 +4938,7 @@ body {
   }
 
   .connection-bar__url {
-    grid-column: 1 / -1;
+    grid-column: auto;
   }
 
   .app-shell__body {

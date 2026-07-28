@@ -1,12 +1,17 @@
 import type { NodeProps } from 'reactflow'
 
 import { useMaterialStore } from '../MaterialStoreProvider'
+import { isDecorativeDeckRail } from '../sitePresentation'
+import type { MaterialSite } from '../types'
+import {
+  readDefaultMaterialNodePresentation,
+  type DefaultMaterialNodeKind
+} from './defaultNodePresentation'
 import type { MaterialFlowNodeData } from './projection'
 import {
   materialSiteStyle,
   readMaterial2DVisual
 } from './visual'
-import type { MaterialSite } from '../types'
 
 export function MaterialNode({
   data,
@@ -60,12 +65,6 @@ export function MaterialNode({
       >
         <header className="material-flow-node__physical-label">
           <span>{aggregate.material.code || aggregate.material.name}</span>
-          {(isDeck || isEquipment) && (
-            <small>
-              {formatDimension(visual.footprintMm[0])}×
-              {formatDimension(visual.footprintMm[1])} mm
-            </small>
-          )}
         </header>
         {isTrash && (
           <div className="material-flow-node__trash-mark">
@@ -83,19 +82,38 @@ export function MaterialNode({
             ) : (
               aggregate.sites
                 .filter((site) => site.visible !== false)
-                .map((site) => (
-                  <span
-                    key={site.id}
-                    className={siteClassName(site, 'material-flow-site')}
-                    data-site-key={site.key}
-                    style={materialSiteStyle(site, visual.footprintMm)}
-                    title={siteTitle(site)}
-                  >
-                    {Math.min(site.sizeMm[0], site.sizeMm[1]) >= 40
-                      ? site.name
-                      : null}
-                  </span>
-                ))
+                .map((site) =>
+                  isDecorativeDeckRail(aggregate, site) ? (
+                    <span
+                      key={site.id}
+                      aria-hidden="true"
+                      className="material-flow-deck-rail"
+                      data-deck-rail={site.key}
+                      style={materialSiteStyle(
+                        site,
+                        visual.footprintMm
+                      )}
+                    />
+                  ) : (
+                    <span
+                      key={site.id}
+                      className={siteClassName(
+                        site,
+                        'material-flow-site'
+                      )}
+                      data-site-key={site.key}
+                      style={materialSiteStyle(
+                        site,
+                        visual.footprintMm
+                      )}
+                      title={siteTitle(site)}
+                    >
+                      {Math.min(site.sizeMm[0], site.sizeMm[1]) >= 40
+                        ? site.name
+                        : null}
+                    </span>
+                  )
+                )
             )}
           </div>
         )}
@@ -103,26 +121,97 @@ export function MaterialNode({
     )
   }
 
+  const presentation = readDefaultMaterialNodePresentation(aggregate)
+
   return (
     <article
-      className={`material-flow-node${selected ? ' is-selected' : ''}`}
+      className={[
+        'material-flow-node',
+        'material-flow-node--default',
+        `material-flow-node--default-${presentation.kind}`,
+        selected ? 'is-selected' : ''
+      ]
+        .filter(Boolean)
+        .join(' ')}
+      data-default-node-kind={presentation.kind}
       data-material-code={aggregate.material.code}
       data-material-kind={visual.kind}
     >
-      <header>
-        <span>{aggregate.material.code || '物料'}</span>
-        <small>r{aggregate.revision}</small>
+      <header className="material-flow-node__default-header">
+        <span
+          aria-hidden="true"
+          className="material-flow-node__default-icon"
+          data-default-node-icon={presentation.kind}
+        >
+          <DefaultNodeIcon kind={presentation.kind} />
+        </span>
+        <span className="material-flow-node__identity">
+          <small>{presentation.noun}</small>
+          <strong title={aggregate.material.name}>
+            {aggregate.material.name}
+          </strong>
+        </span>
+        <small className="material-flow-node__revision">
+          r{aggregate.revision}
+        </small>
       </header>
-      <strong>{aggregate.material.name}</strong>
-      <footer>
-        <span>{placementLabel(aggregate.placement.kind)}</span>
+      <footer className="material-flow-node__default-meta">
+        <span>
+          <PlacementIcon />
+          {placementLabel(aggregate.placement.kind)}
+        </span>
         <span>
           {aggregate.sites.length
-            ? `${occupied}/${aggregate.sites.length} 个安装位`
+            ? `${occupied}/${aggregate.sites.length} 安装位`
             : '无安装位'}
         </span>
       </footer>
     </article>
+  )
+}
+
+function DefaultNodeIcon({
+  kind
+}: {
+  kind: DefaultMaterialNodeKind
+}): React.JSX.Element {
+  if (kind === 'control') {
+    return (
+      <svg aria-hidden="true" viewBox="0 0 24 24">
+        <rect height="8" rx="2" width="14" x="5" y="3" />
+        <path d="M8 7h.01M11 7h5M12 11v4M6.5 15h11" />
+        <circle cx="6.5" cy="18" r="2" />
+        <circle cx="17.5" cy="18" r="2" />
+      </svg>
+    )
+  }
+
+  if (kind === 'equipment') {
+    return (
+      <svg aria-hidden="true" viewBox="0 0 24 24">
+        <rect height="15" rx="2.5" width="16" x="4" y="4" />
+        <rect height="6" rx="1" width="8" x="8" y="7" />
+        <path d="M8 19v2M16 19v2" />
+        <circle cx="9" cy="16" r=".75" />
+        <path d="M12 16h4" />
+      </svg>
+    )
+  }
+
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      <path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Z" />
+      <path d="m4.5 7.8 7.5 4.3 7.5-4.3M12 12v8.5M8 5.3l8 4.5" />
+    </svg>
+  )
+}
+
+function PlacementIcon(): React.JSX.Element {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 16 16">
+      <path d="M8 14s4-4.1 4-7.3a4 4 0 1 0-8 0C4 9.9 8 14 8 14Z" />
+      <circle cx="8" cy="6.7" r="1.4" />
+    </svg>
   )
 }
 
@@ -216,11 +305,7 @@ function siteClassName(site: MaterialSite, base: string): string {
 }
 
 function siteTitle(site: MaterialSite): string {
-  return `${site.name} · ${site.sizeMm[0]}×${site.sizeMm[1]} mm · (${site.poseInAnchor.positionMm.join(', ')})`
-}
-
-function formatDimension(value: number): string {
-  return Number.isInteger(value) ? String(value) : value.toFixed(1)
+  return site.name
 }
 
 function placementLabel(kind: string): string {

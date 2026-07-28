@@ -12,7 +12,14 @@ API mock 演示；工作流场景必须同时观察 UI、真实 HTTP/WS 调用�
 - `workflow-debug-actions.spec.ts`：自动拉起隔离的真实 offline local bridge，逐项覆盖
   暂停、单步、步过、步入、继续、终止、急停，并核对节点收敛、命令请求和区分后的
   `debug.terminate_requested` / `debug.emergency_stop_requested` 事件。
-- `material-scene.spec.ts`：材料场景，与工作流测试分开运行。
+- `material-scene.spec.ts`：同时拉起真实 Registry internal server 与 offline
+  local bridge，验证 Edge 模板目录、当前物料图、2D/2.5D/Pascal 3D/Split，以及
+  Registry 断开后的 stale 只读降级。
+- `material-create.spec.ts`：浏览器级完整 MaterialWorkbench 验收，覆盖 Cloud
+  迁移后的左侧目录树、中央 ReactFlow、右侧模板入口，以及旧模板内容隔离、同
+  MaterialScope 名称唯一性和合法创建命令。夹具只在测试端口内注入模板写能力，
+  不会把尚未实现的服务能力伪装成生产 Profile 能力；真实 OS 集成仍由
+  `material-scene.spec.ts` 验证。
 
 ## 运行
 
@@ -30,6 +37,7 @@ UNILAB_PY=/home/changjunhan/.micromamba/envs/unilab/bin/python
 UNILAB_OS_E2E_URL=http://127.0.0.1:8014 pnpm test:e2e:workflow
 UNILAB_OS_E2E_URL=http://127.0.0.1:8014 pnpm test:e2e:workflow-debug
 pnpm test:e2e:workflow-actions
+pnpm test:e2e:material-create
 UNILAB_OS_E2E_URL=http://127.0.0.1:8014 pnpm test:e2e:materials
 ```
 
@@ -56,7 +64,12 @@ UNILAB_OS_E2E_URL=http://127.0.0.1:8014 pnpm test:e2e:materials
 
 物料场景至少要核对：
 
+- 完整工作台保持左侧目录树、中央统一视图和右上模板入口；不可只截取创建弹窗当作
+  Cloud 界面验收。
 - `/api/v1/materials` 和 `/api/v1/material-models` 来自真实 OS local server。
+- `/api/v1/resource-templates` 来自真实已构建 Registry：全量 summary、按需详情、
+  device/resource 公开规则和稳定 ETag 可核对；不得使用浏览器 route mock。
+- Registry 中断且已有缓存时显示 `stale` 并禁用创建；无缓存时必须明确失败。
 - floorplan、孔板外形、孔径、孔距、行列数和内部偏移来自服务或模型数据。
 - 2D、2.5D、3D、split 共享同一 material ID、选择、高亮与 tag。
 - 2.5D 使用统一斜二测投影与真实高度排序，堆叠遮挡可见。

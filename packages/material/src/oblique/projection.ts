@@ -6,6 +6,7 @@ import type {
 } from '../types'
 import { resolveMaterialWorldPose } from '../react-flow/projection'
 import { readMaterial2DVisual } from '../react-flow/visual'
+import { isDecorativeDeckRail } from '../sitePresentation'
 
 export const OBLIQUE_ANGLE_DEG = 45
 export const OBLIQUE_DEPTH_SCALE = 0.5
@@ -169,7 +170,11 @@ function materialToObliqueObject(
     base,
     top,
     topTransform: topPlaneTransform(pose, heightMm),
-    sites: aggregate.sites.filter((site) => site.visible !== false),
+    sites: aggregate.sites.filter(
+      (site) =>
+        site.visible !== false &&
+        !isDecorativeDeckRail(aggregate, site)
+    ),
     shelves: buildStackShelves(aggregate, heightMm, renderStyle),
     sortDepth:
       worldCorners.reduce((total, point) => total + point[1], 0) /

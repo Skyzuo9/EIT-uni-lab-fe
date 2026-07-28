@@ -96,6 +96,12 @@ export function projectMaterialFlowNodes(options: {
         parentId: options.reviewLayout ? undefined : parentId ?? undefined,
         position,
         data: { materialId },
+        // React Flow uses the top-level dimensions to initialize and fit
+        // controlled nodes. Keeping the same values in `style` makes the DOM
+        // box deterministic, while avoiding an invisible first render when a
+        // ResizeObserver has not reported yet (notably in Electron and E2E).
+        width: size.width,
+        height: size.height,
         style: {
           width: size.width,
           height: size.height

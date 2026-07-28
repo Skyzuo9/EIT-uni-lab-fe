@@ -101,7 +101,10 @@ export function MaterialCanvas({
       window.cancelAnimationFrame(frame)
       frame = window.requestAnimationFrame(() => {
         if (canvas.clientWidth <= 0 || canvas.clientHeight <= 0) return
-        void flowInstanceRef.current?.fitView({ padding: 0.12 })
+        void flowInstanceRef.current?.fitView({
+          padding: 0.12,
+          maxZoom: 1.25
+        })
       })
     }
     const observer = new ResizeObserver(fitVisibleViewport)
@@ -164,7 +167,7 @@ export function MaterialCanvas({
         edges={[]}
         nodeTypes={NODE_TYPES}
         fitView
-        fitViewOptions={{ padding: 0.12 }}
+        fitViewOptions={{ padding: 0.12, maxZoom: 1.25 }}
         minZoom={0.15}
         maxZoom={2}
         proOptions={{ hideAttribution: true }}

@@ -21,10 +21,9 @@ describe('server capability matrix', () => {
 
       for (const capability of SERVER_CAPABILITY_KEYS) {
         const expected =
-          (backendId === 'local-go' &&
-            capability === 'material.readTemplates') ||
           (backendId === 'local-python' &&
-            capability === 'material.readGraph')
+            (capability === 'material.readTemplates' ||
+              capability === 'material.readGraph'))
         expect(hasServerCapability(capabilities, capability)).toBe(expected)
 
         const status = getCapabilityStatus(
@@ -50,6 +49,29 @@ describe('server capability matrix', () => {
         'material.readGraph'
       ).reason
     ).toContain('尚未声明')
+    expect(capabilities.material.readContents).toBe(false)
+    expect(capabilities.material.deleteSubtrees).toBe(false)
+    expect(capabilities.reagentInfo).toEqual({
+      read: false,
+      create: false
+    })
+  })
+
+  it('keeps planned content and reagent capabilities fail closed', () => {
+    for (const backendId of ['local-go', 'local-python', 'cloud']) {
+      const backend = getDefaultBackend(backendId)
+      const capabilities = resolveServerCapabilities(backend)
+
+      expect(
+        hasServerCapability(
+          capabilities,
+          'material.readContents'
+        )
+      ).toBe(false)
+      expect(
+        hasServerCapability(capabilities, 'reagentInfo.create')
+      ).toBe(false)
+    }
   })
 
   it('throws one typed error for defensive action checks', () => {

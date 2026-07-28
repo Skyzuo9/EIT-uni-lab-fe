@@ -199,11 +199,20 @@ export function createMaterialStore(
             dependencies.scope,
             input
           )
-          applyAggregates([result.aggregate])
+          const primary = result.aggregates.find(
+            (aggregate) =>
+              aggregate.material.id === result.primaryMaterialId
+          )
+          if (!primary) {
+            throw new Error(
+              `Create result is missing primary Material ${result.primaryMaterialId}`
+            )
+          }
+          applyAggregates(result.aggregates)
           set((state) => ({
             creationOperationByMaterialId: {
               ...state.creationOperationByMaterialId,
-              [result.aggregate.material.id]: result.creationOperationId
+              [primary.material.id]: result.creationOperationId
             }
           }))
           finish(commandId)

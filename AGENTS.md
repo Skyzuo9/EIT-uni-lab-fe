@@ -51,6 +51,15 @@
   deny-by-default；按钮和命令必须按 capability 明确降级，不能收到 404 后再猜。
 - 本地 OS 与本地 Go backend 使用 singleton material scope，不要求
   `laboratoryId`；只有未来云端多实验室 scope 才能要求该字段。
+- Edge 的模板源是 OS 已构建 Registry 经
+  `/api/v1/resource-templates` 暴露的全量 summary 目录；不得保留 Cloud、
+  bundle 或测试数组作为产品 fallback。列表本地搜索/分类，详情按 UUID 懒加载。
+- 模板 Query key 必须至少隔离 profile id、Edge HTTP 地址和 material scope；
+  切换完整 Profile 或修改地址后，不得短暂展示上一端点的目录。
+- 目录 `stale=true` 时可以只读浏览缓存，但必须禁用创建并显示可恢复提示；
+  `status=unresolved` 的单个模板也不得创建。目录失败且无缓存时 fail closed。
+- 模板目录与 Material Graph store 严格分离：目录进入 TanStack Query，实例图进入
+  Zustand。模板存在不代表当前 OS 图中已有对应实例。
 
 ## 2D、2.5D 与 Pascal 3D
 
@@ -151,6 +160,8 @@
 
 - 不能新增第二套 renderer、第二个 Material store 或第二份 Pascal scene。
 - 不能让组件直接请求 OS/backend，或以 `backend.id` 分叉业务组件。
+- 不能恢复 Cloud panel/静态 JSON 模板作为 Edge 目录 fallback，不能把模板 summary
+  塞进 Material Graph Zustand store。
 - 不能把 Go backend 行级 CRUD 冒充已经实现的统一 Material Graph 写协议。
 - 不能把 well/tip spot 固化为长期 Site 契约。
 - 不能用高频关节帧改写 relative position/site，或让 React Flow 随关节帧重渲染。
@@ -181,7 +192,8 @@ pnpm test:e2e:workflow-debug
 
 物料/场景变更必须至少覆盖：真实 OS Material API、真实模型资源 200、2D/2.5D/
 3D/Split 切换、相同孔位尺寸、site key、通用 camera fit、无 `console.error`/
-`pageerror`。Xvfb 无法运行 Pascal post-FX 时，只能在测试 URL 使用 Pascal 官方
+`pageerror`。模板目录变更还必须覆盖 Registry 全量 summary、懒详情、Profile/地址
+缓存隔离、stale 只读降级与无缓存失败。Xvfb 无法运行 Pascal post-FX 时，只能在测试 URL 使用 Pascal 官方
 diagnostic escape hatch，不能改产品默认 scene。
 
 工作流 E2E 应连接真实 local bridge/OS v1 契约，不得用路由 mock 证明“端到端成功”。

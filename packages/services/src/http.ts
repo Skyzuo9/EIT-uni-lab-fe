@@ -55,7 +55,9 @@ export function createHttpClient(options: CreateHttpClientOptions): HttpClient {
           }
           const problemRecord = asRecord(problem)
           const detail = asRecord(problemRecord.detail)
+          const errorEnvelope = asRecord(problemRecord.error)
           const message = String(
+            errorEnvelope.message ||
             detail.detail ||
             problemRecord.message ||
             problemRecord.detail ||
@@ -63,13 +65,17 @@ export function createHttpClient(options: CreateHttpClientOptions): HttpClient {
           )
           throw new ServiceError({
             code: String(
+              errorEnvelope.code ||
               detail.code ||
               problemRecord.code ||
               'HTTP_REQUEST_FAILED'
             ),
             message,
             status: response.status,
-            retryable: response.status >= 500
+            retryable:
+              typeof errorEnvelope.retryable === 'boolean'
+                ? errorEnvelope.retryable
+                : response.status >= 500
           })
         }
         return (await response.json()) as ResponseValue

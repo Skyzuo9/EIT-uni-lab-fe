@@ -89,6 +89,63 @@ describe('material store', () => {
     expect(store.getState().aggregatesById.robot.revision).toBe(2)
   })
 
+  it('applies a composite create result as one authoritative subtree', async () => {
+    const plate = materialAggregate('plate')
+    const well = materialAggregate('well-a1', {
+      component: {
+        kind: 'well',
+        key: 'A1',
+        managedByParent: true
+      },
+      placement: {
+        kind: 'parent',
+        parentId: 'plate',
+        anchor: { kind: 'root' },
+        localPose: {
+          positionMm: [10, 10, 0],
+          rotationDegXYZ: [0, 0, 0]
+        }
+      }
+    })
+    const createMaterial = vi.fn(async () => ({
+      aggregates: [plate, well],
+      primaryMaterialId: 'plate',
+      creationOperationId: 'create-plate-1',
+      edgeSyncState: 'not-required' as const
+    }))
+    const store = createMaterialStore({
+      scope: { kind: 'singleton' },
+      graph: materialGraphPort({ createMaterial }),
+      requireCapability: allowCapabilities('material.create')
+    })
+    const input = {
+      templateId: 'template-plate',
+      name: 'Plate',
+      placement: { kind: 'unplaced' as const },
+      initialContents: []
+    }
+
+    await store.getState().createMaterial(input)
+
+    expect(createMaterial).toHaveBeenCalledWith(
+      { kind: 'singleton' },
+      input
+    )
+    expect(Object.keys(store.getState().aggregatesById)).toEqual([
+      'plate',
+      'well-a1'
+    ])
+    expect(store.getState().graphIndex.childrenByParentId).toEqual({
+      plate: ['well-a1']
+    })
+    expect(
+      store.getState().creationOperationByMaterialId
+    ).toEqual({
+      plate: 'create-plate-1'
+    })
+    expect(store.getState().canUndo()).toBe(true)
+  })
+
   it('keeps the drag preview until a move settles and rolls it back on failure', async () => {
     const initial = materialAggregate('robot')
     let rejectMove: ((reason: Error) => void) | undefined

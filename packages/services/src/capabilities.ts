@@ -14,7 +14,14 @@ export interface ServerCapabilities {
     move: boolean
     attach: boolean
     detach: boolean
+    deleteSubtrees: boolean
+    readContents: boolean
+    updateContents: boolean
     persistentUndo: boolean
+  }
+  reagentInfo: {
+    read: boolean
+    create: boolean
   }
   realtime: {
     pushJointState: boolean
@@ -38,7 +45,12 @@ export const SERVER_CAPABILITY_KEYS = [
   'material.move',
   'material.attach',
   'material.detach',
+  'material.deleteSubtrees',
+  'material.readContents',
+  'material.updateContents',
   'material.persistentUndo',
+  'reagentInfo.read',
+  'reagentInfo.create',
   'realtime.pushJointState',
   'realtime.setJointState',
   'realtime.jointControlLease',
@@ -103,8 +115,18 @@ export function hasServerCapability(
       return capabilities.material.attach
     case 'material.detach':
       return capabilities.material.detach
+    case 'material.deleteSubtrees':
+      return capabilities.material.deleteSubtrees
+    case 'material.readContents':
+      return capabilities.material.readContents
+    case 'material.updateContents':
+      return capabilities.material.updateContents
     case 'material.persistentUndo':
       return capabilities.material.persistentUndo
+    case 'reagentInfo.read':
+      return capabilities.reagentInfo.read
+    case 'reagentInfo.create':
+      return capabilities.reagentInfo.create
     case 'realtime.pushJointState':
       return capabilities.realtime.pushJointState
     case 'realtime.setJointState':
@@ -148,7 +170,14 @@ function unavailableCapabilities(): ServerCapabilities {
       move: false,
       attach: false,
       detach: false,
+      deleteSubtrees: false,
+      readContents: false,
+      updateContents: false,
       persistentUndo: false
+    },
+    reagentInfo: {
+      read: false,
+      create: false
     },
     realtime: {
       pushJointState: false,
@@ -163,13 +192,12 @@ function unavailableCapabilities(): ServerCapabilities {
 }
 
 function localGoCapabilities(): ServerCapabilities {
-  const capabilities = unavailableCapabilities()
-  capabilities.material.readTemplates = true
-  return capabilities
+  return unavailableCapabilities()
 }
 
 function localPythonCapabilities(): ServerCapabilities {
   const capabilities = unavailableCapabilities()
+  capabilities.material.readTemplates = true
   capabilities.material.readGraph = true
   return capabilities
 }
@@ -180,6 +208,7 @@ function cloneCapabilities(
   return {
     devices: { ...capabilities.devices },
     material: { ...capabilities.material },
+    reagentInfo: { ...capabilities.reagentInfo },
     realtime: { ...capabilities.realtime },
     edge: { ...capabilities.edge }
   }
@@ -196,6 +225,9 @@ function unavailableReason(
     if (capability.startsWith('material.')) {
       return '当前 Go 后端只有行级物料接口，尚未实现统一物料聚合、修订版本与原子命令契约'
     }
+    if (capability.startsWith('reagentInfo.')) {
+      return '当前 Go 后端试剂信息接口尚未接入统一前端 Service Port'
+    }
     if (capability.startsWith('realtime.')) {
       return '当前 Go 后端尚未提供 unilab/realtime-v1 实时接口'
     }
@@ -208,6 +240,9 @@ function unavailableReason(
     }
     if (capability.startsWith('material.')) {
       return '当前 Uni-Lab-OS 物料图仅开放只读查询，写操作尚未提供统一命令契约'
+    }
+    if (capability.startsWith('reagentInfo.')) {
+      return '当前 Uni-Lab-OS 尚未提供统一试剂信息查询与创建契约'
     }
     if (capability === 'realtime.pushJointState') {
       return '当前 Uni-Lab-OS 仅提供 1 Hz device_status，尚未提供 push_joint_state'

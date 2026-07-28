@@ -50,3 +50,6 @@ store。跨 panel store 只保存 ID、模式和短生命周期 UI 意图。
 - ReactFlow 不订阅高频关节流；关节状态只进入 3D 实时通道。
 - `well` 与 `tip-spot` 不是长期领域 `Site`，不得在本层把兼容投影固化为新协议。
 - Profile 功能可用性必须来自 Services capability matrix；不可用时明确降级。
+- `panelAdapter.tsx` 传给模板 Query 的 Profile 身份必须同时包含稳定 profile id 和
+  实际 `apiUrl`；用户在连接栏修改 Edge 地址后不得复用旧端点模板缓存。
+- 模板 Query 与 Material Runtime 分离：前者是 Registry 类型目录，后者是当前实例图。

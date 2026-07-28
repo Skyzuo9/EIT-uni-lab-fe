@@ -108,4 +108,76 @@ describe('material graph rules', () => {
       expect.objectContaining({ code: 'MATERIAL_TEMPLATE_NOT_ALLOWED' })
     )
   })
+
+  it('requires managed wells to be unique parent children', () => {
+    const plate = materialAggregate('plate')
+    const first = materialAggregate('well-a1-first', {
+      component: {
+        kind: 'well',
+        key: 'a1',
+        managedByParent: true
+      },
+      placement: {
+        kind: 'parent',
+        parentId: 'plate',
+        anchor: { kind: 'root' },
+        localPose: {
+          positionMm: [0, 0, 0],
+          rotationDegXYZ: [0, 0, 0]
+        }
+      }
+    })
+    const second = materialAggregate('well-a1-second', {
+      component: {
+        kind: 'well',
+        key: 'A1',
+        managedByParent: true
+      },
+      placement: {
+        kind: 'parent',
+        parentId: 'plate',
+        anchor: { kind: 'root' },
+        localPose: {
+          positionMm: [9, 0, 0],
+          rotationDegXYZ: [0, 0, 0]
+        }
+      }
+    })
+
+    expect(() =>
+      assertValidMaterialGraph({ plate, first, second })
+    ).toThrowError(
+      expect.objectContaining({
+        code: 'MATERIAL_COMPONENT_KEY_DUPLICATE'
+      })
+    )
+  })
+
+  it('does not allow managed wells to masquerade as Sites', () => {
+    const plate = materialAggregate('plate')
+    const well = materialAggregate('well-a1', {
+      component: {
+        kind: 'well',
+        key: 'A1',
+        managedByParent: true
+      },
+      placement: {
+        kind: 'site',
+        parentId: 'plate',
+        siteId: 'fake-well-site',
+        offsetPose: {
+          positionMm: [0, 0, 0],
+          rotationDegXYZ: [0, 0, 0]
+        }
+      }
+    })
+
+    expect(() =>
+      assertValidMaterialGraph({ plate, well })
+    ).toThrowError(
+      expect.objectContaining({
+        code: 'MATERIAL_COMPONENT_PARENT_REQUIRED'
+      })
+    )
+  })
 })

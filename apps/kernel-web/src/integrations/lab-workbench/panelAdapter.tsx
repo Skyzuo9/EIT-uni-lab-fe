@@ -95,7 +95,7 @@ function MaterialRenderer(
   return (
     <MaterialWorkbench
       catalog={props.scope.services.materials}
-      profileId={props.scope.services.backend.id}
+      profileId={`${props.scope.services.backend.id}:${props.scope.services.backend.apiUrl}`}
       scope={runtime.scope}
       capabilities={{
         readTemplates: runtime.getStatus('material.readTemplates'),

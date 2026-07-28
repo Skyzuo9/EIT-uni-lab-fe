@@ -7,71 +7,89 @@ import type { HttpClient } from './http'
 import { createMaterialService } from './materials'
 
 describe('material template adapter', () => {
-  it('reads the Local Go template page without a fake laboratory ID', async () => {
+  it('reads the complete Edge catalog without a fake laboratory ID', async () => {
     const { http, request } = mockHttp({
       data: {
-        items: [
-          {
-            uuid: 'template-1',
-            name: 'Bottle',
-            resource_type: 'resource',
-            tags: ['container']
-          }
-        ],
-        total: 1,
-        page: 2,
-        page_size: 10
+        revision: 'sha256:catalog-1',
+        stale: false,
+        items: [rawTemplateSummary()]
       }
     })
-    const backend = getDefaultBackend('local-go')
+    const backend = getDefaultBackend('local-python')
     const service = createMaterialService(
       http,
       backend,
       resolveServerCapabilities(backend)
     )
 
-    const result = await service.listTemplates(
-      { kind: 'singleton' },
-      {
-        page: 2,
-        pageSize: 10,
-        name: 'Bottle',
-        resourceType: 'resource'
-      }
-    )
+    const result = await service.listTemplates({ kind: 'singleton' })
 
     expect(request).toHaveBeenCalledWith(
-      '/api/v1/resource-templates?page=2&page_size=10&name=Bottle&resource_type=resource',
+      '/api/v1/resource-templates',
       undefined
     )
     expect(result).toEqual({
+      revision: 'sha256:catalog-1',
+      stale: false,
       items: [
         {
           uuid: 'template-1',
-          name: 'Bottle',
-          resourceType: 'resource',
+          key: 'plate-96',
+          sourceNamespace: 'unilabos',
+          kind: 'resource',
+          displayName: '96 孔板',
           tags: ['container'],
-          icon: undefined,
-          description: undefined
+          categoryPath: ['plates'],
+          icon: 'resource',
+          description: 'Standard plate',
+          status: 'ready',
+          statusReason: undefined,
+          contentHash: 'sha256:template-1',
+          creation: {
+            mode: 'resource-tree',
+            available: false,
+            reason: '当前 Edge 尚未开放物料创建'
+          }
         }
-      ],
-      total: 1,
-      page: 2,
-      pageSize: 10
+      ]
     })
   })
 
-  it('maps the new Backend config_info field', async () => {
+  it('maps normalized geometry, layout and same-origin assets', async () => {
     const { http, request } = mockHttp({
       data: {
-        uuid: 'template-1',
-        name: 'Plate',
-        resource_type: 'device',
-        config_info: [{ type: 'well' }],
-        model: { type: 'urdf' }
+        ...rawTemplateSummary(),
+        geometry: {
+          dimensions_mm: { x: 127.1, y: 85, z: 44.2 },
+          origin_mm: { x: 0, y: 0, z: 0 },
+          stack_height_mm: 44.2
+        },
+        container_layout: {
+          type: 'grid',
+          container_kind: 'well',
+          rows: ['A', 'B'],
+          columns: 2,
+          column_labels: [1, 2],
+          naming: 'row-column',
+          geometry: {
+            dimensions_mm: { x: 8, y: 8, z: 10 },
+            depth_mm: 10,
+            shape: 'circle',
+            max_volume_ul: 200,
+            pitch_mm: { x: 9, y: -9 },
+            offset_mm: { x: 10, y: 20, z: 2 },
+            first_key: 'A1'
+          }
+        },
+        compatibility: { allowed_site_types: ['deck-slot'] },
+        configuration: { schema: { type: 'object' }, ui_schema: {} },
+        assets: {
+          preview2d:
+            '/api/v1/resource-templates/template-1/assets/preview-2d'
+        }
       }
     })
-    const backend = getDefaultBackend('local-go')
+    const backend = getDefaultBackend('local-python')
     const service = createMaterialService(
       http,
       backend,
@@ -82,8 +100,19 @@ describe('material template adapter', () => {
       service.getTemplate({ kind: 'singleton' }, 'template-1')
     ).resolves.toMatchObject({
       uuid: 'template-1',
-      configInfos: [{ type: 'well' }],
-      model: { type: 'urdf' }
+      geometry: {
+        dimensionsMm: { x: 127.1, y: 85, z: 44.2 }
+      },
+      containerLayout: {
+        type: 'grid',
+        rows: ['A', 'B'],
+        columns: 2
+      },
+      compatibility: { allowedSiteTypes: ['deck-slot'] },
+      assets: {
+        preview2d:
+          'http://127.0.0.1:8014/api/v1/resource-templates/template-1/assets/preview-2d'
+      }
     })
     expect(request).toHaveBeenCalledWith(
       '/api/v1/resource-templates/template-1',
@@ -93,7 +122,7 @@ describe('material template adapter', () => {
 
   it('rejects unavailable profiles before making a request', async () => {
     const { http, request } = mockHttp(undefined)
-    const backend = getDefaultBackend('local-python')
+    const backend = getDefaultBackend('local-go')
     const service = createMaterialService(
       http,
       backend,
@@ -108,7 +137,7 @@ describe('material template adapter', () => {
 
   it('does not manufacture laboratory scope for the singleton adapter', async () => {
     const { http, request } = mockHttp(undefined)
-    const backend = getDefaultBackend('local-go')
+    const backend = getDefaultBackend('local-python')
     const service = createMaterialService(
       http,
       backend,
@@ -297,6 +326,27 @@ describe('material template adapter', () => {
     })
   })
 })
+
+function rawTemplateSummary(): Record<string, unknown> {
+  return {
+    uuid: 'template-1',
+    key: 'plate-96',
+    source_namespace: 'unilabos',
+    kind: 'resource',
+    display_name: '96 孔板',
+    description: 'Standard plate',
+    category_path: ['plates'],
+    tags: ['container'],
+    icon: 'resource',
+    status: 'ready',
+    content_hash: 'sha256:template-1',
+    creation: {
+      mode: 'resource-tree',
+      available: false,
+      reason: '当前 Edge 尚未开放物料创建'
+    }
+  }
+}
 
 function mockHttp(response: unknown): {
   http: HttpClient

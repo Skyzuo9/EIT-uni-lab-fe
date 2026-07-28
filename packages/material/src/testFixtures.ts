@@ -1,5 +1,6 @@
 import type {
   MaterialAggregate,
+  ManagedMaterialComponent,
   MaterialGraphPort,
   MaterialPlacement,
   MaterialSite
@@ -13,6 +14,7 @@ export function materialAggregate(
     placement?: MaterialPlacement
     sites?: readonly MaterialSite[]
     config?: Record<string, unknown>
+    component?: ManagedMaterialComponent
   } = {}
 ): MaterialAggregate {
   return {
@@ -21,6 +23,7 @@ export function materialAggregate(
       sourceTemplateId: options.templateId ?? `template-${id}`,
       code: id.toUpperCase(),
       name: id,
+      component: options.component,
       config: options.config ?? {},
       createdAt: '2026-01-01T00:00:00.000Z',
       updatedAt: '2026-01-01T00:00:00.000Z'

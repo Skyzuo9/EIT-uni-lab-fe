@@ -20,20 +20,27 @@ export function MaterialCreateDialog({
   onCancel: () => void
   onCreate: (draft: TemplateMaterialDraft) => Promise<void> | void
 }): React.JSX.Element {
-  const [requestedName, setRequestedName] = useState(template.name)
+  const [requestedName, setRequestedName] = useState(
+    template.displayName
+  )
   const [submitting, setSubmitting] = useState(false)
   const draft = useMemo(
     () =>
-      createMaterialDraftFromTemplate(
-        template,
+      createMaterialDraftFromTemplate(template, {
         existingNames,
         requestedName
-      ),
+      }),
     [existingNames, requestedName, template]
   )
 
   const submit = async (): Promise<void> => {
-    if (!createStatus.available || submitting) return
+    if (
+      !createStatus.available ||
+      !draft.nameValidation.valid ||
+      submitting
+    ) {
+      return
+    }
     setSubmitting(true)
     try {
       await onCreate(draft)
@@ -53,7 +60,9 @@ export function MaterialCreateDialog({
         <header>
           <div>
             <span>从模板创建</span>
-            <h3 id="material-create-title">{template.name}</h3>
+            <h3 id="material-create-title">
+              {template.displayName}
+            </h3>
           </div>
           <button type="button" onClick={onCancel} aria-label="关闭">
             ×
@@ -66,24 +75,32 @@ export function MaterialCreateDialog({
             <input
               value={requestedName}
               onChange={(event) => setRequestedName(event.target.value)}
+              aria-invalid={!draft.nameValidation.valid}
+              aria-describedby={
+                draft.nameValidation.valid
+                  ? undefined
+                  : 'material-create-name-error'
+              }
               autoFocus
             />
+            {!draft.nameValidation.valid ? (
+              <small
+                className="material-dialog__field-error"
+                id="material-create-name-error"
+              >
+                {draft.nameValidation.message}
+              </small>
+            ) : null}
           </label>
 
           <div className="material-dialog__summary">
             <span>类型</span>
             <strong>
-              {template.resourceType === 'device' ? '设备' : '资源'}
+              {template.kind === 'device' ? '设备' : '资源'}
             </strong>
-            <span>配置项</span>
-            <strong>{template.configInfos.length}</strong>
+            <span>容器布局</span>
+            <strong>{containerCount(template)}</strong>
           </div>
-
-          {draft.requiresLiquidConfiguration ? (
-            <p className="material-dialog__notice">
-              已按云端创建规则为液体孔位填入默认 Water 500 配置。
-            </p>
-          ) : null}
 
           {!createStatus.available ? (
             <p className="material-dialog__disabled">
@@ -101,7 +118,7 @@ export function MaterialCreateDialog({
             className="is-primary"
             disabled={
               !createStatus.available ||
-              !requestedName.trim() ||
+              !draft.nameValidation.valid ||
               submitting
             }
             title={createStatus.reason}
@@ -113,4 +130,12 @@ export function MaterialCreateDialog({
       </section>
     </div>
   )
+}
+
+function containerCount(template: MaterialTemplateDetail): number {
+  const layout = template.containerLayout
+  if (!layout) return 0
+  return layout.type === 'grid'
+    ? layout.rows.length * layout.columns
+    : layout.containers.length
 }

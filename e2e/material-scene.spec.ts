@@ -73,6 +73,7 @@ for (const scenario of SCENARIOS) {
   test(`${scenario.title} 在同一场景切换 2D / 2.5D / 3D / Split`, async ({
     page
   }) => {
+    test.setTimeout(120_000)
     mkdirSync(ARTIFACT_ROOT, { recursive: true })
     const os = await startOs(scenario)
     try {
@@ -100,12 +101,17 @@ for (const scenario of SCENARIOS) {
       })
 
       await installReviewLayout(page)
-      await page.goto(MATERIAL_SCENE_URL)
       const materialGraphLoaded = page.waitForResponse(
         (response) =>
           response.url().startsWith(`${API_URL}/api/v1/materials?`) &&
           response.status() === 200
       )
+      const templateCatalogLoaded = page.waitForResponse(
+        (response) =>
+          response.url() === `${API_URL}/api/v1/resource-templates` &&
+          response.status() === 200
+      )
+      await page.goto(MATERIAL_SCENE_URL)
       await page.getByRole('button', { name: /物料/ }).click()
       const offlineToggle = page.getByRole('button', {
         name: '离线',
@@ -114,7 +120,7 @@ for (const scenario of SCENARIOS) {
       if (await offlineToggle.isVisible()) {
         await offlineToggle.click()
       }
-      await materialGraphLoaded
+      await Promise.all([materialGraphLoaded, templateCatalogLoaded])
 
       if (scenario.id === 'liquid-handler-original') {
         await page.getByRole('button', { name: /工作流/ }).click()
@@ -137,6 +143,89 @@ for (const scenario of SCENARIOS) {
       await expect(
         page.locator('.lab-unified-viewport')
       ).toHaveAttribute('data-lab-view-mode', '2d')
+      await expect(page.locator('.material-workbench')).toBeVisible()
+      await expect(page.locator('.material-tree-sidebar')).toBeVisible()
+      await expect(
+        page.getByText(`(${scenario.expectedCodes.length})`, {
+          exact: true
+        })
+      ).toBeVisible()
+      expect(
+        await page.locator('.material-tree-sidebar__row').count()
+      ).toBeGreaterThan(0)
+      const templateLauncher = page.locator(
+        '.material-template-launcher'
+      )
+      const deviceTemplates = templateLauncher.getByRole('button', {
+        name: /仪器设备/
+      })
+      const resourceTemplates = templateLauncher.getByRole('button', {
+        name: /物料耗材/
+      })
+      await expect(deviceTemplates).toBeVisible()
+      await expect(resourceTemplates).toBeVisible()
+      await expect(deviceTemplates).toBeEnabled()
+      await expect(resourceTemplates).toBeEnabled()
+      await expect(deviceTemplates).toContainText('1')
+      await expect(resourceTemplates).not.toContainText('—')
+      const [moveControlBox, deviceTemplateBox] = await Promise.all([
+        page
+          .locator('.material-canvas__edit-control:visible')
+          .first()
+          .boundingBox(),
+        deviceTemplates.boundingBox()
+      ])
+      expect(moveControlBox).not.toBeNull()
+      expect(deviceTemplateBox).not.toBeNull()
+      if (moveControlBox && deviceTemplateBox) {
+        expect(
+          moveControlBox.x + moveControlBox.width
+        ).toBeLessThanOrEqual(deviceTemplateBox.x)
+      }
+      await deviceTemplates.click()
+      const deviceLibrary = page
+        .locator('.material-template-library')
+        .filter({ has: page.getByRole('heading', { name: '仪器设备' }) })
+      await expect(deviceLibrary).toBeVisible()
+      await expect(
+        deviceLibrary.getByRole('button', {
+          name: /PRCXI 液体工作站/
+        })
+      ).toBeVisible()
+      await deviceLibrary.screenshot({
+        path: resolve(
+          ARTIFACT_ROOT,
+          `${scenario.id}-template-devices.png`
+        ),
+        animations: 'disabled'
+      })
+      await deviceLibrary.getByRole('button', {
+        name: '关闭模板目录'
+      }).click()
+
+      await resourceTemplates.click()
+      const resourceLibrary = page
+        .locator('.material-template-library')
+        .filter({ has: page.getByRole('heading', { name: '物料耗材' }) })
+      await expect(resourceLibrary).toBeVisible()
+      await resourceLibrary
+        .getByRole('button', { name: /PRCXI_BioER_96_wellplate/ })
+        .click()
+      await expect(
+        resourceLibrary.getByRole('button', {
+          name: '从该模板创建'
+        })
+      ).toBeDisabled()
+      await resourceLibrary.screenshot({
+        path: resolve(
+          ARTIFACT_ROOT,
+          `${scenario.id}-template-resources.png`
+        ),
+        animations: 'disabled'
+      })
+      await resourceLibrary.getByRole('button', {
+        name: '关闭模板目录'
+      }).click()
       await expect(page.locator('.pascal-editor-host')).toHaveCount(1)
       await expect(page.locator('.pascal-editor-host')).toBeVisible()
       await expect(
@@ -154,6 +243,19 @@ for (const scenario of SCENARIOS) {
         scenario.expectedCodes.length
       )
       await expect(page.locator('.material-flow-node').first()).toBeVisible()
+      await expect(
+        page.locator('.material-flow-node__physical-label', {
+          hasText: /mm/
+        })
+      ).toHaveCount(0)
+      if (scenario.id === 'liquid-handler-original') {
+        await expect(page.locator('[data-deck-rail]')).toHaveCount(32)
+        await expect(
+          page.locator(
+            '.material-flow-site[data-site-key^="R"]'
+          )
+        ).toHaveCount(0)
+      }
       for (const code of scenario.expectedCodes) {
         await expect(
           page
@@ -161,6 +263,7 @@ for (const scenario of SCENARIOS) {
             .getByText(code, { exact: true })
         ).toHaveCount(1)
       }
+      await captureWorkbench(page, scenario.id, 'workbench-2d')
       await captureViewport(page, scenario.id, '2d')
 
       await page.getByRole('button', { name: '2.5D', exact: true }).click()
@@ -184,12 +287,21 @@ for (const scenario of SCENARIOS) {
       expect(
         await page.locator('.material-oblique-site').count()
       ).toBeGreaterThanOrEqual(96)
-      expect(
-        await page.locator('[data-site-label]').count()
-      ).toBeGreaterThan(0)
-      await expect(
-        page.locator('[data-site-label]').first()
-      ).not.toHaveAttribute('data-site-label', '')
+      if (scenario.id === 'liquid-handler-original') {
+        await expect(
+          page.locator(
+            '.material-oblique-site[data-site-key^="R"]'
+          )
+        ).toHaveCount(0)
+        await expect(page.locator('[data-site-label]')).toHaveCount(0)
+      } else {
+        expect(
+          await page.locator('[data-site-label]').count()
+        ).toBeGreaterThan(0)
+        await expect(
+          page.locator('[data-site-label]').first()
+        ).not.toHaveAttribute('data-site-label', '')
+      }
       for (const code of scenario.expectedStackCodes ?? []) {
         const stack = page.locator(
           `.material-oblique-object[data-material-code="${code}"][data-oblique-render-style="stack"]`
@@ -264,6 +376,32 @@ for (const scenario of SCENARIOS) {
           .sort()
       ).toEqual([...scenario.expectedCodes].sort())
 
+      if (scenario.id === 'liquid-handler-original') {
+        await stopProcess(os.registryProcess)
+        const staleResponse = await page.request.get(
+          `${API_URL}/api/v1/resource-templates?refresh=true`
+        )
+        expect(staleResponse.status()).toBe(200)
+        expect((await staleResponse.json()).data.stale).toBe(true)
+        await page.reload()
+        await page.getByRole('button', { name: /物料/ }).click()
+        const staleResourceLauncher = page
+          .locator('.material-template-launcher')
+          .getByRole('button', { name: /物料耗材/ })
+        await staleResourceLauncher.click()
+        const staleLibrary = page.locator(
+          '.material-template-library__stale'
+        )
+        await expect(staleLibrary).toBeVisible()
+        await page.locator('.material-template-library').screenshot({
+          path: resolve(
+            ARTIFACT_ROOT,
+            `${scenario.id}-template-stale.png`
+          ),
+          animations: 'disabled'
+        })
+      }
+
       const screenshot = resolve(
         ARTIFACT_ROOT,
         `${scenario.id}-2d-3d.png`
@@ -278,6 +416,7 @@ for (const scenario of SCENARIOS) {
         screenshot,
         os: {
           pid: os.process.pid,
+          registryPid: os.registryProcess.pid,
           command: os.command,
           log: os.log
         },
@@ -297,9 +436,20 @@ for (const scenario of SCENARIOS) {
             call.url.includes('/api/v1/materials')
         )
       ).toBe(true)
+      expect(
+        apiCalls.some(
+          (call) =>
+            call.method === 'GET' &&
+            call.status === 200 &&
+            call.url.includes('/api/v1/resource-templates')
+        )
+      ).toBe(true)
       expect(browserErrors).toEqual([])
     } finally {
-      await stopOs(os.process)
+      await Promise.all([
+        stopProcess(os.process),
+        stopProcess(os.registryProcess)
+      ])
     }
   })
 }
@@ -352,6 +502,17 @@ async function captureViewport(
   })
 }
 
+async function captureWorkbench(
+  page: Page,
+  scenarioId: string,
+  name: 'workbench-2d'
+): Promise<void> {
+  await page.locator('.material-workbench').screenshot({
+    path: resolve(ARTIFACT_ROOT, `${scenarioId}-${name}.png`),
+    animations: 'disabled'
+  })
+}
+
 async function installReviewLayout(page: Page): Promise<void> {
   await page.addInitScript(() => {
     localStorage.setItem(
@@ -377,6 +538,7 @@ async function installReviewLayout(page: Page): Promise<void> {
 
 async function startOs(scenario: Scenario): Promise<{
   process: ChildProcess
+  registryProcess: ChildProcess
   command: readonly string[]
   log: string
 }> {
@@ -395,6 +557,39 @@ async function startOs(scenario: Scenario): Promise<{
     ARTIFACT_ROOT,
     `${scenario.id}-os.log`
   )
+  const registryLogPath = resolve(
+    ARTIFACT_ROOT,
+    `${scenario.id}-registry.log`
+  )
+  const registryLog = createWriteStream(registryLogPath, { flags: 'w' })
+  const registryCode = [
+    'from unilabos.registry.registry import build_registry',
+    'from unilabos.app.web.server import start_server',
+    'build_registry(upload_registry=False, check_mode=False)',
+    "start_server(host='127.0.0.1', port=8002, open_browser=False)"
+  ].join(';')
+  const registryProcess = spawn(OS_PYTHON, ['-c', registryCode], {
+    cwd: OS_ROOT,
+    env: {
+      ...process.env,
+      PYTHONPATH: OS_ROOT
+    },
+    stdio: ['ignore', 'pipe', 'pipe']
+  })
+  registryProcess.stdout?.pipe(registryLog)
+  registryProcess.stderr?.pipe(registryLog)
+  try {
+    await waitForUrl(
+      registryProcess,
+      'http://127.0.0.1:8002/internal/v1/resource-templates',
+      'Registry catalog'
+    )
+  } catch (error) {
+    await stopProcess(registryProcess)
+    registryLog.end()
+    throw error
+  }
+
   const args = [
     '-m',
     'unilabos.app.local_bridge.server',
@@ -423,21 +618,30 @@ async function startOs(scenario: Scenario): Promise<{
   child.stderr?.pipe(log)
 
   try {
-    await waitForHealth(child)
+    await waitForUrl(child, `${API_URL}/health`, 'local_bridge health')
   } catch (error) {
-    await stopOs(child)
+    await Promise.all([
+      stopProcess(child),
+      stopProcess(registryProcess)
+    ])
     log.end()
+    registryLog.end()
     throw error
   }
   return {
     process: child,
+    registryProcess,
     command: [OS_PYTHON, ...args],
     log: logPath
   }
 }
 
-async function waitForHealth(child: ChildProcess): Promise<void> {
-  const deadline = Date.now() + 20_000
+async function waitForUrl(
+  child: ChildProcess,
+  url: string,
+  label: string
+): Promise<void> {
+  const deadline = Date.now() + 30_000
   while (Date.now() < deadline) {
     if (child.exitCode != null) {
       throw new Error(
@@ -445,25 +649,28 @@ async function waitForHealth(child: ChildProcess): Promise<void> {
       )
     }
     try {
-      const response = await fetch(`${API_URL}/health`)
+      const response = await fetch(url)
       if (response.ok) return
     } catch {
       // The OS process is still binding its three local transports.
     }
     await new Promise((resolveWait) => setTimeout(resolveWait, 100))
   }
-  throw new Error('Timed out waiting for Uni-Lab-OS /health')
+  throw new Error(`Timed out waiting for ${label}`)
 }
 
-async function stopOs(child: ChildProcess): Promise<void> {
-  if (child.exitCode != null) return
+async function stopProcess(child: ChildProcess): Promise<void> {
+  if (child.exitCode != null || child.signalCode != null) return
   child.kill('SIGINT')
   await Promise.race([
     once(child, 'exit'),
     new Promise((resolveWait) => setTimeout(resolveWait, 5_000))
   ])
-  if (child.exitCode == null) {
+  if (child.exitCode == null && child.signalCode == null) {
     child.kill('SIGKILL')
-    await once(child, 'exit')
+    await Promise.race([
+      once(child, 'exit'),
+      new Promise((resolveWait) => setTimeout(resolveWait, 5_000))
+    ])
   }
 }
