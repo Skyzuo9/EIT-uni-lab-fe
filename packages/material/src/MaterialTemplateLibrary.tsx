@@ -112,7 +112,10 @@ export function MaterialTemplateLibrary({
           <h2>{title}</h2>
         </div>
         <div className="material-template-library__header-actions">
-          <span className="material-template-library__count">
+          <span
+            className="material-template-library__count"
+            aria-label={`共 ${filteredTemplates.length} 个物料模板`}
+          >
             {filteredTemplates.length}
           </span>
           {onClose ? (
@@ -152,6 +155,7 @@ export function MaterialTemplateLibrary({
             className="material-template-library__search"
             type="search"
             value={search}
+            aria-label="搜索物料模板"
             placeholder="搜索名称、类型键、分类或标签"
             onChange={(event) => setSearch(event.target.value)}
           />

@@ -27,8 +27,8 @@ interface UseWorkflowDagResult {
 // 通信连接用虚线,物理连接用实线
 const COMM_EDGE_TYPE = 'communication'
 
-// 连接线统一颜色
-const EDGE_COLOR = '#BB78A9'
+// 连接线采用工作流模块色，保持与导航、控制和状态体系一致。
+const EDGE_COLOR = 'var(--unilab-color-workflow)'
 
 /**
  * [AI-MODIFIED] useWorkflowDag
@@ -77,7 +77,7 @@ export function useWorkflowDag(nodes: WorkflowNode[], links: WorkflowLink[]): Us
         animated: isComm,
         style: {
           stroke: EDGE_COLOR,
-          strokeWidth: 2,
+          strokeWidth: 1.6,
           strokeDasharray: isComm ? '4 4' : undefined
         }
       }

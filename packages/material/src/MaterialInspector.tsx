@@ -20,7 +20,16 @@ export function MaterialInspector({
         <h2>物料属性</h2>
       </header>
       {!aggregate ? (
-        <p>选择 2D 或 3D 中的物料查看详情</p>
+        <p className="material-inspector__empty">
+          <span className="material-inspector__empty-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <path d="m12 3 7.5 4.25v8.5L12 20l-7.5-4.25v-8.5L12 3Z" />
+              <path d="m4.8 7.5 7.2 4 7.2-4M12 11.5v8" />
+            </svg>
+          </span>
+          <strong>尚未选择物料</strong>
+          <span>从 2D、2.5D 或 3D 视图中选择物料查看属性。</span>
+        </p>
       ) : (
         <div className="material-inspector__content">
           <dl>

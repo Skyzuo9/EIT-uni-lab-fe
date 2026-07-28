@@ -5147,3 +5147,228 @@ body {
     grid-template-columns: 1fr;
   }
 }
+
+/* ============ Impeccable：物料与工作流精密仪器台视觉校准 ============ */
+.lab-panel-workspace [data-panel-tab-drop-owner] {
+  min-height: 38px;
+  box-sizing: border-box;
+  border-bottom: 1px solid var(--unilab-color-border);
+  background: var(--unilab-color-surface);
+}
+
+.lab-panel-workspace
+  section:has([data-panel-type='layout-unified'])
+  [data-panel-tab-drop-owner],
+.lab-panel-workspace
+  section:has([data-panel-type='layout-3d'])
+  [data-panel-tab-drop-owner],
+.lab-panel-workspace
+  section:has([data-panel-type^='workflow-'])
+  [data-panel-tab-drop-owner] {
+  background: var(--unilab-color-surface);
+}
+
+.lab-panel-workspace [role='tab'] {
+  min-height: 38px;
+  padding-inline: 12px;
+  font-size: 12px;
+}
+
+.lab-panel-workspace [role='tab'][aria-selected='true'] {
+  color: var(--unilab-panel-accent, var(--unilab-color-primary));
+}
+
+.lab-panel-workspace--lab .lab-view-mode-toggle button.is-active {
+  color: var(--unilab-color-material);
+  background: var(--unilab-color-material-soft);
+}
+
+.workflow__toolbar {
+  min-height: 58px;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--unilab-color-surface);
+}
+
+.workflow__context {
+  flex-basis: 244px;
+  gap: 3px;
+}
+
+.workflow__toolbar-label {
+  font-size: 15px;
+  line-height: 20px;
+}
+
+.workflow__mode-switch {
+  border-color: var(--unilab-color-border-strong);
+  background: var(--unilab-color-surface-subtle);
+}
+
+.workflow__mode-switch button {
+  height: 30px;
+}
+
+.workflow__mode-switch button.is-active {
+  color: var(--unilab-color-workflow);
+  background: var(--unilab-color-surface);
+  box-shadow: 0 0 0 1px color-mix(
+    in srgb,
+    var(--unilab-color-workflow) 16%,
+    transparent
+  );
+}
+
+.workflow__format {
+  color: var(--unilab-color-workflow);
+  border-color: color-mix(
+    in srgb,
+    var(--unilab-color-workflow) 22%,
+    var(--unilab-color-border)
+  );
+  background: var(--unilab-color-workflow-soft);
+  font-weight: 600;
+}
+
+.workflow__upload {
+  height: 34px;
+}
+
+.workflow-runtime__primary {
+  height: 36px;
+}
+
+.workflow-runtime__workbench > .workbench__divider {
+  background: var(--unilab-color-surface-subtle);
+  border-color: var(--unilab-color-border);
+}
+
+.workflow-runtime__workbench > .workbench__divider .workbench__grip {
+  background: var(--unilab-color-border-strong);
+}
+
+.workflow-runtime__workbench > .workbench__divider:hover .workbench__grip,
+.workflow-runtime__workbench.workbench--dragging
+  > .workbench__divider
+  .workbench__grip {
+  background: var(--unilab-color-workflow);
+}
+
+.workflow-runtime__stage-header {
+  min-height: 48px;
+  background: var(--unilab-color-surface);
+}
+
+.workflow-runtime__stage-header strong {
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.workflow-runtime .wf-dag {
+  background-color: var(--unilab-color-canvas);
+  background-image:
+    linear-gradient(rgb(100 116 139 / 7%) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(100 116 139 / 7%) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.workflow-runtime .wf-node {
+  min-width: 188px;
+  border-color: var(--unilab-color-border-strong);
+}
+
+.workflow-runtime .wf-node:hover {
+  border-color: color-mix(
+    in srgb,
+    var(--unilab-color-workflow) 44%,
+    var(--unilab-color-border-strong)
+  );
+}
+
+.react-flow__node-wfNode.selected .wf-node {
+  border-color: var(--unilab-color-text);
+  box-shadow: 0 0 0 1px var(--unilab-color-text);
+}
+
+.workflow-runtime .wf-node__body {
+  min-height: 78px;
+  padding: 11px 76px 11px 12px;
+}
+
+.wf-node__handle,
+.wf-node__handle.connecting,
+.wf-node__handle.connected {
+  border-color: var(--unilab-color-workflow);
+}
+
+.wf-node__handle:hover {
+  border-color: var(--unilab-color-primary-hover);
+}
+
+.wf-node__marker-actions button {
+  opacity: .68;
+}
+
+.wf-node__kind {
+  letter-spacing: .01em;
+}
+
+.workflow-runtime__debugger {
+  min-height: 72px;
+  background: var(--unilab-color-surface-subtle);
+}
+
+.workflow-runtime__results {
+  background: var(--unilab-color-surface);
+}
+
+.workflow-runtime__output-header {
+  min-height: 40px;
+  background: var(--unilab-color-surface-subtle);
+}
+
+.workflow-runtime__node-list {
+  grid-template-columns: repeat(auto-fill, minmax(184px, 1fr));
+  gap: 10px;
+}
+
+.workflow-runtime__node-list button {
+  min-height: 54px;
+  background: var(--unilab-color-surface);
+}
+
+.workflow-runtime__node-list button:hover {
+  border-color: var(--unilab-color-border-strong);
+  background: var(--unilab-color-workflow-soft);
+}
+
+@media (max-width: 1280px) {
+  .workflow__toolbar {
+    gap: 8px;
+    padding: 8px 10px;
+  }
+}
+
+@media (max-width: 720px) {
+  .lab-panel-workspace [data-panel-tab-drop-owner] {
+    min-height: 0;
+    border-bottom: 0;
+  }
+
+  .workflow__toolbar {
+    min-height: 0;
+    padding: 8px;
+  }
+
+  .workflow-runtime__stage-header {
+    min-height: 68px;
+  }
+
+  .workflow-runtime__debugger {
+    min-height: 0;
+  }
+
+  .workflow-runtime__node-list {
+    grid-template-columns: 1fr;
+  }
+}
