@@ -240,6 +240,13 @@ for (const scenario of SCENARIOS) {
       await expect(
         page.locator('[data-pascal-floorplan-overlay]')
       ).toBeHidden()
+      await expect(
+        page
+          .locator(
+            '.pascal-editor-host [data-pascal-viewer-3d] .transition-colors'
+          )
+          .first()
+      ).toHaveClass(/bg-\[#1f2433\]/)
       await captureViewport(page, scenario.id, '3d')
 
       await page
