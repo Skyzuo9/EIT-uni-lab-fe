@@ -75,6 +75,9 @@ importers:
       '@unilab/workflow-editor':
         specifier: workspace:*
         version: link:../../packages/workflow-editor
+      howler:
+        specifier: 2.2.4
+        version: 2.2.4
       react:
         specifier: ^19.2.1
         version: 19.2.8

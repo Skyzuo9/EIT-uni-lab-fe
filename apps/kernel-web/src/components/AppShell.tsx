@@ -9,30 +9,31 @@
  * Human Review Status: [ ] Pending  [ ] Reviewed  [ ] Approved
  * ============================================================
  */
-import { useWorkbench } from '../context/WorkbenchContext'
-import { useAuth } from '../context/AuthContext'
+import { useWorkbench } from '../context/WorkbenchContext';
+import { useAuth } from '../context/AuthContext';
 import {
   AppShellLayout,
   type AppShellNavigationItem
-} from '@unilab/app-shell'
-import ConnectionBar from './ConnectionBar'
-import UserMenu from './auth/UserMenu'
-import DevicePanel from './device/DevicePanel'
-import { LabPanelWorkspace } from '../integrations/lab-workbench/LabPanelWorkspace'
-import type { WorkbenchSection } from '../data/lab'
+} from '@unilab/app-shell';
+import ConnectionBar from './ConnectionBar';
+import UserMenu from './auth/UserMenu';
+import ErrorBoundary from './ErrorBoundary';
+import DevicePanel from './device/DevicePanel';
+import { LabPanelWorkspace } from '../integrations/lab-workbench/LabPanelWorkspace';
+import type { WorkbenchSection } from '../data/lab';
 
 // 左侧导航项定义
 const NAV_ITEMS: readonly AppShellNavigationItem[] = [
-  { id: 'device', label: '仪器设备', icon: <DeviceIcon /> },
-  { id: 'material', label: '物料', icon: <MaterialIcon /> },
-  { id: 'scene', label: '3D 场景', icon: <SceneIcon /> },
-  { id: 'workflow', label: '工作流', icon: <WorkflowIcon /> }
-]
+  { id: 'device', label: '仪器设备', icon: '⚙' },
+  { id: 'material', label: '物料', icon: '⬡' },
+  { id: 'scene', label: '3D 场景', icon: '◇' },
+  { id: 'workflow', label: '工作流', icon: '⇄' }
+];
 
 // 统一外壳:顶栏 + 左侧导航 + 主区
 export default function AppShell(): React.JSX.Element {
-  const { section, setSection } = useWorkbench()
-  const { session, logout } = useAuth()
+  const { section, setSection } = useWorkbench();
+  const { session, logout } = useAuth();
 
   return (
     <AppShellLayout
@@ -51,19 +52,24 @@ export default function AppShell(): React.JSX.Element {
     >
       <SectionView section={section} />
     </AppShellLayout>
-  )
+  );
 }
 
 // 根据当前方向渲染对应面板
-function SectionView({ section }: { section: WorkbenchSection }): React.JSX.Element {
-  if (section === 'device') return <DevicePanel />
+function SectionView({ section }: { section: WorkbenchSection; }): React.JSX.Element {
+  if (section === 'device') return <DevicePanel />;
   if (section === 'material') {
-    return <LabPanelWorkspace key="material-workspace" preset="lab" />
+    return <LabPanelWorkspace key="material-workspace" preset="lab" />;
   }
   if (section === 'scene') {
-    return <LabPanelWorkspace key="scene-workspace" preset="scene" />
+    // 3D 场景内部依赖 Pascal/WebGPU，运行时报错时用错误边界兜底，避免整页崩溃
+    return (
+      <ErrorBoundary title="3D 场景加载失败">
+        <LabPanelWorkspace key="scene-workspace" preset="scene" />
+      </ErrorBoundary>
+    );
   }
-  return <LabPanelWorkspace key="workflow-workspace" preset="workflow" />
+  return <LabPanelWorkspace key="workflow-workspace" preset="workflow" />;
 }
 
 function DeviceIcon(): React.JSX.Element {
@@ -72,7 +78,7 @@ function DeviceIcon(): React.JSX.Element {
       <circle cx="10" cy="10" r="3.2" />
       <path d="M10 2.2v2M10 15.8v2M2.2 10h2M15.8 10h2M4.5 4.5l1.4 1.4M14.1 14.1l1.4 1.4M15.5 4.5l-1.4 1.4M5.9 14.1l-1.4 1.4" />
     </svg>
-  )
+  );
 }
 
 function MaterialIcon(): React.JSX.Element {
@@ -81,7 +87,7 @@ function MaterialIcon(): React.JSX.Element {
       <path d="m10 2.5 6.5 3.75v7.5L10 17.5l-6.5-3.75v-7.5L10 2.5Z" />
       <path d="m3.8 6.4 6.2 3.5 6.2-3.5M10 9.9v7.2" />
     </svg>
-  )
+  );
 }
 
 function SceneIcon(): React.JSX.Element {
@@ -90,7 +96,7 @@ function SceneIcon(): React.JSX.Element {
       <path d="m10 2 7 4v8l-7 4-7-4V6l7-4Z" />
       <path d="m3.4 6.2 6.6 3.7 6.6-3.7M10 9.9v7.7" />
     </svg>
-  )
+  );
 }
 
 function WorkflowIcon(): React.JSX.Element {
@@ -101,5 +107,5 @@ function WorkflowIcon(): React.JSX.Element {
       <circle cx="16" cy="15" r="1.5" />
       <path d="M5.5 5h3a3 3 0 0 1 3 3v4a3 3 0 0 0 3 3M11.5 8a3 3 0 0 1 3-3" />
     </svg>
-  )
+  );
 }
