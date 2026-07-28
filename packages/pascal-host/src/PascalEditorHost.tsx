@@ -26,6 +26,7 @@ export interface PascalEditorHostProps {
   toolbar?: ReactNode
   floorplanOverlay?: ReactNode
   editorViewMode?: '2d' | '3d' | 'split'
+  sceneTheme?: string
   editorProps?: Omit<
     EditorProps,
     'layoutVersion' | 'onDirty' | 'onLoad' | 'onSave' | 'projectId'
@@ -47,6 +48,7 @@ export function PascalEditorHost({
   toolbar,
   floorplanOverlay,
   editorViewMode,
+  sceneTheme,
   editorProps
 }: PascalEditorHostProps): React.JSX.Element {
   const sceneRef = useRef(scene)
@@ -111,6 +113,20 @@ export function PascalEditorHost({
       unsubscribe()
     }
   }, [editorViewMode])
+
+  useEffect(() => {
+    if (!sceneTheme) return
+    const applySceneTheme = (): void => {
+      const viewer = useViewer.getState()
+      if (viewer.sceneTheme !== sceneTheme) {
+        viewer.setSceneTheme(sceneTheme)
+      }
+    }
+    applySceneTheme()
+    const unsubscribe =
+      useViewer.persist.onFinishHydration(applySceneTheme)
+    return unsubscribe
+  }, [sceneTheme])
 
   useEffect(() => {
     if (!isPrepared || !hasLoadedScene) return

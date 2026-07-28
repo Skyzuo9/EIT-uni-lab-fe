@@ -193,6 +193,7 @@ export function PascalLabWorkbench({
           prepare={prepare}
           readOnly={!editable}
           editorViewMode={pascalViewMode}
+          sceneTheme="night"
           floorplanOverlay={
             <MaterialCanvas
               floorplanOverlay
