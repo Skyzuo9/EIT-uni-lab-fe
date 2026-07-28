@@ -26,6 +26,33 @@ export default defineConfig({
   },
   renderer: {
     root: resolve(__dirname, '../kernel-web'),
+    server: {
+      watch: {
+        usePolling: true,
+        interval: 300
+      }
+    },
+    define: {
+      'process.env.NEXT_PUBLIC_ASSETS_CDN_URL': JSON.stringify(
+        process.env.NEXT_PUBLIC_ASSETS_CDN_URL ?? ''
+      )
+    },
+    // Keep Electron development aligned with kernel-web's Vite server.
+    // Pascal's workspace source imports these CommonJS entries directly.
+    optimizeDeps: {
+      include: [
+        'react/jsx-runtime',
+        'react-dom',
+        '@unilab/pascal-lab-plugin > @unilab/pascal-host > @pascal-app/editor > howler'
+      ],
+      esbuildOptions: {
+        define: {
+          'process.env.NEXT_PUBLIC_ASSETS_CDN_URL': JSON.stringify(
+            process.env.NEXT_PUBLIC_ASSETS_CDN_URL ?? ''
+          )
+        }
+      }
+    },
     resolve: {
       alias: {
         '@': resolve(__dirname, '../kernel-web/src'),

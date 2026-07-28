@@ -19,13 +19,13 @@ const OS_PYTHON =
   process.env.UNILAB_OS_PYTHON ||
   '/home/changjunhan/.micromamba/envs/unilab/bin/python'
 const API_URL = 'http://127.0.0.1:8014'
-// Xvfb/SwiftShader cannot execute Pascal 0.9.2's native WebGPU post-FX
-// pipeline reliably. This is a test-only escape hatch; product URLs keep the
-// native Pascal pipeline enabled. Hardware-backed CI can opt in to it.
+// Uni-Lab disables Pascal 0.9.2's incompatible WebGPU post-FX fallback by
+// default in both development and packaged renderers. Hardware-backed CI can
+// explicitly opt back in to exercise the native pipeline.
 const MATERIAL_SCENE_URL =
   process.env.UNILAB_E2E_NATIVE_POSTFX === '1'
-    ? '/'
-    : '/?disable=postFx'
+    ? '/?enable=postFx'
+    : '/'
 
 interface Scenario {
   id: string
