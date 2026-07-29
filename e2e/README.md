@@ -20,6 +20,9 @@ API mock 演示；工作流场景必须同时观察 UI、真实 HTTP/WS 调用�
   MaterialScope 名称唯一性和合法创建命令。夹具只在测试端口内注入模板写能力，
   不会把尚未实现的服务能力伪装成生产 Profile 能力；真实 OS 集成仍由
   `material-scene.spec.ts` 验证。
+- `lab-map-v2.spec.ts`：通过实验开关加载 Lab Map V2，核对真实物料图、地图结构层、
+  设备库、新建/拖拽/旋转/删除草稿设备、选择/缩放交互，以及回切旧 2.5D 后的同 ID
+  选择状态。
 
 ## 运行
 
@@ -39,6 +42,7 @@ UNILAB_OS_E2E_URL=http://127.0.0.1:8014 pnpm test:e2e:workflow-debug
 pnpm test:e2e:workflow-actions
 pnpm test:e2e:material-create
 UNILAB_OS_E2E_URL=http://127.0.0.1:8014 pnpm test:e2e:materials
+pnpm test:e2e:lab-map-v2
 ```
 
 七动作测试默认自己分配 loopback 端口，并以 `--offline-node-delay` 启动 OS bridge，
@@ -80,3 +84,8 @@ UNILAB_OS_E2E_URL=http://127.0.0.1:8014 pnpm test:e2e:materials
 
 `plr_test` 是覆盖复杂模型的验收样例，不是生产默认值来源。测试可以比较其参考图，但不得
 把该图对应的 camera、尺寸、mesh 路径或 floorplan 写入应用代码。
+
+Lab Map V2 用例会自行拉起相邻目录的真实 Uni-Lab-OS，并把总览、设备库、草稿排布、
+选中态和旧 2.5D 回归截图写入 `../e2e-artifacts/lab-map-v2`。测试中的手动空间图只标识
+实验室区域与固定结构，物料及其几何仍来自 OS 当前 Material Graph；新建设备保存在独立
+的地图设计草稿中，不会伪造成 OS Material。

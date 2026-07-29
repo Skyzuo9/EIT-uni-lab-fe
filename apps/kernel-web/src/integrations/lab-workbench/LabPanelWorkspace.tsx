@@ -15,6 +15,9 @@ import {
   panelPresetDocument,
   type LabPanelPreset
 } from './panelLayouts'
+import {
+  isLabMapV2Enabled
+} from '../../experiments/lab-map-v2/experimentFlag'
 
 export function LabPanelWorkspace({
   preset
@@ -30,9 +33,12 @@ function LabPanelWorkspaceSession({
   preset: LabPanelPreset
 }): React.JSX.Element {
   const adapter = useLabPanelAdapter()
-  const storageKey = `unilab.panel-layout.${preset}.v1`
+  const experimentalLabMapV2 = isLabMapV2Enabled()
+  const storageKey = experimentalLabMapV2
+    ? `unilab.panel-layout.${preset}.lab-map-v2.v1`
+    : `unilab.panel-layout.${preset}.v1`
   const [document, setDocument] = useState<PanelLayoutDocument>(
-    () => panelPresetDocument(preset)
+    () => panelPresetDocument(preset, { experimentalLabMapV2 })
   )
 
   useEffect(() => {

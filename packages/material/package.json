@@ -27,6 +27,7 @@
   },
   "exports": {
     ".": "./src/index.ts",
-    "./domain": "./src/domain.ts"
+    "./domain": "./src/domain.ts",
+    "./experiments/lab-map-v2": "./src/experiments/lab-map-v2/index.ts"
   }
 }
