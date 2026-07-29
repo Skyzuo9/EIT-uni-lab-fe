@@ -105,6 +105,10 @@
   outline: none;
 }
 
+.pascal-editor-host button[aria-label='Align view to north'] {
+  display: none;
+}
+
 .pascal-lab-toolbar {
   position: relative;
   z-index: 30;

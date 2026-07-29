@@ -8,6 +8,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@ant-design/icons": "^6.3.2",
     "@tanstack/react-query": "^5.90.7",
     "@unilab/design-system": "workspace:*",
     "reactflow": "^11.11.2",

@@ -1,3 +1,4 @@
+import MenuUnfoldOutlined from '@ant-design/icons/MenuUnfoldOutlined'
 import {
   useEffect,
   useMemo,
@@ -59,19 +60,14 @@ export function MaterialTreeSidebar({
 
   if (!open) {
     return (
-      <aside
-        aria-label="物料列表"
-        className="material-tree-sidebar is-collapsed"
+      <button
+        type="button"
+        className="material-tree-sidebar__reopen"
+        aria-label="展开物料列表"
+        onClick={() => setOpen(true)}
       >
-        <button
-          type="button"
-          className="material-tree-sidebar__reopen"
-          aria-label="展开物料列表"
-          onClick={() => setOpen(true)}
-        >
-          <PanelOpenIcon />
-        </button>
-      </aside>
+        <MenuUnfoldOutlined aria-hidden="true" />
+      </button>
     )
   }
 
@@ -259,15 +255,6 @@ function PanelCloseIcon(): React.JSX.Element {
     <svg aria-hidden="true" viewBox="0 0 18 18">
       <path d="M3 4.5h12M3 9h12M3 13.5h12M6 3v12" />
       <path d="m11 7-2 2 2 2" />
-    </svg>
-  )
-}
-
-function PanelOpenIcon(): React.JSX.Element {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 18 18">
-      <path d="M3 4.5h12M3 9h12M3 13.5h12M6 3v12" />
-      <path d="m9 7 2 2-2 2" />
     </svg>
   )
 }

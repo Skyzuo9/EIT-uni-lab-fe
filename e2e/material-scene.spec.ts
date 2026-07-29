@@ -72,7 +72,9 @@ const SCENARIOS: readonly Scenario[] = [
 
 test.describe.configure({ mode: 'serial' })
 
-test('物料列表收起后可通过常驻收起栏重新展开', async ({ page }) => {
+test('物料列表收起后可通过画布左上角按钮重新展开', async ({
+  page
+}) => {
   test.setTimeout(60_000)
   mkdirSync(ARTIFACT_ROOT, { recursive: true })
   const drawerScenario: Scenario = {
@@ -100,6 +102,9 @@ test('物料列表收起后可通过常驻收起栏重新展开', async ({ page 
     await expect(
       page.locator('[data-pascal-floorplan-overlay]')
     ).toBeVisible()
+    await expect(
+      page.locator('button[aria-label="Align view to north"]')
+    ).toBeHidden()
 
     const reopenMaterialTree = page.getByRole('button', {
       name: '展开物料列表'
@@ -115,10 +120,29 @@ test('物料列表收起后可通过常驻收起栏重新展开', async ({ page 
         await page
           .getByRole('button', { name: '收起物料列表' })
           .click()
-        await expect(
-          page.locator('.material-tree-sidebar.is-collapsed')
-        ).toBeVisible()
+        await expect(page.locator('.material-tree-sidebar')).toHaveCount(0)
         await expect(reopenMaterialTree).toBeVisible()
+        const workbenchBounds = await page
+          .locator('.material-workbench')
+          .boundingBox()
+        const viewportBounds = await page
+          .locator('.material-workbench__viewport')
+          .boundingBox()
+        const reopenBounds = await reopenMaterialTree.boundingBox()
+        expect(workbenchBounds).not.toBeNull()
+        expect(viewportBounds).not.toBeNull()
+        expect(reopenBounds).not.toBeNull()
+        expect(viewportBounds?.x).toBe(workbenchBounds?.x)
+        expect(reopenBounds?.x).toBeCloseTo(
+          (viewportBounds?.x ?? 0) + 8,
+          0
+        )
+        expect(reopenBounds?.x).toBeLessThan(
+          (viewportBounds?.x ?? 0) + 48
+        )
+        expect(reopenBounds?.y).toBeGreaterThanOrEqual(
+          (viewportBounds?.y ?? 0) + 48
+        )
         await expect
           .poll(() =>
             reopenMaterialTree.evaluate((element) => {

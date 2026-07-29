@@ -59,14 +59,6 @@
   overflow: hidden;
 }
 
-.material-tree-sidebar.is-collapsed {
-  width: 48px;
-  min-width: 48px;
-  max-width: 48px;
-  align-items: center;
-  resize: none;
-}
-
 .material-tree-sidebar > header {
   display: flex;
   min-height: 54px;
@@ -123,8 +115,7 @@
   outline-offset: 2px;
 }
 
-.material-tree-sidebar > header svg,
-.material-tree-sidebar__reopen svg {
+.material-tree-sidebar > header svg {
   width: 17px;
   height: 17px;
   fill: none;
@@ -134,19 +125,25 @@
   stroke-width: 1.4;
 }
 
+.material-tree-sidebar__reopen .anticon {
+  display: inline-flex;
+  font-size: 17px;
+  line-height: 1;
+}
+
+.material-tree-sidebar__reopen .anticon svg {
+  width: 1em;
+  height: 1em;
+  fill: currentcolor;
+}
+
 .material-tree-sidebar__reopen {
-  position: relative;
-  z-index: 1;
-  flex: 0 0 auto;
-  margin-top: 12px;
+  position: absolute;
+  z-index: 90;
+  top: 52px;
+  left: 8px;
   color: var(--unilab-color-text);
-  background: color-mix(
-    in srgb,
-    var(--unilab-color-bg) 94%,
-    transparent
-  );
-  border: 1px solid var(--unilab-color-border);
-  box-shadow: var(--unilab-shadow-control);
+  background: transparent;
 }
 
 .material-tree-sidebar__tree {
@@ -1920,12 +1917,6 @@
     width: min(280px, calc(100% - 48px));
     max-width: calc(100% - 48px);
     box-shadow: 12px 0 32px rgb(15 23 42 / 16%);
-  }
-
-  .material-tree-sidebar.is-collapsed {
-    width: 48px;
-    min-width: 48px;
-    max-width: 48px;
   }
 
   .material-template-launcher {
