@@ -26,7 +26,6 @@ import type { WorkbenchSection } from '../data/lab';
 const NAV_ITEMS: readonly AppShellNavigationItem[] = [
   { id: 'device', label: '仪器设备', icon: '⚙' },
   { id: 'material', label: '物料', icon: '⬡' },
-  { id: 'scene', label: '3D 场景', icon: '◇' },
   { id: 'workflow', label: '工作流', icon: '⇄' }
 ];
 

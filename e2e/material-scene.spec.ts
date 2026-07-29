@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { spawn, type ChildProcess } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { once } from 'node:events'
 import {
   createWriteStream,
@@ -112,6 +113,9 @@ for (const scenario of SCENARIOS) {
           response.status() === 200
       )
       await page.goto(MATERIAL_SCENE_URL)
+      await expect(
+        page.getByRole('button', { name: /3D 场景/ })
+      ).toHaveCount(0)
       await page.getByRole('button', { name: /物料/ }).click()
       const offlineToggle = page.getByRole('button', {
         name: '离线',
@@ -359,6 +363,7 @@ for (const scenario of SCENARIOS) {
           )
           .first()
       ).toHaveClass(/bg-\[#1f2433\]/)
+      await expectPrimaryDragToOrbit(page)
       await captureViewport(page, scenario.id, '3d')
 
       await page
@@ -500,6 +505,41 @@ async function captureViewport(
     path: resolve(ARTIFACT_ROOT, `${scenarioId}-${mode}.png`),
     animations: 'disabled'
   })
+}
+
+async function expectPrimaryDragToOrbit(page: Page): Promise<void> {
+  const viewer = page.locator(
+    '.pascal-editor-host [data-pascal-viewer-3d]'
+  )
+  const box = await viewer.boundingBox()
+  expect(box).not.toBeNull()
+  if (!box) return
+
+  const digest = async (): Promise<string> =>
+    createHash('sha256')
+      .update(
+        await viewer.screenshot({
+          animations: 'disabled'
+        })
+      )
+      .digest('hex')
+
+  await page.waitForTimeout(500)
+  const before = await digest()
+  await page.mouse.move(
+    box.x + box.width * 0.62,
+    box.y + box.height * 0.48
+  )
+  await page.mouse.down()
+  await page.mouse.move(
+    box.x + box.width * 0.34,
+    box.y + box.height * 0.58,
+    { steps: 12 }
+  )
+  await page.mouse.up()
+  await page.waitForTimeout(500)
+
+  expect(await digest()).not.toBe(before)
 }
 
 async function captureWorkbench(
