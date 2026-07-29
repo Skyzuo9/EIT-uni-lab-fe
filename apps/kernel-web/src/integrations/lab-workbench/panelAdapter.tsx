@@ -29,11 +29,6 @@ import {
   UnifiedLabViewport,
   type LabViewMode
 } from './UnifiedLabViewport'
-import {
-  LAB_MAP_V2_PANEL_DEFINITION,
-  LAB_MAP_V2_PANEL_ID,
-  isLabMapV2Enabled
-} from '../../experiments/lab-map-v2/experimentFlag'
 
 export interface LabPanelScope {
   services: Services
@@ -53,18 +48,11 @@ const registry = createPanelRegistry(
   CANONICAL_PANEL_MANIFEST.map((definition) => ({
     ...definition,
     title: PANEL_TITLES[definition.id] ?? definition.title
-  })),
-  [LAB_MAP_V2_PANEL_DEFINITION]
+  }))
 )
 const SceneWorkbench = lazy(async () => {
   const module = await import('./SceneWorkbench')
   return { default: module.SceneWorkbench }
-})
-const ExperimentalLabMapPanel = lazy(async () => {
-  const module = await import(
-    '../../experiments/lab-map-v2/ExperimentalLabMapPanel'
-  )
-  return { default: module.default }
 })
 
 const storage: PanelStoragePort = {
@@ -202,20 +190,6 @@ function UnifiedLayoutRenderer(
   return <MaterialRenderer {...props} unified />
 }
 
-function ExperimentalLabMapRenderer(): React.JSX.Element {
-  return (
-    <Suspense
-      fallback={
-        <div className="grid h-full min-h-40 place-content-center text-xs text-[#64748b]">
-          正在加载实验室地图…
-        </div>
-      }
-    >
-      <ExperimentalLabMapPanel />
-    </Suspense>
-  )
-}
-
 /**
  * The app adapter is the only place where feature packages meet each other.
  * workbench-layout stays application-neutral and each feature remains independently
@@ -229,26 +203,12 @@ export function useLabPanelAdapter(): PanelAppAdapter<LabPanelScope> {
     () => ({
       registry,
       storage,
-      parseLayout: (input) =>
-        parsePanelLayoutDocument(input, registry.list()),
+      parseLayout: parsePanelLayoutDocument,
       scope: {
         resolve: () => ({ services, interaction })
       },
       renderers: {
         resolve: (panelInstance) => {
-          if (
-            panelInstance.panelType === LAB_MAP_V2_PANEL_ID
-          ) {
-            return isLabMapV2Enabled()
-              ? {
-                  status: 'ready',
-                  Renderer: ExperimentalLabMapRenderer
-                }
-              : createPanelCapabilityUnavailable(
-                  panelInstance.panelType,
-                  '使用 ?experimentalLabMapV2=1 开启实验地图'
-                )
-          }
           if (panelInstance.panelType === 'layout-unified') {
             return { status: 'ready', Renderer: UnifiedLayoutRenderer }
           }
