@@ -13,6 +13,7 @@ import {
 import { useLabPanelAdapter } from './panelAdapter'
 import {
   panelPresetDocument,
+  parsePanelPresetDocument,
   type LabPanelPreset
 } from './panelLayouts'
 
@@ -37,19 +38,34 @@ function LabPanelWorkspaceSession({
 
   useEffect(() => {
     let active = true
-    void Promise.resolve(adapter.storage.load(storageKey))
+    void Promise.resolve()
+      .then(() => adapter.storage.load(storageKey))
       .then((stored) => {
         if (active && stored) {
-          setDocument(adapter.parseLayout(stored))
+          setDocument(parsePanelPresetDocument(preset, stored))
         }
       })
       .catch(() => {
-        // A corrupt saved layout must not prevent the canonical preset loading.
+        if (!active) {
+          return
+        }
+
+        const fallback = panelPresetDocument(preset)
+        setDocument(fallback)
+        try {
+          void Promise.resolve(
+            adapter.storage.save(storageKey, fallback)
+          ).catch(() => {
+            // The in-memory fallback still keeps the preset usable.
+          })
+        } catch {
+          // The in-memory fallback still keeps the preset usable.
+        }
       })
     return () => {
       active = false
     }
-  }, [adapter, storageKey])
+  }, [adapter, preset, storageKey])
 
   const handleCommand = useCallback(
     (command: PanelLayoutCommand) => {

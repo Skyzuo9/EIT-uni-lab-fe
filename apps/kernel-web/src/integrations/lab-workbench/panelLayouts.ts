@@ -1,9 +1,75 @@
 import {
   parsePanelLayoutDocument,
-  type PanelLayoutDocument
+  type CanonicalPanelId,
+  type PanelLayoutDocument,
+  type PanelLayoutNode
 } from '@unilab/workbench-layout'
 
 export type LabPanelPreset = 'lab' | 'scene' | 'workflow'
+
+const PRESET_PANEL_TYPES: Readonly<
+  Record<LabPanelPreset, ReadonlySet<CanonicalPanelId>>
+> = {
+  lab: new Set([
+    'layout-unified',
+    'layout-2d',
+    'layout-3d',
+    'workflow-dag',
+    'workflow-steps',
+    'workflow-dag-picker'
+  ]),
+  scene: new Set(['layout-3d']),
+  workflow: new Set([
+    'workflow-dag',
+    'workflow-steps',
+    'workflow-dag-picker'
+  ])
+}
+
+export function parsePanelPresetDocument(
+  preset: LabPanelPreset,
+  input: unknown
+): PanelLayoutDocument {
+  const document = parsePanelLayoutDocument(input)
+  const unsupportedPanelType = findUnsupportedPanelType(
+    document.layout,
+    PRESET_PANEL_TYPES[preset]
+  )
+
+  if (unsupportedPanelType) {
+    throw new Error(
+      `The ${preset} preset does not allow panel type "${unsupportedPanelType}".`
+    )
+  }
+
+  return document
+}
+
+function findUnsupportedPanelType(
+  node: PanelLayoutNode,
+  allowedPanelTypes: ReadonlySet<CanonicalPanelId>
+): string | null {
+  if (node.type === 'group') {
+    return (
+      node.panels.find(
+        (panel) =>
+          !allowedPanelTypes.has(panel.panelType as CanonicalPanelId)
+      )?.panelType ?? null
+    )
+  }
+
+  for (const child of node.children) {
+    const unsupportedPanelType = findUnsupportedPanelType(
+      child,
+      allowedPanelTypes
+    )
+    if (unsupportedPanelType) {
+      return unsupportedPanelType
+    }
+  }
+
+  return null
+}
 
 export function panelPresetDocument(
   preset: LabPanelPreset
