@@ -93,7 +93,7 @@ function MaterialRenderer(
   )
 
   if (!runtime.store || !runtime.scope) {
-    return (
+    const unavailableNotice = (
       <MaterialCapabilityNotice
         title="请选择实验室"
         status={{
@@ -102,6 +102,9 @@ function MaterialRenderer(
         }}
       />
     )
+    return props.unified ? (
+      <UnifiedLabViewport renderView={() => unavailableNotice} />
+    ) : unavailableNotice
   }
 
   return (

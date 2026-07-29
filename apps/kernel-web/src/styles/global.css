@@ -73,6 +73,7 @@ body {
 
 .lab-view-mode-toggle button {
   display: inline-flex;
+  flex: 0 0 auto;
   gap: 5px;
   align-items: center;
   min-height: 32px;
@@ -83,6 +84,7 @@ body {
   border: 0;
   border-radius: 9px;
   cursor: pointer;
+  white-space: nowrap;
   transition:
     color 140ms ease,
     background 140ms ease,
