@@ -1,4 +1,6 @@
 import type {
+  CreateMaterialInput,
+  CreateMaterialResult,
   LabPose,
   MaterialAggregate,
   MaterialAnchor,
@@ -60,6 +62,17 @@ export function createMaterialService(
     )
   }
 
+  const requireCreate = (): void => {
+    assertCapability(
+      getCapabilityStatus(
+        backend,
+        capabilities,
+        'material.create'
+      ),
+      'material.create'
+    )
+  }
+
   return {
     listTemplates: async (scope) => {
       requireReadTemplates()
@@ -108,10 +121,51 @@ export function createMaterialService(
       }
       return aggregates
     },
-    createMaterial: async (_scope, _input) =>
-      unavailableGraphOperation('material.create'),
-    undoCreate: async (_command) =>
-      unavailableGraphOperation('edge.undoCreate'),
+    createMaterial: async (scope, input) => {
+      requireCreate()
+      assertSingletonScope(scope)
+      const response = await requestData<Record<string, unknown>>(
+        http,
+        '/api/v1/materials',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            template_id: input.templateId,
+            name: input.name,
+            placement: input.placement,
+            initial_contents: input.initialContents,
+            ...(input.config ? { config: input.config } : {}),
+            expected_revision: input.expectedRevision ?? 0,
+            idempotency_key: createIdempotencyKey()
+          })
+        }
+      )
+      return mapCreateMaterialResult(response)
+    },
+    undoCreate: async (command) => {
+      assertCapability(
+        getCapabilityStatus(
+          backend,
+          capabilities,
+          'edge.undoCreate'
+        ),
+        'edge.undoCreate'
+      )
+      await requestData<Record<string, never>>(
+        http,
+        `/api/v1/materials/${encodeURIComponent(command.materialId)}/undo-create`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            creation_operation_id: command.creationOperationId,
+            expected_revision: command.expectedRevision,
+            idempotency_key: command.idempotencyKey
+          })
+        }
+      )
+    },
     updateConfig: async (_command) =>
       unavailableGraphOperation('material.updateConfig'),
     move: async (_command) =>
@@ -457,6 +511,38 @@ function invalidTemplate(message: string): ServiceError {
   })
 }
 
+function mapCreateMaterialResult(
+  raw: Record<string, unknown>
+): CreateMaterialResult {
+  if (
+    !Array.isArray(raw.aggregates) ||
+    raw.aggregates.some((aggregate) => !isRecord(aggregate))
+  ) {
+    throw invalidGraph('create.aggregates must be an object array')
+  }
+  const edgeSyncState = raw.edge_sync_state
+  if (
+    edgeSyncState !== 'not-required' &&
+    edgeSyncState !== 'pending' &&
+    edgeSyncState !== 'synced' &&
+    edgeSyncState !== 'failed'
+  ) {
+    throw invalidGraph('create.edge_sync_state is invalid')
+  }
+  return {
+    aggregates: raw.aggregates.map(mapMaterialAggregate),
+    primaryMaterialId: requiredString(
+      raw.primary_material_id,
+      'primary_material_id'
+    ),
+    creationOperationId: requiredString(
+      raw.creation_operation_id,
+      'creation_operation_id'
+    ),
+    edgeSyncState
+  }
+}
+
 function mapMaterialAggregate(
   raw: Record<string, unknown>
 ): MaterialAggregate {
@@ -671,6 +757,11 @@ function optionalString(value: unknown): string | undefined {
 function finiteNumber(value: unknown, fallback = 0): number {
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : fallback
+}
+
+function createIdempotencyKey(): string {
+  return globalThis.crypto?.randomUUID?.() ??
+    `material-create-${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

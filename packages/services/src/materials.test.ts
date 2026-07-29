@@ -287,6 +287,109 @@ describe('material template adapter', () => {
     )
   })
 
+  it('creates a Registry template instance through the unified command', async () => {
+    const { http, request } = mockHttp({
+      data: {
+        aggregates: [
+          {
+            uuid: 'material-created',
+            resource_template_uuid: 'template-1',
+            code: 'registry-plate',
+            name: 'Registry Plate',
+            create_time: '2026-07-29T00:00:00Z',
+            update_time: '2026-07-29T00:00:00Z',
+            revision: 2,
+            config: {
+              placement: { kind: 'unplaced' },
+              sites: []
+            }
+          }
+        ],
+        primary_material_id: 'material-created',
+        creation_operation_id: 'operation-created',
+        edge_sync_state: 'synced'
+      }
+    })
+    const backend = getDefaultBackend('local-python')
+    const service = createMaterialService(
+      http,
+      backend,
+      resolveServerCapabilities(backend)
+    )
+
+    await expect(
+      service.createMaterial(
+        { kind: 'singleton' },
+        {
+          templateId: 'template-1',
+          name: 'Registry Plate',
+          placement: { kind: 'unplaced' },
+          initialContents: []
+        }
+      )
+    ).resolves.toMatchObject({
+      primaryMaterialId: 'material-created',
+      creationOperationId: 'operation-created',
+      edgeSyncState: 'synced',
+      aggregates: [
+        {
+          material: {
+            id: 'material-created',
+            sourceTemplateId: 'template-1',
+            name: 'Registry Plate'
+          },
+          placement: { kind: 'unplaced' },
+          revision: 2
+        }
+      ]
+    })
+
+    const [path, init] = request.mock.calls[0] as [
+      string,
+      RequestInit
+    ]
+    expect(path).toBe('/api/v1/materials')
+    expect(init.method).toBe('POST')
+    expect(JSON.parse(String(init.body))).toEqual({
+      template_id: 'template-1',
+      name: 'Registry Plate',
+      placement: { kind: 'unplaced' },
+      initial_contents: [],
+      expected_revision: 0,
+      idempotency_key: expect.any(String)
+    })
+  })
+
+  it('sends the revisioned create compensation command', async () => {
+    const { http, request } = mockHttp({ data: {} })
+    const backend = getDefaultBackend('local-python')
+    const service = createMaterialService(
+      http,
+      backend,
+      resolveServerCapabilities(backend)
+    )
+
+    await service.undoCreate({
+      materialId: 'material-created',
+      creationOperationId: 'operation-created',
+      expectedRevision: 2,
+      idempotencyKey: 'undo-created'
+    })
+
+    expect(request).toHaveBeenCalledWith(
+      '/api/v1/materials/material-created/undo-create',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          creation_operation_id: 'operation-created',
+          expected_revision: 2,
+          idempotency_key: 'undo-created'
+        })
+      }
+    )
+  })
+
   it('rejects malformed OS Material placement data', async () => {
     const { http } = mockHttp({
       data: {

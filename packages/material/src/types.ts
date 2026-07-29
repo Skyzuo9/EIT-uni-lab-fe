@@ -260,6 +260,7 @@ export interface CreateMaterialInput {
   placement: MaterialDropIntent
   initialContents: readonly InitialMaterialContentDraft[]
   config?: Record<string, unknown>
+  expectedRevision?: MaterialRevision
 }
 
 export interface CreateMaterialResult {

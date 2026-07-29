@@ -129,7 +129,7 @@ describe('material store', () => {
 
     expect(createMaterial).toHaveBeenCalledWith(
       { kind: 'singleton' },
-      input
+      { ...input, expectedRevision: 0 }
     )
     expect(Object.keys(store.getState().aggregatesById)).toEqual([
       'plate',

@@ -94,6 +94,7 @@ export function createMaterialStore(
 ): MaterialStore {
   const history = createMaterialHistory()
   let commandSequence = 0
+  let graphRevision = 0
 
   const nextCommandId = (kind: PendingMaterialCommand['kind']): string => {
     commandSequence += 1
@@ -183,6 +184,7 @@ export function createMaterialStore(
             loadState: 'ready',
             error: null
           })
+          graphRevision = aggregates[0]?.revision ?? 0
           history.reset(authoringSnapshot(byId))
           finish(commandId)
         } catch (error) {
@@ -197,7 +199,10 @@ export function createMaterialStore(
         try {
           const result = await dependencies.graph.createMaterial(
             dependencies.scope,
-            input
+            {
+              ...input,
+              expectedRevision: graphRevision
+            }
           )
           const primary = result.aggregates.find(
             (aggregate) =>
@@ -209,6 +214,7 @@ export function createMaterialStore(
             )
           }
           applyAggregates(result.aggregates)
+          graphRevision = primary.revision
           set((state) => ({
             creationOperationByMaterialId: {
               ...state.creationOperationByMaterialId,
@@ -369,6 +375,7 @@ export function createMaterialStore(
       clearHistory: () => history.clear(),
 
       reset: () => {
+        graphRevision = 0
         set({
           aggregatesById: {},
           graphIndex: EMPTY_INDEX,

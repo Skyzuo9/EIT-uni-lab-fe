@@ -23,7 +23,9 @@ describe('server capability matrix', () => {
         const expected =
           (backendId === 'local-python' &&
             (capability === 'material.readTemplates' ||
-              capability === 'material.readGraph'))
+              capability === 'material.readGraph' ||
+              capability === 'material.create' ||
+              capability === 'edge.undoCreate'))
         expect(hasServerCapability(capabilities, capability)).toBe(expected)
 
         const status = getCapabilityStatus(

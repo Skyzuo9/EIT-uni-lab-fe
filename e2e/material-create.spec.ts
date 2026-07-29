@@ -151,7 +151,8 @@ test('Cloud 结构的物料工作台完成单实例创建', async ({ page }) => 
     templateId: 'template-96-well-plate',
     name: 'Run Plate 01',
     placement: { kind: 'unplaced' },
-    initialContents: []
+    initialContents: [],
+    expectedRevision: 1
   })
   await page.screenshot({
     path: resolve(ARTIFACT_ROOT, '03-created-material-workbench.png'),

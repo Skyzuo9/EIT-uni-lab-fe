@@ -199,6 +199,8 @@ function localPythonCapabilities(): ServerCapabilities {
   const capabilities = unavailableCapabilities()
   capabilities.material.readTemplates = true
   capabilities.material.readGraph = true
+  capabilities.material.create = true
+  capabilities.edge.undoCreate = true
   return capabilities
 }
 

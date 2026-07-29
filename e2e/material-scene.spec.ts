@@ -19,14 +19,23 @@ const ARTIFACT_ROOT = resolve(
 const OS_PYTHON =
   process.env.UNILAB_OS_PYTHON ||
   '/home/changjunhan/.micromamba/envs/unilab/bin/python'
-const API_URL = 'http://127.0.0.1:8014'
+const API_URL =
+  process.env.UNILAB_E2E_MATERIAL_API_URL ??
+  'http://127.0.0.1:8014'
+const API_PORT = Number(new URL(API_URL).port)
+const SCHEDULE_PORT = Number(
+  process.env.UNILAB_E2E_MATERIAL_SCHEDULE_PORT ?? '18890'
+)
 // Uni-Lab disables Pascal 0.9.2's incompatible WebGPU post-FX fallback by
 // default in both development and packaged renderers. Hardware-backed CI can
 // explicitly opt back in to exercise the native pipeline.
-const MATERIAL_SCENE_URL =
-  process.env.UNILAB_E2E_NATIVE_POSTFX === '1'
-    ? '/?enable=postFx'
-    : '/'
+const MATERIAL_SCENE_PARAMS = new URLSearchParams({
+  localOsUrl: API_URL
+})
+if (process.env.UNILAB_E2E_NATIVE_POSTFX === '1') {
+  MATERIAL_SCENE_PARAMS.set('enable', 'postFx')
+}
+const MATERIAL_SCENE_URL = `/?${MATERIAL_SCENE_PARAMS.toString()}`
 
 interface Scenario {
   id: string
@@ -217,6 +226,106 @@ test('3D 编辑器加载失败后仍保留 2D / 2.5D / 3D 切换按钮', async (
     })
     await twoDimensional.click()
     await expect(twoDimensional).toHaveAttribute('aria-pressed', 'true')
+  } finally {
+    await Promise.all([
+      stopProcess(os.process),
+      stopProcess(os.registryProcess)
+    ])
+  }
+})
+
+test('Registry 上报的设备和耗材模板可用于创建物料', async ({ page }) => {
+  test.setTimeout(60_000)
+  mkdirSync(ARTIFACT_ROOT, { recursive: true })
+  const registryScenario: Scenario = {
+    ...SCENARIOS[0],
+    id: 'registry-template-create'
+  }
+  const os = await startOs(registryScenario)
+
+  try {
+    await installReviewLayout(page)
+    const materialGraphLoaded = page.waitForResponse(
+      (response) =>
+        response.url().startsWith(`${API_URL}/api/v1/materials?`) &&
+        response.status() === 200
+    )
+    const templateCatalogLoaded = page.waitForResponse(
+      (response) =>
+        response.url() === `${API_URL}/api/v1/resource-templates` &&
+        response.status() === 200
+    )
+    await page.goto(MATERIAL_SCENE_URL)
+    await page.getByRole('button', { name: /物料/ }).click()
+    const offlineToggle = page.getByRole('button', {
+      name: '离线',
+      exact: true
+    })
+    if (await offlineToggle.isVisible()) {
+      await offlineToggle.click()
+    }
+    await Promise.all([materialGraphLoaded, templateCatalogLoaded])
+
+    const launcher = page.locator('.material-template-launcher')
+    for (const template of [
+      {
+        category: /仪器设备/,
+        heading: '仪器设备',
+        name: /PRCXI 液体工作站/,
+        instanceName: 'E2E Registry Device'
+      },
+      {
+        category: /物料耗材/,
+        heading: '物料耗材',
+        name: /PRCXI_BioER_96_wellplate/,
+        instanceName: 'E2E Registry Plate'
+      }
+    ]) {
+      await launcher.getByRole('button', {
+        name: template.category
+      }).click()
+      const library = page
+        .locator('.material-template-library')
+        .filter({
+          has: page.getByRole('heading', {
+            name: template.heading
+          })
+        })
+      await expect(library).toBeVisible()
+      await library.getByRole('button', {
+        name: template.name
+      }).click()
+      const create = library.getByRole('button', {
+        name: '从该模板创建'
+      })
+      await expect(create).toBeVisible()
+      await expect(create).toBeEnabled()
+      await create.click()
+      const dialog = page.getByRole('dialog')
+      await expect(dialog).toBeVisible()
+      await dialog
+        .getByRole('textbox', { name: '实例名称' })
+        .fill(template.instanceName)
+      const createResponse = page.waitForResponse(
+        (response) =>
+          response.url() === `${API_URL}/api/v1/materials` &&
+          response.request().method() === 'POST'
+      )
+      await dialog
+        .getByRole('button', { name: '创建物料' })
+        .click()
+      expect((await createResponse).status()).toBe(200)
+      await expect(
+        page.locator('.material-tree-sidebar__label', {
+          hasText: template.instanceName
+        })
+      ).toBeVisible()
+      await library.getByRole('button', {
+        name: '关闭模板目录'
+      }).click()
+    }
+
+    await expect(page.getByText('(10)', { exact: true })).toBeVisible()
   } finally {
     await Promise.all([
       stopProcess(os.process),
@@ -838,9 +947,9 @@ async function startOs(scenario: Scenario): Promise<{
     '--host',
     '127.0.0.1',
     '--api-port',
-    '8014',
+    String(API_PORT),
     '--schedule-port',
-    '18890',
+    String(SCHEDULE_PORT),
     '--journal-path',
     journalPath,
     '--graph',
