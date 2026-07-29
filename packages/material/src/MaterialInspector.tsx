@@ -1,57 +1,82 @@
+import { SlideOverDrawer } from '@unilab/design-system'
+
 import { useMaterialStore } from './MaterialStoreProvider'
 import type { CapabilityStatus } from './MaterialCapabilityNotice'
 import type { MaterialId } from './types'
 
 export function MaterialInspector({
   materialId,
-  updateStatus
+  updateStatus,
+  onClose
 }: {
   materialId: MaterialId | null
   updateStatus: CapabilityStatus
+  onClose: () => void
 }): React.JSX.Element {
   const aggregate = useMaterialStore((state) =>
     materialId ? state.aggregatesById[materialId] : undefined
   )
 
   return (
-    <aside className="material-inspector">
-      <header>
-        <span>属性检查</span>
-        <h2>物料属性</h2>
-      </header>
-      {!aggregate ? (
-        <p className="material-inspector__empty">
-          <span className="material-inspector__empty-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24">
-              <path d="m12 3 7.5 4.25v8.5L12 20l-7.5-4.25v-8.5L12 3Z" />
-              <path d="m4.8 7.5 7.2 4 7.2-4M12 11.5v8" />
-            </svg>
-          </span>
-          <strong>尚未选择物料</strong>
-          <span>从 2D、2.5D 或 3D 视图中选择物料查看属性。</span>
-        </p>
-      ) : (
-        <div className="material-inspector__content">
-          <dl>
-            <dt>名称</dt>
-            <dd>{aggregate.material.name}</dd>
-            <dt>代码</dt>
-            <dd>{aggregate.material.code || '—'}</dd>
-            <dt>模板</dt>
-            <dd>{aggregate.material.sourceTemplateId}</dd>
-            <dt>放置方式</dt>
-            <dd>{placementLabel(aggregate.placement.kind)}</dd>
-            <dt>修订版本</dt>
-            <dd>{aggregate.revision}</dd>
-          </dl>
-          <h3>配置</h3>
-          <pre>{JSON.stringify(aggregate.material.config, null, 2)}</pre>
-          {!updateStatus.available ? (
-            <small>{updateStatus.reason}</small>
-          ) : null}
-        </div>
-      )}
-    </aside>
+    <SlideOverDrawer
+      open={materialId !== null}
+      title={
+        <span className="material-inspector__drawer-title">
+          <strong>物料属性</strong>
+          {aggregate ? <small>{aggregate.material.name}</small> : null}
+        </span>
+      }
+      ariaLabel="物料属性"
+      closeLabel="关闭物料属性"
+      onClose={onClose}
+    >
+      <aside className="material-inspector">
+        {!aggregate ? (
+          <p>选择 2D 或 3D 中的物料查看详情</p>
+        ) : (
+          <div className="material-inspector__content">
+            <div className="material-inspector__identity">
+              <span aria-hidden="true">
+                <MaterialIdentityIcon />
+              </span>
+              <div>
+                <small>当前物料</small>
+                <strong>{aggregate.material.name}</strong>
+                <code>{aggregate.material.code || '未设置代码'}</code>
+              </div>
+            </div>
+            <dl>
+              <dt>名称</dt>
+              <dd>{aggregate.material.name}</dd>
+              <dt>代码</dt>
+              <dd>{aggregate.material.code || '—'}</dd>
+              <dt>模板</dt>
+              <dd>{aggregate.material.sourceTemplateId}</dd>
+              <dt>放置方式</dt>
+              <dd>{placementLabel(aggregate.placement.kind)}</dd>
+              <dt>修订版本</dt>
+              <dd>{aggregate.revision}</dd>
+            </dl>
+            <h3>配置</h3>
+            <pre>{JSON.stringify(aggregate.material.config, null, 2)}</pre>
+            {!updateStatus.available ? (
+              <small className="material-inspector__capability">
+                {updateStatus.reason}
+              </small>
+            ) : null}
+          </div>
+        )}
+      </aside>
+    </SlideOverDrawer>
+  )
+}
+
+function MaterialIdentityIcon(): React.JSX.Element {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      <path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Z" />
+      <path d="m4.5 7.8 7.5 4.3 7.5-4.3M12 12v8.5" />
+    </svg>
   )
 }
 

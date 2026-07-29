@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
 import { materialAggregate } from '../testFixtures'
-import { readDefaultMaterialNodePresentation } from './defaultNodePresentation'
+import {
+  readDefaultMaterialNodePresentation,
+  shouldRenderDefaultEquipmentCard
+} from './defaultNodePresentation'
 
 describe('default material node presentation', () => {
   it('uses explicit control-node metadata before identifiers', () => {
@@ -38,5 +41,45 @@ describe('default material node presentation', () => {
       kind: 'material',
       noun: '物料节点'
     })
+  })
+
+  it.each([
+    ['arm_slider', 'robotic-arm'],
+    ['hotel', 'hotel']
+  ])(
+    'uses the semantic equipment card for a physical %s without a dedicated renderer',
+    (id, kind) => {
+      const aggregate = materialAggregate(id, {
+        config: {
+          source: { nodeType: 'device' },
+          rendering: {
+            kind,
+            dimensionsMm: [200, 700, 660]
+          }
+        }
+      })
+
+      expect(
+        shouldRenderDefaultEquipmentCard(aggregate, {
+          kind,
+          physical: true
+        })
+      ).toBe(true)
+    }
+  )
+
+  it('keeps a dedicated liquid-handler renderer', () => {
+    const aggregate = materialAggregate('liquid-handler', {
+      config: {
+        source: { nodeType: 'device' }
+      }
+    })
+
+    expect(
+      shouldRenderDefaultEquipmentCard(aggregate, {
+        kind: 'liquid-handler',
+        physical: true
+      })
+    ).toBe(false)
   })
 })

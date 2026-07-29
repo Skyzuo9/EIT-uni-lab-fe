@@ -109,6 +109,7 @@ export function MaterialWorkbench({
         <MaterialInspector
           materialId={inspectedMaterialId}
           updateStatus={capabilities.updateConfig}
+          onClose={() => onSelectionChange?.([])}
         />
       ) : null}
     </div>

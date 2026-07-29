@@ -10,6 +10,11 @@ export interface DefaultMaterialNodePresentation {
   noun: '控制节点' | '仪器设备' | '物料节点'
 }
 
+export interface Material2DRendererHint {
+  kind: string
+  physical: boolean
+}
+
 /**
  * Selects the semantic fallback card used when a material has no dedicated
  * physical 2D renderer. Explicit configuration wins; identifiers are only a
@@ -81,6 +86,8 @@ export function readDefaultMaterialNodePresentation(
       'reader',
       'incubator',
       'centrifuge',
+      'slider',
+      'hotel',
       'prcxi'
     )
   ) {
@@ -88,6 +95,35 @@ export function readDefaultMaterialNodePresentation(
   }
 
   return { kind: 'material', noun: '物料节点' }
+}
+
+/**
+ * Physical dimensions must remain available to the floorplan even when a
+ * device has no bespoke 2D drawing. In that case React Flow renders a
+ * Cloud-style semantic card inside the physical footprint instead of leaving
+ * an anonymous empty outline.
+ */
+export function shouldRenderDefaultEquipmentCard(
+  aggregate: MaterialAggregate,
+  visual: Material2DRendererHint
+): boolean {
+  if (
+    !visual.physical ||
+    readDefaultMaterialNodePresentation(aggregate).kind !== 'equipment'
+  ) {
+    return false
+  }
+
+  const kind = visual.kind.replaceAll('_', '-').toLowerCase()
+  return ![
+    'liquid-handler',
+    'deck',
+    'carrier',
+    'plate',
+    'tip-rack',
+    'tiprack',
+    'trash'
+  ].some((token) => kind.includes(token))
 }
 
 function hasSemanticToken(

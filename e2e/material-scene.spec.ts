@@ -34,6 +34,7 @@ interface Scenario {
   graph: string
   expectedCodes: readonly string[]
   expectedStackCodes?: readonly string[]
+  expectedDefaultEquipmentCards?: readonly string[]
 }
 
 const SCENARIOS: readonly Scenario[] = [
@@ -64,11 +65,66 @@ const SCENARIOS: readonly Scenario[] = [
       'arm_slider',
       'hotel'
     ],
-    expectedStackCodes: ['hotel']
+    expectedStackCodes: ['hotel'],
+    expectedDefaultEquipmentCards: ['arm_slider', 'hotel']
   }
 ]
 
 test.describe.configure({ mode: 'serial' })
+
+test('物料列表收起后可通过浮动按钮重新展开', async ({ page }) => {
+  test.setTimeout(60_000)
+  mkdirSync(ARTIFACT_ROOT, { recursive: true })
+  const drawerScenario: Scenario = {
+    ...SCENARIOS[0],
+    id: 'material-drawer-reopen'
+  }
+  const os = await startOs(drawerScenario)
+  try {
+    await installReviewLayout(page)
+    const materialGraphLoaded = page.waitForResponse(
+      (response) =>
+        response.url().startsWith(`${API_URL}/api/v1/materials?`) &&
+        response.status() === 200
+    )
+    await page.goto(MATERIAL_SCENE_URL)
+    await page.getByRole('button', { name: /物料/ }).click()
+    const offlineToggle = page.getByRole('button', {
+      name: '离线',
+      exact: true
+    })
+    if (await offlineToggle.isVisible()) {
+      await offlineToggle.click()
+    }
+    await materialGraphLoaded
+    await expect(
+      page.locator('[data-pascal-floorplan-overlay]')
+    ).toBeVisible()
+
+    await page
+      .getByRole('button', { name: '收起物料列表' })
+      .click()
+    const reopenMaterialTree = page.getByRole('button', {
+      name: '展开物料列表'
+    })
+    await expect(reopenMaterialTree).toBeVisible()
+    await reopenMaterialTree.click()
+    await expect(page.locator('.material-tree-sidebar')).toBeVisible()
+
+    await page.setViewportSize({ width: 900, height: 700 })
+    await page
+      .getByRole('button', { name: '收起物料列表' })
+      .click()
+    await expect(reopenMaterialTree).toBeVisible()
+    await reopenMaterialTree.click()
+    await expect(page.locator('.material-tree-sidebar')).toBeVisible()
+  } finally {
+    await Promise.all([
+      stopProcess(os.process),
+      stopProcess(os.registryProcess)
+    ])
+  }
+})
 
 for (const scenario of SCENARIOS) {
   test(`${scenario.title} 在同一场景切换 2D / 2.5D / 3D / Split`, async ({
@@ -114,7 +170,9 @@ for (const scenario of SCENARIOS) {
       )
       await page.goto(MATERIAL_SCENE_URL)
       await expect(
-        page.getByRole('button', { name: /3D 场景/ })
+        page
+          .getByRole('navigation', { name: '主导航' })
+          .getByRole('button', { name: /3D 场景/ })
       ).toHaveCount(0)
       await page.getByRole('button', { name: /物料/ }).click()
       const offlineToggle = page.getByRole('button', {
@@ -261,11 +319,55 @@ for (const scenario of SCENARIOS) {
         ).toHaveCount(0)
       }
       for (const code of scenario.expectedCodes) {
+        const materialNode = page.locator(
+          `.material-flow-node[data-material-code="${code}"]`
+        )
+        await expect(materialNode).toHaveCount(1)
         await expect(
-          page
-            .locator('.material-flow-node header')
-            .getByText(code, { exact: true })
-        ).toHaveCount(1)
+          materialNode.getByText(code, { exact: true }).first()
+        ).toBeVisible()
+      }
+      for (const code of scenario.expectedDefaultEquipmentCards ?? []) {
+        const equipment = page.locator(
+          `.material-flow-node[data-material-code="${code}"]`
+        )
+        await expect(equipment).toHaveClass(
+          /material-flow-node--equipment-card/
+        )
+        await expect(
+          equipment.locator('[data-default-equipment-card]')
+        ).toBeVisible()
+        await expect(
+          equipment.getByText('仪器设备', { exact: true })
+        ).toBeVisible()
+      }
+      if (scenario.id === 'plr-test-converted') {
+        const hotel = page.locator(
+          '.material-flow-node[data-material-code="hotel"]'
+        )
+        await hotel.click()
+        const inspector = page.getByRole('dialog', {
+          name: '物料属性'
+        })
+        await expect(inspector).toBeVisible()
+        await expect(inspector).toContainText('hotel')
+        await expect(
+          inspector.getByRole('button', {
+            name: '关闭物料属性'
+          })
+        ).toBeVisible()
+        await page.locator('.material-workbench').screenshot({
+          path: resolve(
+            ARTIFACT_ROOT,
+            `${scenario.id}-material-drawer.png`
+          ),
+          animations: 'disabled'
+        })
+        await inspector
+          .getByRole('button', { name: '关闭物料属性' })
+          .click({ timeout: 10_000 })
+        await expect(inspector).toHaveCount(0)
+        await expect(hotel).not.toHaveClass(/is-selected/)
       }
       await captureWorkbench(page, scenario.id, 'workbench-2d')
       await captureViewport(page, scenario.id, '2d')

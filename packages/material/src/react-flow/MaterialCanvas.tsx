@@ -175,6 +175,12 @@ export function MaterialCanvas({
         onInit={(instance) => {
           flowInstanceRef.current = instance
         }}
+        onNodeClick={(_, node) => {
+          onSelectionChange?.([node.id])
+        }}
+        onPaneClick={() => {
+          onSelectionChange?.([])
+        }}
         onNodeDrag={(_, node) => {
           if (!canDrag) return
           const placement = flowPositionToPlacement({

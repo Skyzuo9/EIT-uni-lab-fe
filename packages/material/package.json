@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@tanstack/react-query": "^5.90.7",
+    "@unilab/design-system": "workspace:*",
     "reactflow": "^11.11.2",
     "zundo": "^2.3.0",
     "zustand": "^5.0.8"

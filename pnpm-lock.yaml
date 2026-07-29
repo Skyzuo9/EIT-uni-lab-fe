@@ -199,6 +199,9 @@ importers:
       '@tanstack/react-query':
         specifier: ^5.90.7
         version: 5.101.4(react@19.2.8)
+      '@unilab/design-system':
+        specifier: workspace:*
+        version: link:../design-system
       reactflow:
         specifier: ^11.11.2
         version: 11.11.4(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)

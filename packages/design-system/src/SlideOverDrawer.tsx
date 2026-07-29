@@ -18,6 +18,8 @@ interface SlideOverDrawerProps {
   onClose: () => void
   children: ReactNode
   footer?: ReactNode
+  ariaLabel?: string
+  closeLabel?: string
 }
 
 // 右侧滑出抽屉:遮罩点击关闭,Esc 关闭,面板从右侧 translate-x 滑入
@@ -26,7 +28,9 @@ export function SlideOverDrawer({
   title,
   onClose,
   children,
-  footer
+  footer,
+  ariaLabel,
+  closeLabel = '关闭'
 }: SlideOverDrawerProps): React.JSX.Element {
   // 打开时监听 Esc 关闭
   useEffect(() => {
@@ -40,7 +44,10 @@ export function SlideOverDrawer({
 
   return (
     <div
-      className={`pointer-events-none absolute inset-0 z-30 ${open ? 'pointer-events-auto' : ''}`}
+      className={`absolute inset-0 ${
+        open ? 'pointer-events-auto' : 'pointer-events-none'
+      }`}
+      style={{ zIndex: 1000 }}
       aria-hidden={!open}
     >
       <div
@@ -55,6 +62,9 @@ export function SlideOverDrawer({
         }`}
         role="dialog"
         aria-modal="true"
+        aria-label={
+          ariaLabel ?? (typeof title === 'string' ? title : undefined)
+        }
       >
         <header className="flex items-center justify-between border-b border-[#e8ebef] bg-[#fbfcfe] px-[18px] py-3.5">
           <div className="text-[15px] font-semibold text-[#1f2329]">{title}</div>
@@ -62,7 +72,7 @@ export function SlideOverDrawer({
             type="button"
             className="h-7 w-7 cursor-pointer rounded-md border-0 bg-transparent text-xl leading-none text-[#6b7280] transition-colors hover:bg-[#eceff3]"
             onClick={onClose}
-            aria-label="关闭"
+            aria-label={closeLabel}
           >
             ×
           </button>

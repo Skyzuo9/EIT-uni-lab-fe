@@ -5,6 +5,7 @@ import { isDecorativeDeckRail } from '../sitePresentation'
 import type { MaterialSite } from '../types'
 import {
   readDefaultMaterialNodePresentation,
+  shouldRenderDefaultEquipmentCard,
   type DefaultMaterialNodeKind
 } from './defaultNodePresentation'
 import type { MaterialFlowNodeData } from './projection'
@@ -38,6 +39,9 @@ export function MaterialNode({
   const isStation = visual.kind === 'liquid-handler'
   const isTrash = visual.kind.includes('trash')
   const isEquipment = isEquipmentKind(visual.kind)
+  const presentation = readDefaultMaterialNodePresentation(aggregate)
+  const renderDefaultEquipmentCard =
+    shouldRenderDefaultEquipmentCard(aggregate, visual)
 
   if (visual.physical || isDeck || isLabware || isStation || isTrash) {
     return (
@@ -56,6 +60,9 @@ export function MaterialNode({
                     ? 'station'
                     : 'labware'
           }`,
+          renderDefaultEquipmentCard
+            ? 'material-flow-node--equipment-card'
+            : '',
           selected ? 'is-selected' : ''
         ]
           .filter(Boolean)
@@ -117,11 +124,18 @@ export function MaterialNode({
             )}
           </div>
         )}
+        {renderDefaultEquipmentCard && (
+          <DefaultEquipmentCard
+            name={aggregate.material.name}
+            noun={presentation.noun}
+            occupied={occupied}
+            placement={aggregate.placement.kind}
+            siteCount={aggregate.sites.length}
+          />
+        )}
       </article>
     )
   }
-
-  const presentation = readDefaultMaterialNodePresentation(aggregate)
 
   return (
     <article
@@ -167,6 +181,58 @@ export function MaterialNode({
         </span>
       </footer>
     </article>
+  )
+}
+
+function DefaultEquipmentCard({
+  name,
+  noun,
+  occupied,
+  placement,
+  siteCount
+}: {
+  name: string
+  noun: string
+  occupied: number
+  placement: string
+  siteCount: number
+}): React.JSX.Element {
+  return (
+    <section
+      aria-label={`${name} 默认设备卡片`}
+      className="material-flow-node__equipment-card"
+      data-default-equipment-card
+    >
+      <header className="material-flow-node__equipment-card-header">
+        <strong title={name}>{name}</strong>
+        <span
+          aria-hidden="true"
+          className="material-flow-node__equipment-card-dots"
+        >
+          <i />
+          <i />
+          <i />
+        </span>
+      </header>
+      <div className="material-flow-node__equipment-card-body">
+        <span
+          aria-hidden="true"
+          className="material-flow-node__equipment-card-icon"
+        >
+          <DefaultNodeIcon kind="equipment" />
+        </span>
+        <span>{noun}</span>
+      </div>
+      <footer className="material-flow-node__equipment-card-footer">
+        <span>
+          <PlacementIcon />
+          {placementLabel(placement)}
+        </span>
+        <span>
+          {siteCount ? `${occupied}/${siteCount} 安装位` : '默认二维外观'}
+        </span>
+      </footer>
+    </section>
   )
 }
 
