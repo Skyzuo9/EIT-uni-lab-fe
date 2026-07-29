@@ -147,6 +147,60 @@ test('物料列表收起后可通过常驻收起栏重新展开', async ({ page 
   }
 })
 
+test('3D 编辑器加载失败后仍保留 2D / 2.5D / 3D 切换按钮', async ({
+  page
+}) => {
+  test.setTimeout(60_000)
+  mkdirSync(ARTIFACT_ROOT, { recursive: true })
+  const failureScenario: Scenario = {
+    ...SCENARIOS[0],
+    id: 'scene-load-failure'
+  }
+  const os = await startOs(failureScenario)
+  let sceneChunkBlocked = false
+  try {
+    await page.route('**/assets/SceneWorkbench-*.js', async (route) => {
+      sceneChunkBlocked = true
+      await route.abort('failed')
+    })
+    await installReviewLayout(page)
+    await page.goto(MATERIAL_SCENE_URL)
+    await page.getByRole('button', { name: /物料/ }).click()
+
+    await expect.poll(() => sceneChunkBlocked).toBe(true)
+    await expect(
+      page.getByRole('alert').filter({ hasText: /加载失败/ })
+    ).toBeVisible()
+    await expect(
+      page.getByRole('group', { name: '实验室视图' })
+    ).toBeVisible()
+    for (const viewMode of ['2D', '2.5D', '3D'] as const) {
+      await expect(
+        page.getByRole('button', { name: viewMode, exact: true })
+      ).toBeVisible()
+    }
+
+    const oblique = page.getByRole('button', {
+      name: '2.5D',
+      exact: true
+    })
+    await oblique.click()
+    await expect(oblique).toHaveAttribute('aria-pressed', 'true')
+
+    const twoDimensional = page.getByRole('button', {
+      name: '2D',
+      exact: true
+    })
+    await twoDimensional.click()
+    await expect(twoDimensional).toHaveAttribute('aria-pressed', 'true')
+  } finally {
+    await Promise.all([
+      stopProcess(os.process),
+      stopProcess(os.registryProcess)
+    ])
+  }
+})
+
 for (const scenario of SCENARIOS) {
   test(`${scenario.title} 在同一场景切换 2D / 2.5D / 3D / Split`, async ({
     page

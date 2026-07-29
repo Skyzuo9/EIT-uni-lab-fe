@@ -1,6 +1,8 @@
 import {
+  Component,
   useEffect,
   useState,
+  type ErrorInfo,
   type ReactNode
 } from 'react'
 
@@ -32,7 +34,12 @@ export function UnifiedLabViewport({
       data-lab-view-mode={mode}
     >
       <div className="lab-unified-viewport__surface">
-        {renderView(mode)}
+        <LabViewErrorBoundary mode={mode}>
+          <LabViewSurface
+            mode={mode}
+            renderView={renderView}
+          />
+        </LabViewErrorBoundary>
       </div>
       <div
         aria-label="实验室视图"
@@ -66,6 +73,78 @@ export function UnifiedLabViewport({
       </div>
     </div>
   )
+}
+
+function LabViewSurface({
+  mode,
+  renderView
+}: {
+  mode: LabViewMode
+  renderView: UnifiedLabViewportProps['renderView']
+}): React.JSX.Element {
+  return <>{renderView(mode)}</>
+}
+
+interface LabViewErrorBoundaryProps {
+  children: ReactNode
+  mode: LabViewMode
+}
+
+interface LabViewErrorBoundaryState {
+  error: Error | null
+}
+
+class LabViewErrorBoundary extends Component<
+  LabViewErrorBoundaryProps,
+  LabViewErrorBoundaryState
+> {
+  state: LabViewErrorBoundaryState = { error: null }
+
+  static getDerivedStateFromError(
+    error: unknown
+  ): LabViewErrorBoundaryState {
+    return {
+      error: error instanceof Error ? error : new Error(String(error))
+    }
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo): void {
+    console.error(
+      '[LabViewErrorBoundary]',
+      error,
+      info.componentStack
+    )
+  }
+
+  componentDidUpdate(
+    previousProps: LabViewErrorBoundaryProps
+  ): void {
+    if (
+      previousProps.mode !== this.props.mode &&
+      this.state.error
+    ) {
+      this.setState({ error: null })
+    }
+  }
+
+  render(): ReactNode {
+    const { error } = this.state
+    if (!error) return this.props.children
+
+    return (
+      <div
+        className="lab-unified-viewport__error"
+        role="alert"
+      >
+        <strong>当前视图加载失败</strong>
+        <span>可使用下方按钮切换到 2D、2.5D 或重新尝试 3D。</span>
+        <details>
+          <summary>查看技术信息</summary>
+          <code>{error.message}</code>
+        </details>
+      </div>
+    )
+  }
 }
 
 function ObliqueIcon(): React.JSX.Element {
