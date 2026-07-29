@@ -59,6 +59,14 @@
   overflow: hidden;
 }
 
+.material-tree-sidebar.is-collapsed {
+  width: 48px;
+  min-width: 48px;
+  max-width: 48px;
+  align-items: center;
+  resize: none;
+}
+
 .material-tree-sidebar > header {
   display: flex;
   min-height: 54px;
@@ -109,6 +117,12 @@
   background: var(--unilab-color-bg-subtle);
 }
 
+.material-tree-sidebar > header button:focus-visible,
+.material-tree-sidebar__reopen:focus-visible {
+  outline: 2px solid var(--unilab-color-focus);
+  outline-offset: 2px;
+}
+
 .material-tree-sidebar > header svg,
 .material-tree-sidebar__reopen svg {
   width: 17px;
@@ -121,11 +135,10 @@
 }
 
 .material-tree-sidebar__reopen {
-  position: absolute;
-  /* Keep the recovery control above Pascal's z-index: 50 floorplan. */
-  z-index: 90;
-  top: 12px;
-  left: 12px;
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+  margin-top: 12px;
   color: var(--unilab-color-text);
   background: color-mix(
     in srgb,
@@ -1907,6 +1920,12 @@
     width: min(280px, calc(100% - 48px));
     max-width: calc(100% - 48px);
     box-shadow: 12px 0 32px rgb(15 23 42 / 16%);
+  }
+
+  .material-tree-sidebar.is-collapsed {
+    width: 48px;
+    min-width: 48px;
+    max-width: 48px;
   }
 
   .material-template-launcher {

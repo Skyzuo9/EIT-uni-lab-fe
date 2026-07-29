@@ -72,7 +72,7 @@ const SCENARIOS: readonly Scenario[] = [
 
 test.describe.configure({ mode: 'serial' })
 
-test('物料列表收起后可通过浮动按钮重新展开', async ({ page }) => {
+test('物料列表收起后可通过常驻收起栏重新展开', async ({ page }) => {
   test.setTimeout(60_000)
   mkdirSync(ARTIFACT_ROOT, { recursive: true })
   const drawerScenario: Scenario = {
@@ -101,23 +101,44 @@ test('物料列表收起后可通过浮动按钮重新展开', async ({ page }) 
       page.locator('[data-pascal-floorplan-overlay]')
     ).toBeVisible()
 
-    await page
-      .getByRole('button', { name: '收起物料列表' })
-      .click()
     const reopenMaterialTree = page.getByRole('button', {
       name: '展开物料列表'
     })
-    await expect(reopenMaterialTree).toBeVisible()
-    await reopenMaterialTree.click()
-    await expect(page.locator('.material-tree-sidebar')).toBeVisible()
-
-    await page.setViewportSize({ width: 900, height: 700 })
-    await page
-      .getByRole('button', { name: '收起物料列表' })
-      .click()
-    await expect(reopenMaterialTree).toBeVisible()
-    await reopenMaterialTree.click()
-    await expect(page.locator('.material-tree-sidebar')).toBeVisible()
+    const viewModes = ['2D', '2.5D', '3D', '分屏'] as const
+    for (const viewport of [
+      { width: 1680, height: 1050 },
+      { width: 900, height: 700 }
+    ]) {
+      await page.setViewportSize(viewport)
+      for (const viewMode of viewModes) {
+        await page.getByRole('button', { name: viewMode }).click()
+        await page
+          .getByRole('button', { name: '收起物料列表' })
+          .click()
+        await expect(
+          page.locator('.material-tree-sidebar.is-collapsed')
+        ).toBeVisible()
+        await expect(reopenMaterialTree).toBeVisible()
+        await expect
+          .poll(() =>
+            reopenMaterialTree.evaluate((element) => {
+              const bounds = element.getBoundingClientRect()
+              return document
+                .elementFromPoint(
+                  bounds.left + bounds.width / 2,
+                  bounds.top + bounds.height / 2
+                )
+                ?.closest('button')
+                ?.getAttribute('aria-label')
+            })
+          )
+          .toBe('展开物料列表')
+        await reopenMaterialTree.click()
+        await expect(
+          page.locator('.material-tree-sidebar')
+        ).toBeVisible()
+      }
+    }
   } finally {
     await Promise.all([
       stopProcess(os.process),

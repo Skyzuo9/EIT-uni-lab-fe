@@ -59,14 +59,19 @@ export function MaterialTreeSidebar({
 
   if (!open) {
     return (
-      <button
-        type="button"
-        className="material-tree-sidebar__reopen"
-        aria-label="展开物料列表"
-        onClick={() => setOpen(true)}
+      <aside
+        aria-label="物料列表"
+        className="material-tree-sidebar is-collapsed"
       >
-        <PanelOpenIcon />
-      </button>
+        <button
+          type="button"
+          className="material-tree-sidebar__reopen"
+          aria-label="展开物料列表"
+          onClick={() => setOpen(true)}
+        >
+          <PanelOpenIcon />
+        </button>
+      </aside>
     )
   }
 
