@@ -1,0 +1,15 @@
+schema_version: 1
+profile_id: e2e_host_node_test_latency
+description: Browser E2E contract for imported Cloud test_latency workflows.
+device_spec: host_node.yaml
+default_device_binding:
+  device_id: host_node
+  driver_key: generic_plc_macro
+  connection_ref: E2E_HOST_NODE
+resource_topology:
+  resources: []
+driver_config:
+  macros:
+    test_latency:
+      - call: test_latency
+recipe_import_mapping: {}

@@ -11,7 +11,8 @@ export interface OfflineLocalBridge {
 }
 
 export async function startOfflineLocalBridge(
-  nodeDelaySeconds = 1.5
+  nodeDelaySeconds = 1.5,
+  profilePaths: string[] = []
 ): Promise<OfflineLocalBridge> {
   const externalUrl = process.env.UNILAB_DEBUG_ACTIONS_E2E_URL
   if (externalUrl) {
@@ -44,7 +45,8 @@ export async function startOfflineLocalBridge(
       '--offline-node-delay',
       String(nodeDelaySeconds),
       '--journal-path',
-      join(directory, 'runtime.sqlite')
+      join(directory, 'runtime.sqlite'),
+      ...profilePaths.flatMap((profilePath) => ['--profile', profilePath])
     ],
     {
       cwd: osRepository,

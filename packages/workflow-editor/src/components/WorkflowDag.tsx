@@ -10,8 +10,8 @@
  * ============================================================
  */
 import ReactFlow, { Background, Controls, MiniMap } from 'reactflow'
-import type { Node } from 'reactflow'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import type { Node, ReactFlowInstance } from 'reactflow'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useWorkflowDag } from '../hooks/useWorkflowDag'
 import WorkflowNodeCard from './WorkflowNodeCard'
 import type { WorkflowNodeData } from './WorkflowNodeCard'
@@ -52,6 +52,7 @@ export default function WorkflowDag({
   const [expandedGroupIds, setExpandedGroupIds] = useState<Set<string>>(
     () => new Set()
   )
+  const flowInstanceRef = useRef<ReactFlowInstance | null>(null)
   const groupSignature = useMemo(
     () => nodes
       .filter((node) => node.groupKind === 'subworkflow')
@@ -154,6 +155,27 @@ export default function WorkflowDag({
     })),
     [beforeStartNodeIds, flowEdges]
   )
+  const graphSignature = useMemo(
+    () => JSON.stringify({
+      nodes: nodes.map((node) => [node.id, node.x, node.y]),
+      links: links.map((link) => [
+        link.source,
+        link.target,
+        link.branch ?? null
+      ])
+    }),
+    [links, nodes]
+  )
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      void flowInstanceRef.current?.fitView({
+        padding: 0.16,
+        minZoom: 0.2,
+        maxZoom: 1
+      })
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [graphSignature])
 
   if (flowNodes.length === 0) {
     return (
@@ -178,6 +200,9 @@ export default function WorkflowDag({
         nodesConnectable={false}
         elementsSelectable
         proOptions={{ hideAttribution: true }}
+        onInit={(instance) => {
+          flowInstanceRef.current = instance
+        }}
         onNodeClick={(_event, node: Node<WorkflowNodeData>) => onNodeSelect(node.id)}
         onNodeContextMenu={(event, node: Node<WorkflowNodeData>) => {
           event.preventDefault()

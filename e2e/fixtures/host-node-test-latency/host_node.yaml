@@ -1,0 +1,34 @@
+schema_version: 2
+device:
+  id: host_node
+  display_name: Host Node
+actions:
+  - id: test_latency
+    execution_kind: device_macro
+    params: []
+    results:
+      - name: avg_rtt_ms
+        type: number
+      - name: avg_time_diff_ms
+        type: number
+      - name: max_time_error_ms
+        type: number
+      - name: task_delay_ms
+        type: number
+      - name: raw_delay_ms
+        type: number
+      - name: test_count
+        type: integer
+      - name: status
+        type: string
+    resource_claims: []
+    effects: []
+    timing:
+      estimated_duration_s: 0
+      timeout_s: 60
+    recovery:
+      idempotency: reconcile_before_retry
+      cancel: reconcile_required
+      timeout: reconcile_required
+      disconnect: reconcile_required
+      estop: needs_drain

@@ -29,7 +29,9 @@ import {
   remapWorkflowBreakpoints,
   remapWorkflowNodeId
 } from '../utils/canonicalWorkflow'
+import { migrateCloudWorkflowJson } from '../utils/parseWorkflowJson'
 import { workflowDebugControls } from '../utils/debugControls'
+import { useWorkflowFileUpload } from '../hooks/useWorkflowFileUpload'
 
 export interface WorkflowStepFocus {
   stepId: string
@@ -57,18 +59,17 @@ export default function WorkflowPanel({
   const [outputExpanded, setOutputExpanded] = useState(true)
   const [outputTab, setOutputTab] = useState<OutputTab>('nodes')
   const [compactPane, setCompactPane] = useState<CompactPane>('dag')
+  const [sourceFileName, setSourceFileName] = useState<string | null>(null)
   const editor = useCodeMirror(CONTROL_DAG_JSON, authoringMode)
   const [canonicalSource, setCanonicalSource] = useState(CONTROL_DAG_JSON)
   const pythonBaseline = useRef<string | null>(null)
   const [pythonSourceMap, setPythonSourceMap] = useState<
     NonNullable<WorkflowAuthoringCandidate['source_map']>
   >([])
-  const parsed = useMemo(
-    () => parseCanonicalWorkflow(
-      authoringMode === 'json' ? editor.value : canonicalSource
-    ),
-    [authoringMode, canonicalSource, editor.value]
-  )
+  const parsed = useMemo(() => {
+    const source = authoringMode === 'json' ? editor.value : canonicalSource
+    return parseCanonicalWorkflow(source)
+  }, [authoringMode, canonicalSource, editor.value])
   const [run, setRun] = useState<WorkflowRun | null>(null)
   const [runNodes, setRunNodes] = useState<WorkflowRunNode[]>([])
   const [events, setEvents] = useState<WorkflowRunEvent[]>([])
@@ -201,6 +202,96 @@ export default function WorkflowPanel({
       setBusy(false)
     }
   }, [])
+
+  const fileUpload = useWorkflowFileUpload({
+    onLoaded: ({ content, fileName }) => {
+      void withBusy(async () => {
+        const canonical = parseCanonicalWorkflow(content)
+        const migrated = canonical.revision
+          ? null
+          : migrateCloudWorkflowJson(content)
+        const revision = canonical.revision || migrated?.revision
+        if (!revision) {
+          throw new Error(
+            `无法导入 ${fileName}：${
+              migrated?.error || canonical.error || '无法识别工作流格式'
+            }`
+          )
+        }
+
+        const canonicalText = JSON.stringify(revision, null, 2)
+        const structure = parseCanonicalWorkflow(canonicalText)
+        if (!structure.revision) {
+          throw new Error(
+            `无法导入 ${fileName}：${
+              structure.error || '转换后的 Canonical v2 无法解析'
+            }`
+          )
+        }
+
+        setAuthoringMode('json')
+        editor.replaceContent(canonicalText)
+        setCanonicalSource(canonicalText)
+        setSourceFileName(fileName)
+        setPythonSourceMap([])
+        pythonBaseline.current = null
+        latestSequence.current = 0
+        setRun(null)
+        setRunNodes([])
+        setEvents([])
+        setBreakpoints(new Set())
+        setStartNodeId(null)
+        setSelectedNodeId(null)
+
+        if (!migrated) {
+          setMessage(
+            `${fileName} 已导入 · ${structure.nodes.length} 个节点 · ${
+              structure.links.length
+            } 条控制边`
+          )
+          return
+        }
+
+        const warningSuffix = migrated.warnings.length > 0
+          ? ` · ${migrated.warnings.join('；')}`
+          : ''
+        setMessage(
+          `${fileName} 已自动迁移为 Canonical v2，正在由 OS 校验${warningSuffix}`
+        )
+        let result
+        try {
+          result = await runtime.validateWorkflow(revision)
+        } catch (validationError) {
+          throw new Error(
+            `${fileName} 已自动迁移为 Canonical v2，但 OS 校验请求失败：${
+              validationError instanceof Error
+                ? validationError.message
+                : String(validationError)
+            }`
+          )
+        }
+        if (!result.valid) {
+          setMessage(
+            `${fileName} 已自动迁移为 Canonical v2，但 OS 校验未通过${warningSuffix}`
+          )
+          setError(
+            result.issues
+              .map((issue) => `${issue.code}: ${issue.message}`)
+              .join('\n')
+          )
+          return
+        }
+        setMessage(
+          `${fileName} 已自动迁移并通过 OS 校验 · ${
+            result.nodeCount ?? structure.nodes.length
+          } 节点 · ${result.edgeCount ?? structure.links.length} 边${
+            warningSuffix
+          }`
+        )
+      })
+    },
+    onError: (uploadError) => setError(uploadError)
+  })
 
   const projectToPython = useCallback(async (
     revision: WorkflowRevision
@@ -344,6 +435,7 @@ export default function WorkflowPanel({
     void withBusy(async () => {
       const document = await runtime.getWorkflow('control-demo')
       const revision = document.revision.canonical
+      setSourceFileName(null)
       if (authoringMode === 'python') {
         const candidate = await projectToPython(revision)
         setCanonicalSource(JSON.stringify(candidate.canonical_ir, null, 2))
@@ -464,6 +556,7 @@ export default function WorkflowPanel({
     (node) => ['success', 'skipped'].includes(node.state)
   ).length
   const sourceInvalid = authoringMode === 'json' && Boolean(parsed.error)
+  const sourceRunnable = !sourceInvalid
 
   return (
     <div className="workflow workflow-runtime">
@@ -472,7 +565,9 @@ export default function WorkflowPanel({
           <div className="workflow__title-row">
             <span className="workflow__toolbar-label">工作流运行</span>
             <span className="workflow__format">
-              {authoringMode === 'json' ? '标准工作流 v2' : 'Python 编写模式'}
+              {authoringMode === 'json'
+                ? '标准工作流 v2'
+                : 'Python 编写模式'}
             </span>
           </div>
           <span
@@ -533,6 +628,22 @@ export default function WorkflowPanel({
         </div>
 
         <div className="workflow__toolbar-actions">
+          <input
+            ref={fileUpload.inputRef}
+            className="workflow__file-input"
+            type="file"
+            accept=".json,application/json"
+            aria-label="选择工作流 JSON 文件"
+            onChange={fileUpload.handleFileChange}
+          />
+          <button
+            type="button"
+            className="workflow__upload"
+            disabled={busy}
+            onClick={fileUpload.openFilePicker}
+          >
+            导入 JSON
+          </button>
           <button type="button" className="workflow__upload" disabled={busy} onClick={load}>
             从 OS 载入
           </button>
@@ -551,12 +662,17 @@ export default function WorkflowPanel({
           <button
             type="button"
             className="workflow__upload"
-            disabled={busy || sourceInvalid}
+            disabled={busy || !sourceRunnable}
             onClick={() => void withBusy(async () => { await validate() })}
           >
             校验
           </button>
-          <button type="button" className="workflow__upload" disabled={busy} onClick={save}>
+          <button
+            type="button"
+            className="workflow__upload"
+            disabled={busy || !sourceRunnable}
+            onClick={save}
+          >
             保存修订版本
           </button>
 
@@ -593,7 +709,7 @@ export default function WorkflowPanel({
                 ? '调试启动：开始调试'
                 : '整图执行：开始运行'
             }
-            disabled={busy || sourceInvalid}
+            disabled={busy || !sourceRunnable}
             onClick={() => startRun(runMode === 'debug')}
           >
             {busy
@@ -612,7 +728,6 @@ export default function WorkflowPanel({
           <button type="button" onClick={() => setError(null)}>关闭</button>
         </div>
       )}
-
       <div
         ref={containerRef}
         className={[
@@ -625,7 +740,9 @@ export default function WorkflowPanel({
         <div className="workbench__pane" style={{ flexBasis: `${leftRatio * 100}%` }}>
           <CodeEditor
             title={
-              authoringMode === 'json'
+              sourceFileName && authoringMode === 'json'
+                ? sourceFileName
+                : authoringMode === 'json'
                 ? `${parsed.revision?.workflow_id || 'workflow'}.revision.json`
                 : `${parsed.revision?.workflow_id || 'workflow'}.py`
             }
@@ -647,7 +764,9 @@ export default function WorkflowPanel({
         >
           <header className="workflow-runtime__stage-header">
             <div>
-              <strong>完整控制流 DAG</strong>
+              <strong>
+                完整控制流 DAG
+              </strong>
               <span>
                 {parsed.nodes.length} 个节点 · {parsed.links.length} 条控制边
               </span>

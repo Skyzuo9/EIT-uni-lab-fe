@@ -95,9 +95,35 @@ Python 发生编辑后，切回 JSON、保存、校验或运行前调用：
 - `src/components/WorkflowDag.tsx`：只读拓扑投影及节点快捷交互。
 - `src/components/WorkflowNodeCard.tsx`：节点状态、起始点和断点的可访问入口。
 - `src/utils/canonicalWorkflow.ts`：Canonical revision 与 UI 投影辅助。
+- `src/utils/parseWorkflowJson.ts`：Cloud JSON 的严格识别、Canonical v2
+  迁移和兼容投影。
 - `src/utils/debugControls.ts`：七个调试动作的命令、启用矩阵与文案。
 - `src/utils/parseWorkflow.ts`：画布所需的只读解析。
 - `src/hooks/useWorkflowDag.ts`：ReactFlow 布局与视图状态。
+
+## Cloud JSON → Canonical v2
+
+工具栏的“导入 JSON”以 Canonical v2 为第一识别顺序；如果不是 Canonical，
+则自动识别旧 Cloud `data.nodes/data.edges` 导出并在内存中严格迁移。转换成功后：
+
+1. 代码编辑器立即替换为格式化后的 Canonical v2，不再保留第二套可运行文档。
+2. `device_name + template_name` 组成 `action_ref`。
+3. `param` 逐项成为 tagged literal binding。
+4. `ready → ready` 成为 control edge；非 `ready` handle 成为同时匹配
+   `input_bindings` 的 data edge。
+5. `pose.position` 只进入 `layout.nodes`，不进入执行内容哈希。
+6. 立即调用当前 Profile 的 OS/backend 校验；只有当前服务真实注册了 action 且
+   参数 schema 匹配，后续保存或运行才会通过。
+
+迁移必须 fail-closed。重复 UUID、悬空边、依赖环、禁用节点、Cloud Group、
+混合控制/数据 handle（包括没有显式分支条件契约的 `true/false → ready`）、
+同一输入的多数据源，以及字面量与数据边争用同一输入时，都明确拒绝，不能猜测后
+生成可运行载荷。`parent_uuid` 仅是 Cloud 画布分组信息，迁移时展平并向用户显示
+警告。
+
+浏览器 E2E 使用 `e2e/fixtures/host-node-test-latency` 声明 action contract，
+再由真实 offline local bridge 完成导入校验和整图运行；该 Profile 只是测试夹具，
+不能作为生产 Edge 的注册方式。
 
 ## 修改检查
 

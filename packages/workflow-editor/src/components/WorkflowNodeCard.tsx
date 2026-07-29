@@ -88,34 +88,40 @@ export default function WorkflowNodeCard({ data }: NodeProps<WorkflowNodeData>):
         <span className={`wf-node__state wf-node__state--${data.status || 'pending'}`}>
           {stateLabel(data.status || 'pending')}
         </span>
-        <div className="wf-node__marker-actions">
-          <button
-            type="button"
-            className={data.startNode ? 'is-active is-start' : ''}
-            aria-label={`${data.startNode ? '取消' : '设为'}起始点 ${data.id}`}
-            title={data.startNode ? '取消起始点' : '从此节点开始执行'}
-            onPointerDown={(event) => event.stopPropagation()}
-            onClick={(event) => {
-              event.stopPropagation()
-              data.onSetStart?.(data.id)
-            }}
-          >
-            ⚑
-          </button>
-          <button
-            type="button"
-            className={data.breakpoint ? 'is-active is-breakpoint' : ''}
-            aria-label={`${data.breakpoint ? '取消' : '设置'}断点 ${data.id}`}
-            title={data.breakpoint ? '取消断点' : '在此节点前暂停'}
-            onPointerDown={(event) => event.stopPropagation()}
-            onClick={(event) => {
-              event.stopPropagation()
-              data.onToggleBreakpoint?.(data.id)
-            }}
-          >
-            ●
-          </button>
-        </div>
+        {(data.onSetStart || data.onToggleBreakpoint) && (
+          <div className="wf-node__marker-actions">
+            {data.onSetStart && (
+              <button
+                type="button"
+                className={data.startNode ? 'is-active is-start' : ''}
+                aria-label={`${data.startNode ? '取消' : '设为'}起始点 ${data.id}`}
+                title={data.startNode ? '取消起始点' : '从此节点开始执行'}
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  data.onSetStart?.(data.id)
+                }}
+              >
+                ⚑
+              </button>
+            )}
+            {data.onToggleBreakpoint && (
+              <button
+                type="button"
+                className={data.breakpoint ? 'is-active is-breakpoint' : ''}
+                aria-label={`${data.breakpoint ? '取消' : '设置'}断点 ${data.id}`}
+                title={data.breakpoint ? '取消断点' : '在此节点前暂停'}
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  data.onToggleBreakpoint?.(data.id)
+                }}
+              >
+                ●
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* 底部源端点(上下流向,连出) */}
