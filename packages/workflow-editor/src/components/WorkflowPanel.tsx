@@ -40,6 +40,7 @@ export interface WorkflowStepFocus {
 
 export interface WorkflowPanelProps {
   runtime: WorkflowRuntimePort
+  activeWorkflowStorageKey?: string
   onStepFocus?: (focus: WorkflowStepFocus) => void
 }
 
@@ -51,6 +52,7 @@ type CompactPane = 'code' | 'dag'
 
 export default function WorkflowPanel({
   runtime,
+  activeWorkflowStorageKey,
   onStepFocus
 }: WorkflowPanelProps): React.JSX.Element {
   const [authoringMode, setAuthoringMode] = useState<AuthoringMode>('json')
@@ -202,6 +204,55 @@ export default function WorkflowPanel({
       setBusy(false)
     }
   }, [])
+
+  useEffect(() => {
+    const workflowId = readActiveWorkflowId(activeWorkflowStorageKey)
+    if (!workflowId) return
+
+    let active = true
+    setBusy(true)
+    setError(null)
+    void runtime.getWorkflow(workflowId)
+      .then((document) => {
+        if (!active) return
+        const canonicalText = JSON.stringify(
+          document.revision.canonical,
+          null,
+          2
+        )
+        setAuthoringMode('json')
+        editor.replaceContent(canonicalText)
+        setCanonicalSource(canonicalText)
+        setSourceFileName(null)
+        setPythonSourceMap([])
+        pythonBaseline.current = null
+        latestSequence.current = 0
+        setRun(null)
+        setRunNodes([])
+        setEvents([])
+        setBreakpoints(new Set())
+        setStartNodeId(null)
+        setSelectedNodeId(null)
+        setMessage(`已恢复修订版本 ${document.revision.id}`)
+      })
+      .catch((restoreError) => {
+        if (!active) return
+        setError(
+          `无法恢复最近保存的工作流 ${workflowId}：${
+            restoreError instanceof Error
+              ? restoreError.message
+              : String(restoreError)
+          }`
+        )
+      })
+      .finally(() => {
+        if (active) setBusy(false)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [activeWorkflowStorageKey, editor.replaceContent, runtime])
 
   const fileUpload = useWorkflowFileUpload({
     onLoaded: ({ content, fileName }) => {
@@ -426,6 +477,10 @@ export default function WorkflowPanel({
       setCanonicalSource(
         JSON.stringify(document.revision.canonical, null, 2)
       )
+      persistActiveWorkflowId(
+        activeWorkflowStorageKey,
+        document.revision.canonical.workflow_id
+      )
       editor.markSaved()
       setMessage(`已保存修订版本 ${document.revision.id}`)
     })
@@ -435,6 +490,10 @@ export default function WorkflowPanel({
     void withBusy(async () => {
       const document = await runtime.getWorkflow('control-demo')
       const revision = document.revision.canonical
+      persistActiveWorkflowId(
+        activeWorkflowStorageKey,
+        revision.workflow_id
+      )
       setSourceFileName(null)
       if (authoringMode === 'python') {
         const candidate = await projectToPython(revision)
@@ -1116,6 +1175,40 @@ export default function WorkflowPanel({
       </div>
     </div>
   )
+}
+
+function readActiveWorkflowId(storageKey?: string): string | null {
+  if (!storageKey) return null
+  try {
+    const raw = globalThis.localStorage?.getItem(storageKey)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as {
+      version?: unknown
+      workflowId?: unknown
+    }
+    return parsed.version === 1 &&
+      typeof parsed.workflowId === 'string' &&
+      parsed.workflowId.trim()
+      ? parsed.workflowId
+      : null
+  } catch {
+    return null
+  }
+}
+
+function persistActiveWorkflowId(
+  storageKey: string | undefined,
+  workflowId: string
+): void {
+  if (!storageKey) return
+  try {
+    globalThis.localStorage?.setItem(
+      storageKey,
+      JSON.stringify({ version: 1, workflowId })
+    )
+  } catch {
+    // OS persistence succeeded; unavailable browser storage must not fail save.
+  }
 }
 
 function requireAuthoringCandidate(

@@ -136,6 +136,13 @@ function WorkflowRenderer(
   return (
     <WorkflowPanel
       runtime={props.scope.services.workflow}
+      activeWorkflowStorageKey={`unilab.workflow.active.${
+        encodeURIComponent(
+          `${props.scope.services.backend.id}:${
+            props.scope.services.backend.apiUrl
+          }`
+        )
+      }.v1`}
       onStepFocus={(focus) => {
         const interaction = props.scope.interaction.getState()
         interaction.selectWorkflowStep(focus.stepId)
