@@ -10,13 +10,23 @@
  * ============================================================
  */
 import ReactFlow, { Background, Controls, MiniMap } from 'reactflow'
-import type { Node, ReactFlowInstance } from 'reactflow'
+import type {
+  EdgeChange,
+  Node,
+  NodeChange,
+  ReactFlowInstance
+} from 'reactflow'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useWorkflowDag } from '../hooks/useWorkflowDag'
 import WorkflowNodeCard from './WorkflowNodeCard'
 import type { WorkflowNodeData } from './WorkflowNodeCard'
 import type { WorkflowLink, WorkflowNode } from '../utils/parseWorkflow'
 import { projectNestedWorkflow } from '../utils/canonicalWorkflow'
+import {
+  READ_ONLY_WORKFLOW_CANVAS,
+  visibleReadOnlyEdgeChanges,
+  visibleReadOnlyNodeChanges
+} from '../utils/workflowCanvasPolicy'
 import 'reactflow/dist/style.css'
 import styles from './workflow.module.scss'
 
@@ -78,6 +88,20 @@ export default function WorkflowDag({
   const { nodes: flowNodes, edges: flowEdges, onNodesChange, onEdgesChange } = useWorkflowDag(
     nestedProjection.nodes,
     nestedProjection.links
+  )
+  const handleNodesChange = useCallback(
+    (changes: NodeChange[]) => {
+      const visibleChanges = visibleReadOnlyNodeChanges(changes)
+      if (visibleChanges.length > 0) onNodesChange(visibleChanges)
+    },
+    [onNodesChange]
+  )
+  const handleEdgesChange = useCallback(
+    (changes: EdgeChange[]) => {
+      const visibleChanges = visibleReadOnlyEdgeChanges(changes)
+      if (visibleChanges.length > 0) onEdgesChange(visibleChanges)
+    },
+    [onEdgesChange]
   )
   const nodeById = useMemo(
     () => new Map(nodes.map((node) => [node.id, node])),
@@ -190,14 +214,13 @@ export default function WorkflowDag({
       <ReactFlow
         nodes={runtimeNodes}
         edges={runtimeEdges}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
+        onNodesChange={handleNodesChange}
+        onEdgesChange={handleEdgesChange}
         nodeTypes={nodeTypes}
         fitView
         fitViewOptions={{ padding: 0.16, minZoom: 0.2, maxZoom: 1 }}
         minZoom={0.2}
-        nodesDraggable
-        nodesConnectable={false}
+        {...READ_ONLY_WORKFLOW_CANVAS}
         elementsSelectable
         proOptions={{ hideAttribution: true }}
         onInit={(instance) => {

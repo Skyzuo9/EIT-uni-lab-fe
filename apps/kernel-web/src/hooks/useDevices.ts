@@ -12,78 +12,70 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useServices } from '@unilab/services'
 import { useWorkbench } from '../context/WorkbenchContext'
-import {
-  mergeWithDefaultDevices,
-  type ManagedDevice
-} from '../data/defaultDevices'
+import type { DeviceActionTarget } from '../data/lab'
 
 interface UseDevicesResult {
-  devices: ManagedDevice[]
+  devices: DeviceActionTarget[]
   loading: boolean
   error: string | null
-  lastUpdated: number | null
   refresh: () => Promise<void>
 }
 
-// 默认模板只负责占位展示；状态、动作与执行能力始终来自 Edge。
+// 离线模式下的示例设备,便于无后端时预览界面
+const OFFLINE_DEVICES: DeviceActionTarget[] = [
+  {
+    deviceId: 'liquid_handler.ot2',
+    label: 'OT-2 液体工作站'
+  },
+  {
+    deviceId: 'syringepump.runze',
+    label: '润泽注射泵 SY03B'
+  },
+  {
+    deviceId: 'heaterstirrer.virtual',
+    label: '加热搅拌器（虚拟）'
+  }
+]
+
+// 获取设备列表:在线拉取,离线回退示例数据
 export function useDevices(): UseDevicesResult {
   const { backendEnabled, connection } = useWorkbench()
   const services = useServices()
   const client = services.laboratory
-  const canListOnlineDevices = services.capabilities.devices.listOnline
+  const canListActions = services.capabilities.devices.listActions
   const isOnline = backendEnabled && connection === 'connected'
-  const [devices, setDevices] = useState<ManagedDevice[]>(() =>
-    mergeWithDefaultDevices([])
-  )
+  const [devices, setDevices] = useState<DeviceActionTarget[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [lastUpdated, setLastUpdated] = useState<number | null>(null)
 
   const refresh = useCallback(async () => {
     if (!backendEnabled) {
-      setDevices(mergeWithDefaultDevices([]))
+      setDevices(OFFLINE_DEVICES)
       setError(null)
-      setLastUpdated(null)
       return
     }
-    if (!canListOnlineDevices) {
-      setDevices(mergeWithDefaultDevices([]))
-      setError(
-        services.getCapabilityStatus('devices.listOnline').reason
-          ?? '当前服务不支持设备目录'
-      )
-      setLastUpdated(null)
+    if (!canListActions) {
+      setDevices([])
+      setError(null)
       return
     }
     setLoading(true)
     setError(null)
     try {
-      const list = await client.getOnlineDevices()
-      setDevices(mergeWithDefaultDevices(list))
-      setLastUpdated(Date.now())
+      const list = await client.getActionDevices()
+      setDevices(list)
     } catch (err) {
       setError(err instanceof Error ? err.message : '获取设备列表失败')
-      setDevices(mergeWithDefaultDevices([]))
+      setDevices([])
     } finally {
       setLoading(false)
     }
-  }, [backendEnabled, canListOnlineDevices, client, services])
+  }, [backendEnabled, canListActions, client])
 
-  // Edge 连通后立即刷新，并低频同步设备上线与动作忙闲变化。
+  // 模式或连接状态变化时刷新
   useEffect(() => {
-    if (!isOnline) {
-      if (connection === 'error' || connection === 'disconnected') {
-        setDevices(mergeWithDefaultDevices([]))
-        setLastUpdated(null)
-      }
-      return
-    }
-    void refresh()
-    const timer = globalThis.setInterval(() => {
-      void refresh()
-    }, 5_000)
-    return () => globalThis.clearInterval(timer)
-  }, [connection, isOnline, refresh])
+    if (!backendEnabled || isOnline) void refresh()
+  }, [backendEnabled, isOnline, refresh])
 
-  return { devices, loading, error, lastUpdated, refresh }
+  return { devices, loading, error, refresh }
 }

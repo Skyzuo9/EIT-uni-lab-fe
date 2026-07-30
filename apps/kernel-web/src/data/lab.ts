@@ -17,11 +17,11 @@ export type WorkbenchSection = 'device' | 'material' | 'scene' | 'workflow'
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error'
 
 export type {
+  ActionRunStatus,
   DeviceAction,
+  DeviceActionTarget,
   DeviceStatus,
   JobRequest,
   JobResult,
-  JobStatusCode,
-  OnlineDevice,
   ResourceNode
 } from '@unilab/services'

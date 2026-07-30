@@ -10,35 +10,28 @@
  * ============================================================
  */
 import { requestData, type HttpClient } from './http'
+import { ServiceError } from './errors'
 
-export interface OnlineDevice {
-  id: string
-  deviceKey: string
-  namespace: string
-  machineName: string
-  online: boolean
-  actions: DeviceAction[]
+export interface DeviceActionTarget {
+  deviceId: string
+  label: string
 }
 
 export interface DeviceAction {
   actionName: string
-  actionRef: string
-  displayName: string
+  label: string
   typeName: string
   isBusy: boolean
-  inputSchema: Record<string, DeviceActionInputSchema>
-  outputSchema: Record<string, DeviceActionInputSchema>
+  currentJobId: string | null
+  schema: Record<string, unknown> | null
 }
 
-export interface DeviceActionInputSchema {
-  type?: string
-  title?: string
-  description?: string
-  default?: unknown
-  enum?: unknown[]
-  required?: boolean
-  minimum?: number
-  maximum?: number
+export interface DeviceActionSchema {
+  schema: Record<string, unknown>
+  goalDefault: Record<string, unknown>
+  actionType: string
+  isBusy: boolean
+  currentJobId: string | null
 }
 
 export interface DeviceStatus {
@@ -66,13 +59,33 @@ export interface JobRequest {
   actionArgs: Record<string, unknown>
 }
 
-export type JobStatusCode = 0 | 1 | 2 | 3 | 4 | 5 | 6
+export type ActionRunStatus =
+  | 'unknown'
+  | 'pending'
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+  | 'cancel_requested'
+  | 'reconciling'
+  | 'dispatch_unknown'
 
 export interface JobResult {
   jobId: string
-  status: JobStatusCode
+  status: ActionRunStatus
   result: Record<string, unknown> | null
+  feedback: Record<string, unknown> | null
 }
+
+interface RuntimeActionTemplate {
+  actionRef: string
+  actionName: string
+  deviceId: string
+  label: string
+  inputSchema: Record<string, unknown>
+}
+
+let actionRunSequence = 0
 
 export function createLaboratoryService(http: HttpClient) {
   return {
@@ -85,96 +98,138 @@ export function createLaboratoryService(http: HttpClient) {
       }
     },
 
-    async getOnlineDevices(): Promise<OnlineDevice[]> {
-      const raw = await http.request<unknown>(
-        '/api/v1/devices'
-      )
-      const payload = unwrapRecord(raw)
-      const items = Array.isArray(payload.items) ? payload.items : []
-      return items.map((item) => mapOnlineDevice(asRecord(item)))
+    async getActionDevices(): Promise<DeviceActionTarget[]> {
+      const templates = await getRuntimeActionTemplates(http)
+      return [...new Set(templates.map((template) => template.deviceId))]
+        .sort()
+        .map((deviceId) => ({ deviceId, label: deviceId }))
     },
 
     async getDeviceActions(deviceId: string): Promise<DeviceAction[]> {
-      const devices = await this.getOnlineDevices()
-      return devices.find((device) => device.id === deviceId)?.actions ?? []
+      const templates = await getRuntimeActionTemplates(http)
+      return templates
+        .filter((template) => template.deviceId === deviceId)
+        .map(mapDeviceAction)
     },
 
     async getActionSchema(
       deviceId: string,
       actionName: string
-    ): Promise<Record<string, unknown>> {
-      const action = (await this.getDeviceActions(deviceId))
-        .find((candidate) => candidate.actionName === actionName)
-      return action?.inputSchema ?? {}
+    ): Promise<DeviceActionSchema> {
+      const actionRef = `${deviceId}.${actionName}`
+      const template = (await getRuntimeActionTemplates(http)).find(
+        (candidate) => candidate.actionRef === actionRef
+      )
+      if (!template) {
+        throw new ServiceError({
+          code: 'ACTION_NOT_FOUND',
+          message: `未找到 Action：${actionRef}`,
+          status: 404,
+          retryable: false
+        })
+      }
+      return mapDeviceActionSchema(template)
     },
 
     async getResources(): Promise<ResourceNode[]> {
-      const raw = await requestData<Record<string, unknown>[]>(http, '/api/v1/resources')
+      const raw = await requestData<Record<string, unknown>[]>(
+        http,
+        '/api/v1/resources'
+      )
       return raw.map(mapResource)
     },
 
     async addJob(job: JobRequest): Promise<JobResult> {
-      const raw = await requestData<Record<string, unknown>>(http, '/api/v1/job/add', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          device_id: job.deviceId,
-          action: job.action,
-          action_args: job.actionArgs
-        })
-      })
-      return mapJobResult(raw)
+      const clientRequestId = actionRunId()
+      const actionRef = `${job.deviceId}.${job.action}`
+      const raw = await http.request<Record<string, unknown>>(
+        '/api/v1/runtime/runs',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            source: {
+              format: 'workflow_revision_v2',
+              revision: {
+                schema_version: '2',
+                revision_id: clientRequestId,
+                workflow_id: `single-action:${job.deviceId}`,
+                invocations: [
+                  {
+                    node_id: 'action',
+                    action_ref: actionRef,
+                    name: job.action,
+                    input_bindings: Object.fromEntries(
+                      Object.entries(job.actionArgs).map(([name, value]) => [
+                        name,
+                        { kind: 'literal', value }
+                      ])
+                    )
+                  }
+                ],
+                control_edges: []
+              }
+            },
+            client_request_id: clientRequestId
+          })
+        }
+      )
+      return mapRuntimeJob(raw)
     },
 
     async getJobStatus(jobId: string): Promise<JobResult> {
-      const raw = await requestData<Record<string, unknown>>(
-        http,
-        `/api/v1/job/${encodeURIComponent(jobId)}/status`
+      const encodedJobId = encodeURIComponent(jobId)
+      const [run, nodePage, eventPage] = await Promise.all([
+        http.request<Record<string, unknown>>(
+          `/api/v1/runtime/runs/${encodedJobId}`
+        ),
+        http.request<Record<string, unknown>>(
+          `/api/v1/runtime/runs/${encodedJobId}/nodes`
+        ),
+        http.request<Record<string, unknown>>(
+          `/api/v1/runtime/runs/${encodedJobId}/events?after_seq=0`
+        )
+      ])
+      return mapRuntimeJob(run, nodePage, eventPage)
+    },
+
+    async cancelJob(jobId: string): Promise<JobResult> {
+      const raw = await http.request<Record<string, unknown>>(
+        `/api/v1/runtime/runs/${encodeURIComponent(jobId)}/cancel`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        }
       )
-      return mapJobResult(raw)
+      return mapRuntimeJob(raw)
     }
   }
 }
 
 export type LaboratoryService = ReturnType<typeof createLaboratoryService>
 
-// ============ 字段映射(snake_case -> camelCase) ============
-
-function mapOnlineDevice(raw: Record<string, unknown>): OnlineDevice {
+function mapDeviceAction(template: RuntimeActionTemplate): DeviceAction {
   return {
-    id: str(raw.id),
-    deviceKey: str(raw.deviceKey ?? raw.device_key),
-    namespace: str(raw.namespace),
-    machineName: str(raw.name ?? raw.machine_name ?? raw.id),
-    online: Boolean(raw.online ?? raw.is_online),
-    actions: Array.isArray(raw.actions)
-      ? raw.actions.map((action) => mapDeviceAction(asRecord(action)))
-      : []
+    actionName: template.actionName,
+    label: template.label,
+    typeName: template.actionRef,
+    isBusy: false,
+    currentJobId: null,
+    schema: normalizeInputSchema(template.inputSchema)
   }
 }
 
-function mapDeviceAction(raw: Record<string, unknown>): DeviceAction {
+function mapDeviceActionSchema(
+  template: RuntimeActionTemplate
+): DeviceActionSchema {
+  const schema = normalizeInputSchema(template.inputSchema)
   return {
-    actionName: str(raw.id ?? raw.action_name),
-    actionRef: str(raw.actionRef ?? raw.action_ref),
-    displayName: str(raw.name ?? raw.label ?? raw.id ?? raw.action_name),
-    typeName: str(raw.typeName ?? raw.type_name),
-    isBusy: Boolean(raw.busy ?? raw.is_busy),
-    inputSchema: mapActionSchema(raw.inputSchema ?? raw.input_schema),
-    outputSchema: mapActionSchema(raw.outputSchema ?? raw.output_schema)
+    schema,
+    goalDefault: defaultsFromInputSchema(schema),
+    actionType: template.actionRef,
+    isBusy: false,
+    currentJobId: null
   }
-}
-
-function mapActionSchema(
-  raw: unknown
-): Record<string, DeviceActionInputSchema> {
-  if (!isRecord(raw)) return {}
-  return Object.fromEntries(
-    Object.entries(raw).map(([name, value]) => [
-      name,
-      isRecord(value) ? value as DeviceActionInputSchema : {}
-    ])
-  )
 }
 
 function mapResource(raw: Record<string, unknown>): ResourceNode {
@@ -189,17 +244,100 @@ function mapResource(raw: Record<string, unknown>): ResourceNode {
     config: isRecord(raw.config) ? raw.config : {},
     data: isRecord(raw.data) ? raw.data : {},
     position: { x: num(pos.x), y: num(pos.y), z: num(pos.z) },
-    children: Array.isArray(raw.children) ? raw.children.map((c) => mapResource(asRecord(c))) : []
+    children: Array.isArray(raw.children)
+      ? raw.children.map((child) => mapResource(asRecord(child)))
+      : []
   }
 }
 
-function mapJobResult(raw: Record<string, unknown>): JobResult {
-  const code = Number(raw.status)
-  return {
-    jobId: str(raw.jobId ?? raw.job_id),
-    status: (Number.isInteger(code) && code >= 0 && code <= 6 ? code : 0) as JobStatusCode,
-    result: isRecord(raw.result) ? raw.result : null
+async function getRuntimeActionTemplates(
+  http: HttpClient
+): Promise<RuntimeActionTemplate[]> {
+  const raw = await http.request<Record<string, unknown>>(
+    '/api/v1/workflow-node-templates'
+  )
+  const items = Array.isArray(raw.items) ? raw.items : []
+  return items.flatMap((value) => {
+    const item = asRecord(value)
+    if (item.kind !== 'action') return []
+    const actionRef = str(item.id)
+    const separator = actionRef.lastIndexOf('.')
+    if (separator <= 0 || separator === actionRef.length - 1) return []
+    return [
+      {
+        actionRef,
+        deviceId: actionRef.slice(0, separator),
+        actionName: actionRef.slice(separator + 1),
+        label: str(item.label) || actionRef.slice(separator + 1),
+        inputSchema: asRecord(item.inputSchema)
+      }
+    ]
+  })
+}
+
+function normalizeInputSchema(
+  inputSchema: Record<string, unknown>
+): Record<string, unknown> {
+  if (inputSchema.type === 'object' && isRecord(inputSchema.properties)) {
+    return inputSchema
   }
+  return {
+    type: 'object',
+    properties: inputSchema
+  }
+}
+
+function defaultsFromInputSchema(
+  schema: Record<string, unknown>
+): Record<string, unknown> {
+  const properties = asRecord(schema.properties)
+  return Object.fromEntries(
+    Object.entries(properties).flatMap(([name, value]) => {
+      const definition = asRecord(value)
+      return Object.prototype.hasOwnProperty.call(definition, 'default')
+        ? [[name, definition.default]]
+        : []
+    })
+  )
+}
+
+function mapRuntimeJob(
+  raw: Record<string, unknown>,
+  nodePage?: Record<string, unknown>,
+  eventPage?: Record<string, unknown>
+): JobResult {
+  const nodes = Array.isArray(nodePage?.items) ? nodePage.items : []
+  const events = Array.isArray(eventPage?.events) ? eventPage.events : []
+  return {
+    jobId: str(raw.id ?? raw.run_id),
+    status: actionRunStatus(raw.status),
+    result: nodes.length > 0 ? { nodes } : null,
+    feedback: events.length > 0 ? { events } : null
+  }
+}
+
+function actionRunStatus(value: unknown): ActionRunStatus {
+  switch (value) {
+    case 'pending':
+    case 'running':
+    case 'completed':
+    case 'failed':
+    case 'cancelled':
+    case 'cancel_requested':
+    case 'reconciling':
+    case 'dispatch_unknown':
+      return value
+    default:
+      return 'unknown'
+  }
+}
+
+function actionRunId(): string {
+  if (typeof globalThis.crypto?.randomUUID === 'function') {
+    return globalThis.crypto.randomUUID()
+  }
+  actionRunSequence += 1
+  return `device-action-${Date.now()}-${actionRunSequence}`
 }
 
 function str(value: unknown): string {
@@ -217,9 +355,4 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function asRecord(value: unknown): Record<string, unknown> {
   return isRecord(value) ? value : {}
-}
-
-function unwrapRecord(raw: unknown): Record<string, unknown> {
-  const record = asRecord(raw)
-  return isRecord(record.data) ? record.data : record
 }

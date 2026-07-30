@@ -4,7 +4,6 @@ export interface ServerCapabilities {
   devices: {
     listOnline: boolean
     listActions: boolean
-    debugActions: boolean
     subscribeStatus: boolean
   }
   material: {
@@ -39,7 +38,6 @@ export interface ServerCapabilities {
 export const SERVER_CAPABILITY_KEYS = [
   'devices.listOnline',
   'devices.listActions',
-  'devices.debugActions',
   'devices.subscribeStatus',
   'material.readTemplates',
   'material.readGraph',
@@ -103,8 +101,6 @@ export function hasServerCapability(
       return capabilities.devices.listOnline
     case 'devices.listActions':
       return capabilities.devices.listActions
-    case 'devices.debugActions':
-      return capabilities.devices.debugActions
     case 'devices.subscribeStatus':
       return capabilities.devices.subscribeStatus
     case 'material.readTemplates':
@@ -168,7 +164,6 @@ function unavailableCapabilities(): ServerCapabilities {
     devices: {
       listOnline: false,
       listActions: false,
-      debugActions: false,
       subscribeStatus: false
     },
     material: {
@@ -207,9 +202,7 @@ function localGoCapabilities(): ServerCapabilities {
 
 function localPythonCapabilities(): ServerCapabilities {
   const capabilities = unavailableCapabilities()
-  capabilities.devices.listOnline = true
   capabilities.devices.listActions = true
-  capabilities.devices.debugActions = true
   capabilities.material.readTemplates = true
   capabilities.material.readGraph = true
   capabilities.material.create = true
@@ -251,7 +244,7 @@ function unavailableReason(
 
   if (backend.id === 'local-python') {
     if (capability.startsWith('devices.')) {
-      return '当前 Uni-Lab-OS unified v1 bridge 尚未提供该设备管理能力'
+      return '当前 Uni-Lab-OS unified v1 bridge 尚未提供设备目录与 device_status 订阅'
     }
     if (capability.startsWith('material.')) {
       return '当前 Uni-Lab-OS 物料图仅开放只读查询，写操作尚未提供统一命令契约'

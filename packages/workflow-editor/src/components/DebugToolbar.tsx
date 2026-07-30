@@ -36,7 +36,7 @@ const STATUS_CLASS: Record<DebugStatus, string> = {
 const BUTTON_CLASS =
   'h-8 cursor-pointer rounded-[var(--unilab-radius-control)] border border-[var(--unilab-color-border)] bg-[var(--unilab-color-surface)] px-3 text-[13px] font-medium text-[var(--unilab-color-text)] transition-colors enabled:hover:border-[var(--unilab-color-border-strong)] enabled:hover:bg-[var(--unilab-color-surface-subtle)] enabled:active:translate-y-px disabled:cursor-not-allowed disabled:text-[var(--unilab-color-text-subtle)] disabled:opacity-70'
 
-// 调试工具栏:macOS 分段风格,危险操作(终止/急停)红色标注
+// 调试工具栏:macOS 分段风格,危险操作红色标注
 export default function DebugToolbar({ debug }: DebugToolbarProps): React.JSX.Element {
   const { status, statusLabel, startMode, stopAfterCurrent, flags } = debug
 
@@ -65,22 +65,6 @@ export default function DebugToolbar({ debug }: DebugToolbarProps): React.JSX.El
 
       <span className="h-5 w-px bg-[var(--unilab-color-border)]" />
 
-      <button
-        type="button"
-        className={BUTTON_CLASS}
-        disabled={!flags.canStepOver}
-        onClick={debug.stepOver}
-      >
-        步过
-      </button>
-      <button
-        type="button"
-        className={BUTTON_CLASS}
-        disabled={!flags.canStepInto}
-        onClick={debug.stepInto}
-      >
-        步入
-      </button>
       <button
         type="button"
         className={BUTTON_CLASS}
@@ -127,14 +111,6 @@ export default function DebugToolbar({ debug }: DebugToolbarProps): React.JSX.El
         onClick={debug.terminate}
       >
         终止运行
-      </button>
-      <button
-        type="button"
-        className={`${BUTTON_CLASS} text-[var(--unilab-color-danger)] enabled:hover:border-[var(--unilab-color-danger)] enabled:hover:bg-[var(--unilab-color-danger-soft)]`}
-        disabled={!flags.canEmergencyStop}
-        onClick={debug.emergencyStop}
-      >
-        急停
       </button>
       <button
         type="button"

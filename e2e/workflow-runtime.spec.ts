@@ -52,7 +52,7 @@ test('full control DAG edit, dispatch, node feedback and debugger', async ({
   ).toHaveAttribute('data-node-state', 'success')
   await expect(page.getByText(/暂停于 branch 执行之前/)).toBeVisible()
 
-  await page.getByRole('button', { name: /步过/ }).click()
+  await page.getByRole('button', { name: /单步/ }).click()
   await expect(debugStatus).toHaveText('已暂停')
   await expect(
     page.locator('.workflow-runtime__node-list button', { hasText: 'branch' })

@@ -30,6 +30,12 @@ export interface WorkflowDebugControlState {
   busy: boolean
 }
 
+const HIDDEN_TOOLBAR_COMMANDS = new Set<WorkflowDebugControl['command']>([
+  'step_over',
+  'step_into',
+  'emergency_stop'
+])
+
 const TERMINAL_RUN_STATES = new Set<WorkflowRun['status']>([
   'completed',
   'failed',
@@ -125,4 +131,16 @@ export function workflowDebugControls(
       disabled: blocked
     }
   ]
+}
+
+/**
+ * Keep command support in the runtime contract while hiding unfinished actions
+ * from the debugger toolbar.
+ */
+export function visibleWorkflowDebugControls(
+  controls: readonly WorkflowDebugControl[]
+): WorkflowDebugControl[] {
+  return controls.filter(
+    (control) => !HIDDEN_TOOLBAR_COMMANDS.has(control.command)
+  )
 }

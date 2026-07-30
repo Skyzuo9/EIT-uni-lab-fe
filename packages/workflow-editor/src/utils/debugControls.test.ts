@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { workflowDebugControls } from './debugControls'
+import {
+  visibleWorkflowDebugControls,
+  workflowDebugControls
+} from './debugControls'
 
 function controls(
   status: Parameters<typeof workflowDebugControls>[0]['debugStatus'],
@@ -77,5 +80,17 @@ describe('workflowDebugControls', () => {
     )
     expect(emergency?.title).toContain('当前运行')
     expect(emergency?.title).toContain('非全站硬件急停')
+  })
+
+  it('keeps unfinished controls out of the visible debugger toolbar', () => {
+    expect(
+      visibleWorkflowDebugControls(controls('paused'))
+        .map((control) => control.command)
+    ).toEqual([
+      'pause',
+      'step',
+      'continue',
+      'terminate'
+    ])
   })
 })

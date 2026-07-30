@@ -2,115 +2,99 @@ import { expect, test, type Page } from '@playwright/test'
 import { mkdirSync } from 'node:fs'
 import { resolve } from 'node:path'
 
-import {
-  startOfflineLocalBridge,
-  type OfflineLocalBridge
-} from './helpers/offline-local-bridge'
-
 const ARTIFACT_ROOT = resolve(
   process.cwd(),
   '../e2e-artifacts',
   'device-controls'
 )
 
-test.describe('Edge device catalog and single-action debug', () => {
-  let bridge: OfflineLocalBridge
-
-  test.beforeAll(async () => {
-    bridge = await startOfflineLocalBridge(0.35)
-  })
-
-  test.afterAll(async () => {
-    await bridge.stop()
-  })
-
-  test('Edge-reported action node can be executed through the OS runtime', async ({
+test.describe('robot and camera device controls', () => {
+  test('operator can jog the robot and use the emergency stop locally', async ({
     page
   }) => {
     const browserErrors = observeBrowserErrors(page)
-    const runtimeRequests: Array<{
-      url: string
-      method: string
-      body: unknown
-    }> = []
+    const deviceRequests: string[] = []
     page.on('request', (request) => {
-      if (!request.url().includes('/api/v1/')) return
-      runtimeRequests.push({
-        url: request.url(),
-        method: request.method(),
-        body: request.postDataJSON() as unknown
-      })
-    })
-
-    await page.goto(`/?localOsUrl=${encodeURIComponent(bridge.url)}`)
-
-    await expect(page.getByText('Edge 已连接')).toBeVisible()
-    await expect(page.getByText('6 台设备 · 4 台 Edge 上报')).toBeVisible()
-    await expect(
-      page
-        .getByRole('complementary', { name: 'Edge 设备列表' })
-        .getByText('默认', { exact: true })
-    ).toHaveCount(2)
-    await page.getByRole('button', { name: /pump-1/ }).click()
-
-    const detail = page.getByRole('main')
-    await expect(
-      detail.getByRole('heading', { name: 'pump-1', exact: true })
-    ).toBeVisible()
-    await expect(
-      detail.getByRole('button', { name: '加液 动作节点' })
-    ).toBeVisible()
-    await detail.getByRole('spinbutton', { name: 'volume' }).fill('12.5')
-
-    await detail.getByRole('button', { name: '运行此动作' }).click()
-
-    await expect(detail.getByText('执行中', { exact: true })).toBeVisible()
-    await expect(detail.getByText('执行成功', { exact: true }))
-      .toBeVisible({ timeout: 10_000 })
-    await expect(
-      detail.getByText('动作执行成功，设备未返回结构化结果。')
-    ).toBeVisible()
-
-    const runRequest = runtimeRequests.find(
-      (request) =>
-        request.method === 'POST'
-        && request.url.endsWith('/api/v1/runtime/runs')
-    )
-    expect(runRequest?.body).toMatchObject({
-      source: {
-        format: 'workflow_revision_v2',
-        revision: {
-          schema_version: '2',
-          invocations: [
-            {
-              node_id: 'action',
-              action_ref: 'pump-1.dose',
-              input_bindings: {
-                volume: {
-                  kind: 'literal',
-                  value: 12.5
-                }
-              }
-            }
-          ],
-          control_edges: []
-        }
+      if (['fetch', 'xhr', 'websocket'].includes(request.resourceType())) {
+        deviceRequests.push(request.url())
       }
     })
-    expect(
-      runtimeRequests.some((request) =>
-        request.url.endsWith('/api/v1/devices')
-      )
-    ).toBe(true)
-    expect(
-      runtimeRequests.some((request) =>
-        /\/api\/v1\/runtime\/runs\/[^/]+\/nodes$/.test(request.url)
-      )
-    ).toBe(true)
+    await mockOfflineOs(page)
+
+    await page.goto('/')
+
+    const detail = page.getByRole('main', { name: '设备控制详情' })
+    await expect(detail).toBeVisible()
+    await expect(
+      detail.getByRole('heading', { name: '机械臂', exact: true })
+    ).toBeVisible()
+
+    await detail.getByRole('button', { name: '关节', exact: true }).click()
+    const jointJog = detail.getByRole('button', {
+      name: 'J1+',
+      exact: true
+    })
+    await jointJog.click()
+    await expect(detail.getByText('步进 J1+', { exact: true })).toBeVisible()
+
+    await detail.getByRole('button', { name: '急停', exact: true }).click()
+    await expect(
+      detail.getByRole('button', { name: '释放急停', exact: true })
+    ).toBeVisible()
+    await expect(jointJog).toBeDisabled()
+
+    await detail
+      .getByRole('button', { name: '释放急停', exact: true })
+      .click()
+    await expect(jointJog).toBeEnabled()
 
     mkdirSync(ARTIFACT_ROOT, { recursive: true })
     await page.screenshot({
-      path: resolve(ARTIFACT_ROOT, 'edge-action-debug-success.png'),
+      path: resolve(ARTIFACT_ROOT, 'robot-controls.png'),
+      animations: 'disabled',
+      fullPage: false
+    })
+
+    expect(deviceRequests).toEqual([
+      'http://127.0.0.1:8014/health'
+    ])
+    expect(browserErrors).toEqual([])
+  })
+
+  test('operator can configure the camera and capture an image locally', async ({
+    page
+  }) => {
+    const browserErrors = observeBrowserErrors(page)
+    await mockOfflineOs(page)
+
+    await page.goto('/')
+    await page
+      .getByRole('button', { name: /^相机/ })
+      .click()
+
+    const detail = page.getByRole('main', { name: '设备控制详情' })
+    await expect(
+      detail.getByRole('heading', { name: '相机', exact: true })
+    ).toBeVisible()
+
+    await detail.getByRole('textbox', { name: '样品 ID' })
+      .fill('PTLC-E2E-001')
+    await detail.getByRole('textbox', { name: '文件名' })
+      .fill('e2e-capture.jpg')
+    await detail.getByRole('spinbutton', { name: '曝光时间 (µs)' })
+      .fill('500000')
+    await detail.getByRole('spinbutton', { name: '增益' }).fill('2')
+
+    await detail
+      .getByRole('button', { name: '采集图像', exact: true })
+      .click()
+
+    await expect(detail.getByRole('status'))
+      .toHaveText(/已采集 · 共 1 张/)
+
+    mkdirSync(ARTIFACT_ROOT, { recursive: true })
+    await page.screenshot({
+      path: resolve(ARTIFACT_ROOT, 'camera-controls.png'),
       animations: 'disabled',
       fullPage: false
     })
@@ -126,4 +110,14 @@ function observeBrowserErrors(page: Page): string[] {
   })
   page.on('pageerror', (error) => errors.push(error.message))
   return errors
+}
+
+async function mockOfflineOs(page: Page): Promise<void> {
+  await page.route('http://127.0.0.1:8014/health', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: 'offline fixture'
+    })
+  )
 }

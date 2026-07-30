@@ -18,7 +18,7 @@
     "test:e2e:workflow-actions": "playwright test e2e/workflow-debug-actions.spec.ts",
     "test:e2e:material-create": "UNILAB_E2E_MATERIAL_CREATE_FIXTURE=1 playwright test e2e/material-create.spec.ts",
     "test:e2e:materials": "UNILAB_E2E_HEADED=1 xvfb-run -a playwright test e2e/material-scene.spec.ts",
-    "test:e2e:device": "playwright test e2e/device-controls.spec.ts"
+    "test:e2e:device": "playwright test e2e/device-controls.spec.ts e2e/device-action-run.spec.ts"
   },
   "devDependencies": {
     "@playwright/test": "1.55.0",

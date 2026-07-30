@@ -31,7 +31,10 @@ import {
   remapWorkflowNodeId
 } from '../utils/canonicalWorkflow'
 import { migrateCloudWorkflowJson } from '../utils/parseWorkflowJson'
-import { workflowDebugControls } from '../utils/debugControls'
+import {
+  visibleWorkflowDebugControls,
+  workflowDebugControls
+} from '../utils/debugControls'
 import { useWorkflowDownload } from '../hooks/useWorkflowDownload'
 import { useWorkflowFileUpload } from '../hooks/useWorkflowFileUpload'
 import styles from './workflow.module.scss'
@@ -866,12 +869,14 @@ export default function WorkflowPanel({
   }
 
   const debugStatus = run?.debug?.status || 'disabled'
-  const debugControls = workflowDebugControls({
-    debugEnabled: Boolean(run?.debug?.enabled),
-    debugStatus,
-    runStatus: run?.status || 'draft',
-    busy
-  })
+  const debugControls = visibleWorkflowDebugControls(
+    workflowDebugControls({
+      debugEnabled: Boolean(run?.debug?.enabled),
+      debugStatus,
+      runStatus: run?.status || 'draft',
+      busy
+    })
+  )
   const runStatus = run?.status || 'draft'
   const debugStatusLabel = workflowDebugStatusLabel(debugStatus)
   const runStatusLabel = workflowRunStatusLabel(runStatus)

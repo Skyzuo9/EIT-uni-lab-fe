@@ -35,7 +35,7 @@ interface RuntimeSnapshot {
   }>
 }
 
-test.describe.serial('seven workflow debugger actions', () => {
+test.describe.serial('visible workflow debugger actions', () => {
   let bridge: OfflineLocalBridge
 
   test.beforeAll(async () => {
@@ -97,7 +97,7 @@ test.describe.serial('seven workflow debugger actions', () => {
     })
   })
 
-  test('step, step over and step into each admit exactly one logical node', async ({
+  test('single step admits exactly one logical node while unfinished variants stay hidden', async ({
     page,
     request
   }) => {
@@ -112,14 +112,15 @@ test.describe.serial('seven workflow debugger actions', () => {
       branch: 'pending'
     })
 
-    await clickAndExpectPause(page, '步过', 'dose')
+    await expectHiddenDebuggerActions(page)
+    await clickAndExpectPause(page, '单步', 'dose')
     expect(await currentStates(request, bridge.url, runId)).toMatchObject({
       branch: 'success',
       dose: 'pending',
       inspect: 'skipped'
     })
 
-    await clickAndExpectPause(page, '步入', 'join')
+    await clickAndExpectPause(page, '单步', 'join')
     const afterStepInto = await snapshot(request, bridge.url, runId)
     expect(states(afterStepInto)).toMatchObject({
       dose: 'success',
@@ -139,8 +140,8 @@ test.describe.serial('seven workflow debugger actions', () => {
       .toHaveText('整体：已完成', { timeout: 10_000 })
     expect(observation.commands.map((call) => call.command)).toEqual([
       'step',
-      'step_over',
-      'step_into',
+      'step',
+      'step',
       'continue'
     ])
     expect(observation.browserErrors).toEqual([])
@@ -190,57 +191,62 @@ test.describe.serial('seven workflow debugger actions', () => {
     })
   })
 
-  test('emergency stop interrupts running work through the run-scoped cleanup path', async ({
-    page,
-    request
+  test('step over, step into and emergency stop stay out of the toolbar', async ({
+    page
   }) => {
     const observation = observeCommands(page)
     await openWorkflow(page, bridge.url)
-    await clearDefaultBreakpoint(page)
-    const runId = await startDebug(page)
+    await expectHiddenDebuggerActions(page)
+    await startDebug(page)
     await expectPausedBefore(page, 'measure')
-
-    await page.getByRole('button', { name: '继续', exact: true }).click()
-    await expect(nodeRow(page, 'measure'))
-      .toHaveAttribute('data-node-state', 'running')
-    const emergency = page.getByRole('button', {
-      name: '急停',
-      exact: true
-    })
-    await expect(emergency).toHaveAttribute(
-      'title',
-      /当前运行.*非全站硬件急停/
-    )
-    await emergency.click()
-
+    await expectHiddenDebuggerActions(page)
+    await page.getByRole('button', { name: '终止', exact: true }).click()
     await expect(page.locator('.workflow-runtime__run-state'))
       .toHaveText('整体：已取消')
-    const stopped = await snapshot(request, bridge.url, runId)
-    expect(stopped.run.debug?.stopReason).toBe('emergency_stop')
-    expect(states(stopped).measure).toBe('cancelled')
-    expect(
-      stopped.events.some(
-        (event) => event.type === 'debug.emergency_stop_requested'
-      )
-    ).toBe(true)
-    expect(
-      stopped.events.some(
-        (event) =>
-          event.type === 'debug.cancelled' &&
-          event.payload.stopReason === 'emergency_stop'
-      )
-    ).toBe(true)
     await expectAllActionsDisabled(page)
     expect(observation.commands.map((call) => call.command)).toEqual([
-      'continue',
-      'emergency_stop'
+      'terminate'
     ])
     expect(observation.browserErrors).toEqual([])
-    await saveEvidence(page, 'emergency-stop', {
-      runId,
-      stopped,
-      commands: observation.commands
-    })
+  })
+
+  test('workflow canvas ignores drag and delete edits', async ({ page }) => {
+    await openWorkflow(page, bridge.url)
+    const node = page.locator('.react-flow__node-wfNode').first()
+    const referenceNode = page.locator('.react-flow__node-wfNode').nth(1)
+    const before = await node.boundingBox()
+    const referenceBefore = await referenceNode.boundingBox()
+    expect(before).not.toBeNull()
+    expect(referenceBefore).not.toBeNull()
+    if (before === null || referenceBefore === null) return
+    await page.mouse.move(
+      before.x + before.width / 2,
+      before.y + before.height / 2
+    )
+    await page.mouse.down()
+    await page.mouse.move(
+      before.x + before.width / 2 + 120,
+      before.y + before.height / 2 + 80,
+      { steps: 6 }
+    )
+    await page.mouse.up()
+    const after = await node.boundingBox()
+    const referenceAfter = await referenceNode.boundingBox()
+    expect(after).not.toBeNull()
+    expect(referenceAfter).not.toBeNull()
+    if (after === null || referenceAfter === null) return
+    expect(after.x - referenceAfter.x).toBeCloseTo(
+      before.x - referenceBefore.x,
+      0
+    )
+    expect(after.y - referenceAfter.y).toBeCloseTo(
+      before.y - referenceBefore.y,
+      0
+    )
+
+    await node.click()
+    await page.keyboard.press('Delete')
+    await expect(page.locator('.react-flow__node-wfNode')).toHaveCount(6)
   })
 })
 
@@ -360,14 +366,19 @@ async function expectAllActionsDisabled(page: Page): Promise<void> {
   for (const label of [
     '暂停',
     '单步',
-    '步过',
-    '步入',
     '继续',
-    '终止',
-    '急停'
+    '终止'
   ]) {
     await expect(page.getByRole('button', { name: label, exact: true }))
       .toBeDisabled()
+  }
+}
+
+async function expectHiddenDebuggerActions(page: Page): Promise<void> {
+  for (const label of ['步过', '步入', '急停']) {
+    await expect(
+      page.getByRole('button', { name: label, exact: true })
+    ).toHaveCount(0)
   }
 }
 
