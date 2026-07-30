@@ -64,7 +64,7 @@ export default function WorkflowPanel({
   onUnsavedChangesChange
 }: WorkflowPanelProps): React.JSX.Element {
   const [authoringMode, setAuthoringMode] = useState<AuthoringMode>('json')
-  const [runMode, setRunMode] = useState<RunMode>('debug')
+  const [runMode, setRunMode] = useState<RunMode>('run')
   const [legendOpen, setLegendOpen] = useState(false)
   const [outputExpanded, setOutputExpanded] = useState(true)
   const [outputTab, setOutputTab] = useState<OutputTab>('nodes')

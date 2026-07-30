@@ -29,6 +29,12 @@ test('full control DAG edit, dispatch, node feedback and debugger', async ({
   await expect(page.locator('.react-flow__node-wfNode')).toHaveCount(6)
   await expect(page.getByText('TRUE', { exact: true })).toBeVisible()
   await expect(page.getByText('FALSE', { exact: true })).toBeVisible()
+  await expect(
+    page.getByRole('button', { name: '整图运行', exact: true })
+  ).toHaveAttribute('aria-pressed', 'true')
+  await expect(
+    page.getByRole('button', { name: '整图执行：开始运行' })
+  ).toBeVisible()
 
   await page.getByRole('button', { name: '校验', exact: true }).click()
   await expect(page.getByText(/校验通过/)).toBeVisible()
@@ -36,6 +42,10 @@ test('full control DAG edit, dispatch, node feedback and debugger', async ({
   await page.getByRole('button', { name: '保存修订版本' }).click()
   await expect(page.getByText(/已保存修订版本/)).toBeVisible()
 
+  await page.getByRole('button', {
+    name: '调试运行',
+    exact: true
+  }).click()
   await page.getByRole('button', { name: /调试启动/ }).click()
   const debugStatus = page.locator('.workflow-runtime__debug-status strong')
   await expect(debugStatus).toHaveText('已暂停')
