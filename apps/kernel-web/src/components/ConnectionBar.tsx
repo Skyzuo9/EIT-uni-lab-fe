@@ -4,7 +4,7 @@ import { useWorkbench } from '../context/WorkbenchContext'
 import { shouldShowConnectionRecovery } from '../context/connectionPolicy'
 import { useBackendConnection } from '../hooks/useBackendConnection'
 
-const INPUT_CLASS = 'connection-bar__field'
+import styles from './ConnectionBar.module.scss'
 
 export default function ConnectionBar(): React.JSX.Element {
   const {
@@ -29,6 +29,12 @@ export default function ConnectionBar(): React.JSX.Element {
   const trimmedDraftUrl = draftUrl.trim()
   const hasDraftChange = trimmedDraftUrl !== backend.apiUrl
   const targetName = backend.serverKind === 'edge' ? 'Edge' : backend.name
+  const showConnected = backendEnabled && connection === 'connected'
+  const statusLabel = showRecovery
+    ? `${targetName} 连接失败`
+    : showConnected
+      ? `${targetName} 已连接`
+      : null
 
   const handleApply = (): void => {
     const trimmed = draftUrl.trim()
@@ -42,19 +48,26 @@ export default function ConnectionBar(): React.JSX.Element {
 
   return (
     <div
-      className={`connection-bar${showRecovery ? ' is-error' : ''}`}
+      className={[
+        styles.root,
+        showRecovery ? styles.error : '',
+        showConnected ? styles.connected : ''
+      ].filter(Boolean).join(' ')}
       role="group"
       aria-label={`${targetName} 连接配置`}
       data-connection-state={connection}
     >
-      {showRecovery ? (
-        <span className="connection-bar__status" role="alert">
-          <span className="connection-bar__status-dot" aria-hidden="true" />
-          {targetName} 连接失败
+      {statusLabel ? (
+        <span
+          className={styles.status}
+          role={showRecovery ? 'alert' : 'status'}
+        >
+          <span className={styles.statusDot} aria-hidden="true" />
+          {statusLabel}
         </span>
       ) : null}
       <select
-        className={INPUT_CLASS}
+        className={styles.field}
         aria-label="切换服务配置"
         value={backend.id}
         onChange={(event) => selectBackend(event.target.value)}
@@ -66,7 +79,7 @@ export default function ConnectionBar(): React.JSX.Element {
         ))}
       </select>
       <input
-        className={`${INPUT_CLASS} connection-bar__url`}
+        className={`${styles.field} ${styles.url}`}
         aria-label="服务 API 地址"
         value={draftUrl}
         spellCheck={false}
@@ -83,7 +96,7 @@ export default function ConnectionBar(): React.JSX.Element {
       {hasDraftChange || showRecovery ? (
         <button
           type="button"
-          className="connection-bar__action"
+          className={styles.action}
           disabled={!trimmedDraftUrl}
           onClick={handleApply}
         >
