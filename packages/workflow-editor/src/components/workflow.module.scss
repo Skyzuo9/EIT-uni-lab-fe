@@ -555,6 +555,20 @@
   font-size: 12px;
 }
 
+.workflow :global(.workflow-runtime__stage-header)
+  :global(.workflow-runtime__projection-state) {
+  padding: 2px 8px;
+  color: var(--unilab-color-warning);
+  border: 1px solid color-mix(
+    in srgb,
+    var(--unilab-color-warning) 35%,
+    var(--unilab-color-border)
+  );
+  border-radius: 999px;
+  background: var(--unilab-color-warning-soft);
+  font-weight: 600;
+}
+
 .workflow :global(.workflow-runtime__stage-tools) {
   display: flex;
   align-items: center;

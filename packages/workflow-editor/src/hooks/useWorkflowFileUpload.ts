@@ -4,8 +4,8 @@
  * ============================================================
  * Model: Claude Opus 4.8
  * Generation Date: 2026-07-23
- * Prompt Summary: 工作流文件上传 hook(读取本地 JSON 文件并回调内容)
- * Context: 工作流工具栏"上传文件",仅支持 .json,加载到编辑器
+ * Prompt Summary: 工作流文件上传 hook(读取本地 JSON/Python 文件并回调内容)
+ * Context: 工作流工具栏"上传文件",支持 .json/.py,加载到编辑器
  * Human Review Status: [ ] Pending  [ ] Reviewed  [ ] Approved
  * ============================================================
  */
@@ -32,7 +32,9 @@ interface UseWorkflowFileUploadResult {
   handleFileChange: (event: React.ChangeEvent<HTMLInputElement>) => void
 }
 
-// 工作流文件上传:选择本地 JSON 文件 -> 读取文本 -> 回调
+const SUPPORTED_WORKFLOW_EXTENSIONS = ['.json', '.py'] as const
+
+// 工作流文件上传:选择本地 JSON/Python 文件 -> 读取文本 -> 回调
 export function useWorkflowFileUpload({
   onLoaded,
   onError
@@ -50,8 +52,11 @@ export function useWorkflowFileUpload({
       event.target.value = ''
       if (!file) return
 
-      if (!file.name.toLowerCase().endsWith('.json')) {
-        onError?.('不支持的文件类型,请上传 .json 文件')
+      const lowerName = file.name.toLowerCase()
+      if (!SUPPORTED_WORKFLOW_EXTENSIONS.some((extension) =>
+        lowerName.endsWith(extension)
+      )) {
+        onError?.('不支持的文件类型，请上传 .json 或 .py 文件')
         return
       }
 

@@ -258,6 +258,67 @@ export default function WorkflowPanel({
   const fileUpload = useWorkflowFileUpload({
     onLoaded: ({ content, fileName }) => {
       void withBusy(async () => {
+        if (isPythonWorkflowFile(fileName)) {
+          const current = parseCanonicalWorkflow(canonicalSource)
+          if (!current.revision) {
+            throw new Error(
+              current.error || '缺少可供 Python 编译的基础修订版本'
+            )
+          }
+
+          setAuthoringMode('python')
+          editor.replaceContent(content)
+          setSourceFileName(fileName)
+          setPythonSourceMap([])
+          pythonBaseline.current = null
+          latestSequence.current = 0
+          setRun(null)
+          setRunNodes([])
+          setEvents([])
+          setBreakpoints(new Set())
+          setStartNodeId(null)
+          setSelectedNodeId(null)
+          setMessage(`${fileName} 已载入，正在由 OS 编译并投影到 DAG`)
+
+          const baseRevisionId = current.revision.revision_id
+          const compiled = requireAuthoringCandidate(
+            await runtime.compilePythonWorkflow(
+              baseRevisionId,
+              content,
+              workflowFileSourceUri(fileName)
+            ),
+            `无法编译 ${fileName}`
+          )
+          const validated = requireAuthoringCandidate(
+            await runtime.validateAuthoringCandidate(
+              baseRevisionId,
+              compiled
+            ),
+            `${fileName} 未通过编写校验`
+          )
+          const nextCanonical = JSON.stringify(
+            validated.canonical_ir,
+            null,
+            2
+          )
+          const next = parseCanonicalWorkflow(nextCanonical)
+          if (!next.revision) {
+            throw new Error(
+              next.error || 'OS 返回了无效的标准工作流修订版本'
+            )
+          }
+
+          setCanonicalSource(nextCanonical)
+          setPythonSourceMap(validated.source_map || [])
+          pythonBaseline.current = content
+          setMessage(
+            `${fileName} 已应用到画布 · ${next.nodes.length} 个节点 · ${
+              next.links.length
+            } 条控制边`
+          )
+          return
+        }
+
         const canonical = parseCanonicalWorkflow(content)
         const migrated = canonical.revision
           ? null
@@ -350,17 +411,13 @@ export default function WorkflowPanel({
   ): Promise<WorkflowAuthoringCandidate> => {
     const baseRevisionId = revision.revision_id
     const sourceUri = workflowSourceUri(revision.workflow_id)
-    const generated = requireAuthoringCandidate(
+    return requireAuthoringCandidate(
       await runtime.generatePythonWorkflow(
         baseRevisionId,
         revision,
         sourceUri
       ),
       '标准工作流转换为 Python 失败'
-    )
-    return requireAuthoringCandidate(
-      await runtime.validateAuthoringCandidate(baseRevisionId, generated),
-      '生成的 Python 工作流未通过编写校验'
     )
   }, [runtime])
 
@@ -426,6 +483,90 @@ export default function WorkflowPanel({
     return next.revision
   }, [authoringMode, canonicalSource, editor.value, runtime])
 
+  useEffect(() => {
+    if (
+      authoringMode !== 'python' ||
+      !editor.value.trim() ||
+      editor.value === pythonBaseline.current
+    ) {
+      return
+    }
+
+    const source = editor.value
+    const current = parseCanonicalWorkflow(canonicalSource)
+    if (!current.revision) return
+    const currentRevision = current.revision
+    let cancelled = false
+    const timer = globalThis.setTimeout(() => {
+      if (source === pythonBaseline.current) return
+      const baseRevisionId = currentRevision.revision_id
+
+      void runtime.compilePythonWorkflow(
+        baseRevisionId,
+        source,
+        workflowSourceUri(currentRevision.workflow_id)
+      )
+        .then((compiled) => requireAuthoringCandidate(
+          compiled,
+          'Python 编译为标准工作流失败'
+        ))
+        .then((compiled) =>
+          runtime.validateAuthoringCandidate(baseRevisionId, compiled)
+        )
+        .then((validated) => requireAuthoringCandidate(
+          validated,
+          'Python 工作流未通过编写校验'
+        ))
+        .then((validated) => {
+          if (cancelled) return
+          const nextCanonical = JSON.stringify(
+            validated.canonical_ir,
+            null,
+            2
+          )
+          const next = parseCanonicalWorkflow(nextCanonical)
+          if (!next.revision) {
+            throw new Error(
+              next.error || 'OS 返回了无效的标准工作流修订版本'
+            )
+          }
+          setBreakpoints((currentBreakpoints) =>
+            remapWorkflowBreakpoints(
+              currentRevision,
+              next.revision as WorkflowRevision,
+              currentBreakpoints
+            )
+          )
+          setStartNodeId((currentStartNodeId) =>
+            remapWorkflowNodeId(
+              currentRevision,
+              next.revision as WorkflowRevision,
+              currentStartNodeId
+            )
+          )
+          setPythonSourceMap(validated.source_map || [])
+          setCanonicalSource(nextCanonical)
+          pythonBaseline.current = source
+          setMessage(
+            `Python 已自动应用到画布 · ${next.nodes.length} 节点 · ${
+              next.links.length
+            } 边`
+          )
+        })
+        .catch(() => {
+          if (cancelled) return
+          setMessage(
+            'Python 草稿尚未通过 OS 编译，画布保留最近一次有效版本'
+          )
+        })
+    }, 700)
+
+    return () => {
+      cancelled = true
+      globalThis.clearTimeout(timer)
+    }
+  }, [authoringMode, canonicalSource, editor.value, runtime])
+
   const validate = useCallback(async (): Promise<WorkflowRevision | null> => {
     const revision = await resolveRevision()
     const result = await runtime.validateWorkflow(revision)
@@ -454,7 +595,9 @@ export default function WorkflowPanel({
         pythonBaseline.current = candidate.python_source
         setAuthoringMode('python')
         editor.replaceContent(candidate.python_source)
-        setMessage('已由 OS 生成 Python，可编辑后编译、保存或运行')
+        setMessage(
+          '已由 OS 生成 Python 草稿；修改后将自动编译并应用到画布'
+        )
         return
       }
 
@@ -617,6 +760,9 @@ export default function WorkflowPanel({
   ).length
   const sourceInvalid = authoringMode === 'json' && Boolean(parsed.error)
   const sourceRunnable = !sourceInvalid
+  const pythonHasUnappliedChanges =
+    authoringMode === 'python' &&
+    editor.value !== pythonBaseline.current
 
   return (
     <div
@@ -694,8 +840,8 @@ export default function WorkflowPanel({
             ref={fileUpload.inputRef}
             className="workflow__file-input"
             type="file"
-            accept=".json,application/json"
-            aria-label="选择工作流 JSON 文件"
+            accept=".json,.py,application/json,text/x-python"
+            aria-label="选择工作流 JSON 或 Python 文件"
             onChange={fileUpload.handleFileChange}
           />
           <button
@@ -704,7 +850,7 @@ export default function WorkflowPanel({
             disabled={busy}
             onClick={fileUpload.openFilePicker}
           >
-            导入 JSON
+            导入 JSON / Python
           </button>
           <button type="button" className="workflow__upload" disabled={busy} onClick={load}>
             从 OS 载入
@@ -713,12 +859,13 @@ export default function WorkflowPanel({
             <button
               type="button"
               className="workflow__upload"
+              aria-label="编译 Python"
               disabled={busy}
               onClick={() => void withBusy(async () => {
                 await resolveRevision(true)
               })}
             >
-              编译 Python
+              应用 Python 到画布
             </button>
           )}
           <button
@@ -802,7 +949,13 @@ export default function WorkflowPanel({
         <div className="workbench__pane" style={{ flexBasis: `${leftRatio * 100}%` }}>
           <CodeEditor
             title={
-              sourceFileName && authoringMode === 'json'
+              sourceFileName &&
+              (
+                (authoringMode === 'python' &&
+                  isPythonWorkflowFile(sourceFileName)) ||
+                (authoringMode === 'json' &&
+                  !isPythonWorkflowFile(sourceFileName))
+              )
                 ? sourceFileName
                 : authoringMode === 'json'
                 ? `${parsed.revision?.workflow_id || 'workflow'}.revision.json`
@@ -832,6 +985,14 @@ export default function WorkflowPanel({
               <span>
                 {parsed.nodes.length} 个节点 · {parsed.links.length} 条控制边
               </span>
+              {pythonHasUnappliedChanges && (
+                <span
+                  className="workflow-runtime__projection-state"
+                  role="status"
+                >
+                  Python 修改尚未应用
+                </span>
+              )}
             </div>
             <div className="workflow-runtime__stage-tools">
               <button
@@ -1242,6 +1403,14 @@ function workflowSourceUri(workflowId: string): string {
     .replace(/[^A-Za-z0-9_-]+/g, '-')
     .replace(/^-+|-+$/g, '') || 'workflow'
   return `workflows/${safeName}.py`
+}
+
+function isPythonWorkflowFile(fileName: string): boolean {
+  return fileName.toLowerCase().endsWith('.py')
+}
+
+function workflowFileSourceUri(fileName: string): string {
+  return workflowSourceUri(fileName.replace(/\.py$/i, ''))
 }
 
 const DEBUG_STATUS_LABELS: Readonly<Record<string, string>> = {
