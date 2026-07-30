@@ -1,4 +1,5 @@
 import type { MaterialTemplateSummary } from './templateMaterial'
+import { materialScopeClassName } from './materialStyles'
 
 export function MaterialTemplateCard({
   template,
@@ -12,7 +13,9 @@ export function MaterialTemplateCard({
   return (
     <button
       type="button"
-      className={`material-template-card${selected ? ' is-selected' : ''}`}
+      className={materialScopeClassName(
+        `material-template-card${selected ? ' is-selected' : ''}`
+      )}
       onClick={() => onSelect(template.uuid)}
       aria-pressed={selected}
     >

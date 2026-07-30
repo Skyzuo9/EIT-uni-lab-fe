@@ -8,6 +8,7 @@ import {
 } from './MaterialStoreProvider'
 import { MaterialTemplateLauncher } from './MaterialTemplateLauncher'
 import { MaterialTreeSidebar } from './MaterialTreeSidebar'
+import { materialScopeClassName } from './materialStyles'
 import { MaterialCanvas } from './react-flow/MaterialCanvas'
 import type { MaterialTemplateCatalogPort } from './templateMaterial'
 import type { MaterialId, MaterialScope } from './types'
@@ -70,7 +71,7 @@ export function MaterialWorkbench({
   const inspectedMaterialId = selectedMaterialIds[0] ?? null
 
   return (
-    <div className="material-workbench">
+    <div className={materialScopeClassName('material-workbench')}>
       <MaterialTreeSidebar
         selectedMaterialIds={selectedMaterialIds}
         onSelectionChange={onSelectionChange}

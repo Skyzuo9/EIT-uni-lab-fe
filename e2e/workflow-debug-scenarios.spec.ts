@@ -6,6 +6,7 @@ import {
 } from '@playwright/test'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { startOfflineLocalBridge } from './helpers/offline-local-bridge'
 
 interface ApiCall {
   method: string
@@ -36,6 +37,96 @@ interface DebugSnapshot {
     payload: Record<string, unknown>
   }>
 }
+
+test('Python debug markers stay in the gutter and follow code edits', async ({
+  page
+}) => {
+  const profile = resolve(
+    process.cwd(),
+    'e2e/fixtures/host-node-test-latency/profile.yaml'
+  )
+  const bridge = await startOfflineLocalBridge(0, [profile])
+  try {
+    await page.setViewportSize({ width: 1920, height: 1200 })
+    await page.goto(`/?localOsUrl=${encodeURIComponent(bridge.url)}`)
+    await page.getByText('工作流', { exact: true }).first().click()
+    await page.locator('input[type="file"]').setInputFiles({
+      name: 'debug-marker-lines.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from(JSON.stringify(debugMarkerWorkflow()))
+    })
+    await expect(
+      page.getByText(/已自动迁移并通过 OS 校验/)
+    ).toBeVisible()
+    const firstNode = page.locator(
+      '.react-flow__node-wfNode[data-id="first"]'
+    )
+    await firstNode.getByRole('button', {
+      name: '设为起始点 first'
+    }).click()
+    const secondNode = page.locator(
+      '.react-flow__node-wfNode[data-id="second"]'
+    )
+    await secondNode.getByRole('button', {
+      name: '设置断点 second'
+    }).click()
+
+    const pythonMode = page.getByRole('button', {
+      name: 'Python',
+      exact: true
+    })
+    await expect(pythonMode).toBeEnabled()
+    await pythonMode.click()
+    await expect(pythonMode).toHaveAttribute('aria-pressed', 'true')
+
+    const startMarker = page.locator(
+      '.cm-workflow-marker--start'
+    ).first()
+    const gutter = page.locator('.cm-gutters')
+    await expect(startMarker).toBeVisible()
+    await expect(gutter).toBeVisible()
+
+    const [markerBounds, gutterBounds] = await Promise.all([
+      startMarker.boundingBox(),
+      gutter.boundingBox()
+    ])
+    expect(markerBounds).not.toBeNull()
+    expect(gutterBounds).not.toBeNull()
+    expect(markerBounds!.x).toBeGreaterThanOrEqual(gutterBounds!.x)
+    expect(markerBounds!.x + markerBounds!.width).toBeLessThanOrEqual(
+      gutterBounds!.x + gutterBounds!.width
+    )
+    await expect(
+      page.locator('.cm-content .cm-workflow-marker')
+    ).toHaveCount(0)
+
+    const markerLineBeforeEdit = await codeLineNumber(startMarker)
+    await page.locator('.cm-content').click()
+    await page.keyboard.press('Control+Home')
+    await page.keyboard.insertText('\n')
+    await expect
+      .poll(() => codeLineNumber(startMarker))
+      .toBe(markerLineBeforeEdit + 1)
+    const shiftedMarkerLine = await codeLineNumber(startMarker)
+    await page.locator('.cm-line').nth(shiftedMarkerLine - 1).click({
+      position: { x: 1, y: 8 }
+    })
+    await page.keyboard.press('Home')
+    await page.keyboard.press('Home')
+    await page.keyboard.press('Backspace')
+    await expect
+      .poll(() => codeLineNumber(startMarker))
+      .toBe(markerLineBeforeEdit)
+    await page.locator('.cm-editor').screenshot({
+      path: resolve(
+        artifactDirectory(),
+        'workflow-debug-gutter-markers.png'
+      )
+    })
+  } finally {
+    await bridge.stop()
+  }
+})
 
 test('marked start continues through breakpoint 1 and breakpoint 2', async ({
   page,
@@ -490,6 +581,51 @@ function debugCommandNames(apiCalls: ApiCall[]): string[] {
 
 function osBaseUrl(): string {
   return process.env.UNILAB_OS_E2E_URL || 'http://127.0.0.1:8014'
+}
+
+async function codeLineNumber(
+  marker: ReturnType<Page['locator']>
+): Promise<number> {
+  return marker.evaluate((element) => {
+    const gutterLine = Number((element as HTMLElement).dataset.line)
+    if (Number.isInteger(gutterLine) && gutterLine > 0) return gutterLine
+    const line = element.closest('.cm-line')
+    const content = element.closest('.cm-content')
+    if (!line || !content) return -1
+    return Array.from(content.querySelectorAll('.cm-line')).indexOf(line) + 1
+  })
+}
+
+function debugMarkerWorkflow(): unknown {
+  const node = (uuid: string, x: number) => ({
+    uuid,
+    name: 'test_latency',
+    type: 'ILab',
+    pose: { position: { x, y: 0, z: 0 } },
+    param: {},
+    lab_node_type: 'Device',
+    template_name: 'test_latency',
+    device_name: 'host_node'
+  })
+  return {
+    name: 'Debug marker line mapping',
+    target_lab_uuid: 'fixture-lab',
+    data: {
+      workflow_uuid: 'debug-marker-lines',
+      workflow_name: 'Debug marker line mapping',
+      nodes: [node('first', 0), node('second', 280)],
+      edges: [
+        {
+          source_node_uuid: 'first',
+          target_node_uuid: 'second',
+          source_handle_key: 'ready',
+          source_handle_io: 'source',
+          target_handle_key: 'ready',
+          target_handle_io: 'target'
+        }
+      ]
+    }
+  }
 }
 
 function artifactDirectory(): string {

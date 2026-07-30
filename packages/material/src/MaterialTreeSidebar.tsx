@@ -7,6 +7,7 @@ import {
 } from 'react'
 
 import { useMaterialStore } from './MaterialStoreProvider'
+import { materialScopeClassName } from './materialStyles'
 import type {
   MaterialAggregate,
   MaterialId,
@@ -62,7 +63,9 @@ export function MaterialTreeSidebar({
     return (
       <button
         type="button"
-        className="material-tree-sidebar__reopen"
+        className={materialScopeClassName(
+          'material-tree-sidebar__reopen'
+        )}
         aria-label="展开物料列表"
         onClick={() => setOpen(true)}
       >
@@ -72,7 +75,9 @@ export function MaterialTreeSidebar({
   }
 
   return (
-    <aside className="material-tree-sidebar">
+    <aside
+      className={materialScopeClassName('material-tree-sidebar')}
+    >
       <header>
         <div>
           <span>物料列表</span>

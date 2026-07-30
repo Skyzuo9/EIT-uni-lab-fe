@@ -10,6 +10,7 @@ import type {
   MaterialId,
   MaterialSite
 } from '../types'
+import { materialScopeClassName } from '../materialStyles'
 import {
   buildMaterialObliqueScene,
   type MaterialObliqueObject,
@@ -66,7 +67,7 @@ export function MaterialObliqueCanvas({
 
   return (
     <div
-      className="material-oblique-canvas"
+      className={materialScopeClassName('material-oblique-canvas')}
       data-material-oblique-view
     >
       <div className="material-oblique-canvas__header">

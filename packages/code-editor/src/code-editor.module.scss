@@ -1,0 +1,103 @@
+/* CodeMirror owns its runtime classes; the local root bounds that interop. */
+.codeEditor :global(.cm-workflow-line) {
+  box-shadow: inset 3px 0 0 transparent;
+}
+
+.codeEditor :global(.cm-workflow-line--before-start),
+.codeEditor :global(.cm-workflow-line--skipped) {
+  color: #747b87;
+  background: rgb(148 163 184 / 12%);
+  box-shadow: inset 3px 0 0 var(--unilab-color-skipped);
+}
+
+.codeEditor :global(.cm-workflow-line--success) {
+  background: rgb(22 163 74 / 10%);
+  box-shadow: inset 3px 0 0 var(--unilab-color-success);
+}
+
+.codeEditor :global(.cm-workflow-line--running) {
+  background: rgb(217 119 6 / 17%);
+  box-shadow: inset 3px 0 0 var(--unilab-color-warning);
+}
+
+.codeEditor :global(.cm-workflow-line--failed) {
+  background: rgb(220 38 38 / 13%);
+  box-shadow: inset 3px 0 0 var(--unilab-color-danger);
+}
+
+.codeEditor :global(.cm-workflow-line--start) {
+  box-shadow: inset 3px 0 0 var(--unilab-color-start);
+}
+
+.codeEditor :global(.cm-workflow-line--paused) {
+  background: rgb(37 99 235 / 18%);
+  box-shadow: inset 3px 0 0 var(--unilab-color-paused);
+}
+
+.codeEditor :global(.cm-workflow-marker-gutter) {
+  border-inline-end: 1px solid rgb(255 255 255 / 8%);
+}
+
+.codeEditor
+  :global(.cm-workflow-marker-gutter)
+  :global(.cm-gutterElement) {
+  min-width: 18px;
+  padding: 0 3px;
+}
+
+.codeEditor :global(.cm-workflow-markers) {
+  display: inline-flex;
+  min-height: 18px;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+  white-space: nowrap;
+}
+
+.codeEditor :global(.cm-workflow-marker) {
+  display: inline-grid;
+  width: 12px;
+  height: 12px;
+  margin: 0;
+  padding: 0;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid rgb(255 255 255 / 55%);
+  border-radius: 50%;
+  color: #d8dee9;
+  background: #495057;
+  font: 700 8px/1 var(--unilab-font-sans);
+  text-align: center;
+}
+
+.codeEditor :global(.cm-workflow-marker--start) {
+  color: #fff;
+  background: var(--unilab-color-start);
+}
+
+.codeEditor :global(.cm-workflow-marker--breakpoint),
+.codeEditor :global(.cm-workflow-marker--failed) {
+  color: #fff;
+  background: var(--unilab-color-danger);
+}
+
+.codeEditor :global(.cm-workflow-marker--paused) {
+  color: #fff;
+  background: var(--unilab-color-paused);
+}
+
+.codeEditor :global(.cm-workflow-marker--running) {
+  color: #fff;
+  background: var(--unilab-color-warning);
+}
+
+.codeEditor :global(.cm-workflow-marker--success) {
+  color: #fff;
+  background: var(--unilab-color-success);
+}
+
+.codeEditor :global(.cm-workflow-marker--before-start),
+.codeEditor :global(.cm-workflow-marker--skipped) {
+  color: #fff;
+  background: var(--unilab-color-skipped);
+}

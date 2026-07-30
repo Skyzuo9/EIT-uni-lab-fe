@@ -32,6 +32,7 @@ import {
 import { migrateCloudWorkflowJson } from '../utils/parseWorkflowJson'
 import { workflowDebugControls } from '../utils/debugControls'
 import { useWorkflowFileUpload } from '../hooks/useWorkflowFileUpload'
+import styles from './workflow.module.scss'
 
 export interface WorkflowStepFocus {
   stepId: string
@@ -618,7 +619,9 @@ export default function WorkflowPanel({
   const sourceRunnable = !sourceInvalid
 
   return (
-    <div className="workflow workflow-runtime">
+    <div
+      className={`${styles.workflow} workflow-runtime relative flex h-full w-full flex-col bg-[var(--unilab-color-canvas)] text-[var(--unilab-color-text)]`}
+    >
       <div className="workflow__toolbar">
         <div className="workflow__context">
           <div className="workflow__title-row">
@@ -1349,27 +1352,32 @@ function workflowCodeMarkers(
     )
     if (!line) continue
     if (options.beforeStartNodeIds.has(nodeId)) {
-      markers.push({ line, kind: 'before-start', label: '不执行' })
+      markers.push({
+        nodeId,
+        line,
+        kind: 'before-start',
+        label: '不执行'
+      })
     } else {
       const state = options.nodeStates[nodeId]
       if (state === 'running') {
-        markers.push({ line, kind: 'running', label: '正在运行' })
+        markers.push({ nodeId, line, kind: 'running', label: '正在运行' })
       } else if (state === 'success') {
-        markers.push({ line, kind: 'success', label: '成功' })
+        markers.push({ nodeId, line, kind: 'success', label: '成功' })
       } else if (state === 'failed' || state === 'reconciling') {
-        markers.push({ line, kind: 'failed', label: '失败' })
+        markers.push({ nodeId, line, kind: 'failed', label: '失败' })
       } else if (state === 'skipped') {
-        markers.push({ line, kind: 'skipped', label: '已跳过' })
+        markers.push({ nodeId, line, kind: 'skipped', label: '已跳过' })
       }
     }
     if (options.startNodeId === nodeId) {
-      markers.push({ line, kind: 'start', label: '⚑ 起始点' })
+      markers.push({ nodeId, line, kind: 'start', label: '⚑ 起始点' })
     }
     if (options.breakpoints.has(nodeId)) {
-      markers.push({ line, kind: 'breakpoint', label: '● 断点' })
+      markers.push({ nodeId, line, kind: 'breakpoint', label: '● 断点' })
     }
     if (options.pausedBeforeNodeId === nodeId) {
-      markers.push({ line, kind: 'paused', label: '下一步' })
+      markers.push({ nodeId, line, kind: 'paused', label: '下一步' })
     }
   }
   return markers

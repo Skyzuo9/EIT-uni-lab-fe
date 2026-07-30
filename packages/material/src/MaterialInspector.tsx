@@ -2,6 +2,7 @@ import { SlideOverDrawer } from '@unilab/design-system'
 
 import { useMaterialStore } from './MaterialStoreProvider'
 import type { CapabilityStatus } from './MaterialCapabilityNotice'
+import { materialScopeClassName } from './materialStyles'
 import type { MaterialId } from './types'
 
 export function MaterialInspector({
@@ -21,7 +22,11 @@ export function MaterialInspector({
     <SlideOverDrawer
       open={materialId !== null}
       title={
-        <span className="material-inspector__drawer-title">
+        <span
+          className={materialScopeClassName(
+            'material-inspector__drawer-title'
+          )}
+        >
           <strong>物料属性</strong>
           {aggregate ? <small>{aggregate.material.name}</small> : null}
         </span>
@@ -30,7 +35,9 @@ export function MaterialInspector({
       closeLabel="关闭物料属性"
       onClose={onClose}
     >
-      <aside className="material-inspector">
+      <aside
+        className={materialScopeClassName('material-inspector')}
+      >
         {!aggregate ? (
           <p>选择 2D 或 3D 中的物料查看详情</p>
         ) : (

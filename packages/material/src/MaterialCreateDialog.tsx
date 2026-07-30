@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 
 import type { CapabilityStatus } from './MaterialCapabilityNotice'
+import { materialScopeClassName } from './materialStyles'
 import {
   createMaterialDraftFromTemplate,
   type MaterialTemplateDetail,
@@ -50,7 +51,9 @@ export function MaterialCreateDialog({
   }
 
   return (
-    <div className="material-dialog-backdrop">
+    <div
+      className={materialScopeClassName('material-dialog-backdrop')}
+    >
       <section
         className="material-dialog"
         role="dialog"

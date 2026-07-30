@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
 
 import type { CapabilityStatus } from './MaterialCapabilityNotice'
+import { materialScopeClassName } from './materialStyles'
 import { MaterialTemplateLibrary } from './MaterialTemplateLibrary'
 import type {
   MaterialTemplateCatalogPort,
@@ -71,7 +72,9 @@ export function MaterialTemplateLauncher({
   const activeTab = tabs.find((tab) => tab.kind === activeKind)
 
   return (
-    <div className="material-template-launcher">
+    <div
+      className={materialScopeClassName('material-template-launcher')}
+    >
       <div
         className="material-template-launcher__tabs"
         aria-label="添加物料"

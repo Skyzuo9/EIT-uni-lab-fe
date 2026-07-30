@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client'
 import App from './App'
 import '@unilab/design-system/theme.css'
 import './styles/global.css'
+import './styles/tailwind.css'
 import './styles/pascal.css'
 
 // Pascal 0.9.2's post-processing pipeline cannot render through the

@@ -11,6 +11,7 @@ import 'reactflow/dist/style.css'
 
 import type { CapabilityStatus } from '../MaterialCapabilityNotice'
 import { MaterialCapabilityNotice } from '../MaterialCapabilityNotice'
+import { materialScopeClassName } from '../materialStyles'
 import {
   useMaterialStore,
   useMaterialStoreApi
@@ -118,7 +119,11 @@ export function MaterialCanvas({
 
   if (!readStatus.available) {
     return (
-      <section className="material-canvas is-unavailable">
+      <section
+        className={materialScopeClassName(
+          'material-canvas is-unavailable'
+        )}
+      >
         <MaterialCapabilityNotice
           title="物料图不可用"
           status={readStatus}
@@ -128,15 +133,25 @@ export function MaterialCanvas({
   }
 
   if (loadState === 'loading' || loadState === 'idle') {
-    return <section className="material-canvas is-loading">正在加载物料图…</section>
+    return (
+      <section
+        className={materialScopeClassName(
+          'material-canvas is-loading'
+        )}
+      >
+        正在加载物料图…
+      </section>
+    )
   }
 
   return (
     <section
       ref={canvasRef}
-      className={`material-canvas${
-        floorplanOverlay ? ' is-floorplan-overlay' : ''
-      }`}
+      className={materialScopeClassName(
+        `material-canvas${
+          floorplanOverlay ? ' is-floorplan-overlay' : ''
+        }`
+      )}
     >
       {error ? <MaterialLoadError technicalMessage={error} /> : null}
       <div

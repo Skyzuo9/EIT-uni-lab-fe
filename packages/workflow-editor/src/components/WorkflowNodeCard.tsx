@@ -11,7 +11,7 @@
  */
 import { Handle, Position } from 'reactflow'
 import type { NodeProps } from 'reactflow'
-import styles from './vendor.module.scss'
+import styles from './workflow.module.scss'
 
 // 自定义节点承载的数据
 export interface WorkflowNodeData {

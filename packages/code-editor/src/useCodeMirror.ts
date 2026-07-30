@@ -10,11 +10,17 @@
  * ============================================================
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Compartment, EditorState } from '@codemirror/state'
+import {
+  EditorState,
+  RangeSet,
+  StateEffect,
+  StateField
+} from '@codemirror/state'
 import {
   Decoration,
   EditorView,
-  WidgetType,
+  GutterMarker,
+  gutter,
   highlightActiveLine,
   keymap,
   lineNumbers
@@ -25,10 +31,12 @@ import { python } from '@codemirror/lang-python'
 import { yaml } from '@codemirror/lang-yaml'
 import { oneDark } from '@codemirror/theme-one-dark'
 import type { Extension } from '@codemirror/state'
+import type { DecorationSet } from '@codemirror/view'
 
 export type EditorLanguage = 'yaml' | 'json' | 'python'
 
 export interface CodeLineMarker {
+  nodeId?: string
   line: number
   kind:
     | 'before-start'
@@ -52,57 +60,190 @@ export interface UseCodeMirrorResult {
   revealLine: (line: number) => void
 }
 
-class CodeMarkerWidget extends WidgetType {
-  constructor(private readonly marker: CodeLineMarker) {
+const MARKER_GLYPHS: Readonly<Record<CodeLineMarker['kind'], string>> = {
+  'before-start': '—',
+  start: '⚑',
+  breakpoint: '●',
+  paused: 'Ⅱ',
+  running: '●',
+  success: '✓',
+  failed: '×',
+  skipped: '—'
+}
+
+interface AnchoredCodeMarker {
+  key: string
+  marker: CodeLineMarker
+  position: number
+  sourceLine: number
+}
+
+interface CodeMarkerState {
+  anchors: ReadonlyArray<AnchoredCodeMarker>
+  decorations: DecorationSet
+  gutterMarkers: RangeSet<GutterMarker>
+}
+
+const setCodeMarkers = StateEffect.define<
+  ReadonlyArray<CodeLineMarker>
+>()
+
+class CodeMarkerGutter extends GutterMarker {
+  constructor(
+    private readonly markers: ReadonlyArray<CodeLineMarker>,
+    private readonly lineNumber: number
+  ) {
     super()
   }
 
-  eq(other: CodeMarkerWidget): boolean {
+  eq(other: CodeMarkerGutter): boolean {
     return (
-      other.marker.kind === this.marker.kind &&
-      other.marker.label === this.marker.label
+      other.lineNumber === this.lineNumber &&
+      other.markers.length === this.markers.length &&
+      other.markers.every((marker, index) => {
+        const current = this.markers[index]
+        return (
+          marker.kind === current.kind &&
+          marker.label === current.label
+        )
+      })
     )
   }
 
   toDOM(): HTMLElement {
-    const element = document.createElement('span')
-    element.className = `cm-workflow-marker cm-workflow-marker--${this.marker.kind}`
-    element.textContent = this.marker.label
-    element.title = this.marker.label
-    return element
+    const group = document.createElement('span')
+    group.className = 'cm-workflow-markers'
+    group.dataset.line = String(this.lineNumber)
+    for (const marker of this.markers) {
+      const element = document.createElement('span')
+      element.className =
+        `cm-workflow-marker cm-workflow-marker--${marker.kind}`
+      element.dataset.line = String(this.lineNumber)
+      element.textContent = MARKER_GLYPHS[marker.kind]
+      element.title = marker.label
+      element.setAttribute('aria-label', marker.label)
+      group.append(element)
+    }
+    return group
   }
 }
 
 function markerExtension(markers: ReadonlyArray<CodeLineMarker>): Extension {
-  return EditorView.decorations.compute([], (state) => {
-    const grouped = new Map<number, CodeLineMarker[]>()
-    for (const marker of markers) {
-      const line = Math.max(1, Math.min(marker.line, state.doc.lines))
-      const current = grouped.get(line) || []
-      current.push(marker)
-      grouped.set(line, current)
-    }
-    const ranges = [...grouped.entries()]
-      .sort(([left], [right]) => left - right)
-      .flatMap(([lineNumber, lineMarkers]) => {
-        const line = state.doc.line(lineNumber)
-        const classes = lineMarkers
-          .map((marker) => `cm-workflow-line--${marker.kind}`)
-          .join(' ')
-        return [
-          Decoration.line({
-            attributes: { class: `cm-workflow-line ${classes}` }
-          }).range(line.from),
-          ...lineMarkers.map((marker, index) => (
-            Decoration.widget({
-              widget: new CodeMarkerWidget(marker),
-              side: -20 + index
-            }).range(line.from)
-          ))
-        ]
+  const markerState = StateField.define<CodeMarkerState>({
+    create(state) {
+      return buildMarkerState(
+        state,
+        reconcileCodeMarkers(state, [], markers)
+      )
+    },
+    update(current, transaction) {
+      let anchors = current.anchors.map((anchor) => ({
+        ...anchor,
+        position: transaction.changes.mapPos(anchor.position, 1)
+      }))
+      for (const effect of transaction.effects) {
+        if (effect.is(setCodeMarkers)) {
+          anchors = reconcileCodeMarkers(
+            transaction.state,
+            anchors,
+            effect.value
+          )
+        }
+      }
+      return buildMarkerState(transaction.state, anchors)
+    },
+    provide: (field) => [
+      EditorView.decorations.from(
+        field,
+        (value) => value.decorations
+      ),
+      gutter({
+        class: 'cm-workflow-marker-gutter',
+        markers: (view) => view.state.field(field).gutterMarkers
       })
-    return Decoration.set(ranges, true)
+    ]
   })
+  return markerState
+}
+
+function reconcileCodeMarkers(
+  state: EditorState,
+  current: ReadonlyArray<AnchoredCodeMarker>,
+  markers: ReadonlyArray<CodeLineMarker>
+): AnchoredCodeMarker[] {
+  const byKey = new Map(current.map((anchor) => [anchor.key, anchor]))
+  const byNode = new Map<string, AnchoredCodeMarker>()
+  for (const anchor of current) {
+    if (anchor.marker.nodeId && !byNode.has(anchor.marker.nodeId)) {
+      byNode.set(anchor.marker.nodeId, anchor)
+    }
+  }
+  return markers.map((marker, index) => {
+    const key = codeMarkerKey(marker, index)
+    const previous = byKey.get(key) ||
+      (marker.nodeId ? byNode.get(marker.nodeId) : undefined)
+    const sourceLine = marker.line
+    const preserveMappedPosition =
+      previous?.sourceLine === sourceLine
+    const position = preserveMappedPosition
+      ? state.doc.lineAt(
+          Math.min(previous.position, state.doc.length)
+        ).from
+      : state.doc.line(clampLine(sourceLine, state.doc.lines)).from
+    return {
+      key,
+      marker,
+      position,
+      sourceLine
+    }
+  })
+}
+
+function buildMarkerState(
+  state: EditorState,
+  anchors: ReadonlyArray<AnchoredCodeMarker>
+): CodeMarkerState {
+  const grouped = new Map<number, CodeLineMarker[]>()
+  for (const anchor of anchors) {
+    const line = state.doc.lineAt(
+      Math.min(anchor.position, state.doc.length)
+    )
+    const current = grouped.get(line.from) || []
+    current.push(anchor.marker)
+    grouped.set(line.from, current)
+  }
+  const entries = [...grouped.entries()]
+    .sort(([left], [right]) => left - right)
+  const decorations = Decoration.set(
+    entries.map(([position, lineMarkers]) => {
+      const classes = lineMarkers
+        .map((marker) => `cm-workflow-line--${marker.kind}`)
+        .join(' ')
+      return Decoration.line({
+        attributes: { class: `cm-workflow-line ${classes}` }
+      }).range(position)
+    }),
+    true
+  )
+  const gutterMarkers = RangeSet.of(
+    entries.map(([position, lineMarkers]) => {
+      const lineNumber = state.doc.lineAt(position).number
+      return new CodeMarkerGutter(lineMarkers, lineNumber)
+        .range(position)
+    }),
+    true
+  )
+  return { anchors, decorations, gutterMarkers }
+}
+
+function codeMarkerKey(marker: CodeLineMarker, index: number): string {
+  return marker.nodeId
+    ? `${marker.nodeId}:${marker.kind}`
+    : `${marker.line}:${marker.kind}:${marker.label}:${index}`
+}
+
+function clampLine(line: number, lineCount: number): number {
+  return Math.max(1, Math.min(line, lineCount))
 }
 
 // 按语言返回对应的语法扩展;JSON 复用 YAML 高亮(JSON 是 YAML 子集)
@@ -117,7 +258,6 @@ export function useCodeMirror(
 ): UseCodeMirrorResult {
   const containerRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
-  const markerCompartment = useRef(new Compartment())
   const markersRef = useRef<ReadonlyArray<CodeLineMarker>>([])
   const [value, setValue] = useState(initialValue)
   const [baseline, setBaseline] = useState(initialValue)
@@ -140,7 +280,7 @@ export function useCodeMirror(
         indentOnInput(),
         keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
         languageExtension(language),
-        markerCompartment.current.of(markerExtension(markersRef.current)),
+        markerExtension(markersRef.current),
         oneDark,
         EditorView.lineWrapping,
         updateListener
@@ -182,9 +322,7 @@ export function useCodeMirror(
     const view = viewRef.current
     if (view) {
       view.dispatch({
-        effects: markerCompartment.current.reconfigure(
-          markerExtension(markersRef.current)
-        )
+        effects: setCodeMarkers.of(markersRef.current)
       })
     }
   }, [])

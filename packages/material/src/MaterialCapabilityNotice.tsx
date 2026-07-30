@@ -1,3 +1,5 @@
+import { materialScopeClassName } from './materialStyles'
+
 export interface CapabilityStatus {
   available: boolean
   reason?: string
@@ -12,7 +14,10 @@ export function MaterialCapabilityNotice({
 }): React.JSX.Element | null {
   if (status.available) return null
   return (
-    <div className="material-capability" role="status">
+    <div
+      className={materialScopeClassName('material-capability')}
+      role="status"
+    >
       <strong>{title}</strong>
       <span>{status.reason ?? '当前服务配置不支持此功能'}</span>
     </div>

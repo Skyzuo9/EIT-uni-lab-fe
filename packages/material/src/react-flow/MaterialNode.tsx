@@ -1,6 +1,7 @@
 import type { NodeProps } from 'reactflow'
 
 import { useMaterialStore } from '../MaterialStoreProvider'
+import { materialScopeClassName } from '../materialStyles'
 import { isDecorativeDeckRail } from '../sitePresentation'
 import type { MaterialSite } from '../types'
 import {
@@ -23,7 +24,15 @@ export function MaterialNode({
   )
 
   if (!aggregate) {
-    return <div className="material-flow-node is-missing">物料不存在</div>
+    return (
+      <div
+        className={materialScopeClassName(
+          'material-flow-node is-missing'
+        )}
+      >
+        物料不存在
+      </div>
+    )
   }
 
   const occupied = aggregate.sites.reduce(
@@ -46,27 +55,29 @@ export function MaterialNode({
   if (visual.physical || isDeck || isLabware || isStation || isTrash) {
     return (
       <article
-        className={[
-          'material-flow-node',
-          'material-flow-node--physical',
-          `material-flow-node--${
-            isDeck
-              ? 'deck'
-              : isLabware
-                ? 'labware'
-                : isTrash
-                  ? 'trash'
-                  : isEquipment
-                    ? 'station'
-                    : 'labware'
-          }`,
-          renderDefaultEquipmentCard
-            ? 'material-flow-node--equipment-card'
-            : '',
-          selected ? 'is-selected' : ''
-        ]
-          .filter(Boolean)
-          .join(' ')}
+        className={materialScopeClassName(
+          [
+            'material-flow-node',
+            'material-flow-node--physical',
+            `material-flow-node--${
+              isDeck
+                ? 'deck'
+                : isLabware
+                  ? 'labware'
+                  : isTrash
+                    ? 'trash'
+                    : isEquipment
+                      ? 'station'
+                      : 'labware'
+            }`,
+            renderDefaultEquipmentCard
+              ? 'material-flow-node--equipment-card'
+              : '',
+            selected ? 'is-selected' : ''
+          ]
+            .filter(Boolean)
+            .join(' ')
+        )}
         data-material-code={aggregate.material.code}
         data-material-kind={visual.kind}
       >
@@ -139,14 +150,16 @@ export function MaterialNode({
 
   return (
     <article
-      className={[
-        'material-flow-node',
-        'material-flow-node--default',
-        `material-flow-node--default-${presentation.kind}`,
-        selected ? 'is-selected' : ''
-      ]
-        .filter(Boolean)
-        .join(' ')}
+      className={materialScopeClassName(
+        [
+          'material-flow-node',
+          'material-flow-node--default',
+          `material-flow-node--default-${presentation.kind}`,
+          selected ? 'is-selected' : ''
+        ]
+          .filter(Boolean)
+          .join(' ')
+      )}
       data-default-node-kind={presentation.kind}
       data-material-code={aggregate.material.code}
       data-material-kind={visual.kind}

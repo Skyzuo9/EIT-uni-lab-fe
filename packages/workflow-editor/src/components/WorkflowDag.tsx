@@ -18,7 +18,7 @@ import type { WorkflowNodeData } from './WorkflowNodeCard'
 import type { WorkflowLink, WorkflowNode } from '../utils/parseWorkflow'
 import { projectNestedWorkflow } from '../utils/canonicalWorkflow'
 import 'reactflow/dist/style.css'
-import styles from './vendor.module.scss'
+import styles from './workflow.module.scss'
 
 interface WorkflowDagProps {
   nodes: WorkflowNode[]

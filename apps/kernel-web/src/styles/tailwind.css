@@ -1,0 +1,41 @@
+@import "tailwindcss/theme" layer(theme);
+@import "tailwindcss/utilities" layer(utilities);
+
+@source "../**/*.{ts,tsx}";
+@source "../../../../packages/**/*.{ts,tsx}";
+@source "../../../../packages/pascal-host/node_modules/@pascal-app/editor/src/**/*.{ts,tsx}";
+@source "../../../../node_modules/@pascal-app/editor/src/**/*.{ts,tsx}";
+
+@theme inline {
+  --color-background: var(--pascal-background);
+  --color-foreground: var(--pascal-foreground);
+  --color-card: var(--pascal-card);
+  --color-card-foreground: var(--pascal-card-foreground);
+  --color-popover: var(--pascal-popover);
+  --color-popover-foreground: var(--pascal-popover-foreground);
+  --color-primary: var(--pascal-primary);
+  --color-primary-foreground: var(--pascal-primary-foreground);
+  --color-secondary: var(--pascal-secondary);
+  --color-secondary-foreground: var(--pascal-secondary-foreground);
+  --color-muted: var(--pascal-muted);
+  --color-muted-foreground: var(--pascal-muted-foreground);
+  --color-accent: var(--pascal-accent);
+  --color-accent-foreground: var(--pascal-accent-foreground);
+  --color-destructive: var(--pascal-destructive);
+  --color-border: var(--pascal-border);
+  --color-input: var(--pascal-input);
+  --color-ring: var(--pascal-ring);
+  --color-sidebar: var(--pascal-sidebar);
+  --color-sidebar-foreground: var(--pascal-sidebar-foreground);
+  --color-sidebar-primary: var(--pascal-sidebar-primary);
+  --color-sidebar-primary-foreground: var(--pascal-sidebar-primary-foreground);
+  --color-sidebar-accent: var(--pascal-sidebar-accent);
+  --color-sidebar-accent-foreground: var(--pascal-sidebar-accent-foreground);
+  --color-sidebar-border: var(--pascal-sidebar-border);
+  --color-sidebar-ring: var(--pascal-sidebar-ring);
+  --radius-sm: calc(var(--pascal-radius) - 4px);
+  --radius-md: calc(var(--pascal-radius) - 2px);
+  --radius-lg: var(--pascal-radius);
+  --font-sans: var(--unilab-font-sans);
+  --font-barlow: var(--unilab-font-sans);
+}

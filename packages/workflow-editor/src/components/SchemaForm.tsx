@@ -13,7 +13,7 @@ import Form from '@rjsf/core'
 import validator from '@rjsf/validator-ajv8'
 import type { IChangeEvent } from '@rjsf/core'
 import type { RJSFSchema } from '@rjsf/utils'
-import styles from './vendor.module.scss'
+import styles from './workflow.module.scss'
 
 interface SchemaFormProps {
   // 步骤的完整 action_schema(含 properties.goal)

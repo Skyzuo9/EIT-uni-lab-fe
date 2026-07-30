@@ -7,6 +7,7 @@ import {
 } from './MaterialCapabilityNotice'
 import { MaterialCreateDialog } from './MaterialCreateDialog'
 import { MaterialTemplateCard } from './MaterialTemplateCard'
+import { materialScopeClassName } from './materialStyles'
 import type {
   MaterialTemplateCatalogPort,
   MaterialTemplateDetail,
@@ -105,7 +106,9 @@ export function MaterialTemplateLibrary({
   )
 
   return (
-    <aside className="material-template-library">
+    <aside
+      className={materialScopeClassName('material-template-library')}
+    >
       <header>
         <div>
           <span>物料目录</span>
