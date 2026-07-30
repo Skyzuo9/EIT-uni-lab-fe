@@ -961,16 +961,24 @@ export default function WorkflowPanel({
             className="workflow__file-input"
             type="file"
             accept=".json,.py,application/json,text/x-python"
-            aria-label="选择工作流 JSON 或 Python 文件"
+            aria-label="选择工作流文件"
             onChange={fileUpload.handleFileChange}
           />
           <button
             type="button"
             className="workflow__upload"
             disabled={busy}
-            onClick={fileUpload.openFilePicker}
+            onClick={() => fileUpload.openFilePicker('json')}
           >
-            导入 JSON / Python
+            导入 JSON
+          </button>
+          <button
+            type="button"
+            className="workflow__upload"
+            disabled={busy}
+            onClick={() => fileUpload.openFilePicker('python')}
+          >
+            导入 Python
           </button>
           <button type="button" className="workflow__upload" disabled={busy} onClick={load}>
             从 OS 载入

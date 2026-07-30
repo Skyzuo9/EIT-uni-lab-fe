@@ -29,6 +29,11 @@ export interface SaveFilePayload {
   defaultName?: string
 }
 
+// 打开文件的入参:accept 指定对话框过滤的文件类型,缺省为 JSON
+export interface OpenFilePayload {
+  accept?: 'json' | 'python'
+}
+
 const api = {
   getVersion: (): Promise<string> => ipcRenderer.invoke('app:getVersion'),
   auth: {
@@ -40,8 +45,9 @@ const api = {
     logout: (): Promise<boolean> => ipcRenderer.invoke('auth:logout')
   },
   file: {
-    // 打开本地 JSON 文件,取消返回 null
-    open: (): Promise<OpenedFile | null> => ipcRenderer.invoke('file:open'),
+    // 打开本地文件(accept 指定类型,默认 JSON),取消返回 null
+    open: (payload?: OpenFilePayload): Promise<OpenedFile | null> =>
+      ipcRenderer.invoke('file:open', payload),
     // 保存文本到本地文件(path 为 null 时弹出"另存为"),取消返回 null
     save: (payload: SaveFilePayload): Promise<SavedFile | null> =>
       ipcRenderer.invoke('file:save', payload)

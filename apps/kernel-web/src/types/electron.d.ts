@@ -15,6 +15,10 @@ interface SaveFilePayload {
   defaultName?: string
 }
 
+interface OpenFilePayload {
+  accept?: 'json' | 'python'
+}
+
 interface DesktopApi {
   getVersion: () => Promise<string>
   auth: {
@@ -23,7 +27,7 @@ interface DesktopApi {
     logout: () => Promise<boolean>
   }
   file?: {
-    open: () => Promise<OpenedFile | null>
+    open: (payload?: OpenFilePayload) => Promise<OpenedFile | null>
     save: (payload: SaveFilePayload) => Promise<SavedFile | null>
   }
 }

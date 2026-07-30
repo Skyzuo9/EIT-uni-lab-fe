@@ -13,6 +13,11 @@ interface SaveFilePayload {
   defaultName?: string
 }
 
+// 打开文件的入参:accept 指定对话框过滤的文件类型,缺省为 JSON
+interface OpenFilePayload {
+  accept?: 'json' | 'python'
+}
+
 // 诊断日志：写到家目录 ~/lab-pc-client.log，便于定位启动/渲染错误
 const LOG_PATH = join(homedir(), 'lab-pc-client.log')
 function logLine(message: string): void {
@@ -164,11 +169,15 @@ app.whenReady().then(() => {
     return true
   })
 
-  // 打开本地 JSON 文件:弹出选择框并读取文本内容
-  ipcMain.handle('file:open', async () => {
+  // 打开本地文件:弹出选择框并读取文本内容。
+  // accept 指定过滤的文件类型: 'json'(默认) 仅 .json, 'python' 仅 .py。
+  ipcMain.handle('file:open', async (_event, payload?: OpenFilePayload) => {
+    const isPython = payload?.accept === 'python'
     const options: Electron.OpenDialogOptions = {
-      title: '打开 JSON 文件',
-      filters: [{ name: 'JSON', extensions: ['json'] }],
+      title: isPython ? '打开 Python 文件' : '打开 JSON 文件',
+      filters: isPython
+        ? [{ name: 'Python', extensions: ['py'] }]
+        : [{ name: 'JSON', extensions: ['json'] }],
       properties: ['openFile']
     }
     const result = mainWindow
