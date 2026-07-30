@@ -1894,35 +1894,6 @@ body {
   white-space: nowrap;
 }
 
-.edge-device__default-tag {
-  display: inline-flex;
-  min-height: 18px;
-  align-items: center;
-  flex: 0 0 auto;
-  padding: 1px 6px;
-  color: color-mix(
-    in srgb,
-    var(--unilab-color-warning) 82%,
-    var(--unilab-color-text)
-  );
-  border: 1px solid color-mix(
-    in srgb,
-    var(--unilab-color-warning) 28%,
-    var(--unilab-color-border)
-  );
-  border-radius: 999px;
-  background: var(--unilab-color-warning-soft);
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: .04em;
-  line-height: 1;
-}
-
-.edge-device .device-list__status.is-default {
-  background: var(--unilab-color-warning);
-  box-shadow: 0 0 0 3px var(--unilab-color-warning-soft);
-}
-
 .edge-device__chevron {
   color: var(--unilab-color-text-subtle);
   font-size: 18px;

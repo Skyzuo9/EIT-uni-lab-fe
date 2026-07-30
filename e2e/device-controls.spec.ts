@@ -51,12 +51,14 @@ test.describe('Edge device catalog and single-action debug', () => {
     await expect(
       connectionHeader.getByText('Edge 已连接', { exact: true })
     ).toBeVisible()
-    await expect(page.getByText('6 台设备 · 4 台 Edge 上报')).toBeVisible()
+    await expect(
+      page.getByText('4 台设备 · Edge 实时上报')
+    ).toBeVisible()
     await expect(
       page
         .getByRole('complementary', { name: 'Edge 设备列表' })
         .getByText('默认', { exact: true })
-    ).toHaveCount(2)
+    ).toHaveCount(0)
     await page.getByRole('button', { name: /pump-1/ }).click()
 
     const detail = page.getByRole('main')

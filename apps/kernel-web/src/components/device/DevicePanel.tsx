@@ -16,7 +16,7 @@ import {
 } from '@unilab/services'
 
 import { useWorkbench } from '../../context/WorkbenchContext'
-import type { ManagedDevice } from '../../data/defaultDevices'
+import type { ManagedDevice } from '../../data/deviceCatalog'
 import { useDevices } from '../../hooks/useDevices'
 import './DevicePanel.module.scss'
 
@@ -107,10 +107,6 @@ export default function DevicePanel(): React.JSX.Element {
       execution.run != null
       && !TERMINAL_RUN_STATUSES.has(execution.run.status)
     )
-  const edgeDeviceCount = devices.filter(
-    (device) => device.reportedByEdge
-  ).length
-
   useEffect(() => {
     if (!devices.length) {
       setSelectedDeviceId(null)
@@ -305,7 +301,7 @@ export default function DevicePanel(): React.JSX.Element {
           <div>
             <h1 className="section__list-title">仪器设备</h1>
             <span className="section__list-meta">
-              {devices.length} 台设备 · {edgeDeviceCount} 台 Edge 上报
+              {devices.length} 台设备 · Edge 实时上报
             </span>
           </div>
           <button
@@ -322,7 +318,7 @@ export default function DevicePanel(): React.JSX.Element {
           backendName={backend.name}
           lastUpdated={lastUpdated}
         />
-        {loading && edgeDeviceCount === 0 ? (
+        {loading && devices.length === 0 ? (
           <div className="device-loading" role="status">
             正在读取 Edge 设备与动作目录…
           </div>
@@ -358,8 +354,7 @@ export default function DevicePanel(): React.JSX.Element {
         )}
         <div className="edge-device__source-note">
           <span>数据来源</span>
-          机械臂与相机为默认设备模板；在线状态、动作与结果仍以 Edge
-          实时上报为准。
+          设备、在线状态、动作与结果均来自 Edge 实时上报。
         </div>
       </aside>
 
@@ -456,17 +451,10 @@ function DeviceListItem({
           <span className="device-list__row">
             <span
               className={`device-list__status ${
-                !device.reportedByEdge
-                  ? 'is-default'
-                  : device.online
-                    ? 'is-online'
-                    : 'is-offline'
+                device.online ? 'is-online' : 'is-offline'
               }`}
             />
             <span className="device-list__name">{device.displayName}</span>
-            {device.isDefault ? (
-              <span className="edge-device__default-tag">默认</span>
-            ) : null}
           </span>
           <span className="device-list__key">
             {device.displayDetail} · {device.actions.length} 个动作
@@ -512,49 +500,28 @@ function DeviceWorkspace({
         <div>
           <div className="edge-device__identity-title">
             <h2>{device.displayName}</h2>
-            {device.isDefault ? (
-              <span className="edge-device__default-tag">默认</span>
-            ) : null}
           </div>
           <p>{device.deviceKey || `${device.namespace}/${device.id}`}</p>
         </div>
         <span
           className={`edge-device__status-badge ${
-            !device.reportedByEdge
-              ? 'is-pending'
-              : device.online
-                ? 'is-online'
-                : 'is-offline'
+            device.online ? 'is-online' : 'is-offline'
           }`}
         >
-          {!device.reportedByEdge
-            ? '待接入'
-            : device.online
-              ? '在线'
-              : '离线'}
+          {device.online ? '在线' : '离线'}
         </span>
       </header>
 
       <div className="edge-device__metrics" aria-label="设备目录信息">
         <Metric
-          label={device.reportedByEdge ? '上报 Edge' : '设备类型'}
-          value={
-            device.reportedByEdge
-              ? device.machineName
-              : device.displayDetail
-          }
+          label="上报 Edge"
+          value={device.machineName}
         />
         <Metric label="命名空间" value={device.namespace || '—'} />
         <Metric label="动作节点" value={`${device.actions.length}`} />
         <Metric
           label="当前状态"
-          value={
-            !device.reportedByEdge
-              ? '等待接入'
-              : device.online
-                ? '可调试'
-                : '不可用'
-          }
+          value={device.online ? '可调试' : '不可用'}
           tone={device.online ? 'success' : 'muted'}
         />
       </div>
@@ -564,11 +531,7 @@ function DeviceWorkspace({
           <div className="edge-device__section-heading">
             <div>
               <span>动作目录</span>
-              <h3>
-                {device.reportedByEdge
-                  ? 'Edge 上报的动作节点'
-                  : '等待 Edge 动作目录'}
-              </h3>
+              <h3>Edge 上报的动作节点</h3>
             </div>
             <small>{device.actions.length} 个</small>
           </div>
@@ -608,9 +571,7 @@ function DeviceWorkspace({
             </div>
           ) : (
             <div className="edge-device__no-actions">
-              {device.reportedByEdge
-                ? 'Edge 已上报该设备，但没有可调试的动作节点。'
-                : `这是默认设备模板；Edge 上报设备 ID “${device.id}” 后，可在此调试动作节点。`}
+              Edge 已上报该设备，但没有可调试的动作节点。
             </div>
           )}
         </section>

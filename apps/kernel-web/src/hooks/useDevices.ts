@@ -4,7 +4,7 @@
  * ============================================================
  * Model: Claude Opus 4.8
  * Generation Date: 2026-07-22
- * Prompt Summary: 设备列表数据 hook(在线拉取 online-devices,离线用示例)
+ * Prompt Summary: 设备列表数据 hook(仅展示 Edge 上报设备)
  * Context: 设备方向 MVP,处理 loading/error/empty
  * Human Review Status: [ ] Pending  [ ] Reviewed  [ ] Approved
  * ============================================================
@@ -13,9 +13,9 @@ import { useCallback, useEffect, useState } from 'react'
 import { useServices } from '@unilab/services'
 import { useWorkbench } from '../context/WorkbenchContext'
 import {
-  mergeWithDefaultDevices,
+  presentEdgeDevices,
   type ManagedDevice
-} from '../data/defaultDevices'
+} from '../data/deviceCatalog'
 
 interface UseDevicesResult {
   devices: ManagedDevice[]
@@ -25,29 +25,26 @@ interface UseDevicesResult {
   refresh: () => Promise<void>
 }
 
-// 默认模板只负责占位展示；状态、动作与执行能力始终来自 Edge。
 export function useDevices(): UseDevicesResult {
   const { backendEnabled, connection } = useWorkbench()
   const services = useServices()
   const client = services.laboratory
   const canListActions = services.capabilities.devices.listActions
   const isOnline = backendEnabled && connection === 'connected'
-  const [devices, setDevices] = useState<ManagedDevice[]>(() =>
-    mergeWithDefaultDevices([])
-  )
+  const [devices, setDevices] = useState<ManagedDevice[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [lastUpdated, setLastUpdated] = useState<number | null>(null)
 
   const refresh = useCallback(async () => {
     if (!backendEnabled) {
-      setDevices(mergeWithDefaultDevices([]))
+      setDevices([])
       setError(null)
       setLastUpdated(null)
       return
     }
     if (!canListActions) {
-      setDevices(mergeWithDefaultDevices([]))
+      setDevices([])
       setError(
         services.getCapabilityStatus('devices.listActions').reason
           ?? '当前服务不支持 Action 目录'
@@ -59,11 +56,11 @@ export function useDevices(): UseDevicesResult {
     setError(null)
     try {
       const list = await client.getOnlineDevices()
-      setDevices(mergeWithDefaultDevices(list))
+      setDevices(presentEdgeDevices(list))
       setLastUpdated(Date.now())
     } catch (err) {
       setError(err instanceof Error ? err.message : '获取设备列表失败')
-      setDevices(mergeWithDefaultDevices([]))
+      setDevices([])
     } finally {
       setLoading(false)
     }
@@ -73,7 +70,7 @@ export function useDevices(): UseDevicesResult {
   useEffect(() => {
     if (!isOnline) {
       if (connection === 'error' || connection === 'disconnected') {
-        setDevices(mergeWithDefaultDevices([]))
+        setDevices([])
         setLastUpdated(null)
       }
       return

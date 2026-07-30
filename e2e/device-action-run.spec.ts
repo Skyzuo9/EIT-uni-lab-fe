@@ -9,6 +9,49 @@ const ARTIFACT_ROOT = resolve(
 )
 
 test.describe('Edge device Action single run', () => {
+  test('does not synthesize robot or camera for an empty Edge catalog', async ({
+    page
+  }) => {
+    await page.route('http://127.0.0.1:8014/**', async (route) => {
+      const path = new URL(route.request().url()).pathname
+      if (path === '/health') {
+        await route.fulfill({ json: { status: 'ok' } })
+        return
+      }
+      if (path === '/api/v1/workflow-node-templates') {
+        await route.fulfill({
+          json: {
+            schemaVersion: 'workflow-node-templates/v1',
+            items: []
+          }
+        })
+        return
+      }
+      await route.fulfill({
+        status: 404,
+        json: { message: `Unexpected request: ${path}` }
+      })
+    })
+
+    await page.goto('/')
+
+    const catalog = page.getByRole('complementary', {
+      name: 'Edge 设备列表'
+    })
+    await expect(
+      catalog.getByText('0 台设备 · Edge 实时上报')
+    ).toBeVisible()
+    await expect(
+      catalog.getByText('等待 Edge 上报设备', { exact: true })
+    ).toBeVisible()
+    await expect(
+      catalog.getByText(/机械臂|相机/)
+    ).toHaveCount(0)
+    await expect(
+      page.getByRole('main').getByText('暂无可调试设备', { exact: true })
+    ).toBeVisible()
+  })
+
   test('keeps the existing catalog and form while persisting compact parameters and complete logs', async ({
     context,
     page
@@ -200,6 +243,10 @@ test.describe('Edge device Action single run', () => {
       name: 'Edge 设备列表'
     })
     await expect(catalog).toBeVisible()
+    await expect(
+      catalog.getByText('1 台设备 · Edge 实时上报')
+    ).toBeVisible()
+    await expect(catalog.getByRole('listitem')).toHaveCount(1)
     await catalog.getByRole('button', { name: /pump_1/ }).click()
 
     const detail = page.getByRole('main')
