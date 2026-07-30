@@ -31,6 +31,7 @@ import {
 } from '../utils/canonicalWorkflow'
 import { migrateCloudWorkflowJson } from '../utils/parseWorkflowJson'
 import { workflowDebugControls } from '../utils/debugControls'
+import { useWorkflowDownload } from '../hooks/useWorkflowDownload'
 import { useWorkflowFileUpload } from '../hooks/useWorkflowFileUpload'
 import styles from './workflow.module.scss'
 
@@ -63,6 +64,13 @@ export default function WorkflowPanel({
   const [outputTab, setOutputTab] = useState<OutputTab>('nodes')
   const [compactPane, setCompactPane] = useState<CompactPane>('dag')
   const [sourceFileName, setSourceFileName] = useState<string | null>(null)
+  const [saveFilePromptOpen, setSaveFilePromptOpen] = useState(false)
+  const saveFileButtonRef = useRef<HTMLButtonElement>(null)
+  const saveRevisionButtonRef = useRef<HTMLButtonElement>(null)
+  const workflowDownload = useWorkflowDownload()
+  const sourceFileWriter = useRef<
+    ((content: string) => Promise<void>) | null
+  >(null)
   const editor = useCodeMirror(CONTROL_DAG_JSON, authoringMode)
   const [canonicalSource, setCanonicalSource] = useState(CONTROL_DAG_JSON)
   const pythonBaseline = useRef<string | null>(null)
@@ -140,6 +148,14 @@ export default function WorkflowPanel({
     setOutputExpanded(true)
     setOutputTab('errors')
   }, [error])
+
+  useEffect(() => {
+    if (!saveFilePromptOpen) return
+    const preferredButton = sourceFileWriter.current
+      ? saveFileButtonRef.current
+      : saveRevisionButtonRef.current
+    preferredButton?.focus()
+  }, [saveFilePromptOpen])
 
   const selectedNode = runNodes.find(
     (node) =>
@@ -225,6 +241,8 @@ export default function WorkflowPanel({
         editor.replaceContent(canonicalText)
         setCanonicalSource(canonicalText)
         setSourceFileName(null)
+        sourceFileWriter.current = null
+        setSaveFilePromptOpen(false)
         setPythonSourceMap([])
         pythonBaseline.current = null
         latestSequence.current = 0
@@ -256,7 +274,7 @@ export default function WorkflowPanel({
   }, [activeWorkflowStorageKey, editor.replaceContent, runtime])
 
   const fileUpload = useWorkflowFileUpload({
-    onLoaded: ({ content, fileName }) => {
+    onLoaded: ({ content, fileName, writeBack }) => {
       void withBusy(async () => {
         const canonical = parseCanonicalWorkflow(content)
         const migrated = canonical.revision
@@ -285,6 +303,8 @@ export default function WorkflowPanel({
         editor.replaceContent(canonicalText)
         setCanonicalSource(canonicalText)
         setSourceFileName(fileName)
+        sourceFileWriter.current = writeBack || null
+        setSaveFilePromptOpen(false)
         setPythonSourceMap([])
         pythonBaseline.current = null
         latestSequence.current = 0
@@ -467,7 +487,7 @@ export default function WorkflowPanel({
     })
   }
 
-  const save = (): void => {
+  const saveRevision = (saveFile: boolean): void => {
     void withBusy(async () => {
       const revision = await validate()
       if (!revision) return
@@ -475,16 +495,54 @@ export default function WorkflowPanel({
         revision.workflow_id,
         revision
       )
-      setCanonicalSource(
-        JSON.stringify(document.revision.canonical, null, 2)
+      const savedCanonical = JSON.stringify(
+        document.revision.canonical,
+        null,
+        2
       )
+      setCanonicalSource(savedCanonical)
       persistActiveWorkflowId(
         activeWorkflowStorageKey,
         document.revision.canonical.workflow_id
       )
       editor.markSaved()
-      setMessage(`已保存修订版本 ${document.revision.id}`)
+      let fileSaveMessage = ''
+      if (saveFile && sourceFileName) {
+        if (sourceFileWriter.current) {
+          try {
+            await sourceFileWriter.current(savedCanonical)
+          } catch (writeError) {
+            throw new Error(
+              `修订版本 ${document.revision.id} 已保存，但写回 ${sourceFileName} 失败：${
+                writeError instanceof Error
+                  ? writeError.message
+                  : String(writeError)
+              }`
+            )
+          }
+          fileSaveMessage = ` · 已更新 ${sourceFileName}`
+        } else {
+          workflowDownload.download(savedCanonical, sourceFileName)
+          fileSaveMessage = ` · 已下载 ${sourceFileName}`
+        }
+      }
+      setMessage(
+        `已保存修订版本 ${document.revision.id}${fileSaveMessage}`
+      )
     })
+  }
+
+  const save = (): void => {
+    if (sourceFileName) {
+      setSaveFilePromptOpen(true)
+      return
+    }
+    saveRevision(false)
+  }
+
+  const resolveFileSavePrompt = (saveFile: boolean): void => {
+    setSaveFilePromptOpen(false)
+    saveRevision(saveFile)
   }
 
   const load = (): void => {
@@ -496,6 +554,8 @@ export default function WorkflowPanel({
         revision.workflow_id
       )
       setSourceFileName(null)
+      sourceFileWriter.current = null
+      setSaveFilePromptOpen(false)
       if (authoringMode === 'python') {
         const candidate = await projectToPython(revision)
         setCanonicalSource(JSON.stringify(candidate.canonical_ir, null, 2))
@@ -788,6 +848,70 @@ export default function WorkflowPanel({
           <strong>异常处理</strong>
           <span>{error}</span>
           <button type="button" onClick={() => setError(null)}>关闭</button>
+        </div>
+      )}
+      {saveFilePromptOpen && sourceFileName && (
+        <div
+          className="workflow-save-prompt"
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') setSaveFilePromptOpen(false)
+          }}
+        >
+          <section
+            className="workflow-save-prompt__dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="workflow-save-prompt-title"
+            aria-describedby="workflow-save-prompt-description"
+          >
+            <header className="workflow-save-prompt__header">
+              <span className="workflow-save-prompt__eyebrow">
+                文件导入工作流
+              </span>
+              <h2 id="workflow-save-prompt-title">
+                是否同时保存更新后的文件？
+              </h2>
+            </header>
+            <div className="workflow-save-prompt__body">
+              <p id="workflow-save-prompt-description">
+                当前工作流来自
+                <strong title={sourceFileName}>{sourceFileName}</strong>。
+                保存修订版本时，可以同时保存更新后的 Canonical JSON。
+              </p>
+              <p className="workflow-save-prompt__notice">
+                {sourceFileWriter.current
+                  ? '原文件会被当前内容直接覆盖，请确认不再需要旧版本。'
+                  : '当前浏览器或导入方式没有原文件写入权限，将下载更新后的同名文件。'}
+              </p>
+            </div>
+            <footer className="workflow-save-prompt__actions">
+              <button
+                type="button"
+                className="workflow-save-prompt__cancel"
+                onClick={() => setSaveFilePromptOpen(false)}
+              >
+                取消
+              </button>
+              <button
+                ref={saveRevisionButtonRef}
+                type="button"
+                className="workflow-save-prompt__revision"
+                onClick={() => resolveFileSavePrompt(false)}
+              >
+                仅保存修订
+              </button>
+              <button
+                ref={saveFileButtonRef}
+                type="button"
+                className="workflow-save-prompt__file"
+                onClick={() => resolveFileSavePrompt(true)}
+              >
+                {sourceFileWriter.current
+                  ? '保存到原文件'
+                  : '下载更新文件'}
+              </button>
+            </footer>
+          </section>
         </div>
       )}
       <div

@@ -14,6 +14,7 @@ import { useCallback, useRef } from 'react'
 interface UploadedWorkflow {
   content: string
   fileName: string
+  writeBack?: (content: string) => Promise<void>
 }
 
 interface UseWorkflowFileUploadParams {
@@ -32,6 +33,42 @@ interface UseWorkflowFileUploadResult {
   handleFileChange: (event: React.ChangeEvent<HTMLInputElement>) => void
 }
 
+interface DesktopFileApi {
+  open: () => Promise<{
+    path: string
+    content: string
+  } | null>
+  save: (payload: {
+    path: string | null
+    content: string
+    defaultName?: string
+  }) => Promise<{ path: string } | null>
+}
+
+interface WorkflowFileWritable {
+  write: (content: string) => Promise<void>
+  close: () => Promise<void>
+}
+
+interface WorkflowFileHandle {
+  name: string
+  getFile: () => Promise<File>
+  createWritable: () => Promise<WorkflowFileWritable>
+}
+
+interface WorkflowFilePickerWindow {
+  api?: {
+    file?: DesktopFileApi
+  }
+  showOpenFilePicker?: (options: {
+    multiple: boolean
+    types: Array<{
+      description: string
+      accept: Record<string, string[]>
+    }>
+  }) => Promise<WorkflowFileHandle[]>
+}
+
 // 工作流文件上传:选择本地 JSON 文件 -> 读取文本 -> 回调
 export function useWorkflowFileUpload({
   onLoaded,
@@ -40,8 +77,73 @@ export function useWorkflowFileUpload({
   const inputRef = useRef<HTMLInputElement>(null)
 
   const openFilePicker = useCallback(() => {
-    inputRef.current?.click()
-  }, [])
+    void (async () => {
+      const fileWindow = window as unknown as WorkflowFilePickerWindow
+      const desktopFile = fileWindow.api?.file
+      try {
+        if (desktopFile) {
+          const opened = await desktopFile.open()
+          if (!opened) return
+          const fileName = workflowFileName(opened.path)
+          if (!isJsonFile(fileName)) {
+            onError?.('不支持的文件类型,请上传 .json 文件')
+            return
+          }
+          onLoaded({
+            content: opened.content,
+            fileName,
+            writeBack: async (content) => {
+              const saved = await desktopFile.save({
+                path: opened.path,
+                content
+              })
+              if (!saved) throw new Error('原文件写入已取消')
+            }
+          })
+          return
+        }
+
+        if (fileWindow.showOpenFilePicker) {
+          const [handle] = await fileWindow.showOpenFilePicker({
+            multiple: false,
+            types: [
+              {
+                description: 'JSON',
+                accept: {
+                  'application/json': ['.json']
+                }
+              }
+            ]
+          })
+          if (!handle) return
+          const file = await handle.getFile()
+          if (!isJsonFile(file.name)) {
+            onError?.('不支持的文件类型,请上传 .json 文件')
+            return
+          }
+          onLoaded({
+            content: await file.text(),
+            fileName: file.name,
+            writeBack: async (content) => {
+              const writable = await handle.createWritable()
+              await writable.write(content)
+              await writable.close()
+            }
+          })
+          return
+        }
+
+        inputRef.current?.click()
+      } catch (error) {
+        if (isFilePickerCancellation(error)) return
+        onError?.(
+          error instanceof Error
+            ? `文件读取失败：${error.message}`
+            : '文件读取失败'
+        )
+      }
+    })()
+  }, [onLoaded, onError])
 
   const handleFileChange = useCallback(
     (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -50,7 +152,7 @@ export function useWorkflowFileUpload({
       event.target.value = ''
       if (!file) return
 
-      if (!file.name.toLowerCase().endsWith('.json')) {
+      if (!isJsonFile(file.name)) {
         onError?.('不支持的文件类型,请上传 .json 文件')
         return
       }
@@ -67,4 +169,16 @@ export function useWorkflowFileUpload({
   )
 
   return { inputRef, openFilePicker, handleFileChange }
+}
+
+function isJsonFile(fileName: string): boolean {
+  return fileName.toLowerCase().endsWith('.json')
+}
+
+function workflowFileName(filePath: string): string {
+  return filePath.split(/[\\/]/).pop() || 'workflow.json'
+}
+
+function isFilePickerCancellation(error: unknown): boolean {
+  return error instanceof DOMException && error.name === 'AbortError'
 }
