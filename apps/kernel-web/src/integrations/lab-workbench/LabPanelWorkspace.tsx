@@ -18,19 +18,29 @@ import {
 } from './panelLayouts'
 
 export function LabPanelWorkspace({
-  preset
+  preset,
+  onWorkflowUnsavedChangesChange
 }: {
   preset: LabPanelPreset
+  onWorkflowUnsavedChangesChange?: (hasUnsavedChanges: boolean) => void
 }): React.JSX.Element {
-  return <LabPanelWorkspaceSession key={preset} preset={preset} />
+  return (
+    <LabPanelWorkspaceSession
+      key={preset}
+      preset={preset}
+      onWorkflowUnsavedChangesChange={onWorkflowUnsavedChangesChange}
+    />
+  )
 }
 
 function LabPanelWorkspaceSession({
-  preset
+  preset,
+  onWorkflowUnsavedChangesChange
 }: {
   preset: LabPanelPreset
+  onWorkflowUnsavedChangesChange?: (hasUnsavedChanges: boolean) => void
 }): React.JSX.Element {
-  const adapter = useLabPanelAdapter()
+  const adapter = useLabPanelAdapter(onWorkflowUnsavedChangesChange)
   const storageKey = `unilab.panel-layout.${preset}.v1`
   const [document, setDocument] = useState<PanelLayoutDocument>(
     () => panelPresetDocument(preset)

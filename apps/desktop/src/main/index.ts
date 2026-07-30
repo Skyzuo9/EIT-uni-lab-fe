@@ -74,6 +74,24 @@ function createWindow(): void {
   mainWindow.webContents.on('console-message', (_e, level, message, line, sourceId) => {
     if (level >= 2) logLine(`renderer console: ${message} (${sourceId}:${line})`)
   })
+  mainWindow.webContents.on('will-prevent-unload', (event) => {
+    const window = mainWindow
+    if (!window || window.isDestroyed()) return
+
+    const choice = dialog.showMessageBoxSync(window, {
+      type: 'warning',
+      buttons: ['继续编辑', '放弃修改并关闭'],
+      defaultId: 0,
+      cancelId: 0,
+      noLink: true,
+      title: '工作流尚未保存',
+      message: '工作流代码有未保存的修改。',
+      detail: '关闭窗口将丢失这些修改。'
+    })
+    if (choice === 1) {
+      event.preventDefault()
+    }
+  })
 
   // Pascal 的工具栏图标与平面图光标使用站点根路径。在 Electron 的
   // file:// 页面中这些路径会落到系统根目录；这里只允许已知路径，

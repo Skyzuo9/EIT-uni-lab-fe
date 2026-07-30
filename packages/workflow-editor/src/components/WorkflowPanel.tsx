@@ -43,6 +43,7 @@ export interface WorkflowPanelProps {
   runtime: WorkflowRuntimePort
   activeWorkflowStorageKey?: string
   onStepFocus?: (focus: WorkflowStepFocus) => void
+  onUnsavedChangesChange?: (hasUnsavedChanges: boolean) => void
 }
 
 const TERMINAL_RUN_STATES = new Set(['completed', 'failed', 'cancelled'])
@@ -54,7 +55,8 @@ type CompactPane = 'code' | 'dag'
 export default function WorkflowPanel({
   runtime,
   activeWorkflowStorageKey,
-  onStepFocus
+  onStepFocus,
+  onUnsavedChangesChange
 }: WorkflowPanelProps): React.JSX.Element {
   const [authoringMode, setAuthoringMode] = useState<AuthoringMode>('json')
   const [runMode, setRunMode] = useState<RunMode>('debug')
@@ -134,6 +136,30 @@ export default function WorkflowPanel({
   useEffect(() => {
     editor.setLineMarkers(codeMarkers)
   }, [codeMarkers, editor.setLineMarkers])
+
+  useEffect(() => {
+    onUnsavedChangesChange?.(editor.isDirty)
+  }, [editor.isDirty, onUnsavedChangesChange])
+
+  useEffect(
+    () => () => {
+      onUnsavedChangesChange?.(false)
+    },
+    [onUnsavedChangesChange]
+  )
+
+  useEffect(() => {
+    if (!editor.isDirty) return
+
+    const preventUnsavedUnload = (event: BeforeUnloadEvent): void => {
+      event.preventDefault()
+      event.returnValue = ''
+    }
+    globalThis.addEventListener('beforeunload', preventUnsavedUnload)
+    return () => {
+      globalThis.removeEventListener('beforeunload', preventUnsavedUnload)
+    }
+  }, [editor.isDirty])
 
   useEffect(() => {
     if (!error) return

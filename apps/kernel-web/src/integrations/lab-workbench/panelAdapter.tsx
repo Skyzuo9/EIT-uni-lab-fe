@@ -33,6 +33,7 @@ import {
 export interface LabPanelScope {
   services: Services
   interaction: LabInteractionStore
+  onWorkflowUnsavedChangesChange?: (hasUnsavedChanges: boolean) => void
 }
 
 const PANEL_TITLES: Readonly<Record<string, string>> = {
@@ -143,6 +144,7 @@ function WorkflowRenderer(
           }`
         )
       }.v1`}
+      onUnsavedChangesChange={props.scope.onWorkflowUnsavedChangesChange}
       onStepFocus={(focus) => {
         const interaction = props.scope.interaction.getState()
         interaction.selectWorkflowStep(focus.stepId)
@@ -202,7 +204,9 @@ function UnifiedLayoutRenderer(
  * workbench-layout stays application-neutral and each feature remains independently
  * testable.
  */
-export function useLabPanelAdapter(): PanelAppAdapter<LabPanelScope> {
+export function useLabPanelAdapter(
+  onWorkflowUnsavedChangesChange?: (hasUnsavedChanges: boolean) => void
+): PanelAppAdapter<LabPanelScope> {
   const services = useServices()
   const interaction = useLabInteractionStore()
 
@@ -212,7 +216,11 @@ export function useLabPanelAdapter(): PanelAppAdapter<LabPanelScope> {
       storage,
       parseLayout: parsePanelLayoutDocument,
       scope: {
-        resolve: () => ({ services, interaction })
+        resolve: () => ({
+          services,
+          interaction,
+          onWorkflowUnsavedChangesChange
+        })
       },
       renderers: {
         resolve: (panelInstance) => {
@@ -239,6 +247,6 @@ export function useLabPanelAdapter(): PanelAppAdapter<LabPanelScope> {
         }
       }
     }),
-    [interaction, services]
+    [interaction, onWorkflowUnsavedChangesChange, services]
   )
 }

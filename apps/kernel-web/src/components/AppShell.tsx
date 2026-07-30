@@ -9,6 +9,7 @@
  * Human Review Status: [ ] Pending  [ ] Reviewed  [ ] Approved
  * ============================================================
  */
+import { useCallback, useRef } from 'react';
 import { useWorkbench } from '../context/WorkbenchContext';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -33,6 +34,35 @@ const NAV_ITEMS: readonly AppShellNavigationItem[] = [
 export default function AppShell(): React.JSX.Element {
   const { section, setSection } = useWorkbench();
   const { session, logout } = useAuth();
+  const hasUnsavedWorkflowChanges = useRef(false);
+  const handleWorkflowUnsavedChangesChange = useCallback(
+    (hasUnsavedChanges: boolean) => {
+      hasUnsavedWorkflowChanges.current = hasUnsavedChanges;
+    },
+    []
+  );
+  const handleNavigate = useCallback(
+    (navigationId: string) => {
+      const nextSection = navigationId as WorkbenchSection;
+      if (nextSection === section) return;
+
+      if (hasUnsavedWorkflowChanges.current) {
+        const destination = NAV_ITEMS.find(
+          (item) => item.id === nextSection
+        )?.label;
+        const shouldDiscard = globalThis.confirm(
+          `工作流代码有未保存的修改。切换到“${
+            destination || '其他模块'
+          }”将丢失这些修改，是否继续？`
+        );
+        if (!shouldDiscard) return;
+        hasUnsavedWorkflowChanges.current = false;
+      }
+
+      setSection(nextSection);
+    },
+    [section, setSection]
+  );
 
   return (
     <AppShellLayout
@@ -47,18 +77,33 @@ export default function AppShell(): React.JSX.Element {
       }
       navigation={NAV_ITEMS}
       activeNavigationId={section}
-      onNavigate={(navigationId) => setSection(navigationId as WorkbenchSection)}
+      onNavigate={handleNavigate}
     >
-      <SectionView section={section} />
+      <SectionView
+        section={section}
+        onWorkflowUnsavedChangesChange={handleWorkflowUnsavedChangesChange}
+      />
     </AppShellLayout>
   );
 }
 
 // 根据当前方向渲染对应面板
-function SectionView({ section }: { section: WorkbenchSection; }): React.JSX.Element {
+function SectionView({
+  section,
+  onWorkflowUnsavedChangesChange
+}: {
+  section: WorkbenchSection;
+  onWorkflowUnsavedChangesChange: (hasUnsavedChanges: boolean) => void;
+}): React.JSX.Element {
   if (section === 'device') return <DevicePanel />;
   if (section === 'material') {
-    return <LabPanelWorkspace key="material-workspace" preset="lab" />;
+    return (
+      <LabPanelWorkspace
+        key="material-workspace"
+        preset="lab"
+        onWorkflowUnsavedChangesChange={onWorkflowUnsavedChangesChange}
+      />
+    );
   }
   if (section === 'scene') {
     // 3D 场景内部依赖 Pascal/WebGPU，运行时报错时用错误边界兜底，避免整页崩溃
@@ -68,7 +113,13 @@ function SectionView({ section }: { section: WorkbenchSection; }): React.JSX.Ele
       </ErrorBoundary>
     );
   }
-  return <LabPanelWorkspace key="workflow-workspace" preset="workflow" />;
+  return (
+    <LabPanelWorkspace
+      key="workflow-workspace"
+      preset="workflow"
+      onWorkflowUnsavedChangesChange={onWorkflowUnsavedChangesChange}
+    />
+  );
 }
 
 function DeviceIcon(): React.JSX.Element {
