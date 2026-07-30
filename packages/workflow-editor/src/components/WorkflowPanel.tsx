@@ -13,6 +13,7 @@ import {
 import { useResizableSplit } from '@unilab/app-shell'
 import type {
   WorkflowAuthoringCandidate,
+  WorkflowAuthoringDiagnostic,
   WorkflowAuthoringResult,
   WorkflowDebugCommand,
   WorkflowRevision,
@@ -454,12 +455,17 @@ export default function WorkflowPanel({
     onError: (uploadError) => setError(uploadError)
   })
 
+  // JSON → Python：只要 OS 成功生成 Python 就允许切换视图，
+  // validate 仅用于收集诊断（非阻塞）。真正的校验发生在保存 / 运行 / 应用时。
   const projectToPython = useCallback(async (
     revision: WorkflowRevision
-  ): Promise<WorkflowAuthoringCandidate> => {
+  ): Promise<{
+    candidate: WorkflowAuthoringCandidate
+    diagnostics: WorkflowAuthoringDiagnostic[]
+  }> => {
     const baseRevisionId = revision.revision_id
     const sourceUri = workflowSourceUri(revision.workflow_id)
-    return requireAuthoringCandidate(
+    const generated = requireAuthoringCandidate(
       await runtime.generatePythonWorkflow(
         baseRevisionId,
         revision,
@@ -467,6 +473,13 @@ export default function WorkflowPanel({
       ),
       '标准工作流转换为 Python 失败'
     )
+    const validation = await runtime.validateAuthoringCandidate(
+      baseRevisionId,
+      generated
+    )
+    const diagnostics = collectAuthoringDiagnostics(validation)
+    // validate 通过时可能返回带更精确 source_map 的候选，否则回退到已生成的候选。
+    return { candidate: validation.candidate ?? generated, diagnostics }
   }, [runtime])
 
   const resolveRevision = useCallback(async (
@@ -636,16 +649,25 @@ export default function WorkflowPanel({
     void withBusy(async () => {
       if (nextMode === 'python') {
         const revision = await resolveRevision()
-        const candidate = await projectToPython(revision)
+        const { candidate, diagnostics } = await projectToPython(revision)
         const nextCanonical = JSON.stringify(candidate.canonical_ir, null, 2)
         setCanonicalSource(nextCanonical)
         setPythonSourceMap(candidate.source_map || [])
         pythonBaseline.current = candidate.python_source
         setAuthoringMode('python')
+        if (compactPane !== 'code') setCompactPane('code')
         editor.replaceContent(candidate.python_source)
-        setMessage(
-          '已由 OS 生成 Python 草稿；修改后将自动编译并应用到画布'
+        const blockingDiagnostics = diagnostics.filter(
+          (item) => item.severity === 'error'
         )
+        if (blockingDiagnostics.length > 0) {
+          setError(formatAuthoringDiagnostics(blockingDiagnostics))
+          setMessage('已生成 Python，但存在校验问题，需在保存或运行前修正')
+        } else {
+          setMessage(
+            '已由 OS 生成 Python 草稿；修改后将自动编译并应用到画布'
+          )
+        }
         return
       }
 
@@ -738,7 +760,7 @@ export default function WorkflowPanel({
       sourceFileWriter.current = null
       setSaveFilePromptOpen(false)
       if (authoringMode === 'python') {
-        const candidate = await projectToPython(revision)
+        const { candidate } = await projectToPython(revision)
         setCanonicalSource(JSON.stringify(candidate.canonical_ir, null, 2))
         setPythonSourceMap(candidate.source_map || [])
         pythonBaseline.current = candidate.python_source
@@ -1537,24 +1559,38 @@ function persistActiveWorkflowId(
   }
 }
 
+function collectAuthoringDiagnostics(
+  result: WorkflowAuthoringResult
+): WorkflowAuthoringDiagnostic[] {
+  return [
+    ...result.diagnostics,
+    ...(result.candidate?.diagnostics || [])
+  ]
+}
+
+function formatAuthoringDiagnostics(
+  diagnostics: ReadonlyArray<WorkflowAuthoringDiagnostic>
+): string {
+  return diagnostics
+    .map((item) => {
+      const location = item.start_line
+        ? `L${item.start_line}:${item.start_column || 1} `
+        : ''
+      return `${location}${item.code}: ${item.message}`
+    })
+    .join('\n')
+}
+
 function requireAuthoringCandidate(
   result: WorkflowAuthoringResult,
   fallback: string
 ): WorkflowAuthoringCandidate {
-  const diagnostics = [
-    ...result.diagnostics,
-    ...(result.candidate?.diagnostics || [])
-  ]
+  const diagnostics = collectAuthoringDiagnostics(result)
   const errors = diagnostics.filter((item) => item.severity === 'error')
   if (!result.candidate || errors.length > 0) {
-    const detail = (errors.length > 0 ? errors : diagnostics)
-      .map((item) => {
-        const location = item.start_line
-          ? `L${item.start_line}:${item.start_column || 1} `
-          : ''
-        return `${location}${item.code}: ${item.message}`
-      })
-      .join('\n')
+    const detail = formatAuthoringDiagnostics(
+      errors.length > 0 ? errors : diagnostics
+    )
     throw new Error(detail || fallback)
   }
   return result.candidate

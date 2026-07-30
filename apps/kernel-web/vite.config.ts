@@ -38,6 +38,10 @@ export default defineConfig(({ mode }) => ({
     include: [
       'react/jsx-runtime',
       'react-dom',
+      // zustand（reactflow/2D 视图依赖）以源码 ESM 提供，其对纯 CJS 的
+      // use-sync-external-store/shim/with-selector.js 做 default 导入。
+      // 不预打包该子路径时会因缺少 default 导出而报错，故显式纳入。
+      'use-sync-external-store/shim/with-selector',
       '@unilab/pascal-lab-plugin > @unilab/pascal-host > @pascal-app/editor > howler'
     ],
     esbuildOptions: {

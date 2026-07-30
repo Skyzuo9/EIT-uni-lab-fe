@@ -1187,6 +1187,16 @@
 :where(.scope, .scope *):global(.material-flow-node--equipment-card) {
   --material-node-accent: #7c3aed;
   --material-node-accent-soft: #f1ebff;
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+// 默认设备卡片已在中央展示名称，外层顶部的白色标签药丸属于冗余“白框”，隐藏它，
+// 只保留紫色默认卡片。
+:where(.scope, .scope *):global(.material-flow-node--equipment-card)
+  :global(.material-flow-node__physical-label) {
+  display: none;
 }
 
 :where(.scope, .scope *):global(.material-flow-node__equipment-card) {
