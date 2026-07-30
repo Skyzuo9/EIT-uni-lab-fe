@@ -12,19 +12,33 @@
 import { requestData, type HttpClient } from './http'
 
 export interface OnlineDevice {
+  id: string
   deviceKey: string
   namespace: string
   machineName: string
-  uuid: string
-  nodeName: string
+  online: boolean
+  actions: DeviceAction[]
 }
 
 export interface DeviceAction {
   actionName: string
+  actionRef: string
+  displayName: string
   typeName: string
   isBusy: boolean
-  currentJobId: string | null
-  schema: Record<string, unknown> | null
+  inputSchema: Record<string, DeviceActionInputSchema>
+  outputSchema: Record<string, DeviceActionInputSchema>
+}
+
+export interface DeviceActionInputSchema {
+  type?: string
+  title?: string
+  description?: string
+  default?: unknown
+  enum?: unknown[]
+  required?: boolean
+  minimum?: number
+  maximum?: number
 }
 
 export interface DeviceStatus {
@@ -72,29 +86,26 @@ export function createLaboratoryService(http: HttpClient) {
     },
 
     async getOnlineDevices(): Promise<OnlineDevice[]> {
-      const raw = await requestData<Record<string, unknown>[]>(
-        http,
-        '/api/v1/online-devices'
+      const raw = await http.request<unknown>(
+        '/api/v1/devices'
       )
-      return raw.map(mapOnlineDevice)
+      const payload = unwrapRecord(raw)
+      const items = Array.isArray(payload.items) ? payload.items : []
+      return items.map((item) => mapOnlineDevice(asRecord(item)))
     },
 
     async getDeviceActions(deviceId: string): Promise<DeviceAction[]> {
-      const raw = await requestData<Record<string, unknown>[]>(
-        http,
-        `/api/v1/devices/${encodeURIComponent(deviceId)}/actions`
-      )
-      return raw.map(mapDeviceAction)
+      const devices = await this.getOnlineDevices()
+      return devices.find((device) => device.id === deviceId)?.actions ?? []
     },
 
     async getActionSchema(
       deviceId: string,
       actionName: string
     ): Promise<Record<string, unknown>> {
-      return requestData<Record<string, unknown>>(
-        http,
-        `/api/v1/devices/${encodeURIComponent(deviceId)}/actions/${encodeURIComponent(actionName)}/schema`
-      )
+      const action = (await this.getDeviceActions(deviceId))
+        .find((candidate) => candidate.actionName === actionName)
+      return action?.inputSchema ?? {}
     },
 
     async getResources(): Promise<ResourceNode[]> {
@@ -131,22 +142,39 @@ export type LaboratoryService = ReturnType<typeof createLaboratoryService>
 
 function mapOnlineDevice(raw: Record<string, unknown>): OnlineDevice {
   return {
-    deviceKey: str(raw.device_key),
+    id: str(raw.id),
+    deviceKey: str(raw.deviceKey ?? raw.device_key),
     namespace: str(raw.namespace),
-    machineName: str(raw.machine_name),
-    uuid: str(raw.uuid),
-    nodeName: str(raw.node_name)
+    machineName: str(raw.name ?? raw.machine_name ?? raw.id),
+    online: Boolean(raw.online ?? raw.is_online),
+    actions: Array.isArray(raw.actions)
+      ? raw.actions.map((action) => mapDeviceAction(asRecord(action)))
+      : []
   }
 }
 
 function mapDeviceAction(raw: Record<string, unknown>): DeviceAction {
   return {
-    actionName: str(raw.action_name ?? raw.name),
-    typeName: str(raw.type_name),
-    isBusy: Boolean(raw.is_busy),
-    currentJobId: raw.current_job_id == null ? null : str(raw.current_job_id),
-    schema: isRecord(raw.schema) ? raw.schema : null
+    actionName: str(raw.id ?? raw.action_name),
+    actionRef: str(raw.actionRef ?? raw.action_ref),
+    displayName: str(raw.name ?? raw.label ?? raw.id ?? raw.action_name),
+    typeName: str(raw.typeName ?? raw.type_name),
+    isBusy: Boolean(raw.busy ?? raw.is_busy),
+    inputSchema: mapActionSchema(raw.inputSchema ?? raw.input_schema),
+    outputSchema: mapActionSchema(raw.outputSchema ?? raw.output_schema)
   }
+}
+
+function mapActionSchema(
+  raw: unknown
+): Record<string, DeviceActionInputSchema> {
+  if (!isRecord(raw)) return {}
+  return Object.fromEntries(
+    Object.entries(raw).map(([name, value]) => [
+      name,
+      isRecord(value) ? value as DeviceActionInputSchema : {}
+    ])
+  )
 }
 
 function mapResource(raw: Record<string, unknown>): ResourceNode {
@@ -189,4 +217,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function asRecord(value: unknown): Record<string, unknown> {
   return isRecord(value) ? value : {}
+}
+
+function unwrapRecord(raw: unknown): Record<string, unknown> {
+  const record = asRecord(raw)
+  return isRecord(record.data) ? record.data : record
 }
