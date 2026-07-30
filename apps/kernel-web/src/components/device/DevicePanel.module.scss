@@ -1,0 +1,27 @@
+:global(.edge-device__execution-tools) {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+:global(.edge-device__copy-button) {
+  min-height: 28px;
+  padding: 0 9px;
+  color: var(--unilab-color-text-muted);
+  border: 1px solid var(--unilab-color-border-strong);
+  border-radius: 6px;
+  background: var(--unilab-color-surface);
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 650;
+}
+
+:global(.edge-device__copy-button:hover) {
+  color: var(--unilab-color-text);
+  border-color: var(--unilab-color-device);
+}
+
+:global(.edge-device__copy-button:focus-visible) {
+  outline: 2px solid var(--unilab-color-focus);
+  outline-offset: 2px;
+}
