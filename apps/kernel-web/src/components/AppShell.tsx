@@ -50,12 +50,12 @@ export default function AppShell(): React.JSX.Element {
         const destination = NAV_ITEMS.find(
           (item) => item.id === nextSection
         )?.label;
-        const shouldDiscard = globalThis.confirm(
+        const shouldNavigate = globalThis.confirm(
           `工作流代码有未保存的修改。切换到“${
             destination || '其他模块'
-          }”将丢失这些修改，是否继续？`
+          }”后修改仍会保留，离开页面前请及时保存。是否继续？`
         );
-        if (!shouldDiscard) return;
+        if (!shouldNavigate) return;
         hasUnsavedWorkflowChanges.current = false;
       }
 

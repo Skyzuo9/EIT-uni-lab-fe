@@ -82,5 +82,7 @@ async function editWorkflow(page: Page) {
   await editor.click()
   await page.keyboard.press('Control+End')
   await page.keyboard.insertText('\n ')
-  await expect(page.getByText('● 未保存', { exact: true })).toBeVisible()
+  await expect(
+    page.locator('span:visible', { hasText: /^● 未保存$/ })
+  ).toBeVisible()
 }
