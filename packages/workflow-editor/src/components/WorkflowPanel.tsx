@@ -6,7 +6,6 @@ import {
   useState
 } from 'react'
 import {
-  CodeEditor,
   type CodeLineMarker,
   useCodeMirror
 } from '@unilab/code-editor'
@@ -22,7 +21,6 @@ import type {
   WorkflowRunNode,
   WorkflowRuntimePort
 } from '@unilab/services'
-import WorkflowDag from './WorkflowDag'
 import {
   CONTROL_DAG_JSON,
   createWorkflowExecutionScope,
@@ -37,7 +35,12 @@ import {
 } from '../utils/debugControls'
 import { useWorkflowDownload } from '../hooks/useWorkflowDownload'
 import { useWorkflowFileUpload } from '../hooks/useWorkflowFileUpload'
+import { WorkflowDebugger } from './WorkflowDebugger'
+import { WorkflowOutput } from './WorkflowOutput'
+import { WorkflowSavePrompt } from './WorkflowSavePrompt'
 import { useWorkflowSessionStore } from './WorkflowSessionProvider'
+import { WorkflowStage } from './WorkflowStage'
+import { WorkflowToolbar } from './WorkflowToolbar'
 import styles from './workflow.module.scss'
 
 export interface WorkflowStepFocus {
@@ -986,8 +989,6 @@ export default function WorkflowPanel({
     })
   )
   const runStatus = run?.status || 'draft'
-  const debugStatusLabel = workflowDebugStatusLabel(debugStatus)
-  const runStatusLabel = workflowRunStatusLabel(runStatus)
   const completedNodeCount = runNodes.filter(
     (node) => ['success', 'skipped'].includes(node.state)
   ).length
@@ -996,180 +997,65 @@ export default function WorkflowPanel({
   const pythonHasUnappliedChanges =
     authoringMode === 'python' &&
     editor.value !== pythonBaseline.current
+  const editorTitle =
+    sourceFileName &&
+    (
+      (authoringMode === 'python' &&
+        isPythonWorkflowFile(sourceFileName)) ||
+      (authoringMode === 'json' &&
+        !isPythonWorkflowFile(sourceFileName))
+    )
+      ? sourceFileName
+      : authoringMode === 'json'
+        ? `${parsed.revision?.workflow_id || 'workflow'}.revision.json`
+        : `${parsed.revision?.workflow_id || 'workflow'}.py`
+  const outputNodes: WorkflowRunNode[] = runNodes.length
+    ? runNodes
+    : parsed.nodes.map((node) => ({
+        nodeId: node.id,
+        sourceNodeId: node.id,
+        nodeType: node.type,
+        deviceId: '',
+        action: node.className,
+        state: executionScope.beforeStartNodeIds.has(node.id)
+          ? 'excluded'
+          : 'pending',
+        result: {},
+        attempt: 0
+      }))
 
   return (
     <div
       className={`${styles.workflow} workflow-runtime relative flex h-full w-full flex-col bg-[var(--unilab-color-canvas)] text-[var(--unilab-color-text)]`}
     >
-      <div className="workflow__toolbar">
-        <div className="workflow__context">
-          <div className="workflow__title-row">
-            <span className="workflow__toolbar-label">工作流运行</span>
-            <span className="workflow__format">
-              {authoringMode === 'json'
-                ? '标准工作流 v2'
-                : 'Python 编写模式'}
-            </span>
-          </div>
-          <span
-            className="workflow-runtime__message"
-            role="status"
-            aria-live="polite"
-          >
-            {message}
-          </span>
-        </div>
-
-        <div
-          className="workflow__mode-switch"
-          role="group"
-          aria-label="工作流编写格式"
-        >
-          <button
-            type="button"
-            className={authoringMode === 'json' ? 'is-active' : ''}
-            aria-pressed={authoringMode === 'json'}
-            disabled={busy}
-            onClick={() => switchAuthoringMode('json')}
-          >
-            JSON
-          </button>
-          <button
-            type="button"
-            className={authoringMode === 'python' ? 'is-active' : ''}
-            aria-pressed={authoringMode === 'python'}
-            disabled={busy}
-            onClick={() => switchAuthoringMode('python')}
-          >
-            Python
-          </button>
-        </div>
-
-        <div
-          className="workflow__mode-switch workflow__mobile-view"
-          role="group"
-          aria-label="紧凑屏幕工作区"
-        >
-          <button
-            type="button"
-            className={compactPane === 'code' ? 'is-active' : ''}
-            aria-pressed={compactPane === 'code'}
-            onClick={() => setCompactPane('code')}
-          >
-            代码
-          </button>
-          <button
-            type="button"
-            className={compactPane === 'dag' ? 'is-active' : ''}
-            aria-pressed={compactPane === 'dag'}
-            onClick={() => setCompactPane('dag')}
-          >
-            DAG
-          </button>
-        </div>
-
-        <div className="workflow__toolbar-actions">
-          <input
-            ref={fileUpload.inputRef}
-            className="workflow__file-input"
-            type="file"
-            accept=".json,.py,application/json,text/x-python"
-            aria-label="选择工作流文件"
-            onChange={fileUpload.handleFileChange}
-          />
-          <button
-            type="button"
-            className="workflow__upload"
-            disabled={busy}
-            onClick={() => fileUpload.openFilePicker('json')}
-          >
-            导入 JSON
-          </button>
-          <button
-            type="button"
-            className="workflow__upload"
-            disabled={busy}
-            onClick={() => fileUpload.openFilePicker('python')}
-          >
-            导入 Python
-          </button>
-          <button type="button" className="workflow__upload" disabled={busy} onClick={load}>
-            从 OS 载入
-          </button>
-          {authoringMode === 'python' && (
-            <button
-              type="button"
-              className="workflow__upload"
-              aria-label="编译 Python"
-              disabled={busy}
-              onClick={() => void withBusy(async () => {
-                await resolveRevision(true)
-              })}
-            >
-              应用 Python 到画布
-            </button>
-          )}
-          <button
-            type="button"
-            className="workflow__upload"
-            disabled={busy || !sourceRunnable}
-            onClick={() => void withBusy(async () => { await validate() })}
-          >
-            校验
-          </button>
-          <button
-            type="button"
-            className="workflow__upload"
-            disabled={busy || !sourceRunnable}
-            onClick={save}
-          >
-            保存修订版本
-          </button>
-
-          <span className="workflow__toolbar-divider" aria-hidden="true" />
-          <div
-            className="workflow__mode-switch workflow__run-mode"
-            role="group"
-            aria-label="运行方式"
-          >
-            <button
-              type="button"
-              className={runMode === 'run' ? 'is-active' : ''}
-              aria-pressed={runMode === 'run'}
-              disabled={busy}
-              onClick={() => setRunMode('run')}
-            >
-              整图运行
-            </button>
-            <button
-              type="button"
-              className={runMode === 'debug' ? 'is-active' : ''}
-              aria-pressed={runMode === 'debug'}
-              disabled={busy}
-              onClick={() => setRunMode('debug')}
-            >
-              调试运行
-            </button>
-          </div>
-          <button
-            type="button"
-            className="workflow-runtime__primary"
-            aria-label={
-              runMode === 'debug'
-                ? '调试启动：开始调试'
-                : '整图执行：开始运行'
-            }
-            disabled={busy || !sourceRunnable}
-            onClick={() => startRun(runMode === 'debug')}
-          >
-            {busy
-              ? '处理中…'
-              : runMode === 'debug'
-                ? '开始调试'
-                : '开始运行'}
-          </button>
-        </div>
-      </div>
+      <WorkflowToolbar
+        authoringMode={authoringMode}
+        runMode={runMode}
+        compactPane={compactPane}
+        message={message}
+        busy={busy}
+        sourceRunnable={sourceRunnable}
+        fileInputRef={fileUpload.inputRef}
+        onFileChange={fileUpload.handleFileChange}
+        onAuthoringModeChange={switchAuthoringMode}
+        onCompactPaneChange={setCompactPane}
+        onImportJson={() => fileUpload.openFilePicker('json')}
+        onImportPython={() => fileUpload.openFilePicker('python')}
+        onLoad={load}
+        onApplyPython={() =>
+          void withBusy(async () => {
+            await resolveRevision(true)
+          })
+        }
+        onValidate={() =>
+          void withBusy(async () => {
+            await validate()
+          })
+        }
+        onSave={save}
+        onRunModeChange={setRunMode}
+        onStart={() => startRun(runMode === 'debug')}
+      />
 
       {error && (
         <div className="workflow-runtime__problem" role="alert">
@@ -1179,469 +1065,69 @@ export default function WorkflowPanel({
         </div>
       )}
       {saveFilePromptOpen && sourceFileName && (
-        <div
-          className="workflow-save-prompt"
-          onKeyDown={(event) => {
-            if (event.key === 'Escape') setSaveFilePromptOpen(false)
-          }}
-        >
-          <section
-            className="workflow-save-prompt__dialog"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="workflow-save-prompt-title"
-            aria-describedby="workflow-save-prompt-description"
-          >
-            <header className="workflow-save-prompt__header">
-              <span className="workflow-save-prompt__eyebrow">
-                文件导入工作流
-              </span>
-              <h2 id="workflow-save-prompt-title">
-                是否同时保存更新后的文件？
-              </h2>
-            </header>
-            <div className="workflow-save-prompt__body">
-              <p id="workflow-save-prompt-description">
-                当前工作流来自
-                <strong title={sourceFileName}>{sourceFileName}</strong>。
-                保存修订版本时，可以同时保存更新后的 Canonical JSON。
-              </p>
-              <p className="workflow-save-prompt__notice">
-                {sourceFileWriter.current
-                  ? '原文件会被当前内容直接覆盖，请确认不再需要旧版本。'
-                  : '当前浏览器或导入方式没有原文件写入权限，将下载更新后的同名文件。'}
-              </p>
-            </div>
-            <footer className="workflow-save-prompt__actions">
-              <button
-                type="button"
-                className="workflow-save-prompt__cancel"
-                onClick={() => setSaveFilePromptOpen(false)}
-              >
-                取消
-              </button>
-              <button
-                ref={saveRevisionButtonRef}
-                type="button"
-                className="workflow-save-prompt__revision"
-                onClick={() => resolveFileSavePrompt(false)}
-              >
-                仅保存修订
-              </button>
-              <button
-                ref={saveFileButtonRef}
-                type="button"
-                className="workflow-save-prompt__file"
-                onClick={() => resolveFileSavePrompt(true)}
-              >
-                {sourceFileWriter.current
-                  ? '保存到原文件'
-                  : '下载更新文件'}
-              </button>
-            </footer>
-          </section>
-        </div>
+        <WorkflowSavePrompt
+          fileName={sourceFileName}
+          canWriteOriginal={Boolean(sourceFileWriter.current)}
+          saveFileButtonRef={saveFileButtonRef}
+          saveRevisionButtonRef={saveRevisionButtonRef}
+          onCancel={() => setSaveFilePromptOpen(false)}
+          onSaveRevision={() => resolveFileSavePrompt(false)}
+          onSaveFile={() => resolveFileSavePrompt(true)}
+        />
       )}
-      <div
-        ref={containerRef}
-        className={[
-          'workbench',
-          'workflow-runtime__workbench',
-          `workflow-runtime__workbench--${compactPane}`,
-          isDragging ? 'workbench--dragging' : ''
-        ].filter(Boolean).join(' ')}
+      <WorkflowStage
+        compactPane={compactPane}
+        containerRef={containerRef}
+        editor={editor}
+        editorTitle={editorTitle}
+        editorLanguage={authoringMode === 'json' ? 'JSON' : 'Python'}
+        isDragging={isDragging}
+        leftRatio={leftRatio}
+        onDividerPointerDown={handlePointerDown}
+        nodes={parsed.nodes}
+        links={parsed.links}
+        parseError={parsed.error}
+        nodeStates={nodeStates}
+        breakpoints={breakpoints}
+        startNodeId={executionScope.startNodeId}
+        beforeStartNodeIds={executionScope.beforeStartNodeIds}
+        pausedBeforeNodeId={run?.debug?.pausedBeforeNodeId || null}
+        pythonHasUnappliedChanges={pythonHasUnappliedChanges}
+        legendOpen={legendOpen}
+        onLegendToggle={() => setLegendOpen((current) => !current)}
+        onNodeSelect={selectNode}
+        onSetStart={setExecutionStart}
+        onToggleBreakpoint={toggleBreakpoint}
       >
-        <div className="workbench__pane" style={{ flexBasis: `${leftRatio * 100}%` }}>
-          <CodeEditor
-            title={
-              sourceFileName &&
-              (
-                (authoringMode === 'python' &&
-                  isPythonWorkflowFile(sourceFileName)) ||
-                (authoringMode === 'json' &&
-                  !isPythonWorkflowFile(sourceFileName))
-              )
-                ? sourceFileName
-                : authoringMode === 'json'
-                ? `${parsed.revision?.workflow_id || 'workflow'}.revision.json`
-                : `${parsed.revision?.workflow_id || 'workflow'}.py`
-            }
-            editor={editor}
-            language={authoringMode === 'json' ? 'JSON' : 'Python'}
-          />
-        </div>
-        <div
-          className="workbench__divider"
-          role="separator"
-          aria-orientation="vertical"
-          onPointerDown={handlePointerDown}
-        >
-          <span className="workbench__grip" />
-        </div>
-        <div
-          className="workbench__pane workflow-runtime__stage"
-          style={{ flexBasis: `${(1 - leftRatio) * 100}%` }}
-        >
-          <header className="workflow-runtime__stage-header">
-            <div>
-              <strong>
-                完整控制流 DAG
-              </strong>
-              <span>
-                {parsed.nodes.length} 个节点 · {parsed.links.length} 条控制边
-              </span>
-              {pythonHasUnappliedChanges && (
-                <span
-                  className="workflow-runtime__projection-state"
-                  role="status"
-                >
-                  Python 修改尚未应用
-                </span>
-              )}
-            </div>
-            <div className="workflow-runtime__stage-tools">
-              <button
-                type="button"
-                aria-expanded={legendOpen}
-                onClick={() => setLegendOpen((current) => !current)}
-              >
-                状态图例
-              </button>
-              <details className="workflow-runtime__help">
-                <summary>操作帮助</summary>
-                <div>
-                  单击节点可同步定位代码。起始点与断点可通过节点内按钮设置；
-                  右键和双击仅作为快捷操作。
-                </div>
-              </details>
-            </div>
-          </header>
-          {legendOpen && (
-            <div className="workflow-runtime__legend" aria-label="节点状态图例">
-              <span className="is-start">⚑ 起始点</span>
-              <span className="is-breakpoint">● 断点</span>
-              <span className="is-paused">Ⅱ 暂停位置</span>
-              <span className="is-running">● 正在运行</span>
-              <span className="is-success">✓ 执行成功</span>
-              <span className="is-excluded">— 不执行或已跳过</span>
-            </div>
-          )}
-          {parsed.error ? (
-            <div className="workflow-runtime__empty">{parsed.error}</div>
-          ) : (
-            <div className="workflow-runtime__canvas">
-              <WorkflowDag
-                nodes={parsed.nodes}
-                links={parsed.links}
-                nodeStates={nodeStates}
-                breakpoints={breakpoints}
-                startNodeId={executionScope.startNodeId}
-                beforeStartNodeIds={executionScope.beforeStartNodeIds}
-                pausedBeforeNodeId={run?.debug?.pausedBeforeNodeId || null}
-                onNodeSelect={selectNode}
-                onSetStart={setExecutionStart}
-                onToggleBreakpoint={toggleBreakpoint}
-              />
-            </div>
-          )}
+        <WorkflowDebugger
+          debugStatus={debugStatus}
+          runStatus={runStatus}
+          pausedBeforeNodeId={run?.debug?.pausedBeforeNodeId || null}
+          startNodeId={executionScope.startNodeId}
+          breakpointCount={breakpoints.size}
+          controls={debugControls}
+          onCommand={(nextCommand, acceptedMessage) =>
+            command(nextCommand, {}, acceptedMessage)
+          }
+        />
 
-          <div className="workflow-runtime__debugger">
-            <div className="workflow-runtime__debug-status">
-              <div className="workflow-runtime__debug-heading">
-                <span
-                  className={`workflow-runtime__debug-mark is-${debugStatus}`}
-                  aria-hidden="true"
-                />
-                <div>
-                  <span>工作流调试器</span>
-                  <small>OS 运行控制</small>
-                </div>
-              </div>
-              <div className="workflow-runtime__debug-summary">
-                <strong
-                  className={`is-${debugStatus}`}
-                  data-debug-status={debugStatus}
-                >
-                  {debugStatusLabel}
-                </strong>
-                <span
-                  className={`workflow-runtime__run-state workflow-runtime__run-state--${runStatus}`}
-                  data-run-status={runStatus}
-                >
-                  整体：{runStatusLabel}
-                </span>
-                {run?.debug?.pausedBeforeNodeId && (
-                  <span className="is-location">
-                    暂停于 {run.debug.pausedBeforeNodeId} 执行之前
-                  </span>
-                )}
-                <span className="is-meta">
-                  <i>起点</i>
-                  {executionScope.startNodeId || 'DAG 根节点'}
-                </span>
-                <span className="is-meta">
-                  <i>断点</i>
-                  {breakpoints.size}
-                </span>
-              </div>
-            </div>
-            <div className="workflow-runtime__debug-actions">
-              <div
-                className="workflow-runtime__debug-action-group"
-                aria-label="调试执行控制"
-              >
-                {debugControls.filter((control) => !control.danger).map((control) => (
-                  <button
-                    key={control.command}
-                    type="button"
-                    className={
-                      control.command === 'continue'
-                        ? 'is-primary'
-                        : undefined
-                    }
-                    data-debug-command={control.command}
-                    aria-label={control.label}
-                    title={control.title}
-                    disabled={control.disabled}
-                    onClick={() => command(
-                      control.command,
-                      {},
-                      control.message
-                    )}
-                  >
-                    <span
-                      className="workflow-runtime__debug-glyph"
-                      aria-hidden="true"
-                    >
-                      {control.glyph}
-                    </span>
-                    <span>{control.label}</span>
-                  </button>
-                ))}
-              </div>
-              <div
-                className="workflow-runtime__debug-action-group is-danger"
-                aria-label="调试停止控制"
-              >
-                {debugControls.filter((control) => control.danger).map((control) => (
-                  <button
-                    key={control.command}
-                    type="button"
-                    className={
-                      control.command === 'emergency_stop'
-                        ? 'is-emergency'
-                        : 'is-danger'
-                    }
-                    data-debug-command={control.command}
-                    aria-label={control.label}
-                    title={control.title}
-                    disabled={control.disabled}
-                    onClick={() => command(
-                      control.command,
-                      {},
-                      control.message
-                    )}
-                  >
-                    <span
-                      className="workflow-runtime__debug-glyph"
-                      aria-hidden="true"
-                    >
-                      {control.glyph}
-                    </span>
-                    <span>{control.label}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          <div
-            className={`workflow-runtime__results${
-              outputExpanded ? ' is-expanded' : ' is-collapsed'
-            }`}
-          >
-            <header className="workflow-runtime__output-header">
-              <div className="workflow-runtime__output-title">
-                <strong>运行输出</strong>
-                <span>
-                  {completedNodeCount}/{runNodes.length || parsed.nodes.length}
-                  {' '}个节点已有结果
-                </span>
-              </div>
-              {outputExpanded && (
-                <div
-                  className="workflow-runtime__output-tabs"
-                  role="tablist"
-                  aria-label="运行输出类型"
-                >
-                  <button
-                    id="workflow-output-tab-nodes"
-                    type="button"
-                    role="tab"
-                    aria-controls="workflow-output-panel-nodes"
-                    aria-selected={outputTab === 'nodes'}
-                    className={outputTab === 'nodes' ? 'is-active' : ''}
-                    onClick={() => setOutputTab('nodes')}
-                  >
-                    节点结果
-                    <span>{runNodes.length || parsed.nodes.length}</span>
-                  </button>
-                  <button
-                    id="workflow-output-tab-events"
-                    type="button"
-                    role="tab"
-                    aria-controls="workflow-output-panel-events"
-                    aria-selected={outputTab === 'events'}
-                    className={outputTab === 'events' ? 'is-active' : ''}
-                    onClick={() => setOutputTab('events')}
-                  >
-                    事件流
-                    <span>{events.length}</span>
-                  </button>
-                  <button
-                    id="workflow-output-tab-errors"
-                    type="button"
-                    role="tab"
-                    aria-controls="workflow-output-panel-errors"
-                    aria-selected={outputTab === 'errors'}
-                    className={outputTab === 'errors' ? 'is-active' : ''}
-                    onClick={() => setOutputTab('errors')}
-                  >
-                    运行异常
-                    {error && <span className="is-error">1</span>}
-                  </button>
-                </div>
-              )}
-              <button
-                type="button"
-                className="workflow-runtime__output-toggle"
-                aria-expanded={outputExpanded}
-                aria-label={
-                  outputExpanded ? '收起运行输出' : '展开运行输出'
-                }
-                onClick={() => setOutputExpanded((current) => !current)}
-              >
-                {outputExpanded ? '收起' : '展开'}
-              </button>
-            </header>
-
-            {outputExpanded && (
-              <div className="workflow-runtime__output-body">
-                <section
-                  id="workflow-output-panel-nodes"
-                  className="workflow-runtime__output-panel"
-                  role="tabpanel"
-                  aria-labelledby="workflow-output-tab-nodes"
-                  tabIndex={0}
-                  hidden={outputTab !== 'nodes'}
-                >
-                  <div className="workflow-runtime__node-list">
-                    {(runNodes.length ? runNodes : parsed.nodes.map((node) => ({
-                      nodeId: node.id,
-                      sourceNodeId: node.id,
-                      nodeType: node.type,
-                      deviceId: '',
-                      action: node.className,
-                      state: executionScope.beforeStartNodeIds.has(node.id)
-                        ? 'excluded'
-                        : 'pending',
-                      result: {},
-                      attempt: 0
-                    }))).map((node) => {
-                      const pausedBefore =
-                        run?.debug?.pausedBeforeNodeId === node.sourceNodeId
-                      return (
-                        <button
-                          key={node.nodeId}
-                          type="button"
-                          data-node-state={
-                            pausedBefore ? 'paused-before' : node.state
-                          }
-                          className={[
-                            selectedNodeId === node.sourceNodeId
-                              ? 'is-selected'
-                              : '',
-                            pausedBefore ? 'is-paused-before' : ''
-                          ].filter(Boolean).join(' ')}
-                          onClick={() => selectNode(node.sourceNodeId)}
-                        >
-                          <i
-                            className={
-                              pausedBefore
-                                ? 'is-paused-before'
-                                : `is-${node.state}`
-                            }
-                          />
-                          <span className="is-node-id">{node.sourceNodeId}</span>
-                          <span className="is-node-type">
-                            {workflowNodeTypeLabel(node.nodeType)}
-                          </span>
-                          <em>
-                            {pausedBefore
-                              ? '暂停位置'
-                              : workflowNodeStateLabel(node.state)}
-                          </em>
-                        </button>
-                      )
-                    })}
-                  </div>
-                  {selectedNode && (
-                    <pre className="workflow-runtime__node-result">
-                      {JSON.stringify(selectedNode.result, null, 2)}
-                    </pre>
-                  )}
-                </section>
-
-                <section
-                  id="workflow-output-panel-events"
-                  className="workflow-runtime__output-panel"
-                  role="tabpanel"
-                  aria-labelledby="workflow-output-tab-events"
-                  tabIndex={0}
-                  hidden={outputTab !== 'events'}
-                >
-                  <div className="workflow-runtime__events">
-                    {[...events].reverse().slice(0, 50).map((event) => (
-                      <div key={event.seq}>
-                        <code>#{event.seq}</code>
-                        <span>
-                          <strong>{workflowEventLabel(event.type)}</strong>
-                          <small>{event.type}</small>
-                        </span>
-                        <em>{event.nodeId || '整体运行'}</em>
-                      </div>
-                    ))}
-                    {events.length === 0 && <p>等待 OS 节点反馈……</p>}
-                  </div>
-                </section>
-
-                <section
-                  id="workflow-output-panel-errors"
-                  className="workflow-runtime__output-panel"
-                  role="tabpanel"
-                  aria-labelledby="workflow-output-tab-errors"
-                  tabIndex={0}
-                  hidden={outputTab !== 'errors'}
-                >
-                  {error ? (
-                    <div className="workflow-runtime__error-detail">
-                      <strong>运行或编写过程中发生异常</strong>
-                      <p>{error}</p>
-                      <button type="button" onClick={() => setError(null)}>
-                        清除异常
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="workflow-runtime__output-empty">
-                      当前没有运行异常
-                    </div>
-                  )}
-                </section>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+        <WorkflowOutput
+          expanded={outputExpanded}
+          activeTab={outputTab}
+          completedNodeCount={completedNodeCount}
+          expectedNodeCount={runNodes.length || parsed.nodes.length}
+          nodes={outputNodes}
+          events={events}
+          error={error}
+          selectedNode={selectedNode}
+          selectedNodeId={selectedNodeId}
+          pausedBeforeNodeId={run?.debug?.pausedBeforeNodeId || null}
+          onExpandedChange={setOutputExpanded}
+          onTabChange={setOutputTab}
+          onNodeSelect={selectNode}
+          onClearError={() => setError(null)}
+        />
+      </WorkflowStage>
     </div>
   )
 }
@@ -1730,89 +1216,6 @@ function isPythonWorkflowFile(fileName: string): boolean {
 
 function workflowFileSourceUri(fileName: string): string {
   return workflowSourceUri(fileName.replace(/\.py$/i, ''))
-}
-
-const DEBUG_STATUS_LABELS: Readonly<Record<string, string>> = {
-  disabled: '未开始',
-  pending: '启动中',
-  running: '正在运行',
-  pause_pending: '等待暂停',
-  paused: '已暂停',
-  stepping: '单步执行中',
-  completed: '已完成',
-  failed: '执行失败',
-  cancelled: '已取消',
-  terminated: '已终止'
-}
-
-const RUN_STATUS_LABELS: Readonly<Record<string, string>> = {
-  draft: '草稿',
-  pending: '等待执行',
-  running: '运行中',
-  completed: '已完成',
-  failed: '执行失败',
-  cancelled: '已取消',
-  reconciling: '状态核对中'
-}
-
-const NODE_STATE_LABELS: Readonly<Record<string, string>> = {
-  pending: '等待执行',
-  ready: '已就绪',
-  running: '正在运行',
-  success: '执行成功',
-  skipped: '已跳过',
-  excluded: '不执行',
-  failed: '执行失败',
-  cancelled: '已取消',
-  reconciling: '状态核对中'
-}
-
-const NODE_TYPE_LABELS: Readonly<Record<string, string>> = {
-  action: '操作节点',
-  branch: '分支节点',
-  join: '汇合节点',
-  group: '节点组',
-  subworkflow: '子工作流'
-}
-
-const EVENT_TYPE_LABELS: Readonly<Record<string, string>> = {
-  'run.created': '运行已创建',
-  'run.started': '运行已开始',
-  'run.status': '运行状态已更新',
-  'run.completed': '运行已完成',
-  'run.failed': '运行失败',
-  'node.ready': '节点已就绪',
-  'node.started': '节点开始执行',
-  'node.completed': '节点执行成功',
-  'node.skipped': '节点已跳过',
-  'node.exception': '节点执行异常',
-  'debug.paused': '调试已暂停',
-  'debug.pause_pending': '正在等待安全暂停',
-  'debug.stepping': '正在单步执行',
-  'debug.continued': '调试已继续',
-  'debug.terminate_requested': '已请求终止运行',
-  'debug.emergency_stop_requested': '已请求当前运行急停',
-  'debug.cancelled': '调试运行已取消'
-}
-
-function workflowDebugStatusLabel(status: string): string {
-  return DEBUG_STATUS_LABELS[status] || status
-}
-
-function workflowRunStatusLabel(status: string): string {
-  return RUN_STATUS_LABELS[status] || status
-}
-
-function workflowNodeStateLabel(status: string): string {
-  return NODE_STATE_LABELS[status] || status
-}
-
-function workflowNodeTypeLabel(type: string): string {
-  return NODE_TYPE_LABELS[type] || type || '操作节点'
-}
-
-function workflowEventLabel(type: string): string {
-  return EVENT_TYPE_LABELS[type] || '运行事件'
 }
 
 interface WorkflowCodeMarkerOptions {

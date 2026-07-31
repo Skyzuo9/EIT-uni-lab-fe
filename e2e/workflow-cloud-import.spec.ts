@@ -97,7 +97,7 @@ test('Cloud 导出 JSON 自动迁移为 Canonical v2 并可完整运行', async 
       page.getByRole('button', { name: '保存修订版本' })
     ).toBeEnabled()
     await expect(
-      page.getByRole('button', { name: /调试启动/ })
+      page.getByRole('button', { name: /整图执行/ })
     ).toBeEnabled()
 
     const saveButton = page.getByRole('button', {
