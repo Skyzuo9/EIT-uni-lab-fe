@@ -32,7 +32,7 @@ describe('Canonical workflow projection', () => {
     }))
 
     expect(parsed.revision).toBeNull()
-    expect(parsed.error).toContain('Canonical WorkflowRevision v2')
+    expect(parsed.error).toContain('标准工作流格式（v2）')
   })
 
   it('remaps breakpoints when Python compilation regenerates node ids', () => {

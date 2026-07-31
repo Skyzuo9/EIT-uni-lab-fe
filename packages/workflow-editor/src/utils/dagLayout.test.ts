@@ -30,6 +30,7 @@ describe('layoutDag', () => {
     expect(result.nodes.map(({ id, x, y }) => ({ id, x, y }))).toEqual(
       nodes.map(({ id, x, y }) => ({ id, x, y }))
     )
+    expect(result.direction).toBe('horizontal')
   })
 
   it('美化时强制生成居中的从上到下分层布局', () => {
@@ -46,6 +47,27 @@ describe('layoutDag', () => {
     expect(positions.get('right')?.y).toBe(320)
     expect(positions.get('join')?.x).toBe(160)
     expect(positions.get('join')?.y).toBe(460)
+    expect(result.direction).toBe('vertical')
+  })
+
+  it('无连线时根据节点坐标跨度判断布局方向', () => {
+    const horizontal = layoutDag(
+      [
+        workflowNode('left', 'action', 20, 40),
+        workflowNode('right', 'action', 420, 40)
+      ],
+      []
+    )
+    const vertical = layoutDag(
+      [
+        workflowNode('top', 'action', 40, 20),
+        workflowNode('bottom', 'action', 40, 420)
+      ],
+      []
+    )
+
+    expect(horizontal.direction).toBe('horizontal')
+    expect(vertical.direction).toBe('vertical')
   })
 })
 

@@ -45,7 +45,7 @@ export function WorkflowSavePrompt({
           <p id="workflow-save-prompt-description">
             当前工作流来自
             <strong title={fileName}>{fileName}</strong>。
-            保存修订版本时，可以同时保存更新后的 Canonical JSON。
+            保存修订版本时，可以同时保存更新后的标准工作流 JSON。
           </p>
           <p className="workflow-save-prompt__notice">
             {canWriteOriginal

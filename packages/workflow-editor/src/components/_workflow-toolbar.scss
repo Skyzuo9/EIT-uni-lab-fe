@@ -432,7 +432,12 @@
 .workflow :global(.workflow-save-prompt__notice) {
   padding: 9px 10px;
   color: var(--unilab-color-text-muted);
-  border-left: 3px solid var(--unilab-color-workflow);
+  border: 1px solid color-mix(
+    in srgb,
+    var(--unilab-color-workflow) 22%,
+    var(--unilab-color-border)
+  );
+  border-radius: var(--unilab-radius-sm);
   background: var(--unilab-color-workflow-soft);
   font-size: 12px;
 }

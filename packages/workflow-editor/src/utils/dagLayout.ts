@@ -18,9 +18,12 @@ export interface LayoutNode extends WorkflowNode {
   y: number
 }
 
+export type DagLayoutDirection = 'horizontal' | 'vertical'
+
 export interface LayoutResult {
   nodes: LayoutNode[]
   links: WorkflowLink[]
+  direction: DagLayoutDirection
 }
 
 export interface LayoutDagOptions {
@@ -39,7 +42,9 @@ export function layoutDag(
   links: WorkflowLink[],
   options: LayoutDagOptions = {}
 ): LayoutResult {
-  if (nodes.length === 0) return { nodes: [], links }
+  if (nodes.length === 0) {
+    return { nodes: [], links, direction: 'vertical' }
+  }
 
   const validIds = new Set(nodes.map((node) => node.id))
   const edges = links.filter(
@@ -58,7 +63,11 @@ export function layoutDag(
       x: node.x as number,
       y: node.y as number
     }))
-    return { nodes: laidOut, links: edges }
+    return {
+      nodes: laidOut,
+      links: edges,
+      direction: layoutDirection(laidOut, edges)
+    }
   }
   const layerOf = assignLayers(nodes, edges)
   const incoming = incomingNodeIds(nodes, edges)
@@ -105,7 +114,47 @@ export function layoutDag(
     })
   }
 
-  return { nodes: layoutNodes, links: edges }
+  return {
+    nodes: layoutNodes,
+    links: edges,
+    direction: layoutDirection(layoutNodes, edges)
+  }
+}
+
+function layoutDirection(
+  nodes: LayoutNode[],
+  edges: WorkflowLink[]
+): DagLayoutDirection {
+  const positions = new Map(
+    nodes.map((node) => [node.id, { x: node.x, y: node.y }])
+  )
+  let horizontalDistance = 0
+  let verticalDistance = 0
+  let connectedPairCount = 0
+
+  for (const edge of edges) {
+    const source = positions.get(edge.source)
+    const target = positions.get(edge.target)
+    if (!source || !target || edge.source === edge.target) continue
+    horizontalDistance += Math.abs(target.x - source.x)
+    verticalDistance += Math.abs(target.y - source.y)
+    connectedPairCount += 1
+  }
+
+  if (
+    connectedPairCount > 0 &&
+    horizontalDistance !== verticalDistance
+  ) {
+    return horizontalDistance > verticalDistance
+      ? 'horizontal'
+      : 'vertical'
+  }
+
+  const xValues = nodes.map((node) => node.x)
+  const yValues = nodes.map((node) => node.y)
+  const horizontalSpan = Math.max(...xValues) - Math.min(...xValues)
+  const verticalSpan = Math.max(...yValues) - Math.min(...yValues)
+  return horizontalSpan > verticalSpan ? 'horizontal' : 'vertical'
 }
 
 export function beautifyWorkflowRevision(

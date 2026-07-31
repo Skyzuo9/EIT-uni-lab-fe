@@ -3,6 +3,8 @@ import {
   type UseCodeMirrorResult
 } from '@unilab/code-editor'
 import type {
+  CSSProperties,
+  KeyboardEventHandler,
   PointerEventHandler,
   ReactNode,
   RefObject
@@ -23,6 +25,15 @@ interface WorkflowStageProps {
   isDragging: boolean
   leftRatio: number
   onDividerPointerDown: PointerEventHandler<HTMLDivElement>
+  debuggerDockRef: RefObject<HTMLDivElement | null>
+  debuggerDockHeight: number
+  debuggerDockMinimum: number
+  debuggerDockMaximum: number
+  isDebuggerDockResizing: boolean
+  outputExpanded: boolean
+  onDebuggerDockPointerDown: PointerEventHandler<HTMLDivElement>
+  onDebuggerDockKeyDown: KeyboardEventHandler<HTMLDivElement>
+  onDebuggerDockReset: () => void
   nodes: WorkflowNode[]
   links: WorkflowLink[]
   parseError: string | null
@@ -51,6 +62,15 @@ export function WorkflowStage({
   isDragging,
   leftRatio,
   onDividerPointerDown,
+  debuggerDockRef,
+  debuggerDockHeight,
+  debuggerDockMinimum,
+  debuggerDockMaximum,
+  isDebuggerDockResizing,
+  outputExpanded,
+  onDebuggerDockPointerDown,
+  onDebuggerDockKeyDown,
+  onDebuggerDockReset,
   nodes,
   links,
   parseError,
@@ -166,7 +186,41 @@ export function WorkflowStage({
             />
           </div>
         )}
-        {children}
+        <div
+          ref={debuggerDockRef}
+          className={[
+            'workflow-runtime__debug-dock',
+            outputExpanded
+              ? 'is-output-expanded'
+              : 'is-output-collapsed',
+            isDebuggerDockResizing ? 'is-resizing' : ''
+          ].filter(Boolean).join(' ')}
+          data-workflow-debug-dock
+          style={{
+            '--workflow-debug-dock-height':
+              `${debuggerDockHeight}px`
+          } as CSSProperties}
+        >
+          {outputExpanded && (
+            <div
+              className="workflow-runtime__debug-resizer"
+              role="separator"
+              aria-label="调整工作流调试区域高度"
+              aria-orientation="horizontal"
+              aria-valuemin={debuggerDockMinimum}
+              aria-valuemax={debuggerDockMaximum}
+              aria-valuenow={Math.round(debuggerDockHeight)}
+              tabIndex={0}
+              title="拖拽调整高度，双击恢复默认高度"
+              onPointerDown={onDebuggerDockPointerDown}
+              onKeyDown={onDebuggerDockKeyDown}
+              onDoubleClick={onDebuggerDockReset}
+            >
+              <span aria-hidden="true" />
+            </div>
+          )}
+          {children}
+        </div>
       </div>
     </div>
   )

@@ -16,7 +16,6 @@ interface WorkflowToolbarProps {
   onCompactPaneChange: (pane: 'code' | 'dag') => void
   onImportJson: () => void
   onImportPython: () => void
-  onLoad: () => void
   onApplyPython: () => void
   onValidate: () => void
   onSave: () => void
@@ -37,7 +36,6 @@ export function WorkflowToolbar({
   onCompactPaneChange,
   onImportJson,
   onImportPython,
-  onLoad,
   onApplyPython,
   onValidate,
   onSave,
@@ -136,14 +134,6 @@ export function WorkflowToolbar({
           onClick={onImportPython}
         >
           导入 Python
-        </button>
-        <button
-          type="button"
-          className="workflow__upload"
-          disabled={busy}
-          onClick={onLoad}
-        >
-          从 OS 载入
         </button>
         {authoringMode === 'python' && (
           <button

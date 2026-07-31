@@ -15,6 +15,9 @@ test('已保存的导入工作流在切换模块后仍然保留', async ({ page 
       `/?localOsUrl=${encodeURIComponent(bridge.url)}&enable=materialNav`
     )
     await page.getByText('工作流', { exact: true }).first().click()
+    await expect(
+      page.getByRole('button', { name: '从 OS 载入' })
+    ).toHaveCount(0)
     await page.locator('input[type="file"]').setInputFiles({
       name: 'persisted-workflow.json',
       mimeType: 'application/json',
@@ -25,9 +28,10 @@ test('已保存的导入工作流在切换模块后仍然保留', async ({ page 
       '"workflow_id": "persistence-e2e"'
     )
     await page.getByRole('button', { name: '保存修订版本' }).click()
-    await page.getByRole('dialog', {
+    const savePrompt = page.getByRole('dialog', {
       name: '是否同时保存更新后的文件？'
-    }).getByRole('button', {
+    })
+    await savePrompt.getByRole('button', {
       name: '仅保存修订'
     }).click()
     await expect(page.getByText(/已保存修订版本/)).toBeVisible()

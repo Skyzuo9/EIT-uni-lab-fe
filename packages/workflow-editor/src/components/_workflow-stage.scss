@@ -212,6 +212,74 @@
   min-height: 260px;
 }
 
+.workflow :global(.workflow-runtime__debug-dock) {
+  display: flex;
+  height: var(--workflow-debug-dock-height, 300px);
+  min-height: 184px;
+  flex: 0 0 var(--workflow-debug-dock-height, 300px);
+  flex-direction: column;
+  background: var(--unilab-color-surface);
+}
+
+.workflow :global(.workflow-runtime__debug-dock):global(.is-output-collapsed) {
+  height: auto;
+  min-height: 0;
+  flex-basis: auto;
+}
+
+.workflow :global(.workflow-runtime__debug-resizer) {
+  position: relative;
+  z-index: 3;
+  display: grid;
+  width: 100%;
+  min-height: 10px;
+  flex: 0 0 10px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-top: 1px solid var(--unilab-color-border);
+  outline: none;
+  background: var(--unilab-color-surface-subtle);
+  cursor: row-resize;
+  touch-action: none;
+}
+
+.workflow :global(.workflow-runtime__debug-resizer) > span {
+  width: 36px;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--unilab-color-border-strong);
+  transition:
+    width var(--unilab-motion-fast) ease,
+    background-color var(--unilab-motion-fast) ease;
+}
+
+.workflow :global(.workflow-runtime__debug-resizer):hover > span,
+.workflow :global(.workflow-runtime__debug-resizer):focus-visible > span,
+.workflow
+  :global(.workflow-runtime__debug-dock):global(.is-resizing)
+  :global(.workflow-runtime__debug-resizer)
+  > span {
+  width: 44px;
+  background: var(--unilab-color-workflow);
+}
+
+.workflow :global(.workflow-runtime__debug-resizer):focus-visible {
+  box-shadow: inset 0 0 0 2px var(--unilab-color-focus);
+}
+
+.workflow:global(.workflow-runtime--resizing-debugger),
+.workflow:global(.workflow-runtime--resizing-debugger) * {
+  cursor: row-resize !important;
+}
+
+.workflow
+  :global(.workflow-runtime__debug-dock):global(.is-output-expanded)
+  > :global(.workflow-runtime__results):global(.is-expanded) {
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
 .workflow :global(.workflow-runtime__empty) {
   display: grid;
   flex: 1;

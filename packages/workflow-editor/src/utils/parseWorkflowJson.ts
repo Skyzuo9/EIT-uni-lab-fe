@@ -92,7 +92,7 @@ export function migrateCloudWorkflowJson(
     if (nodeIds.has(id)) return failure(`Cloud 工作流存在重复节点 UUID：${id}`)
     if (value.disabled === true) {
       return failure(
-        `节点 ${id} 已禁用；Cloud 的禁用/旁路语义无法无损映射到 Canonical v2`
+        `节点 ${id} 已禁用；Cloud 的禁用/旁路设置无法完整转换为标准工作流格式（v2）`
       )
     }
     const nodeType = requiredString(value.type)

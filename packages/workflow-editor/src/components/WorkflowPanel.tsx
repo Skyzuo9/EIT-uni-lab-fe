@@ -46,6 +46,12 @@ type RunMode = 'run' | 'debug'
 type OutputTab = 'nodes' | 'events' | 'errors'
 type CompactPane = 'code' | 'dag'
 
+const DEFAULT_DEBUGGER_DOCK_HEIGHT = 300
+const MIN_DEBUGGER_DOCK_HEIGHT = 184
+const MAX_DEBUGGER_DOCK_HEIGHT = 520
+const MIN_WORKFLOW_CANVAS_HEIGHT = 260
+const DEBUGGER_DOCK_KEYBOARD_STEP = 16
+
 interface WorkflowPanelSession
   extends WorkflowAuthoringSnapshot, WorkflowRunSnapshot {
   runMode: RunMode
@@ -53,6 +59,7 @@ interface WorkflowPanelSession
   outputExpanded: boolean
   outputTab: OutputTab
   compactPane: CompactPane
+  debuggerDockHeight: number
   message: string
   error: string | null
 }
@@ -84,6 +91,14 @@ export default function WorkflowPanel({
   const [compactPane, setCompactPane] = useState<CompactPane>(
     initialSession?.compactPane ?? 'dag'
   )
+  const [debuggerDockHeight, setDebuggerDockHeight] = useState(
+    initialSession?.debuggerDockHeight ?? DEFAULT_DEBUGGER_DOCK_HEIGHT
+  )
+  const [debuggerDockMaximum, setDebuggerDockMaximum] = useState(
+    MAX_DEBUGGER_DOCK_HEIGHT
+  )
+  const [isDebuggerDockResizing, setIsDebuggerDockResizing] =
+    useState(false)
   const [message, setMessage] = useState(
     initialSession?.message ?? '标准工作流 DAG 已就绪'
   )
@@ -153,6 +168,146 @@ export default function WorkflowPanel({
       minRatio: 0.28,
       maxRatio: 0.58
     })
+  const debuggerDockRef = useRef<HTMLDivElement | null>(null)
+  const debuggerDockDragOffsetRef = useRef(0)
+  const renderedDebuggerDockHeight = Math.min(
+    debuggerDockMaximum,
+    Math.max(MIN_DEBUGGER_DOCK_HEIGHT, debuggerDockHeight)
+  )
+
+  const readDebuggerDockMaximum = useCallback((): number => {
+    const stage = debuggerDockRef.current?.parentElement
+    if (!stage) return MAX_DEBUGGER_DOCK_HEIGHT
+    const stageRect = stage.getBoundingClientRect()
+    if (stageRect.height <= 0) return MAX_DEBUGGER_DOCK_HEIGHT
+
+    const headerHeight =
+      stage.querySelector<HTMLElement>(
+        '.workflow-runtime__stage-header'
+      )?.offsetHeight ?? 0
+    const legendHeight =
+      stage.querySelector<HTMLElement>(
+        '.workflow-runtime__legend'
+      )?.offsetHeight ?? 0
+    const availableHeight =
+      stageRect.height -
+      headerHeight -
+      legendHeight -
+      MIN_WORKFLOW_CANVAS_HEIGHT
+
+    return Math.max(
+      MIN_DEBUGGER_DOCK_HEIGHT,
+      Math.min(MAX_DEBUGGER_DOCK_HEIGHT, Math.floor(availableHeight))
+    )
+  }, [])
+
+  const clampDebuggerDockHeight = useCallback(
+    (height: number): number => {
+      const maximum = readDebuggerDockMaximum()
+      setDebuggerDockMaximum(maximum)
+      return Math.min(
+        maximum,
+        Math.max(MIN_DEBUGGER_DOCK_HEIGHT, Math.round(height))
+      )
+    },
+    [readDebuggerDockMaximum]
+  )
+
+  const handleDebuggerDockPointerDown =
+    useCallback<React.PointerEventHandler<HTMLDivElement>>((event) => {
+      if (event.button !== 0) return
+      const stageRect =
+        debuggerDockRef.current?.parentElement?.getBoundingClientRect()
+      if (!stageRect || stageRect.height <= 0) return
+      debuggerDockDragOffsetRef.current =
+        renderedDebuggerDockHeight -
+        (stageRect.bottom - event.clientY)
+      event.preventDefault()
+      setIsDebuggerDockResizing(true)
+    }, [renderedDebuggerDockHeight])
+
+  const handleDebuggerDockKeyDown =
+    useCallback<React.KeyboardEventHandler<HTMLDivElement>>((event) => {
+      let nextHeight: number | null = null
+      if (event.key === 'ArrowUp') {
+        nextHeight =
+          renderedDebuggerDockHeight + DEBUGGER_DOCK_KEYBOARD_STEP
+      } else if (event.key === 'ArrowDown') {
+        nextHeight =
+          renderedDebuggerDockHeight - DEBUGGER_DOCK_KEYBOARD_STEP
+      } else if (event.key === 'Home') {
+        nextHeight = MIN_DEBUGGER_DOCK_HEIGHT
+      } else if (event.key === 'End') {
+        nextHeight = readDebuggerDockMaximum()
+      }
+      if (nextHeight === null) return
+      event.preventDefault()
+      setDebuggerDockHeight(clampDebuggerDockHeight(nextHeight))
+    }, [
+      clampDebuggerDockHeight,
+      renderedDebuggerDockHeight,
+      readDebuggerDockMaximum
+    ])
+
+  const resetDebuggerDockHeight = useCallback(() => {
+    setDebuggerDockHeight(
+      clampDebuggerDockHeight(DEFAULT_DEBUGGER_DOCK_HEIGHT)
+    )
+  }, [clampDebuggerDockHeight])
+
+  useEffect(() => {
+    const stage = debuggerDockRef.current?.parentElement
+    if (!stage) return
+
+    const syncHeight = (): void => {
+      const maximum = readDebuggerDockMaximum()
+      setDebuggerDockMaximum(maximum)
+    }
+    syncHeight()
+
+    const observer = new ResizeObserver(syncHeight)
+    observer.observe(stage)
+    return () => observer.disconnect()
+  }, [legendOpen, readDebuggerDockMaximum])
+
+  useEffect(() => {
+    if (!isDebuggerDockResizing) return
+
+    const previousCursor = document.body.style.cursor
+    const previousUserSelect = document.body.style.userSelect
+    document.body.style.cursor = 'row-resize'
+    document.body.style.userSelect = 'none'
+
+    const handlePointerMove = (event: PointerEvent): void => {
+      const stageRect =
+        debuggerDockRef.current?.parentElement?.getBoundingClientRect()
+      if (!stageRect || stageRect.height <= 0) return
+      const nextHeight =
+        stageRect.bottom -
+        event.clientY +
+        debuggerDockDragOffsetRef.current
+      setDebuggerDockHeight(clampDebuggerDockHeight(nextHeight))
+    }
+    const handlePointerUp = (): void => {
+      setIsDebuggerDockResizing(false)
+    }
+    window.addEventListener('pointermove', handlePointerMove)
+    window.addEventListener('pointerup', handlePointerUp)
+    window.addEventListener('pointercancel', handlePointerUp)
+
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', handlePointerUp)
+      window.removeEventListener('pointercancel', handlePointerUp)
+      document.body.style.cursor = previousCursor
+      document.body.style.userSelect = previousUserSelect
+    }
+  }, [clampDebuggerDockHeight, isDebuggerDockResizing])
+
+  useEffect(() => {
+    if (!outputExpanded) setIsDebuggerDockResizing(false)
+  }, [outputExpanded])
+
   const latestSession = useRef<WorkflowPanelSession | null>(null)
   latestSession.current = {
     ...authoring.snapshot,
@@ -162,6 +317,7 @@ export default function WorkflowPanel({
     outputExpanded,
     outputTab,
     compactPane,
+    debuggerDockHeight,
     message,
     error
   }
@@ -229,7 +385,14 @@ export default function WorkflowPanel({
 
   return (
     <div
-      className={`${styles.workflow} workflow-runtime relative flex h-full w-full flex-col bg-[var(--unilab-color-canvas)] text-[var(--unilab-color-text)]`}
+      className={[
+        styles.workflow,
+        'workflow-runtime relative flex h-full w-full flex-col',
+        'bg-[var(--unilab-color-canvas)] text-[var(--unilab-color-text)]',
+        isDebuggerDockResizing
+          ? 'workflow-runtime--resizing-debugger'
+          : ''
+      ].filter(Boolean).join(' ')}
     >
       <WorkflowToolbar
         authoringMode={authoring.authoringMode}
@@ -246,7 +409,6 @@ export default function WorkflowPanel({
         onImportPython={() =>
           authoring.fileUpload.openFilePicker('python')
         }
-        onLoad={authoring.load}
         onApplyPython={authoring.applyPython}
         onValidate={authoring.validate}
         onSave={authoring.save}
@@ -287,6 +449,17 @@ export default function WorkflowPanel({
         isDragging={isDragging}
         leftRatio={leftRatio}
         onDividerPointerDown={handlePointerDown}
+        debuggerDockRef={debuggerDockRef}
+        debuggerDockHeight={renderedDebuggerDockHeight}
+        debuggerDockMinimum={MIN_DEBUGGER_DOCK_HEIGHT}
+        debuggerDockMaximum={debuggerDockMaximum}
+        isDebuggerDockResizing={isDebuggerDockResizing}
+        outputExpanded={outputExpanded}
+        onDebuggerDockPointerDown={
+          handleDebuggerDockPointerDown
+        }
+        onDebuggerDockKeyDown={handleDebuggerDockKeyDown}
+        onDebuggerDockReset={resetDebuggerDockHeight}
         nodes={authoring.parsed.nodes}
         links={authoring.parsed.links}
         parseError={authoring.parsed.error}

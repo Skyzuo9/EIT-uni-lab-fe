@@ -4,8 +4,8 @@
  * ============================================================
  * Model: Claude Opus 4.8
  * Generation Date: 2026-07-22
- * Prompt Summary: 自定义 ReactFlow 节点(无头部,仅名称 + 上下 handle)
- * Context: 工作流 DAG 节点卡片,上下 handle 端点,上下流向
+ * Prompt Summary: 自定义 ReactFlow 节点(无头部,仅名称 + 自适应方向 handle)
+ * Context: 工作流 DAG 节点卡片,handle 端点跟随布局主轴
  * Human Review Status: [ ] Pending  [ ] Reviewed  [ ] Approved
  * ============================================================
  */
@@ -32,14 +32,21 @@ export interface WorkflowNodeData {
   onToggleGroup?: (nodeId: string) => void
 }
 
-// 节点卡片:无头部,仅名称 + 上下 handle
-export default function WorkflowNodeCard({ data }: NodeProps<WorkflowNodeData>): React.JSX.Element {
+// 节点卡片:无头部，输入/输出端点位置由 DAG 布局方向决定。
+export default function WorkflowNodeCard({
+  data,
+  targetPosition = Position.Top,
+  sourcePosition = Position.Bottom
+}: NodeProps<WorkflowNodeData>): React.JSX.Element {
   return (
     <div
       className={`${styles.node} wf-node min-w-[150px] max-w-[220px] cursor-pointer overflow-visible rounded-[var(--unilab-radius-md)] border border-[var(--unilab-color-border)] bg-[var(--unilab-color-surface)] transition-[border-color,box-shadow] duration-200`}
     >
-      {/* 顶部目标端点(上下流向,连入) */}
-      <Handle type="target" position={Position.Left} className="wf-node__handle" />
+      <Handle
+        type="target"
+        position={targetPosition}
+        className="wf-node__handle"
+      />
 
       <div className="wf-node__body">
         <div className="wf-node__markers">
@@ -124,8 +131,11 @@ export default function WorkflowNodeCard({ data }: NodeProps<WorkflowNodeData>):
         )}
       </div>
 
-      {/* 底部源端点(上下流向,连出) */}
-      <Handle type="source" position={Position.Right} className="wf-node__handle" />
+      <Handle
+        type="source"
+        position={sourcePosition}
+        className="wf-node__handle"
+      />
     </div>
   )
 }

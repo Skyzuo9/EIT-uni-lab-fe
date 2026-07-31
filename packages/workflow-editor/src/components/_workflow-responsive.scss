@@ -69,6 +69,16 @@
     flex: 0 0 300px;
   }
 
+  .workflow :global(.workflow-runtime__debug-dock) {
+    height: auto;
+    min-height: 0;
+    flex-basis: auto;
+  }
+
+  .workflow :global(.workflow-runtime__debug-resizer) {
+    display: none;
+  }
+
   .workflow :global(.workflow-runtime__debugger) {
     min-height: 0;
     flex: 0 0 auto;
@@ -177,6 +187,16 @@
 
   .workflow :global(.workflow-runtime__workbench--dag) > :global(.workbench__pane):first-child,
   .workflow :global(.workflow-runtime__workbench--code) > :global(.workflow-runtime__stage) {
+    display: none;
+  }
+
+  .workflow :global(.workflow-runtime__debug-dock) {
+    height: auto;
+    min-height: 0;
+    flex-basis: auto;
+  }
+
+  .workflow :global(.workflow-runtime__debug-resizer) {
     display: none;
   }
 }

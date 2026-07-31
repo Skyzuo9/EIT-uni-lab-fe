@@ -4,7 +4,7 @@ import { basename, resolve } from 'node:path'
 
 import { startOfflineLocalBridge } from './helpers/offline-local-bridge'
 
-test('Cloud 导出 JSON 自动迁移为 Canonical v2 并可完整运行', async ({
+test('Cloud 导出 JSON 自动转换为标准工作流格式并可完整运行', async ({
   page
 }) => {
   test.setTimeout(90_000)
@@ -20,6 +20,7 @@ test('Cloud 导出 JSON 自动迁移为 Canonical v2 并可完整运行', async 
   }
   const expectedNodes = document.data?.nodes?.length || 0
   const expectedEdges = document.data?.edges?.length || 0
+  const artifactDir = resolve(process.cwd(), '../e2e-artifacts')
   const browserErrors: string[] = []
   const apiCalls: Array<{ method: string; status: number; url: string }> = []
   page.on('console', (message) => {
@@ -74,7 +75,9 @@ test('Cloud 导出 JSON 自动迁移为 Canonical v2 并可完整运行', async 
     await expect(
       page.getByText('完整控制流 DAG', { exact: true })
     ).toBeVisible()
-    await expect(page.getByText(/已自动迁移并通过 OS 校验/)).toBeVisible()
+    await expect(
+      page.getByText(/已转换为标准工作流格式并通过 OS 校验/)
+    ).toBeVisible()
     await expect(page.locator('.workflow-runtime__stage-header')).toContainText(
       `${expectedNodes} 个节点 · ${expectedEdges} 条控制边`
     )
@@ -109,6 +112,11 @@ test('Cloud 导出 JSON 自动迁移为 Canonical v2 并可完整运行', async 
     })
     await expect(savePrompt).toBeVisible()
     await expect(savePrompt).toContainText(fileName)
+    mkdirSync(artifactDir, { recursive: true })
+    await savePrompt.screenshot({
+      path: resolve(artifactDir, 'workflow-save-prompt.png'),
+      animations: 'disabled'
+    })
     await savePrompt.getByRole('button', {
       name: '仅保存修订'
     }).click()
@@ -122,7 +130,11 @@ test('Cloud 导出 JSON 自动迁移为 Canonical v2 并可完整运行', async 
       name: '保存到原文件'
     }).click()
     await expect(
-      page.getByText(new RegExp(`已更新 ${escapeRegex(fileName)}`))
+      page.getByText(
+        new RegExp(
+          `已保存修订版本.*已更新 ${escapeRegex(fileName)}`
+        )
+      )
     ).toBeVisible()
     const [savedContent] = await workflowFileWrites(page)
     const savedRevision = JSON.parse(
@@ -135,7 +147,9 @@ test('Cloud 导出 JSON 自动迁移为 Canonical v2 并可完整运行', async 
       mimeType: 'application/json',
       buffer: Buffer.from(source)
     })
-    await expect(page.getByText(/已自动迁移并通过 OS 校验/)).toBeVisible()
+    await expect(
+      page.getByText(/已转换为标准工作流格式并通过 OS 校验/)
+    ).toBeVisible()
     await saveButton.click()
     await expect(savePrompt).toBeVisible()
     await expect(savePrompt).toContainText(
@@ -170,8 +184,6 @@ test('Cloud 导出 JSON 自动迁移为 Canonical v2 并可完整运行', async 
       page.locator('.workflow-runtime__node-list button[data-node-state="success"]')
     ).toHaveCount(expectedNodes)
 
-    const artifactDir = resolve(process.cwd(), '../e2e-artifacts')
-    mkdirSync(artifactDir, { recursive: true })
     await page.screenshot({
       path: resolve(
         artifactDir,

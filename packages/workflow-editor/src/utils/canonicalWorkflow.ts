@@ -39,7 +39,10 @@ export function parseCanonicalWorkflow(
     !Array.isArray(revision.invocations) ||
     !Array.isArray(revision.control_edges)
   ) {
-    return { ...empty, error: '不是 Canonical WorkflowRevision v2' }
+    return {
+      ...empty,
+      error: '文件不是受支持的标准工作流格式（v2）'
+    }
   }
   const layout = isRecord(revision.layout) ? revision.layout : {}
   const layoutNodes = isRecord(layout.nodes) ? layout.nodes : {}

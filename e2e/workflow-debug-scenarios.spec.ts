@@ -56,7 +56,7 @@ test('Python debug markers stay in the gutter and follow code edits', async ({
       buffer: Buffer.from(JSON.stringify(debugMarkerWorkflow()))
     })
     await expect(
-      page.getByText(/已自动迁移并通过 OS 校验/)
+      page.getByText(/已转换为标准工作流格式并通过 OS 校验/)
     ).toBeVisible()
     const firstNode = page.locator(
       '.react-flow__node-wfNode[data-id="first"]'

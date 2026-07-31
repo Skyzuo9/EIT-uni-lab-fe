@@ -11,7 +11,7 @@
  */
 import { useEffect, useMemo } from 'react'
 import type { Edge, Node, OnNodesChange, OnEdgesChange } from 'reactflow'
-import { useNodesState, useEdgesState } from 'reactflow'
+import { Position, useNodesState, useEdgesState } from 'reactflow'
 import { layoutDag } from '../utils/dagLayout'
 import { getNodeColor } from '../utils/nodeColors'
 import type { WorkflowLink, WorkflowNode } from '../utils/parseWorkflow'
@@ -43,13 +43,20 @@ const EDGE_COLOR = 'var(--unilab-color-workflow)'
 export function useWorkflowDag(nodes: WorkflowNode[], links: WorkflowLink[]): UseWorkflowDagResult {
   // 依据输入重新布局,生成 ReactFlow 节点/边(输入不变时结果稳定)
   const computed = useMemo(() => {
-    const { nodes: laidOut, links: edges } = layoutDag(nodes, links)
+    const {
+      nodes: laidOut,
+      links: edges,
+      direction
+    } = layoutDag(nodes, links)
+    const horizontal = direction === 'horizontal'
 
     const flowNodes: Node<WorkflowNodeData>[] = laidOut.map((node) => ({
       id: node.id,
       type: 'wfNode',
       focusable: node.groupKind !== 'subworkflow',
       position: { x: node.x, y: node.y },
+      targetPosition: horizontal ? Position.Left : Position.Top,
+      sourcePosition: horizontal ? Position.Right : Position.Bottom,
       data: {
         id: node.id,
         name: node.name,
@@ -60,7 +67,7 @@ export function useWorkflowDag(nodes: WorkflowNode[], links: WorkflowLink[]): Us
       }
     }))
 
-    // 上下流向:平滑贝塞尔曲线,统一线色(通信边虚线)
+    // 连线端点跟随布局主轴，曲线保持统一线色(通信边虚线)。
     const flowEdges: Edge[] = edges.map((link, index) => {
       const isComm = link.type === COMM_EDGE_TYPE
       return {

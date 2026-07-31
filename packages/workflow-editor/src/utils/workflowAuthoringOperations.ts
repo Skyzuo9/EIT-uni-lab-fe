@@ -86,7 +86,7 @@ export function parseImportedWorkflow(
   if (!structure.revision) {
     throw new Error(
       `无法导入 ${fileName}：${
-        structure.error || '转换后的 Canonical v2 无法解析'
+        structure.error || '转换后的标准工作流内容无法解析'
       }`
     )
   }

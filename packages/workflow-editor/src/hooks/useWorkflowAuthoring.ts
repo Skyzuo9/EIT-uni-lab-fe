@@ -334,7 +334,7 @@ export function useWorkflowAuthoring({
           ? ` · ${imported.warnings.join('；')}`
           : ''
         setMessage(
-          `${fileName} 已自动迁移为 Canonical v2，正在由 OS 校验${
+          `${fileName} 已转换为标准工作流格式（v2），正在由 OS 校验${
             warningSuffix
           }`
         )
@@ -343,7 +343,7 @@ export function useWorkflowAuthoring({
           result = await runtime.validateWorkflow(imported.revision)
         } catch (validationError) {
           throw new Error(
-            `${fileName} 已自动迁移为 Canonical v2，但 OS 校验请求失败：${
+            `${fileName} 已转换为标准工作流格式（v2），但 OS 校验请求失败：${
               validationError instanceof Error
                 ? validationError.message
                 : String(validationError)
@@ -352,7 +352,7 @@ export function useWorkflowAuthoring({
         }
         if (!result.valid) {
           setMessage(
-            `${fileName} 已自动迁移为 Canonical v2，但 OS 校验未通过${
+            `${fileName} 已转换为标准工作流格式（v2），但 OS 校验未通过${
               warningSuffix
             }`
           )
@@ -364,7 +364,7 @@ export function useWorkflowAuthoring({
           return
         }
         setMessage(
-          `${fileName} 已自动迁移并通过 OS 校验 · ${
+          `${fileName} 已转换为标准工作流格式并通过 OS 校验 · ${
             result.nodeCount ?? imported.nodeCount
           } 节点 · ${result.edgeCount ?? imported.edgeCount} 边${
             warningSuffix
