@@ -1,0 +1,332 @@
+.workflow :global(.workflow-runtime__results) {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  min-height: 0;
+  border-top: 1px solid var(--unilab-color-border);
+  background: var(--unilab-color-surface);
+  transition: flex-basis var(--unilab-motion-normal) ease;
+}
+
+.workflow :global(.workflow-runtime__results):global(.is-expanded) {
+  flex-basis: 220px;
+}
+
+.workflow :global(.workflow-runtime__results):global(.is-collapsed) {
+  flex-basis: 38px;
+}
+
+.workflow :global(.workflow-runtime__output-header) {
+  display: flex;
+  flex: 0 0 38px;
+  min-height: 40px;
+  align-items: center;
+  gap: var(--unilab-space-4);
+  padding: 0 var(--unilab-space-3);
+  color: var(--unilab-color-text-muted);
+  border-bottom: 1px solid var(--unilab-color-border);
+  background: var(--unilab-color-surface-subtle);
+}
+
+.workflow :global(.workflow-runtime__output-title) {
+  display: flex;
+  min-width: 210px;
+  align-items: baseline;
+  gap: var(--unilab-space-2);
+}
+
+.workflow :global(.workflow-runtime__output-title) strong {
+  color: var(--unilab-color-text);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.workflow :global(.workflow-runtime__output-title) span {
+  font-size: 12px;
+}
+
+.workflow :global(.workflow-runtime__output-tabs) {
+  display: flex;
+  align-self: stretch;
+  gap: var(--unilab-space-1);
+}
+
+.workflow :global(.workflow-runtime__output-tabs) button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  color: var(--unilab-color-text-muted);
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.workflow :global(.workflow-runtime__output-tabs) button:hover {
+  color: var(--unilab-color-text);
+}
+
+.workflow :global(.workflow-runtime__output-tabs) button:global(.is-active) {
+  color: var(--unilab-color-primary);
+  border-bottom-color: var(--unilab-color-primary);
+}
+
+.workflow :global(.workflow-runtime__output-tabs) button span {
+  display: inline-flex;
+  min-width: 18px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 5px;
+  color: var(--unilab-color-text-muted);
+  border-radius: 999px;
+  background: var(--unilab-color-surface-muted);
+  font-size: 11px;
+}
+
+.workflow :global(.workflow-runtime__output-tabs) button span:global(.is-error) {
+  color: #fff;
+  background: var(--unilab-color-danger);
+}
+
+.workflow :global(.workflow-runtime__output-toggle) {
+  height: 28px;
+  margin-left: auto;
+  padding: 0 9px;
+  color: var(--unilab-color-text-muted);
+  border: 1px solid var(--unilab-color-border);
+  border-radius: var(--unilab-radius-control);
+  background: var(--unilab-color-surface);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.workflow :global(.workflow-runtime__output-toggle):hover {
+  color: var(--unilab-color-primary);
+  border-color: var(--unilab-color-focus);
+}
+
+.workflow :global(.workflow-runtime__output-body) {
+  min-height: 0;
+  flex: 1;
+}
+
+.workflow :global(.workflow-runtime__output-panel) {
+  height: 100%;
+  min-width: 0;
+  overflow: auto;
+}
+
+.workflow :global(.workflow-runtime__output-panel)[hidden] {
+  display: none;
+}
+
+.workflow :global(.workflow-runtime__node-list) {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(184px, 1fr));
+  gap: 10px;
+  padding: var(--unilab-space-2) var(--unilab-space-3);
+}
+
+.workflow :global(.workflow-runtime__node-list) button {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto;
+  grid-template-rows: auto auto;
+  gap: 2px 7px;
+  min-width: 0;
+  min-height: 54px;
+  padding: 8px 9px;
+  text-align: left;
+  color: var(--unilab-color-text);
+  border: 1px solid var(--unilab-color-border);
+  border-radius: var(--unilab-radius-control);
+  background: var(--unilab-color-surface);
+  cursor: pointer;
+}
+
+.workflow :global(.workflow-runtime__node-list) button:hover {
+  border-color: var(--unilab-color-border-strong);
+  background: var(--unilab-color-workflow-soft);
+}
+
+.workflow :global(.workflow-runtime__node-list) button:global(.is-selected) {
+  border-color: #334155;
+  box-shadow: 0 0 0 1px #334155;
+}
+
+.workflow :global(.workflow-runtime__node-list) button:global(.is-paused-before) {
+  border-color: var(--unilab-color-paused);
+  background: var(--unilab-color-paused-soft);
+}
+
+.workflow :global(.workflow-runtime__node-list) i {
+  align-self: center;
+  grid-row: 1 / span 2;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--unilab-color-skipped);
+}
+
+.workflow :global(.workflow-runtime__node-list) i:global(.is-success) {
+  background: var(--unilab-color-success);
+}
+
+.workflow :global(.workflow-runtime__node-list) i:global(.is-running) {
+  background: var(--unilab-color-warning);
+}
+
+.workflow :global(.workflow-runtime__node-list) i:global(.is-paused-before) {
+  background: var(--unilab-color-paused);
+}
+
+.workflow :global(.workflow-runtime__node-list) i:global(.is-excluded),
+.workflow :global(.workflow-runtime__node-list) i:global(.is-skipped) {
+  background: var(--unilab-color-skipped);
+}
+
+.workflow :global(.workflow-runtime__node-list) i:global(.is-failed) {
+  background: var(--unilab-color-danger);
+}
+
+.workflow :global(.workflow-runtime__node-list) span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workflow :global(.workflow-runtime__node-list) :global(.is-node-id) {
+  color: var(--unilab-color-text);
+  font: 600 12px/16px var(--unilab-font-mono);
+}
+
+.workflow :global(.workflow-runtime__node-list) :global(.is-node-type) {
+  grid-column: 2;
+  color: var(--unilab-color-text-muted);
+  font-size: 12px;
+}
+
+.workflow :global(.workflow-runtime__node-list) em {
+  grid-column: 3;
+  grid-row: 1 / span 2;
+  align-self: center;
+  color: var(--unilab-color-text-muted);
+  font: normal 12px/18px var(--unilab-font-sans);
+  white-space: nowrap;
+}
+
+.workflow :global(.workflow-runtime__node-result) {
+  max-height: 80px;
+  margin: 0 var(--unilab-space-3) var(--unilab-space-2);
+  padding: var(--unilab-space-2);
+  overflow: auto;
+  color: var(--unilab-color-text);
+  border-radius: var(--unilab-radius-control);
+  background: var(--unilab-color-surface-muted);
+  font: 12px/1.5 var(--unilab-font-mono);
+}
+
+.workflow :global(.workflow-runtime__events) {
+  height: 100%;
+  padding: var(--unilab-space-2) var(--unilab-space-3);
+  overflow: auto;
+}
+
+.workflow :global(.workflow-runtime__events) div {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr) minmax(80px, 140px);
+  gap: var(--unilab-space-2);
+  align-items: center;
+  padding: 6px 0;
+  color: var(--unilab-color-text-muted);
+  border-bottom: 1px solid var(--unilab-color-border);
+}
+
+.workflow :global(.workflow-runtime__events) code {
+  color: var(--unilab-color-primary);
+  font: 12px/18px var(--unilab-font-mono);
+}
+
+.workflow :global(.workflow-runtime__events) span {
+  display: grid;
+  min-width: 0;
+}
+
+.workflow :global(.workflow-runtime__events) strong {
+  color: var(--unilab-color-text);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.workflow :global(.workflow-runtime__events) small {
+  overflow: hidden;
+  color: var(--unilab-color-text-subtle);
+  font: 11px/16px var(--unilab-font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workflow :global(.workflow-runtime__events) em {
+  overflow: hidden;
+  color: var(--unilab-color-text-muted);
+  font: normal 12px/18px var(--unilab-font-mono);
+  font-style: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workflow :global(.workflow-runtime__events) p {
+  color: var(--unilab-color-text-muted);
+  font-size: 12px;
+}
+
+.workflow :global(.workflow-runtime__error-detail) {
+  display: grid;
+  gap: var(--unilab-space-2);
+  margin: var(--unilab-space-3);
+  padding: var(--unilab-space-3);
+  color: var(--unilab-color-danger);
+  border: 1px solid color-mix(
+    in srgb,
+    var(--unilab-color-danger) 24%,
+    transparent
+  );
+  border-radius: var(--unilab-radius-md);
+  background: var(--unilab-color-danger-soft);
+  font-size: 12px;
+}
+
+.workflow :global(.workflow-runtime__error-detail) p {
+  margin: 0;
+  color: var(--unilab-color-text);
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.workflow :global(.workflow-runtime__error-detail) button {
+  width: max-content;
+  height: 30px;
+  padding: 0 10px;
+  color: var(--unilab-color-danger);
+  border: 1px solid color-mix(
+    in srgb,
+    var(--unilab-color-danger) 30%,
+    transparent
+  );
+  border-radius: var(--unilab-radius-control);
+  background: var(--unilab-color-surface);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.workflow :global(.workflow-runtime__output-empty) {
+  display: grid;
+  height: 100%;
+  place-items: center;
+  color: var(--unilab-color-text-muted);
+  font-size: 12px;
+}
