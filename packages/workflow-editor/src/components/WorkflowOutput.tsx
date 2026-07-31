@@ -11,6 +11,7 @@ interface WorkflowOutputProps {
   completedNodeCount: number
   expectedNodeCount: number
   nodes: readonly WorkflowRunNode[]
+  nodeNames: Readonly<Record<string, string>>
   events: readonly WorkflowRunEvent[]
   error: string | null
   selectedNode: WorkflowRunNode | undefined
@@ -28,6 +29,7 @@ export function WorkflowOutput({
   completedNodeCount,
   expectedNodeCount,
   nodes,
+  nodeNames,
   events,
   error,
   selectedNode,
@@ -38,6 +40,8 @@ export function WorkflowOutput({
   onNodeSelect,
   onClearError
 }: WorkflowOutputProps): React.JSX.Element {
+  const eventNodeNames = workflowEventNodeNames(nodes, nodeNames)
+
   return (
     <div
       className={`workflow-runtime__results${
@@ -159,16 +163,30 @@ export function WorkflowOutput({
             hidden={activeTab !== 'events'}
           >
             <div className="workflow-runtime__events">
-              {[...events].reverse().slice(0, 50).map((event) => (
-                <div key={event.seq}>
-                  <code>#{event.seq}</code>
-                  <span>
-                    <strong>{eventLabel(event.type)}</strong>
-                    <small>{event.type}</small>
-                  </span>
-                  <em>{event.nodeId || '整体运行'}</em>
-                </div>
-              ))}
+              {[...events].reverse().slice(0, 50).map((event) => {
+                const nodeName = event.nodeId
+                  ? eventNodeNames.get(event.nodeId) || event.nodeId
+                  : '整体运行'
+                return (
+                  <div key={event.seq}>
+                    <code>#{event.seq}</code>
+                    <span>
+                      <strong>{eventLabel(event.type)}</strong>
+                      <small>{event.type}</small>
+                    </span>
+                    <em
+                      data-node-id={event.nodeId || undefined}
+                      title={
+                        event.nodeId && nodeName !== event.nodeId
+                          ? `节点 ID：${event.nodeId}`
+                          : undefined
+                      }
+                    >
+                      {nodeName}
+                    </em>
+                  </div>
+                )
+              })}
               {events.length === 0 && <p>等待 OS 节点反馈……</p>}
             </div>
           </section>
@@ -283,4 +301,21 @@ function nodeTypeLabel(type: string): string {
 
 function eventLabel(type: string): string {
   return EVENT_TYPE_LABELS[type] || '运行事件'
+}
+
+function workflowEventNodeNames(
+  runNodes: readonly WorkflowRunNode[],
+  nodeNames: Readonly<Record<string, string>>
+): ReadonlyMap<string, string> {
+  const result = new Map(Object.entries(nodeNames))
+  for (const node of runNodes) {
+    const sourceNodeId = node.sourceNodeId || node.nodeId
+    const displayName =
+      nodeNames[sourceNodeId] ||
+      nodeNames[node.nodeId] ||
+      sourceNodeId
+    result.set(sourceNodeId, displayName)
+    result.set(node.nodeId, displayName)
+  }
+  return result
 }

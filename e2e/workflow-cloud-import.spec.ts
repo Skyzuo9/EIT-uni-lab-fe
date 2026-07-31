@@ -184,6 +184,16 @@ test('Cloud 导出 JSON 自动转换为标准工作流格式并可完整运行',
       page.locator('.workflow-runtime__node-list button[data-node-state="success"]')
     ).toHaveCount(expectedNodes)
 
+    await page.getByRole('tab', { name: /事件流/ }).click()
+    const firstNodeEvents = page.locator(
+      '.workflow-runtime__events em[data-node-id="first"]'
+    )
+    await expect(firstNodeEvents.first()).toHaveText('test_latency')
+    await expect(firstNodeEvents.first()).toHaveAttribute(
+      'title',
+      '节点 ID：first'
+    )
+
     await page.screenshot({
       path: resolve(
         artifactDir,

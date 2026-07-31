@@ -348,6 +348,15 @@ export default function WorkflowPanel({
       workflowRun.run?.debug?.pausedBeforeNodeId
     ]
   )
+  const workflowNodeNames = useMemo(
+    () => Object.fromEntries(
+      authoring.parsed.nodes.map((node) => [
+        node.id,
+        node.name || node.id
+      ])
+    ),
+    [authoring.parsed.nodes]
+  )
 
   useEffect(() => {
     authoring.editor.setLineMarkers(codeMarkers)
@@ -505,6 +514,7 @@ export default function WorkflowPanel({
             workflowRun.runNodes.length || authoring.parsed.nodes.length
           }
           nodes={workflowRun.outputNodes}
+          nodeNames={workflowNodeNames}
           events={workflowRun.events}
           error={error}
           selectedNode={workflowRun.selectedNode}
