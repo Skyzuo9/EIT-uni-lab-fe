@@ -284,8 +284,14 @@ test.describe('Edge device Action single run', () => {
     await expect(logs).toContainText('Traceback (most recent call last)')
     await expect(logs).toContainText('RuntimeError: blocked')
 
-    await detail.getByRole('button', { name: '复制', exact: true }).click()
-    await expect(detail.getByText('已复制', { exact: true })).toBeVisible()
+    const copyButton = detail.getByRole('button', {
+      name: '复制',
+      exact: true
+    })
+    await copyButton.click()
+    await expect(
+      detail.getByRole('button', { name: '已复制', exact: true })
+    ).toHaveAttribute('data-copied', 'true')
     await expect.poll(() => page.evaluate(() => navigator.clipboard.readText()))
       .toContain('Traceback (most recent call last)')
 

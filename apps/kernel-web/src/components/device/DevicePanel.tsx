@@ -18,7 +18,7 @@ import {
 import { useWorkbench } from '../../context/WorkbenchContext'
 import type { ManagedDevice } from '../../data/deviceCatalog'
 import { useDevices } from '../../hooks/useDevices'
-import './DevicePanel.module.scss'
+import styles from './DevicePanel.module.scss'
 
 type ArgumentDraft = Record<string, string | boolean>
 
@@ -793,12 +793,13 @@ function ExecutionResult({
           <span aria-hidden="true" />
           {presentation.label}
         </span>
-        <span className="edge-device__execution-tools">
+        <span className={styles.executionTools}>
           {execution.run ? <code>{execution.run.id.slice(0, 12)}</code> : null}
           {log ? (
             <button
               type="button"
-              className="edge-device__copy-button"
+              className={styles.copyButton}
+              data-copied={copied}
               onClick={() => {
                 void navigator.clipboard.writeText(log).then(() => {
                   setCopied(true)
