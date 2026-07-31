@@ -1,0 +1,53 @@
+.workflow :global(.workflow-runtime__beautify) {
+  display: inline-flex;
+  height: 34px;
+  align-items: center;
+  gap: 7px;
+  padding: 0 12px;
+  color: var(--unilab-color-workflow);
+  border: 1px solid color-mix(
+    in srgb,
+    var(--unilab-color-workflow) 30%,
+    var(--unilab-color-border)
+  );
+  border-radius: var(--unilab-radius-control);
+  background:
+    linear-gradient(
+      135deg,
+      var(--unilab-color-surface),
+      var(--unilab-color-workflow-soft)
+    );
+  box-shadow: var(--unilab-shadow-control);
+  font: 650 12px/1 var(--unilab-font-sans);
+  cursor: pointer;
+  transition:
+    color var(--unilab-motion-fast),
+    border-color var(--unilab-motion-fast),
+    box-shadow var(--unilab-motion-fast),
+    transform var(--unilab-motion-fast);
+}
+
+.workflow :global(.workflow-runtime__beautify) svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentcolor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.workflow :global(.workflow-runtime__beautify):hover:not(:disabled) {
+  color: var(--unilab-color-primary);
+  border-color: var(--unilab-color-focus);
+  box-shadow: var(--unilab-shadow-panel);
+  transform: translateY(-1px);
+}
+
+.workflow :global(.workflow-runtime__beautify):disabled {
+  cursor: not-allowed;
+  opacity: .58;
+}
+
+.workflow :global(.react-flow.is-beautifying) :global(.react-flow__node) {
+  transition: transform 360ms cubic-bezier(.22, 1, .36, 1);
+}

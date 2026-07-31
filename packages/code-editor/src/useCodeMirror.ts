@@ -55,6 +55,7 @@ export interface UseCodeMirrorResult {
   baseline: string
   isDirty: boolean
   containerRef: React.RefObject<HTMLDivElement | null>
+  updateContent: (next: string) => void
   replaceContent: (next: string) => void
   markSaved: () => void
   setLineMarkers: (markers: ReadonlyArray<CodeLineMarker>) => void
@@ -299,8 +300,7 @@ export function useCodeMirror(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [language])
 
-  // 用外部内容整体替换,并作为新基准
-  const replaceContent = useCallback((next: string) => {
+  const updateDocument = useCallback((next: string) => {
     const view = viewRef.current
     if (view) {
       view.dispatch({
@@ -308,8 +308,18 @@ export function useCodeMirror(
       })
     }
     setValue(next)
-    setBaseline(next)
   }, [])
+
+  // 用外部内容整体更新,保留保存基线并标记为未保存修改
+  const updateContent = useCallback((next: string) => {
+    updateDocument(next)
+  }, [updateDocument])
+
+  // 用外部内容整体替换,并作为新基准
+  const replaceContent = useCallback((next: string) => {
+    updateDocument(next)
+    setBaseline(next)
+  }, [updateDocument])
 
   // 标记为已保存:把当前内容设为新基准(isDirty 归零),不改动文档
   const markSaved = useCallback(() => {
@@ -347,6 +357,7 @@ export function useCodeMirror(
     baseline,
     isDirty: value !== baseline,
     containerRef,
+    updateContent,
     replaceContent,
     markSaved,
     setLineMarkers,

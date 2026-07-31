@@ -303,6 +303,8 @@ export default function WorkflowPanel({
           authoring.pythonHasUnappliedChanges
         }
         legendOpen={legendOpen}
+        canBeautify={authoring.canBeautify && !busy}
+        onBeautify={authoring.beautifyLayout}
         onLegendToggle={() => setLegendOpen((current) => !current)}
         onNodeSelect={selectNode}
         onSetStart={workflowRun.setExecutionStart}

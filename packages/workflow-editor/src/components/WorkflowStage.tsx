@@ -33,6 +33,8 @@ interface WorkflowStageProps {
   pausedBeforeNodeId: string | null
   pythonHasUnappliedChanges: boolean
   legendOpen: boolean
+  canBeautify: boolean
+  onBeautify: () => void
   onLegendToggle: () => void
   onNodeSelect: (nodeId: string) => void
   onSetStart: (nodeId: string) => void
@@ -59,6 +61,8 @@ export function WorkflowStage({
   pausedBeforeNodeId,
   pythonHasUnappliedChanges,
   legendOpen,
+  canBeautify,
+  onBeautify,
   onLegendToggle,
   onNodeSelect,
   onSetStart,
@@ -155,6 +159,8 @@ export function WorkflowStage({
               beforeStartNodeIds={beforeStartNodeIds}
               pausedBeforeNodeId={pausedBeforeNodeId}
               onNodeSelect={onNodeSelect}
+              canBeautify={canBeautify}
+              onBeautify={onBeautify}
               onSetStart={onSetStart}
               onToggleBreakpoint={onToggleBreakpoint}
             />

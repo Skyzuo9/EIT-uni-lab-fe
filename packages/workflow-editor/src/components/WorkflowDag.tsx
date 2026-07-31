@@ -9,7 +9,12 @@
  * Human Review Status: [ ] Pending  [ ] Reviewed  [ ] Approved
  * ============================================================
  */
-import ReactFlow, { Background, Controls, MiniMap } from 'reactflow'
+import ReactFlow, {
+  Background,
+  Controls,
+  MiniMap,
+  Panel
+} from 'reactflow'
 import type {
   EdgeChange,
   Node,
@@ -41,6 +46,8 @@ interface WorkflowDagProps {
   startNodeId?: string | null
   beforeStartNodeIds?: ReadonlySet<string>
   pausedBeforeNodeId?: string | null
+  canBeautify?: boolean
+  onBeautify?: () => void
 }
 
 // 注册自定义节点类型(在组件外定义,避免每次渲染重建)
@@ -57,12 +64,18 @@ export default function WorkflowDag({
   breakpoints = new Set(),
   startNodeId = null,
   beforeStartNodeIds = new Set(),
-  pausedBeforeNodeId = null
+  pausedBeforeNodeId = null,
+  canBeautify = true,
+  onBeautify
 }: WorkflowDagProps): React.JSX.Element {
+  const [isBeautifying, setIsBeautifying] = useState(false)
   const [expandedGroupIds, setExpandedGroupIds] = useState<Set<string>>(
     () => new Set()
   )
   const flowInstanceRef = useRef<ReactFlowInstance | null>(null)
+  const beautifyTimerRef = useRef<
+    ReturnType<typeof globalThis.setTimeout> | null
+  >(null)
   const groupSignature = useMemo(
     () => nodes
       .filter((node) => node.groupKind === 'subworkflow')
@@ -73,6 +86,14 @@ export default function WorkflowDag({
   useEffect(() => {
     setExpandedGroupIds(new Set())
   }, [groupSignature])
+  useEffect(
+    () => () => {
+      if (beautifyTimerRef.current !== null) {
+        globalThis.clearTimeout(beautifyTimerRef.current)
+      }
+    },
+    []
+  )
   const nestedProjection = useMemo(
     () => projectNestedWorkflow(nodes, links, expandedGroupIds),
     [expandedGroupIds, links, nodes]
@@ -191,15 +212,33 @@ export default function WorkflowDag({
     [links, nodes]
   )
   useEffect(() => {
-    const frame = requestAnimationFrame(() => {
-      void flowInstanceRef.current?.fitView({
-        padding: 0.16,
-        minZoom: 0.2,
-        maxZoom: 1
+    let fitFrame = 0
+    const syncFrame = requestAnimationFrame(() => {
+      fitFrame = requestAnimationFrame(() => {
+        void flowInstanceRef.current?.fitView({
+          padding: 0.16,
+          minZoom: 0.2,
+          maxZoom: 1
+        })
       })
     })
-    return () => cancelAnimationFrame(frame)
+    return () => {
+      cancelAnimationFrame(syncFrame)
+      cancelAnimationFrame(fitFrame)
+    }
   }, [graphSignature])
+  const handleBeautify = useCallback(() => {
+    if (!canBeautify || !onBeautify) return
+    setIsBeautifying(true)
+    onBeautify()
+    if (beautifyTimerRef.current !== null) {
+      globalThis.clearTimeout(beautifyTimerRef.current)
+    }
+    beautifyTimerRef.current = globalThis.setTimeout(() => {
+      setIsBeautifying(false)
+      beautifyTimerRef.current = null
+    }, 480)
+  }, [canBeautify, onBeautify])
 
   if (flowNodes.length === 0) {
     return (
@@ -212,6 +251,7 @@ export default function WorkflowDag({
   return (
     <div className={styles.dag}>
       <ReactFlow
+        className={isBeautifying ? 'is-beautifying' : undefined}
         nodes={runtimeNodes}
         edges={runtimeEdges}
         onNodesChange={handleNodesChange}
@@ -237,6 +277,37 @@ export default function WorkflowDag({
       >
         <Background gap={16} color="var(--unilab-color-border)" />
         <Controls showInteractive={false} />
+        <Panel position="top-right">
+          <button
+            type="button"
+            className="workflow-runtime__beautify"
+            disabled={!canBeautify || isBeautifying}
+            aria-label="美化工作流布局"
+            title={
+              canBeautify
+                ? '按控制流自动排列并适配画布'
+                : '请先完成当前 Python 编译'
+            }
+            onClick={handleBeautify}
+          >
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 24 24"
+              fill="none"
+            >
+              <path
+                d="M12 3l1.35 3.65L17 8l-3.65 1.35L12 13l-1.35-3.65L7 8l3.65-1.35L12 3Z"
+              />
+              <path
+                d="M18.5 13l.85 2.15L21.5 16l-2.15.85L18.5 19l-.85-2.15L15.5 16l2.15-.85L18.5 13Z"
+              />
+              <path
+                d="M6 14l.65 1.35L8 16l-1.35.65L6 18l-.65-1.35L4 16l1.35-.65L6 14Z"
+              />
+            </svg>
+            <span>{isBeautifying ? '正在美化' : '美化布局'}</span>
+          </button>
+        </Panel>
         <MiniMap
           pannable
           zoomable

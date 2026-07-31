@@ -18,6 +18,7 @@ import {
   CONTROL_DAG_JSON,
   parseCanonicalWorkflow
 } from '../utils/canonicalWorkflow'
+import { beautifyWorkflowRevision } from '../utils/dagLayout'
 import {
   compilePythonRevision,
   formatAuthoringDiagnostics,
@@ -44,6 +45,7 @@ export interface WorkflowAuthoringSnapshot {
   canonicalSource: string
   pythonBaseline: string | null
   pythonSourceMap: NonNullable<WorkflowAuthoringCandidate['source_map']>
+  layoutDirty: boolean
 }
 
 interface UseWorkflowAuthoringParams {
@@ -102,6 +104,9 @@ export function useWorkflowAuthoring({
   const [pythonSourceMap, setPythonSourceMap] = useState<
     NonNullable<WorkflowAuthoringCandidate['source_map']>
   >(initial?.pythonSourceMap ?? [])
+  const [layoutDirty, setLayoutDirty] = useState(
+    initial?.layoutDirty ?? false
+  )
   const parsed = useMemo(() => {
     const source =
       authoringMode === 'json' ? editor.value : canonicalSource
@@ -109,8 +114,8 @@ export function useWorkflowAuthoring({
   }, [authoringMode, canonicalSource, editor.value])
 
   useEffect(() => {
-    onUnsavedChangesChange?.(editor.isDirty)
-  }, [editor.isDirty, onUnsavedChangesChange])
+    onUnsavedChangesChange?.(editor.isDirty || layoutDirty)
+  }, [editor.isDirty, layoutDirty, onUnsavedChangesChange])
 
   useEffect(
     () => () => {
@@ -120,7 +125,7 @@ export function useWorkflowAuthoring({
   )
 
   useEffect(() => {
-    if (!editor.isDirty) return
+    if (!editor.isDirty && !layoutDirty) return
     const preventUnsavedUnload = (event: BeforeUnloadEvent): void => {
       event.preventDefault()
       event.returnValue = ''
@@ -129,7 +134,7 @@ export function useWorkflowAuthoring({
     return () => {
       globalThis.removeEventListener('beforeunload', preventUnsavedUnload)
     }
-  }, [editor.isDirty])
+  }, [editor.isDirty, layoutDirty])
 
   useEffect(() => {
     if (!saveFilePromptOpen) return
@@ -154,6 +159,7 @@ export function useWorkflowAuthoring({
     setSaveFilePromptOpen(false)
     setPythonSourceMap([])
     pythonBaseline.current = null
+    setLayoutDirty(false)
     onResetRun()
   }, [editor.replaceContent, onResetRun])
 
@@ -458,6 +464,31 @@ export function useWorkflowAuthoring({
     return revision
   }, [resolveRevision, runtime, setError, setMessage])
 
+  const beautifyLayout = useCallback((): void => {
+    if (!parsed.revision || parsed.nodes.length === 0) return
+    const nextRevision = beautifyWorkflowRevision(
+      parsed.revision,
+      parsed.nodes,
+      parsed.links
+    )
+    const nextCanonical = JSON.stringify(nextRevision, null, 2)
+    setCanonicalSource(nextCanonical)
+    if (authoringMode === 'json') {
+      editor.updateContent(nextCanonical)
+    }
+    setLayoutDirty(true)
+    onResetRun()
+    setMessage('布局已美化；保存修订版本后将写入工作流')
+  }, [
+    authoringMode,
+    editor.updateContent,
+    onResetRun,
+    parsed.links,
+    parsed.nodes,
+    parsed.revision,
+    setMessage
+  ])
+
   const switchAuthoringMode = (
     nextMode: WorkflowAuthoringMode
   ): void => {
@@ -515,6 +546,7 @@ export function useWorkflowAuthoring({
       })
       setCanonicalSource(saved.canonical)
       editor.markSaved()
+      setLayoutDirty(false)
       setMessage(saved.message)
     })
   }
@@ -538,6 +570,7 @@ export function useWorkflowAuthoring({
       setSourceFileName(null)
       sourceFileWriter.current = null
       setSaveFilePromptOpen(false)
+      setLayoutDirty(false)
       if (authoringMode === 'python') {
         const { candidate } = await projectToPython(revision)
         setCanonicalSource(JSON.stringify(candidate.canonical_ir, null, 2))
@@ -581,6 +614,12 @@ export function useWorkflowAuthoring({
     parsed,
     fileUpload,
     sourceRunnable,
+    canBeautify:
+      Boolean(parsed.revision && parsed.nodes.length > 0) &&
+      !(
+        authoringMode === 'python' &&
+        editor.value !== pythonBaseline.current
+      ),
     editorTitle,
     pythonHasUnappliedChanges:
       authoringMode === 'python' &&
@@ -596,6 +635,7 @@ export function useWorkflowAuthoring({
         await validateRevision()
       }),
     validateRevision,
+    beautifyLayout,
     save,
     cancelSavePrompt: () => setSaveFilePromptOpen(false),
     resolveFileSavePrompt: (saveFile: boolean) => {
@@ -610,7 +650,8 @@ export function useWorkflowAuthoring({
       editorBaseline: editor.baseline,
       canonicalSource,
       pythonBaseline: pythonBaseline.current,
-      pythonSourceMap
+      pythonSourceMap,
+      layoutDirty
     } satisfies WorkflowAuthoringSnapshot
   }
 }
