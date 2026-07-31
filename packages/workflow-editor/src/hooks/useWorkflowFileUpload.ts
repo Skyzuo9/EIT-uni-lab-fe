@@ -27,7 +27,7 @@ interface UseWorkflowFileUploadParams {
   onError?: (message: string) => void
 }
 
-interface UseWorkflowFileUploadResult {
+export interface UseWorkflowFileUploadResult {
   // 隐藏 file input 的 ref
   inputRef: React.RefObject<HTMLInputElement | null>
   // 触发文件选择框(kind 决定过滤的文件类型,默认 JSON)
