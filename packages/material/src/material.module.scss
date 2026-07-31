@@ -891,24 +891,6 @@
   border-radius: var(--unilab-radius-sm);
 }
 
-:where(.scope, .scope *):global(.material-oblique-canvas__coverage) span:global(.is-approximate) {
-  border-style: dashed;
-}
-
-:where(.scope, .scope *):global(.material-oblique-canvas__coverage) span:global(.is-inferred) {
-  color: var(--unilab-color-warning);
-  background: color-mix(
-    in srgb,
-    var(--unilab-color-warning) 7%,
-    var(--unilab-color-surface)
-  );
-  border-color: color-mix(
-    in srgb,
-    var(--unilab-color-warning) 38%,
-    var(--unilab-color-border)
-  );
-}
-
 :where(.scope, .scope *):global(.material-oblique-canvas__coverage) span:global(.is-invalid) {
   color: var(--unilab-color-danger);
   background: color-mix(
@@ -971,42 +953,6 @@
   font-size: 11px;
   font-weight: 600;
   white-space: nowrap;
-}
-
-:where(.scope, .scope *):global(.material-oblique-fidelity) {
-  display: inline-flex;
-  gap: 5px;
-  align-items: center;
-  flex: none;
-  color: var(--unilab-color-text-muted);
-  white-space: nowrap;
-}
-
-:where(.scope, .scope *):global(.material-oblique-fidelity) > span {
-  width: 10px;
-  height: 10px;
-  background: #d9e0eb;
-  border: 1px solid #77839a;
-  border-radius: 2px;
-}
-
-:where(.scope, .scope *):global(.material-oblique-fidelity):global(.is-envelope) > span {
-  background: transparent;
-  border-style: dashed;
-}
-
-:where(.scope, .scope *):global(.material-oblique-fidelity):global(.is-inferred) {
-  color: var(--unilab-color-warning);
-}
-
-:where(.scope, .scope *):global(.material-oblique-fidelity):global(.is-inferred) > span {
-  background: color-mix(
-    in srgb,
-    var(--unilab-color-warning) 16%,
-    transparent
-  );
-  border-color: var(--unilab-color-warning);
-  border-style: dotted;
 }
 
 :where(.scope, .scope *):global(.material-oblique-canvas__svg) {
@@ -1076,21 +1022,6 @@
   background: #d9e0eb;
   border: 1px solid #77839a;
   border-radius: 2px;
-}
-
-:where(.scope, .scope *):global(.material-oblique-legend-key):global(.is-envelope) i {
-  background: transparent;
-  border-style: dashed;
-}
-
-:where(.scope, .scope *):global(.material-oblique-legend-key):global(.is-inferred) i {
-  background: color-mix(
-    in srgb,
-    var(--unilab-color-warning) 14%,
-    transparent
-  );
-  border-color: var(--unilab-color-warning);
-  border-style: dotted;
 }
 
 :where(.scope, .scope *):global(.material-oblique-legend-key):global(.is-selected) i {

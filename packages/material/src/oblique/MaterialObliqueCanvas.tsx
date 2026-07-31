@@ -23,7 +23,6 @@ import type {
 import { materialScopeClassName } from '../materialStyles'
 import {
   buildMaterialObliqueScene,
-  type MaterialObliqueFidelity,
   type MaterialObliqueObject,
   type MaterialObliqueShape,
   type ObliquePoint
@@ -347,30 +346,17 @@ export function MaterialObliqueCanvas({
         滚轮缩放，拖动画布平移，回车或空格选择物料，按 Escape
         清除选择，按 Control 或 Command 可多选。
       </p>
-      <div
-        className="material-oblique-canvas__coverage"
-        role="status"
-        aria-live="polite"
-      >
-        <span>
-          声明外形 {scene.diagnostics.declaredShapeCount}
-        </span>
-        {scene.diagnostics.envelopeApproximationCount > 0 ? (
-          <span className="is-approximate">
-            包络近似 {scene.diagnostics.envelopeApproximationCount}
-          </span>
-        ) : null}
-        {scene.diagnostics.inferredStructureCount > 0 ? (
-          <span className="is-inferred">
-            推断结构 {scene.diagnostics.inferredStructureCount}
-          </span>
-        ) : null}
-        {scene.diagnostics.invalidObjectCount > 0 ? (
+      {scene.diagnostics.invalidObjectCount > 0 ? (
+        <div
+          className="material-oblique-canvas__coverage"
+          role="status"
+          aria-live="polite"
+        >
           <span className="is-invalid">
             坐标异常 {scene.diagnostics.invalidObjectCount}
           </span>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
       {selectedObject ? (
         <div
           className="material-oblique-canvas__selection"
@@ -380,7 +366,6 @@ export function MaterialObliqueCanvas({
             <strong>{selectedObject.name}</strong>
             <span>{selectedObject.code}</span>
           </div>
-          <FidelityBadge fidelity={selectedObject.fidelity} />
           <span className="material-oblique-canvas__coordinates">
             X {formatMm(selectedObject.pose.positionMm[0])} · Y{' '}
             {formatMm(selectedObject.pose.positionMm[1])} · Z{' '}
@@ -493,22 +478,6 @@ export function MaterialObliqueCanvas({
   )
 }
 
-function FidelityBadge({
-  fidelity
-}: {
-  fidelity: MaterialObliqueFidelity
-}): React.JSX.Element {
-  return (
-    <span
-      className={`material-oblique-fidelity is-${fidelity}`}
-      data-fidelity={fidelity}
-    >
-      <span aria-hidden="true" />
-      {fidelityLabel(fidelity)}
-    </span>
-  )
-}
-
 function CanvasLegend(): React.JSX.Element {
   return (
     <div
@@ -516,18 +485,6 @@ function CanvasLegend(): React.JSX.Element {
       aria-label="2.5D 图例与操作说明"
     >
       <div>
-        <span className="material-oblique-legend-key is-declared">
-          <i aria-hidden="true" />
-          声明外形
-        </span>
-        <span className="material-oblique-legend-key is-envelope">
-          <i aria-hidden="true" />
-          包络近似
-        </span>
-        <span className="material-oblique-legend-key is-inferred">
-          <i aria-hidden="true" />
-          推断结构
-        </span>
         <span className="material-oblique-legend-key is-selected">
           <i aria-hidden="true" />
           已选
@@ -722,17 +679,6 @@ function landmarkLabelOffsets(
   return offsets
 }
 
-function fidelityLabel(fidelity: MaterialObliqueFidelity): string {
-  switch (fidelity) {
-    case 'declared':
-      return '声明外形'
-    case 'inferred':
-      return '推断结构'
-    default:
-      return '包络近似'
-  }
-}
-
 function formatMm(value: number): string {
   return new Intl.NumberFormat('zh-CN', {
     maximumFractionDigits: 1
@@ -785,7 +731,7 @@ function ObliqueMaterial({
 
   return (
     <g
-      aria-label={`${object.name}，${fidelityLabel(object.fidelity)}，${object.widthMm}×${object.depthMm}×${object.heightMm} 毫米`}
+      aria-label={`${object.name}，${object.widthMm}×${object.depthMm}×${object.heightMm} 毫米`}
       aria-pressed={selected}
       className={stateClass}
       data-material-code={object.code}
