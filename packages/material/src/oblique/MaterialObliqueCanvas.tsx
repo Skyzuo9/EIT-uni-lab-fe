@@ -1,8 +1,18 @@
+import AimOutlined from '@ant-design/icons/AimOutlined'
+import FullscreenExitOutlined from '@ant-design/icons/FullscreenExitOutlined'
+import ZoomInOutlined from '@ant-design/icons/ZoomInOutlined'
+import ZoomOutOutlined from '@ant-design/icons/ZoomOutOutlined'
 import {
+  useCallback,
+  useEffect,
+  useId,
   useMemo,
+  useRef,
   useState,
   type KeyboardEvent,
-  type MouseEvent
+  type MouseEvent,
+  type PointerEvent as ReactPointerEvent,
+  type WheelEvent
 } from 'react'
 
 import type {
@@ -13,6 +23,7 @@ import type {
 import { materialScopeClassName } from '../materialStyles'
 import {
   buildMaterialObliqueScene,
+  type MaterialObliqueFidelity,
   type MaterialObliqueObject,
   type MaterialObliqueShape,
   type ObliquePoint
@@ -34,6 +45,38 @@ export interface MaterialObliqueCanvasProps {
   onSelectionChange?: (materialIds: readonly MaterialId[]) => void
 }
 
+interface ObliqueCamera {
+  centerX: number
+  centerY: number
+  zoom: number
+}
+
+interface ObliqueViewBox {
+  minX: number
+  minY: number
+  width: number
+  height: number
+}
+
+interface ViewportSize {
+  width: number
+  height: number
+}
+
+interface DragState {
+  pointerId: number
+  clientX: number
+  clientY: number
+  camera: ObliqueCamera
+  viewBox: ObliqueViewBox
+  moved: boolean
+}
+
+const MIN_CAMERA_ZOOM = 1
+const MAX_CAMERA_ZOOM = 6
+const DEFAULT_VIEWPORT: ViewportSize = { width: 1600, height: 900 }
+const LANDMARK_LIMIT = 7
+
 /**
  * Responsive front-oblique material projection. Every object is an SVG
  * extrusion of its authoritative plan footprint; sites/wells are painted
@@ -52,14 +95,69 @@ export function MaterialObliqueCanvas({
   )
   const [hoveredMaterialId, setHoveredMaterialId] =
     useState<MaterialId | null>(null)
+  const [viewport, setViewport] =
+    useState<ViewportSize>(DEFAULT_VIEWPORT)
+  const [camera, setCamera] = useState<ObliqueCamera>(() =>
+    fitCamera(scene.bounds)
+  )
+  const [isPanning, setIsPanning] = useState(false)
+  const canvasRef = useRef<HTMLDivElement>(null)
+  const svgRef = useRef<SVGSVGElement>(null)
+  const dragRef = useRef<DragState | null>(null)
+  const suppressCanvasClickRef = useRef(false)
+  const instructionsId = useId()
   const selected = new Set(selectedMaterialIds)
   const highlighted = new Set(highlightedMaterialIds)
-  const viewBox = [
+  const selectedObject = scene.objects.find((object) =>
+    selected.has(object.materialId)
+  )
+  const landmarkIds = useMemo(
+    () => selectLandmarkIds(scene.objects, LANDMARK_LIMIT),
+    [scene.objects]
+  )
+  const landmarkOffsets = useMemo(
+    () => landmarkLabelOffsets(scene.objects, landmarkIds),
+    [landmarkIds, scene.objects]
+  )
+  const viewBox = useMemo(
+    () => cameraViewBox(scene.bounds, viewport, camera),
+    [camera, scene.bounds, viewport]
+  )
+  const viewBoxValue = [
+    viewBox.minX,
+    viewBox.minY,
+    viewBox.width,
+    viewBox.height
+  ].join(' ')
+  const semanticZoom =
+    camera.zoom < 1.45
+      ? 'overview'
+      : camera.zoom < 2.8
+        ? 'detail'
+        : 'inspect'
+
+  useEffect(() => {
+    setCamera(fitCamera(scene.bounds))
+  }, [
+    scene.bounds.height,
     scene.bounds.minX,
     scene.bounds.minY,
-    scene.bounds.width,
-    scene.bounds.height
-  ].join(' ')
+    scene.bounds.width
+  ])
+
+  useEffect(() => {
+    const element = canvasRef.current
+    if (!element || typeof ResizeObserver === 'undefined') return
+    const update = (): void => {
+      const rect = element.getBoundingClientRect()
+      if (rect.width <= 0 || rect.height <= 0) return
+      setViewport({ width: rect.width, height: rect.height })
+    }
+    const observer = new ResizeObserver(update)
+    observer.observe(element)
+    update()
+    return () => observer.disconnect()
+  }, [])
 
   const select = (
     materialId: MaterialId,
@@ -76,25 +174,255 @@ export function MaterialObliqueCanvas({
     )
   }
 
+  const fitAll = useCallback(() => {
+    setCamera(fitCamera(scene.bounds))
+  }, [scene.bounds])
+
+  const changeZoom = useCallback((factor: number) => {
+    setCamera((current) => ({
+      ...current,
+      zoom: clamp(
+        current.zoom * factor,
+        MIN_CAMERA_ZOOM,
+        MAX_CAMERA_ZOOM
+      )
+    }))
+  }, [])
+
+  const focusObject = useCallback(
+    (object: MaterialObliqueObject | undefined) => {
+      if (!object) return
+      setCamera(focusCamera(scene.bounds, viewport, object))
+    },
+    [scene.bounds, viewport]
+  )
+
+  const handleWheel = (event: WheelEvent<SVGSVGElement>): void => {
+    if (!svgRef.current) return
+    event.preventDefault()
+    const rect = svgRef.current.getBoundingClientRect()
+    if (rect.width <= 0 || rect.height <= 0) return
+    const ratioX = clamp(
+      (event.clientX - rect.left) / rect.width,
+      0,
+      1
+    )
+    const ratioY = clamp(
+      (event.clientY - rect.top) / rect.height,
+      0,
+      1
+    )
+    const worldX = viewBox.minX + viewBox.width * ratioX
+    const worldY = viewBox.minY + viewBox.height * ratioY
+    const nextZoom = clamp(
+      camera.zoom * (event.deltaY < 0 ? 1.18 : 1 / 1.18),
+      MIN_CAMERA_ZOOM,
+      MAX_CAMERA_ZOOM
+    )
+    const nextBase = fittedViewBox(scene.bounds, viewport)
+    const nextWidth = nextBase.width / nextZoom
+    const nextHeight = nextBase.height / nextZoom
+    setCamera({
+      centerX: worldX - (ratioX - 0.5) * nextWidth,
+      centerY: worldY - (ratioY - 0.5) * nextHeight,
+      zoom: nextZoom
+    })
+  }
+
+  const handlePointerDown = (
+    event: ReactPointerEvent<SVGSVGElement>
+  ): void => {
+    if (event.button !== 0 || event.target !== event.currentTarget) return
+    event.currentTarget.setPointerCapture(event.pointerId)
+    dragRef.current = {
+      pointerId: event.pointerId,
+      clientX: event.clientX,
+      clientY: event.clientY,
+      camera,
+      viewBox,
+      moved: false
+    }
+    setIsPanning(true)
+  }
+
+  const handlePointerMove = (
+    event: ReactPointerEvent<SVGSVGElement>
+  ): void => {
+    const drag = dragRef.current
+    const svg = svgRef.current
+    if (!drag || drag.pointerId !== event.pointerId || !svg) return
+    const rect = svg.getBoundingClientRect()
+    if (rect.width <= 0 || rect.height <= 0) return
+    const deltaX = event.clientX - drag.clientX
+    const deltaY = event.clientY - drag.clientY
+    if (Math.abs(deltaX) + Math.abs(deltaY) > 3) drag.moved = true
+    setCamera({
+      ...drag.camera,
+      centerX:
+        drag.camera.centerX - (deltaX / rect.width) * drag.viewBox.width,
+      centerY:
+        drag.camera.centerY - (deltaY / rect.height) * drag.viewBox.height
+    })
+  }
+
+  const finishPan = (
+    event: ReactPointerEvent<SVGSVGElement>
+  ): void => {
+    const drag = dragRef.current
+    if (!drag || drag.pointerId !== event.pointerId) return
+    suppressCanvasClickRef.current = drag.moved
+    dragRef.current = null
+    setIsPanning(false)
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+  }
+
   return (
     <div
+      ref={canvasRef}
       className={materialScopeClassName('material-oblique-canvas')}
+      aria-label="实验室 2.5D 物料操作视图"
+      aria-describedby={instructionsId}
+      data-camera-zoom={camera.zoom.toFixed(2)}
       data-material-oblique-view
+      data-semantic-zoom={semanticZoom}
+      role="region"
+      onKeyDown={(event) => {
+        if (event.key !== 'Escape') return
+        onSelectionChange?.([])
+      }}
     >
-      <div className="material-oblique-canvas__header">
-        <strong>实验室 2.5D · SVG</strong>
-        <span>正面斜二测 · 深度 1:2</span>
+      <header className="material-oblique-canvas__header">
+        <div className="material-oblique-canvas__identity">
+          <strong>实验室 2.5D</strong>
+          <span>{scene.objects.length} 个对象</span>
+        </div>
+        <div
+          className="material-oblique-canvas__camera"
+          role="group"
+          aria-label="2.5D 视图控制"
+        >
+          <button
+            type="button"
+            aria-label="缩小 2.5D 视图"
+            disabled={camera.zoom <= MIN_CAMERA_ZOOM}
+            title="缩小"
+            onClick={() => changeZoom(1 / 1.25)}
+          >
+            <ZoomOutOutlined aria-hidden="true" />
+          </button>
+          <output aria-label="当前缩放比例">
+            {Math.round(camera.zoom * 100)}%
+          </output>
+          <button
+            type="button"
+            aria-label="放大 2.5D 视图"
+            disabled={camera.zoom >= MAX_CAMERA_ZOOM}
+            title="放大"
+            onClick={() => changeZoom(1.25)}
+          >
+            <ZoomInOutlined aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            aria-label="适应全部物料"
+            title="适应全部"
+            onClick={fitAll}
+          >
+            <FullscreenExitOutlined aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            aria-label="聚焦已选物料"
+            disabled={!selectedObject}
+            title="聚焦已选"
+            onClick={() => focusObject(selectedObject)}
+          >
+            <AimOutlined aria-hidden="true" />
+          </button>
+        </div>
+      </header>
+      <p id={instructionsId} className="material-oblique-canvas__sr-only">
+        滚轮缩放，拖动画布平移，回车或空格选择物料，按 Escape
+        清除选择，按 Control 或 Command 可多选。
+      </p>
+      <div
+        className="material-oblique-canvas__coverage"
+        role="status"
+        aria-live="polite"
+      >
+        <span>
+          声明外形 {scene.diagnostics.declaredShapeCount}
+        </span>
+        {scene.diagnostics.envelopeApproximationCount > 0 ? (
+          <span className="is-approximate">
+            包络近似 {scene.diagnostics.envelopeApproximationCount}
+          </span>
+        ) : null}
+        {scene.diagnostics.inferredStructureCount > 0 ? (
+          <span className="is-inferred">
+            推断结构 {scene.diagnostics.inferredStructureCount}
+          </span>
+        ) : null}
+        {scene.diagnostics.invalidObjectCount > 0 ? (
+          <span className="is-invalid">
+            坐标异常 {scene.diagnostics.invalidObjectCount}
+          </span>
+        ) : null}
       </div>
+      {selectedObject ? (
+        <div
+          className="material-oblique-canvas__selection"
+          aria-live="polite"
+        >
+          <div>
+            <strong>{selectedObject.name}</strong>
+            <span>{selectedObject.code}</span>
+          </div>
+          <FidelityBadge fidelity={selectedObject.fidelity} />
+          <span className="material-oblique-canvas__coordinates">
+            X {formatMm(selectedObject.pose.positionMm[0])} · Y{' '}
+            {formatMm(selectedObject.pose.positionMm[1])} · Z{' '}
+            {formatMm(selectedObject.pose.positionMm[2])} mm
+          </span>
+          {selectedMaterialIds.length > 1 ? (
+            <span>已选 {selectedMaterialIds.length} 项</span>
+          ) : null}
+          <button type="button" onClick={() => focusObject(selectedObject)}>
+            <AimOutlined aria-hidden="true" />
+            定位
+          </button>
+        </div>
+      ) : null}
       {scene.objects.length === 0 ? (
-        <div className="material-oblique-canvas__empty">暂无物料</div>
+        <div className="material-oblique-canvas__empty">
+          <strong>当前物料图没有可展示对象</strong>
+          <span>
+            请确认物料图已加载，并检查对象坐标与尺寸是否完整。
+          </span>
+        </div>
       ) : (
         <svg
+          ref={svgRef}
           aria-label="实验室 2.5D 物料视图"
           className="material-oblique-canvas__svg"
-          preserveAspectRatio="xMidYMid meet"
-          role="img"
-          viewBox={viewBox}
-          onClick={() => onSelectionChange?.([])}
+          data-panning={isPanning || undefined}
+          preserveAspectRatio="none"
+          role="group"
+          viewBox={viewBoxValue}
+          onClick={() => {
+            if (suppressCanvasClickRef.current) {
+              suppressCanvasClickRef.current = false
+              return
+            }
+            onSelectionChange?.([])
+          }}
+          onPointerCancel={finishPan}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={finishPan}
+          onWheel={handleWheel}
         >
           <defs>
             <filter
@@ -117,20 +445,27 @@ export function MaterialObliqueCanvas({
             const isSelected = selected.has(object.materialId)
             const isHighlighted = highlighted.has(object.materialId)
             const isHovered = hoveredMaterialId === object.materialId
+            const isLandmark = landmarkIds.has(object.materialId)
+            const showTag =
+              isSelected ||
+              isHighlighted ||
+              isHovered ||
+              (semanticZoom === 'overview' && isLandmark) ||
+              (semanticZoom === 'detail' &&
+                isEquipmentKind(object.kind)) ||
+              semanticZoom === 'inspect'
             return (
               <ObliqueMaterial
                 key={object.materialId}
                 object={object}
                 selected={isSelected}
                 highlighted={isHighlighted}
-                showTag={
-                  isEquipmentKind(object.kind) ||
-                  isSelected ||
-                  isHighlighted ||
-                  isHovered
-                }
+                labelScale={1 / camera.zoom}
+                labelOffsetY={landmarkOffsets.get(object.materialId) ?? 0}
+                showTag={showTag}
                 onClick={(event) => {
                   event.stopPropagation()
+                  event.currentTarget.focus()
                   select(
                     object.materialId,
                     event.ctrlKey || event.metaKey
@@ -153,14 +488,263 @@ export function MaterialObliqueCanvas({
           })}
         </svg>
       )}
+      <CanvasLegend />
     </div>
   )
+}
+
+function FidelityBadge({
+  fidelity
+}: {
+  fidelity: MaterialObliqueFidelity
+}): React.JSX.Element {
+  return (
+    <span
+      className={`material-oblique-fidelity is-${fidelity}`}
+      data-fidelity={fidelity}
+    >
+      <span aria-hidden="true" />
+      {fidelityLabel(fidelity)}
+    </span>
+  )
+}
+
+function CanvasLegend(): React.JSX.Element {
+  return (
+    <div
+      className="material-oblique-canvas__legend"
+      aria-label="2.5D 图例与操作说明"
+    >
+      <div>
+        <span className="material-oblique-legend-key is-declared">
+          <i aria-hidden="true" />
+          声明外形
+        </span>
+        <span className="material-oblique-legend-key is-envelope">
+          <i aria-hidden="true" />
+          包络近似
+        </span>
+        <span className="material-oblique-legend-key is-inferred">
+          <i aria-hidden="true" />
+          推断结构
+        </span>
+        <span className="material-oblique-legend-key is-selected">
+          <i aria-hidden="true" />
+          已选
+        </span>
+        <span className="material-oblique-legend-key is-occupied">
+          <i aria-hidden="true" />
+          已占用
+        </span>
+      </div>
+      <span>滚轮缩放 · 拖动画布 · Ctrl / ⌘ 多选 · Esc 清除</span>
+    </div>
+  )
+}
+
+function fitCamera(
+  bounds: MaterialObliqueSceneBounds
+): ObliqueCamera {
+  return {
+    centerX: bounds.minX + bounds.width / 2,
+    centerY: bounds.minY + bounds.height / 2,
+    zoom: MIN_CAMERA_ZOOM
+  }
+}
+
+type MaterialObliqueSceneBounds = {
+  minX: number
+  minY: number
+  width: number
+  height: number
+}
+
+function fittedViewBox(
+  bounds: MaterialObliqueSceneBounds,
+  viewport: ViewportSize
+): ObliqueViewBox {
+  const viewportRatio =
+    viewport.width > 0 && viewport.height > 0
+      ? viewport.width / viewport.height
+      : DEFAULT_VIEWPORT.width / DEFAULT_VIEWPORT.height
+  const contentRatio = bounds.width / bounds.height
+  const width =
+    viewportRatio >= contentRatio
+      ? bounds.height * viewportRatio
+      : bounds.width
+  const height =
+    viewportRatio >= contentRatio
+      ? bounds.height
+      : bounds.width / viewportRatio
+  return {
+    minX: bounds.minX - (width - bounds.width) / 2,
+    minY: bounds.minY - (height - bounds.height) / 2,
+    width,
+    height
+  }
+}
+
+function cameraViewBox(
+  bounds: MaterialObliqueSceneBounds,
+  viewport: ViewportSize,
+  camera: ObliqueCamera
+): ObliqueViewBox {
+  const fitted = fittedViewBox(bounds, viewport)
+  const width = fitted.width / camera.zoom
+  const height = fitted.height / camera.zoom
+  const sceneCenterX = bounds.minX + bounds.width / 2
+  const sceneCenterY = bounds.minY + bounds.height / 2
+  const centerX =
+    width >= bounds.width
+      ? sceneCenterX
+      : clamp(
+          camera.centerX,
+          bounds.minX + width / 2,
+          bounds.minX + bounds.width - width / 2
+        )
+  const centerY =
+    height >= bounds.height
+      ? sceneCenterY
+      : clamp(
+          camera.centerY,
+          bounds.minY + height / 2,
+          bounds.minY + bounds.height - height / 2
+        )
+  return {
+    minX: centerX - width / 2,
+    minY: centerY - height / 2,
+    width,
+    height
+  }
+}
+
+function focusCamera(
+  sceneBounds: MaterialObliqueSceneBounds,
+  viewport: ViewportSize,
+  object: MaterialObliqueObject
+): ObliqueCamera {
+  const points = [...object.base, ...object.top]
+  const xs = points.map((point) => point[0])
+  const ys = points.map((point) => point[1])
+  const minX = Math.min(...xs)
+  const maxX = Math.max(...xs)
+  const minY = Math.min(...ys)
+  const maxY = Math.max(...ys)
+  const objectWidth = Math.max(maxX - minX, sceneBounds.width * 0.03)
+  const objectHeight = Math.max(
+    maxY - minY,
+    sceneBounds.height * 0.06
+  )
+  const fitted = fittedViewBox(sceneBounds, viewport)
+  const zoom = clamp(
+    Math.min(
+      fitted.width / (objectWidth * 2.6),
+      fitted.height / (objectHeight * 2.6)
+    ),
+    1.6,
+    4.5
+  )
+  return {
+    centerX: minX + (maxX - minX) / 2,
+    centerY: minY + (maxY - minY) / 2,
+    zoom
+  }
+}
+
+function selectLandmarkIds(
+  objects: readonly MaterialObliqueObject[],
+  limit: number
+): ReadonlySet<MaterialId> {
+  const landmarks = objects
+    .filter(
+      (object) =>
+        isEquipmentKind(object.kind) &&
+        !['host', 'plc', 'deck'].some((token) =>
+          object.kind.toLowerCase().includes(token)
+        )
+    )
+    .sort(
+      (left, right) =>
+        landmarkScore(right) - landmarkScore(left) ||
+        left.materialId.localeCompare(right.materialId)
+    )
+    .slice(0, limit)
+    .map((object) => object.materialId)
+  return new Set(landmarks)
+}
+
+function landmarkScore(object: MaterialObliqueObject): number {
+  const fidelityWeight =
+    object.fidelity === 'declared'
+      ? 2_000_000
+      : object.fidelity === 'inferred'
+        ? 1_000_000
+        : 0
+  return (
+    fidelityWeight +
+    object.widthMm * object.depthMm +
+    object.heightMm * 100
+  )
+}
+
+function landmarkLabelOffsets(
+  objects: readonly MaterialObliqueObject[],
+  landmarkIds: ReadonlySet<MaterialId>
+): ReadonlyMap<MaterialId, number> {
+  const landmarks = objects
+    .filter((object) => landmarkIds.has(object.materialId))
+    .map((object) => ({
+      id: object.materialId,
+      anchorX: tagAnchor(object.top)[0]
+    }))
+    .sort((left, right) => left.anchorX - right.anchorX)
+  const offsets = new Map<MaterialId, number>()
+  let previousX = Number.NEGATIVE_INFINITY
+  let lane = 0
+  const sceneXs = objects.flatMap((object) =>
+    object.top.map((point) => point[0])
+  )
+  const collisionDistance =
+    sceneXs.length > 0
+      ? Math.max(
+          (Math.max(...sceneXs) - Math.min(...sceneXs)) / 18,
+          180
+        )
+      : 240
+  for (const landmark of landmarks) {
+    lane =
+      landmark.anchorX - previousX < collisionDistance
+        ? (lane + 1) % 3
+        : 0
+    offsets.set(landmark.id, lane * -86)
+    previousX = landmark.anchorX
+  }
+  return offsets
+}
+
+function fidelityLabel(fidelity: MaterialObliqueFidelity): string {
+  switch (fidelity) {
+    case 'declared':
+      return '声明外形'
+    case 'inferred':
+      return '推断结构'
+    default:
+      return '包络近似'
+  }
+}
+
+function formatMm(value: number): string {
+  return new Intl.NumberFormat('zh-CN', {
+    maximumFractionDigits: 1
+  }).format(value)
 }
 
 function ObliqueMaterial({
   object,
   selected,
   highlighted,
+  labelScale,
+  labelOffsetY,
   showTag,
   onClick,
   onKeyDown,
@@ -170,6 +754,8 @@ function ObliqueMaterial({
   object: MaterialObliqueObject
   selected: boolean
   highlighted: boolean
+  labelScale: number
+  labelOffsetY: number
   showTag: boolean
   onClick: (event: MouseEvent<SVGGElement>) => void
   onKeyDown: (event: KeyboardEvent<SVGGElement>) => void
@@ -180,22 +766,33 @@ function ObliqueMaterial({
     'material-oblique-object',
     selected ? 'is-selected' : '',
     highlighted ? 'is-highlighted' : '',
+    showTag ? 'is-tag-visible' : '',
+    `is-fidelity-${object.fidelity}`,
     `is-${materialKindClass(object.kind)}`
   ]
     .filter(Boolean)
     .join(' ')
-  const label = object.code || object.name
   const tagPoint = tagAnchor(object.top)
-  const tagWidth = Math.max(70, label.length * 13 + 24)
+  const showCode = Boolean(
+    object.code && object.code !== object.name
+  )
+  const tagWidth = Math.max(
+    220,
+    object.name.length * 38 + 52,
+    showCode ? object.code.length * 23 + 52 : 0
+  )
+  const tagHeight = showCode ? 74 : 52
 
   return (
     <g
-      aria-label={`${label}，${object.widthMm}×${object.depthMm}×${object.heightMm} 毫米`}
+      aria-label={`${object.name}，${fidelityLabel(object.fidelity)}，${object.widthMm}×${object.depthMm}×${object.heightMm} 毫米`}
+      aria-pressed={selected}
       className={stateClass}
       data-material-code={object.code}
       data-material-id={object.materialId}
       data-oblique-render-style={object.renderStyle}
       data-oblique-shape={object.shape?.id ?? ''}
+      data-oblique-fidelity={object.fidelity}
       role="button"
       tabIndex={0}
       onClick={onClick}
@@ -211,22 +808,33 @@ function ObliqueMaterial({
       ) : (
         <ObliqueSolidBody object={object} />
       )}
-      {showTag && (
-        <g
-          className="material-oblique-object__tag"
-          transform={`translate(${tagPoint[0]} ${tagPoint[1]})`}
+      <g
+        className="material-oblique-object__tag"
+        transform={`translate(${tagPoint[0]} ${tagPoint[1]}) scale(${labelScale}) translate(0 ${labelOffsetY})`}
+      >
+        <line y1="0" y2="34" />
+        <rect
+          x={-tagWidth / 2}
+          y={-tagHeight - 16}
+          width={tagWidth}
+          height={tagHeight}
+          rx="12"
+        />
+        <text
+          className="material-oblique-object__tag-name"
+          y={showCode ? -61 : -42}
         >
-          <line y1="0" y2="13" />
-          <rect
-            x={-tagWidth / 2}
-            y={-31}
-            width={tagWidth}
-            height="30"
-            rx="8"
-          />
-          <text y="-16">{label}</text>
-        </g>
-      )}
+          {object.name}
+        </text>
+        {showCode ? (
+          <text
+            className="material-oblique-object__tag-code"
+            y="-34"
+          >
+            {object.code}
+          </text>
+        ) : null}
+      </g>
     </g>
   )
 }

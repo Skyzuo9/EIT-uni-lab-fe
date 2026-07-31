@@ -287,6 +287,54 @@ describe('material template adapter', () => {
     )
   })
 
+  it('loads material graphs larger than the Edge page limit', async () => {
+    const { http, request } = mockHttp(undefined)
+    request
+      .mockResolvedValueOnce({
+        data: {
+          items: Array.from(
+            { length: 100 },
+            (_, index) => rawMaterial(index + 1)
+          ),
+          total: 126,
+          page: 1,
+          page_size: 100
+        }
+      })
+      .mockResolvedValueOnce({
+        data: {
+          items: Array.from(
+            { length: 26 },
+            (_, index) => rawMaterial(index + 101)
+          ),
+          total: 126,
+          page: 2,
+          page_size: 100
+        }
+      })
+    const backend = getDefaultBackend('local-python')
+    const service = createMaterialService(
+      http,
+      backend,
+      resolveServerCapabilities(backend)
+    )
+
+    const aggregates = await service.getGraph({ kind: 'singleton' })
+
+    expect(aggregates).toHaveLength(126)
+    expect(aggregates.at(-1)?.material.code).toBe('szlab-material-126')
+    expect(request).toHaveBeenNthCalledWith(
+      1,
+      '/api/v1/materials?page=1&page_size=100',
+      undefined
+    )
+    expect(request).toHaveBeenNthCalledWith(
+      2,
+      '/api/v1/materials?page=2&page_size=100',
+      undefined
+    )
+  })
+
   it('creates a Registry template instance through the unified command', async () => {
     const { http, request } = mockHttp({
       data: {
@@ -447,6 +495,21 @@ function rawTemplateSummary(): Record<string, unknown> {
       mode: 'resource-tree',
       available: false,
       reason: '当前 Edge 尚未开放物料创建'
+    }
+  }
+}
+
+function rawMaterial(index: number): Record<string, unknown> {
+  return {
+    uuid: `szlab-material-${index}`,
+    resource_template_uuid: 'template-device',
+    code: `szlab-material-${index}`,
+    name: `SZLab Material ${index}`,
+    create_time: '2026-07-31T00:00:00Z',
+    update_time: '2026-07-31T00:00:00Z',
+    config: {
+      placement: { kind: 'unplaced' },
+      sites: []
     }
   }
 }
