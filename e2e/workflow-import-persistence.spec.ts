@@ -11,7 +11,9 @@ test('已保存的导入工作流在切换模块后仍然保留', async ({ page 
   const bridge = await startOfflineLocalBridge(0, [profilePath])
 
   try {
-    await page.goto(`/?localOsUrl=${encodeURIComponent(bridge.url)}`)
+    await page.goto(
+      `/?localOsUrl=${encodeURIComponent(bridge.url)}&enable=materialNav`
+    )
     await page.getByText('工作流', { exact: true }).first().click()
     await page.locator('input[type="file"]').setInputFiles({
       name: 'persisted-workflow.json',
@@ -55,7 +57,9 @@ test('当前工作流在切换左侧模块后仍然保留', async ({ page }) => 
   const bridge = await startOfflineLocalBridge(0, [profilePath])
 
   try {
-    await page.goto(`/?localOsUrl=${encodeURIComponent(bridge.url)}`)
+    await page.goto(
+      `/?localOsUrl=${encodeURIComponent(bridge.url)}&enable=materialNav`
+    )
     await page.getByText('工作流', { exact: true }).first().click()
     await page.locator('input[type="file"]').setInputFiles({
       name: 'current-workflow.json',

@@ -44,6 +44,17 @@ test.describe('Edge device catalog and single-action debug', () => {
 
     await page.goto(`/?localOsUrl=${encodeURIComponent(bridge.url)}`)
 
+    const navigation = page.getByRole('navigation', { name: '主导航' })
+    await expect(
+      navigation.getByRole('button', { name: '仪器设备' })
+    ).toBeVisible()
+    await expect(
+      navigation.getByRole('button', { name: '工作流' })
+    ).toBeVisible()
+    await expect(
+      navigation.getByRole('button', { name: '物料' })
+    ).toHaveCount(0)
+
     const connectionHeader = page.getByRole('group', {
       name: 'Edge 连接配置'
     })

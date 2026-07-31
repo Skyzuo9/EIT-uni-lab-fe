@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 
 test('工作流未保存时拦截模块切换与窗口关闭', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/?enable=materialNav')
   const navigation = page.getByRole('navigation', { name: '主导航' })
   const workflowButton = navigation.getByRole('button', { name: '工作流' })
   const materialButton = navigation.getByRole('button', { name: '物料' })
