@@ -5,6 +5,43 @@ import {
   visibleReadOnlyEdgeChanges,
   visibleReadOnlyNodeChanges
 } from './workflowCanvasPolicy'
+import * as workflowCanvasPolicy from './workflowCanvasPolicy'
+
+type EditMode = 'code' | 'canvas'
+
+interface D117PolicyModule {
+  workflowAuthoringSurfacePolicy: (mode: EditMode) => {
+    pythonEditorReadOnly: boolean
+    canvasMutationEnabled: boolean
+  }
+  workflowAuthoringModeSwitchDecision: (input: {
+    currentMode: EditMode
+    requestedMode: EditMode
+    activeSurfaceDirty: boolean
+  }) => 'stay' | 'switch' | 'confirm_dirty'
+  workflowCanvasDraftSaveDecision: (input: {
+    baselinePython: string
+    generatedPython: string
+    fullDiffAccepted: boolean
+  }) =>
+    | {
+        kind: 'review_full_diff'
+        before: string
+        after: string
+      }
+    | {
+        kind: 'write_complete_draft'
+        python_source: string
+      }
+  workflowAuthoringInvalidationDecision: (input: {
+    dirty: boolean
+    localPython: string
+  }) =>
+    | { kind: 'rehydrate' }
+    | { kind: 'defer_remote'; editor_value: string }
+}
+
+const d117 = workflowCanvasPolicy as unknown as D117PolicyModule
 
 describe('read-only workflow canvas policy', () => {
   it('disables every mutation entry point while preserving selection', () => {
@@ -50,5 +87,79 @@ describe('read-only workflow canvas policy', () => {
         { id: 'edge-1', type: 'select', selected: true }
       ])
     ).toEqual([{ id: 'edge-1', type: 'select', selected: true }])
+  })
+})
+
+describe('D-117 single edit authority policy', () => {
+  it('makes exactly one representation writable per Workflow session', () => {
+    expect(d117.workflowAuthoringSurfacePolicy('code')).toEqual({
+      pythonEditorReadOnly: false,
+      canvasMutationEnabled: false
+    })
+    expect(d117.workflowAuthoringSurfacePolicy('canvas')).toEqual({
+      pythonEditorReadOnly: true,
+      canvasMutationEnabled: true
+    })
+
+    // Two Workflow sessions choose independently; there is no workspace lock.
+    const workflowA = d117.workflowAuthoringSurfacePolicy('canvas')
+    const workflowB = d117.workflowAuthoringSurfacePolicy('code')
+    expect(workflowA.canvasMutationEnabled).toBe(true)
+    expect(workflowB.pythonEditorReadOnly).toBe(false)
+  })
+
+  it('requires confirmation only when leaving a dirty writable surface', () => {
+    expect(d117.workflowAuthoringModeSwitchDecision({
+      currentMode: 'code',
+      requestedMode: 'canvas',
+      activeSurfaceDirty: true
+    })).toBe('confirm_dirty')
+    expect(d117.workflowAuthoringModeSwitchDecision({
+      currentMode: 'canvas',
+      requestedMode: 'code',
+      activeSurfaceDirty: false
+    })).toBe('switch')
+    expect(d117.workflowAuthoringModeSwitchDecision({
+      currentMode: 'code',
+      requestedMode: 'code',
+      activeSurfaceDirty: true
+    })).toBe('stay')
+  })
+
+  it('cannot produce a complete Draft write before the full Python diff is accepted', () => {
+    const input = {
+      baselinePython: 'result = old()\n',
+      generatedPython: 'result = new()\n'
+    }
+
+    expect(d117.workflowCanvasDraftSaveDecision({
+      ...input,
+      fullDiffAccepted: false
+    })).toEqual({
+      kind: 'review_full_diff',
+      before: input.baselinePython,
+      after: input.generatedPython
+    })
+    expect(d117.workflowCanvasDraftSaveDecision({
+      ...input,
+      fullDiffAccepted: true
+    })).toEqual({
+      kind: 'write_complete_draft',
+      python_source: input.generatedPython
+    })
+  })
+
+  it('preserves a dirty local buffer when SSE invalidates remote Authoring state', () => {
+    expect(d117.workflowAuthoringInvalidationDecision({
+      dirty: true,
+      localPython: 'result = local_edit()\n'
+    })).toEqual({
+      kind: 'defer_remote',
+      editor_value: 'result = local_edit()\n'
+    })
+    expect(d117.workflowAuthoringInvalidationDecision({
+      dirty: false,
+      localPython: 'result = clean()\n'
+    })).toEqual({ kind: 'rehydrate' })
   })
 })
