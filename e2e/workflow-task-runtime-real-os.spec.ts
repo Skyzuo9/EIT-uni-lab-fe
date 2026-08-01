@@ -9,6 +9,9 @@ import {
 
 let os: PersistentAuthoringOs
 
+const PREPARE_NODE_UUID = '20000000-0000-4000-8000-000000000021'
+const ANALYZE_NODE_UUID = '20000000-0000-4000-8000-000000000022'
+
 test.describe.configure({ mode: 'serial' })
 
 test.beforeAll(async () => {
@@ -98,6 +101,14 @@ test('existing Workflow UI drives Task/Jobs/commands through real OS HTTP and SS
     name: '开始运行',
     exact: true
   })).toBeEnabled()
+  await expect(panel.getByRole('button', {
+    name: `设为起始点 ${ANALYZE_NODE_UUID}`,
+    exact: true
+  })).toBeVisible()
+  await expect(panel.getByRole('button', {
+    name: `设置断点 ${PREPARE_NODE_UUID}`,
+    exact: true
+  })).toBeVisible()
   await page.screenshot({
     path: join(artifactDirectory, '01-original-ui-ready.png'),
     fullPage: true
