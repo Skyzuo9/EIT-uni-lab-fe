@@ -28,6 +28,7 @@ import type { WorkflowNodeData } from './WorkflowNodeCard'
 import type { WorkflowLink, WorkflowNode } from '../utils/parseWorkflow'
 import { projectNestedWorkflow } from '../utils/canonicalWorkflow'
 import {
+  CANVAS_EDIT_WORKFLOW_CANVAS,
   READ_ONLY_WORKFLOW_CANVAS,
   visibleReadOnlyEdgeChanges,
   visibleReadOnlyNodeChanges
@@ -48,6 +49,11 @@ interface WorkflowDagProps {
   pausedBeforeNodeId?: string | null
   canBeautify?: boolean
   onBeautify?: () => void
+  canvasMutationEnabled?: boolean
+  onNodePositionChange?: (
+    nodeId: string,
+    position: { x: number; y: number }
+  ) => void
 }
 
 // 注册自定义节点类型(在组件外定义,避免每次渲染重建)
@@ -66,7 +72,9 @@ export default function WorkflowDag({
   beforeStartNodeIds = new Set(),
   pausedBeforeNodeId = null,
   canBeautify = true,
-  onBeautify
+  onBeautify,
+  canvasMutationEnabled = false,
+  onNodePositionChange
 }: WorkflowDagProps): React.JSX.Element {
   const [isBeautifying, setIsBeautifying] = useState(false)
   const [expandedGroupIds, setExpandedGroupIds] = useState<Set<string>>(
@@ -112,10 +120,12 @@ export default function WorkflowDag({
   )
   const handleNodesChange = useCallback(
     (changes: NodeChange[]) => {
-      const visibleChanges = visibleReadOnlyNodeChanges(changes)
+      const visibleChanges = canvasMutationEnabled
+        ? changes
+        : visibleReadOnlyNodeChanges(changes)
       if (visibleChanges.length > 0) onNodesChange(visibleChanges)
     },
-    [onNodesChange]
+    [canvasMutationEnabled, onNodesChange]
   )
   const handleEdgesChange = useCallback(
     (changes: EdgeChange[]) => {
@@ -260,13 +270,21 @@ export default function WorkflowDag({
         fitView
         fitViewOptions={{ padding: 0.16, minZoom: 0.2, maxZoom: 1 }}
         minZoom={0.2}
-        {...READ_ONLY_WORKFLOW_CANVAS}
+        {...(
+          canvasMutationEnabled
+            ? CANVAS_EDIT_WORKFLOW_CANVAS
+            : READ_ONLY_WORKFLOW_CANVAS
+        )}
         elementsSelectable
         proOptions={{ hideAttribution: true }}
         onInit={(instance) => {
           flowInstanceRef.current = instance
         }}
         onNodeClick={(_event, node: Node<WorkflowNodeData>) => onNodeSelect(node.id)}
+        onNodeDragStop={(_event, node: Node<WorkflowNodeData>) => {
+          if (!canvasMutationEnabled) return
+          onNodePositionChange?.(node.id, node.position)
+        }}
         onNodeContextMenu={(event, node: Node<WorkflowNodeData>) => {
           event.preventDefault()
           onSetStart?.(node.id)

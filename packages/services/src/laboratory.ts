@@ -11,6 +11,7 @@
  */
 import { requestData, type HttpClient } from './http'
 import { ServiceError } from './errors'
+import type { BackendConfig } from './backends'
 
 export interface DeviceActionTarget {
   deviceId: string
@@ -112,11 +113,16 @@ interface RuntimeActionTemplate {
 
 let actionRunSequence = 0
 
-export function createLaboratoryService(http: HttpClient) {
+export function createLaboratoryService(
+  http: HttpClient,
+  backend: BackendConfig
+) {
   return {
     async ping(): Promise<boolean> {
       try {
-        await http.request<unknown>('/health')
+        await http.request<unknown>(
+          backend.serverKind === 'edge' ? '/api/v1/health' : '/health'
+        )
         return true
       } catch {
         return false

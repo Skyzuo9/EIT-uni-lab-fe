@@ -86,6 +86,72 @@ test('real production OS completes persistent Authoring HTTP and SSE', async () 
   expect(finalState.state).toBe('applied')
 })
 
+test('real production OS emits SSE for an external Draft edit', async () => {
+  const before = await readEnvelope<AuthoringAggregate>(
+    `${os.url}/api/v1/workflows/${os.workflowUuid}/authoring`
+  )
+  expect(before.draft).not.toBeNull()
+  const streamResponse = await fetch(`${os.url}/api/v1/events`, {
+    headers: {
+      Accept: 'text/event-stream',
+      'Last-Event-ID': '0'
+    }
+  })
+  expect(streamResponse.ok).toBe(true)
+  const externallyChangedEvent = readAuthoringEvent(
+    streamResponse,
+    os.workflowUuid,
+    'external_draft_changed',
+    (event) => event.data.draft_hash !== before.draft?.draft_hash
+  )
+  const source = readFileSync(os.sourcePath, 'utf8')
+  writeFileSync(os.sourcePath, `${source}\n# external SSE regression\n`, 'utf8')
+
+  const event = await externallyChangedEvent
+  expect(event).toMatchObject({
+    event: 'workflow.authoring.changed',
+    data: {
+      workflow_uuid: os.workflowUuid,
+      cause: 'external_draft_changed'
+    }
+  })
+  const synchronized = await readEnvelope<AuthoringAggregate>(
+    `${os.url}/api/v1/workflows/${os.workflowUuid}/authoring`
+  )
+  expect(synchronized.draft?.draft_hash).toBe(event.data.draft_hash)
+  expect(synchronized.draft?.python_source).toContain(
+    '# external SSE regression'
+  )
+})
+
+test('real production OS regenerates its persisted Candidate graph', async () => {
+  const aggregate = await readEnvelope<AuthoringAggregate>(
+    `${os.url}/api/v1/workflows/${os.workflowUuid}/authoring`
+  )
+  expect(aggregate.draft).not.toBeNull()
+  expect(aggregate.candidate).not.toBeNull()
+  if (!aggregate.draft || !aggregate.candidate) {
+    throw new Error('production fixture did not materialize Authoring')
+  }
+
+  const generated = await readEnvelope<{
+    graph: Record<string, unknown>
+    normalized_python_source: string
+  }>(`${os.url}/api/v1/authoring/generate-python`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      workflow_uuid: os.workflowUuid,
+      revision: aggregate.workflow_revision,
+      source_uri: aggregate.draft.source_uri,
+      graph: aggregate.candidate.graph
+    })
+  })
+
+  expect(generated.graph).toEqual(aggregate.candidate.graph)
+  expect(generated.normalized_python_source.length).toBeGreaterThan(0)
+})
+
 test('kernel-web uses D-117 single edit authority through the real OS', async ({
   page
 }) => {
@@ -131,8 +197,9 @@ test('kernel-web uses D-117 single edit authority through the real OS', async ({
     }
   )
 
-  await page.goto(`/?localOsUrl=${encodeURIComponent(os.url)}`)
-  await page.getByText('工作流', { exact: true }).first().click()
+  await page.goto(
+    `/?section=workflow&localOsUrl=${encodeURIComponent(os.url)}`
+  )
   await expect(page.getByText('完整控制流 DAG')).toBeVisible()
 
   const codeMode = page.getByRole('button', {
@@ -168,19 +235,24 @@ test('kernel-web uses D-117 single edit authority through the real OS', async ({
   await dragNode(page, projectedNode, 80, 40)
   expect(await projectedNode.getAttribute('style')).toBe(projectedPosition)
 
+  const initialEditorSource = readFileSync(os.sourcePath, 'utf8')
+  const locallyEditedSource = initialEditorSource.replace('= 3,', '= 4,')
+  expect(locallyEditedSource).not.toBe(initialEditorSource)
   await editor.click()
-  await page.keyboard.press('Control+f')
-  await page.keyboard.insertText('= 3')
-  await page.keyboard.press('Enter')
-  await page.keyboard.press('Escape')
-  await page.keyboard.insertText('= 4')
+  await page.keyboard.press('Control+a')
+  await page.keyboard.insertText(locallyEditedSource)
+  const applyButton = page.getByRole('button', {
+    name: '应用工作流',
+    exact: true
+  })
+  await expect(applyButton).toBeDisabled()
 
   await canvasMode.click()
   const dirtyGuard = page.getByRole('dialog', { name: /未保存.*切换/ })
   await expect(dirtyGuard).toBeVisible()
   await dirtyGuard.getByRole('button', { name: /取消/ }).click()
   await expect(codeMode).toHaveAttribute('aria-pressed', 'true')
-  await expect(editor).toContainText('= 4')
+  await expect(editor).toContainText('= 4,')
 
   const draftPutBeforeCodeSave = countRequests(
     authoringRequests,
@@ -193,6 +265,12 @@ test('kernel-web uses D-117 single edit authority through the real OS', async ({
     'PUT',
     `/workflows/${os.workflowUuid}/authoring/draft`
   )).toBe(draftPutBeforeCodeSave + 1)
+  await expect.poll(
+    () => readFileSync(os.sourcePath, 'utf8')
+  ).toContain('= 4,')
+  await expect(page.getByText('● 未保存', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('Authoring 操作失败', { exact: true }))
+    .toHaveCount(0)
   const codeDraftRequest = lastRequest(
     authoringRequests,
     'PUT',
@@ -226,10 +304,13 @@ test('kernel-web uses D-117 single edit authority through the real OS', async ({
   await canvasMode.click()
   await expect(canvasMode).toHaveAttribute('aria-pressed', 'true')
   await expect(editor).toHaveAttribute('contenteditable', 'false')
-  await expect(page.getByText(/Python.*只读.*投影/)).toBeVisible()
+  await expect(
+    page.getByText('Python 是 OS 生成的只读投影', { exact: true }),
+  ).toBeVisible()
   const canvasPosition = await projectedNode.getAttribute('style')
   await dragNode(page, projectedNode, 100, 50)
   expect(await projectedNode.getAttribute('style')).not.toBe(canvasPosition)
+  await expect(applyButton).toBeDisabled()
 
   const draftPutBeforeDiffAcceptance = countRequests(
     authoringRequests,
@@ -257,10 +338,8 @@ test('kernel-web uses D-117 single edit authority through the real OS', async ({
     `/workflows/${os.workflowUuid}/authoring/draft`
   )).toBe(draftPutBeforeDiffAcceptance + 1)
 
-  await page.getByRole('button', {
-    name: '应用工作流',
-    exact: true
-  }).click()
+  await expect(applyButton).toBeEnabled()
+  await applyButton.click()
   await expect.poll(() => countRequests(
     authoringRequests,
     'POST',
@@ -284,10 +363,12 @@ interface AuthoringAggregate {
   draft: {
     python_source: string
     draft_hash: string
+    source_uri: string
   } | null
   candidate: {
     candidate_hash: string
     normalized_python_source: string
+    graph: Record<string, unknown>
   } | null
 }
 
@@ -315,7 +396,8 @@ async function readEnvelope<Value>(
 async function readAuthoringEvent(
   response: Response,
   workflowUuid: string,
-  cause: string
+  cause: string,
+  matches: (event: SseEvent) => boolean = () => true
 ): Promise<SseEvent> {
   if (!response.body) throw new Error('SSE response body is missing')
   const reader = response.body.getReader()
@@ -339,7 +421,8 @@ async function readAuthoringEvent(
         if (
           event.event === 'workflow.authoring.changed' &&
           event.data.workflow_uuid === workflowUuid &&
-          event.data.cause === cause
+          event.data.cause === cause &&
+          matches(event)
         ) {
           return event
         }

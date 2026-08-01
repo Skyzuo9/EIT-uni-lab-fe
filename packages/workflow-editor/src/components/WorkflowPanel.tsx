@@ -18,6 +18,7 @@ import {
   type WorkflowAuthoringMode,
   type WorkflowAuthoringSnapshot
 } from '../hooks/useWorkflowAuthoring'
+import { readActiveWorkflowId } from '../utils/workflowAuthoringOperations'
 import {
   useWorkflowRun,
   type WorkflowRunSnapshot
@@ -28,6 +29,7 @@ import { WorkflowSavePrompt } from './WorkflowSavePrompt'
 import { useWorkflowSessionStore } from './WorkflowSessionProvider'
 import { WorkflowStage } from './WorkflowStage'
 import { WorkflowToolbar } from './WorkflowToolbar'
+import { PersistentWorkflowAuthoringPanel } from './PersistentWorkflowAuthoringPanel'
 import styles from './workflow.module.scss'
 
 export interface WorkflowStepFocus {
@@ -65,6 +67,33 @@ interface WorkflowPanelSession
 }
 
 export default function WorkflowPanel({
+  runtime,
+  activeWorkflowStorageKey,
+  onStepFocus,
+  onUnsavedChangesChange
+}: WorkflowPanelProps): React.JSX.Element {
+  const workflowUuid = readActiveWorkflowId(activeWorkflowStorageKey)
+  if (workflowUuid && isWorkflowUuid(workflowUuid)) {
+    return (
+      <PersistentWorkflowAuthoringPanel
+        key={workflowUuid}
+        runtime={runtime}
+        workflowUuid={workflowUuid}
+        onUnsavedChangesChange={onUnsavedChangesChange}
+      />
+    )
+  }
+  return (
+    <LegacyWorkflowPanel
+      runtime={runtime}
+      activeWorkflowStorageKey={activeWorkflowStorageKey}
+      onStepFocus={onStepFocus}
+      onUnsavedChangesChange={onUnsavedChangesChange}
+    />
+  )
+}
+
+function LegacyWorkflowPanel({
   runtime,
   activeWorkflowStorageKey,
   onStepFocus,
@@ -530,6 +559,11 @@ export default function WorkflowPanel({
       </WorkflowStage>
     </div>
   )
+}
+
+function isWorkflowUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+    .test(value)
 }
 
 interface WorkflowCodeMarkerOptions {
