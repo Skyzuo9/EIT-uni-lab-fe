@@ -200,6 +200,41 @@ test('operator detects and manually unlocks a real Edge action lock', async ({
       : null
   }).toEqual({ busy: false, currentJobId: null })
 
+  const reuseResponse = await request.post(`${API_URL}/api/v1/runtime/runs`, {
+    data: {
+      source: {
+        format: 'workflow_revision_v2',
+        revision: {
+          schema_version: '2',
+          revision_id: 'device-manual-unlock-reuse-e2e-rev',
+          workflow_id: 'device-manual-unlock-reuse-e2e',
+          invocations: [
+            {
+              node_id: 'post-unlock-reuse',
+              action_ref: ACTION_REF,
+              name: '解锁后重新调度 E2E',
+              input_bindings: {
+                duration_seconds: { kind: 'literal', value: 1 }
+              }
+            }
+          ],
+          control_edges: []
+        }
+      }
+    }
+  })
+  expect(reuseResponse.ok(), await reuseResponse.text()).toBe(true)
+  await expect.poll(async () => {
+    const action = await readTargetAction(request)
+    return action?.busy ? action.currentJobId : null
+  }).toBe('post-unlock-reuse')
+  await expect.poll(async () => {
+    const action = await readTargetAction(request)
+    return action
+      ? { busy: action.busy, currentJobId: action.currentJobId }
+      : null
+  }, { timeout: 5_000 }).toEqual({ busy: false, currentJobId: null })
+
   const commandPath =
     `/api/v1/devices/${DEVICE_ID}/actions/${ACTION_NAME}/commands`
   expect(apiRequests).toEqual(expect.arrayContaining([

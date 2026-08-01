@@ -60,6 +60,70 @@ describe('device Action lock controls', () => {
     expect(markup).not.toContain('手动解锁</button>')
   })
 
+  it('keeps manual unlock unavailable for backends without the capability', () => {
+    const markup = renderToStaticMarkup(
+      <DeviceLockControl
+        action={busyAction}
+        canForceUnlock={false}
+        operation={null}
+        onRequestUnlock={() => {}}
+      />
+    )
+
+    expect(markup).toContain('此动作被设备锁占用')
+    expect(markup).not.toContain('手动解锁</button>')
+  })
+
+  it('disables duplicate requests and keeps an actionable error visible', () => {
+    const pendingMarkup = renderToStaticMarkup(
+      <DeviceLockControl
+        action={busyAction}
+        canForceUnlock
+        operation={{
+          actionRef: 'robot.move',
+          state: 'pending',
+          message: '正在请求 OS 取消当前动作并释放锁…'
+        }}
+        onRequestUnlock={() => {}}
+      />
+    )
+    const errorMarkup = renderToStaticMarkup(
+      <DeviceLockControl
+        action={busyAction}
+        canForceUnlock
+        operation={{
+          actionRef: 'robot.move',
+          state: 'error',
+          message: '设备 Action 锁持有者已变化，请刷新后重新确认'
+        }}
+        onRequestUnlock={() => {}}
+      />
+    )
+
+    expect(pendingMarkup).toContain('正在解锁…')
+    expect(pendingMarkup).toContain('disabled')
+    expect(errorMarkup).toContain('设备 Action 锁持有者已变化')
+    expect(errorMarkup).toContain('role="alert"')
+  })
+
+  it('shows an OS-confirmed result only after the refreshed Action is free', () => {
+    const markup = renderToStaticMarkup(
+      <DeviceLockControl
+        action={{ ...busyAction, isBusy: false, currentJobId: null }}
+        canForceUnlock
+        operation={{
+          actionRef: 'robot.move',
+          state: 'success',
+          message: 'OS 已释放 1 个关联 Job，正在复核最新目录状态。'
+        }}
+        onRequestUnlock={() => {}}
+      />
+    )
+
+    expect(markup).toContain('动作锁已释放')
+    expect(markup).toContain('OS 已释放 1 个关联 Job')
+  })
+
   it('requires explicit physical-safety confirmation in the dialog', () => {
     const markup = renderToStaticMarkup(
       <UnlockConfirmationDialog
