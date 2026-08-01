@@ -1,7 +1,6 @@
 export {
   default as WorkflowPanel,
-  type WorkflowPanelProps,
-  type WorkflowStepFocus
+  type WorkflowPanelProps
 } from './components/WorkflowPanel'
 export {
   WorkflowSessionProvider

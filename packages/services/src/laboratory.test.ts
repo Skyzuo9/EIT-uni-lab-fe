@@ -101,11 +101,13 @@ describe('laboratory service', () => {
       getDefaultBackend('local-python')
     )
 
-    expect(Object.keys(service)).not.toEqual(expect.arrayContaining([
+    for (const retiredMethod of [
       'addJob',
       'getJobStatus',
       'cancelJob'
-    ]))
+    ]) {
+      expect(retiredMethod in service).toBe(false)
+    }
   })
 
   it('probes the production Python OS through its versioned health route', async () => {

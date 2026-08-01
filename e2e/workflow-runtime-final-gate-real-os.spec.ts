@@ -7,6 +7,10 @@ import {
   startPersistentAuthoringOs,
   type PersistentAuthoringOs
 } from './helpers/persistent-authoring-os'
+import {
+  installWorkflowPanel,
+  prepareAppliedWorkflow
+} from './helpers/workflow-runtime-ui'
 
 let os: PersistentAuthoringOs
 
@@ -29,6 +33,12 @@ test('production UI passes the retired-Run, idempotency and terminal-race gate',
       resolve(process.cwd(), '../e2e-artifacts/ui1d-runtime-final-gate')
   )
   mkdirSync(artifactDirectory, { recursive: true })
+  const pins = candidatePins()
+  expect(pins).toEqual({
+    fe: requiredEnvironment('UNILAB_EXPECTED_FE_SHA'),
+    os: requiredEnvironment('UNILAB_EXPECTED_OS_SHA'),
+    coreBaseline: requiredEnvironment('UNILAB_EXPECTED_CORE_SHA')
+  })
 
   const browserErrors: string[] = []
   const pageErrors: string[] = []
@@ -213,6 +223,23 @@ test('production UI passes the retired-Run, idempotency and terminal-race gate',
   await capture(page, artifactDirectory, screenshots,
     '09-reload-restores-latest-task.png')
 
+  // A quiet, terminal Task must not cause timer-driven REST refreshes. SSE is
+  // the only invalidation source; REST reads happen only on load or events.
+  await page.waitForTimeout(500)
+  const pollingRequestOffset = runtimeRequests.length
+  const pollingObservationDurationMs = 3_500
+  await page.waitForTimeout(pollingObservationDurationMs)
+  const pollingRequests = runtimeRequests
+    .slice(pollingRequestOffset)
+    .filter(({ method, path }) => method === 'GET' && (
+      path === `/api/v1/workflow-tasks/${taskUuid}` ||
+      path === `/api/v1/workflow-tasks/${taskUuid}/jobs`
+    ))
+  const pollingObservation = {
+    durationMs: pollingObservationDurationMs,
+    requests: pollingRequests
+  }
+
   const forbiddenRequests = runtimeRequests.filter(({ path }) =>
     path.startsWith('/api/v1/runtime/runs') ||
     path.startsWith('/api/v1/runtime/events') ||
@@ -225,7 +252,38 @@ test('production UI passes the retired-Run, idempotency and terminal-race gate',
   const applicationErrors = browserErrors.filter((message) =>
     !expectedNetworkDiagnostics.includes(message)
   )
-  const pins = {
+  writeFileSync(
+    join(artifactDirectory, 'network-ledger.json'),
+    `${JSON.stringify({
+      pins,
+      runtimeRequests,
+      runtimeResponses,
+      websocketUrls,
+      forbiddenRequests,
+      pollingObservation,
+      apiChecks,
+      expectedNetworkDiagnostics,
+      applicationErrors,
+      pageErrors,
+      screenshots
+    }, null, 2)}\n`,
+    'utf8'
+  )
+
+  expect(forbiddenRequests).toEqual([])
+  expect(pollingObservation.requests).toEqual([])
+  expect(websocketUrls).toEqual([])
+  expect(applicationErrors).toEqual([])
+  expect(pageErrors).toEqual([])
+  expect(screenshots).toHaveLength(9)
+})
+
+function candidatePins(): {
+  fe: string
+  os: string
+  coreBaseline: string
+} {
+  return {
     fe: execFileSync('git', ['rev-parse', 'HEAD'], {
       encoding: 'utf8'
     }).trim(),
@@ -237,32 +295,15 @@ test('production UI passes the retired-Run, idempotency and terminal-race gate',
       ), 'rev-parse', 'HEAD'],
       { encoding: 'utf8' }
     ).trim(),
-    coreBaseline: '9a7467cd4d91a008bdd4b8f754d73fafbb3cacc8'
+    coreBaseline: requiredEnvironment('UNILAB_EXPECTED_CORE_SHA')
   }
+}
 
-  writeFileSync(
-    join(artifactDirectory, 'network-ledger.json'),
-    `${JSON.stringify({
-      pins,
-      runtimeRequests,
-      runtimeResponses,
-      websocketUrls,
-      forbiddenRequests,
-      apiChecks,
-      expectedNetworkDiagnostics,
-      applicationErrors,
-      pageErrors,
-      screenshots
-    }, null, 2)}\n`,
-    'utf8'
-  )
-
-  expect(forbiddenRequests).toEqual([])
-  expect(websocketUrls).toEqual([])
-  expect(applicationErrors).toEqual([])
-  expect(pageErrors).toEqual([])
-  expect(screenshots).toHaveLength(9)
-})
+function requiredEnvironment(name: string): string {
+  const value = process.env[name]?.trim()
+  if (!value) throw new Error(`${name} must pin the exact acceptance checkout`)
+  return value
+}
 
 async function submitUiCommand(
   panel: Locator,
@@ -326,61 +367,4 @@ async function capture(
   const path = join(artifactDirectory, name)
   await page.screenshot({ path, fullPage: true, animations: 'disabled' })
   screenshots.push(path)
-}
-
-async function prepareAppliedWorkflow(
-  panel: Locator,
-  page: Page
-): Promise<void> {
-  await expect(panel.getByText('完整控制流 DAG')).toBeVisible()
-  await panel.getByRole('button', {
-    name: '画布模式',
-    exact: true
-  }).click()
-  await panel.getByRole('button', {
-    name: '保存草稿',
-    exact: true
-  }).click()
-  const normalizedDiff = page.getByRole('dialog', {
-    name: '完整 Python 差异'
-  })
-  await expect(normalizedDiff).toBeVisible()
-  await normalizedDiff.getByRole('button', {
-    name: '接受完整差异并保存',
-    exact: true
-  }).click()
-  await panel.getByRole('button', {
-    name: '应用工作流',
-    exact: true
-  }).click()
-  await expect(panel.getByText(/(?:工作流|源码)已应用/)).toBeVisible()
-  await expect(panel.getByRole('button', {
-    name: '开始运行',
-    exact: true
-  })).toBeEnabled()
-}
-
-async function installWorkflowPanel(
-  page: Page,
-  workflowUuid: string
-): Promise<void> {
-  await page.addInitScript((configuredWorkflowUuid) => {
-    localStorage.setItem(
-      'unilab.panel-layout.workflow.v1',
-      JSON.stringify({
-        version: 1,
-        layout: {
-          id: 'runtime-root',
-          type: 'group',
-          panels: [{
-            id: 'runtime-workflow',
-            panelType: 'workflow-dag',
-            title: 'Workflow Runtime',
-            config: { workflow_uuid: configuredWorkflowUuid }
-          }],
-          activePanelId: 'runtime-workflow'
-        }
-      })
-    )
-  }, workflowUuid)
 }

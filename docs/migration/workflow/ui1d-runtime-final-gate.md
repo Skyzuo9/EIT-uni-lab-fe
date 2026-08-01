@@ -59,8 +59,21 @@ Task-scoped event 和 polling fallback，使 `WorkflowRuntimePort`、全局
 - Authoring、UI1B、UI1C 真实 OS Playwright，以及 UI1D final serial gate；
 - 至少 5 张来自原生产工作台、具有不同验收意义的最终截图；
 - 网络账本记录 method/path/query/status、SSE `Last-Event-ID`、WebSocket URL、刻意网络
-  诊断与应用错误，禁用 Runtime 请求必须为零；
+  诊断、应用错误与显式无轮询观察窗，禁用 Runtime 请求必须为零；
 - 候选产生后绑定 exact-SHA review。任何 production change 都使 review/E2E 失效。
+
+## 独立 review remediation
+
+首轮 exact-SHA review 的修复必须作为同一 UI1D 候选继续冻结：
+
+- 恢复 `pnpm test:e2e:workflow-debug`，但只组合当前四组真实 OS suites，不恢复旧
+  Run/WS Debugger fixture；
+- 删除未使用的 `useWorkflowDebug`、`WorkflowPreview`、`DebugToolbar`、静态
+  `sampleWorkflow` 与已失去消费者的 `onStepFocus` public seam；
+- 静态门逐文件扫描 production source 与活跃 E2E fixture，并逐 symbol 防止旧方法回归；
+- final gate 必须由环境变量固定 FE/OS/Core exact SHA，并记录至少 3.5 秒终态无
+  Task/Jobs REST polling 的观察窗；
+- 重复的面板安装与 Applied Workflow 操作收敛到共享 Playwright helper。
 
 完成后 non-squash 合入并推送 `integration/fe-os-migration`，更新 OS FE–OS 迁移矩阵、
 FE #2/#6、Core #1/#150/#152 和 Core submodule pin。只有全部证据与 pin 一致后才允许

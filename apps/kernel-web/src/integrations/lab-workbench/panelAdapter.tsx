@@ -23,7 +23,6 @@ import {
   useLabInteractionStore
 } from './LabInteractionProvider'
 import { useMaterialRuntime } from './MaterialRuntimeProvider'
-import { materialIdsFromWorkflowArgs } from './workflowMaterialRefs'
 import type { LabInteractionStore } from './interactionStore'
 import {
   UnifiedLabViewport,
@@ -153,13 +152,6 @@ function WorkflowRenderer(
         props.scope.onWorkflowUnsavedChangesChange?.(
           props.panelInstance.id,
           hasUnsavedChanges
-        )
-      }}
-      onStepFocus={(focus) => {
-        const interaction = props.scope.interaction.getState()
-        interaction.selectWorkflowStep(focus.stepId)
-        interaction.highlightMaterials(
-          materialIdsFromWorkflowArgs(focus.args)
         )
       }}
     />

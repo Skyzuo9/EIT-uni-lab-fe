@@ -65,9 +65,10 @@ Python 发生编辑后，切回 JSON、保存、校验或运行前调用：
 
 ### 已退役的 Run 调试 transport
 
-UI1D 已删除 `useWorkflowRun`、七动作 `debugControls`、旧 Run/WebSocket/polling 和平行
-Legacy 工作台。真正的 step-over/step-into、Hold、run-to、terminate 等能力必须等待
-OS-only Debugger Interface；不得把它们映射回共享 WorkflowTask command 猜测语义。
+UI1D 已删除 `useWorkflowRun`、`useWorkflowDebug`、七动作 `debugControls`、静态
+`sampleWorkflow`、旧 Run/WebSocket/polling 和平行 Legacy 工作台。真正的
+step-over/step-into、Hold、run-to、terminate 等能力必须等待 OS-only Debugger
+Interface；不得把它们映射回共享 WorkflowTask command 猜测语义。
 
 ### 视觉语义
 

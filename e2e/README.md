@@ -30,15 +30,24 @@ export UNILAB_AUTHORING_OS_ROOT=/path/to/Uni-Lab-OS
 export UNILAB_OS_PYTHON=/path/to/python
 ```
 
+最终门禁还必须显式固定当前 acceptance checkout；缺少任一变量会 fail closed：
+
+```bash
+export UNILAB_EXPECTED_FE_SHA=<exact-fe-candidate-sha>
+export UNILAB_EXPECTED_OS_SHA=<exact-os-checkout-sha>
+export UNILAB_EXPECTED_CORE_SHA=<exact-core-baseline-sha>
+```
+
 常用命令：
 
 ```bash
 pnpm test:e2e:workflow
 pnpm test:e2e:workflow-final-gate
+pnpm test:e2e:workflow-debug
 ```
 
 最终门禁可用 `UNILAB_E2E_ARTIFACT_DIR` 指定证据目录。账本必须记录精确 FE/OS
-SHA、请求/响应、SSE cursor、WebSocket URL、浏览器诊断与截图列表。
+SHA、请求/响应、SSE cursor、WebSocket URL、浏览器诊断、显式无轮询观察窗与截图列表。
 
 ## 通过标准
 

@@ -4,16 +4,10 @@ import { readActiveWorkflowId } from '../utils/workflowAuthoringOperations'
 import { PersistentWorkflowAuthoringPanel } from './PersistentWorkflowAuthoringPanel'
 import styles from './workflow.module.scss'
 
-export interface WorkflowStepFocus {
-  stepId: string
-  args: Readonly<Record<string, unknown>>
-}
-
 export interface WorkflowPanelProps {
   runtime: WorkflowRuntimePort
   workflowUuid?: string
   activeWorkflowStorageKey?: string
-  onStepFocus?: (focus: WorkflowStepFocus) => void
   onUnsavedChangesChange?: (hasUnsavedChanges: boolean) => void
 }
 
