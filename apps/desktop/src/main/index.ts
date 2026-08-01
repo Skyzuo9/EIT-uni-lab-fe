@@ -8,7 +8,7 @@ import {
 } from 'electron'
 import { basename, join } from 'path'
 import { appendFileSync } from 'node:fs'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { readFile, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { readSession, clearSession, runOAuthLogin } from './authManager'
@@ -276,40 +276,56 @@ app.whenReady().then(() => {
       () => discoverDefaultCondaEnvironment({ homeDirectory: homedir() })
     )
   })
-  ipcMain.handle('runtime:start', async (event, payload: unknown) => {
+  ipcMain.handle('runtime:startSimulator', async (event, payload: unknown) => {
     assertMainWindowSender(event)
     return electronObservability.run(
       'electron.runtime.start',
-      {},
+      { 'runtime.target': 'simulator' },
       async () => {
         const config = parseRuntimeConfig(payload)
         electronObservability.record('electron.runtime.start_requested', {
-          'runtime.simulator_enabled': config.startSimulator
+          'runtime.target': 'simulator'
         })
-        return requireRuntimeManager().start(config)
+        return requireRuntimeManager().startSimulator(config)
       }
     )
   })
-  ipcMain.handle('runtime:stop', async (event) => {
+  ipcMain.handle('runtime:stopSimulator', async (event) => {
     assertMainWindowSender(event)
     return electronObservability.run(
       'electron.runtime.stop',
-      {},
-      () => requireRuntimeManager().stop()
+      { 'runtime.target': 'simulator' },
+      () => requireRuntimeManager().stopSimulator()
     )
   })
-  ipcMain.handle('runtime:openLogs', async (event) => {
+  ipcMain.handle('runtime:startEdge', async (event, payload: unknown) => {
     assertMainWindowSender(event)
-    const logsDirectory = join(app.getPath('logs'), 'local-runtime')
     return electronObservability.run(
-      'electron.runtime.open_logs',
-      {},
+      'electron.runtime.start',
+      { 'runtime.target': 'edge' },
       async () => {
-        await mkdir(logsDirectory, { recursive: true })
-        const openError = await shell.openPath(logsDirectory)
-        if (openError) throw new Error(openError)
-        return true
+        const config = parseRuntimeConfig(payload)
+        electronObservability.record('electron.runtime.start_requested', {
+          'runtime.target': 'edge'
+        })
+        return requireRuntimeManager().startEdge(config)
       }
+    )
+  })
+  ipcMain.handle('runtime:stopEdge', async (event) => {
+    assertMainWindowSender(event)
+    return electronObservability.run(
+      'electron.runtime.stop',
+      { 'runtime.target': 'edge' },
+      () => requireRuntimeManager().stopEdge()
+    )
+  })
+  ipcMain.handle('runtime:readLogs', async (event) => {
+    assertMainWindowSender(event)
+    return electronObservability.run(
+      'electron.runtime.read_logs',
+      {},
+      () => requireRuntimeManager().readLogs()
     )
   })
 
@@ -524,8 +540,7 @@ function parseRuntimeConfig(value: unknown): LocalRuntimeLaunchConfig {
     typeof candidate.osProjectPath !== 'string' ||
     typeof candidate.szlabProjectPath !== 'string' ||
     typeof candidate.environmentPath !== 'string' ||
-    typeof candidate.simulatorProjectPath !== 'string' ||
-    typeof candidate.startSimulator !== 'boolean'
+    typeof candidate.simulatorProjectPath !== 'string'
   ) {
     throw new Error('本地运行时启动配置字段不完整')
   }
@@ -534,7 +549,6 @@ function parseRuntimeConfig(value: unknown): LocalRuntimeLaunchConfig {
     osProjectPath: candidate.osProjectPath,
     szlabProjectPath: candidate.szlabProjectPath,
     environmentPath: candidate.environmentPath,
-    simulatorProjectPath: candidate.simulatorProjectPath,
-    startSimulator: candidate.startSimulator
+    simulatorProjectPath: candidate.simulatorProjectPath
   }
 }

@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type {
   LocalRuntimeLaunchConfig,
+  LocalRuntimeLogsSnapshot,
   LocalRuntimePathKind,
   LocalRuntimeSnapshot
 } from '../shared/localRuntime'
@@ -71,11 +72,20 @@ const api = {
       ipcRenderer.invoke('runtime:getDefaultEnvironmentPath'),
     getSnapshot: (): Promise<LocalRuntimeSnapshot> =>
       ipcRenderer.invoke('runtime:getSnapshot'),
-    start: (config: LocalRuntimeLaunchConfig): Promise<LocalRuntimeSnapshot> =>
-      ipcRenderer.invoke('runtime:start', config),
-    stop: (): Promise<LocalRuntimeSnapshot> =>
-      ipcRenderer.invoke('runtime:stop'),
-    openLogs: (): Promise<boolean> => ipcRenderer.invoke('runtime:openLogs'),
+    startSimulator: (
+      config: LocalRuntimeLaunchConfig
+    ): Promise<LocalRuntimeSnapshot> =>
+      ipcRenderer.invoke('runtime:startSimulator', config),
+    stopSimulator: (): Promise<LocalRuntimeSnapshot> =>
+      ipcRenderer.invoke('runtime:stopSimulator'),
+    startEdge: (
+      config: LocalRuntimeLaunchConfig
+    ): Promise<LocalRuntimeSnapshot> =>
+      ipcRenderer.invoke('runtime:startEdge', config),
+    stopEdge: (): Promise<LocalRuntimeSnapshot> =>
+      ipcRenderer.invoke('runtime:stopEdge'),
+    readLogs: (): Promise<LocalRuntimeLogsSnapshot> =>
+      ipcRenderer.invoke('runtime:readLogs'),
     onSnapshot: (
       listener: (snapshot: LocalRuntimeSnapshot) => void
     ): (() => void) => {

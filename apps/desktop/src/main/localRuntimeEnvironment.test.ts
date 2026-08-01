@@ -1,6 +1,6 @@
 import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { delimiter, join } from 'node:path'
+import { delimiter, dirname, join } from 'node:path'
 
 import { afterEach, describe, expect, it } from 'vitest'
 
@@ -65,6 +65,20 @@ describe('discoverDefaultCondaEnvironment', () => {
     })).resolves.toBe(expected)
   })
 
+  it('discovers a Windows Conda environment from Scripts on PATH', async () => {
+    const fixture = await createFixture()
+    const expected = await createEnvironment(
+      join(fixture, 'miniforge3', 'envs', 'unilab'),
+      'win32'
+    )
+
+    await expect(discoverDefaultCondaEnvironment({
+      environment: { PATH: join(expected, 'Scripts') },
+      homeDirectory: fixture,
+      platform: 'win32'
+    })).resolves.toBe(expected)
+  })
+
   it('returns null when no compatible environment exists', async () => {
     const fixture = await createFixture()
 
@@ -81,11 +95,20 @@ async function createFixture(): Promise<string> {
   return fixture
 }
 
-async function createEnvironment(environmentPath: string): Promise<string> {
-  const executableDirectory = join(environmentPath, 'bin')
-  const python = join(executableDirectory, 'python')
-  const unilab = join(executableDirectory, 'unilab')
-  await mkdir(executableDirectory, { recursive: true })
+async function createEnvironment(
+  environmentPath: string,
+  platform: NodeJS.Platform = 'linux'
+): Promise<string> {
+  const python = platform === 'win32'
+    ? join(environmentPath, 'python.exe')
+    : join(environmentPath, 'bin', 'python')
+  const unilab = platform === 'win32'
+    ? join(environmentPath, 'Scripts', 'unilab.exe')
+    : join(environmentPath, 'bin', 'unilab')
+  await Promise.all([
+    mkdir(dirname(python), { recursive: true }),
+    mkdir(dirname(unilab), { recursive: true })
+  ])
   await Promise.all([writeFile(python, ''), writeFile(unilab, '')])
   await Promise.all([chmod(python, 0o755), chmod(unilab, 0o755)])
   return environmentPath
