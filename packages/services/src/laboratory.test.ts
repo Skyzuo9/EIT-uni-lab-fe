@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { HttpClient } from './http'
 import { createLaboratoryService } from './laboratory'
+import { getDefaultBackend } from './backends'
 
 describe('laboratory service', () => {
   it('projects Action devices and schemas from the unified node catalog', async () => {
@@ -36,7 +37,10 @@ describe('laboratory service', () => {
         ]
       }
     })
-    const service = createLaboratoryService(http)
+    const service = createLaboratoryService(
+      http,
+      getDefaultBackend('local-python')
+    )
 
     await expect(service.getActionDevices()).resolves.toEqual([
       { deviceId: 'pump-1', label: 'pump-1' }
@@ -133,7 +137,10 @@ describe('laboratory service', () => {
         status: 'cancel_requested'
       }
     }, requests)
-    const service = createLaboratoryService(http)
+    const service = createLaboratoryService(
+      http,
+      getDefaultBackend('local-python')
+    )
 
     await expect(service.addJob({
       deviceId: 'pump-1',
@@ -192,6 +199,27 @@ describe('laboratory service', () => {
       path: '/api/v1/runtime/runs/run-1/cancel',
       method: 'POST'
     })
+  })
+
+  it('probes the production Python OS through its versioned health route', async () => {
+    const requests: Array<{
+      path: string
+      method?: string
+      body?: string
+    }> = []
+    const service = createLaboratoryService(
+      fixtureHttp({ '/api/v1/health': { status: 'ok' } }, requests),
+      getDefaultBackend('local-python')
+    )
+
+    await expect(service.ping()).resolves.toBe(true)
+    expect(requests).toEqual([
+      {
+        path: '/api/v1/health',
+        method: undefined,
+        body: undefined
+      }
+    ])
   })
 })
 

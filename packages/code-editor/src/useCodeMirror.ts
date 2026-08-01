@@ -257,7 +257,8 @@ function languageExtension(language: EditorLanguage): Extension {
 export function useCodeMirror(
   initialValue: string,
   language: EditorLanguage,
-  initialBaseline = initialValue
+  initialBaseline = initialValue,
+  readOnly = false
 ): UseCodeMirrorResult {
   const containerRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
@@ -285,6 +286,8 @@ export function useCodeMirror(
         languageExtension(language),
         markerExtension(markersRef.current),
         oneDark,
+        EditorState.readOnly.of(readOnly),
+        EditorView.editable.of(!readOnly),
         EditorView.lineWrapping,
         updateListener
       ]
@@ -296,9 +299,9 @@ export function useCodeMirror(
       view.destroy()
       viewRef.current = null
     }
-    // 仅在语言变化时重建;value 变更通过 replaceContent 走 dispatch
+    // 语言或只读权限变化时重建；value 变更通过 replaceContent 走 dispatch。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [language])
+  }, [language, readOnly])
 
   const updateDocument = useCallback((next: string) => {
     const view = viewRef.current

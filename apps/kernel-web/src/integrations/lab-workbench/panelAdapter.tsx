@@ -29,11 +29,15 @@ import {
   UnifiedLabViewport,
   type LabViewMode
 } from './UnifiedLabViewport'
+import { workflowUuidFromPanelConfig } from './workflowSessions'
 
 export interface LabPanelScope {
   services: Services
   interaction: LabInteractionStore
-  onWorkflowUnsavedChangesChange?: (hasUnsavedChanges: boolean) => void
+  onWorkflowUnsavedChangesChange?: (
+    sessionId: string,
+    hasUnsavedChanges: boolean
+  ) => void
 }
 
 const PANEL_TITLES: Readonly<Record<string, string>> = {
@@ -137,6 +141,7 @@ function WorkflowRenderer(
   return (
     <WorkflowPanel
       runtime={props.scope.services.workflow}
+      workflowUuid={workflowUuidFromPanelConfig(props.config) ?? undefined}
       activeWorkflowStorageKey={`unilab.workflow.active.${
         encodeURIComponent(
           `${props.scope.services.backend.id}:${
@@ -144,7 +149,12 @@ function WorkflowRenderer(
           }`
         )
       }.v1`}
-      onUnsavedChangesChange={props.scope.onWorkflowUnsavedChangesChange}
+      onUnsavedChangesChange={(hasUnsavedChanges) => {
+        props.scope.onWorkflowUnsavedChangesChange?.(
+          props.panelInstance.id,
+          hasUnsavedChanges
+        )
+      }}
       onStepFocus={(focus) => {
         const interaction = props.scope.interaction.getState()
         interaction.selectWorkflowStep(focus.stepId)
@@ -205,7 +215,10 @@ function UnifiedLayoutRenderer(
  * testable.
  */
 export function useLabPanelAdapter(
-  onWorkflowUnsavedChangesChange?: (hasUnsavedChanges: boolean) => void
+  onWorkflowUnsavedChangesChange?: (
+    sessionId: string,
+    hasUnsavedChanges: boolean
+  ) => void
 ): PanelAppAdapter<LabPanelScope> {
   const services = useServices()
   const interaction = useLabInteractionStore()

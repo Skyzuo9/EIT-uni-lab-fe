@@ -44,7 +44,9 @@ export function WorkbenchProvider({ children }: { children: ReactNode }): React.
   )
   const [connection, setConnection] =
     useState<ConnectionStatus>('disconnected')
-  const [section, setSection] = useState<WorkbenchSection>('device')
+  const [section, setSection] = useState<WorkbenchSection>(() =>
+    initialSection()
+  )
   const [laboratoryId, setLaboratoryId] = useState<string | null>(null)
 
   const selectBackend = useCallback((backendId: string) => {
@@ -138,6 +140,20 @@ function initialBackend(): BackendConfig {
   } catch {
     return backend
   }
+}
+
+function initialSection(): WorkbenchSection {
+  if (typeof globalThis.location === 'undefined') return 'device'
+  const section = new URLSearchParams(globalThis.location.search).get('section')
+  if (
+    section === 'device' ||
+    section === 'material' ||
+    section === 'scene' ||
+    section === 'workflow'
+  ) {
+    return section
+  }
+  return 'device'
 }
 
 function realtimeUrlFor(apiUrl: string): string {

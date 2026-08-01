@@ -52,7 +52,7 @@ export function createServices(options: CreateServicesOptions): Services {
     capabilities,
     getCapabilityStatus: (capability) =>
       getCapabilityStatus(options.backend, capabilities, capability),
-    laboratory: createLaboratoryService(http),
+    laboratory: createLaboratoryService(http, options.backend),
     materials: createMaterialService(
       http,
       options.backend,
