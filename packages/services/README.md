@@ -17,6 +17,9 @@ Profile 是一组完整连接配置，不是单个 base URL。它至少确定 ba
 | `local-go` / backend | 当前物料能力 fail closed | 现有模板/行级 CRUD 未满足统一目录与 Material Graph contract |
 | cloud | fail closed | 未来迁移；未实现能力不得显示为可用 |
 
+`local-python` / Edge 的连通性探测使用统一 v1 路径
+`GET /api/v1/health`；`GET /health` 是已退出当前 Edge profile 的旧 bridge 路径。
+
 非云本地作用域是 singleton，不发送伪造的 `laboratoryId`。同一路径或相同 JSON 字段不代表
 同一业务语义；adapter 只有在能完整满足 typed port 时才能声明 capability。
 

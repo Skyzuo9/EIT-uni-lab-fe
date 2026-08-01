@@ -15,6 +15,7 @@
     "test": "pnpm -r --if-present test",
     "test:e2e:workflow": "playwright test e2e/workflow-authoring-real-os.spec.ts e2e/workflow-task-runtime-real-os.spec.ts e2e/workflow-task-runtime-resilience-real-os.spec.ts",
     "test:e2e:workflow-authoring": "playwright test e2e/workflow-authoring-real-os.spec.ts",
+    "test:e2e:workflow-authoring-import": "playwright test e2e/workflow-authoring-import-real-os.spec.ts",
     "test:e2e:workflow-task-runtime": "playwright test e2e/workflow-task-runtime-real-os.spec.ts",
     "test:e2e:workflow-task-runtime-resilience": "playwright test e2e/workflow-task-runtime-resilience-real-os.spec.ts",
     "test:workflow-runtime-contract": "node scripts/verify-workflow-runtime-contract.mjs",

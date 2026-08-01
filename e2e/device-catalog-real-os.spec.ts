@@ -30,7 +30,7 @@ test('existing device UI reads the Edge-owned catalog through the real OS bridge
     })
   })
 
-  const health = await request.get(`${API_URL}/health`)
+  const health = await request.get(`${API_URL}/api/v1/health`)
   expect(health.ok()).toBe(true)
   expect(await health.json()).toEqual({ status: 'ok' })
   const catalog = await request.get(`${API_URL}/api/v1/devices`)
@@ -107,7 +107,7 @@ test('existing device UI reads the Edge-owned catalog through the real OS bridge
 
   expect(apiRequests).toEqual(
     expect.arrayContaining([
-      { method: 'GET', path: '/health' },
+      { method: 'GET', path: '/api/v1/health' },
       { method: 'GET', path: '/api/v1/devices' }
     ])
   )

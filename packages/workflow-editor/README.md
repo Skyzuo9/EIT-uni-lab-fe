@@ -9,8 +9,8 @@ Redux 状态。不同后端的工作流数据必须先通过 `services`/app adap
 
 ## 它负责什么
 
-- 在 JSON（Canonical v2）和 Python 两种编写模式间切换。
-- 用同一个 Authoring revision 驱动代码、DAG、保存与校验。
+- 在 Python Draft 与 OS-owned Authoring Graph 画布之间维持单编辑权。
+- 用同一个持久 Authoring aggregate 驱动代码、DAG、Draft、Candidate 与 Apply。
 - 展示完整控制流 DAG，包括 branch、join 和分支边。
 - 在原节点卡片、DAG 和代码 gutter 中预览 Debugger 起点与断点配置。
 - 消费 OS/backend 的 WorkflowTask、WorkflowNodeJob、feedback 与全局 SSE
@@ -22,14 +22,14 @@ Redux 状态。不同后端的工作流数据必须先通过 `services`/app adap
 ## 单一数据流
 
 ```text
-Backend Workflow Authoring aggregate
+OS Workflow Authoring aggregate
         │
         ├─ parse/project ───────────────► ReactFlow DAG
         ├─ generate-python (OS) ────────► Python + source_map
-        ├─ validate/apply (OS/backend) ─► persisted revision
+        ├─ Draft PUT + Apply (OS) ──────► persisted revision
         └─ create WorkflowTask ─────────► OS-owned snapshot + Jobs
 
-Python edit ── compile + validate (OS) ──► new Authoring candidate
+Python edit ── Draft PUT (双 CAS) ───────► server-owned Candidate
 ```
 
 ReactFlow 的 `nodes`/`edges` 不是保存或执行输入。普通 `normal | step` 执行只发送
@@ -37,22 +37,27 @@ Workflow UUID、run mode、input 和 metadata；OS 从已 Apply 的持久 Graph 
 WorkflowTask snapshot 与 Jobs。Debugger 起点/断点仍只保留在现有 UI 中做会话预览，
 等待独立 Debugger Interface 后再接线，不能混入普通 Task payload。
 
-## JSON / Python 切换
+## Python / 画布编写与文件导入
 
-切到 Python 时调用：
+代码模式中，Python 是唯一可写表示。保存完整源码时调用 Workflow-scoped Draft PUT，
+并携带观察到的 Draft hash 与 Workflow revision；只有 OS 返回的 Candidate 才能应用。
 
-1. `generatePythonWorkflow`：Canonical → Python 候选及 `source_map`。
-2. `validateAuthoringCandidate`：确认候选与 action catalog、schema 一致。
-3. 验证成功后才替换编辑器内容。
+画布模式中，Graph 是唯一可写表示，Python 只读。画布保存先调用
+`generateWorkflowAuthoringPython`，展示完整 Python 差异；用户明确接受后才执行
+Draft PUT。Apply 始终只发送 server-issued `candidate_hash`。
 
-Python 发生编辑后，切回 JSON、保存、校验或运行前调用：
+UI1E 在同一个持久工作台中复用原有文件选择 hook：
 
-1. `compilePythonWorkflow`：使用 OS 的 `from_python_script` AST 编译器。
-2. `validateAuthoringCandidate`：验证候选。
-3. 用候选 `canonical_ir` 更新 DAG，再更新 `source_map`。
+- “导入 Python”把 `.py` 放入当前 Workflow 的代码脏态，随后仍走 Draft → Candidate
+  → Apply；如果 OS 规范化了源码，必须再接受完整差异并保存。
+- “导入 JSON”只接受当前 Workflow 的 `WorkflowAuthoringGraph`、`graph` 包装或
+  Authoring aggregate 中的 `candidate.graph` / `applied_graph`；随后由 OS
+  `POST /api/v1/authoring/generate-python` 生成 Python。
+- Canonical v2、旧 Cloud JSON 和属于其他 Workflow 的 Graph 当前均 fail closed；
+  浏览器不猜测 Backend-shaped Graph，也不改变现有文档。
 
-失败时保留用户当前代码和上一个有效 revision。不要在浏览器执行 Python，也不要用
-前端正则或行号猜测重建 DAG。
+失败时保留用户当前代码和上一个有效 aggregate。不要在浏览器执行 Python，也不要用
+前端正则、行号或旧 Cloud DTO 猜测重建 DAG。
 
 ## 起始点、断点与 WorkflowTask 控制
 
@@ -96,15 +101,16 @@ Interface；不得把它们映射回共享 WorkflowTask command 猜测语义。
 - `src/components/WorkflowDag.tsx`：只读拓扑投影及节点快捷交互。
 - `src/components/WorkflowNodeCard.tsx`：节点状态、起始点和断点的可访问入口。
 - `src/utils/canonicalWorkflow.ts`：Canonical revision 与 UI 投影辅助。
-- `src/utils/parseWorkflowJson.ts`：Cloud JSON 的严格识别、Canonical v2
-  迁移和兼容投影。
+- `src/utils/persistentAuthoringGraph.ts`：持久 Graph 投影、画布改名和文件导入边界。
+- `src/utils/parseWorkflowJson.ts`：已退出生产入口的旧 Cloud/Canonical 迁移辅助；
+  不得由持久 Authoring 导入入口调用。
 - `src/utils/parseWorkflow.ts`：画布所需的只读解析。
 - `src/hooks/useWorkflowDag.ts`：ReactFlow 布局与视图状态。
 
-## Cloud JSON → Canonical v2
+## 旧 Cloud JSON → Canonical v2
 
-工具栏的“导入 JSON”以 Canonical v2 为第一识别顺序；如果不是 Canonical，
-则自动识别旧 Cloud `data.nodes/data.edges` 导出并在内存中严格迁移。转换成功后：
+以下是退役入口曾采用的迁移语义，仅保留给显式离线迁移工具参考；当前生产工具栏
+不会自动识别旧 Cloud `data.nodes/data.edges`，也不会把结果导入持久 Authoring。
 
 1. 代码编辑器立即替换为格式化后的 Canonical v2，不再保留第二套可运行文档。
 2. `device_name + template_name` 组成 `action_ref`。

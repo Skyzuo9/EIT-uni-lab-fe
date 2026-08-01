@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import type { WorkflowAuthoringGraph } from '@unilab/services'
 
 import {
+  parseWorkflowAuthoringGraphImport,
   updatePersistentAuthoringNodeName
 } from './persistentAuthoringGraph'
 
@@ -47,4 +48,57 @@ describe('persistent Authoring canvas graph edits', () => {
         .toThrow()
     }
   )
+})
+
+describe('persistent Authoring Graph file import', () => {
+  it('accepts a raw graph for the current Workflow', () => {
+    expect(parseWorkflowAuthoringGraphImport(
+      JSON.stringify(graph),
+      'workflow-1'
+    )).toEqual(graph)
+  })
+
+  it('prefers the server Candidate graph in an Authoring aggregate', () => {
+    const candidateGraph = {
+      ...graph,
+      nodes: graph.nodes.map((node, index) => index === 0
+        ? { ...node, name: 'candidate_node' }
+        : node)
+    }
+    const appliedGraph = {
+      ...graph,
+      nodes: graph.nodes.map((node, index) => index === 0
+        ? { ...node, name: 'applied_node' }
+        : node)
+    }
+
+    const imported = parseWorkflowAuthoringGraphImport(JSON.stringify({
+      data: {
+        candidate: { graph: candidateGraph },
+        applied_graph: appliedGraph
+      }
+    }), 'workflow-1')
+
+    expect(imported.nodes[0]?.name).toBe('candidate_node')
+  })
+
+  it('rejects malformed and unsupported Canonical/Cloud JSON', () => {
+    expect(() => parseWorkflowAuthoringGraphImport('{', 'workflow-1'))
+      .toThrow('JSON 文件无法解析，请检查文件格式')
+    expect(() => parseWorkflowAuthoringGraphImport(JSON.stringify({
+      schemaVersion: 2,
+      workflow: { nodes: [] }
+    }), 'workflow-1')).toThrow(
+      '当前持久 Authoring 只接受 OS WorkflowAuthoringGraph 导出'
+    )
+  })
+
+  it('rejects a graph owned by another Workflow', () => {
+    expect(() => parseWorkflowAuthoringGraphImport(
+      JSON.stringify(graph),
+      'workflow-2'
+    )).toThrow(
+      '导入文件属于 Workflow workflow-1，不能覆盖当前 Workflow workflow-2'
+    )
+  })
 })

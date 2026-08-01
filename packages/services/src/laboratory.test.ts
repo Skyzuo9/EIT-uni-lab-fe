@@ -189,21 +189,21 @@ describe('laboratory service', () => {
     }
   })
 
-  it('probes the production Python OS through its bridge health route', async () => {
+  it('probes the production Edge/OS through its unified v1 health route', async () => {
     const requests: Array<{
       path: string
       method?: string
       body?: string
     }> = []
     const service = createLaboratoryService(
-      fixtureHttp({ '/health': { status: 'ok' } }, requests),
+      fixtureHttp({ '/api/v1/health': { status: 'ok' } }, requests),
       getDefaultBackend('local-python')
     )
 
     await expect(service.ping()).resolves.toBe(true)
     expect(requests).toEqual([
       {
-        path: '/health',
+        path: '/api/v1/health',
         method: undefined,
         body: undefined
       }

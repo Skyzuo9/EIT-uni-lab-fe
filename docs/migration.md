@@ -52,7 +52,7 @@
 - 按 Cloud 的模板创建行为提取纯物料逻辑：读取模板详情、生成唯一节点名、
   识别含液体孔位、注入默认液体并在创建前要求配置。
 - Uni-Lab-OS 本地桥可通过 `--material-graph` 读取实验图，并提供统一
-  `GET /health`、`GET /api/v1/materials` 与
+  `GET /api/v1/health`、`GET /api/v1/materials` 与
   `GET /api/v1/materials/{uuid}`；Well/TipSpot 被投影为所属物料的 Site，
   revision 由设备图内容稳定计算，不建立第二份物料数据库。
 - Local Python OS adapter 已打开 `material.readGraph`；2D React Flow 与

@@ -23,6 +23,7 @@ import {
 import {
   createWorkflowExecutionScope
 } from '../utils/canonicalWorkflow'
+import { useWorkflowFileUpload } from '../hooks/useWorkflowFileUpload'
 import {
   workflowAuthoringModeSwitchDecision,
   workflowAuthoringSurfacePolicy,
@@ -30,6 +31,7 @@ import {
   type WorkflowEditMode
 } from '../utils/workflowCanvasPolicy'
 import {
+  parseWorkflowAuthoringGraphImport,
   projectPersistentAuthoringGraph,
   updatePersistentAuthoringNodeName
 } from '../utils/persistentAuthoringGraph'
@@ -73,7 +75,7 @@ interface FullSourceDiff {
   after: string
   expectedDraftHash: string | null
   expectedWorkflowRevision: number
-  reason: 'canvas_save' | 'conflict_retry'
+  reason: 'canvas_save' | 'conflict_retry' | 'source_normalization'
   resumeMode: WorkflowEditMode
 }
 
@@ -125,6 +127,8 @@ export function PersistentWorkflowAuthoringPanel({
   const [pendingMode, setPendingMode] = useState<WorkflowEditMode | null>(null)
   const [fullSourceDiff, setFullSourceDiff] =
     useState<FullSourceDiff | null>(null)
+  const [pendingPythonImport, setPendingPythonImport] =
+    useState<string | null>(null)
   const [remoteConflict, setRemoteConflict] =
     useState<RemoteConflict | null>(null)
   const [taskRunMode, setTaskRunMode] =
@@ -169,6 +173,84 @@ export function PersistentWorkflowAuthoringPanel({
     selectedNodeName,
     selectedNodeNameDirty
   }
+
+  const fileUpload = useWorkflowFileUpload({
+    onLoaded: ({ content, fileName }) => {
+      const current = localState.current
+      if (!current.aggregate) {
+        setError('Authoring aggregate 尚未就绪，无法导入文件')
+        return
+      }
+      if (current.codeDirty || current.canvasDirty) {
+        setError('请先保存或放弃当前未保存修改，再导入文件')
+        return
+      }
+      const lowerFileName = fileName.toLowerCase()
+      if (lowerFileName.endsWith('.json')) {
+        setPendingPythonImport(null)
+        void run(async () => {
+          const importedGraph = parseWorkflowAuthoringGraphImport(
+            content,
+            workflowUuid
+          )
+          const generated = await generateCanvasPython(importedGraph)
+          if (!generated.graph || !generated.normalized_python_source) {
+            throw new Error('OS 未返回完整 Authoring Graph/Python 投影')
+          }
+          setMode('canvas')
+          setGraph(generated.graph)
+          editor.replaceContent(generated.normalized_python_source)
+          setCanvasDirty(true)
+          setSelectedNodeUuid(null)
+          setSelectedNodeName('')
+          setSelectedNodeNameDirty(false)
+          setError(null)
+          setMessage(
+            `${fileName} 已导入到画布；保存前将检查完整 Python 差异`
+          )
+          localState.current = {
+            ...current,
+            mode: 'canvas',
+            codeDirty: false,
+            canvasDirty: true,
+            editorValue: generated.normalized_python_source,
+            graph: generated.graph,
+            selectedNodeUuid: null,
+            selectedNodeName: '',
+            selectedNodeNameDirty: false
+          }
+        })
+        return
+      }
+      if (!lowerFileName.endsWith('.py')) {
+        setError('当前入口只接受 .py 或 .json 工作流文件')
+        return
+      }
+      const nextGraph = authoringProjection(current.aggregate).graph
+      setMode('code')
+      setGraph(nextGraph)
+      editor.updateContent(content)
+      setCanvasDirty(false)
+      setSelectedNodeUuid(null)
+      setSelectedNodeName('')
+      setSelectedNodeNameDirty(false)
+      setPendingPythonImport(fileName)
+      setError(null)
+      setMessage(`${fileName} 已导入为未保存的 Python Draft`)
+      localState.current = {
+        ...current,
+        mode: 'code',
+        codeDirty: true,
+        canvasDirty: false,
+        editorValue: content,
+        graph: nextGraph,
+        selectedNodeUuid: null,
+        selectedNodeName: '',
+        selectedNodeNameDirty: false
+      }
+    },
+    onError: (uploadError) => setError(uploadError)
+  })
 
   const structure = useMemo(
     () => graph
@@ -518,6 +600,7 @@ export function PersistentWorkflowAuthoringPanel({
     nextMode: WorkflowEditMode
   ): Promise<void> => {
     if (!aggregate) throw new Error('Authoring aggregate 尚未就绪')
+    setPendingPythonImport(null)
     if (nextMode === 'canvas') {
       const sourceGraph = authoringProjection(aggregate).graph
       const generated = await generateCanvasPython(sourceGraph)
@@ -565,6 +648,7 @@ export function PersistentWorkflowAuthoringPanel({
     setSelectedNodeUuid(null)
     setSelectedNodeName('')
     setSelectedNodeNameDirty(false)
+    setPendingPythonImport(null)
     void run(() => enterMode(nextMode))
   }
 
@@ -588,6 +672,28 @@ export function PersistentWorkflowAuthoringPanel({
             )
           )
           installAggregate(saved, draftSaveMessage(saved))
+          const normalized = saved.candidate?.normalized_python_source
+          const draftSource = saved.draft?.python_source
+          if (
+            pendingPythonImport &&
+            normalized &&
+            draftSource &&
+            normalized !== draftSource
+          ) {
+            setFullSourceDiff({
+              before: draftSource,
+              after: normalized,
+              expectedDraftHash: saved.draft?.draft_hash ?? null,
+              expectedWorkflowRevision: saved.workflow_revision,
+              reason: 'source_normalization',
+              resumeMode: 'code'
+            })
+            setMessage(
+              `${pendingPythonImport} 已保存；请接受 OS 规范化 Python 后再应用`
+            )
+          } else {
+            setPendingPythonImport(null)
+          }
         } catch (saveError) {
           if (!isAuthoringConflict(saveError)) throw saveError
           remotePending.current = true
@@ -653,6 +759,9 @@ export function PersistentWorkflowAuthoringPanel({
         remotePending.current = false
         setFullSourceDiff(null)
         installAggregate(saved, draftSaveMessage(saved))
+        if (diff.reason === 'source_normalization') {
+          setPendingPythonImport(null)
+        }
         setMode(diff.resumeMode)
       } catch (saveError) {
         if (!isAuthoringConflict(saveError)) throw saveError
@@ -704,6 +813,7 @@ export function PersistentWorkflowAuthoringPanel({
     if (!remoteConflict) return
     const remote = remoteConflict.remote
     remotePending.current = false
+    setPendingPythonImport(null)
     setMode(remoteConflict.localMode)
     installAggregate(remote, '已采用远端 Authoring 状态，本地修改已放弃')
   }
@@ -837,6 +947,32 @@ export function PersistentWorkflowAuthoringPanel({
         </div>
 
         <div className="workflow__toolbar-actions">
+          <input
+            ref={fileUpload.inputRef}
+            className="workflow__file-input"
+            type="file"
+            accept=".py,text/x-python"
+            aria-label="选择工作流文件"
+            onChange={fileUpload.handleFileChange}
+          />
+          <button
+            type="button"
+            className="workflow__upload"
+            disabled={busy || dirty || !aggregate}
+            title={dirty ? '请先保存当前可写表示' : undefined}
+            onClick={() => fileUpload.openFilePicker('python')}
+          >
+            导入 Python
+          </button>
+          <button
+            type="button"
+            className="workflow__upload"
+            disabled={busy || dirty || !aggregate}
+            title={dirty ? '请先保存当前可写表示' : undefined}
+            onClick={() => fileUpload.openFilePicker('json')}
+          >
+            导入 JSON
+          </button>
           <button
             type="button"
             className="workflow__upload"
@@ -1195,7 +1331,9 @@ export function PersistentWorkflowAuthoringPanel({
               <span className="workflow-save-prompt__eyebrow">
                 {fullSourceDiff.reason === 'conflict_retry'
                   ? '冲突重试检查'
-                  : '画布保存检查'}
+                  : fullSourceDiff.reason === 'source_normalization'
+                    ? '导入源码规范化检查'
+                    : '画布保存检查'}
               </span>
               <h2>完整 Python 差异</h2>
             </header>

@@ -5,7 +5,7 @@
  * Model: Claude Opus 4.8
  * Generation Date: 2026-07-22
  * Prompt Summary: Uni-Lab-OS REST 客户端封装(设备/资源/任务)
- * Context: 对接 local bridge health、device catalog 与 resource projection
+ * Context: 对接 Edge v1 health、device catalog 与 resource projection
  * Human Review Status: [ ] Pending  [ ] Reviewed  [ ] Approved
  * ============================================================
  */
@@ -105,7 +105,7 @@ export function createLaboratoryService(
   return {
     async ping(): Promise<boolean> {
       try {
-        await http.request<unknown>('/health')
+        await http.request<unknown>('/api/v1/health')
         return true
       } catch {
         return false
