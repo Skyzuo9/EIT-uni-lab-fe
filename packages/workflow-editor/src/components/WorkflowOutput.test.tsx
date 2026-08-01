@@ -233,4 +233,58 @@ describe('WorkflowOutput', () => {
     expect(nodePanel).toContain('sample heating completed')
     expect(nodePanel).not.toContain('camera-only log')
   })
+
+  it('falls back to successful node lifecycle events when Edge returns no log fields', () => {
+    const selectedNode = {
+      nodeId: 'heat',
+      sourceNodeId: 'heat',
+      nodeType: 'action',
+      deviceId: 'heater-1',
+      action: 'heat',
+      state: 'success' as const,
+      result: {},
+      attempt: 1
+    }
+    const html = renderToStaticMarkup(
+      <WorkflowOutput
+        expanded
+        activeTab="nodes"
+        completedNodeCount={1}
+        expectedNodeCount={1}
+        nodes={[selectedNode]}
+        nodeNames={{ heat: '加热样品' }}
+        events={[
+          {
+            seq: 408,
+            runId: 'run-1',
+            type: 'node.started',
+            nodeId: 'heat',
+            timestamp: 1,
+            payload: { attempt: 1 }
+          },
+          {
+            seq: 411,
+            runId: 'run-1',
+            type: 'node.result',
+            nodeId: 'heat',
+            timestamp: 2,
+            payload: { effects: [], result: {} }
+          }
+        ]}
+        error={null}
+        selectedNode={selectedNode}
+        selectedNodeId="heat"
+        pausedBeforeNodeId={null}
+        onExpandedChange={() => {}}
+        onTabChange={() => {}}
+        onNodeSelect={() => {}}
+        onClearError={() => {}}
+      />
+    )
+
+    expect(html).toContain('aria-label="加热样品 运行日志"')
+    expect(html).toContain('#408 节点开始执行 (node.started)')
+    expect(html).toContain('#411 节点执行成功 (node.result)')
+    expect(html).toContain('&quot;effects&quot;: []')
+  })
 })

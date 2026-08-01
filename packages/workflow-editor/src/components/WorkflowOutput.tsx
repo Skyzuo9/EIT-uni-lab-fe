@@ -380,12 +380,11 @@ function workflowNodeLogText(
   node: WorkflowRunNode,
   events: readonly WorkflowRunEvent[]
 ): string {
-  const matchingEventPayloads = events
+  const matchingEvents = events
     .filter((event) => (
       event.type !== 'node.exception' &&
       (event.nodeId === node.nodeId || event.nodeId === node.sourceNodeId)
     ))
-    .map((event) => event.payload)
   const logs: string[] = []
   const seen = new Set<string>()
 
@@ -406,8 +405,14 @@ function workflowNodeLogText(
   }
 
   visit(node.result)
-  matchingEventPayloads.forEach(visit)
-  return logs.join('\n\n')
+  matchingEvents.forEach((event) => visit(event.payload))
+  if (logs.length > 0) return logs.join('\n\n')
+
+  return matchingEvents.map((event) => {
+    const heading = `#${event.seq} ${eventLabel(event.type)} (${event.type})`
+    const payload = formatLogValue(event.payload)
+    return payload ? `${heading}\n${payload}` : heading
+  }).join('\n\n')
 }
 
 function workflowNodeFailureLogs(
