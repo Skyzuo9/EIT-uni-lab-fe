@@ -356,7 +356,7 @@ describe('WorkflowTask runtime port', () => {
   it('does not expose the retired Run transport through the public runtime port', () => {
     const runtime = taskPort(vi.fn())
 
-    expect(Object.keys(runtime)).not.toEqual(expect.arrayContaining([
+    for (const retiredMethod of [
       'createRun',
       'getRun',
       'listRunNodes',
@@ -364,7 +364,9 @@ describe('WorkflowTask runtime port', () => {
       'command',
       'cancelRun',
       'subscribeRunEvents'
-    ]))
+    ]) {
+      expect(retiredMethod in runtime).toBe(false)
+    }
 
     runtime.dispose()
   })

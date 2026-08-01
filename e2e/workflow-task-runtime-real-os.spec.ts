@@ -6,6 +6,7 @@ import {
   startPersistentAuthoringOs,
   type PersistentAuthoringOs
 } from './helpers/persistent-authoring-os'
+import { installWorkflowPanel } from './helpers/workflow-runtime-ui'
 
 let os: PersistentAuthoringOs
 
@@ -284,29 +285,4 @@ async function submitCommand(
   })
   await panel.locator(`[data-runtime-command="${command}"]`).click()
   expect((await response).status()).toBe(201)
-}
-
-async function installWorkflowPanel(
-  page: import('@playwright/test').Page,
-  workflowUuid: string
-): Promise<void> {
-  await page.addInitScript((configuredWorkflowUuid) => {
-    localStorage.setItem(
-      'unilab.panel-layout.workflow.v1',
-      JSON.stringify({
-        version: 1,
-        layout: {
-          id: 'runtime-root',
-          type: 'group',
-          panels: [{
-            id: 'runtime-workflow',
-            panelType: 'workflow-dag',
-            title: 'Workflow Runtime',
-            config: { workflow_uuid: configuredWorkflowUuid }
-          }],
-          activePanelId: 'runtime-workflow'
-        }
-      })
-    )
-  }, workflowUuid)
 }
