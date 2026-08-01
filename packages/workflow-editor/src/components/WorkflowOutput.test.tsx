@@ -89,4 +89,73 @@ describe('WorkflowOutput', () => {
     expect(html).toContain('Traceback: event-only heater failure')
     expect(html).toContain('safety check required')
   })
+
+  it('shows only the selected failed node error log in the node details', () => {
+    const selectedNode = {
+      nodeId: 'job-heat',
+      sourceNodeId: 'heat',
+      nodeType: 'action',
+      deviceId: 'heater-1',
+      action: 'heat',
+      state: 'failed' as const,
+      result: {},
+      attempt: 1
+    }
+    const html = renderToStaticMarkup(
+      <WorkflowOutput
+        expanded
+        activeTab="nodes"
+        completedNodeCount={0}
+        expectedNodeCount={2}
+        nodes={[
+          selectedNode,
+          {
+            nodeId: 'job-camera',
+            sourceNodeId: 'camera',
+            nodeType: 'action',
+            deviceId: 'camera-1',
+            action: 'capture',
+            state: 'failed',
+            result: {},
+            attempt: 1
+          }
+        ]}
+        nodeNames={{ heat: '加热样品', camera: '拍摄样品' }}
+        events={[
+          {
+            seq: 7,
+            runId: 'run-1',
+            type: 'node.exception',
+            nodeId: 'job-heat',
+            timestamp: 1,
+            payload: { traceback: 'Traceback: selected heater failure' }
+          },
+          {
+            seq: 8,
+            runId: 'run-1',
+            type: 'node.exception',
+            nodeId: 'job-camera',
+            timestamp: 2,
+            payload: { traceback: 'Traceback: unselected camera failure' }
+          }
+        ]}
+        error={null}
+        selectedNode={selectedNode}
+        selectedNodeId="job-heat"
+        pausedBeforeNodeId={null}
+        onExpandedChange={() => {}}
+        onTabChange={() => {}}
+        onNodeSelect={() => {}}
+        onClearError={() => {}}
+      />
+    )
+
+    const nodePanel = html.slice(
+      html.indexOf('id="workflow-output-panel-nodes"'),
+      html.indexOf('id="workflow-output-panel-events"')
+    )
+    expect(nodePanel).toContain('aria-label="加热样品 错误日志"')
+    expect(nodePanel).toContain('Traceback: selected heater failure')
+    expect(nodePanel).not.toContain('Traceback: unselected camera failure')
+  })
 })

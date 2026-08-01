@@ -42,6 +42,14 @@ export function WorkflowOutput({
 }: WorkflowOutputProps): React.JSX.Element {
   const eventNodeNames = workflowEventNodeNames(nodes, nodeNames)
   const nodeFailures = workflowNodeFailureLogs(nodes, nodeNames, events)
+  const selectedNodeFailure = selectedNode
+    ? nodeFailures.find((failure) => (
+        failure.nodeId === selectedNode.nodeId ||
+        failure.sourceNodeId === selectedNode.nodeId ||
+        failure.nodeId === selectedNode.sourceNodeId ||
+        failure.sourceNodeId === selectedNode.sourceNodeId
+      ))
+    : undefined
   const errorCount = nodeFailures.length + (error ? 1 : 0)
 
   return (
@@ -150,9 +158,40 @@ export function WorkflowOutput({
               })}
             </div>
             {selectedNode && (
-              <pre className="workflow-runtime__node-result">
-                {JSON.stringify(selectedNode.result, null, 2)}
-              </pre>
+              <div className="workflow-runtime__node-details">
+                {selectedNodeFailure && (
+                  <article
+                    className="workflow-runtime__error-detail workflow-runtime__node-error"
+                  >
+                    <header>
+                      <strong>{selectedNodeFailure.nodeName} 执行失败</strong>
+                      <small
+                        title={`节点 ID：${selectedNodeFailure.sourceNodeId}`}
+                      >
+                        {selectedNodeFailure.sourceNodeId}
+                        {selectedNodeFailure.attempt > 0
+                          ? ` · 第 ${selectedNodeFailure.attempt} 次尝试`
+                          : ''}
+                      </small>
+                    </header>
+                    {selectedNodeFailure.log ? (
+                      <pre
+                        aria-label={`${selectedNodeFailure.nodeName} 错误日志`}
+                      >
+                        {selectedNodeFailure.log}
+                      </pre>
+                    ) : (
+                      <p>节点已失败，但 OS 未返回详细错误日志。</p>
+                    )}
+                  </article>
+                )}
+                <pre
+                  className="workflow-runtime__node-result"
+                  aria-label={`${nodeNames[selectedNode.sourceNodeId] || selectedNode.sourceNodeId} 节点结果`}
+                >
+                  {JSON.stringify(selectedNode.result, null, 2)}
+                </pre>
+              </div>
             )}
           </section>
 

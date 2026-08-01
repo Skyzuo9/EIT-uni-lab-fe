@@ -219,9 +219,21 @@
   white-space: nowrap;
 }
 
+.workflow :global(.workflow-runtime__node-details) {
+  display: grid;
+  min-width: 0;
+  gap: var(--unilab-space-2);
+  margin: 0 var(--unilab-space-3) var(--unilab-space-2);
+}
+
+.workflow :global(.workflow-runtime__node-details)
+  :global(.workflow-runtime__error-detail) {
+  margin: 0;
+}
+
 .workflow :global(.workflow-runtime__node-result) {
   max-height: 80px;
-  margin: 0 var(--unilab-space-3) var(--unilab-space-2);
+  margin: 0;
   padding: var(--unilab-space-2);
   overflow: auto;
   color: var(--unilab-color-text);
