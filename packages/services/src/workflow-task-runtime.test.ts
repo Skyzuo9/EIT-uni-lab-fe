@@ -352,6 +352,22 @@ describe('WorkflowTask runtime port', () => {
     subscription.dispose()
     runtime.dispose()
   })
+
+  it('does not expose the retired Run transport through the public runtime port', () => {
+    const runtime = taskPort(vi.fn())
+
+    expect(Object.keys(runtime)).not.toEqual(expect.arrayContaining([
+      'createRun',
+      'getRun',
+      'listRunNodes',
+      'listRunEvents',
+      'command',
+      'cancelRun',
+      'subscribeRunEvents'
+    ]))
+
+    runtime.dispose()
+  })
 })
 
 function taskPort(request: ReturnType<typeof vi.fn>): WorkflowRuntimePort {

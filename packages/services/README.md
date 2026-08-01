@@ -85,10 +85,9 @@ Runtime SSE 只消费 `workflow.runtime.changed`，事件体只有
 `workflow_task_uuid`。它以全局事件 `id` 去重并通过 `Last-Event-ID` 重连，只负责
 使 REST 投影失效；调用方必须重新读取 Task/Jobs/feedback，不得把事件当状态补丁。
 
-旧 `createRun`、`getRun`、`listRunNodes`、`listRunEvents`、`command`、
-`cancelRun` 和 `subscribeRunEvents` 仅为现有旧 panel 在 UI1C/UI1D 迁移前保持编译的
-隔离过渡面，已标记 deprecated。新代码不得调用它们；UI1D 必须删除这些方法、旧
-`/api/v1/runtime/runs*`、Runtime WebSocket 和 polling fallback。
+UI1D 已删除旧 `createRun`、`getRun`、Run node/event page、旧 debug command、
+`cancelRun`、Runtime WebSocket 和 polling fallback。旧
+`/api/v1/runtime/runs*` 不再存在于公共 port；恢复同名 adapter 属于合同回退。
 
 ## Backend adapter 约束
 
@@ -103,12 +102,14 @@ Runtime SSE 只消费 `workflow.runtime.changed`，事件体只有
 
 ## 运行与错误语义
 
-- `createRun` 的 source 必须是完整 `workflow_revision_v2`。
-- `start_node_id`、`breakpoints`、`pause_on_start` 放在 `debug`，不修改 source。
-- 命令响应仅表示命令已接受；随后通过 run/event 投影确认状态。
-- HTTP/WS 传输成功不等于执行成功。
+- Task 只能引用 OS 已应用的 Workflow UUID；前端不得提交临时 DAG 绕过 Authoring
+  authority。
+- 普通 Task 创建不携带本地起始点或断点预览；Debugger launch 等 OS-only 扩展另行冻结。
+- command 响应仅表示 durable accepted；随后通过全局 SSE invalidation 和
+  Task/Jobs/feedback REST 投影确认 applied 状态。
+- HTTP/SSE 传输成功不等于执行成功。
 - `dispatch_unknown`、`reconciling` 和结构化 problem detail 必须原样保留给 UI。
-- service 被销毁时必须调用 `dispose()` 关闭 WS 和轮询。
+- service 被销毁时必须调用 `dispose()` 关闭全局 SSE subscription 和重连计时器。
 
 ## 适配器绝对不能做
 
