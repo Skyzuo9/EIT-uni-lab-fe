@@ -111,9 +111,11 @@
 - 设起始点后，起点之前及从该起点不可达的节点在运行前预览中置灰；真正运行后以 OS 返回的
   `skipped` 为准。起点之外的断点不得随本次运行下发。
 - 断点语义是“节点被调度、申请资源、进入设备动作队列之前暂停”，不是节点执行完成后暂停。
-- 调试命令统一走 `POST /api/v1/runtime/runs/{run_id}/commands`。命令名和载荷不得在组件中另造：
-  `set_breakpoints`、`pause`、`continue`、`step`、`step_over`、`step_into`、`run_to`、
-  `terminate`、`emergency_stop`。
+- 共享 Runtime 命令统一走
+  `POST /api/v1/workflow-tasks/{task_uuid}/commands`，且只有 `step`、`pause`、
+  `resume`、`cancel`。HTTP 201 只表示 durable accepted，不等于命令已生效。
+- Debugger Hold/step-family 属于独立 OS-only Interface，由 Debugger delivery
+  冻结后才能接入；不得恢复 `/api/v1/runtime/runs*` 来承载调试命令。
 - 颜色不得混用：
   - 绿色：节点已成功 `success`。
   - 蓝色：暂停在该节点之前，节点尚未执行。
@@ -124,7 +126,8 @@
 - 颜色只能作为辅助信息。状态必须同时通过文字、CSS class/图标和可访问标签表达。
   “选中节点”的蓝色绝对不能与“正在运行”混为一谈。
 - `packages/workflow-editor/src/hooks/useWorkflowDebug.ts` 只是本地 UI 状态辅助，不能作为真实运行状态机；
-  运行中状态必须来自 `WorkflowRuntimePort` 的 run、node 和 event 投影。
+  运行中状态必须来自 `WorkflowRuntimePort` 的 WorkflowTask、
+  WorkflowNodeJob、feedback 和全局 SSE invalidation 后的 REST 投影。
 
 ## 统一接口边界
 
@@ -135,22 +138,28 @@
 - `POST /api/v1/authoring/compile`
 - `POST /api/v1/authoring/generate-python`
 - `POST /api/v1/authoring/validate`
-- `POST /api/v1/runtime/runs`
-- `GET /api/v1/runtime/runs/{run_id}`
-- `GET /api/v1/runtime/runs/{run_id}/nodes`
-- `GET /api/v1/runtime/runs/{run_id}/events?after_seq=...`
-- `POST /api/v1/runtime/runs/{run_id}/commands`
-- `POST /api/v1/runtime/runs/{run_id}/cancel`
-- `WS /api/v1/runtime/events?run_id=...&after_seq=...`
+- `POST|GET /api/v1/workflow-tasks`
+- `GET /api/v1/workflow-tasks/{task_uuid}`
+- `GET /api/v1/workflow-tasks/{task_uuid}/jobs`
+- `POST /api/v1/workflow-tasks/{task_uuid}/commands`
+- `GET /api/v1/workflow-node-jobs/{job_uuid}`
+- `GET /api/v1/workflow-node-jobs/{job_uuid}/feedback`
+- `GET /api/v1/events` SSE
 
-兼容 HTTP 端点只能留在 adapter/bridge 内部；新 UI 功能不得依赖 `/api/run`、
-`/api/runtime/local/*` 或 backend 私有接口。旧 Cloud panel
-`/ws/workflow/{uuid}` 已从 OS 删除，禁止重新引入 client、proxy 或协议类型。
+新 UI 功能不得依赖 `/api/run`、`/api/runtime/local/*`、
+`/api/v1/runtime/runs*`、Task-scoped event route、Runtime WebSocket、轮询或
+backend 私有接口。分轮迁移期为保持既有调用方可 typecheck 而保留的
+deprecated Run 类型/方法只是待删除代码，不是可使用合同；UI1 Runtime
+新代码禁止引用。旧 Cloud panel `/ws/workflow/{uuid}` 已从 OS 删除，
+禁止重新引入 client、proxy 或协议类型。
 
 ## 异常与实时事件
 
-- WS 断开时可从最后一个 `seq` 用 REST 补拉；事件按单调递增 `seq` 去重和续接。
-- HTTP 接受、WS 发送成功或命令返回，不等于节点或 run 成功。终态只能由后续权威投影确认。
+- 全局 SSE 使用 event `id` 去重，断开后用 `Last-Event-ID` 续接。
+  `workflow.runtime.changed` payload 只有 `workflow_task_uuid`，不是状态 patch；
+  收到后重新读取 Task/Jobs，feedback 按 sequence cursor 补读。
+- HTTP 接受或 command 返回，不等于 Job 或 Task 成功。终态只能由
+  后续权威 REST 投影确认。
 - `dispatch_unknown`、`reconciling`、资源等待、取消中和结构化 problem detail 必须如实显示，
   不能折叠成“失败”或“成功”。
 - 用户可见错误应包含可行动的信息；不得吞掉 Promise rejection、WebSocket 解析错误或
@@ -197,5 +206,7 @@ pnpm test:e2e:workflow-debug
 diagnostic escape hatch，不能改产品默认 scene。
 
 工作流 E2E 应连接真实 local bridge/OS v1 契约，不得用路由 mock 证明“端到端成功”。
-测试和截图至少覆盖：完整 DAG、控制节点、JSON/Python 往返、起始点置灰、断点暂停、
-橙色运行态、绿色成功态、单步、异常和终止。
+Runtime 迁移测试和截图至少覆盖：Task create/read、Job 投影、command
+accepted 与生效状态的区分、feedback 补读、SSE reconnect/rehydration、
+partial-read failure 和 OS restart。Debugger 测试另外覆盖完整 DAG、控制节点、
+JSON/Python 往返、起始点、断点、单步、异常和终止。
