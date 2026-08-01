@@ -10,10 +10,11 @@ Redux 状态。不同后端的工作流数据必须先通过 `services`/app adap
 ## 它负责什么
 
 - 在 JSON（Canonical v2）和 Python 两种编写模式间切换。
-- 用同一个 revision 驱动代码、DAG、保存、校验与执行。
+- 用同一个 Authoring revision 驱动代码、DAG、保存与校验。
 - 展示完整控制流 DAG，包括 branch、join 和分支边。
-- 配置起始点、断点与 `pause_on_start`，发送运行和调试命令。
-- 消费 OS/backend 的 run、node、event 投影，展示逐节点结果和异常。
+- 在原节点卡片、DAG 和代码 gutter 中预览 Debugger 起点与断点配置。
+- 消费 OS/backend 的 WorkflowTask、WorkflowNodeJob、feedback 与全局 SSE
+  invalidation 投影，展示逐节点结果和异常。
 
 它不负责选择 backend、拼接 URL、解释用户 Python 或执行 DAG；这些能力分别属于
 应用壳、`@unilab/services` 和 OS/backend。
@@ -21,19 +22,20 @@ Redux 状态。不同后端的工作流数据必须先通过 `services`/app adap
 ## 单一数据流
 
 ```text
-Canonical WorkflowRevision v2
+Backend Workflow Authoring aggregate
         │
         ├─ parse/project ───────────────► ReactFlow DAG
         ├─ generate-python (OS) ────────► Python + source_map
-        ├─ validate/save (OS/backend) ──► persisted revision
-        └─ create run ──────────────────► complete immutable DAG
+        ├─ validate/apply (OS/backend) ─► persisted revision
+        └─ create WorkflowTask ─────────► OS-owned snapshot + Jobs
 
-Python edit ── compile + validate (OS) ──► new Canonical revision
+Python edit ── compile + validate (OS) ──► new Authoring candidate
 ```
 
-ReactFlow 的 `nodes`/`edges` 不是保存或执行输入。任何时候都从最后一个已验证的
-Canonical revision 下发完整 DAG，并把 `start_node_id`、`breakpoints` 作为单独的
-debug 配置发送。
+ReactFlow 的 `nodes`/`edges` 不是保存或执行输入。普通 `normal | step` 执行只发送
+Workflow UUID、run mode、input 和 metadata；OS 从已 Apply 的持久 Graph 建立
+WorkflowTask snapshot 与 Jobs。Debugger 起点/断点仍只保留在现有 UI 中做会话预览，
+等待独立 Debugger Interface 后再接线，不能混入普通 Task payload。
 
 ## JSON / Python 切换
 

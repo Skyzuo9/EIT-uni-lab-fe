@@ -231,10 +231,9 @@ test('production UI passes the retired-Run, idempotency and terminal-race gate',
   await page.waitForTimeout(pollingObservationDurationMs)
   const pollingRequests = runtimeRequests
     .slice(pollingRequestOffset)
-    .filter(({ method, path }) => method === 'GET' && (
-      path === `/api/v1/workflow-tasks/${taskUuid}` ||
-      path === `/api/v1/workflow-tasks/${taskUuid}/jobs`
-    ))
+    .filter(({ method, path }) =>
+      method === 'GET' && isWorkflowRuntimeReadPath(path, taskUuid)
+    )
   const pollingObservation = {
     durationMs: pollingObservationDurationMs,
     requests: pollingRequests
@@ -297,6 +296,17 @@ function candidatePins(): {
     ).trim(),
     coreBaseline: requiredEnvironment('UNILAB_EXPECTED_CORE_SHA')
   }
+}
+
+function isWorkflowRuntimeReadPath(path: string, taskUuid: string): boolean {
+  const pathname = path.split('?', 1)[0]
+  return pathname === '/api/v1/workflow-tasks' ||
+    pathname === `/api/v1/workflow-tasks/${taskUuid}` ||
+    pathname === `/api/v1/workflow-tasks/${taskUuid}/jobs` ||
+    (
+      pathname.startsWith('/api/v1/workflow-node-jobs/') &&
+      pathname.endsWith('/feedback')
+    )
 }
 
 function requiredEnvironment(name: string): string {

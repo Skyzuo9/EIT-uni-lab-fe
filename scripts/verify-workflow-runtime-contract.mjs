@@ -38,6 +38,14 @@ const activeFixtureFiles = trackedFiles.filter((path) =>
 const violations = []
 const packageJson = JSON.parse(readFileSync('package.json', 'utf8'))
 const workflowDebugGate = packageJson.scripts?.['test:e2e:workflow-debug'] || ''
+const workflowEditorReadme = readFileSync(
+  'packages/workflow-editor/README.md',
+  'utf8'
+)
+const finalGateSource = readFileSync(
+  'e2e/workflow-runtime-final-gate-real-os.spec.ts',
+  'utf8'
+)
 for (const requiredSpec of [
   'workflow-authoring-real-os.spec.ts',
   'workflow-task-runtime-real-os.spec.ts',
@@ -73,6 +81,33 @@ for (const path of activeFixtureFiles) {
     /\b(?:pollRuntime|pollRun|pollWorkflowTask|pollWorkflowJobs?)\b/i
   ]) {
     if (pattern.test(source)) violations.push(`${path}: ${pattern}`)
+  }
+}
+
+for (const retiredClaim of [
+  '`pause_on_start`',
+  'create run',
+  '`start_node_id`'
+]) {
+  if (workflowEditorReadme.includes(retiredClaim)) {
+    violations.push(
+      `packages/workflow-editor/README.md: retired claim ${retiredClaim}`
+    )
+  }
+}
+
+for (const requiredQuietWindowCoverage of [
+  'isWorkflowRuntimeReadPath(path, taskUuid)',
+  "pathname === '/api/v1/workflow-tasks'",
+  "pathname === `/api/v1/workflow-tasks/${taskUuid}`",
+  "pathname === `/api/v1/workflow-tasks/${taskUuid}/jobs`",
+  "pathname.startsWith('/api/v1/workflow-node-jobs/') &&",
+  "pathname.endsWith('/feedback')"
+]) {
+  if (!finalGateSource.includes(requiredQuietWindowCoverage)) {
+    violations.push(
+      `workflow-runtime-final-gate-real-os.spec.ts: quiet window omits ${requiredQuietWindowCoverage}`
+    )
   }
 }
 
