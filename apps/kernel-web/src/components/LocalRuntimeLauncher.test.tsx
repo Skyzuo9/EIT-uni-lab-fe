@@ -189,15 +189,7 @@ function renderDialog(
       onStopSimulator={vi.fn()}
       onStartEdge={vi.fn()}
       onStopEdge={vi.fn()}
-      logsOpen={false}
-      logsSnapshot={null}
-      activeLogKind="edge"
-      logsLoading={false}
-      logsError={null}
-      onOpenLogs={vi.fn()}
-      onCloseLogs={vi.fn()}
-      onRefreshLogs={vi.fn()}
-      onSelectLog={vi.fn()}
+      logControl={<button type="button">查看日志</button>}
     />
   )
 }

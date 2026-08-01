@@ -107,6 +107,7 @@
 
 .headerLogButton {
   height: 30px;
+  flex: 0 0 auto;
   padding-inline: 10px;
   white-space: nowrap;
 }
@@ -805,6 +806,10 @@
   .primaryButton,
   .stopButton {
     flex: 1 1 auto;
+  }
+
+  .headerLogButton {
+    flex: 0 0 auto;
   }
 
   .processGrid {
