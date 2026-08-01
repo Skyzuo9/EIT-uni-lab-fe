@@ -1,0 +1,419 @@
+.launcherButton {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  color: var(--unilab-color-text);
+  border: 1px solid var(--unilab-color-border-strong);
+  border-radius: var(--unilab-radius-sm);
+  background: var(--unilab-color-surface);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--unilab-color-primary);
+    border-color: var(--unilab-color-primary);
+    background: var(--unilab-color-primary-soft);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--unilab-color-focus);
+    outline-offset: 2px;
+  }
+
+  &[data-runtime-phase='ready'] {
+    color: var(--unilab-color-success);
+    border-color: color-mix(
+      in srgb,
+      var(--unilab-color-success) 34%,
+      var(--unilab-color-border)
+    );
+  }
+
+  &[data-runtime-phase='failed'] {
+    color: var(--unilab-color-danger);
+    border-color: color-mix(
+      in srgb,
+      var(--unilab-color-danger) 34%,
+      var(--unilab-color-border)
+    );
+  }
+}
+
+.launcherDot,
+.statusDot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.backdrop {
+  position: fixed;
+  z-index: 1200;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: var(--unilab-space-4);
+  background: rgb(15 23 42 / 34%);
+}
+
+.dialog {
+  width: min(640px, calc(100vw - 32px));
+  max-height: min(760px, calc(100vh - 32px));
+  overflow: auto;
+  color: var(--unilab-color-text);
+  border-radius: var(--unilab-radius-lg);
+  background: var(--unilab-color-surface);
+  box-shadow: 0 18px 48px rgb(15 23 42 / 18%);
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--unilab-space-4);
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid var(--unilab-color-border);
+
+  h2 {
+    margin: 0;
+    font-size: 17px;
+    font-weight: 700;
+    line-height: 1.4;
+  }
+
+  p {
+    max-width: 62ch;
+    margin: 5px 0 0;
+    color: var(--unilab-color-text-muted);
+    font-size: 12px;
+    line-height: 1.55;
+  }
+}
+
+.closeButton {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  padding: 0;
+  color: var(--unilab-color-text-muted);
+  border: 0;
+  border-radius: var(--unilab-radius-sm);
+  background: transparent;
+  font-size: 21px;
+  line-height: 1;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    color: var(--unilab-color-text);
+    background: var(--unilab-color-surface-subtle);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--unilab-color-focus);
+    outline-offset: 2px;
+  }
+
+  &:disabled {
+    opacity: .45;
+    cursor: not-allowed;
+  }
+}
+
+.body {
+  display: grid;
+  gap: var(--unilab-space-4);
+  padding: 20px 24px;
+}
+
+.simulatorOption {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--unilab-space-4);
+  padding: 12px 14px;
+  border-radius: var(--unilab-radius-md);
+  background: var(--unilab-color-surface-subtle);
+  cursor: pointer;
+
+  > span {
+    display: grid;
+    gap: 3px;
+  }
+
+  strong {
+    font-size: 13px;
+    line-height: 1.4;
+  }
+
+  small {
+    color: var(--unilab-color-text-muted);
+    font-size: 11px;
+    line-height: 1.45;
+  }
+}
+
+.switchInput {
+  width: 38px;
+  height: 22px;
+  flex: 0 0 auto;
+  margin: 0;
+  accent-color: var(--unilab-color-primary);
+  cursor: pointer;
+
+  &:focus-visible {
+    outline: 2px solid var(--unilab-color-focus);
+    outline-offset: 2px;
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+  }
+}
+
+.fields {
+  display: grid;
+  gap: 14px;
+}
+
+.field {
+  display: grid;
+  gap: 6px;
+}
+
+.fieldLabel {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.pathPicker {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  align-items: stretch;
+  width: 100%;
+  min-width: 0;
+  height: 38px;
+  padding: 0;
+  overflow: hidden;
+  color: var(--unilab-color-text);
+  border: 1px solid var(--unilab-color-border-strong);
+  border-radius: var(--unilab-radius-control);
+  background: var(--unilab-color-surface);
+  text-align: start;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    color: var(--unilab-color-primary);
+    border-color: var(--unilab-color-primary);
+    background: var(--unilab-color-primary-soft);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--unilab-color-focus);
+    outline-offset: 1px;
+  }
+
+  &[aria-invalid='true'] {
+    border-color: var(--unilab-color-danger);
+  }
+
+  &:disabled {
+    color: var(--unilab-color-text-muted);
+    background: var(--unilab-color-surface-subtle);
+    opacity: .72;
+    cursor: not-allowed;
+  }
+}
+
+.pathValue,
+.pathPlaceholder {
+  align-self: center;
+  min-width: 0;
+  padding-inline: 10px;
+  overflow: hidden;
+  font: 12px/1 var(--unilab-font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pathPlaceholder {
+  color: var(--unilab-color-text-subtle);
+}
+
+.pathAction {
+  display: inline-flex;
+  align-items: center;
+  padding-inline: 12px;
+  border-inline-start: 1px solid var(--unilab-color-border-strong);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.fieldError {
+  color: var(--unilab-color-danger);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.statusStrip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px 12px;
+  min-height: 36px;
+  padding: 8px 10px;
+  color: var(--unilab-color-text-muted);
+  border: 1px solid var(--unilab-color-border);
+  border-radius: var(--unilab-radius-control);
+  background: var(--unilab-color-surface-subtle);
+  font-size: 11px;
+
+  &[data-phase='ready'] {
+    color: var(--unilab-color-success);
+    border-color: color-mix(
+      in srgb,
+      var(--unilab-color-success) 28%,
+      var(--unilab-color-border)
+    );
+    background: var(--unilab-color-success-soft);
+  }
+
+  &[data-phase='failed'] {
+    color: var(--unilab-color-danger);
+    border-color: color-mix(
+      in srgb,
+      var(--unilab-color-danger) 28%,
+      var(--unilab-color-border)
+    );
+    background: var(--unilab-color-danger-soft);
+  }
+
+  strong {
+    font-size: 12px;
+  }
+}
+
+.processState {
+  color: currentColor;
+  opacity: .84;
+}
+
+.error {
+  margin: 0;
+  padding: 9px 10px;
+  color: var(--unilab-color-danger);
+  border-radius: var(--unilab-radius-control);
+  background: var(--unilab-color-danger-soft);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  gap: var(--unilab-space-2);
+  padding: 14px 24px 18px;
+  border-top: 1px solid var(--unilab-color-border);
+}
+
+.footerSpacer {
+  flex: 1;
+}
+
+.secondaryButton,
+.primaryButton,
+.stopButton {
+  height: 36px;
+  padding: 0 13px;
+  border-radius: var(--unilab-radius-control);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+
+  &:focus-visible {
+    outline: 2px solid var(--unilab-color-focus);
+    outline-offset: 2px;
+  }
+
+  &:disabled {
+    opacity: .5;
+    cursor: not-allowed;
+  }
+}
+
+.secondaryButton {
+  color: var(--unilab-color-text);
+  border: 1px solid var(--unilab-color-border-strong);
+  background: var(--unilab-color-surface);
+
+  &:hover:not(:disabled) {
+    border-color: var(--unilab-color-primary);
+    background: var(--unilab-color-primary-soft);
+  }
+}
+
+.primaryButton {
+  color: #fff;
+  border: 1px solid var(--unilab-color-primary);
+  background: var(--unilab-color-primary);
+
+  &:hover:not(:disabled) {
+    background: var(--unilab-color-primary-hover);
+  }
+}
+
+.stopButton {
+  color: var(--unilab-color-danger);
+  border: 1px solid color-mix(
+    in srgb,
+    var(--unilab-color-danger) 34%,
+    var(--unilab-color-border)
+  );
+  background: var(--unilab-color-danger-soft);
+
+  &:hover:not(:disabled) {
+    border-color: var(--unilab-color-danger);
+  }
+}
+
+@media (max-width: 640px) {
+  .backdrop {
+    align-items: end;
+    padding: 0;
+  }
+
+  .dialog {
+    width: 100%;
+    max-height: calc(100vh - 16px);
+    border-radius: var(--unilab-radius-lg) var(--unilab-radius-lg) 0 0;
+  }
+
+  .header,
+  .body {
+    padding-inline: 16px;
+  }
+
+  .footer {
+    flex-wrap: wrap;
+    padding-inline: 16px;
+  }
+
+  .footerSpacer {
+    display: none;
+  }
+
+  .secondaryButton,
+  .primaryButton,
+  .stopButton {
+    flex: 1 1 auto;
+  }
+
+}

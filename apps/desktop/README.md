@@ -18,6 +18,27 @@
 - 本地 `dev`/`preview` 使用 `build/icon.png` 作为窗口图标，并在 macOS 显式设置
   Dock 图标；安装包继续使用 `electron-builder.yml` 声明的 `icon.icns/icon.png`。
 
+## 本地环境启动
+
+桌面端连接栏可选择设备图 JSON、Uni-Lab-OS 项目目录和 OPC 仿真项目目录，
+并以一个受控会话启动或停止 Edge 与仿真器。关闭“同时启动 OPC 仿真器”后，
+仿真项目目录不再必填，Edge 会直接使用设备图中配置的 OPC 服务。
+
+仿真项目需要提供根目录 `start.sh`（Windows 为 `start.bat`），或提供
+`unilab-launch.json`：
+
+```json
+{
+  "command": ".venv/bin/python",
+  "args": ["main.py"],
+  "readyPort": 4840
+}
+```
+
+`command`、可选 `cwd` 中的路径必须位于所选仿真项目目录内。就绪条件必须使用
+`readyPort` 或 `readyUrl`；没有显式就绪条件的标准启动脚本只检查进程是否持续运行。
+所有命令均以参数数组直接启动，不经过 renderer 或任意 shell 字符串拼接。
+
 ## 绝对不能做
 
 - 不得复制 `kernel-web` 页面形成第二套 renderer。

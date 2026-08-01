@@ -19,6 +19,44 @@ interface OpenFilePayload {
   accept?: 'json' | 'python'
 }
 
+export type LocalRuntimePathKind = 'graph' | 'os' | 'simulator'
+
+export interface LocalRuntimeLaunchConfig {
+  graphPath: string
+  osProjectPath: string
+  simulatorProjectPath: string
+  startSimulator: boolean
+}
+
+export type LocalRuntimePhase =
+  | 'idle'
+  | 'validating'
+  | 'starting_simulator'
+  | 'starting_edge'
+  | 'waiting_edge'
+  | 'ready'
+  | 'stopping'
+  | 'failed'
+
+export interface LocalRuntimeSnapshot {
+  phase: LocalRuntimePhase
+  message: string
+  simulatorRunning: boolean
+  edgeRunning: boolean
+  error?: string
+}
+
+export interface DesktopRuntimeApi {
+  selectPath: (kind: LocalRuntimePathKind) => Promise<string | null>
+  getSnapshot: () => Promise<LocalRuntimeSnapshot>
+  start: (config: LocalRuntimeLaunchConfig) => Promise<LocalRuntimeSnapshot>
+  stop: () => Promise<LocalRuntimeSnapshot>
+  openLogs: () => Promise<boolean>
+  onSnapshot: (
+    listener: (snapshot: LocalRuntimeSnapshot) => void
+  ) => () => void
+}
+
 interface DesktopApi {
   getVersion: () => Promise<string>
   auth: {
@@ -30,6 +68,7 @@ interface DesktopApi {
     open: (payload?: OpenFilePayload) => Promise<OpenedFile | null>
     save: (payload: SaveFilePayload) => Promise<SavedFile | null>
   }
+  runtime?: DesktopRuntimeApi
 }
 
 declare global {
