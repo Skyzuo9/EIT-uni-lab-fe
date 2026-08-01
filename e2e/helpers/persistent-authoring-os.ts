@@ -1,6 +1,11 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { mkdtempSync, rmSync } from 'node:fs'
-import { createServer } from 'node:net'
+import {
+  createServer as createHttpServer,
+  request as requestHttp,
+  type Server as HttpServer
+} from 'node:http'
+import { createServer as createNetServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
 
@@ -13,16 +18,43 @@ export const RUNTIME_AUTHORING_WORKFLOW_UUID =
 
 export interface PersistentAuthoringOs {
   url: string
+  upstreamUrl: string
   workflowUuid: string
   secondWorkflowUuid: string
   runtimeWorkflowUuid: string
   sourcePath: string
   secondSourcePath: string
   logs: () => string
+  failNextRequest: (request: {
+    method: string
+    path: string
+    status?: number
+  }) => void
+  startRuntimeJob: (taskUuid: string, jobUuid: string) => Promise<void>
+  commitJobFeedback: (
+    jobUuid: string,
+    samples: readonly RuntimeFeedbackSample[]
+  ) => Promise<void>
+  stopProcess: () => Promise<void>
+  restart: () => Promise<void>
   stop: () => Promise<void>
 }
 
-export async function startPersistentAuthoringOs(): Promise<PersistentAuthoringOs> {
+export interface RuntimeFeedbackSample {
+  sequence: number
+  feedback_type: string
+  data: Record<string, unknown>
+  observed_at: string
+  idempotency_key: string
+}
+
+export interface PersistentAuthoringOsOptions {
+  faultProxy?: boolean
+}
+
+export async function startPersistentAuthoringOs(
+  options: PersistentAuthoringOsOptions = {}
+): Promise<PersistentAuthoringOs> {
   const osRepository = resolve(
     process.env.UNILAB_AUTHORING_OS_ROOT ||
       '/home/gaojing/.worktrees/uni-lab-os-runtime-integration-final'
@@ -46,52 +78,98 @@ export async function startPersistentAuthoringOs(): Promise<PersistentAuthoringO
     'second.py'
   )
   const port = await availablePort()
-  const url = `http://127.0.0.1:${port}`
-  const child = spawn(
-    python,
-    [
-      '-c',
-      PYTHON_LAUNCHER,
-      workingDirectory,
-      editableRoot,
-      String(port)
-    ],
-    {
-      cwd: osRepository,
-      env: {
-        ...process.env,
-        PYTHONPATH: osRepository,
-        PYTHONUNBUFFERED: '1'
-      },
-      stdio: ['ignore', 'pipe', 'pipe']
-    }
-  )
+  const upstreamUrl = `http://127.0.0.1:${port}`
+  let child: ChildProcess | null = null
   let output = ''
-  child.stdout?.on('data', (chunk) => {
-    output += chunk.toString()
-  })
-  child.stderr?.on('data', (chunk) => {
-    output += chunk.toString()
-  })
+
+  const launch = async (): Promise<void> => {
+    child = spawn(
+      python,
+      [
+        '-c',
+        PYTHON_LAUNCHER,
+        workingDirectory,
+        editableRoot,
+        String(port)
+      ],
+      {
+        cwd: osRepository,
+        env: {
+          ...process.env,
+          PYTHONPATH: osRepository,
+          PYTHONUNBUFFERED: '1'
+        },
+        stdio: ['ignore', 'pipe', 'pipe']
+      }
+    )
+    const launched = child
+    launched.stdout?.on('data', (chunk) => {
+      output += chunk.toString()
+    })
+    launched.stderr?.on('data', (chunk) => {
+      output += chunk.toString()
+    })
+    await waitUntilReady(upstreamUrl, launched, () => output)
+  }
 
   try {
-    await waitUntilReady(url, child, () => output)
+    await launch()
   } catch (error) {
-    await stopChild(child)
+    if (child) await stopChild(child)
     removeFixtureDirectory(directory)
     throw error
   }
 
+  const faultProxy = options.faultProxy
+    ? await startFaultProxy(upstreamUrl)
+    : null
+  const mutateRuntime = (payload: Record<string, unknown>): Promise<void> =>
+    runRuntimeMutation({
+      python,
+      osRepository,
+      workingDirectory,
+      payload
+    })
+
   return {
-    url,
+    url: faultProxy?.url ?? upstreamUrl,
+    upstreamUrl,
     workflowUuid: AUTHORING_WORKFLOW_UUID,
     secondWorkflowUuid: SECOND_AUTHORING_WORKFLOW_UUID,
     runtimeWorkflowUuid: RUNTIME_AUTHORING_WORKFLOW_UUID,
     sourcePath,
     secondSourcePath,
     logs: () => output,
-    stop: async () => {
+    failNextRequest: (request) => {
+      if (!faultProxy) {
+        throw new Error('PersistentAuthoringOs fault proxy is not enabled')
+      }
+      faultProxy.failNext(request)
+    },
+    startRuntimeJob: (taskUuid, jobUuid) => mutateRuntime({
+      action: 'start_job',
+      task_uuid: taskUuid,
+      job_uuid: jobUuid
+    }),
+    commitJobFeedback: (jobUuid, samples) => mutateRuntime({
+      action: 'commit_feedback',
+      job_uuid: jobUuid,
+      samples
+    }),
+    stopProcess: async () => {
+      if (!child) return
       await stopChild(child)
+      child = null
+    },
+    restart: async () => {
+      if (child) await stopChild(child)
+      child = null
+      await launch()
+    },
+    stop: async () => {
+      await faultProxy?.stop()
+      if (child) await stopChild(child)
+      child = null
       removeFixtureDirectory(directory)
     }
   }
@@ -174,36 +252,39 @@ editable_root.mkdir(parents=True, exist_ok=True)
 )
 working_dir.mkdir(parents=True, exist_ok=True)
 authority = CatalogAuthority(authority_id="fe-d117-e2e-local", kind="local")
-store = WorkflowStore(working_dir / "workflow.db")
+database_path = working_dir / "workflow.db"
+initialize_store = not database_path.exists()
+store = WorkflowStore(database_path)
 try:
-    service = WorkflowService(store)
-    service.create_workflow(
-        name="FE D117 real OS fixture",
-        tags=[],
-        description="Real persistent Authoring E2E",
-        meta_data={},
-        workflow_uuid=WORKFLOW_UUID,
-    )
-    service.create_workflow(
-        name="FE D117 second Workflow fixture",
-        tags=[],
-        description="Independent persistent Authoring session",
-        meta_data={},
-        workflow_uuid=second_workflow_uuid,
-    )
-    service.create_workflow(
-        name="UI1B Runtime control fixture",
-        tags=[],
-        description="Real Task/Job Runtime E2E",
-        meta_data={},
-        workflow_uuid=runtime_workflow_uuid,
-    )
-    imports = _catalog_imports()
-    for item in imports:
-        item.template.pop("uuid", None)
-        for handle in item.handles:
-            handle.pop("uuid", None)
-    TemplateCatalog(store).replace(authority, imports)
+    if initialize_store:
+        service = WorkflowService(store)
+        service.create_workflow(
+            name="FE D117 real OS fixture",
+            tags=[],
+            description="Real persistent Authoring E2E",
+            meta_data={},
+            workflow_uuid=WORKFLOW_UUID,
+        )
+        service.create_workflow(
+            name="FE D117 second Workflow fixture",
+            tags=[],
+            description="Independent persistent Authoring session",
+            meta_data={},
+            workflow_uuid=second_workflow_uuid,
+        )
+        service.create_workflow(
+            name="UI1B Runtime control fixture",
+            tags=[],
+            description="Real Task/Job Runtime E2E",
+            meta_data={},
+            workflow_uuid=runtime_workflow_uuid,
+        )
+        imports = _catalog_imports()
+        for item in imports:
+            item.template.pop("uuid", None)
+            for handle in item.handles:
+                handle.pop("uuid", None)
+        TemplateCatalog(store).replace(authority, imports)
 finally:
     store.close()
 
@@ -215,9 +296,167 @@ from unilabos.app.web.server import start_server
 start_server(host="127.0.0.1", port=port, open_browser=False)
 `
 
+const PYTHON_RUNTIME_MUTATOR = String.raw`
+import json
+import sys
+from pathlib import Path
+
+from unilabos.workflow.runtime import WorkflowRuntimeCoordinator
+from unilabos.workflow.store import WorkflowStore
+
+working_dir = Path(sys.argv[1])
+payload = json.loads(sys.argv[2])
+store = WorkflowStore(working_dir / "workflow.db")
+try:
+    coordinator = WorkflowRuntimeCoordinator(store)
+    if payload["action"] == "start_job":
+        coordinator.start_task(payload["task_uuid"])
+        coordinator.transition_job(payload["job_uuid"], "dispatched")
+        coordinator.transition_job(payload["job_uuid"], "running")
+    elif payload["action"] == "commit_feedback":
+        coordinator.commit_job_feedback(payload["job_uuid"], payload["samples"])
+    else:
+        raise RuntimeError(f"unknown runtime mutation: {payload['action']}")
+finally:
+    store.close()
+`
+
+async function runRuntimeMutation({
+  python,
+  osRepository,
+  workingDirectory,
+  payload
+}: {
+  python: string
+  osRepository: string
+  workingDirectory: string
+  payload: Record<string, unknown>
+}): Promise<void> {
+  await new Promise<void>((resolveMutation, rejectMutation) => {
+    const mutation = spawn(
+      python,
+      ['-c', PYTHON_RUNTIME_MUTATOR, workingDirectory, JSON.stringify(payload)],
+      {
+        cwd: osRepository,
+        env: {
+          ...process.env,
+          PYTHONPATH: osRepository,
+          PYTHONUNBUFFERED: '1'
+        },
+        stdio: ['ignore', 'pipe', 'pipe']
+      }
+    )
+    let output = ''
+    mutation.stdout?.on('data', (chunk) => {
+      output += chunk.toString()
+    })
+    mutation.stderr?.on('data', (chunk) => {
+      output += chunk.toString()
+    })
+    mutation.once('error', rejectMutation)
+    mutation.once('exit', (code) => {
+      if (code === 0) resolveMutation()
+      else rejectMutation(new Error(
+        `WorkflowRuntimeCoordinator fixture exited with ${code}\n${output}`
+      ))
+    })
+  })
+}
+
+interface FaultProxy {
+  url: string
+  failNext: (request: {
+    method: string
+    path: string
+    status?: number
+  }) => void
+  stop: () => Promise<void>
+}
+
+async function startFaultProxy(upstreamUrl: string): Promise<FaultProxy> {
+  const rules: Array<{ method: string; path: string; status: number }> = []
+  const port = await availablePort()
+  const server: HttpServer = createHttpServer((incoming, outgoing) => {
+    const incomingUrl = new URL(incoming.url || '/', upstreamUrl)
+    const method = incoming.method || 'GET'
+    const faultIndex = rules.findIndex((rule) =>
+      rule.method === method && rule.path === incomingUrl.pathname
+    )
+    if (faultIndex >= 0) {
+      const [fault] = rules.splice(faultIndex, 1)
+      incoming.resume()
+      const body = JSON.stringify({
+        error: {
+          code: 'ui1c_fault_injected',
+          message: `UI1C fault boundary rejected ${method} ${incomingUrl.pathname}`,
+          retryable: true
+        }
+      })
+      outgoing.writeHead(fault?.status ?? 503, {
+        'Access-Control-Allow-Origin': incoming.headers.origin || '*',
+        'Content-Type': 'application/json; charset=utf-8',
+        'Content-Length': Buffer.byteLength(body)
+      })
+      outgoing.end(body)
+      return
+    }
+
+    const headers = { ...incoming.headers, host: incomingUrl.host }
+    const upstream = requestHttp(incomingUrl, { method, headers }, (response) => {
+      const abortOutgoing = (error?: Error): void => {
+        if (!outgoing.destroyed) outgoing.destroy(error)
+      }
+      response.once('aborted', () => abortOutgoing())
+      response.once('error', abortOutgoing)
+      outgoing.writeHead(response.statusCode || 502, response.headers)
+      response.pipe(outgoing)
+    })
+    upstream.on('error', (error) => {
+      if (outgoing.headersSent) {
+        outgoing.destroy(error)
+        return
+      }
+      const body = JSON.stringify({
+        error: {
+          code: 'ui1c_upstream_unavailable',
+          message: 'UI1C OS boundary is temporarily unavailable',
+          retryable: true
+        }
+      })
+      outgoing.writeHead(502, {
+        'Access-Control-Allow-Origin': incoming.headers.origin || '*',
+        'Content-Type': 'application/json; charset=utf-8',
+        'Content-Length': Buffer.byteLength(body)
+      })
+      outgoing.end(body)
+    })
+    incoming.pipe(upstream)
+  })
+  await new Promise<void>((resolveListen, rejectListen) => {
+    server.once('error', rejectListen)
+    server.listen(port, '127.0.0.1', () => resolveListen())
+  })
+  return {
+    url: `http://127.0.0.1:${port}`,
+    failNext: (request) => {
+      rules.push({
+        method: request.method,
+        path: request.path,
+        status: request.status ?? 503
+      })
+    },
+    stop: () => new Promise<void>((resolveStop, rejectStop) => {
+      server.close((error) => {
+        if (error) rejectStop(error)
+        else resolveStop()
+      })
+    })
+  }
+}
+
 async function availablePort(): Promise<number> {
   return new Promise((resolvePort, reject) => {
-    const server = createServer()
+    const server = createNetServer()
     server.unref()
     server.once('error', reject)
     server.listen(0, '127.0.0.1', () => {

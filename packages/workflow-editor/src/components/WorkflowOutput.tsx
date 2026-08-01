@@ -9,9 +9,11 @@ export interface WorkflowOutputNode {
 }
 
 export interface WorkflowOutputEvent {
+  key?: string
   seq: number
   type: string
   nodeId: string | null
+  detail?: Record<string, unknown>
 }
 
 interface WorkflowOutputProps {
@@ -187,11 +189,16 @@ export function WorkflowOutput({
                   ? eventNodeNames.get(event.nodeId) || event.nodeId
                   : '整体运行'
                 return (
-                  <div key={event.seq}>
+                  <div key={event.key ?? `${event.nodeId}:${event.seq}:${event.type}`}>
                     <code>#{event.seq}</code>
                     <span>
                       <strong>{eventLabel(event.type)}</strong>
                       <small>{event.type}</small>
+                      {event.detail && (
+                        <small className="is-detail">
+                          {JSON.stringify(event.detail)}
+                        </small>
+                      )}
                     </span>
                     <em
                       data-node-id={event.nodeId || undefined}

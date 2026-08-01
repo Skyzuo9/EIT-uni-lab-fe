@@ -1,5 +1,6 @@
 import type {
   WorkflowNodeJob,
+  WorkflowNodeJobFeedback,
   WorkflowRuntimeChangedEvent,
   WorkflowRuntimePort,
   WorkflowTask,
@@ -71,8 +72,223 @@ describe('WorkflowTaskController', () => {
       task: firstTask,
       jobs: firstJobs,
       error: 'jobs unavailable',
+      projectionStale: true,
       generation: 1
     })
+
+    failJobs = false
+    await controller.refresh()
+
+    expect(controller.getSnapshot()).toMatchObject({
+      task: firstTask,
+      jobs: firstJobs,
+      error: null,
+      projectionStale: false,
+      generation: 2
+    })
+  })
+
+  it('increments Job feedback from the last confirmed sequence without losing history', async () => {
+    const task = workflowTask()
+    let feedbackSequence = 1
+    const feedbackReads: number[] = []
+    const runtime = runtimePort({
+      subscribeWorkflowRuntime: vi.fn(() => ({ dispose: vi.fn() })),
+      listWorkflowTasks: vi.fn(async () => ({
+        items: [task], total: 1, page: 1, page_size: 1
+      })),
+      getWorkflowTask: vi.fn(async () => task),
+      listWorkflowTaskJobs: vi.fn(async () => [{
+        ...workflowJob(),
+        feedback_sequence: feedbackSequence
+      }]),
+      listWorkflowNodeJobFeedback: vi.fn(async (_jobUuid, query = {}) => {
+        const afterSequence = query.after_sequence ?? 0
+        feedbackReads.push(afterSequence)
+        return {
+          items: afterSequence === 0
+            ? [workflowFeedback(1)]
+            : [workflowFeedback(2)],
+          next_cursor: afterSequence === 0 ? 1 : 2,
+          has_more: false
+        }
+      })
+    })
+    const controller = new WorkflowTaskController(runtime, task.workflow_uuid)
+
+    await controller.start()
+    expect(controller.getSnapshot().feedback.map((item) => item.sequence))
+      .toEqual([1])
+
+    feedbackSequence = 2
+    await controller.refresh()
+
+    expect(feedbackReads).toEqual([0, 1])
+    expect(controller.getSnapshot().feedback.map((item) => item.sequence))
+      .toEqual([1, 2])
+  })
+
+  it('continues feedback pagination until the OS cursor is exhausted', async () => {
+    const task = workflowTask()
+    const reads: number[] = []
+    const runtime = runtimePort({
+      subscribeWorkflowRuntime: vi.fn(() => ({ dispose: vi.fn() })),
+      listWorkflowTasks: vi.fn(async () => ({
+        items: [task], total: 1, page: 1, page_size: 1
+      })),
+      getWorkflowTask: vi.fn(async () => task),
+      listWorkflowTaskJobs: vi.fn(async () => [{
+        ...workflowJob(), feedback_sequence: 2
+      }]),
+      listWorkflowNodeJobFeedback: vi.fn(async (_jobUuid, query = {}) => {
+        const afterSequence = query.after_sequence ?? 0
+        reads.push(afterSequence)
+        return afterSequence === 0
+          ? {
+              items: [workflowFeedback(1)],
+              next_cursor: 1,
+              has_more: true
+            }
+          : {
+              items: [workflowFeedback(2)],
+              next_cursor: 2,
+              has_more: false
+            }
+      })
+    })
+    const controller = new WorkflowTaskController(runtime, task.workflow_uuid)
+
+    await controller.start()
+
+    expect(reads).toEqual([0, 1])
+    expect(controller.getSnapshot().feedback.map((item) => item.sequence))
+      .toEqual([1, 2])
+  })
+
+  it('de-duplicates replayed feedback identities before exposing them to the UI', async () => {
+    const task = workflowTask()
+    const runtime = runtimePort({
+      subscribeWorkflowRuntime: vi.fn(() => ({ dispose: vi.fn() })),
+      listWorkflowTasks: vi.fn(async () => ({
+        items: [task], total: 1, page: 1, page_size: 1
+      })),
+      getWorkflowTask: vi.fn(async () => task),
+      listWorkflowTaskJobs: vi.fn(async () => [{
+        ...workflowJob(), feedback_sequence: 2
+      }]),
+      listWorkflowNodeJobFeedback: vi.fn(async (_jobUuid, query = {}) =>
+        (query.after_sequence ?? 0) === 0
+          ? {
+              items: [workflowFeedback(1), workflowFeedback(1)],
+              next_cursor: 1,
+              has_more: true
+            }
+          : {
+              items: [workflowFeedback(2), workflowFeedback(2)],
+              next_cursor: 2,
+              has_more: false
+            }
+      )
+    })
+    const controller = new WorkflowTaskController(runtime, task.workflow_uuid)
+
+    await controller.start()
+
+    expect(controller.getSnapshot().feedback.map((item) => item.sequence))
+      .toEqual([1, 2])
+  })
+
+  it('preserves confirmed feedback when a later cursor read fails and recovers', async () => {
+    const task = workflowTask()
+    let feedbackSequence = 1
+    let failFeedback = false
+    const runtime = runtimePort({
+      subscribeWorkflowRuntime: vi.fn(() => ({ dispose: vi.fn() })),
+      listWorkflowTasks: vi.fn(async () => ({
+        items: [task], total: 1, page: 1, page_size: 1
+      })),
+      getWorkflowTask: vi.fn(async () => task),
+      listWorkflowTaskJobs: vi.fn(async () => [{
+        ...workflowJob(), feedback_sequence: feedbackSequence
+      }]),
+      listWorkflowNodeJobFeedback: vi.fn(async (_jobUuid, query = {}) => {
+        if (failFeedback) throw new Error('feedback unavailable')
+        const afterSequence = query.after_sequence ?? 0
+        return {
+          items: [workflowFeedback(afterSequence + 1)],
+          next_cursor: afterSequence + 1,
+          has_more: false
+        }
+      })
+    })
+    const controller = new WorkflowTaskController(runtime, task.workflow_uuid)
+    await controller.start()
+
+    feedbackSequence = 2
+    failFeedback = true
+    await controller.refresh()
+
+    expect(controller.getSnapshot()).toMatchObject({
+      projectionStale: false,
+      feedbackStale: true,
+      error: 'feedback unavailable',
+      generation: 2
+    })
+    expect(controller.getSnapshot().feedback.map((item) => item.sequence))
+      .toEqual([1])
+
+    failFeedback = false
+    await controller.refresh()
+
+    expect(controller.getSnapshot()).toMatchObject({
+      projectionStale: false,
+      feedbackStale: false,
+      error: null,
+      generation: 3
+    })
+    expect(controller.getSnapshot().feedback.map((item) => item.sequence))
+      .toEqual([1, 2])
+  })
+
+  it('installs feedback confirmed for earlier Jobs when a later Job read fails', async () => {
+    const task = workflowTask()
+    const firstJob = { ...workflowJob(), feedback_sequence: 1 }
+    const secondJob = {
+      ...workflowJob(),
+      uuid: '40000000-0000-4000-8000-000000000002',
+      workflow_node_uuid: '20000000-0000-4000-8000-000000000012',
+      feedback_sequence: 1,
+      topological_index: 1
+    }
+    const runtime = runtimePort({
+      subscribeWorkflowRuntime: vi.fn(() => ({ dispose: vi.fn() })),
+      listWorkflowTasks: vi.fn(async () => ({
+        items: [task], total: 1, page: 1, page_size: 1
+      })),
+      getWorkflowTask: vi.fn(async () => task),
+      listWorkflowTaskJobs: vi.fn(async () => [firstJob, secondJob]),
+      listWorkflowNodeJobFeedback: vi.fn(async (jobUuid) => {
+        if (jobUuid === secondJob.uuid) {
+          throw new Error('second feedback unavailable')
+        }
+        return {
+          items: [workflowFeedback(1, firstJob.uuid)],
+          next_cursor: 1,
+          has_more: false
+        }
+      })
+    })
+    const controller = new WorkflowTaskController(runtime, task.workflow_uuid)
+
+    await controller.start()
+
+    expect(controller.getSnapshot()).toMatchObject({
+      feedbackStale: true,
+      feedbackError: 'second feedback unavailable'
+    })
+    expect(controller.getSnapshot().feedback).toEqual([
+      workflowFeedback(1, firstJob.uuid)
+    ])
   })
 
   it('keeps command acceptance separate from SSE-confirmed Task authority', async () => {
@@ -117,6 +333,90 @@ describe('WorkflowTaskController', () => {
 
     await vi.waitFor(() => {
       expect(controller.getSnapshot().task?.control_status).toBe('paused')
+    })
+  })
+
+  it('marks Runtime realtime interruption and rehydrates when SSE reconnects', async () => {
+    const task = workflowTask()
+    let subscriptionOptions: Parameters<
+      WorkflowRuntimePort['subscribeWorkflowRuntime']
+    >[1]
+    const runtime = runtimePort({
+      subscribeWorkflowRuntime: vi.fn((_listener, options) => {
+        subscriptionOptions = options
+        return { dispose: vi.fn() }
+      }),
+      listWorkflowTasks: vi.fn(async () => ({
+        items: [task], total: 1, page: 1, page_size: 1
+      })),
+      getWorkflowTask: vi.fn(async () => task),
+      listWorkflowTaskJobs: vi.fn(async () => [workflowJob()])
+    })
+    const controller = new WorkflowTaskController(runtime, task.workflow_uuid)
+    await controller.start()
+
+    subscriptionOptions?.onError?.(new Error('stream lost'))
+    expect(controller.getSnapshot()).toMatchObject({
+      realtimeStatus: 'reconnecting',
+      error: 'Runtime 实时同步中断：stream lost'
+    })
+
+    subscriptionOptions?.onOpen?.({
+      lastEventId: 'runtime-4',
+      reconnected: true
+    })
+
+    await vi.waitFor(() => {
+      expect(controller.getSnapshot()).toMatchObject({
+        realtimeStatus: 'live',
+        error: null,
+        generation: 2
+      })
+    })
+  })
+
+  it('does not clear a stale projection error merely because SSE reconnects', async () => {
+    const task = workflowTask()
+    let failJobs = false
+    let subscriptionOptions: Parameters<
+      WorkflowRuntimePort['subscribeWorkflowRuntime']
+    >[1]
+    const runtime = runtimePort({
+      subscribeWorkflowRuntime: vi.fn((_listener, options) => {
+        subscriptionOptions = options
+        return { dispose: vi.fn() }
+      }),
+      listWorkflowTasks: vi.fn(async () => ({
+        items: [task], total: 1, page: 1, page_size: 1
+      })),
+      getWorkflowTask: vi.fn(async () => task),
+      listWorkflowTaskJobs: vi.fn(async () => {
+        if (failJobs) throw new Error('jobs unavailable')
+        return [workflowJob()]
+      })
+    })
+    const controller = new WorkflowTaskController(runtime, task.workflow_uuid)
+    await controller.start()
+    failJobs = true
+    await controller.refresh()
+
+    subscriptionOptions?.onError?.(new Error('stream lost'))
+    expect(controller.getSnapshot()).toMatchObject({
+      projectionError: 'jobs unavailable',
+      realtimeError: 'Runtime 实时同步中断：stream lost',
+      error: 'jobs unavailable'
+    })
+
+    subscriptionOptions?.onOpen?.({
+      lastEventId: 'runtime-8',
+      reconnected: true
+    })
+
+    expect(controller.getSnapshot()).toMatchObject({
+      realtimeStatus: 'live',
+      projectionError: 'jobs unavailable',
+      realtimeError: null,
+      error: 'jobs unavailable'
     })
   })
 
@@ -242,5 +542,24 @@ function workflowCommand(taskUuid: string): WorkflowTaskCommand {
     status: 'pending',
     result: {},
     trace_context: {}
+  }
+}
+
+function workflowFeedback(
+  sequence: number,
+  jobUuid = workflowJob().uuid
+): WorkflowNodeJobFeedback {
+  return {
+    uuid: `60000000-0000-4000-8000-${String(sequence).padStart(12, '0')}`,
+    create_time: `2026-08-01T00:00:0${sequence}Z`,
+    update_time: `2026-08-01T00:00:0${sequence}Z`,
+    meta_data: {},
+    workflow_node_job_uuid: jobUuid,
+    sequence,
+    feedback_type: 'progress',
+    data: { percent: sequence * 25 },
+    observed_at: `2026-08-01T00:00:0${sequence}Z`,
+    received_at: `2026-08-01T00:00:0${sequence}Z`,
+    idempotency_key: `feedback-${sequence}`
   }
 }

@@ -206,6 +206,10 @@ export interface WorkflowAuthoringChangedEvent {
 
 export interface WorkflowAuthoringSubscriptionOptions {
   lastEventId?: string
+  onOpen?: (state: {
+    lastEventId: string
+    reconnected: boolean
+  }) => void
   onError?: (error: Error) => void
 }
 
@@ -365,6 +369,10 @@ export interface WorkflowRuntimeChangedEvent {
 
 export interface WorkflowRuntimeSubscriptionOptions {
   lastEventId?: string
+  onOpen?: (state: {
+    lastEventId: string
+    reconnected: boolean
+  }) => void
   onError?: (error: Error) => void
 }
 
@@ -639,6 +647,7 @@ export function createWorkflowRuntime(
       let controller: AbortController | null = null
       let reconnectTimer: ReturnType<typeof globalThis.setTimeout> | null = null
       let cursor = options.lastEventId || ''
+      let openedConnections = 0
       const seenEventIds = new Set<string>()
 
       const scheduleReconnect = (): void => {
@@ -664,6 +673,11 @@ export function createWorkflowRuntime(
               `Authoring SSE 连接失败: ${response.status} ${response.statusText}`
             )
           }
+          options.onOpen?.({
+            lastEventId: cursor,
+            reconnected: openedConnections > 0
+          })
+          openedConnections += 1
           await readSseStream(response.body, (frame) => {
             if (frame.id) cursor = frame.id
             if (frame.event !== 'workflow.authoring.changed') return
@@ -794,6 +808,7 @@ export function createWorkflowRuntime(
       let controller: AbortController | null = null
       let reconnectTimer: ReturnType<typeof globalThis.setTimeout> | null = null
       let cursor = options.lastEventId || ''
+      let openedConnections = 0
       const seenEventIds = new Set<string>()
 
       const scheduleReconnect = (): void => {
@@ -819,6 +834,11 @@ export function createWorkflowRuntime(
               `Workflow Runtime SSE 连接失败: ${response.status} ${response.statusText}`
             )
           }
+          options.onOpen?.({
+            lastEventId: cursor,
+            reconnected: openedConnections > 0
+          })
+          openedConnections += 1
           await readSseStream(response.body, (frame) => {
             if (frame.id) cursor = frame.id
             if (frame.event !== 'workflow.runtime.changed') return
@@ -843,6 +863,11 @@ export function createWorkflowRuntime(
               data
             })
           }, controller.signal)
+          if (!disposed && !controller.signal.aborted) {
+            options.onError?.(
+              new Error('Workflow Runtime SSE 连接已断开，正在重连')
+            )
+          }
           scheduleReconnect()
         } catch (error) {
           if (disposed || controller.signal.aborted) return

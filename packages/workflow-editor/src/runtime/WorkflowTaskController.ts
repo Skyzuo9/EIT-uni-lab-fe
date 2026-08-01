@@ -1,6 +1,7 @@
 import type {
   WorkflowEventSubscription,
   WorkflowNodeJob,
+  WorkflowNodeJobFeedback,
   WorkflowRuntimePort,
   WorkflowTask,
   WorkflowTaskCommand,
@@ -12,8 +13,16 @@ export interface WorkflowTaskRuntimeSnapshot {
   loading: boolean
   task: WorkflowTask | null
   jobs: readonly WorkflowNodeJob[]
+  feedback: readonly WorkflowNodeJobFeedback[]
   lastCommand: WorkflowTaskCommand | null
   error: string | null
+  actionError: string | null
+  projectionError: string | null
+  feedbackError: string | null
+  realtimeError: string | null
+  projectionStale: boolean
+  feedbackStale: boolean
+  realtimeStatus: 'connecting' | 'live' | 'reconnecting'
   generation: number
 }
 
@@ -25,8 +34,16 @@ export class WorkflowTaskController {
     loading: true,
     task: null,
     jobs: [],
+    feedback: [],
     lastCommand: null,
     error: null,
+    actionError: null,
+    projectionError: null,
+    feedbackError: null,
+    realtimeError: null,
+    projectionStale: false,
+    feedbackStale: false,
+    realtimeStatus: 'connecting',
     generation: 0
   }
   private subscription: WorkflowEventSubscription | null = null
@@ -56,8 +73,15 @@ export class WorkflowTaskController {
         void this.requestRefresh(event.data.workflow_task_uuid)
       },
       {
+        onOpen: () => {
+          this.install({ realtimeStatus: 'live', realtimeError: null })
+          void this.requestRefresh(this.snapshot.task?.uuid ?? null)
+        },
         onError: (error) => {
-          this.install({ error: `Runtime 实时同步中断：${error.message}` })
+          this.install({
+            realtimeStatus: 'reconnecting',
+            realtimeError: `Runtime 实时同步中断：${error.message}`
+          })
         }
       }
     )
@@ -69,7 +93,7 @@ export class WorkflowTaskController {
   }
 
   async create(runMode: Exclude<WorkflowTaskRunMode, 'single_node'>): Promise<void> {
-    this.install({ error: null })
+    this.install({ actionError: null })
     try {
       const created = await this.runtime.createWorkflowTask({
         workflow_uuid: this.workflowUuid,
@@ -79,7 +103,7 @@ export class WorkflowTaskController {
       this.install({ lastCommand: null })
       await this.requestRefresh(created.uuid)
     } catch (error) {
-      this.install({ error: errorMessage(error), loading: false })
+      this.install({ actionError: errorMessage(error), loading: false })
       throw error
     }
   }
@@ -87,7 +111,7 @@ export class WorkflowTaskController {
   async command(type: WorkflowTaskCommandType): Promise<void> {
     const task = this.snapshot.task
     if (!task) throw new Error('当前没有可控制的 Workflow Task')
-    this.install({ error: null })
+    this.install({ actionError: null })
     try {
       const command = await this.runtime.commandWorkflowTask(task.uuid, {
         type,
@@ -96,13 +120,18 @@ export class WorkflowTaskController {
       if (!this.active) return
       this.install({ lastCommand: command })
     } catch (error) {
-      this.install({ error: errorMessage(error) })
+      this.install({ actionError: errorMessage(error) })
       throw error
     }
   }
 
   clearError(): void {
-    this.install({ error: null })
+    this.install({
+      actionError: null,
+      projectionError: null,
+      feedbackError: null,
+      realtimeError: null
+    })
   }
 
   dispose(): void {
@@ -147,7 +176,11 @@ export class WorkflowTaskController {
             loading: false,
             task: null,
             jobs: [],
-            error: null,
+            feedback: [],
+            projectionError: null,
+            feedbackError: null,
+            projectionStale: false,
+            feedbackStale: false,
             generation: this.snapshot.generation + 1
           })
           return
@@ -158,17 +191,71 @@ export class WorkflowTaskController {
         this.runtime.listWorkflowTaskJobs(taskUuid)
       ])
       if (!this.active || task.workflow_uuid !== this.workflowUuid) return
+      const sortedJobs = [...jobs].sort(
+        (left, right) => left.topological_index - right.topological_index
+      )
       this.install({
         loading: false,
         task,
-        jobs: [...jobs].sort(
-          (left, right) => left.topological_index - right.topological_index
-        ),
-        error: null,
+        jobs: sortedJobs,
+        projectionError: null,
+        projectionStale: false,
         generation: this.snapshot.generation + 1
       })
+      await this.hydrateFeedback(task.uuid, sortedJobs)
     } catch (error) {
-      this.install({ loading: false, error: errorMessage(error) })
+      this.install({
+        loading: false,
+        projectionError: errorMessage(error),
+        projectionStale: this.snapshot.task !== null
+      })
+    }
+  }
+
+  private async hydrateFeedback(
+    taskUuid: string,
+    jobs: readonly WorkflowNodeJob[]
+  ): Promise<void> {
+    let feedback = this.snapshot.task?.uuid === taskUuid
+      ? [...this.snapshot.feedback]
+      : []
+    const jobUuids = new Set(jobs.map((job) => job.uuid))
+    feedback = feedback.filter((item) =>
+      jobUuids.has(item.workflow_node_job_uuid)
+    )
+    try {
+      for (const job of jobs) {
+        let cursor = feedback
+          .filter((item) => item.workflow_node_job_uuid === job.uuid)
+          .reduce((maximum, item) => Math.max(maximum, item.sequence), 0)
+        while (job.feedback_sequence > cursor) {
+          const page = await this.runtime.listWorkflowNodeJobFeedback(job.uuid, {
+            after_sequence: cursor,
+            limit: 50
+          })
+          feedback.push(...page.items)
+          const nextCursor = Math.max(
+            page.next_cursor,
+            ...page.items.map((item) => item.sequence)
+          )
+          if (page.has_more && nextCursor <= cursor) {
+            throw new Error('Workflow feedback cursor 未向前推进')
+          }
+          cursor = Math.max(cursor, nextCursor)
+          if (!page.has_more) break
+        }
+      }
+      this.install({
+        feedback: uniqueFeedback(feedback),
+        feedbackStale: false,
+        feedbackError: null
+      })
+    } catch (error) {
+      this.install({
+        feedback: uniqueFeedback(feedback),
+        feedbackStale: true,
+        feedbackError: errorMessage(error)
+      })
     }
   }
 
@@ -190,11 +277,41 @@ export class WorkflowTaskController {
     patch: Partial<WorkflowTaskRuntimeSnapshot>
   ): void {
     if (!this.active) return
-    this.snapshot = { ...this.snapshot, ...patch }
+    const next = { ...this.snapshot, ...patch }
+    next.error = next.actionError ?? next.projectionError ??
+      next.feedbackError ?? next.realtimeError
+    this.snapshot = next
     for (const listener of this.listeners) listener()
   }
 }
 
 function errorMessage(value: unknown): string {
   return value instanceof Error ? value.message : String(value)
+}
+
+function uniqueFeedback(
+  items: readonly WorkflowNodeJobFeedback[]
+): WorkflowNodeJobFeedback[] {
+  const uuids = new Set<string>()
+  const sequences = new Set<string>()
+  const idempotencyKeys = new Set<string>()
+  return [...items]
+    .sort((left, right) =>
+      left.received_at.localeCompare(right.received_at) ||
+      left.workflow_node_job_uuid.localeCompare(right.workflow_node_job_uuid) ||
+      left.sequence - right.sequence
+    )
+    .filter((item) => {
+      const sequence = `${item.workflow_node_job_uuid}:${item.sequence}`
+      const idempotency = `${item.workflow_node_job_uuid}:${item.idempotency_key}`
+      if (
+        uuids.has(item.uuid) ||
+        sequences.has(sequence) ||
+        idempotencyKeys.has(idempotency)
+      ) return false
+      uuids.add(item.uuid)
+      sequences.add(sequence)
+      idempotencyKeys.add(idempotency)
+      return true
+    })
 }

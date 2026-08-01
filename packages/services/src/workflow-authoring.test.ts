@@ -34,6 +34,10 @@ interface PersistentAuthoringPort {
     onInvalidate: (event: AuthoringChangedEvent) => void,
     options?: {
       lastEventId?: string
+      onOpen?: (state: {
+        lastEventId: string
+        reconnected: boolean
+      }) => void
       onError?: (error: Error) => void
     }
   ) => { dispose: () => void }
@@ -180,6 +184,7 @@ describe('persistent workflow authoring port', () => {
     }))
     vi.stubGlobal('fetch', fetcher)
     const errors: Error[] = []
+    const opens: Array<{ lastEventId: string; reconnected: boolean }> = []
     const invalidations: AuthoringChangedEvent[] = []
     const runtime = persistentPort(vi.fn())
 
@@ -188,6 +193,7 @@ describe('persistent workflow authoring port', () => {
       (event) => invalidations.push(event),
       {
         lastEventId: '40',
+        onOpen: (state) => opens.push(state),
         onError: (error) => errors.push(error)
       }
     )
@@ -197,6 +203,7 @@ describe('persistent workflow authoring port', () => {
     expect(url).toBe('http://127.0.0.1:8014/api/v1/events')
     expect(new Headers(init.headers).get('Accept')).toBe('text/event-stream')
     expect(new Headers(init.headers).get('Last-Event-ID')).toBe('40')
+    expect(opens).toEqual([{ lastEventId: '40', reconnected: false }])
 
     streamController.current?.enqueue(new TextEncoder().encode([
       'id: 41',

@@ -319,22 +319,35 @@ describe('WorkflowTask runtime port', () => {
       .mockResolvedValueOnce(new Response(secondStream, { status: 200 }))
     vi.stubGlobal('fetch', fetcher)
     const runtime = taskPort(vi.fn())
+    const opens: Array<{ lastEventId: string; reconnected: boolean }> = []
+    const errors: Error[] = []
     const subscription = runtime.subscribeWorkflowRuntime(
       () => undefined,
-      { lastEventId: '70' }
+      {
+        lastEventId: '70',
+        onOpen: (state) => opens.push(state),
+        onError: (error) => errors.push(error)
+      }
     )
 
     await vi.waitFor(() => expect(fetcher).toHaveBeenCalledOnce())
+    expect(opens).toEqual([{ lastEventId: '70', reconnected: false }])
     vi.useFakeTimers()
     firstController.current?.enqueue(new TextEncoder().encode('id: 77\n\n'))
     firstController.current?.close()
     await Promise.resolve()
     await Promise.resolve()
+    await vi.waitFor(() => expect(errors).toHaveLength(1))
+    expect(errors[0]?.message).toContain('连接已断开')
     await vi.advanceTimersByTimeAsync(3000)
 
     expect(fetcher).toHaveBeenCalledTimes(2)
     const [, reconnectInit] = fetcher.mock.calls[1] as [string, RequestInit]
     expect(new Headers(reconnectInit.headers).get('Last-Event-ID')).toBe('77')
+    expect(opens).toEqual([
+      { lastEventId: '70', reconnected: false },
+      { lastEventId: '77', reconnected: true }
+    ])
 
     subscription.dispose()
     runtime.dispose()

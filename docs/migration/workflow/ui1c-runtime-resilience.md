@@ -89,8 +89,9 @@ Backend-shaped Task、Job、feedback REST projection 与全局 SSE invalidation�
 8. 刷新页面后 Task、Jobs 与 feedback 仍从持久 REST 真值恢复。
 
 网络账本必须证明 feedback cursor、`Last-Event-ID`、真实 5xx/断连与恢复，并保持
-0 个旧 `/api/v1/runtime/runs*` / Runtime WebSocket 请求、0 个 `console.error` /
-`pageerror`。
+0 个旧 `/api/v1/runtime/runs*` / Runtime WebSocket 请求、0 个非预期应用
+`console.error` / `pageerror`。浏览器为刻意注入的 5xx/断连产生的网络诊断单独记录，
+不得与应用异常混记或静默丢弃。
 
 ## Gate 与停止线
 
