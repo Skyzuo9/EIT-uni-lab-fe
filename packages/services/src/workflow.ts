@@ -1,6 +1,17 @@
 import type { BackendConfig } from './backends'
 import type { HttpClient } from './http'
 import { ServiceError } from './errors'
+import {
+  loadWorkflowActionCatalog,
+  type WorkflowActionCatalogSnapshot
+} from './workflowActionCatalog'
+
+export type {
+  WorkflowActionCatalogSnapshot,
+  WorkflowActionEditorControl,
+  WorkflowActionHandleTemplate,
+  WorkflowActionNodeTemplate
+} from './workflowActionCatalog'
 
 export type WorkflowRevision = Record<string, unknown> & {
   schema_version: '2'
@@ -407,6 +418,7 @@ export interface WorkflowEventSubscription {
 }
 
 export interface WorkflowRuntimePort {
+  getWorkflowActionCatalog: () => Promise<WorkflowActionCatalogSnapshot>
   getWorkflowAuthoring: (
     workflowUuid: string
   ) => Promise<WorkflowAuthoringAggregate>
@@ -502,6 +514,7 @@ export function createWorkflowRuntime(
   )
 
   const port: WorkflowRuntimePort = {
+    getWorkflowActionCatalog: () => loadWorkflowActionCatalog(http),
     getWorkflowAuthoring: (workflowUuid) =>
       authoringRequest(
         `/api/v1/workflows/${encodeURIComponent(workflowUuid)}/authoring`

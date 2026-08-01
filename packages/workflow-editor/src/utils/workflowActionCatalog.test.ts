@@ -236,10 +236,16 @@ describe('typed Action editor projection', () => {
       listHandleUuid,
       []
     )
+    const cleared = updateTypedActionLiteral(
+      catalog,
+      withEmptyList,
+      nodeUuid,
+      nullableHandleUuid,
+      undefined
+    )
 
-    expect(withEmptyList.nodes[0]?.param).toEqual({
+    expect(cleared.nodes[0]?.param).toEqual({
       count: 0,
-      note: null,
       options: {},
       samples: []
     })
@@ -269,6 +275,12 @@ describe('typed Action editor projection', () => {
     ])
     expect(roundTripped.nodes[0]?.workflow_node_template_uuid)
       .toBe(templateUuid)
+    expect(roundTripped.node_templates.map((item) => item.uuid)).toEqual([
+      templateUuid,
+      sourceTemplateUuid
+    ])
+    expect(roundTripped.handle_templates.map((item) => item.uuid))
+      .toContain(materialHandleUuid)
   })
 
   it('retains both dirty buffers after a catalog fingerprint conflict', () => {
@@ -435,6 +447,7 @@ function handle(
     allowedResourceTemplateUuids: editorControl === 'material_port'
       ? ['10000000-0000-4000-8000-000000000001']
       : null,
-    implicitPassthrough: false
+    implicitPassthrough: false,
+    structuralRole: null
   }
 }

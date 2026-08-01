@@ -65,7 +65,10 @@ test('SZLab persisted Catalog reaches the original typed workflow editor', async
   const aggregateBefore = await readEnvelope<AuthoringAggregate>(
     `${os.url}/api/v1/workflows/${os.workflowUuid}/authoring`
   )
-  expect(aggregateBefore.candidate).not.toBeNull()
+  expect(
+    aggregateBefore.candidate,
+    `${JSON.stringify(aggregateBefore, null, 2)}\n${os.logs()}`
+  ).not.toBeNull()
   const candidateBefore = aggregateBefore.candidate
   if (!candidateBefore) throw new Error('SZLab candidate missing')
   expect(candidateBefore.template_catalog_fingerprint).toBe(
@@ -73,9 +76,9 @@ test('SZLab persisted Catalog reaches the original typed workflow editor', async
   )
   expect(candidateBefore.graph.handle_templates.map((item) => item.uuid))
     .toEqual(expect.arrayContaining(handleUuids))
-
   const generated = await readEnvelope<{
-    graph: AuthoringGraph
+    diagnostics: unknown[]
+    graph: AuthoringGraph | null
     normalized_python_source: string
   }>(`${os.url}/api/v1/authoring/generate-python`, {
     method: 'POST',
@@ -87,6 +90,8 @@ test('SZLab persisted Catalog reaches the original typed workflow editor', async
       graph: candidateBefore.graph
     })
   })
+  expect(generated.graph, JSON.stringify(generated, null, 2)).not.toBeNull()
+  if (!generated.graph) throw new Error('generated graph missing')
   expect(graphIdentity(generated.graph)).toEqual(
     graphIdentity(candidateBefore.graph)
   )
@@ -112,16 +117,22 @@ test('SZLab persisted Catalog reaches the original typed workflow editor', async
     name: '画布模式',
     exact: true
   }).click()
-  const node = page.locator('.react-flow__node-wfNode').first()
-  await node.click()
+  await expect(page.getByText(
+    '画布模式：Python 是 OS 生成的只读投影',
+    { exact: true }
+  )).toBeVisible()
+  await page.locator('.react-flow__node-wfNode').first().click({
+    position: { x: 24, y: 24 }
+  })
   const editor = page.getByRole('complementary', {
     name: '画布节点编辑器'
   })
   await expect(editor.getByText('Action 参数', { exact: true })).toBeVisible()
   await expect(editor.getByLabel('磁搅位置')).toBeVisible()
   await expect(editor.getByText('必填', { exact: true })).toBeVisible()
-  await expect(editor.getByText('默认值')).toBeVisible()
-  await expect(editor.getByText(/允许空值|不可为空/)).toBeVisible()
+  await expect(editor.getByText('无默认值', { exact: true })).toBeVisible()
+  await expect(editor.getByText('默认值', { exact: true }).first()).toBeVisible()
+  await expect(editor.getByText(/允许空值|不可为空/).first()).toBeVisible()
 
   const renderedHandleUuids = await page.locator(
     '[data-workflow-handle-template-uuid]'
@@ -156,7 +167,7 @@ interface CatalogList {
 
 interface CatalogDetail {
   catalog_fingerprint: string
-  template: { uuid: string }
+  template: Record<string, unknown> & { uuid: string }
   handles: Array<{
     uuid: string
     workflow_node_template_uuid: string
@@ -174,7 +185,7 @@ interface AuthoringGraph {
     source_handle_uuid: string
     target_handle_uuid: string
   }>
-  node_templates: Array<{ uuid: string }>
+  node_templates: Array<Record<string, unknown> & { uuid: string }>
   handle_templates: Array<{
     uuid: string
     workflow_node_template_uuid: string

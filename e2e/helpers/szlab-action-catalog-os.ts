@@ -81,7 +81,7 @@ export async function startSzlabActionCatalogOs(): Promise<SzlabActionCatalogOs>
 const PYTHON_LAUNCHER = String.raw`
 import sys
 from pathlib import Path
-from uuid import UUID
+from uuid import NAMESPACE_URL, uuid5
 
 from unilabos.config.config import BasicConfig
 from unilabos.package_manager import WorkspaceSource, compile_package_source
@@ -106,10 +106,8 @@ registry.resource_type_registry = {}
 register_package_catalog(registry, package_catalog)
 
 identity = {}
-next_uuid = 1
 for record in (*package_catalog.definitions.devices, *package_catalog.definitions.resources):
-    value = str(UUID(int=next_uuid))
-    next_uuid += 1
+    value = str(uuid5(NAMESPACE_URL, record.fqid))
     identity[record.fqid] = value
     identity[f"{record.module}:{record.symbol}"] = value
 
@@ -117,13 +115,15 @@ authority = CatalogAuthority(authority_id="szlab-local", kind="local")
 store = WorkflowStore(working_dir / "workflow.db")
 try:
     service = WorkflowService(store)
-    service.create_workflow(
-        name="SZLab S04 磁搅单工位调试",
-        tags=["szlab", "a1-e2e"],
-        description="PackageCatalog 到前端 typed editor 的真实联调 fixture",
-        meta_data={},
-        workflow_uuid="${SZLAB_WORKFLOW_UUID}",
-    )
+    for definition in package_catalog.definitions.workflows:
+        workflow_uuid = str(definition.details["workflow_uuid"])
+        service.create_workflow(
+            name=str(definition.id),
+            tags=["szlab", "a1-e2e"],
+            description="PackageCatalog 到前端 typed editor 的真实联调 fixture",
+            meta_data={},
+            workflow_uuid=workflow_uuid,
+        )
 finally:
     store.close()
 

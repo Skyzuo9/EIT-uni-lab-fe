@@ -51,7 +51,8 @@ describe('Workflow Action Catalog adapter', () => {
               valueSchema: { $slot: 'ResourceSlot' },
               editorControl: 'material_port',
               allowedResourceTemplateUuids: [resourceTemplateUuid],
-              implicitPassthrough: false
+              implicitPassthrough: false,
+              structuralRole: null
             },
             {
               uuid: sourceUuid,
@@ -66,7 +67,8 @@ describe('Workflow Action Catalog adapter', () => {
               valueSchema: { $slot: 'ResourceSlot' },
               editorControl: 'material_port',
               allowedResourceTemplateUuids: [resourceTemplateUuid],
-              implicitPassthrough: true
+              implicitPassthrough: true,
+              structuralRole: null
             }
           ]
         }
