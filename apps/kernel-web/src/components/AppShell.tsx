@@ -26,7 +26,7 @@ import type { WorkbenchSection } from '../data/lab';
 const DEVICE_NAV_ITEM: AppShellNavigationItem = {
   id: 'device',
   label: '仪器设备',
-  icon: '⚙'
+  icon: <DeviceIcon />
 };
 const MATERIAL_NAV_ITEM: AppShellNavigationItem = {
   id: 'material',
@@ -36,7 +36,7 @@ const MATERIAL_NAV_ITEM: AppShellNavigationItem = {
 const WORKFLOW_NAV_ITEM: AppShellNavigationItem = {
   id: 'workflow',
   label: '工作流',
-  icon: '⇄'
+  icon: <WorkflowIcon />
 };
 const PUBLIC_NAV_ITEMS: readonly AppShellNavigationItem[] = [
   DEVICE_NAV_ITEM,
