@@ -6,7 +6,7 @@
 
 Frontend 基线：`0b800ef2524f701d4c884c660eb788ea021f32e8`
 
-OS 联调基线：`integration/workflow-task-runtime@01380449868ccf334f4da1a28c7f6f946fb540d1`
+OS 设计起始基线：`integration/workflow-task-runtime@01380449868ccf334f4da1a28c7f6f946fb540d1`
 
 决策来源：`Uni-Lab-Core#139`（D-117）及 OS Round 02G 趋势报告。
 
