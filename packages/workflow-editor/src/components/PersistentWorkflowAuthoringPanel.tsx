@@ -1,6 +1,7 @@
 import { useCodeMirror, CodeEditor } from '@unilab/code-editor'
 import type {
   WorkflowNodeJob,
+  WorkflowNodeJobFeedback,
   WorkflowAuthoringAggregate,
   WorkflowAuthoringGraph,
   WorkflowAuthoringSourceMapEntry,
@@ -44,6 +45,9 @@ import {
 } from '../utils/persistentAuthoringSession'
 import { projectWorkflowCodeMarkers } from '../utils/workflowCodeMarkers'
 import { useWorkflowTaskRuntime } from '../hooks/useWorkflowTaskRuntime'
+import type {
+  WorkflowTaskRuntimeSnapshot
+} from '../runtime/WorkflowTaskController'
 import WorkflowDag from './WorkflowDag'
 import {
   WorkflowDebugger,
@@ -51,6 +55,7 @@ import {
 } from './WorkflowDebugger'
 import {
   WorkflowOutput,
+  type WorkflowOutputEvent,
   type WorkflowOutputNode,
   type WorkflowOutputTab
 } from './WorkflowOutput'
@@ -204,6 +209,13 @@ export function PersistentWorkflowAuthoringPanel({
       node.name || node.id
     ])),
     [structure.nodes]
+  )
+  const taskFeedbackEvents = useMemo(
+    () => projectWorkflowFeedback(
+      taskRuntime.snapshot.feedback,
+      taskJobs
+    ),
+    [taskJobs, taskRuntime.snapshot.feedback]
   )
   const taskNodeStates = useMemo(
     () => Object.fromEntries(taskJobs.map((job) => [
@@ -398,6 +410,13 @@ export function PersistentWorkflowAuthoringPanel({
         void refreshFromAuthority()
       },
       {
+        onOpen: () => {
+          setError((current) =>
+            current?.startsWith('Authoring 实时同步中断：')
+              ? null
+              : current
+          )
+        },
         onError: (streamError) => {
           setError(`Authoring 实时同步中断：${streamError.message}`)
         }
@@ -885,7 +904,20 @@ export function PersistentWorkflowAuthoringPanel({
       {taskRuntime.snapshot.error && (
         <div className="workflow-runtime__problem" role="alert">
           <strong>Runtime 状态读取失败</strong>
-          <span>{taskRuntime.snapshot.error}</span>
+          <span>
+            {taskRuntime.snapshot.projectionStale
+              ? `上一次一致状态已保留：${taskRuntime.snapshot.error}`
+              : taskRuntime.snapshot.feedbackStale
+                ? `已确认 Feedback 已保留：${taskRuntime.snapshot.error}`
+                : taskRuntime.snapshot.error}
+          </span>
+          <button
+            type="button"
+            disabled={runtimeBusy}
+            onClick={() => runRuntime(() => taskRuntime.refresh())}
+          >
+            重试状态读取
+          </button>
           <button type="button" onClick={taskRuntime.clearError}>关闭</button>
         </div>
       )}
@@ -1023,7 +1055,8 @@ export function PersistentWorkflowAuthoringPanel({
           runStatusPrefix="Task"
           metadata={workflowTaskMetadata(
             task,
-            taskRuntime.snapshot.lastCommand
+            taskRuntime.snapshot.lastCommand,
+            taskRuntime.snapshot
           )}
           actionGroupLabel="Task 执行控制"
           dangerGroupLabel="Task 取消控制"
@@ -1041,7 +1074,7 @@ export function PersistentWorkflowAuthoringPanel({
           expectedNodeCount={taskJobs.length}
           nodes={taskOutputNodes}
           nodeNames={taskNodeNames}
-          events={[]}
+          events={taskFeedbackEvents}
           error={taskRuntime.snapshot.error}
           selectedNode={selectedTaskNode}
           selectedNodeId={selectedJobNodeUuid}
@@ -1318,6 +1351,23 @@ function projectWorkflowJob(job: WorkflowNodeJob): WorkflowOutputNode {
   }
 }
 
+function projectWorkflowFeedback(
+  feedback: readonly WorkflowNodeJobFeedback[],
+  jobs: readonly WorkflowNodeJob[]
+): WorkflowOutputEvent[] {
+  const sourceNodeByJob = new Map(jobs.map((job) => [
+    job.uuid,
+    job.workflow_node_uuid
+  ]))
+  return feedback.map((item) => ({
+    key: item.uuid,
+    seq: item.sequence,
+    type: item.feedback_type,
+    nodeId: sourceNodeByJob.get(item.workflow_node_job_uuid) ?? null,
+    detail: item.data
+  }))
+}
+
 function workflowTaskDagState(status: WorkflowNodeJob['status']): string {
   const states: Record<WorkflowNodeJob['status'], string> = {
     pending: 'pending',
@@ -1337,7 +1387,11 @@ function workflowTaskDagState(status: WorkflowNodeJob['status']): string {
 
 function workflowTaskMetadata(
   task: WorkflowTask | null,
-  command: WorkflowTaskCommand | null
+  command: WorkflowTaskCommand | null,
+  snapshot: Pick<
+    WorkflowTaskRuntimeSnapshot,
+    'realtimeStatus' | 'projectionStale' | 'feedbackStale'
+  >
 ): ReadonlyArray<{ label: string; value: string; title?: string }> {
   return [
     {
@@ -1354,6 +1408,22 @@ function workflowTaskMetadata(
       value: command
         ? `${workflowTaskCommandLabel(command.type)} · OS 已接受`
         : '无'
+    },
+    {
+      label: '实时同步',
+      value: {
+        connecting: '正在连接',
+        live: '已连接',
+        reconnecting: '正在重连'
+      }[snapshot.realtimeStatus]
+    },
+    {
+      label: '状态投影',
+      value: snapshot.projectionStale
+        ? '保留的上一版本'
+        : snapshot.feedbackStale
+          ? 'Feedback 待补读'
+          : '已确认'
     }
   ]
 }
