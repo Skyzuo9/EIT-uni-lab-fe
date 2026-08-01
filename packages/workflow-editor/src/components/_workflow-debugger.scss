@@ -39,6 +39,7 @@
 .workflow :global(.workflow-runtime__debug-mark):global(.is-pending),
 .workflow :global(.workflow-runtime__debug-mark):global(.is-pause_pending),
 .workflow :global(.workflow-runtime__debug-mark):global(.is-running),
+.workflow :global(.workflow-runtime__debug-mark):global(.is-reconciling),
 .workflow :global(.workflow-runtime__debug-mark):global(.is-stepping) {
   background: var(--unilab-color-warning);
 }
@@ -118,6 +119,7 @@
 .workflow :global(.workflow-runtime__debug-summary) strong:global(.is-pending),
 .workflow :global(.workflow-runtime__debug-summary) strong:global(.is-pause_pending),
 .workflow :global(.workflow-runtime__debug-summary) strong:global(.is-running),
+.workflow :global(.workflow-runtime__debug-summary) strong:global(.is-reconciling),
 .workflow :global(.workflow-runtime__debug-summary) strong:global(.is-stepping) {
   color: var(--unilab-color-warning);
   border-color: color-mix(
@@ -131,6 +133,7 @@
 .workflow :global(.workflow-runtime__debug-summary) strong:global(.is-pending)::before,
 .workflow :global(.workflow-runtime__debug-summary) strong:global(.is-pause_pending)::before,
 .workflow :global(.workflow-runtime__debug-summary) strong:global(.is-running)::before,
+.workflow :global(.workflow-runtime__debug-summary) strong:global(.is-reconciling)::before,
 .workflow :global(.workflow-runtime__debug-summary) strong:global(.is-stepping)::before {
   background: var(--unilab-color-warning);
   box-shadow: 0 0 0 2px rgb(217 119 6 / 14%);

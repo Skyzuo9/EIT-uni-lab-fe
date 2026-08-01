@@ -8,11 +8,14 @@ export const AUTHORING_WORKFLOW_UUID =
   '10000000-0000-4000-8000-000000000001'
 export const SECOND_AUTHORING_WORKFLOW_UUID =
   '10000000-0000-4000-8000-000000000002'
+export const RUNTIME_AUTHORING_WORKFLOW_UUID =
+  '10000000-0000-4000-8000-000000000003'
 
 export interface PersistentAuthoringOs {
   url: string
   workflowUuid: string
   secondWorkflowUuid: string
+  runtimeWorkflowUuid: string
   sourcePath: string
   secondSourcePath: string
   logs: () => string
@@ -83,6 +86,7 @@ export async function startPersistentAuthoringOs(): Promise<PersistentAuthoringO
     url,
     workflowUuid: AUTHORING_WORKFLOW_UUID,
     secondWorkflowUuid: SECOND_AUTHORING_WORKFLOW_UUID,
+    runtimeWorkflowUuid: RUNTIME_AUTHORING_WORKFLOW_UUID,
     sourcePath,
     secondSourcePath,
     logs: () => output,
@@ -116,6 +120,8 @@ package_root = editable_root / "production_lab"
 source_path = package_root / "workflows" / "demo.py"
 second_workflow_uuid = "${SECOND_AUTHORING_WORKFLOW_UUID}"
 second_source_path = package_root / "workflows" / "second.py"
+runtime_workflow_uuid = "${RUNTIME_AUTHORING_WORKFLOW_UUID}"
+runtime_source_path = package_root / "workflows" / "runtime.py"
 source_path.parent.mkdir(parents=True, exist_ok=True)
 source_path.write_text(_source(), encoding="utf-8")
 second_source = _source(workflow_uuid=second_workflow_uuid)
@@ -127,6 +133,28 @@ second_source = second_source.replace(
     "20000000-0000-4000-8000-000000000012",
 )
 second_source_path.write_text(second_source, encoding="utf-8")
+runtime_source_path.write_text(
+    f'''from lab.devices import Reactor
+from unilabos.workflow.authoring import device, workflow_definition, workflow_output
+
+
+reactor: Reactor = device()
+
+
+@workflow_definition(
+    workflow_uuid="{runtime_workflow_uuid}",
+    displayname="Runtime control demo",
+    description="Two catalog-backed nodes without external input.",
+)
+def runtime_control_demo():
+    # unilab:node_uuid=20000000-0000-4000-8000-000000000021
+    prepared = reactor.finalize(report="prepared")
+    # unilab:node_uuid=20000000-0000-4000-8000-000000000022
+    analyzed = reactor.finalize(report=prepared.report)
+    return workflow_output(report=analyzed.report)
+''',
+    encoding="utf-8",
+)
 editable_root.mkdir(parents=True, exist_ok=True)
 (editable_root / "package.yaml").write_text(
     "\n".join([
@@ -138,6 +166,8 @@ editable_root.mkdir(parents=True, exist_ok=True)
         "    source: production_lab/workflows/demo.py",
         f"  - workflow_uuid: {second_workflow_uuid}",
         "    source: production_lab/workflows/second.py",
+        f"  - workflow_uuid: {runtime_workflow_uuid}",
+        "    source: production_lab/workflows/runtime.py",
         "",
     ]),
     encoding="utf-8",
@@ -160,6 +190,13 @@ try:
         description="Independent persistent Authoring session",
         meta_data={},
         workflow_uuid=second_workflow_uuid,
+    )
+    service.create_workflow(
+        name="UI1B Runtime control fixture",
+        tags=[],
+        description="Real Task/Job Runtime E2E",
+        meta_data={},
+        workflow_uuid=runtime_workflow_uuid,
     )
     imports = _catalog_imports()
     for item in imports:

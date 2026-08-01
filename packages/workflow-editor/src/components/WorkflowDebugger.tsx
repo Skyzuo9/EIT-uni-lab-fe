@@ -1,29 +1,58 @@
-import type { WorkflowDebugCommand } from '@unilab/services'
+export interface WorkflowRuntimeControl<TCommand extends string> {
+  command: TCommand
+  label: string
+  title: string
+  message: string
+  glyph: string
+  disabled: boolean
+  danger?: boolean
+  primary?: boolean
+}
 
-import type { WorkflowDebugControl } from '../utils/debugControls'
-
-interface WorkflowDebuggerProps {
+interface WorkflowDebuggerProps<TCommand extends string> {
   debugStatus: string
   runStatus: string
-  pausedBeforeNodeId: string | null
-  startNodeId: string | null
-  breakpointCount: number
-  controls: readonly WorkflowDebugControl[]
+  pausedBeforeNodeId?: string | null
+  startNodeId?: string | null
+  breakpointCount?: number
+  heading?: string
+  subtitle?: string
+  statusText?: string
+  runStatusText?: string
+  runStatusPrefix?: string
+  metadata?: ReadonlyArray<{
+    label: string
+    value: string | number
+    title?: string
+  }>
+  actionGroupLabel?: string
+  dangerGroupLabel?: string
+  commandDataAttribute?: 'debug' | 'runtime'
+  controls: readonly WorkflowRuntimeControl<TCommand>[]
   onCommand: (
-    command: WorkflowDebugCommand,
+    command: TCommand,
     message: string
   ) => void
 }
 
-export function WorkflowDebugger({
+export function WorkflowDebugger<TCommand extends string>({
   debugStatus,
   runStatus,
   pausedBeforeNodeId,
   startNodeId,
   breakpointCount,
+  heading = '工作流调试器',
+  subtitle = 'OS 运行控制',
+  statusText,
+  runStatusText,
+  runStatusPrefix = '整体',
+  metadata,
+  actionGroupLabel = '调试执行控制',
+  dangerGroupLabel = '调试停止控制',
+  commandDataAttribute = 'debug',
   controls,
   onCommand
-}: WorkflowDebuggerProps): React.JSX.Element {
+}: WorkflowDebuggerProps<TCommand>): React.JSX.Element {
   return (
     <div className="workflow-runtime__debugger">
       <div className="workflow-runtime__debug-status">
@@ -33,8 +62,8 @@ export function WorkflowDebugger({
             aria-hidden="true"
           />
           <div>
-            <span>工作流调试器</span>
-            <small>OS 运行控制</small>
+            <span>{heading}</span>
+            <small>{subtitle}</small>
           </div>
         </div>
         <div className="workflow-runtime__debug-summary">
@@ -42,7 +71,7 @@ export function WorkflowDebugger({
             className={`is-${debugStatus}`}
             data-debug-status={debugStatus}
           >
-            {debugStatusLabel(debugStatus)}
+            {statusText || debugStatusLabel(debugStatus)}
           </strong>
           <span
             className={
@@ -51,31 +80,50 @@ export function WorkflowDebugger({
             }
             data-run-status={runStatus}
           >
-            整体：{runStatusLabel(runStatus)}
+            {runStatusPrefix}：{runStatusText || runStatusLabel(runStatus)}
           </span>
           {pausedBeforeNodeId && (
             <span className="is-location">
               暂停于 {pausedBeforeNodeId} 执行之前
             </span>
           )}
-          <span className="is-meta">
-            <i>起点</i>
-            {startNodeId || 'DAG 根节点'}
-          </span>
-          <span className="is-meta">
-            <i>断点</i>
-            {breakpointCount}
-          </span>
+          {metadata
+            ? metadata.map((item) => (
+                <span
+                  key={item.label}
+                  className="is-meta"
+                  title={item.title}
+                >
+                  <i>{item.label}</i>
+                  {item.value}
+                </span>
+              ))
+            : (
+                <>
+                  <span className="is-meta">
+                    <i>起点</i>
+                    {startNodeId || 'DAG 根节点'}
+                  </span>
+                  <span className="is-meta">
+                    <i>断点</i>
+                    {breakpointCount || 0}
+                  </span>
+                </>
+              )}
         </div>
       </div>
       <div className="workflow-runtime__debug-actions">
         <DebugActionGroup
           controls={controls.filter((control) => !control.danger)}
+          ariaLabel={actionGroupLabel}
+          commandDataAttribute={commandDataAttribute}
           onCommand={onCommand}
         />
         <DebugActionGroup
           controls={controls.filter((control) => control.danger)}
           danger
+          ariaLabel={dangerGroupLabel}
+          commandDataAttribute={commandDataAttribute}
           onCommand={onCommand}
         />
       </div>
@@ -83,14 +131,18 @@ export function WorkflowDebugger({
   )
 }
 
-function DebugActionGroup({
+function DebugActionGroup<TCommand extends string>({
   controls,
   danger = false,
+  ariaLabel,
+  commandDataAttribute,
   onCommand
 }: {
-  controls: readonly WorkflowDebugControl[]
+  controls: readonly WorkflowRuntimeControl<TCommand>[]
   danger?: boolean
-  onCommand: WorkflowDebuggerProps['onCommand']
+  ariaLabel: string
+  commandDataAttribute: 'debug' | 'runtime'
+  onCommand: WorkflowDebuggerProps<TCommand>['onCommand']
 }): React.JSX.Element {
   return (
     <div
@@ -98,14 +150,14 @@ function DebugActionGroup({
         'workflow-runtime__debug-action-group',
         danger ? 'is-danger' : ''
       ].filter(Boolean).join(' ')}
-      aria-label={danger ? '调试停止控制' : '调试执行控制'}
+      aria-label={ariaLabel}
     >
       {controls.map((control) => (
         <button
           key={control.command}
           type="button"
           className={
-            control.command === 'continue'
+            control.primary || control.command === 'continue'
               ? 'is-primary'
               : control.command === 'emergency_stop'
                 ? 'is-emergency'
@@ -113,7 +165,12 @@ function DebugActionGroup({
                   ? 'is-danger'
                   : undefined
           }
-          data-debug-command={control.command}
+          data-debug-command={
+            commandDataAttribute === 'debug' ? control.command : undefined
+          }
+          data-runtime-command={
+            commandDataAttribute === 'runtime' ? control.command : undefined
+          }
           aria-label={control.label}
           title={control.title}
           disabled={control.disabled}

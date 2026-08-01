@@ -49,7 +49,7 @@ describe('WorkflowTaskController', () => {
       listWorkflowTasks: vi.fn(async () => ({
         items: [firstTask], total: 1, page: 1, page_size: 1
       })),
-      getWorkflowTask: vi.fn(async () => ({
+      getWorkflowTask: vi.fn(async (): Promise<WorkflowTask> => ({
         ...firstTask,
         control_status: failJobs ? 'paused' : 'active'
       })),
@@ -107,7 +107,9 @@ describe('WorkflowTaskController', () => {
 
     authoritative = { ...initial, control_status: 'paused' }
     expect(onInvalidate).not.toBeNull()
-    ;(onInvalidate as (event: WorkflowRuntimeChangedEvent) => void)({
+    ;(onInvalidate as unknown as (
+      event: WorkflowRuntimeChangedEvent
+    ) => void)({
       id: 'runtime-2',
       event: 'workflow.runtime.changed',
       data: { workflow_task_uuid: initial.uuid }
@@ -115,6 +117,66 @@ describe('WorkflowTaskController', () => {
 
     await vi.waitFor(() => {
       expect(controller.getSnapshot().task?.control_status).toBe('paused')
+    })
+  })
+
+  it('creates the selected Task mode and rehydrates the returned identity', async () => {
+    const task = { ...workflowTask(), run_mode: 'step' as const }
+    const runtime = runtimePort({
+      subscribeWorkflowRuntime: vi.fn(() => ({ dispose: vi.fn() })),
+      listWorkflowTasks: vi.fn(async () => ({
+        items: [], total: 0, page: 1, page_size: 1
+      })),
+      createWorkflowTask: vi.fn(async () => task),
+      getWorkflowTask: vi.fn(async () => task),
+      listWorkflowTaskJobs: vi.fn(async () => [workflowJob()])
+    })
+    const controller = new WorkflowTaskController(runtime, task.workflow_uuid)
+    await controller.start()
+
+    await controller.create('step')
+
+    expect(runtime.createWorkflowTask).toHaveBeenCalledWith({
+      workflow_uuid: task.workflow_uuid,
+      run_mode: 'step'
+    })
+    expect(runtime.getWorkflowTask).toHaveBeenCalledWith(task.uuid)
+    expect(controller.getSnapshot().task?.run_mode).toBe('step')
+  })
+
+  it('disposes the global subscription and ignores late REST completion', async () => {
+    const task = workflowTask()
+    const dispose = vi.fn()
+    let resolveTask: ((value: WorkflowTask) => void) | null = null
+    const taskRead = new Promise<WorkflowTask>((resolve) => {
+      resolveTask = resolve
+    })
+    const listener = vi.fn()
+    const runtime = runtimePort({
+      subscribeWorkflowRuntime: vi.fn(() => ({ dispose })),
+      listWorkflowTasks: vi.fn(async () => ({
+        items: [task], total: 1, page: 1, page_size: 1
+      })),
+      getWorkflowTask: vi.fn(() => taskRead),
+      listWorkflowTaskJobs: vi.fn(async () => [workflowJob()])
+    })
+    const controller = new WorkflowTaskController(runtime, task.workflow_uuid)
+    controller.subscribe(listener)
+    const start = controller.start()
+    await vi.waitFor(() => expect(runtime.getWorkflowTask).toHaveBeenCalled())
+
+    controller.dispose()
+    expect(resolveTask).not.toBeNull()
+    ;(resolveTask as unknown as (value: WorkflowTask) => void)(task)
+    await start
+
+    expect(dispose).toHaveBeenCalledOnce()
+    expect(listener).not.toHaveBeenCalled()
+    expect(controller.getSnapshot()).toMatchObject({
+      loading: true,
+      task: null,
+      jobs: [],
+      generation: 0
     })
   })
 })

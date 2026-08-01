@@ -1,4 +1,6 @@
 import { expect, test } from '@playwright/test'
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { join, resolve } from 'node:path'
 
 import {
   startPersistentAuthoringOs,
@@ -17,11 +19,31 @@ test.afterAll(async () => {
   await os?.stop()
 })
 
-test('existing Workflow workbench exposes the WorkflowTask runtime seam', async ({
+test('existing Workflow UI drives Task/Jobs/commands through real OS HTTP and SSE', async ({
   page
 }) => {
   test.setTimeout(90_000)
-  await installWorkflowPanel(page, os.workflowUuid)
+  const artifactDirectory = resolve(
+    process.env.UNILAB_E2E_ARTIFACT_DIR ||
+      resolve(process.cwd(), '../e2e-artifacts/ui1b-workflow-task-runtime')
+  )
+  mkdirSync(artifactDirectory, { recursive: true })
+  const browserErrors: string[] = []
+  const runtimeRequests: Array<{ method: string; path: string }> = []
+  page.on('console', (message) => {
+    if (message.type() === 'error') browserErrors.push(message.text())
+  })
+  page.on('pageerror', (error) => browserErrors.push(error.message))
+  page.on('request', (request) => {
+    const url = new URL(request.url())
+    if (
+      url.pathname.startsWith('/api/v1/workflow') ||
+      url.pathname === '/api/v1/events'
+    ) {
+      runtimeRequests.push({ method: request.method(), path: url.pathname })
+    }
+  })
+  await installWorkflowPanel(page, os.runtimeWorkflowUuid)
 
   await page.goto(
     `/?section=workflow&localOsUrl=${encodeURIComponent(os.url)}`
@@ -33,7 +55,158 @@ test('existing Workflow workbench exposes the WorkflowTask runtime seam', async 
     name: '开始运行',
     exact: true
   })).toBeVisible()
+  await expect(panel.getByRole('button', {
+    name: '开始运行',
+    exact: true
+  })).toBeDisabled()
+  await panel.getByRole('button', {
+    name: '画布模式',
+    exact: true
+  }).click()
+  await expect(panel.getByText('画布模式：Python 是 OS 生成的只读投影'))
+    .toBeVisible()
+  await panel.getByRole('button', {
+    name: '保存草稿',
+    exact: true
+  }).click()
+  const normalizedDiff = page.getByRole('dialog', {
+    name: '完整 Python 差异'
+  })
+  await expect(normalizedDiff).toBeVisible()
+  const saveResponse = page.waitForResponse((response) => {
+    const url = new URL(response.url())
+    return response.request().method() === 'PUT' &&
+      url.pathname.endsWith('/authoring/draft')
+  })
+  await normalizedDiff.getByRole('button', {
+    name: '接受完整差异并保存',
+    exact: true
+  }).click()
+  expect((await saveResponse).status()).toBe(200)
+  const applyResponse = page.waitForResponse((response) => {
+    const url = new URL(response.url())
+    return response.request().method() === 'POST' &&
+      url.pathname.endsWith('/authoring/apply')
+  })
+  await panel.getByRole('button', {
+    name: '应用工作流',
+    exact: true
+  }).click()
+  expect((await applyResponse).status()).toBe(200)
+  await expect(panel.getByText(/工作流已应用/)).toBeVisible()
+  await expect(panel.getByRole('button', {
+    name: '开始运行',
+    exact: true
+  })).toBeEnabled()
+  await page.screenshot({
+    path: join(artifactDirectory, '01-original-ui-ready.png'),
+    fullPage: true
+  })
+
+  const createResponse = page.waitForResponse((response) => {
+    const url = new URL(response.url())
+    return response.request().method() === 'POST' &&
+      url.pathname === '/api/v1/workflow-tasks'
+  })
+  await panel.getByRole('button', {
+    name: '开始运行',
+    exact: true
+  }).click()
+  expect((await createResponse).status()).toBe(201)
+  await expect(panel.locator('[data-run-status="pending"]')).toBeVisible()
+  await expect(panel.locator('[data-node-state="pending"]')).toHaveCount(2)
+  const taskIdentity = panel.locator('.workflow-runtime__debug-summary')
+    .getByText(/Task[0-9a-f]{8}/i)
+  await expect(taskIdentity).toBeVisible()
+  const taskIdentityText = await taskIdentity.textContent()
+  await page.screenshot({
+    path: join(artifactDirectory, '02-task-created-with-jobs.png'),
+    fullPage: true
+  })
+
+  await submitCommand(panel, page, 'pause')
+  await expect(panel.locator('.is-meta').filter({
+    hasText: '暂停 · OS 已接受'
+  }))
+    .toBeVisible()
+  await expect(panel.getByText('已暂停', { exact: true })).toBeVisible()
+  await page.screenshot({
+    path: join(artifactDirectory, '03-pause-accepted-and-applied.png'),
+    fullPage: true
+  })
+
+  await submitCommand(panel, page, 'resume')
+  await expect(panel.locator('.is-meta').filter({
+    hasText: '继续 · OS 已接受'
+  }))
+    .toBeVisible()
+  await expect(panel.getByText('控制可用', { exact: true })).toBeVisible()
+  await page.screenshot({
+    path: join(artifactDirectory, '04-resume-accepted-and-applied.png'),
+    fullPage: true
+  })
+
+  await submitCommand(panel, page, 'cancel')
+  await expect(panel.locator('.is-meta').filter({
+    hasText: '取消 · OS 已接受'
+  }))
+    .toBeVisible()
+  await page.screenshot({
+    path: join(artifactDirectory, '05-cancel-durable-accepted.png'),
+    fullPage: true
+  })
+  await expect(panel.locator('[data-run-status="canceled"]')).toBeVisible()
+  await expect(panel.locator('[data-node-state="canceled"]')).toHaveCount(2)
+  await page.screenshot({
+    path: join(artifactDirectory, '06-task-and-jobs-canceled.png'),
+    fullPage: true
+  })
+
+  await page.reload()
+  const restoredPanel = page.locator(
+    '[data-panel-instance-id="runtime-workflow"]'
+  )
+  await expect(restoredPanel.locator('[data-run-status="canceled"]'))
+    .toBeVisible()
+  await expect(restoredPanel.locator('[data-node-state="canceled"]'))
+    .toHaveCount(2)
+  await expect(
+    restoredPanel.locator('.workflow-runtime__debug-summary')
+      .getByText(taskIdentityText || '')
+  ).toBeVisible()
+  await page.screenshot({
+    path: join(artifactDirectory, '07-reload-restores-task.png'),
+    fullPage: true
+  })
+
+  expect(runtimeRequests).toEqual(expect.arrayContaining([
+    { method: 'GET', path: '/api/v1/events' },
+    { method: 'POST', path: '/api/v1/workflow-tasks' }
+  ]))
+  expect(runtimeRequests.some(({ path }) =>
+    path.startsWith('/api/v1/runtime/runs')
+  )).toBe(false)
+  expect(browserErrors).toEqual([])
+  writeFileSync(
+    join(artifactDirectory, 'network-ledger.json'),
+    `${JSON.stringify({ runtimeRequests, browserErrors }, null, 2)}\n`,
+    'utf8'
+  )
 })
+
+async function submitCommand(
+  panel: import('@playwright/test').Locator,
+  page: import('@playwright/test').Page,
+  command: 'pause' | 'resume' | 'cancel'
+): Promise<void> {
+  const response = page.waitForResponse((candidate) => {
+    const url = new URL(candidate.url())
+    return candidate.request().method() === 'POST' &&
+      url.pathname.endsWith('/commands')
+  })
+  await panel.locator(`[data-runtime-command="${command}"]`).click()
+  expect((await response).status()).toBe(201)
+}
 
 async function installWorkflowPanel(
   page: import('@playwright/test').Page,
