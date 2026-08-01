@@ -50,6 +50,9 @@ export function WorkflowOutput({
         failure.sourceNodeId === selectedNode.sourceNodeId
       ))
     : undefined
+  const selectedNodeHasResult = Boolean(
+    selectedNode && Object.keys(selectedNode.result).length > 0
+  )
   const errorCount = nodeFailures.length + (error ? 1 : 0)
 
   return (
@@ -157,7 +160,7 @@ export function WorkflowOutput({
                 )
               })}
             </div>
-            {selectedNode && (
+            {selectedNode && (selectedNodeFailure || selectedNodeHasResult) && (
               <div className="workflow-runtime__node-details">
                 {selectedNodeFailure && (
                   <article
@@ -185,12 +188,14 @@ export function WorkflowOutput({
                     )}
                   </article>
                 )}
-                <pre
-                  className="workflow-runtime__node-result"
-                  aria-label={`${nodeNames[selectedNode.sourceNodeId] || selectedNode.sourceNodeId} 节点结果`}
-                >
-                  {JSON.stringify(selectedNode.result, null, 2)}
-                </pre>
+                {selectedNodeHasResult && (
+                  <pre
+                    className="workflow-runtime__node-result"
+                    aria-label={`${nodeNames[selectedNode.sourceNodeId] || selectedNode.sourceNodeId} 节点结果`}
+                  >
+                    {JSON.stringify(selectedNode.result, null, 2)}
+                  </pre>
+                )}
               </div>
             )}
           </section>

@@ -157,5 +157,6 @@ describe('WorkflowOutput', () => {
     expect(nodePanel).toContain('aria-label="加热样品 错误日志"')
     expect(nodePanel).toContain('Traceback: selected heater failure')
     expect(nodePanel).not.toContain('Traceback: unselected camera failure')
+    expect(nodePanel).not.toContain('aria-label="加热样品 节点结果"')
   })
 })
