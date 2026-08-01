@@ -45,7 +45,7 @@ Backend-shaped Task、Job、feedback REST projection 与全局 SSE invalidation�
   idempotency identity 去重。
 - 某个 Job 的 feedback 读取失败时保留该 Job 已确认记录；其他 Job 的成功补读
   可以安装。刷新、SSE 重连和 OS 重启不得丢失记录。
-- 原 `WorkflowOutput` Feedback tab 展示反馈类型、所属 source node、sequence
+- 原 `WorkflowOutput` “事件流” tab 展示 feedback 类型、所属 source node、sequence
   和结构化 data；不得新建第二个 Output 面板。
 
 ### SSE reconnect
@@ -79,7 +79,7 @@ Backend-shaped Task、Job、feedback REST projection 与全局 SSE invalidation�
 
 单一 serial production 场景至少生成以下 8 张不同验收意义的截图：
 
-1. 第一条 OS feedback 已进入原 Feedback tab；
+1. 第一条 OS feedback 已进入原“事件流” tab；
 2. 第二条 feedback 使用 cursor 增量补读且无重复；
 3. Jobs partial-read failure 时旧 coherent projection 仍可见；
 4. 显式重试后错误清除、projection 恢复；
