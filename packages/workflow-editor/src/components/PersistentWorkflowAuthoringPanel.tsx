@@ -1360,16 +1360,17 @@ function workflowTaskMetadata(
 
 function workflowTaskVisualStatus(task: WorkflowTask | null): string {
   if (!task) return 'disabled'
-  if (task.control_status === 'paused') return 'paused'
-  if (task.control_status === 'waiting_reconciliation') return 'reconciling'
   if (task.status === 'succeeded') return 'completed'
   if (task.status === 'canceled') return 'cancelled'
   if (task.status === 'failed' || task.status === 'timeout') return 'failed'
+  if (task.control_status === 'paused') return 'paused'
+  if (task.control_status === 'waiting_reconciliation') return 'reconciling'
   return task.status
 }
 
 function workflowTaskControlStatusLabel(task: WorkflowTask | null): string {
   if (!task) return '未创建 Task'
+  if (TERMINAL_TASK_STATUSES.has(task.status)) return '执行已结束'
   return {
     active: '控制可用',
     paused: '已暂停',

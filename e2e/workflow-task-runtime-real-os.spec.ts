@@ -234,6 +234,7 @@ test('existing Workflow UI drives Task/Jobs/commands through real OS HTTP and SS
   })
   await expect(panel.locator('[data-run-status="canceled"]')).toBeVisible()
   await expect(panel.locator('[data-node-state="canceled"]')).toHaveCount(2)
+  await expect(panel.getByText('执行已结束', { exact: true })).toBeVisible()
   await page.screenshot({
     path: join(artifactDirectory, '09-task-and-jobs-canceled.png'),
     fullPage: true
