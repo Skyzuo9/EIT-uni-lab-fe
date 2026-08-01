@@ -91,6 +91,17 @@ export function projectTypedActionEditor(
   const template = typedTemplate(catalog, templateUuid)
   const param = recordValue(node.param)
   const targetHandles = orderedTargetHandles(template)
+  const providedHandleUuids = new Set(
+    graph.edges
+      .filter((edge) => edge.target_node_uuid === nodeUuid)
+      .map((edge) => requiredString(edge.target_handle_uuid))
+  )
+  const metaData = recordOrNull(node.meta_data) ?? {}
+  const unilab = recordOrNull(metaData.unilab) ?? {}
+  const inputBindings = recordOrNull(unilab.input_bindings) ?? {}
+  for (const handleUuid of Object.keys(inputBindings)) {
+    providedHandleUuids.add(handleUuid)
+  }
   const fields = targetHandles.map((handle) => {
     const dataKey = requiredString(handle.dataKey)
     const hasValue = Object.prototype.hasOwnProperty.call(param, dataKey)
@@ -115,7 +126,11 @@ export function projectTypedActionEditor(
     } satisfies TypedActionFieldProjection
   })
   const diagnostics: TypedActionFieldDiagnostic[] = fields
-    .filter((field) => field.required && field.valueState === 'missing')
+    .filter((field) =>
+      field.required &&
+      field.valueState === 'missing' &&
+      !providedHandleUuids.has(field.handleUuid)
+    )
     .map((field) => ({
       handleUuid: field.handleUuid,
       fieldPath: `/param/${escapeJsonPointer(field.dataKey)}`,
@@ -218,7 +233,9 @@ export function connectTypedActionEdge(
     requiredString(graph.workflow.uuid)
   )
   if (graph.edges.some(
-    (edge) => edge.target_handle_uuid === input.targetHandleUuid
+    (edge) =>
+      edge.target_node_uuid === input.targetNodeUuid &&
+      edge.target_handle_uuid === input.targetHandleUuid
   )) {
     throw new Error('Action target Handle 已有 provider')
   }

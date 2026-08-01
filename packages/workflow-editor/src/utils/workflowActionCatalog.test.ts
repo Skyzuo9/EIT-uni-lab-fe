@@ -21,6 +21,7 @@ const templateUuid = '20000000-0000-4000-8000-000000000001'
 const sourceTemplateUuid = '20000000-0000-4000-8000-000000000002'
 const nodeUuid = '40000000-0000-4000-8000-000000000001'
 const sourceNodeUuid = '40000000-0000-4000-8000-000000000002'
+const secondNodeUuid = '40000000-0000-4000-8000-000000000003'
 const workflowUuid = '60000000-0000-4000-8000-000000000001'
 const requiredHandleUuid = '30000000-0000-4000-8000-000000000001'
 const defaultHandleUuid = '30000000-0000-4000-8000-000000000002'
@@ -350,6 +351,57 @@ describe('typed Action editor projection', () => {
     ).not.toHaveProperty(materialHandleUuid)
     expect(connected.edges).toHaveLength(1)
     expect(() => connectTypedActionEdge(catalog, connected, {
+      sourceNodeUuid,
+      sourceHandleUuid: upstreamHandleUuid,
+      targetNodeUuid: nodeUuid,
+      targetHandleUuid: materialHandleUuid
+    })).toThrow('Action target Handle 已有 provider')
+  })
+
+  it('scopes edge providers by Node instance and suppresses provided diagnostics', () => {
+    const twoTargets: WorkflowAuthoringGraph = {
+      ...graph,
+      nodes: [
+        ...graph.nodes.map((node) => node.uuid !== nodeUuid
+          ? node
+          : {
+              ...node,
+              meta_data: {
+                unilab: {
+                  input_bindings: {
+                    [requiredHandleUuid]: { workflow_input_uuid: 'input-count' }
+                  }
+                }
+              }
+            }),
+        {
+          ...graph.nodes[0]!,
+          uuid: secondNodeUuid,
+          name: 'transfer_2'
+        }
+      ]
+    }
+    const firstConnected = connectTypedActionEdge(catalog, twoTargets, {
+      sourceNodeUuid,
+      sourceHandleUuid: upstreamHandleUuid,
+      targetNodeUuid: nodeUuid,
+      targetHandleUuid: materialHandleUuid
+    })
+    const bothConnected = connectTypedActionEdge(catalog, firstConnected, {
+      sourceNodeUuid,
+      sourceHandleUuid: upstreamHandleUuid,
+      targetNodeUuid: secondNodeUuid,
+      targetHandleUuid: materialHandleUuid
+    })
+
+    expect(bothConnected.edges).toHaveLength(2)
+    expect(projectTypedActionEditor(
+      catalog,
+      bothConnected,
+      nodeUuid,
+      []
+    ).diagnostics).toEqual([])
+    expect(() => connectTypedActionEdge(catalog, bothConnected, {
       sourceNodeUuid,
       sourceHandleUuid: upstreamHandleUuid,
       targetNodeUuid: nodeUuid,
