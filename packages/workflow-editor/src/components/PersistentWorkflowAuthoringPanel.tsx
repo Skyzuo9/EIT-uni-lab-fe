@@ -1,9 +1,14 @@
 import { useCodeMirror, CodeEditor } from '@unilab/code-editor'
 import type {
+  WorkflowNodeJob,
   WorkflowAuthoringAggregate,
   WorkflowAuthoringGraph,
   WorkflowAuthoringTransformResult,
-  WorkflowRuntimePort
+  WorkflowRuntimePort,
+  WorkflowTask,
+  WorkflowTaskCommand,
+  WorkflowTaskCommandType,
+  WorkflowTaskRunMode
 } from '@unilab/services'
 import {
   useCallback,
@@ -33,7 +38,17 @@ import {
   isCurrentAuthoringInvalidation,
   isSameAuthoringVersion
 } from '../utils/persistentAuthoringSession'
+import { useWorkflowTaskRuntime } from '../hooks/useWorkflowTaskRuntime'
 import WorkflowDag from './WorkflowDag'
+import {
+  WorkflowDebugger,
+  type WorkflowRuntimeControl
+} from './WorkflowDebugger'
+import {
+  WorkflowOutput,
+  type WorkflowOutputNode,
+  type WorkflowOutputTab
+} from './WorkflowOutput'
 import styles from './workflow.module.scss'
 
 interface PersistentWorkflowAuthoringPanelProps {
@@ -89,6 +104,14 @@ export function PersistentWorkflowAuthoringPanel({
     useState<FullSourceDiff | null>(null)
   const [remoteConflict, setRemoteConflict] =
     useState<RemoteConflict | null>(null)
+  const [taskRunMode, setTaskRunMode] =
+    useState<Exclude<WorkflowTaskRunMode, 'single_node'>>('normal')
+  const [runtimeBusy, setRuntimeBusy] = useState(false)
+  const [outputExpanded, setOutputExpanded] = useState(true)
+  const [outputTab, setOutputTab] = useState<WorkflowOutputTab>('nodes')
+  const [selectedJobNodeUuid, setSelectedJobNodeUuid] =
+    useState<string | null>(null)
+  const taskRuntime = useWorkflowTaskRuntime(runtime, workflowUuid)
   const operationQueue = useRef<AuthoringOperationQueue | null>(null)
   if (operationQueue.current === null) {
     operationQueue.current = new AuthoringOperationQueue()
@@ -127,6 +150,39 @@ export function PersistentWorkflowAuthoringPanel({
   const dirty = mode === 'code'
     ? editor.isDirty
     : canvasDirty || selectedNodeNameDirty
+  const task = taskRuntime.snapshot.task
+  const taskJobs = taskRuntime.snapshot.jobs
+  const taskOutputNodes = useMemo(
+    () => taskJobs.map(projectWorkflowJob),
+    [taskJobs]
+  )
+  const selectedTaskNode = taskOutputNodes.find(
+    (node) => node.sourceNodeId === selectedJobNodeUuid
+  )
+  const completedTaskJobCount = taskJobs.filter(
+    (job) => TERMINAL_JOB_STATUSES.has(job.status)
+  ).length
+  const taskControls = useMemo(
+    () => workflowTaskControls(task, runtimeBusy),
+    [runtimeBusy, task]
+  )
+  const taskNodeNames = useMemo(
+    () => Object.fromEntries(structure.nodes.map((node) => [
+      node.id,
+      node.name || node.id
+    ])),
+    [structure.nodes]
+  )
+
+  useEffect(() => {
+    if (
+      selectedJobNodeUuid &&
+      taskOutputNodes.some(
+        (node) => node.sourceNodeId === selectedJobNodeUuid
+      )
+    ) return
+    setSelectedJobNodeUuid(taskOutputNodes[0]?.sourceNodeId ?? null)
+  }, [selectedJobNodeUuid, taskOutputNodes])
 
   useEffect(() => {
     onUnsavedChangesChange?.(dirty)
@@ -271,6 +327,15 @@ export function PersistentWorkflowAuthoringPanel({
     } finally {
       setBusy(false)
     }
+  }, [])
+
+  const runRuntime = useCallback((
+    operation: () => Promise<void>
+  ): void => {
+    setRuntimeBusy(true)
+    void operation()
+      .catch(() => undefined)
+      .finally(() => setRuntimeBusy(false))
   }, [])
 
   const readRemoteConflict = useCallback(async (): Promise<void> => {
@@ -637,6 +702,53 @@ export function PersistentWorkflowAuthoringPanel({
           >
             应用工作流
           </button>
+          <span className="workflow__toolbar-divider" aria-hidden="true" />
+          <div
+            className="workflow__mode-switch workflow__run-mode"
+            role="group"
+            aria-label="Task 运行模式"
+          >
+            <button
+              type="button"
+              className={taskRunMode === 'normal' ? 'is-active' : ''}
+              aria-pressed={taskRunMode === 'normal'}
+              disabled={runtimeBusy}
+              onClick={() => setTaskRunMode('normal')}
+            >
+              正常运行
+            </button>
+            <button
+              type="button"
+              className={taskRunMode === 'step' ? 'is-active' : ''}
+              aria-pressed={taskRunMode === 'step'}
+              disabled={runtimeBusy}
+              onClick={() => setTaskRunMode('step')}
+            >
+              单步模式
+            </button>
+          </div>
+          <button
+            type="button"
+            className="workflow-runtime__primary"
+            disabled={
+              busy ||
+              runtimeBusy ||
+              dirty ||
+              aggregate?.state !== 'applied'
+            }
+            title={
+              dirty
+                ? '请先保存当前可写表示'
+                : aggregate?.state !== 'applied'
+                  ? '请先应用当前工作流候选'
+                  : undefined
+            }
+            onClick={() => runRuntime(
+              () => taskRuntime.create(taskRunMode)
+            )}
+          >
+            {runtimeBusy ? '处理中…' : '开始运行'}
+          </button>
         </div>
       </header>
 
@@ -645,6 +757,13 @@ export function PersistentWorkflowAuthoringPanel({
           <strong>Authoring 操作失败</strong>
           <span>{error}</span>
           <button type="button" onClick={() => setError(null)}>关闭</button>
+        </div>
+      )}
+      {taskRuntime.snapshot.error && (
+        <div className="workflow-runtime__problem" role="alert">
+          <strong>Runtime 状态读取失败</strong>
+          <span>{taskRuntime.snapshot.error}</span>
+          <button type="button" onClick={taskRuntime.clearError}>关闭</button>
         </div>
       )}
       {diagnostics.length > 0 && (
@@ -758,6 +877,55 @@ export function PersistentWorkflowAuthoringPanel({
           </div>
         </section>
       </main>
+
+      <section
+        className="persistent-authoring__runtime"
+        aria-label="Workflow Task 运行控制"
+      >
+        <WorkflowDebugger
+          debugStatus={workflowTaskVisualStatus(task)}
+          runStatus={task?.status || 'draft'}
+          heading="工作流运行"
+          subtitle="OS Task 控制"
+          statusText={workflowTaskControlStatusLabel(task)}
+          runStatusText={workflowTaskStatusLabel(task?.status)}
+          runStatusPrefix="Task"
+          metadata={workflowTaskMetadata(
+            task,
+            taskRuntime.snapshot.lastCommand
+          )}
+          actionGroupLabel="Task 执行控制"
+          dangerGroupLabel="Task 取消控制"
+          commandDataAttribute="runtime"
+          controls={taskControls}
+          onCommand={(command) => runRuntime(
+            () => taskRuntime.command(command)
+          )}
+        />
+
+        <WorkflowOutput
+          expanded={outputExpanded}
+          activeTab={outputTab}
+          completedNodeCount={completedTaskJobCount}
+          expectedNodeCount={taskJobs.length}
+          nodes={taskOutputNodes}
+          nodeNames={taskNodeNames}
+          events={[]}
+          error={taskRuntime.snapshot.error}
+          selectedNode={selectedTaskNode}
+          selectedNodeId={selectedJobNodeUuid}
+          pausedBeforeNodeId={null}
+          title="运行输出"
+          countLabel="个 Job 已结束"
+          nodesTabLabel="Job 状态"
+          eventsTabLabel="Feedback"
+          eventsEmptyLabel="等待 OS Job feedback……"
+          onExpandedChange={setOutputExpanded}
+          onTabChange={setOutputTab}
+          onNodeSelect={setSelectedJobNodeUuid}
+          onClearError={taskRuntime.clearError}
+        />
+      </section>
 
       {pendingMode && (
         <div className="workflow-save-prompt">
@@ -914,4 +1082,148 @@ function rebaseGraphIdentity(
 
 function errorMessage(value: unknown): string {
   return value instanceof Error ? value.message : String(value)
+}
+
+const TERMINAL_TASK_STATUSES = new Set([
+  'succeeded',
+  'failed',
+  'canceled',
+  'timeout'
+])
+
+const TERMINAL_JOB_STATUSES = new Set([
+  'succeeded',
+  'failed',
+  'skipped',
+  'canceled',
+  'timeout'
+])
+
+function workflowTaskControls(
+  task: WorkflowTask | null,
+  busy: boolean
+): ReadonlyArray<WorkflowRuntimeControl<WorkflowTaskCommandType>> {
+  const terminal = !task || TERMINAL_TASK_STATUSES.has(task.status)
+  return [
+    {
+      command: 'pause',
+      label: '暂停',
+      title: '提交 durable pause intent；等待 OS 权威状态确认',
+      message: 'pause 已由 OS 接受，等待 Task 状态补读',
+      glyph: 'Ⅱ',
+      disabled: busy || terminal || task.control_status !== 'active'
+    },
+    {
+      command: 'resume',
+      label: '继续',
+      title: '提交 durable resume intent；等待 OS 权威状态确认',
+      message: 'resume 已由 OS 接受，等待 Task 状态补读',
+      glyph: '▶',
+      primary: true,
+      disabled: busy || terminal || task.control_status !== 'paused'
+    },
+    {
+      command: 'step',
+      label: '单步',
+      title: '仅 step 模式且权威状态为 paused 时提交一步执行 intent',
+      message: 'step 已由 OS 接受，等待 Job/Task 状态补读',
+      glyph: '→',
+      disabled: busy || terminal ||
+        task.run_mode !== 'step' ||
+        task.control_status !== 'paused'
+    },
+    {
+      command: 'cancel',
+      label: '取消',
+      title: '提交 durable cancel intent；等待 Task/Jobs 权威终态',
+      message: 'cancel 已由 OS 接受，等待 Task/Jobs 状态补读',
+      glyph: '■',
+      danger: true,
+      disabled: busy || terminal
+    }
+  ]
+}
+
+function projectWorkflowJob(job: WorkflowNodeJob): WorkflowOutputNode {
+  return {
+    nodeId: job.uuid,
+    sourceNodeId: job.workflow_node_uuid,
+    nodeType: job.executor_kind,
+    state: job.status,
+    result: {
+      job_uuid: job.uuid,
+      workflow_node_uuid: job.workflow_node_uuid,
+      executor_kind: job.executor_kind,
+      status: job.status,
+      attempt: job.attempt,
+      feedback_sequence: job.feedback_sequence,
+      feedback_data: job.feedback_data,
+      return_info: job.return_info,
+      error_info: job.error_info
+    }
+  }
+}
+
+function workflowTaskMetadata(
+  task: WorkflowTask | null,
+  command: WorkflowTaskCommand | null
+): ReadonlyArray<{ label: string; value: string; title?: string }> {
+  return [
+    {
+      label: 'Task',
+      value: task ? task.uuid.slice(-8) : '尚未创建',
+      title: task?.uuid
+    },
+    {
+      label: '模式',
+      value: task?.run_mode === 'step' ? '单步' : '正常'
+    },
+    {
+      label: '命令',
+      value: command
+        ? `${workflowTaskCommandLabel(command.type)} · OS 已接受`
+        : '无'
+    }
+  ]
+}
+
+function workflowTaskVisualStatus(task: WorkflowTask | null): string {
+  if (!task) return 'disabled'
+  if (task.control_status === 'paused') return 'paused'
+  if (task.control_status === 'waiting_reconciliation') return 'reconciling'
+  if (task.status === 'succeeded') return 'completed'
+  if (task.status === 'canceled') return 'cancelled'
+  if (task.status === 'failed' || task.status === 'timeout') return 'failed'
+  return task.status
+}
+
+function workflowTaskControlStatusLabel(task: WorkflowTask | null): string {
+  if (!task) return '未创建 Task'
+  return {
+    active: '控制可用',
+    paused: '已暂停',
+    waiting_reconciliation: '等待状态核对'
+  }[task.control_status]
+}
+
+function workflowTaskStatusLabel(status: WorkflowTask['status'] | undefined): string {
+  if (!status) return '未开始'
+  return {
+    pending: '等待执行',
+    running: '运行中',
+    canceling: '正在取消',
+    succeeded: '执行成功',
+    failed: '执行失败',
+    canceled: '已取消',
+    timeout: '执行超时'
+  }[status]
+}
+
+function workflowTaskCommandLabel(type: WorkflowTaskCommandType): string {
+  return {
+    pause: '暂停',
+    resume: '继续',
+    step: '单步',
+    cancel: '取消'
+  }[type]
 }

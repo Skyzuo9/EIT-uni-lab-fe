@@ -15,6 +15,7 @@
     "test": "pnpm -r --if-present test",
     "test:e2e:workflow": "playwright test e2e/workflow-runtime.spec.ts e2e/workflow-cloud-import.spec.ts",
     "test:e2e:workflow-authoring": "playwright test e2e/workflow-authoring-real-os.spec.ts",
+    "test:e2e:workflow-task-runtime": "playwright test e2e/workflow-task-runtime-real-os.spec.ts",
     "test:e2e:workflow-debug": "playwright test e2e/workflow-debug-scenarios.spec.ts e2e/workflow-debug-actions.spec.ts",
     "test:e2e:workflow-actions": "playwright test e2e/workflow-debug-actions.spec.ts",
     "test:e2e:material-create": "UNILAB_E2E_MATERIAL_CREATE_FIXTURE=1 playwright test e2e/material-create.spec.ts",

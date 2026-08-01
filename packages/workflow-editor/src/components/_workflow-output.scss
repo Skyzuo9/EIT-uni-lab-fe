@@ -172,11 +172,16 @@
   background: var(--unilab-color-skipped);
 }
 
-.workflow :global(.workflow-runtime__node-list) i:global(.is-success) {
+.workflow :global(.workflow-runtime__node-list) i:global(.is-success),
+.workflow :global(.workflow-runtime__node-list) i:global(.is-succeeded) {
   background: var(--unilab-color-success);
 }
 
-.workflow :global(.workflow-runtime__node-list) i:global(.is-running) {
+.workflow :global(.workflow-runtime__node-list) i:global(.is-running),
+.workflow :global(.workflow-runtime__node-list) i:global(.is-dispatched),
+.workflow :global(.workflow-runtime__node-list) i:global(.is-intervention_required),
+.workflow :global(.workflow-runtime__node-list) i:global(.is-cancel_requested),
+.workflow :global(.workflow-runtime__node-list) i:global(.is-execution_unknown) {
   background: var(--unilab-color-warning);
 }
 
@@ -185,11 +190,14 @@
 }
 
 .workflow :global(.workflow-runtime__node-list) i:global(.is-excluded),
-.workflow :global(.workflow-runtime__node-list) i:global(.is-skipped) {
+.workflow :global(.workflow-runtime__node-list) i:global(.is-skipped),
+.workflow :global(.workflow-runtime__node-list) i:global(.is-canceled),
+.workflow :global(.workflow-runtime__node-list) i:global(.is-cancelled) {
   background: var(--unilab-color-skipped);
 }
 
-.workflow :global(.workflow-runtime__node-list) i:global(.is-failed) {
+.workflow :global(.workflow-runtime__node-list) i:global(.is-failed),
+.workflow :global(.workflow-runtime__node-list) i:global(.is-timeout) {
   background: var(--unilab-color-danger);
 }
 

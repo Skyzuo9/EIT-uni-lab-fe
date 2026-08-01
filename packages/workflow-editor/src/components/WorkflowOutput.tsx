@@ -1,26 +1,40 @@
-import type {
-  WorkflowRunEvent,
-  WorkflowRunNode
-} from '@unilab/services'
+export type WorkflowOutputTab = 'nodes' | 'events' | 'errors'
 
-type WorkflowOutputTab = 'nodes' | 'events' | 'errors'
+export interface WorkflowOutputNode {
+  nodeId: string
+  sourceNodeId: string
+  nodeType: string
+  state: string
+  result: Record<string, unknown>
+}
+
+export interface WorkflowOutputEvent {
+  seq: number
+  type: string
+  nodeId: string | null
+}
 
 interface WorkflowOutputProps {
   expanded: boolean
   activeTab: WorkflowOutputTab
   completedNodeCount: number
   expectedNodeCount: number
-  nodes: readonly WorkflowRunNode[]
+  nodes: readonly WorkflowOutputNode[]
   nodeNames: Readonly<Record<string, string>>
-  events: readonly WorkflowRunEvent[]
+  events: readonly WorkflowOutputEvent[]
   error: string | null
-  selectedNode: WorkflowRunNode | undefined
+  selectedNode: WorkflowOutputNode | undefined
   selectedNodeId: string | null
   pausedBeforeNodeId: string | null
   onExpandedChange: (expanded: boolean) => void
   onTabChange: (tab: WorkflowOutputTab) => void
   onNodeSelect: (nodeId: string) => void
   onClearError: () => void
+  title?: string
+  countLabel?: string
+  nodesTabLabel?: string
+  eventsTabLabel?: string
+  eventsEmptyLabel?: string
 }
 
 export function WorkflowOutput({
@@ -38,7 +52,12 @@ export function WorkflowOutput({
   onExpandedChange,
   onTabChange,
   onNodeSelect,
-  onClearError
+  onClearError,
+  title = '运行输出',
+  countLabel = '个节点已有结果',
+  nodesTabLabel = '节点结果',
+  eventsTabLabel = '事件流',
+  eventsEmptyLabel = '等待 OS 节点反馈……'
 }: WorkflowOutputProps): React.JSX.Element {
   const eventNodeNames = workflowEventNodeNames(nodes, nodeNames)
 
@@ -50,10 +69,10 @@ export function WorkflowOutput({
     >
       <header className="workflow-runtime__output-header">
         <div className="workflow-runtime__output-title">
-          <strong>运行输出</strong>
+          <strong>{title}</strong>
           <span>
             {completedNodeCount}/{expectedNodeCount}
-            {' '}个节点已有结果
+            {' '}{countLabel}
           </span>
         </div>
         {expanded && (
@@ -65,14 +84,14 @@ export function WorkflowOutput({
             <OutputTabButton
               id="nodes"
               activeTab={activeTab}
-              label="节点结果"
+              label={nodesTabLabel}
               count={nodes.length}
               onSelect={onTabChange}
             />
             <OutputTabButton
               id="events"
               activeTab={activeTab}
-              label="事件流"
+              label={eventsTabLabel}
               count={events.length}
               onSelect={onTabChange}
             />
@@ -187,7 +206,7 @@ export function WorkflowOutput({
                   </div>
                 )
               })}
-              {events.length === 0 && <p>等待 OS 节点反馈……</p>}
+              {events.length === 0 && <p>{eventsEmptyLabel}</p>}
             </div>
           </section>
 
@@ -253,13 +272,20 @@ function OutputTabButton({
 
 const NODE_STATE_LABELS: Readonly<Record<string, string>> = {
   pending: '等待执行',
+  dispatched: '已下发',
   ready: '已就绪',
   running: '正在运行',
   success: '执行成功',
+  succeeded: '执行成功',
+  intervention_required: '需要干预',
+  cancel_requested: '等待取消',
+  execution_unknown: '执行状态未知',
   skipped: '已跳过',
   excluded: '不执行',
   failed: '执行失败',
   cancelled: '已取消',
+  canceled: '已取消',
+  timeout: '执行超时',
   reconciling: '状态核对中'
 }
 
@@ -304,7 +330,7 @@ function eventLabel(type: string): string {
 }
 
 function workflowEventNodeNames(
-  runNodes: readonly WorkflowRunNode[],
+  runNodes: readonly WorkflowOutputNode[],
   nodeNames: Readonly<Record<string, string>>
 ): ReadonlyMap<string, string> {
   const result = new Map(Object.entries(nodeNames))

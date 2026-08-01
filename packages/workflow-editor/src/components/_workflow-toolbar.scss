@@ -260,6 +260,7 @@
 }
 
 .workflow :global(.workflow-runtime__run-state--running),
+.workflow :global(.workflow-runtime__run-state--canceling),
 .workflow :global(.workflow-runtime__run-state--reconciling) {
   color: var(--unilab-color-warning);
   border-color: color-mix(
@@ -270,7 +271,8 @@
   background: var(--unilab-color-warning-soft);
 }
 
-.workflow :global(.workflow-runtime__run-state--completed) {
+.workflow :global(.workflow-runtime__run-state--completed),
+.workflow :global(.workflow-runtime__run-state--succeeded) {
   color: var(--unilab-color-success);
   border-color: color-mix(
     in srgb,
@@ -280,7 +282,10 @@
   background: var(--unilab-color-success-soft);
 }
 
-.workflow :global(.workflow-runtime__run-state--failed) {
+.workflow :global(.workflow-runtime__run-state--failed),
+.workflow :global(.workflow-runtime__run-state--timeout),
+.workflow :global(.workflow-runtime__run-state--canceled),
+.workflow :global(.workflow-runtime__run-state--cancelled) {
   color: var(--unilab-color-danger);
   border-color: color-mix(
     in srgb,
