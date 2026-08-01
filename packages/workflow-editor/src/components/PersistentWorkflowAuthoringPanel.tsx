@@ -193,6 +193,10 @@ export function PersistentWorkflowAuthoringPanel({
     () => taskJobs.map(projectWorkflowJob),
     [taskJobs]
   )
+  const failedTaskJobCount = useMemo(
+    () => taskOutputNodes.filter((node) => node.state === 'failed').length,
+    [taskOutputNodes]
+  )
   const selectedTaskNode = taskOutputNodes.find(
     (node) => node.sourceNodeId === selectedJobNodeUuid
   )
@@ -289,6 +293,12 @@ export function PersistentWorkflowAuthoringPanel({
     ) return
     setSelectedJobNodeUuid(taskOutputNodes[0]?.sourceNodeId ?? null)
   }, [selectedJobNodeUuid, taskOutputNodes])
+
+  useEffect(() => {
+    if (failedTaskJobCount === 0) return
+    setOutputExpanded(true)
+    setOutputTab('errors')
+  }, [failedTaskJobCount])
 
   useEffect(() => {
     onUnsavedChangesChange?.(dirty)
@@ -1337,6 +1347,7 @@ function projectWorkflowJob(job: WorkflowNodeJob): WorkflowOutputNode {
     sourceNodeId: job.workflow_node_uuid,
     nodeType: job.executor_kind,
     state: job.status,
+    attempt: job.attempt,
     result: {
       job_uuid: job.uuid,
       workflow_node_uuid: job.workflow_node_uuid,
