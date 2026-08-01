@@ -73,16 +73,22 @@ OS 与 Go backend 的逐路由、字段和调用链对照记录在 Uni-Lab-OS：
 | Python → Canonical | `compilePythonWorkflow` | `POST /api/v1/authoring/compile` |
 | Canonical → Python | `generatePythonWorkflow` | `POST /api/v1/authoring/generate-python` |
 | 候选校验 | `validateAuthoringCandidate` | `POST /api/v1/authoring/validate` |
-| 创建整图运行 | `createRun` | `POST /api/v1/runtime/runs` |
-| 运行投影 | `getRun` | `GET /api/v1/runtime/runs/{run_id}` |
-| 节点投影 | `listRunNodes` | `GET /api/v1/runtime/runs/{run_id}/nodes` |
-| 事件补拉 | `listRunEvents` | `GET /api/v1/runtime/runs/{run_id}/events` |
-| 调试命令 | `command` | `POST /api/v1/runtime/runs/{run_id}/commands` |
-| 取消 | `cancelRun` | `POST /api/v1/runtime/runs/{run_id}/cancel` |
-| 实时事件 | `subscribeRunEvents` | `WS /api/v1/runtime/events` |
+| 创建 Task | `createWorkflowTask` | `POST /api/v1/workflow-tasks` |
+| Task 列表/投影 | `listWorkflowTasks` / `getWorkflowTask` | `GET /api/v1/workflow-tasks` / `GET /api/v1/workflow-tasks/{task_uuid}` |
+| Task 的 Job 投影 | `listWorkflowTaskJobs` | `GET /api/v1/workflow-tasks/{task_uuid}/jobs` |
+| 单个 Job 投影 | `getWorkflowNodeJob` | `GET /api/v1/workflow-node-jobs/{job_uuid}` |
+| Job feedback 补读 | `listWorkflowNodeJobFeedback` | `GET /api/v1/workflow-node-jobs/{job_uuid}/feedback` |
+| Task 命令 | `commandWorkflowTask` | `POST /api/v1/workflow-tasks/{task_uuid}/commands` |
+| Runtime 失效通知 | `subscribeWorkflowRuntime` | `SSE /api/v1/events` |
 
-`subscribeRunEvents` 以 `seq` 为游标。WebSocket 不可用或断开后，会从最后游标轮询
-REST；调用方仍要按 `seq` 处理幂等更新。
+Runtime SSE 只消费 `workflow.runtime.changed`，事件体只有
+`workflow_task_uuid`。它以全局事件 `id` 去重并通过 `Last-Event-ID` 重连，只负责
+使 REST 投影失效；调用方必须重新读取 Task/Jobs/feedback，不得把事件当状态补丁。
+
+旧 `createRun`、`getRun`、`listRunNodes`、`listRunEvents`、`command`、
+`cancelRun` 和 `subscribeRunEvents` 仅为现有旧 panel 在 UI1C/UI1D 迁移前保持编译的
+隔离过渡面，已标记 deprecated。新代码不得调用它们；UI1D 必须删除这些方法、旧
+`/api/v1/runtime/runs*`、Runtime WebSocket 和 polling fallback。
 
 ## Backend adapter 约束
 
