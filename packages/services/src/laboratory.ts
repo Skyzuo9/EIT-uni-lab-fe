@@ -5,7 +5,7 @@
  * Model: Claude Opus 4.8
  * Generation Date: 2026-07-22
  * Prompt Summary: Uni-Lab-OS REST 客户端封装(设备/资源/任务)
- * Context: 对接 http://localhost:8002/api/v1,统一 { code, data, message } 解包
+ * Context: 对接 local bridge health、device catalog 与 resource projection
  * Human Review Status: [ ] Pending  [ ] Reviewed  [ ] Approved
  * ============================================================
  */
@@ -83,8 +83,19 @@ interface RuntimeActionTemplate {
   actionName: string
   deviceId: string
   label: string
+  typeName: string
+  isBusy: boolean
   inputSchema: Record<string, unknown>
   outputSchema: Record<string, unknown>
+}
+
+interface RuntimeDeviceCatalogItem {
+  id: string
+  deviceKey: string
+  namespace: string
+  name: string
+  online: boolean
+  actions: RuntimeActionTemplate[]
 }
 
 export function createLaboratoryService(
@@ -94,9 +105,7 @@ export function createLaboratoryService(
   return {
     async ping(): Promise<boolean> {
       try {
-        await http.request<unknown>(
-          backend.serverKind === 'edge' ? '/api/v1/health' : '/health'
-        )
+        await http.request<unknown>('/health')
         return true
       } catch {
         return false
@@ -104,37 +113,30 @@ export function createLaboratoryService(
     },
 
     async getActionDevices(): Promise<DeviceActionTarget[]> {
-      const templates = await getRuntimeActionTemplates(http)
-      return [...new Set(templates.map((template) => template.deviceId))]
-        .sort()
-        .map((deviceId) => ({ deviceId, label: deviceId }))
+      return (await getRuntimeDevices(http))
+        .filter((device) => device.actions.length > 0)
+        .sort((left, right) => left.id.localeCompare(right.id))
+        .map((device) => ({ deviceId: device.id, label: device.id }))
     },
 
     async getOnlineDevices(): Promise<OnlineDevice[]> {
-      const templates = await getRuntimeActionTemplates(http)
-      const actionsByDevice = new Map<string, RuntimeActionTemplate[]>()
-      for (const template of templates) {
-        const actions = actionsByDevice.get(template.deviceId) ?? []
-        actions.push(template)
-        actionsByDevice.set(template.deviceId, actions)
-      }
-      return [...actionsByDevice.entries()]
-        .sort(([left], [right]) => left.localeCompare(right))
-        .map(([deviceId, actions]) => ({
-          id: deviceId,
-          deviceKey: `/devices/${deviceId}`,
-          namespace: '/devices',
-          machineName: 'Uni-Lab OS',
-          online: true,
-          actions: actions.map(mapDeviceAction)
+      return (await getRuntimeDevices(http))
+        .sort((left, right) => left.id.localeCompare(right.id))
+        .map((device) => ({
+          id: device.id,
+          deviceKey: device.deviceKey,
+          namespace: device.namespace,
+          machineName: device.name,
+          online: device.online,
+          actions: device.actions.map(mapDeviceAction)
         }))
     },
 
     async getDeviceActions(deviceId: string): Promise<DeviceAction[]> {
-      const templates = await getRuntimeActionTemplates(http)
-      return templates
-        .filter((template) => template.deviceId === deviceId)
-        .map(mapDeviceAction)
+      const device = (await getRuntimeDevices(http)).find(
+        (candidate) => candidate.id === deviceId
+      )
+      return (device?.actions ?? []).map(mapDeviceAction)
     },
 
     async getActionSchema(
@@ -142,9 +144,9 @@ export function createLaboratoryService(
       actionName: string
     ): Promise<DeviceActionSchema> {
       const actionRef = `${deviceId}.${actionName}`
-      const template = (await getRuntimeActionTemplates(http)).find(
-        (candidate) => candidate.actionRef === actionRef
-      )
+      const template = (await getRuntimeDevices(http))
+        .flatMap((device) => device.actions)
+        .find((candidate) => candidate.actionRef === actionRef)
       if (!template) {
         throw new ServiceError({
           code: 'ACTION_NOT_FOUND',
@@ -175,8 +177,8 @@ function mapDeviceAction(template: RuntimeActionTemplate): DeviceAction {
     actionRef: template.actionRef,
     displayName: template.label,
     label: template.label,
-    typeName: template.actionRef,
-    isBusy: false,
+    typeName: template.typeName,
+    isBusy: template.isBusy,
     currentJobId: null,
     schema,
     inputSchema: mapActionSchema(schema.properties),
@@ -191,8 +193,8 @@ function mapDeviceActionSchema(
   return {
     schema,
     goalDefault: defaultsFromInputSchema(schema),
-    actionType: template.actionRef,
-    isBusy: false,
+    actionType: template.typeName || template.actionRef,
+    isBusy: template.isBusy,
     currentJobId: null
   }
 }
@@ -215,27 +217,43 @@ function mapResource(raw: Record<string, unknown>): ResourceNode {
   }
 }
 
-async function getRuntimeActionTemplates(
+async function getRuntimeDevices(
   http: HttpClient
-): Promise<RuntimeActionTemplate[]> {
-  const raw = await http.request<Record<string, unknown>>(
-    '/api/v1/workflow-node-templates'
-  )
+): Promise<RuntimeDeviceCatalogItem[]> {
+  const raw = await http.request<Record<string, unknown>>('/api/v1/devices')
   const items = Array.isArray(raw.items) ? raw.items : []
   return items.flatMap((value) => {
     const item = asRecord(value)
-    if (item.kind !== 'action') return []
-    const actionRef = str(item.id)
-    const separator = actionRef.lastIndexOf('.')
-    if (separator <= 0 || separator === actionRef.length - 1) return []
+    const deviceId = str(item.id)
+    if (!deviceId) return []
+    const actions = Array.isArray(item.actions)
+      ? item.actions.flatMap((value) => {
+          const action = asRecord(value)
+          const actionName = str(action.id)
+          const actionRef = str(action.actionRef)
+          if (!actionName || !actionRef) return []
+          return [
+            {
+              actionRef,
+              actionName,
+              deviceId,
+              label: str(action.name) || actionName,
+              typeName: str(action.typeName) || actionRef,
+              isBusy: Boolean(action.busy),
+              inputSchema: asRecord(action.inputSchema),
+              outputSchema: asRecord(action.outputSchema)
+            }
+          ]
+        })
+      : []
     return [
       {
-        actionRef,
-        deviceId: actionRef.slice(0, separator),
-        actionName: actionRef.slice(separator + 1),
-        label: str(item.label) || actionRef.slice(separator + 1),
-        inputSchema: asRecord(item.inputSchema),
-        outputSchema: asRecord(item.outputSchema)
+        id: deviceId,
+        deviceKey: str(item.deviceKey),
+        namespace: str(item.namespace),
+        name: str(item.name) || deviceId,
+        online: Boolean(item.online),
+        actions
       }
     ]
   })

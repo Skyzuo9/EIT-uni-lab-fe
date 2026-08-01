@@ -5,34 +5,112 @@ import { createLaboratoryService } from './laboratory'
 import { getDefaultBackend } from './backends'
 
 describe('laboratory service', () => {
-  it('projects Action devices and schemas from the unified node catalog', async () => {
+  it('preserves Edge device metadata from the unified device catalog', async () => {
+    const requests: Array<{
+      path: string
+      method?: string
+      body?: string
+    }> = []
+    const http = fixtureHttp(
+      {
+        '/api/v1/devices': {
+          schemaVersion: 'device-catalog/v1',
+          source: 'edge',
+          generatedAt: 123,
+          items: [
+            {
+              id: 'pump-1',
+              deviceKey: '/cell/pump-1',
+              namespace: '/cell',
+              name: '蠕动泵',
+              online: false,
+              actions: [
+                {
+                  id: 'aspirate',
+                  actionRef: 'pump-1.aspirate',
+                  name: '吸液',
+                  typeName: 'unilabos_msgs.action.Pump',
+                  inputSchema: {
+                    volume: { type: 'number', default: 10 }
+                  },
+                  outputSchema: {},
+                  busy: true
+                }
+              ]
+            }
+          ]
+        }
+      },
+      requests
+    )
+    const service = createLaboratoryService(
+      http,
+      getDefaultBackend('local-python')
+    )
+
+    await expect(service.getOnlineDevices()).resolves.toEqual([
+      {
+        id: 'pump-1',
+        deviceKey: '/cell/pump-1',
+        namespace: '/cell',
+        machineName: '蠕动泵',
+        online: false,
+        actions: [
+          expect.objectContaining({
+            actionName: 'aspirate',
+            actionRef: 'pump-1.aspirate',
+            typeName: 'unilabos_msgs.action.Pump',
+            isBusy: true
+          })
+        ]
+      }
+    ])
+    expect(requests).toEqual([
+      {
+        path: '/api/v1/devices',
+        method: undefined,
+        body: undefined
+      }
+    ])
+  })
+
+  it('projects Action devices and schemas from the unified device catalog', async () => {
     const http = fixtureHttp({
-      '/api/v1/workflow-node-templates': {
-        schemaVersion: 'workflow-node-templates/v1',
+      '/api/v1/devices': {
+        schemaVersion: 'device-catalog/v1',
+        source: 'edge',
+        generatedAt: 123,
         items: [
           {
-            id: 'pump-1.aspirate',
-            kind: 'action',
-            label: '吸液',
-            inputSchema: {
-              volume: { type: 'number', default: 10 }
-            },
-            outputSchema: {}
-          },
-          {
-            id: 'pump-1.dispense',
-            kind: 'action',
-            label: '排液',
-            inputSchema: {
-              volume: { type: 'number', default: 2 }
-            },
-            outputSchema: {}
-          },
-          {
-            id: 'os_control.branch',
-            kind: 'branch',
-            label: '条件分支',
-            inputSchema: {}
+            id: 'pump-1',
+            deviceKey: '/cell/pump-1',
+            namespace: '/cell',
+            name: '蠕动泵',
+            online: true,
+            actions: [
+              {
+                id: 'aspirate',
+                actionRef: 'pump-1.aspirate',
+                name: '吸液',
+                typeName: 'unilabos_msgs.action.Pump',
+                inputSchema: {
+                  volume: { type: 'number', default: 10 }
+                },
+                outputSchema: {},
+                busy: true
+              },
+              {
+                id: 'dispense',
+                actionRef: 'pump-1.dispense',
+                name: '排液',
+                typeName: 'unilabos_msgs.action.Pump',
+                inputSchema: {
+                  volume: { type: 'number', default: 2 }
+                },
+                outputSchema: {},
+                busy: false
+              }
+            ]
           }
         ]
       }
@@ -51,8 +129,8 @@ describe('laboratory service', () => {
         actionRef: 'pump-1.aspirate',
         displayName: '吸液',
         label: '吸液',
-        typeName: 'pump-1.aspirate',
-        isBusy: false,
+        typeName: 'unilabos_msgs.action.Pump',
+        isBusy: true,
         currentJobId: null,
         schema: {
           type: 'object',
@@ -66,7 +144,7 @@ describe('laboratory service', () => {
         actionRef: 'pump-1.dispense',
         displayName: '排液',
         label: '排液',
-        typeName: 'pump-1.dispense',
+        typeName: 'unilabos_msgs.action.Pump',
         isBusy: false,
         currentJobId: null,
         schema: {
@@ -91,7 +169,8 @@ describe('laboratory service', () => {
       service.getActionSchema('pump-1', 'aspirate')
     ).resolves.toMatchObject({
       goalDefault: { volume: 10 },
-      actionType: 'pump-1.aspirate'
+      actionType: 'unilabos_msgs.action.Pump',
+      isBusy: true
     })
   })
 
@@ -110,21 +189,21 @@ describe('laboratory service', () => {
     }
   })
 
-  it('probes the production Python OS through its versioned health route', async () => {
+  it('probes the production Python OS through its bridge health route', async () => {
     const requests: Array<{
       path: string
       method?: string
       body?: string
     }> = []
     const service = createLaboratoryService(
-      fixtureHttp({ '/api/v1/health': { status: 'ok' } }, requests),
+      fixtureHttp({ '/health': { status: 'ok' } }, requests),
       getDefaultBackend('local-python')
     )
 
     await expect(service.ping()).resolves.toBe(true)
     expect(requests).toEqual([
       {
-        path: '/api/v1/health',
+        path: '/health',
         method: undefined,
         body: undefined
       }
