@@ -26,6 +26,14 @@ export interface WorkflowNode {
   childNodeIds?: string[]
   descendantNodeIds?: string[]
   collapsedByDefault?: boolean
+  handles?: WorkflowHandlePort[]
+}
+
+export interface WorkflowHandlePort {
+  uuid: string
+  handleKey: string
+  displayName: string
+  ioType: 'source' | 'target'
 }
 
 export interface WorkflowLink {
@@ -33,6 +41,8 @@ export interface WorkflowLink {
   target: string
   type: string
   branch?: string | null
+  sourceHandleUuid?: string
+  targetHandleUuid?: string
 }
 
 export interface WorkflowStep {

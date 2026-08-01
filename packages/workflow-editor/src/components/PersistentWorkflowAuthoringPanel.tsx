@@ -1,5 +1,6 @@
 import { useCodeMirror, CodeEditor } from '@unilab/code-editor'
 import type {
+  WorkflowActionCatalogSnapshot,
   WorkflowNodeJob,
   WorkflowNodeJobFeedback,
   WorkflowAuthoringAggregate,
@@ -36,14 +37,24 @@ import {
   updatePersistentAuthoringNodeName
 } from '../utils/persistentAuthoringGraph'
 import {
+  createTypedActionNode,
+  connectTypedActionEdge,
+  projectTypedActionEditor,
+  rehydrateTypedActionGraph,
+  updateTypedActionLiteral,
+  type TypedActionFieldProjection
+} from '../utils/workflowActionCatalog'
+import {
   AuthoringOperationQueue,
   authoringProjection,
   authoringStateMessage,
+  catalogConflictDecision,
   diagnosticRange,
   draftSaveMessage,
   isAuthoringConflict,
   isCurrentAuthoringInvalidation,
-  isSameAuthoringVersion
+  isSameAuthoringVersion,
+  isTemplateCatalogConflict
 } from '../utils/persistentAuthoringSession'
 import { projectWorkflowCodeMarkers } from '../utils/workflowCodeMarkers'
 import { useWorkflowTaskRuntime } from '../hooks/useWorkflowTaskRuntime'
@@ -117,6 +128,8 @@ export function PersistentWorkflowAuthoringPanel({
     policy.pythonEditorReadOnly || aggregate === null
   )
   const [graph, setGraph] = useState<WorkflowAuthoringGraph | null>(null)
+  const [actionCatalog, setActionCatalog] =
+    useState<WorkflowActionCatalogSnapshot | null>(null)
   const [canvasDirty, setCanvasDirty] = useState(false)
   const [selectedNodeUuid, setSelectedNodeUuid] = useState<string | null>(null)
   const [selectedNodeName, setSelectedNodeName] = useState('')
@@ -421,6 +434,24 @@ export function PersistentWorkflowAuthoringPanel({
 
   useEffect(() => {
     let active = true
+    setActionCatalog(null)
+    void runtime.getWorkflowActionCatalog()
+      .then((catalog) => {
+        if (active) setActionCatalog(catalog)
+      })
+      .catch((catalogError) => {
+        if (active) {
+          setActionCatalog(null)
+          setError(errorMessage(catalogError))
+        }
+      })
+    return () => {
+      active = false
+    }
+  }, [runtime])
+
+  useEffect(() => {
+    let active = true
     setBusy(true)
     setError(null)
     void queue.run(
@@ -576,14 +607,60 @@ export function PersistentWorkflowAuthoringPanel({
     if (!authority) throw new Error('Authoring aggregate 尚未就绪')
     const sourceUri = authority.draft?.source_uri
     if (!sourceUri) throw new Error('当前 Workflow 尚未注册 package Python Draft')
-    const generated = await queue.run(
+    const request = (graphValue: WorkflowAuthoringGraph) => queue.run(
       () => runtime.generateWorkflowAuthoringPython({
         workflow_uuid: workflowUuid,
         revision: authority.workflow_revision,
         source_uri: sourceUri,
-        graph: sourceGraph
+        graph: graphValue
       })
     )
+    let graphValue = sourceGraph
+    let generated: WorkflowAuthoringTransformResult | null = null
+    let catalogFailure: unknown = null
+    try {
+      generated = await request(graphValue)
+    } catch (generateError) {
+      if (!isTemplateCatalogConflict(generateError)) throw generateError
+      catalogFailure = generateError
+    }
+    const diagnosticCatalogMismatch = generated?.diagnostics.some(
+      (diagnostic) => diagnostic.code === 'template_catalog_mismatch' ||
+        diagnostic.code === 'template_catalog_conflict'
+    ) ?? false
+    if (catalogFailure || diagnosticCatalogMismatch) {
+      setActionCatalog(null)
+      const refreshedCatalog = await runtime.getWorkflowActionCatalog()
+      setActionCatalog(refreshedCatalog)
+      const decision = catalogConflictDecision({
+        dirty: localState.current.canvasDirty,
+        localPython: localState.current.editorValue,
+        localGraph: sourceGraph,
+        observedFingerprint:
+          authority.candidate?.template_catalog_fingerprint ??
+          authority.applied_source?.template_catalog_fingerprint ??
+          actionCatalog?.fingerprint ?? '',
+        currentFingerprint: refreshedCatalog.fingerprint
+      })
+      if (!decision) {
+        if (catalogFailure) throw catalogFailure
+        throw new Error('Action Catalog mismatch 未产生新的 fingerprint')
+      }
+      graphValue = rehydrateTypedActionGraph(
+        refreshedCatalog,
+        decision.retainLocalGraph
+      )
+      setGraph(graphValue)
+      setCanvasDirty(true)
+      localState.current = {
+        ...localState.current,
+        graph: graphValue,
+        canvasDirty: true
+      }
+      setMessage('Action Catalog 已更新；本地画布已按稳定 UUID 重新 hydrate')
+      generated = await request(graphValue)
+    }
+    if (!generated) throw new Error('OS 未返回 Authoring transform')
     const blocking = generated.diagnostics.filter(
       (diagnostic) => diagnostic.severity === 'error'
     )
@@ -594,7 +671,7 @@ export function PersistentWorkflowAuthoringPanel({
       )
     }
     return generated
-  }, [aggregate, queue, runtime, workflowUuid])
+  }, [actionCatalog?.fingerprint, aggregate, queue, runtime, workflowUuid])
 
   const enterMode = useCallback(async (
     nextMode: WorkflowEditMode
@@ -840,12 +917,44 @@ export function PersistentWorkflowAuthoringPanel({
         )
       } catch (applyError) {
         if (!isAuthoringConflict(applyError)) throw applyError
+        let catalogRecovery: {
+          catalog: WorkflowActionCatalogSnapshot
+          localGraph: WorkflowAuthoringGraph
+        } | null = null
+        if (isTemplateCatalogConflict(applyError)) {
+          setActionCatalog(null)
+          const refreshedCatalog = await runtime.getWorkflowActionCatalog()
+          setActionCatalog(refreshedCatalog)
+          const currentGraph = localState.current.graph
+          if (currentGraph) {
+            catalogRecovery = {
+              catalog: refreshedCatalog,
+              localGraph: currentGraph
+            }
+          }
+        }
         remotePending.current = true
         const refreshed = await queue.run(
           () => runtime.getWorkflowAuthoring(workflowUuid)
         )
         remotePending.current = false
         installAggregate(refreshed, '预览已变化，已刷新最新 Authoring 状态')
+        if (catalogRecovery) {
+          const rehydrated = rehydrateTypedActionGraph(
+            catalogRecovery.catalog,
+            catalogRecovery.localGraph
+          )
+          setGraph(rehydrated)
+          setCanvasDirty(true)
+          localState.current = {
+            ...localState.current,
+            graph: rehydrated,
+            canvasDirty: true
+          }
+          setMessage(
+            'Action Catalog 与 Authoring 已刷新；本地画布按稳定 UUID 重新 hydrate'
+          )
+        }
         throw applyError
       }
     })
@@ -896,6 +1005,100 @@ export function PersistentWorkflowAuthoringPanel({
     ? authoringProjection(aggregate).kind
     : null
   const diagnostics = aggregate?.draft?.diagnostics ?? []
+  const selectedActionProjection = useMemo(() => {
+    if (!actionCatalog || !graph || !selectedNodeUuid) {
+      return { editor: null, error: null }
+    }
+    try {
+      return {
+        editor: projectTypedActionEditor(
+          actionCatalog,
+          graph,
+          selectedNodeUuid,
+          diagnostics
+        ),
+        error: null
+      }
+    } catch (projectionError) {
+      return { editor: null, error: errorMessage(projectionError) }
+    }
+  }, [actionCatalog, diagnostics, graph, selectedNodeUuid])
+  const selectedActionEditor = selectedActionProjection.editor
+
+  const addTypedActionNode = (templateUuid: string): void => {
+    if (!actionCatalog || !graph) return
+    const template = actionCatalog.nodeTemplates.find(
+      (item) => item.uuid === templateUuid
+    )
+    if (!template) return
+    const stem = template.name.replace(/[^A-Za-z0-9_]/g, '_') || 'action'
+    let name = stem
+    let suffix = 2
+    while (graph.nodes.some((item) => item.name === name)) {
+      name = `${stem}_${suffix}`
+      suffix += 1
+    }
+    try {
+      const next = createTypedActionNode(actionCatalog, graph, {
+        nodeUuid: globalThis.crypto.randomUUID(),
+        templateUuid,
+        name
+      })
+      setGraph(next)
+      setCanvasDirty(true)
+      setMessage('已从真实 Action template 创建节点；保存前将生成完整 Python')
+    } catch (createError) {
+      setError(errorMessage(createError))
+    }
+  }
+
+  const updateTypedField = (handleUuid: string, value: unknown): void => {
+    if (!actionCatalog || !graph || !selectedNodeUuid) return
+    try {
+      const next = updateTypedActionLiteral(
+        actionCatalog,
+        graph,
+        selectedNodeUuid,
+        handleUuid,
+        value
+      )
+      setGraph(next)
+      setCanvasDirty(true)
+      setMessage('Action 参数已更新；保存前将生成完整 Python')
+    } catch (updateError) {
+      setError(errorMessage(updateError))
+    }
+  }
+
+  const updateTypedFieldFromRaw = (
+    field: TypedActionFieldProjection,
+    raw: string
+  ): void => {
+    try {
+      updateTypedField(field.handleUuid, parseTypedFieldValue(field, raw))
+    } catch (parseError) {
+      setError(errorMessage(parseError))
+    }
+  }
+
+  const connectTypedHandles = (connection: {
+    sourceNodeUuid: string
+    sourceHandleUuid: string
+    targetNodeUuid: string
+    targetHandleUuid: string
+  }): void => {
+    if (!actionCatalog || !graph) return
+    try {
+      const next = connectTypedActionEdge(actionCatalog, graph, {
+        ...connection
+      })
+      setGraph(next)
+      setCanvasDirty(true)
+      setMessage('已用真实 Handle UUID 创建 Edge；保存前将生成完整 Python')
+    } catch (connectError) {
+      setError(errorMessage(connectError))
+    }
+  }
 
   return (
     <div
@@ -1125,6 +1328,26 @@ export function PersistentWorkflowAuthoringPanel({
                   : '画布编辑缓冲以 Applied Graph 为起点；暂无可应用候选'}
             </p>
           </header>
+          {actionCatalog && (
+            <label className="persistent-authoring__template-picker">
+              Action 模板
+              <select
+                aria-label="Action 模板"
+                value=""
+                disabled={busy || !policy.canvasMutationEnabled || !graph}
+                onChange={(event) => {
+                  if (event.target.value) addTypedActionNode(event.target.value)
+                }}
+              >
+                <option value="">选择 typed @action…</option>
+                {actionCatalog.nodeTemplates.map((template) => (
+                  <option key={template.uuid} value={template.uuid}>
+                    {template.displayName}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <div className="persistent-authoring__canvas-body">
             {graph ? (
               <>
@@ -1142,7 +1365,8 @@ export function PersistentWorkflowAuthoringPanel({
                       debugExecutionScope.beforeStartNodeIds
                     }
                     canBeautify={false}
-                    canvasMutationEnabled={false}
+                    canvasMutationEnabled={policy.canvasMutationEnabled}
+                    onConnectHandles={connectTypedHandles}
                   />
                 </div>
                 <aside
@@ -1151,23 +1375,182 @@ export function PersistentWorkflowAuthoringPanel({
                 >
                   <strong>节点属性</strong>
                   {selectedNodeUuid ? (
-                    <label>
-                      节点名称
-                      <input
-                        value={selectedNodeName}
-                        disabled={
-                          busy || !policy.canvasMutationEnabled
-                        }
-                        aria-describedby="persistent-node-name-help"
-                        onChange={(event) => {
-                          setSelectedNodeName(event.target.value)
-                          setSelectedNodeNameDirty(true)
-                          setMessage(
-                            '画布缓冲已修改；保存前将生成完整 Python 差异'
-                          )
-                        }}
-                      />
-                    </label>
+                    <>
+                      <label>
+                        节点名称
+                        <input
+                          value={selectedNodeName}
+                          disabled={
+                            busy || !policy.canvasMutationEnabled
+                          }
+                          aria-describedby="persistent-node-name-help"
+                          onChange={(event) => {
+                            setSelectedNodeName(event.target.value)
+                            setSelectedNodeNameDirty(true)
+                            setMessage(
+                              '画布缓冲已修改；保存前将生成完整 Python 差异'
+                            )
+                          }}
+                        />
+                      </label>
+                      {selectedActionEditor && (
+                        <section
+                          className="persistent-authoring__action-fields"
+                          aria-label="Action 参数"
+                        >
+                          <strong>Action 参数</strong>
+                          {selectedActionEditor.fields.map((field) => (
+                            <div
+                              key={field.handleUuid}
+                              data-workflow-handle-template-uuid={
+                                field.handleUuid
+                              }
+                            >
+                              <label>
+                                {field.displayName}
+                                {field.editorControl === 'material_port' ? (
+                                  <output>
+                                    由真实 target Handle 的 Material binding 提供；
+                                    A1 不把 ResourceSlot 伪造为字符串 literal
+                                  </output>
+                                ) : field.enumValues ? (
+                                  <select
+                                    value={typedFieldInputValue(field)}
+                                    disabled={
+                                      busy || !policy.canvasMutationEnabled
+                                    }
+                                    onChange={(event) => updateTypedField(
+                                      field.handleUuid,
+                                      parseTypedFieldValue(
+                                        field,
+                                        event.target.value
+                                      )
+                                    )}
+                                  >
+                                    <option value="">未设置</option>
+                                    {field.enumValues.map((value) => (
+                                      <option
+                                        key={JSON.stringify(value)}
+                                        value={JSON.stringify(value)}
+                                      >
+                                        {String(value)}
+                                      </option>
+                                    ))}
+                                  </select>
+                                ) : (
+                                  <input
+                                    key={`${field.handleUuid}:${typedFieldInputValue(field)}`}
+                                    defaultValue={typedFieldInputValue(field)}
+                                    placeholder={field.hasDefault
+                                      ? `默认 ${JSON.stringify(
+                                          field.defaultValue
+                                        )}`
+                                      : undefined}
+                                    disabled={
+                                      busy || !policy.canvasMutationEnabled
+                                    }
+                                    onBlur={(event) => updateTypedFieldFromRaw(
+                                      field,
+                                      event.target.value
+                                    )}
+                                  />
+                                )}
+                              </label>
+                              <div>
+                                <button
+                                  type="button"
+                                  disabled={
+                                    busy || !policy.canvasMutationEnabled
+                                  }
+                                  onClick={() => updateTypedField(
+                                    field.handleUuid,
+                                    undefined
+                                  )}
+                                >
+                                  清除值
+                                </button>
+                                {field.nullable && (
+                                  <button
+                                    type="button"
+                                    disabled={
+                                      busy || !policy.canvasMutationEnabled
+                                    }
+                                    onClick={() => updateTypedField(
+                                      field.handleUuid,
+                                      null
+                                    )}
+                                  >
+                                    设为 null
+                                  </button>
+                                )}
+                              </div>
+                              <small>
+                                <span>{field.required ? '必填' : '选填'}</span>
+                                <span>
+                                  {field.hasDefault ? '默认值' : '无默认值'}
+                                </span>
+                                <span>
+                                  {field.nullable ? '允许空值' : '不可为空'}
+                                </span>
+                              </small>
+                              {selectedActionEditor.diagnostics.some(
+                                (diagnostic) => diagnostic.handleUuid ===
+                                  field.handleUuid
+                              ) && (
+                                <ul aria-label={
+                                  `Action 参数诊断 ${field.handleUuid}`
+                                }>
+                                  {selectedActionEditor.diagnostics
+                                    .filter((diagnostic) =>
+                                      diagnostic.handleUuid === field.handleUuid
+                                    )
+                                    .map((diagnostic, index) => (
+                                      <li key={`${diagnostic.code}:${index}`}>
+                                        {diagnostic.message}
+                                      </li>
+                                    ))}
+                                </ul>
+                              )}
+                            </div>
+                          ))}
+                          {selectedActionEditor.diagnostics.some(
+                            (diagnostic) => !diagnostic.handleUuid
+                          ) && (
+                            <ul aria-label="Action 字段诊断">
+                              {selectedActionEditor.diagnostics
+                                .filter((diagnostic) =>
+                                  !diagnostic.handleUuid
+                                )
+                                .map((diagnostic, index) => (
+                                  <li key={`${diagnostic.code}:${index}`}>
+                                    {diagnostic.message}
+                                  </li>
+                                ))}
+                            </ul>
+                          )}
+                          <div aria-label="Action Handle 端口">
+                            {actionCatalog?.nodeTemplates.find(
+                              (template) => template.uuid ===
+                                selectedActionEditor.templateUuid
+                            )?.handles.map((handle) => (
+                              <span
+                                key={handle.uuid}
+                                data-workflow-handle-template-uuid={handle.uuid}
+                                title={`${handle.ioType}:${handle.handleKey}`}
+                              >
+                                {handle.displayName}
+                              </span>
+                            ))}
+                          </div>
+                        </section>
+                      )}
+                      {selectedActionProjection.error && (
+                        <p role="alert">
+                          Action template/Handle 投影失败：
+                          {selectedActionProjection.error}
+                        </p>
+                      )}
+                    </>
                   ) : (
                     <p>选择一个节点后可编辑可由 Python 表示的属性。</p>
                   )}
@@ -1415,6 +1798,60 @@ function rebaseGraphIdentity(
 
 function errorMessage(value: unknown): string {
   return value instanceof Error ? value.message : String(value)
+}
+
+function typedFieldInputValue(field: TypedActionFieldProjection): string {
+  if (field.valueState === 'missing') return ''
+  if (field.enumValues) return JSON.stringify(field.value)
+  if (typeof field.value === 'string') return field.value
+  return JSON.stringify(field.value)
+}
+
+function parseTypedFieldValue(
+  field: TypedActionFieldProjection,
+  raw: string
+): unknown {
+  if (field.enumValues) return raw === '' ? undefined : JSON.parse(raw)
+  const base = typedNonNullSchema(field.valueSchema)
+  if (base.$slot === 'ResourceSlot') {
+    throw new Error(`${field.displayName}必须通过 Material binding 提供`)
+  }
+  if (base.type === 'string') return raw
+  if (base.type === 'number' || base.type === 'integer') {
+    if (raw.trim() === '') return undefined
+    const value = Number(raw)
+    if (!Number.isFinite(value)) {
+      throw new Error(`${field.displayName}必须是有限数字`)
+    }
+    if (base.type === 'integer' && !Number.isInteger(value)) {
+      throw new Error(`${field.displayName}必须是整数`)
+    }
+    return value
+  }
+  if (base.type === 'boolean') {
+    if (raw !== 'true' && raw !== 'false') {
+      throw new Error(`${field.displayName}必须是 true 或 false`)
+    }
+    return raw === 'true'
+  }
+  if (raw.trim() === '') return undefined
+  try {
+    return JSON.parse(raw)
+  } catch {
+    throw new Error(`${field.displayName}必须是合法 JSON`)
+  }
+}
+
+function typedNonNullSchema(
+  schema: Record<string, unknown>
+): Record<string, unknown> {
+  if (!Array.isArray(schema.anyOf)) return schema
+  const value = schema.anyOf.find((item) =>
+    item && typeof item === 'object' &&
+      !Array.isArray(item) &&
+      (item as Record<string, unknown>).type !== 'null'
+  )
+  return value as Record<string, unknown> || {}
 }
 
 const TERMINAL_TASK_STATUSES = new Set([

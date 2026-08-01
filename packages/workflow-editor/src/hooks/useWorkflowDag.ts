@@ -63,7 +63,8 @@ export function useWorkflowDag(nodes: WorkflowNode[], links: WorkflowLink[]): Us
         color: getNodeColor(node.labNodeType, node.type),
         kind: node.type,
         groupKind: node.groupKind,
-        descendantCount: node.descendantNodeIds?.length
+        descendantCount: node.descendantNodeIds?.length,
+        handles: node.handles
       }
     }))
 
@@ -74,6 +75,8 @@ export function useWorkflowDag(nodes: WorkflowNode[], links: WorkflowLink[]): Us
         id: `e-${link.source}-${link.target}-${index}`,
         source: link.source,
         target: link.target,
+        sourceHandle: link.sourceHandleUuid || undefined,
+        targetHandle: link.targetHandleUuid || undefined,
         label: link.branch ? (link.branch === 'true' ? 'TRUE' : 'FALSE') : undefined,
         labelStyle: {
           fill: link.branch === 'true' ? '#087f5b' : '#c92a2a',

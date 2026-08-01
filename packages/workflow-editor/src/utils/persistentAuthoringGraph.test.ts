@@ -4,6 +4,7 @@ import type { WorkflowAuthoringGraph } from '@unilab/services'
 
 import {
   parseWorkflowAuthoringGraphImport,
+  projectPersistentAuthoringGraph,
   updatePersistentAuthoringNodeName
 } from './persistentAuthoringGraph'
 
@@ -19,6 +20,67 @@ const graph: WorkflowAuthoringGraph = {
 }
 
 describe('persistent Authoring canvas graph edits', () => {
+  it('projects real Handle UUIDs into ReactFlow nodes and edges', () => {
+    const projected = projectPersistentAuthoringGraph({
+      ...graph,
+      nodes: [
+        {
+          uuid: 'node-1',
+          name: 'prepared',
+          workflow_node_template_uuid: 'template-1',
+          param: {}
+        },
+        {
+          uuid: 'node-2',
+          name: 'analyzed',
+          workflow_node_template_uuid: 'template-2',
+          param: {}
+        }
+      ],
+      node_templates: [
+        { uuid: 'template-1', name: 'source', type: 'action' },
+        { uuid: 'template-2', name: 'target', type: 'action' }
+      ],
+      handle_templates: [
+        {
+          uuid: 'source-handle',
+          workflow_node_template_uuid: 'template-1',
+          handle_key: 'sample',
+          display_name: '样品输出',
+          io_type: 'source'
+        },
+        {
+          uuid: 'target-handle',
+          workflow_node_template_uuid: 'template-2',
+          handle_key: 'sample',
+          display_name: '样品输入',
+          io_type: 'target'
+        }
+      ],
+      edges: [{
+        uuid: 'edge-1',
+        source_node_uuid: 'node-1',
+        source_handle_uuid: 'source-handle',
+        target_node_uuid: 'node-2',
+        target_handle_uuid: 'target-handle',
+        meta_data: {}
+      }]
+    })
+
+    expect(projected.nodes[0]?.handles).toEqual([
+      expect.objectContaining({ uuid: 'source-handle', ioType: 'source' })
+    ])
+    expect(projected.nodes[1]?.handles).toEqual([
+      expect.objectContaining({ uuid: 'target-handle', ioType: 'target' })
+    ])
+    expect(projected.links).toEqual([
+      expect.objectContaining({
+        sourceHandleUuid: 'source-handle',
+        targetHandleUuid: 'target-handle'
+      })
+    ])
+  })
+
   it('creates an immutable, Python-representable node rename', () => {
     const updated = updatePersistentAuthoringNodeName(
       graph,

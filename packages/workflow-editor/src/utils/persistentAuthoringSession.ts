@@ -91,6 +91,33 @@ export function isAuthoringConflict(value: unknown): boolean {
   ].includes(String(error.code || ''))
 }
 
+export function isTemplateCatalogConflict(value: unknown): boolean {
+  if (!value || typeof value !== 'object') return false
+  return String((value as { code?: unknown }).code || '') ===
+    'template_catalog_conflict'
+}
+
+export function catalogConflictDecision(input: {
+  dirty: boolean
+  localPython: string
+  localGraph: WorkflowAuthoringGraph
+  observedFingerprint: string
+  currentFingerprint: string
+}): {
+  kind: 'refresh_catalog_and_recompile'
+  retainLocalPython: string
+  retainLocalGraph: WorkflowAuthoringGraph
+  clearDirty: false
+} | null {
+  if (input.observedFingerprint === input.currentFingerprint) return null
+  return {
+    kind: 'refresh_catalog_and_recompile',
+    retainLocalPython: input.localPython,
+    retainLocalGraph: input.localGraph,
+    clearDirty: false
+  }
+}
+
 export function diagnosticRange(diagnostic: {
   source_range?: {
     start_line: number
