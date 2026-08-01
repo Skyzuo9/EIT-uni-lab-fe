@@ -402,92 +402,6 @@ export interface WorkflowTaskCommand {
   consumed_at?: string
 }
 
-export interface WorkflowDebugProjection {
-  enabled: boolean
-  status:
-    | 'disabled'
-    | 'pending'
-    | 'running'
-    | 'pause_pending'
-    | 'paused'
-    | 'stepping'
-    | 'completed'
-    | 'failed'
-    | 'cancelled'
-    | 'terminated'
-  breakpoints?: string[]
-  startNodeId?: string | null
-  pausedBeforeNodeId?: string | null
-  runToNodeId?: string | null
-  stopReason?: 'terminate' | 'emergency_stop' | null
-  stateVersion?: number
-  semantics?: string
-}
-
-/** @deprecated UI1 Runtime 不得使用 Run identity；待旧 panel 调用方移除后删除。 */
-export interface WorkflowRun {
-  id: string
-  status:
-    | 'pending'
-    | 'running'
-    | 'completed'
-    | 'failed'
-    | 'cancelled'
-    | 'cancel_requested'
-    | 'reconciling'
-    | 'dispatch_unknown'
-  workflowRevisionHash?: string
-  debug?: WorkflowDebugProjection
-}
-
-/** @deprecated UI1 Runtime 必须读取 WorkflowNodeJob 权威投影。 */
-export interface WorkflowRunNode {
-  nodeId: string
-  sourceNodeId: string
-  nodeType: string
-  deviceId: string
-  action: string
-  state: string
-  result: Record<string, unknown>
-  attempt: number
-}
-
-/** @deprecated UI1 Runtime 只使用全局 SSE invalidation 后的 REST 补读。 */
-export interface WorkflowRunEvent {
-  seq: number
-  runId: string
-  type: string
-  nodeId: string | null
-  timestamp: number
-  payload: Record<string, unknown>
-}
-
-/** @deprecated 共享 command 只有 step/pause/resume/cancel。 */
-export type WorkflowDebugCommand =
-  | 'set_breakpoints'
-  | 'pause'
-  | 'continue'
-  | 'step'
-  | 'step_over'
-  | 'step_into'
-  | 'run_to'
-  | 'terminate'
-  | 'emergency_stop'
-
-export interface WorkflowRunRequest {
-  source: {
-    format: 'workflow_revision_v2'
-    revision: WorkflowRevision
-  }
-  parameters?: Record<string, unknown>
-  client_request_id?: string
-  debug?: {
-    pause_on_start?: boolean
-    breakpoints?: string[]
-    start_node_id?: string
-  }
-}
-
 export interface WorkflowEventSubscription {
   dispose: () => void
 }
@@ -558,34 +472,6 @@ export interface WorkflowRuntimePort {
   subscribeWorkflowRuntime: (
     onInvalidate: (event: WorkflowRuntimeChangedEvent) => void,
     options?: WorkflowRuntimeSubscriptionOptions
-  ) => WorkflowEventSubscription
-  /** @deprecated UI1 Runtime 使用 createWorkflowTask。 */
-  createRun: (request: WorkflowRunRequest) => Promise<WorkflowRun>
-  /** @deprecated UI1 Runtime 使用 getWorkflowTask。 */
-  getRun: (runId: string) => Promise<WorkflowRun>
-  /** @deprecated UI1 Runtime 使用 listWorkflowTaskJobs。 */
-  listRunNodes: (runId: string) => Promise<WorkflowRunNode[]>
-  /** @deprecated 不得使用 Task-scoped event page。 */
-  listRunEvents: (
-    runId: string,
-    afterSeq?: number
-  ) => Promise<{ events: WorkflowRunEvent[]; nextSeq: number }>
-  /** @deprecated UI1 Runtime 使用 commandWorkflowTask。 */
-  command: (
-    runId: string,
-    command: WorkflowDebugCommand,
-    payload?: Record<string, unknown>
-  ) => Promise<WorkflowRun>
-  /** @deprecated cancel 是 WorkflowTask command。 */
-  cancelRun: (runId: string) => Promise<WorkflowRun>
-  /** @deprecated UI1 Runtime 只订阅全局 SSE。 */
-  subscribeRunEvents: (
-    runId: string,
-    onEvent: (event: WorkflowRunEvent) => void,
-    options?: {
-      afterSeq?: number
-      onError?: (error: Error) => void
-    }
   ) => WorkflowEventSubscription
   dispose: () => void
 }
@@ -891,100 +777,6 @@ export function createWorkflowRuntime(
       void connect()
       return subscription
     },
-    createRun: (body) =>
-      request('/api/v1/runtime/runs', {
-        method: 'POST',
-        headers: jsonHeaders(),
-        body: JSON.stringify(body)
-      }),
-    getRun: (runId) =>
-      request(`/api/v1/runtime/runs/${encodeURIComponent(runId)}`),
-    listRunNodes: async (runId) => {
-      const result = await request<{ items: WorkflowRunNode[] }>(
-        `/api/v1/runtime/runs/${encodeURIComponent(runId)}/nodes`
-      )
-      return result.items
-    },
-    listRunEvents: (runId, afterSeq = 0) =>
-      request(
-        `/api/v1/runtime/runs/${encodeURIComponent(runId)}/events?after_seq=${afterSeq}`
-      ),
-    command: async (runId, command, payload = {}) => {
-      await request(`/api/v1/runtime/runs/${encodeURIComponent(runId)}/commands`, {
-        method: 'POST',
-        headers: jsonHeaders(),
-        body: JSON.stringify({ command, payload })
-      })
-      return port.getRun(runId)
-    },
-    cancelRun: (runId) =>
-      request(`/api/v1/runtime/runs/${encodeURIComponent(runId)}/cancel`, {
-        method: 'POST',
-        headers: jsonHeaders()
-      }),
-    subscribeRunEvents: (runId, onEvent, options = {}) => {
-      let disposed = false
-      let socket: WebSocket | null = null
-      let cursor = options.afterSeq ?? 0
-      let fallbackTimer: ReturnType<typeof globalThis.setTimeout> | null = null
-      let pollingStarted = false
-
-      const poll = async (): Promise<void> => {
-        if (disposed) return
-        try {
-          const page = await port.listRunEvents(runId, cursor)
-          for (const event of page.events) onEvent(event)
-          cursor = page.nextSeq
-        } catch (error) {
-          options.onError?.(asError(error))
-        } finally {
-          if (!disposed) fallbackTimer = globalThis.setTimeout(poll, 500)
-        }
-      }
-
-      const startPolling = (): void => {
-        if (disposed || pollingStarted) return
-        pollingStarted = true
-        void poll()
-      }
-
-      if (typeof WebSocket === 'function') {
-        try {
-          socket = new WebSocket(
-            runtimeEventsUrl(backend, runId, cursor)
-          )
-          socket.onmessage = (message) => {
-            try {
-              const event = JSON.parse(String(message.data)) as WorkflowRunEvent
-              cursor = Math.max(cursor, event.seq)
-              onEvent(event)
-            } catch (error) {
-              options.onError?.(asError(error))
-            }
-          }
-          socket.onerror = () => {
-            startPolling()
-          }
-          socket.onclose = startPolling
-        } catch (error) {
-          options.onError?.(asError(error))
-          startPolling()
-        }
-      } else {
-        startPolling()
-      }
-
-      const subscription: WorkflowEventSubscription = {
-        dispose: () => {
-          disposed = true
-          socket?.close()
-          if (fallbackTimer != null) globalThis.clearTimeout(fallbackTimer)
-          subscriptions.delete(subscription)
-        }
-      }
-      subscriptions.add(subscription)
-      return subscription
-    },
     dispose: () => {
       for (const subscription of [...subscriptions]) subscription.dispose()
     }
@@ -1050,22 +842,6 @@ function invalidRuntimeResponse(): ServiceError {
 
 function jsonHeaders(): HeadersInit {
   return { 'Content-Type': 'application/json' }
-}
-
-function runtimeEventsUrl(
-  backend: BackendConfig,
-  runId: string,
-  afterSeq: number
-): string {
-  const base = backend.realtimeUrl || backend.apiUrl
-  const url = new URL(base)
-  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
-  url.pathname = `${url.pathname.replace(/\/$/, '')}/api/v1/runtime/events`
-  url.search = new URLSearchParams({
-    run_id: runId,
-    after_seq: String(afterSeq)
-  }).toString()
-  return url.toString()
 }
 
 function workflowEventsUrl(backend: BackendConfig): string {

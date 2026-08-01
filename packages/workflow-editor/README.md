@@ -52,29 +52,22 @@ Python 发生编辑后，切回 JSON、保存、校验或运行前调用：
 失败时保留用户当前代码和上一个有效 revision。不要在浏览器执行 Python，也不要用
 前端正则或行号猜测重建 DAG。
 
-## 起始点、断点与单步
+## 起始点、断点与 WorkflowTask 控制
 
 - 节点卡片中的按钮是主入口；DAG 右键设起始点、双击切换断点是快捷方式。
 - 起始点和断点同时投影到 DAG 与代码行。Python 使用 `source_map`，JSON 使用稳定
   `node_id` 的位置映射。
 - 起始点之前或从该点不可达的节点在运行前置灰；运行创建后以 OS 的 `skipped` 投影为准。
 - 断点表示“在该节点执行之前暂停”。蓝色暂停节点尚未申请资源、尚未进入设备动作队列。
-- `step` 只放行一个逻辑 ready 节点；当前 v1 的 `step_over`、`step_into` 与 `step`
-  语义相同，不代表已实现子工作流调用栈。
-- 继续/单步只临时越过当前断点一次，不会清除断点。
+- 本地起始点/断点只用于 Debugger launch 预览；普通 `normal | step` Task 不携带它们。
+- 共享 Runtime command 只有 `pause`、`resume`、`step`、`cancel`，HTTP 201 只表示
+  durable accepted，UI 必须等待 REST/SSE 权威投影。
 
-### 七个运行控制动作
+### 已退役的 Run 调试 transport
 
-`src/utils/debugControls.ts` 是暂停、单步、步过、步入、继续、终止、急停的唯一前端
-控制定义，集中维护命令名、启用条件、危险样式和用户提示。组件只能把动作发送给
-`WorkflowRuntimePort.command`，不能在本地推进节点状态。
-
-- `pause` 停止新节点 admission，当前运行中的物理动作收敛后才进入 `paused`。
-- `terminate` 终止当前 run 并取消其未完成节点。
-- `emergency_stop` 立即请求当前 run 的设备清理并停止后续调度；它不是全站硬件急停，
-  UI 和测试都不得把它描述为硬件安全回路。
-- OS 用 `stopReason`、`debug.terminate_requested` 和
-  `debug.emergency_stop_requested` 保留两种停止原因，HTTP 命令成功不等于 run 已终止。
+UI1D 已删除 `useWorkflowRun`、七动作 `debugControls`、旧 Run/WebSocket/polling 和平行
+Legacy 工作台。真正的 step-over/step-into、Hold、run-to、terminate 等能力必须等待
+OS-only Debugger Interface；不得把它们映射回共享 WorkflowTask command 猜测语义。
 
 ### 视觉语义
 
@@ -91,13 +84,17 @@ Python 发生编辑后，切回 JSON、保存、校验或运行前调用：
 
 ## 主要文件
 
-- `src/components/WorkflowPanel.tsx`：编写、保存、运行和调试的组合入口。
+- `src/components/WorkflowPanel.tsx`：只负责解析稳定 Workflow UUID 并进入持久工作台；
+  没有有效 UUID 时 fail closed。
+- `src/components/PersistentWorkflowAuthoringPanel.tsx`：Authoring、Task controller、原
+  DAG/代码/Debugger/Output surface 的唯一生产组合入口。
+- `src/runtime/WorkflowTaskController.ts`：Task/Jobs coherent projection、command、
+  feedback cursor 和 SSE rehydration。
 - `src/components/WorkflowDag.tsx`：只读拓扑投影及节点快捷交互。
 - `src/components/WorkflowNodeCard.tsx`：节点状态、起始点和断点的可访问入口。
 - `src/utils/canonicalWorkflow.ts`：Canonical revision 与 UI 投影辅助。
 - `src/utils/parseWorkflowJson.ts`：Cloud JSON 的严格识别、Canonical v2
   迁移和兼容投影。
-- `src/utils/debugControls.ts`：七个调试动作的命令、启用矩阵与文案。
 - `src/utils/parseWorkflow.ts`：画布所需的只读解析。
 - `src/hooks/useWorkflowDag.ts`：ReactFlow 布局与视图状态。
 
@@ -121,9 +118,8 @@ Python 发生编辑后，切回 JSON、保存、校验或运行前调用：
 生成可运行载荷。`parent_uuid` 仅是 Cloud 画布分组信息，迁移时展平并向用户显示
 警告。
 
-浏览器 E2E 使用 `e2e/fixtures/host-node-test-latency` 声明 action contract，
-再由真实 offline local bridge 完成导入校验和整图运行；该 Profile 只是测试夹具，
-不能作为生产 Edge 的注册方式。
+旧 Cloud 导入/临时 Run 工作台已从生产入口退役。保留的迁移函数只能用于显式
+Authoring 导入转换，不能恢复 Cloud panel、临时 DAG 执行或第二份 Workflow authority。
 
 ## 修改检查
 
@@ -131,8 +127,7 @@ Python 发生编辑后，切回 JSON、保存、校验或运行前调用：
 pnpm --filter @unilab/workflow-editor typecheck
 pnpm --filter @unilab/workflow-editor test
 pnpm test:e2e:workflow
-pnpm test:e2e:workflow-debug
-pnpm test:e2e:workflow-actions
+pnpm test:e2e:workflow-final-gate
 ```
 
 涉及运行和调试时，E2E 必须连接真实 v1 local bridge/OS，且检查浏览器

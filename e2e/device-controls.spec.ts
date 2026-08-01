@@ -13,7 +13,7 @@ const ARTIFACT_ROOT = resolve(
   'device-controls'
 )
 
-test.describe('Edge device catalog and single-action debug', () => {
+test.describe('Edge device catalog and WorkflowTask handoff', () => {
   let bridge: OfflineLocalBridge
 
   test.beforeAll(async () => {
@@ -24,7 +24,7 @@ test.describe('Edge device catalog and single-action debug', () => {
     await bridge.stop()
   })
 
-  test('Edge-reported action node can be executed through the OS runtime', async ({
+  test('keeps the Action form but retires direct Run submission', async ({
     page
   }) => {
     const browserErrors = observeBrowserErrors(page)
@@ -81,39 +81,11 @@ test.describe('Edge device catalog and single-action debug', () => {
     ).toBeVisible()
     await detail.getByRole('spinbutton', { name: 'volume' }).fill('12.5')
 
-    await detail.getByRole('button', { name: '运行此动作' }).click()
-
-    await expect(detail.getByText('执行中', { exact: true })).toBeVisible()
-    await expect(detail.getByText('执行成功', { exact: true }))
-      .toBeVisible({ timeout: 10_000 })
-    await expect(detail.getByLabel('Action 运行日志')).toBeVisible()
-
-    const runRequest = runtimeRequests.find(
-      (request) =>
-        request.method === 'POST'
-        && request.url.endsWith('/api/v1/runtime/runs')
-    )
-    expect(runRequest?.body).toMatchObject({
-      source: {
-        format: 'workflow_revision_v2',
-        revision: {
-          schema_version: '2',
-          invocations: [
-            {
-              node_id: 'action',
-              action_ref: 'pump-1.dose',
-              input_bindings: {
-                volume: {
-                  kind: 'literal',
-                  value: 12.5
-                }
-              }
-            }
-          ],
-          control_edges: []
-        }
-      }
+    const workflowHandoff = detail.getByRole('button', {
+      name: '请在工作流中运行'
     })
+    await expect(workflowHandoff).toBeDisabled()
+    await expect(detail.getByText(/单节点临时执行接口已退役/)).toBeVisible()
     expect(
       runtimeRequests.some((request) =>
         request.url.endsWith('/api/v1/workflow-node-templates')
@@ -121,13 +93,13 @@ test.describe('Edge device catalog and single-action debug', () => {
     ).toBe(true)
     expect(
       runtimeRequests.some((request) =>
-        /\/api\/v1\/runtime\/runs\/[^/]+\/nodes$/.test(request.url)
+        request.url.includes('/api/v1/runtime/runs')
       )
-    ).toBe(true)
+    ).toBe(false)
 
     mkdirSync(ARTIFACT_ROOT, { recursive: true })
     await page.screenshot({
-      path: resolve(ARTIFACT_ROOT, 'edge-action-debug-success.png'),
+      path: resolve(ARTIFACT_ROOT, 'edge-action-workflow-handoff.png'),
       animations: 'disabled',
       fullPage: false
     })

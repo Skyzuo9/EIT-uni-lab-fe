@@ -95,110 +95,17 @@ describe('laboratory service', () => {
     })
   })
 
-  it('runs and cancels one Action through the unified runtime contract', async () => {
-    const requests: Array<{
-      path: string
-      method?: string
-      body?: string
-    }> = []
-    const http = fixtureHttp({
-      '/api/v1/runtime/runs': {
-        id: 'run-1',
-        status: 'pending'
-      },
-      '/api/v1/runtime/runs/run-1': {
-        id: 'run-1',
-        status: 'failed'
-      },
-      '/api/v1/runtime/runs/run-1/nodes': {
-        items: [
-          {
-            nodeId: 'action',
-            state: 'failed',
-            result: {
-              error: 'Traceback: pump failed',
-              info: ['started', 'stopped']
-            }
-          }
-        ]
-      },
-      '/api/v1/runtime/runs/run-1/events?after_seq=0': {
-        events: [
-          {
-            seq: 1,
-            type: 'node_feedback',
-            payload: { progress: 0.5 }
-          }
-        ],
-        nextSeq: 1
-      },
-      '/api/v1/runtime/runs/run-1/cancel': {
-        id: 'run-1',
-        status: 'cancel_requested'
-      }
-    }, requests)
+  it('does not expose the retired direct Action Run transport', () => {
     const service = createLaboratoryService(
-      http,
+      fixtureHttp({}),
       getDefaultBackend('local-python')
     )
 
-    await expect(service.addJob({
-      deviceId: 'pump-1',
-      action: 'aspirate',
-      actionArgs: { volume: 12 }
-    })).resolves.toMatchObject({
-      jobId: 'run-1',
-      status: 'pending'
-    })
-
-    const createBody = JSON.parse(requests[0].body ?? '{}')
-    expect(createBody).toMatchObject({
-      source: {
-        format: 'workflow_revision_v2',
-        revision: {
-          schema_version: '2',
-          workflow_id: 'single-action:pump-1',
-          invocations: [
-            {
-              node_id: 'action',
-              action_ref: 'pump-1.aspirate',
-              input_bindings: {
-                volume: { kind: 'literal', value: 12 }
-              }
-            }
-          ],
-          control_edges: []
-        }
-      }
-    })
-
-    await expect(service.getJobStatus('run-1')).resolves.toMatchObject({
-      status: 'failed',
-      result: {
-        nodes: [
-          {
-            result: {
-              error: 'Traceback: pump failed',
-              info: ['started', 'stopped']
-            }
-          }
-        ]
-      },
-      feedback: {
-        events: [
-          {
-            payload: { progress: 0.5 }
-          }
-        ]
-      }
-    })
-    await expect(service.cancelJob('run-1')).resolves.toMatchObject({
-      status: 'cancel_requested'
-    })
-    expect(requests.at(-1)).toMatchObject({
-      path: '/api/v1/runtime/runs/run-1/cancel',
-      method: 'POST'
-    })
+    expect(Object.keys(service)).not.toEqual(expect.arrayContaining([
+      'addJob',
+      'getJobStatus',
+      'cancelJob'
+    ]))
   })
 
   it('probes the production Python OS through its versioned health route', async () => {

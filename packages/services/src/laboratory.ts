@@ -78,30 +78,6 @@ export interface ResourceNode {
   children: ResourceNode[]
 }
 
-export interface JobRequest {
-  deviceId: string
-  action: string
-  actionArgs: Record<string, unknown>
-}
-
-export type ActionRunStatus =
-  | 'unknown'
-  | 'pending'
-  | 'running'
-  | 'completed'
-  | 'failed'
-  | 'cancelled'
-  | 'cancel_requested'
-  | 'reconciling'
-  | 'dispatch_unknown'
-
-export interface JobResult {
-  jobId: string
-  status: ActionRunStatus
-  result: Record<string, unknown> | null
-  feedback: Record<string, unknown> | null
-}
-
 interface RuntimeActionTemplate {
   actionRef: string
   actionName: string
@@ -110,8 +86,6 @@ interface RuntimeActionTemplate {
   inputSchema: Record<string, unknown>
   outputSchema: Record<string, unknown>
 }
-
-let actionRunSequence = 0
 
 export function createLaboratoryService(
   http: HttpClient,
@@ -188,71 +162,6 @@ export function createLaboratoryService(
         '/api/v1/resources'
       )
       return raw.map(mapResource)
-    },
-
-    async addJob(job: JobRequest): Promise<JobResult> {
-      const clientRequestId = actionRunId()
-      const actionRef = `${job.deviceId}.${job.action}`
-      const raw = await http.request<Record<string, unknown>>(
-        '/api/v1/runtime/runs',
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            source: {
-              format: 'workflow_revision_v2',
-              revision: {
-                schema_version: '2',
-                revision_id: clientRequestId,
-                workflow_id: `single-action:${job.deviceId}`,
-                invocations: [
-                  {
-                    node_id: 'action',
-                    action_ref: actionRef,
-                    name: job.action,
-                    input_bindings: Object.fromEntries(
-                      Object.entries(job.actionArgs).map(([name, value]) => [
-                        name,
-                        { kind: 'literal', value }
-                      ])
-                    )
-                  }
-                ],
-                control_edges: []
-              }
-            },
-            client_request_id: clientRequestId
-          })
-        }
-      )
-      return mapRuntimeJob(raw)
-    },
-
-    async getJobStatus(jobId: string): Promise<JobResult> {
-      const encodedJobId = encodeURIComponent(jobId)
-      const [run, nodePage, eventPage] = await Promise.all([
-        http.request<Record<string, unknown>>(
-          `/api/v1/runtime/runs/${encodedJobId}`
-        ),
-        http.request<Record<string, unknown>>(
-          `/api/v1/runtime/runs/${encodedJobId}/nodes`
-        ),
-        http.request<Record<string, unknown>>(
-          `/api/v1/runtime/runs/${encodedJobId}/events?after_seq=0`
-        )
-      ])
-      return mapRuntimeJob(run, nodePage, eventPage)
-    },
-
-    async cancelJob(jobId: string): Promise<JobResult> {
-      const raw = await http.request<Record<string, unknown>>(
-        `/api/v1/runtime/runs/${encodeURIComponent(jobId)}/cancel`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' }
-        }
-      )
-      return mapRuntimeJob(raw)
     }
   }
 }
@@ -368,45 +277,6 @@ function defaultsFromInputSchema(
         : []
     })
   )
-}
-
-function mapRuntimeJob(
-  raw: Record<string, unknown>,
-  nodePage?: Record<string, unknown>,
-  eventPage?: Record<string, unknown>
-): JobResult {
-  const nodes = Array.isArray(nodePage?.items) ? nodePage.items : []
-  const events = Array.isArray(eventPage?.events) ? eventPage.events : []
-  return {
-    jobId: str(raw.id ?? raw.run_id),
-    status: actionRunStatus(raw.status),
-    result: nodes.length > 0 ? { nodes } : null,
-    feedback: events.length > 0 ? { events } : null
-  }
-}
-
-function actionRunStatus(value: unknown): ActionRunStatus {
-  switch (value) {
-    case 'pending':
-    case 'running':
-    case 'completed':
-    case 'failed':
-    case 'cancelled':
-    case 'cancel_requested':
-    case 'reconciling':
-    case 'dispatch_unknown':
-      return value
-    default:
-      return 'unknown'
-  }
-}
-
-function actionRunId(): string {
-  if (typeof globalThis.crypto?.randomUUID === 'function') {
-    return globalThis.crypto.randomUUID()
-  }
-  actionRunSequence += 1
-  return `device-action-${Date.now()}-${actionRunSequence}`
 }
 
 function str(value: unknown): string {

@@ -13,15 +13,15 @@
     "build:desktop": "pnpm --filter @unilab/desktop build",
     "typecheck": "pnpm -r --if-present typecheck",
     "test": "pnpm -r --if-present test",
-    "test:e2e:workflow": "playwright test e2e/workflow-runtime.spec.ts e2e/workflow-cloud-import.spec.ts",
+    "test:e2e:workflow": "playwright test e2e/workflow-authoring-real-os.spec.ts e2e/workflow-task-runtime-real-os.spec.ts e2e/workflow-task-runtime-resilience-real-os.spec.ts",
     "test:e2e:workflow-authoring": "playwright test e2e/workflow-authoring-real-os.spec.ts",
     "test:e2e:workflow-task-runtime": "playwright test e2e/workflow-task-runtime-real-os.spec.ts",
     "test:e2e:workflow-task-runtime-resilience": "playwright test e2e/workflow-task-runtime-resilience-real-os.spec.ts",
-    "test:e2e:workflow-debug": "playwright test e2e/workflow-debug-scenarios.spec.ts e2e/workflow-debug-actions.spec.ts",
-    "test:e2e:workflow-actions": "playwright test e2e/workflow-debug-actions.spec.ts",
+    "test:workflow-runtime-contract": "node scripts/verify-workflow-runtime-contract.mjs",
+    "test:e2e:workflow-final-gate": "pnpm test:workflow-runtime-contract && playwright test e2e/workflow-runtime-final-gate-real-os.spec.ts",
     "test:e2e:material-create": "UNILAB_E2E_MATERIAL_CREATE_FIXTURE=1 playwright test e2e/material-create.spec.ts",
     "test:e2e:materials": "UNILAB_E2E_HEADED=1 xvfb-run -a playwright test e2e/material-scene.spec.ts",
-    "test:e2e:device": "playwright test e2e/device-controls.spec.ts e2e/device-action-run.spec.ts"
+    "test:e2e:device": "playwright test e2e/device-controls.spec.ts"
   },
   "devDependencies": {
     "@playwright/test": "1.55.0",

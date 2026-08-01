@@ -35,6 +35,10 @@ export interface PersistentAuthoringOs {
     jobUuid: string,
     samples: readonly RuntimeFeedbackSample[]
   ) => Promise<void>
+  createTerminalCommandRace: (
+    taskUuid: string,
+    idempotencyKey: string
+  ) => Promise<RuntimeCommandMutationResult>
   stopProcess: () => Promise<void>
   restart: () => Promise<void>
   stop: () => Promise<void>
@@ -48,6 +52,13 @@ export interface RuntimeFeedbackSample {
   idempotency_key: string
 }
 
+export interface RuntimeCommandMutationResult {
+  uuid: string
+  status: string
+  result: Record<string, unknown>
+  [key: string]: unknown
+}
+
 export interface PersistentAuthoringOsOptions {
   faultProxy?: boolean
 }
@@ -57,7 +68,7 @@ export async function startPersistentAuthoringOs(
 ): Promise<PersistentAuthoringOs> {
   const osRepository = resolve(
     process.env.UNILAB_AUTHORING_OS_ROOT ||
-      '/home/gaojing/.worktrees/uni-lab-os-runtime-integration-final'
+      '/home/changjunhan/Uni-Lab-Core/.worktrees/uni-lab-os-runtime-integration'
   )
   const python =
     process.env.UNILAB_OS_PYTHON ||
@@ -146,16 +157,29 @@ export async function startPersistentAuthoringOs(
       }
       faultProxy.failNext(request)
     },
-    startRuntimeJob: (taskUuid, jobUuid) => mutateRuntime({
-      action: 'start_job',
-      task_uuid: taskUuid,
-      job_uuid: jobUuid
-    }),
-    commitJobFeedback: (jobUuid, samples) => mutateRuntime({
-      action: 'commit_feedback',
-      job_uuid: jobUuid,
-      samples
-    }),
+    startRuntimeJob: async (taskUuid, jobUuid) => {
+      await mutateRuntime({
+        action: 'start_job',
+        task_uuid: taskUuid,
+        job_uuid: jobUuid
+      })
+    },
+    commitJobFeedback: async (jobUuid, samples) => {
+      await mutateRuntime({
+        action: 'commit_feedback',
+        job_uuid: jobUuid,
+        samples
+      })
+    },
+    createTerminalCommandRace: async (taskUuid, idempotencyKey) => {
+      const result = await mutateRuntime({
+        action: 'terminal_command_race',
+        task_uuid: taskUuid,
+        idempotency_key: idempotencyKey
+      })
+      if (!result) throw new Error('Terminal command race returned no result')
+      return result as RuntimeCommandMutationResult
+    },
     stopProcess: async () => {
       if (!child) return
       await stopChild(child)
@@ -302,6 +326,7 @@ import sys
 from pathlib import Path
 
 from unilabos.workflow.runtime import WorkflowRuntimeCoordinator
+from unilabos.workflow.service import WorkflowService
 from unilabos.workflow.store import WorkflowStore
 
 working_dir = Path(sys.argv[1])
@@ -309,14 +334,29 @@ payload = json.loads(sys.argv[2])
 store = WorkflowStore(working_dir / "workflow.db")
 try:
     coordinator = WorkflowRuntimeCoordinator(store)
+    result = None
     if payload["action"] == "start_job":
         coordinator.start_task(payload["task_uuid"])
         coordinator.transition_job(payload["job_uuid"], "dispatched")
         coordinator.transition_job(payload["job_uuid"], "running")
     elif payload["action"] == "commit_feedback":
         coordinator.commit_job_feedback(payload["job_uuid"], payload["samples"])
+    elif payload["action"] == "terminal_command_race":
+        service = WorkflowService(store)
+        service.create_workflow_task_command(
+            payload["task_uuid"],
+            command_type="cancel",
+            target_node_uuid=None,
+            idempotency_key=payload["idempotency_key"],
+            description="UI1D deterministic terminal race",
+            meta_data={"source": "ui1d-final-gate"},
+        )
+        coordinator.transition_task(payload["task_uuid"], "canceled")
+        result = coordinator.consume_next_command(payload["task_uuid"])
     else:
         raise RuntimeError(f"unknown runtime mutation: {payload['action']}")
+    if result is not None:
+        print("UNILAB_RUNTIME_RESULT=" + json.dumps(result, sort_keys=True))
 finally:
     store.close()
 `
@@ -331,8 +371,8 @@ async function runRuntimeMutation({
   osRepository: string
   workingDirectory: string
   payload: Record<string, unknown>
-}): Promise<void> {
-  await new Promise<void>((resolveMutation, rejectMutation) => {
+}): Promise<Record<string, unknown> | null> {
+  return new Promise<Record<string, unknown> | null>((resolveMutation, rejectMutation) => {
     const mutation = spawn(
       python,
       ['-c', PYTHON_RUNTIME_MUTATOR, workingDirectory, JSON.stringify(payload)],
@@ -355,10 +395,18 @@ async function runRuntimeMutation({
     })
     mutation.once('error', rejectMutation)
     mutation.once('exit', (code) => {
-      if (code === 0) resolveMutation()
-      else rejectMutation(new Error(
-        `WorkflowRuntimeCoordinator fixture exited with ${code}\n${output}`
-      ))
+      if (code !== 0) {
+        rejectMutation(new Error(
+          `WorkflowRuntimeCoordinator fixture exited with ${code}\n${output}`
+        ))
+        return
+      }
+      const resultLine = output.split(/\r?\n/).find((line) =>
+        line.startsWith('UNILAB_RUNTIME_RESULT=')
+      )
+      resolveMutation(resultLine
+        ? JSON.parse(resultLine.slice('UNILAB_RUNTIME_RESULT='.length)) as Record<string, unknown>
+        : null)
     })
   })
 }

@@ -2,52 +2,20 @@ import {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState
 } from 'react'
 import {
-  useServices,
   type DeviceAction,
-  type DeviceActionInputSchema,
-  type WorkflowRevision,
-  type WorkflowRun,
-  type WorkflowRunEvent,
-  type WorkflowRunNode
+  type DeviceActionInputSchema
 } from '@unilab/services'
 
 import { useWorkbench } from '../../context/WorkbenchContext'
 import type { ManagedDevice } from '../../data/deviceCatalog'
 import { useDevices } from '../../hooks/useDevices'
-import styles from './DevicePanel.module.scss'
 
 type ArgumentDraft = Record<string, string | boolean>
 
-interface DebugExecution {
-  actionRef: string | null
-  submitting: boolean
-  run: WorkflowRun | null
-  node: WorkflowRunNode | null
-  events: WorkflowRunEvent[]
-  error: string | null
-}
-
-const TERMINAL_RUN_STATUSES = new Set([
-  'completed',
-  'failed',
-  'cancelled'
-])
-
-const EMPTY_EXECUTION: DebugExecution = {
-  actionRef: null,
-  submitting: false,
-  run: null,
-  node: null,
-  events: [],
-  error: null
-}
-
 export default function DevicePanel(): React.JSX.Element {
-  const services = useServices()
   const { backend, connection } = useWorkbench()
   const {
     devices,
@@ -59,12 +27,6 @@ export default function DevicePanel(): React.JSX.Element {
   const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null)
   const [selectedActionRef, setSelectedActionRef] = useState<string | null>(null)
   const [argumentDraft, setArgumentDraft] = useState<ArgumentDraft>({})
-  const [formError, setFormError] = useState<string | null>(null)
-  const [execution, setExecution] = useState<DebugExecution>(EMPTY_EXECUTION)
-  const pollTimerRef = useRef<ReturnType<typeof globalThis.setTimeout> | null>(
-    null
-  )
-  const pollGenerationRef = useRef(0)
 
   const selectedDevice = useMemo(
     () =>
@@ -101,12 +63,6 @@ export default function DevicePanel(): React.JSX.Element {
       selectedDevice
     ]
   )
-  const executionActive =
-    execution.submitting
-    || (
-      execution.run != null
-      && !TERMINAL_RUN_STATUSES.has(execution.run.status)
-    )
   useEffect(() => {
     if (!devices.length) {
       setSelectedDeviceId(null)
@@ -136,8 +92,6 @@ export default function DevicePanel(): React.JSX.Element {
       ? createArgumentDraft(selectedAction.inputSchema)
       : {}
     setArgumentDraft(readArgumentDraft(argumentDraftKey, fallback))
-    setFormError(null)
-    if (!executionActive) setExecution(EMPTY_EXECUTION)
   }, [argumentDraftKey, selectedAction?.actionRef])
 
   const handleArgumentChange = useCallback(
@@ -150,145 +104,6 @@ export default function DevicePanel(): React.JSX.Element {
     },
     [argumentDraftKey]
   )
-
-  useEffect(() => {
-    return () => {
-      pollGenerationRef.current += 1
-      if (pollTimerRef.current != null) {
-        globalThis.clearTimeout(pollTimerRef.current)
-      }
-    }
-  }, [])
-
-  const pollRun = useCallback(
-    async (runId: string, generation: number): Promise<void> => {
-      try {
-        const [run, nodes, eventPage] = await Promise.all([
-          services.workflow.getRun(runId),
-          services.workflow.listRunNodes(runId),
-          services.workflow.listRunEvents(runId)
-        ])
-        if (generation !== pollGenerationRef.current) return
-        setExecution((current) => ({
-          ...current,
-          submitting: false,
-          run,
-          node: nodes[0] ?? null,
-          events: eventPage.events,
-          error: null
-        }))
-        if (TERMINAL_RUN_STATUSES.has(run.status)) {
-          void refresh()
-          return
-        }
-        pollTimerRef.current = globalThis.setTimeout(() => {
-          void pollRun(runId, generation)
-        }, 400)
-      } catch (pollError) {
-        if (generation !== pollGenerationRef.current) return
-        setExecution((current) => ({
-          ...current,
-          submitting: false,
-          error: errorMessage(pollError, '读取动作执行状态失败')
-        }))
-      }
-    },
-    [refresh, services.workflow]
-  )
-
-  const runAction = useCallback(async (): Promise<void> => {
-    if (!selectedDevice || !selectedAction) return
-    setFormError(null)
-    let actionArgs: Record<string, unknown>
-    try {
-      actionArgs = parseActionArguments(
-        selectedAction.inputSchema,
-        argumentDraft
-      )
-    } catch (parseError) {
-      setFormError(errorMessage(parseError, '动作参数格式不正确'))
-      return
-    }
-
-    const generation = pollGenerationRef.current + 1
-    pollGenerationRef.current = generation
-    if (pollTimerRef.current != null) {
-      globalThis.clearTimeout(pollTimerRef.current)
-    }
-    setExecution({
-      actionRef: selectedAction.actionRef,
-      submitting: true,
-      run: null,
-      node: null,
-      events: [],
-      error: null
-    })
-    try {
-      const requestId = createRequestId()
-      const revision: WorkflowRevision = {
-        schema_version: '2',
-        revision_id: `device-debug-${requestId}`,
-        workflow_id: `device-debug-${selectedDevice.id}`,
-        invocations: [
-          {
-            node_id: 'action',
-            action_ref: selectedAction.actionRef,
-            name: selectedAction.displayName,
-            input_bindings: Object.fromEntries(
-              Object.entries(actionArgs).map(([name, value]) => [
-                name,
-                { kind: 'literal', value }
-              ])
-            ),
-            output_schema: selectedAction.outputSchema
-          }
-        ],
-        control_edges: []
-      }
-      const run = await services.workflow.createRun({
-        source: {
-          format: 'workflow_revision_v2',
-          revision
-        },
-        client_request_id: requestId
-      })
-      if (generation !== pollGenerationRef.current) return
-      setExecution((current) => ({
-        ...current,
-        submitting: false,
-        run
-      }))
-      await pollRun(run.id, generation)
-    } catch (runError) {
-      if (generation !== pollGenerationRef.current) return
-      setExecution((current) => ({
-        ...current,
-        submitting: false,
-        error: errorMessage(runError, '动作提交失败')
-      }))
-    }
-  }, [
-    argumentDraft,
-    pollRun,
-    selectedAction,
-    selectedDevice,
-    services.workflow
-  ])
-
-  const cancelRun = useCallback(async (): Promise<void> => {
-    if (!execution.run || !executionActive) return
-    try {
-      const run = await services.workflow.cancelRun(execution.run.id)
-      setExecution((current) => ({ ...current, run, error: null }))
-      const generation = pollGenerationRef.current
-      await pollRun(run.id, generation)
-    } catch (cancelError) {
-      setExecution((current) => ({
-        ...current,
-        error: errorMessage(cancelError, '停止动作失败')
-      }))
-    }
-  }, [execution.run, executionActive, pollRun, services.workflow])
 
   return (
     <section
@@ -346,7 +161,6 @@ export default function DevicePanel(): React.JSX.Element {
                 key={device.id}
                 device={device}
                 selected={device.id === selectedDevice?.id}
-                disabled={executionActive}
                 onSelect={setSelectedDeviceId}
               />
             ))}
@@ -365,13 +179,8 @@ export default function DevicePanel(): React.JSX.Element {
             selectedAction={selectedAction}
             selectedActionRef={selectedActionRef}
             argumentDraft={argumentDraft}
-            formError={formError}
-            execution={execution}
-            executionActive={executionActive}
             onSelectAction={setSelectedActionRef}
             onArgumentChange={handleArgumentChange}
-            onRun={() => void runAction()}
-            onCancel={() => void cancelRun()}
           />
         ) : (
           <div className="device-empty device-empty--detail">
@@ -425,12 +234,10 @@ function ConnectionSummary({
 function DeviceListItem({
   device,
   selected,
-  disabled,
   onSelect
 }: {
   device: ManagedDevice
   selected: boolean
-  disabled: boolean
   onSelect: (deviceId: string) => void
 }): React.JSX.Element {
   return (
@@ -441,7 +248,6 @@ function DeviceListItem({
           selected ? ' is-active' : ''
         }`}
         aria-pressed={selected}
-        disabled={disabled && !selected}
         onClick={() => onSelect(device.id)}
       >
         <span className="edge-device__device-icon">
@@ -471,25 +277,15 @@ function DeviceWorkspace({
   selectedAction,
   selectedActionRef,
   argumentDraft,
-  formError,
-  execution,
-  executionActive,
   onSelectAction,
-  onArgumentChange,
-  onRun,
-  onCancel
+  onArgumentChange
 }: {
   device: ManagedDevice
   selectedAction: DeviceAction | null
   selectedActionRef: string | null
   argumentDraft: ArgumentDraft
-  formError: string | null
-  execution: DebugExecution
-  executionActive: boolean
   onSelectAction: (actionRef: string) => void
   onArgumentChange: (name: string, value: string | boolean) => void
-  onRun: () => void
-  onCancel: () => void
 }): React.JSX.Element {
   return (
     <div className="edge-device__workspace">
@@ -521,7 +317,7 @@ function DeviceWorkspace({
         <Metric label="动作节点" value={`${device.actions.length}`} />
         <Metric
           label="当前状态"
-          value={device.online ? '可调试' : '不可用'}
+          value={device.online ? '可编排' : '不可用'}
           tone={device.online ? 'success' : 'muted'}
         />
       </div>
@@ -547,10 +343,6 @@ function DeviceWorkspace({
                   aria-pressed={action.actionRef === selectedActionRef}
                   aria-label={`${action.displayName} 动作节点`}
                   title={action.displayName}
-                  disabled={
-                    executionActive
-                    && action.actionRef !== execution.actionRef
-                  }
                   onClick={() => onSelectAction(action.actionRef)}
                 >
                   <span className="edge-device__node-index">
@@ -582,7 +374,7 @@ function DeviceWorkspace({
             <>
               <div className="edge-device__section-heading">
                 <div>
-                  <span>单节点调试</span>
+                  <span>动作参数预览</span>
                   <h3 title={selectedAction.displayName}>
                     {selectedAction.displayName}
                   </h3>
@@ -592,41 +384,10 @@ function DeviceWorkspace({
               <ActionParameterForm
                 action={selectedAction}
                 draft={argumentDraft}
-                disabled={executionActive}
+                disabled={false}
                 onChange={onArgumentChange}
               />
-              {formError ? (
-                <p className="edge-device__form-error" role="alert">
-                  {formError}
-                </p>
-              ) : null}
-              <div className="edge-device__debug-actions">
-                <button
-                  type="button"
-                  className="edge-device__run-button"
-                  disabled={
-                    !device.online
-                    || selectedAction.isBusy
-                    || executionActive
-                  }
-                  onClick={onRun}
-                >
-                  {execution.submitting ? '正在提交…' : '运行此动作'}
-                </button>
-                {executionActive && execution.run ? (
-                  <button
-                    type="button"
-                    className="edge-device__cancel-button"
-                    onClick={onCancel}
-                  >
-                    终止
-                  </button>
-                ) : null}
-                <span>
-                  仅执行当前动作节点，结果以 OS 返回状态为准。
-                </span>
-              </div>
-              <ExecutionResult execution={execution} />
+              <DeviceActionAvailability />
             </>
           ) : (
             <div className="edge-device__no-actions">
@@ -635,6 +396,23 @@ function DeviceWorkspace({
           )}
         </section>
       </div>
+    </div>
+  )
+}
+
+export function DeviceActionAvailability(): React.JSX.Element {
+  return (
+    <div className="edge-device__debug-actions" role="note">
+      <button
+        type="button"
+        className="edge-device__run-button"
+        disabled
+      >
+        请在工作流中运行
+      </button>
+      <span>
+        单节点临时执行接口已退役；请将动作加入并应用工作流，再由 WorkflowTask 执行。
+      </span>
     </div>
   )
 }
@@ -769,86 +547,6 @@ function ActionField({
   )
 }
 
-function ExecutionResult({
-  execution
-}: {
-  execution: DebugExecution
-}): React.JSX.Element | null {
-  const [copied, setCopied] = useState(false)
-  const log = executionLog(execution)
-  useEffect(() => {
-    setCopied(false)
-  }, [log])
-
-  if (
-    !execution.submitting
-    && !execution.run
-    && !execution.error
-  ) {
-    return null
-  }
-  const state = execution.node?.state || execution.run?.status || 'submitting'
-  const presentation = executionPresentation(state)
-  return (
-    <div className="edge-device__execution" aria-live="polite">
-      <div className="edge-device__execution-head">
-        <span className={`edge-device__execution-state ${presentation.tone}`}>
-          <span aria-hidden="true" />
-          {presentation.label}
-        </span>
-        <span className={styles.executionTools}>
-          {execution.run ? <code>{execution.run.id.slice(0, 12)}</code> : null}
-          {log ? (
-            <button
-              type="button"
-              className={styles.copyButton}
-              data-copied={copied}
-              onClick={() => {
-                void navigator.clipboard.writeText(log).then(() => {
-                  setCopied(true)
-                })
-              }}
-            >
-              {copied ? '已复制' : '复制'}
-            </button>
-          ) : null}
-        </span>
-      </div>
-      {execution.error ? (
-        <p className="edge-device__execution-error" role="alert">
-          {execution.error}
-        </p>
-      ) : null}
-      {log ? (
-          <pre aria-label="Action 运行日志">{log}</pre>
-        ) : execution.run?.status === 'completed' ? (
-          <p>动作执行成功，设备未返回结构化结果。</p>
-        ) : (
-          <p>{presentation.description}</p>
-        )}
-    </div>
-  )
-}
-
-function executionLog(execution: DebugExecution): string {
-  const projection: Record<string, unknown> = {}
-  if (execution.events.length > 0) {
-    projection.events = execution.events
-  }
-  if (
-    execution.node?.result
-    && Object.keys(execution.node.result).length > 0
-  ) {
-    projection.result = execution.node.result
-  }
-  if (execution.error) {
-    projection.error = execution.error
-  }
-  return Object.keys(projection).length > 0
-    ? JSON.stringify(projection, null, 2)
-    : ''
-}
-
 function DeviceIcon({ device }: { device: ManagedDevice }): React.JSX.Element {
   const text = [
     device.id,
@@ -947,123 +645,10 @@ function draftValue(schema: DeviceActionInputSchema): string | boolean {
   return ''
 }
 
-function parseActionArguments(
-  schema: Record<string, DeviceActionInputSchema>,
-  draft: ArgumentDraft
-): Record<string, unknown> {
-  return Object.fromEntries(
-    Object.entries(schema).flatMap(([name, field]) => {
-      const raw = draft[name]
-      if (field.type !== 'boolean' && String(raw ?? '').trim() === '') {
-        if (field.required) throw new Error(`${field.title || name} 为必填项`)
-        return []
-      }
-      if (field.type === 'boolean') return [[name, Boolean(raw)]]
-      if (field.type === 'number' || field.type === 'integer') {
-        const value = Number(raw)
-        if (!Number.isFinite(value)) {
-          throw new Error(`${field.title || name} 必须是数字`)
-        }
-        if (field.type === 'integer' && !Number.isInteger(value)) {
-          throw new Error(`${field.title || name} 必须是整数`)
-        }
-        return [[name, value]]
-      }
-      if (field.type === 'object' || field.type === 'array') {
-        let value: unknown
-        try {
-          value = JSON.parse(String(raw))
-        } catch {
-          throw new Error(`${field.title || name} 必须是有效 JSON`)
-        }
-        if (field.type === 'object' && (
-          value == null
-          || typeof value !== 'object'
-          || Array.isArray(value)
-        )) {
-          throw new Error(`${field.title || name} 必须是 JSON 对象`)
-        }
-        if (field.type === 'array' && !Array.isArray(value)) {
-          throw new Error(`${field.title || name} 必须是 JSON 数组`)
-        }
-        return [[name, value]]
-      }
-      return [[name, String(raw)]]
-    })
-  )
-}
-
-function executionPresentation(state: string): {
-  label: string
-  description: string
-  tone: string
-} {
-  switch (state) {
-    case 'success':
-    case 'completed':
-      return {
-        label: '执行成功',
-        description: '动作已由 OS 确认为成功。',
-        tone: 'is-success'
-      }
-    case 'failed':
-      return {
-        label: '执行失败',
-        description: 'OS 报告动作执行失败，请检查设备日志。',
-        tone: 'is-danger'
-      }
-    case 'cancelled':
-      return {
-        label: '已停止',
-        description: 'OS 已确认动作停止。',
-        tone: 'is-muted'
-      }
-    case 'running':
-      return {
-        label: '执行中',
-        description: '动作已进入设备执行队列。',
-        tone: 'is-running'
-      }
-    case 'reconciling':
-    case 'dispatch_unknown':
-      return {
-        label: '等待核对',
-        description: '物理执行状态尚不确定，正在等待 OS 核对。',
-        tone: 'is-warning'
-      }
-    case 'cancel_requested':
-      return {
-        label: '停止中',
-        description: '停止请求已发送，等待 OS 确认物理终态。',
-        tone: 'is-warning'
-      }
-    case 'submitting':
-      return {
-        label: '正在提交',
-        description: '正在校验并提交单节点 DAG。',
-        tone: 'is-pending'
-      }
-    default:
-      return {
-        label: '等待执行',
-        description: 'OS 已接受任务，等待动作调度。',
-        tone: 'is-pending'
-      }
-  }
-}
-
 function formatTime(timestamp: number): string {
   return new Intl.DateTimeFormat('zh-CN', {
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit'
   }).format(timestamp)
-}
-
-function createRequestId(): string {
-  return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}`
-}
-
-function errorMessage(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message ? error.message : fallback
 }
