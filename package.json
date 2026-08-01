@@ -20,8 +20,7 @@
     "test:workflow-runtime-contract": "node scripts/verify-workflow-runtime-contract.mjs",
     "test:e2e:workflow-final-gate": "pnpm test:workflow-runtime-contract && playwright test e2e/workflow-runtime-final-gate-real-os.spec.ts",
     "test:e2e:material-create": "UNILAB_E2E_MATERIAL_CREATE_FIXTURE=1 playwright test e2e/material-create.spec.ts",
-    "test:e2e:materials": "UNILAB_E2E_HEADED=1 xvfb-run -a playwright test e2e/material-scene.spec.ts",
-    "test:e2e:device": "playwright test e2e/device-controls.spec.ts"
+    "test:e2e:materials": "UNILAB_E2E_HEADED=1 xvfb-run -a playwright test e2e/material-scene.spec.ts"
   },
   "devDependencies": {
     "@playwright/test": "1.55.0",

@@ -35,7 +35,15 @@ const retiredFiles = [
   'e2e/workflow-cloud-import.spec.ts',
   'e2e/workflow-debug-actions.spec.ts',
   'e2e/workflow-debug-scenarios.spec.ts',
-  'e2e/workflow-runtime.spec.ts'
+  'e2e/workflow-runtime.spec.ts',
+  'e2e/workflow-import-persistence.spec.ts',
+  'e2e/workflow-default-run-mode.spec.ts',
+  'e2e/workflow-handle-direction.spec.ts',
+  'e2e/workflow-debugger-resize.spec.ts',
+  'e2e/device-controls.spec.ts',
+  'e2e/helpers/offline-local-bridge.ts',
+  'e2e/fixtures/host-node-test-latency/host_node.yaml',
+  'e2e/fixtures/host-node-test-latency/profile.yaml'
 ]
 for (const path of retiredFiles) {
   if (existsSync(path)) violations.push(`${path}: retired file exists`)
