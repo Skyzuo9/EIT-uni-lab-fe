@@ -3,6 +3,7 @@ import type {
   WorkflowNodeJob,
   WorkflowAuthoringAggregate,
   WorkflowAuthoringGraph,
+  WorkflowAuthoringSourceMapEntry,
   WorkflowAuthoringTransformResult,
   WorkflowRuntimePort,
   WorkflowTask,
@@ -18,6 +19,9 @@ import {
   useState
 } from 'react'
 
+import {
+  createWorkflowExecutionScope
+} from '../utils/canonicalWorkflow'
 import {
   workflowAuthoringModeSwitchDecision,
   workflowAuthoringSurfacePolicy,
@@ -38,6 +42,7 @@ import {
   isCurrentAuthoringInvalidation,
   isSameAuthoringVersion
 } from '../utils/persistentAuthoringSession'
+import { projectWorkflowCodeMarkers } from '../utils/workflowCodeMarkers'
 import { useWorkflowTaskRuntime } from '../hooks/useWorkflowTaskRuntime'
 import WorkflowDag from './WorkflowDag'
 import {
@@ -49,6 +54,7 @@ import {
   type WorkflowOutputNode,
   type WorkflowOutputTab
 } from './WorkflowOutput'
+import { useWorkflowSessionStore } from './WorkflowSessionProvider'
 import styles from './workflow.module.scss'
 
 interface PersistentWorkflowAuthoringPanelProps {
@@ -76,11 +82,23 @@ interface RemoteConflict {
   selectedNodeNameDirty: boolean
 }
 
+interface PersistentWorkflowDebugSession {
+  startNodeId: string | null
+  breakpoints: string[]
+}
+
 export function PersistentWorkflowAuthoringPanel({
   runtime,
   workflowUuid,
   onUnsavedChangesChange
 }: PersistentWorkflowAuthoringPanelProps): React.JSX.Element {
+  const sessionStore = useWorkflowSessionStore()
+  const debugSessionKey = `unilab.workflow.debug.${workflowUuid}.v1`
+  const [initialDebugSession] = useState<PersistentWorkflowDebugSession | null>(
+    () => sessionStore?.read<PersistentWorkflowDebugSession>(
+      debugSessionKey
+    ) ?? null
+  )
   const [mode, setMode] = useState<WorkflowEditMode>('code')
   const [aggregate, setAggregate] =
     useState<WorkflowAuthoringAggregate | null>(null)
@@ -111,6 +129,12 @@ export function PersistentWorkflowAuthoringPanel({
   const [outputTab, setOutputTab] = useState<WorkflowOutputTab>('nodes')
   const [selectedJobNodeUuid, setSelectedJobNodeUuid] =
     useState<string | null>(null)
+  const [debugStartNodeId, setDebugStartNodeId] = useState<string | null>(
+    initialDebugSession?.startNodeId ?? null
+  )
+  const [debugBreakpoints, setDebugBreakpoints] = useState<Set<string>>(
+    () => new Set(initialDebugSession?.breakpoints ?? [])
+  )
   const taskRuntime = useWorkflowTaskRuntime(runtime, workflowUuid)
   const operationQueue = useRef<AuthoringOperationQueue | null>(null)
   if (operationQueue.current === null) {
@@ -147,6 +171,14 @@ export function PersistentWorkflowAuthoringPanel({
       : { nodes: [], links: [], steps: [], error: null },
     [graph]
   )
+  const debugExecutionScope = useMemo(
+    () => createWorkflowExecutionScope(
+      structure.nodes,
+      structure.links,
+      debugStartNodeId
+    ),
+    [debugStartNodeId, structure.links, structure.nodes]
+  )
   const dirty = mode === 'code'
     ? editor.isDirty
     : canvasDirty || selectedNodeNameDirty
@@ -173,6 +205,68 @@ export function PersistentWorkflowAuthoringPanel({
     ])),
     [structure.nodes]
   )
+  const taskNodeStates = useMemo(
+    () => Object.fromEntries(taskJobs.map((job) => [
+      job.workflow_node_uuid,
+      workflowTaskDagState(job.status)
+    ])),
+    [taskJobs]
+  )
+  const codeSourceMap = useMemo(
+    () => workflowSourceMap(aggregate, editor.value),
+    [aggregate, editor.value]
+  )
+  const codeMarkers = useMemo(
+    () => projectWorkflowCodeMarkers({
+      nodeIds: structure.nodes.map((node) => node.id),
+      resolveLine: (nodeId) => codeSourceMap.find(
+        (entry) => entry.workflow_node_uuid === nodeId
+      )?.start_line ?? null,
+      startNodeId: debugExecutionScope.startNodeId,
+      beforeStartNodeIds: debugExecutionScope.beforeStartNodeIds,
+      breakpoints: debugBreakpoints,
+      pausedBeforeNodeId: null,
+      nodeStates: taskNodeStates
+    }),
+    [
+      codeSourceMap,
+      debugBreakpoints,
+      debugExecutionScope.beforeStartNodeIds,
+      debugExecutionScope.startNodeId,
+      structure.nodes,
+      taskNodeStates
+    ]
+  )
+
+  useEffect(() => {
+    if (structure.nodes.length === 0) return
+    const validNodeIds = new Set(structure.nodes.map((node) => node.id))
+    setDebugStartNodeId((current) =>
+      current && !validNodeIds.has(current) ? null : current
+    )
+    setDebugBreakpoints((current) => {
+      const next = new Set(
+        [...current].filter((nodeId) => validNodeIds.has(nodeId))
+      )
+      return next.size === current.size ? current : next
+    })
+  }, [structure.nodes])
+
+  useEffect(() => {
+    sessionStore?.write<PersistentWorkflowDebugSession>(debugSessionKey, {
+      startNodeId: debugExecutionScope.startNodeId,
+      breakpoints: [...debugBreakpoints]
+    })
+  }, [
+    debugBreakpoints,
+    debugExecutionScope.startNodeId,
+    debugSessionKey,
+    sessionStore
+  ])
+
+  useEffect(() => {
+    editor.setLineMarkers(codeMarkers)
+  }, [codeMarkers, editor.setLineMarkers])
 
   useEffect(() => {
     if (
@@ -628,6 +722,35 @@ export function PersistentWorkflowAuthoringPanel({
     setSelectedNodeUuid(nodeUuid)
     setSelectedNodeName(String(node.name || ''))
     setSelectedNodeNameDirty(false)
+    const sourceLine = codeSourceMap.find(
+      (entry) => entry.workflow_node_uuid === nodeUuid
+    )?.start_line
+    if (sourceLine) editor.revealLine(sourceLine)
+  }
+
+  const toggleDebugStartNode = (nodeUuid: string): void => {
+    const removing = debugExecutionScope.startNodeId === nodeUuid
+    setDebugStartNodeId(removing ? null : nodeUuid)
+    setMessage(
+      removing
+        ? '已取消 Debugger 起始点'
+        : '已设置 Debugger 起始点；普通 Task 不携带此配置'
+    )
+  }
+
+  const toggleDebugBreakpoint = (nodeUuid: string): void => {
+    const removing = debugBreakpoints.has(nodeUuid)
+    setDebugBreakpoints((current) => {
+      const next = new Set(current)
+      if (next.has(nodeUuid)) next.delete(nodeUuid)
+      else next.add(nodeUuid)
+      return next
+    })
+    setMessage(
+      removing
+        ? '已取消 Debugger 断点'
+        : '已设置 Debugger 断点；普通 Task 不携带此配置'
+    )
   }
 
   const projectionKind = aggregate
@@ -832,6 +955,14 @@ export function PersistentWorkflowAuthoringPanel({
                     nodes={structure.nodes}
                     links={structure.links}
                     onNodeSelect={selectCanvasNode}
+                    onSetStart={toggleDebugStartNode}
+                    onToggleBreakpoint={toggleDebugBreakpoint}
+                    nodeStates={taskNodeStates}
+                    breakpoints={debugBreakpoints}
+                    startNodeId={debugExecutionScope.startNodeId}
+                    beforeStartNodeIds={
+                      debugExecutionScope.beforeStartNodeIds
+                    }
                     canBeautify={false}
                     canvasMutationEnabled={false}
                   />
@@ -1066,6 +1197,29 @@ function authoritativePython(
     ''
 }
 
+function workflowSourceMap(
+  aggregate: WorkflowAuthoringAggregate | null,
+  source: string
+): WorkflowAuthoringSourceMapEntry[] {
+  if (!aggregate) return []
+  if (
+    aggregate.candidate &&
+    (
+      aggregate.candidate.normalized_python_source === source ||
+      (
+        aggregate.draft?.python_source === source &&
+        aggregate.candidate.draft_hash === aggregate.draft.draft_hash
+      )
+    )
+  ) {
+    return aggregate.candidate.source_map
+  }
+  if (aggregate.applied_source?.python_source === source) {
+    return aggregate.applied_source.source_map
+  }
+  return []
+}
+
 function rebaseGraphIdentity(
   local: WorkflowAuthoringGraph,
   remote: WorkflowAuthoringAggregate
@@ -1162,6 +1316,23 @@ function projectWorkflowJob(job: WorkflowNodeJob): WorkflowOutputNode {
       error_info: job.error_info
     }
   }
+}
+
+function workflowTaskDagState(status: WorkflowNodeJob['status']): string {
+  const states: Record<WorkflowNodeJob['status'], string> = {
+    pending: 'pending',
+    dispatched: 'ready',
+    running: 'running',
+    intervention_required: 'failed',
+    cancel_requested: 'running',
+    execution_unknown: 'reconciling',
+    succeeded: 'success',
+    failed: 'failed',
+    skipped: 'skipped',
+    canceled: 'cancelled',
+    timeout: 'failed'
+  }
+  return states[status]
 }
 
 function workflowTaskMetadata(

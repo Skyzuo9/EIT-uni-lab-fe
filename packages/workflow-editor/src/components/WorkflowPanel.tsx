@@ -5,7 +5,6 @@ import {
   useRef,
   useState
 } from 'react'
-import type { CodeLineMarker } from '@unilab/code-editor'
 import { useResizableSplit } from '@unilab/app-shell'
 import type {
   WorkflowAuthoringCandidate,
@@ -19,6 +18,7 @@ import {
   type WorkflowAuthoringSnapshot
 } from '../hooks/useWorkflowAuthoring'
 import { readActiveWorkflowId } from '../utils/workflowAuthoringOperations'
+import { projectWorkflowCodeMarkers } from '../utils/workflowCodeMarkers'
 import {
   useWorkflowRun,
   type WorkflowRunSnapshot
@@ -355,11 +355,14 @@ function LegacyWorkflowPanel({
   }
 
   const codeMarkers = useMemo(
-    () => workflowCodeMarkers({
-      source: authoring.editor.value,
-      mode: authoring.authoringMode,
+    () => projectWorkflowCodeMarkers({
       nodeIds: authoring.parsed.nodes.map((node) => node.id),
-      sourceMap: authoring.pythonSourceMap,
+      resolveLine: (nodeId) => workflowNodeLine(
+        authoring.editor.value,
+        authoring.authoringMode,
+        authoring.pythonSourceMap,
+        nodeId
+      ),
       startNodeId: workflowRun.executionScope.startNodeId,
       beforeStartNodeIds:
         workflowRun.executionScope.beforeStartNodeIds,
@@ -567,97 +570,6 @@ function LegacyWorkflowPanel({
 function isWorkflowUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
     .test(value)
-}
-
-interface WorkflowCodeMarkerOptions {
-  source: string
-  mode: WorkflowAuthoringMode
-  nodeIds: ReadonlyArray<string>
-  sourceMap: NonNullable<WorkflowAuthoringCandidate['source_map']>
-  startNodeId: string | null
-  beforeStartNodeIds: ReadonlySet<string>
-  breakpoints: ReadonlySet<string>
-  pausedBeforeNodeId: string | null
-  nodeStates: Readonly<Record<string, string>>
-}
-
-function workflowCodeMarkers(
-  options: WorkflowCodeMarkerOptions
-): CodeLineMarker[] {
-  const markers: CodeLineMarker[] = []
-  for (const nodeId of options.nodeIds) {
-    const line = workflowNodeLine(
-      options.source,
-      options.mode,
-      options.sourceMap,
-      nodeId
-    )
-    if (!line) continue
-    if (options.beforeStartNodeIds.has(nodeId)) {
-      markers.push({
-        nodeId,
-        line,
-        kind: 'before-start',
-        label: '不执行'
-      })
-    } else {
-      const state = options.nodeStates[nodeId]
-      if (state === 'running') {
-        markers.push({
-          nodeId,
-          line,
-          kind: 'running',
-          label: '正在运行'
-        })
-      } else if (state === 'success') {
-        markers.push({
-          nodeId,
-          line,
-          kind: 'success',
-          label: '成功'
-        })
-      } else if (state === 'failed' || state === 'reconciling') {
-        markers.push({
-          nodeId,
-          line,
-          kind: 'failed',
-          label: '失败'
-        })
-      } else if (state === 'skipped') {
-        markers.push({
-          nodeId,
-          line,
-          kind: 'skipped',
-          label: '已跳过'
-        })
-      }
-    }
-    if (options.startNodeId === nodeId) {
-      markers.push({
-        nodeId,
-        line,
-        kind: 'start',
-        label: '⚑ 起始点'
-      })
-    }
-    if (options.breakpoints.has(nodeId)) {
-      markers.push({
-        nodeId,
-        line,
-        kind: 'breakpoint',
-        label: '● 断点'
-      })
-    }
-    if (options.pausedBeforeNodeId === nodeId) {
-      markers.push({
-        nodeId,
-        line,
-        kind: 'paused',
-        label: '下一步'
-      })
-    }
-  }
-  return markers
 }
 
 function workflowNodeLine(
