@@ -1,6 +1,32 @@
 import { expect, test, type Page } from '@playwright/test'
 
-test('工作流未保存时拦截模块切换与窗口关闭', async ({ page }) => {
+test('工作流未修改时切换模块不显示保存提示', async ({ page }) => {
+  const dialogMessages: string[] = []
+  page.on('dialog', (dialog) => {
+    dialogMessages.push(dialog.message())
+    void dialog.dismiss()
+  })
+
+  await page.goto('/?enable=materialNav')
+  const navigation = page.getByRole('navigation', { name: '主导航' })
+  const workflowButton = navigation.getByRole('button', { name: '工作流' })
+  const materialButton = navigation.getByRole('button', { name: '物料' })
+
+  await workflowButton.click()
+  await expect(page.getByText('完整控制流 DAG')).toBeVisible()
+  await materialButton.click()
+
+  expect(dialogMessages).toEqual([])
+  await expect(materialButton).toHaveAttribute('aria-current', 'page')
+})
+
+test('工作流有修改时切换模块不弹窗，离开页面仍提示保存', async ({ page }) => {
+  const dialogMessages: string[] = []
+  page.on('dialog', (dialog) => {
+    dialogMessages.push(dialog.message())
+    void dialog.dismiss()
+  })
+
   await page.goto('/?enable=materialNav')
   const navigation = page.getByRole('navigation', { name: '主导航' })
   const workflowButton = navigation.getByRole('button', { name: '工作流' })
@@ -9,18 +35,18 @@ test('工作流未保存时拦截模块切换与窗口关闭', async ({ page }) 
 
   await workflowButton.click()
   await editWorkflow(page)
-
-  let dismissedMessage = ''
-  page.once('dialog', (dialog) => {
-    dismissedMessage = dialog.message()
-    void dialog.dismiss()
-  })
   await materialButton.click()
+  await expect(materialButton).toHaveAttribute('aria-current', 'page')
 
-  expect(dismissedMessage).toContain('工作流代码有未保存的修改')
-  expect(dismissedMessage).toContain('切换到“物料”')
+  await deviceButton.click()
+  await expect(deviceButton).toHaveAttribute('aria-current', 'page')
+
+  await workflowButton.click()
   await expect(workflowButton).toHaveAttribute('aria-current', 'page')
-  await expect(page.getByText('完整控制流 DAG')).toBeVisible()
+  await expect(
+    page.locator('span:visible', { hasText: /^● 未保存$/ })
+  ).toBeVisible()
+  expect(dialogMessages).toEqual([])
 
   const beforeUnloadPrevented = await page.evaluate(() => {
     const event = new Event('beforeunload', { cancelable: true })
@@ -33,41 +59,6 @@ test('工作流未保存时拦截模块切换与窗口关闭', async ({ page }) 
     dispatchResult: false,
     defaultPrevented: true
   })
-
-  let acceptedDeviceMessage = ''
-  page.once('dialog', (dialog) => {
-    acceptedDeviceMessage = dialog.message()
-    void dialog.accept()
-  })
-  await deviceButton.click()
-
-  expect(acceptedDeviceMessage).toContain('切换到“仪器设备”')
-  await expect(deviceButton).toHaveAttribute('aria-current', 'page')
-
-  await workflowButton.click()
-  await editWorkflow(page)
-
-  let acceptedMaterialMessage = ''
-  page.once('dialog', (dialog) => {
-    acceptedMaterialMessage = dialog.message()
-    void dialog.accept()
-  })
-  await materialButton.click()
-
-  expect(acceptedMaterialMessage).toContain('切换到“物料”')
-  await expect(materialButton).toHaveAttribute('aria-current', 'page')
-
-  await editWorkflow(page)
-
-  let acceptedWorkflowMessage = ''
-  page.once('dialog', (dialog) => {
-    acceptedWorkflowMessage = dialog.message()
-    void dialog.accept()
-  })
-  await workflowButton.click()
-
-  expect(acceptedWorkflowMessage).toContain('切换到“工作流”')
-  await expect(workflowButton).toHaveAttribute('aria-current', 'page')
 })
 
 async function editWorkflow(page: Page) {

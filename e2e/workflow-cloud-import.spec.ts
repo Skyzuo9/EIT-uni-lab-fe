@@ -84,6 +84,12 @@ test('Cloud 导出 JSON 自动转换为标准工作流格式并可完整运行',
     await expect(page.locator('.react-flow__node-wfNode')).toHaveCount(
       expectedNodes
     )
+    await expect(
+      page.locator('.wf-node__id').first()
+    ).toHaveAttribute('title', 'test_latency')
+    const operationHelp = page.locator('.workflow-runtime__help')
+    await operationHelp.locator('summary').click()
+    await expect(operationHelp).not.toContainText('双击')
     await expect(page.locator('.cm-content')).toContainText(
       '"schema_version": "2"'
     )
