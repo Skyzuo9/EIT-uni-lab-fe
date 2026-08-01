@@ -357,6 +357,12 @@ export default function WorkflowPanel({
     ),
     [authoring.parsed.nodes]
   )
+  const failedNodeCount = useMemo(
+    () => workflowRun.runNodes.filter(
+      (node) => node.state === 'failed'
+    ).length,
+    [workflowRun.runNodes]
+  )
 
   useEffect(() => {
     authoring.editor.setLineMarkers(codeMarkers)
@@ -372,10 +378,10 @@ export default function WorkflowPanel({
   )
 
   useEffect(() => {
-    if (!error) return
+    if (!error && failedNodeCount === 0) return
     setOutputExpanded(true)
     setOutputTab('errors')
-  }, [error])
+  }, [error, failedNodeCount])
 
   const selectNode = (nodeId: string): void => {
     workflowRun.setSelectedNodeId(nodeId)

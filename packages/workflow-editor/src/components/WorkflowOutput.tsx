@@ -41,6 +41,8 @@ export function WorkflowOutput({
   onClearError
 }: WorkflowOutputProps): React.JSX.Element {
   const eventNodeNames = workflowEventNodeNames(nodes, nodeNames)
+  const nodeFailures = workflowNodeFailureLogs(nodes, nodeNames, events)
+  const errorCount = nodeFailures.length + (error ? 1 : 0)
 
   return (
     <div
@@ -80,7 +82,7 @@ export function WorkflowOutput({
               id="errors"
               activeTab={activeTab}
               label="运行异常"
-              error={Boolean(error)}
+              errorCount={errorCount}
               onSelect={onTabChange}
             />
           </div>
@@ -199,13 +201,40 @@ export function WorkflowOutput({
             tabIndex={0}
             hidden={activeTab !== 'errors'}
           >
-            {error ? (
-              <div className="workflow-runtime__error-detail">
-                <strong>运行或编写过程中发生异常</strong>
-                <p>{error}</p>
-                <button type="button" onClick={onClearError}>
-                  清除异常
-                </button>
+            {errorCount > 0 ? (
+              <div className="workflow-runtime__error-list">
+                {error && (
+                  <div className="workflow-runtime__error-detail">
+                    <strong>运行或编写过程中发生异常</strong>
+                    <p>{error}</p>
+                    <button type="button" onClick={onClearError}>
+                      清除异常
+                    </button>
+                  </div>
+                )}
+                {nodeFailures.map((failure) => (
+                  <article
+                    key={`${failure.nodeId}:${failure.attempt}`}
+                    className="workflow-runtime__error-detail workflow-runtime__node-error"
+                  >
+                    <header>
+                      <strong>{failure.nodeName} 执行失败</strong>
+                      <small title={`节点 ID：${failure.sourceNodeId}`}>
+                        {failure.sourceNodeId}
+                        {failure.attempt > 0
+                          ? ` · 第 ${failure.attempt} 次尝试`
+                          : ''}
+                      </small>
+                    </header>
+                    {failure.log ? (
+                      <pre aria-label={`${failure.nodeName} 错误日志`}>
+                        {failure.log}
+                      </pre>
+                    ) : (
+                      <p>节点已失败，但 OS 未返回详细错误日志。</p>
+                    )}
+                  </article>
+                ))}
               </div>
             ) : (
               <div className="workflow-runtime__output-empty">
@@ -224,14 +253,14 @@ function OutputTabButton({
   activeTab,
   label,
   count,
-  error = false,
+  errorCount = 0,
   onSelect
 }: {
   id: WorkflowOutputTab
   activeTab: WorkflowOutputTab
   label: string
   count?: number
-  error?: boolean
+  errorCount?: number
   onSelect: (tab: WorkflowOutputTab) => void
 }): React.JSX.Element {
   return (
@@ -245,10 +274,134 @@ function OutputTabButton({
       onClick={() => onSelect(id)}
     >
       {label}
-      {count !== undefined && <span>{count}</span>}
-      {error && <span className="is-error">1</span>}
+      {errorCount > 0
+        ? <span className="is-error">{errorCount}</span>
+        : count !== undefined && <span>{count}</span>}
     </button>
   )
+}
+
+interface WorkflowNodeFailureLog {
+  nodeId: string
+  sourceNodeId: string
+  nodeName: string
+  attempt: number
+  log: string
+}
+
+const FAILURE_LOG_FIELDS = [
+  ['error', ''],
+  ['traceback', ''],
+  ['message', ''],
+  ['detail', ''],
+  ['stderr', 'stderr'],
+  ['logs', 'logs'],
+  ['log', 'log'],
+  ['info', 'info']
+] as const
+
+function workflowNodeFailureLogs(
+  nodes: readonly WorkflowRunNode[],
+  nodeNames: Readonly<Record<string, string>>,
+  events: readonly WorkflowRunEvent[]
+): WorkflowNodeFailureLog[] {
+  const exceptionEvents = events.filter(
+    (event) => event.type === 'node.exception'
+  )
+  const consumedEventSequences = new Set<number>()
+  const failures = nodes
+    .filter((node) => node.state === 'failed')
+    .map((node) => {
+      const sourceNodeId = node.sourceNodeId || node.nodeId
+      const matchingEvents = exceptionEvents.filter((event) => {
+        const matches =
+          event.nodeId === node.nodeId ||
+          event.nodeId === sourceNodeId
+        if (matches) consumedEventSequences.add(event.seq)
+        return matches
+      })
+      return {
+        nodeId: node.nodeId,
+        sourceNodeId,
+        nodeName:
+          nodeNames[sourceNodeId] ||
+          nodeNames[node.nodeId] ||
+          sourceNodeId,
+        attempt: node.attempt,
+        log: failureLogText(
+          node.result,
+          ...matchingEvents.map((event) => event.payload)
+        )
+      }
+    })
+
+  const eventNodeNames = workflowEventNodeNames(nodes, nodeNames)
+  for (const event of exceptionEvents) {
+    if (consumedEventSequences.has(event.seq)) continue
+    const sourceNodeId = event.nodeId || '未知节点'
+    failures.push({
+      nodeId: `${sourceNodeId}:event:${event.seq}`,
+      sourceNodeId,
+      nodeName: eventNodeNames.get(sourceNodeId) || sourceNodeId,
+      attempt: 0,
+      log: failureLogText(event.payload)
+    })
+  }
+  return failures
+}
+
+function failureLogText(
+  ...results: readonly Record<string, unknown>[]
+): string {
+  const logs: string[] = []
+  const seen = new Set<string>()
+
+  const append = (value: unknown, label = ''): void => {
+    const text = formatLogValue(value)
+    if (!text || seen.has(text)) return
+    seen.add(text)
+    logs.push(label ? `${label}:\n${text}` : text)
+  }
+
+  const visit = (result: Record<string, unknown>): void => {
+    const previousCount = logs.length
+    for (const [field, label] of FAILURE_LOG_FIELDS) {
+      append(result[field], label)
+    }
+    for (const field of ['result', 'failure', 'exception']) {
+      const nested = result[field]
+      if (isRecord(nested)) visit(nested)
+    }
+    if (
+      logs.length === previousCount &&
+      Object.keys(result).length > 0
+    ) {
+      append(result)
+    }
+  }
+
+  results.forEach(visit)
+  return logs.join('\n\n')
+}
+
+function formatLogValue(value: unknown): string {
+  if (value === undefined || value === null || value === '') return ''
+  if (typeof value === 'string') return value
+  if (Array.isArray(value)) {
+    return value.map(formatLogValue).filter(Boolean).join('\n')
+  }
+  if (typeof value === 'object') {
+    try {
+      return JSON.stringify(value, null, 2)
+    } catch {
+      return String(value)
+    }
+  }
+  return String(value)
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
 
 const NODE_STATE_LABELS: Readonly<Record<string, string>> = {

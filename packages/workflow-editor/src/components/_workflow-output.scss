@@ -300,6 +300,17 @@
   font-size: 12px;
 }
 
+.workflow :global(.workflow-runtime__error-list) {
+  display: grid;
+  gap: var(--unilab-space-2);
+  padding: var(--unilab-space-3);
+}
+
+.workflow :global(.workflow-runtime__error-list)
+  :global(.workflow-runtime__error-detail) {
+  margin: 0;
+}
+
 .workflow :global(.workflow-runtime__error-detail) p {
   margin: 0;
   color: var(--unilab-color-text);
@@ -321,6 +332,35 @@
   background: var(--unilab-color-surface);
   font-weight: 600;
   cursor: pointer;
+}
+
+.workflow :global(.workflow-runtime__node-error) header {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--unilab-space-2);
+}
+
+.workflow :global(.workflow-runtime__node-error) small {
+  overflow: hidden;
+  color: var(--unilab-color-text-muted);
+  font: 11px/16px var(--unilab-font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workflow :global(.workflow-runtime__node-error) pre {
+  max-height: 180px;
+  margin: 0;
+  padding: var(--unilab-space-2);
+  overflow: auto;
+  color: var(--unilab-color-text);
+  border-radius: var(--unilab-radius-control);
+  background: var(--unilab-color-surface);
+  font: 12px/1.5 var(--unilab-font-mono);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
 .workflow :global(.workflow-runtime__output-empty) {
