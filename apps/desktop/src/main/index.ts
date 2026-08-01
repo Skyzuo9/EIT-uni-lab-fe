@@ -316,10 +316,15 @@ function runtimePathDialogOptions(
       properties: ['openFile']
     }
   }
+  const titles: Record<Exclude<LocalRuntimePathKind, 'graph'>, string> = {
+    os: '选择 Uni-Lab-OS 项目根目录',
+    szlab: '选择 Uni-Lab-SZLab 项目根目录',
+    environment: '选择 unilab Conda 环境目录',
+    simulator: '选择 PLC-Sim 项目根目录'
+  }
+  if (!(kind in titles)) throw new Error('不支持的本地运行时路径类型')
   return {
-    title: kind === 'os'
-      ? '选择 Uni-Lab-OS 项目根目录'
-      : '选择 OPC 仿真项目目录',
+    title: titles[kind as Exclude<LocalRuntimePathKind, 'graph'>],
     properties: ['openDirectory']
   }
 }
@@ -332,6 +337,8 @@ function parseRuntimeConfig(value: unknown): LocalRuntimeLaunchConfig {
   if (
     typeof candidate.graphPath !== 'string' ||
     typeof candidate.osProjectPath !== 'string' ||
+    typeof candidate.szlabProjectPath !== 'string' ||
+    typeof candidate.environmentPath !== 'string' ||
     typeof candidate.simulatorProjectPath !== 'string' ||
     typeof candidate.startSimulator !== 'boolean'
   ) {
@@ -340,6 +347,8 @@ function parseRuntimeConfig(value: unknown): LocalRuntimeLaunchConfig {
   return {
     graphPath: candidate.graphPath,
     osProjectPath: candidate.osProjectPath,
+    szlabProjectPath: candidate.szlabProjectPath,
+    environmentPath: candidate.environmentPath,
     simulatorProjectPath: candidate.simulatorProjectPath,
     startSimulator: candidate.startSimulator
   }

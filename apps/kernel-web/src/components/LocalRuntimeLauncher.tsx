@@ -10,17 +10,21 @@ import type {
 
 import styles from './LocalRuntimeLauncher.module.scss'
 
-const STORAGE_KEY = 'unilab.local-runtime-launch-config.v1'
+const STORAGE_KEY = 'unilab.local-runtime-launch-config.v2'
+const LEGACY_STORAGE_KEY = 'unilab.local-runtime-launch-config.v1'
 const EMPTY_CONFIG: LocalRuntimeLaunchConfig = {
   graphPath: '',
   osProjectPath: '',
+  szlabProjectPath: '',
+  environmentPath: '',
   simulatorProjectPath: '',
   startSimulator: true
 }
 const IDLE_SNAPSHOT: LocalRuntimeSnapshot = {
   phase: 'idle',
-  message: '本地环境未启动',
+  message: '本地调试环境未启动',
   simulatorRunning: false,
+  bridgeRunning: false,
   edgeRunning: false
 }
 
@@ -191,9 +195,9 @@ export function LocalRuntimeDialog({
       >
         <header className={styles.header}>
           <div>
-            <h2 id="local-runtime-title">启动本地环境</h2>
+            <h2 id="local-runtime-title">启动 SZLab 本地调试环境</h2>
             <p id="local-runtime-description">
-              通过系统文件管理器选择设备图与项目目录，由桌面端统一管理 Edge 和 OPC 仿真进程。
+              选择项目和 Conda 环境后，桌面端将启动 OPC UA 与 SZLab Edge。
             </p>
           </div>
           <button
@@ -210,9 +214,9 @@ export function LocalRuntimeDialog({
         <div className={styles.body}>
           <label className={styles.simulatorOption}>
             <span>
-              <strong>同时启动 OPC 仿真器</strong>
+              <strong>同时启动本地 OPC UA</strong>
               <small>
-                关闭后只启动 Edge，使用设备图中配置的现有 OPC 服务。
+                使用 PLC-Sim 的 OpcUaSim，监听 127.0.0.1:18765。
               </small>
             </span>
             <input
@@ -230,16 +234,16 @@ export function LocalRuntimeDialog({
 
           <div className={styles.fields}>
             <PathField
-              id="runtime-graph-path"
-              label="设备图 JSON"
-              value={config.graphPath}
-              placeholder="选择用于启动 Edge 的设备图"
-              buttonLabel="选择文件"
+              id="runtime-environment-path"
+              label="unilab Conda 环境目录"
+              value={config.environmentPath}
+              placeholder="例如 /Users/dp/miniforge3/envs/unilab"
+              buttonLabel="选择目录"
               disabled={disabled}
-              invalid={submitted && Boolean(validation.errors.graphPath)}
-              error={submitted ? validation.errors.graphPath : undefined}
+              invalid={submitted && Boolean(validation.errors.environmentPath)}
+              error={submitted ? validation.errors.environmentPath : undefined}
               autoFocus
-              onChoose={() => onChoosePath('graph')}
+              onChoose={() => onChoosePath('environment')}
             />
             <PathField
               id="runtime-os-path"
@@ -253,12 +257,34 @@ export function LocalRuntimeDialog({
               onChoose={() => onChoosePath('os')}
             />
             <PathField
+              id="runtime-szlab-path"
+              label="Uni-Lab-SZLab 项目根目录"
+              value={config.szlabProjectPath}
+              placeholder="选择 Uni-Lab-SZLab 项目根目录"
+              buttonLabel="选择目录"
+              disabled={disabled}
+              invalid={submitted && Boolean(validation.errors.szlabProjectPath)}
+              error={submitted ? validation.errors.szlabProjectPath : undefined}
+              onChoose={() => onChoosePath('szlab')}
+            />
+            <PathField
+              id="runtime-graph-path"
+              label="SZLab 设备图 JSON"
+              value={config.graphPath}
+              placeholder="选择 szlab-ideawit-sim 设备图"
+              buttonLabel="选择文件"
+              disabled={disabled}
+              invalid={submitted && Boolean(validation.errors.graphPath)}
+              error={submitted ? validation.errors.graphPath : undefined}
+              onChoose={() => onChoosePath('graph')}
+            />
+            <PathField
               id="runtime-simulator-path"
-              label="OPC 仿真项目目录"
+              label="PLC-Sim 项目根目录"
               value={config.simulatorProjectPath}
               placeholder={config.startSimulator
-                ? '选择 PLC-Sim 项目目录'
-                : '未启用仿真，无需选择'}
+                ? '选择包含 OpcUaSim 的 PLC-Sim 项目根目录'
+                : '未启用本地 OPC UA，无需选择'}
               buttonLabel="选择目录"
               disabled={disabled || !config.startSimulator}
               invalid={
@@ -271,7 +297,10 @@ export function LocalRuntimeDialog({
             />
           </div>
 
-          <RuntimeStatus snapshot={snapshot} />
+          <RuntimeStatus
+            snapshot={snapshot}
+            startSimulator={config.startSimulator}
+          />
 
           {error ? (
             <p className={styles.error} role="alert">
@@ -386,25 +415,63 @@ function PathField({
 }
 
 function RuntimeStatus({
-  snapshot
+  snapshot,
+  startSimulator
 }: {
   snapshot: LocalRuntimeSnapshot
+  startSimulator: boolean
 }): React.JSX.Element {
   return (
     <div
-      className={styles.statusStrip}
+      className={styles.statusPanel}
       data-phase={snapshot.phase}
       role="status"
       aria-live="polite"
     >
-      <span className={styles.statusDot} aria-hidden="true" />
-      <strong>{snapshot.message}</strong>
-      <span className={styles.processState}>
-        Edge {snapshot.edgeRunning ? '运行中' : '未启动'}
+      <div className={styles.statusHeader}>
+        <span className={styles.statusDot} aria-hidden="true" />
+        <strong>{snapshot.message}</strong>
+      </div>
+      <div className={styles.processGrid}>
+        <ProcessState
+          label="OPC UA"
+          port="18765"
+          status={runtimeProcessStatus(snapshot, 'simulator', startSimulator)}
+        />
+        <ProcessState
+          label="SZLab Edge"
+          port="8014 · 18003 · WS 8892"
+          status={edgeRuntimeStatus(snapshot)}
+        />
+      </div>
+    </div>
+  )
+}
+
+type ProcessDisplayStatus =
+  | 'idle'
+  | 'starting'
+  | 'running'
+  | 'stopping'
+  | 'failed'
+  | 'disabled'
+
+function ProcessState({
+  label,
+  port,
+  status
+}: {
+  label: string
+  port: string
+  status: ProcessDisplayStatus
+}): React.JSX.Element {
+  return (
+    <div className={styles.processItem} data-status={status}>
+      <span className={styles.processIdentity}>
+        <strong>{label}</strong>
+        <small>{port}</small>
       </span>
-      <span className={styles.processState}>
-        OPC {snapshot.simulatorRunning ? '运行中' : '未启动'}
-      </span>
+      <span className={styles.processStatus}>{processStatusLabel(status)}</span>
     </div>
   )
 }
@@ -422,16 +489,22 @@ export function validateConfig(
   if (!config.osProjectPath.trim()) {
     errors.osProjectPath = '请选择 Uni-Lab-OS 项目根目录'
   }
+  if (!config.szlabProjectPath.trim()) {
+    errors.szlabProjectPath = '请选择 Uni-Lab-SZLab 项目根目录'
+  }
+  if (!config.environmentPath.trim()) {
+    errors.environmentPath = '请选择 unilab Conda 环境目录'
+  }
   if (config.startSimulator && !config.simulatorProjectPath.trim()) {
-    errors.simulatorProjectPath = '启用仿真时必须选择 OPC 仿真项目目录'
+    errors.simulatorProjectPath = '启用本地 OPC UA 时必须选择 PLC-Sim 项目根目录'
   }
   return { valid: Object.keys(errors).length === 0, errors }
 }
 
 function launcherLabel(snapshot: LocalRuntimeSnapshot): string {
-  if (snapshot.phase === 'ready') return '本地环境已启动'
-  if (snapshot.phase === 'failed') return '本地环境启动失败'
-  if (isTransitioning(snapshot)) return '本地环境启动中'
+  if (snapshot.phase === 'ready') return '本地调试已启动'
+  if (snapshot.phase === 'failed') return '本地调试启动失败'
+  if (isTransitioning(snapshot)) return '本地调试启动中'
   return '启动本地环境'
 }
 
@@ -443,6 +516,9 @@ function isTransitioning(snapshot: LocalRuntimeSnapshot): boolean {
   return [
     'validating',
     'starting_simulator',
+    'waiting_simulator',
+    'starting_bridge',
+    'waiting_bridge',
     'starting_edge',
     'waiting_edge',
     'stopping'
@@ -454,20 +530,29 @@ function pathField(
 ): keyof LocalRuntimeLaunchConfig {
   if (kind === 'graph') return 'graphPath'
   if (kind === 'os') return 'osProjectPath'
+  if (kind === 'szlab') return 'szlabProjectPath'
+  if (kind === 'environment') return 'environmentPath'
   return 'simulatorProjectPath'
 }
 
 function readStoredConfig(): LocalRuntimeLaunchConfig {
   if (typeof globalThis.localStorage === 'undefined') return { ...EMPTY_CONFIG }
   try {
-    const parsed = JSON.parse(
-      globalThis.localStorage.getItem(STORAGE_KEY) ?? 'null'
-    ) as Partial<LocalRuntimeLaunchConfig> | null
+    const storedValue = globalThis.localStorage.getItem(STORAGE_KEY)
+      ?? globalThis.localStorage.getItem(LEGACY_STORAGE_KEY)
+    const parsed = JSON.parse(storedValue ?? 'null') as
+      Partial<LocalRuntimeLaunchConfig> | null
     if (!parsed) return { ...EMPTY_CONFIG }
     return {
       graphPath: typeof parsed.graphPath === 'string' ? parsed.graphPath : '',
       osProjectPath: typeof parsed.osProjectPath === 'string'
         ? parsed.osProjectPath
+        : '',
+      szlabProjectPath: typeof parsed.szlabProjectPath === 'string'
+        ? parsed.szlabProjectPath
+        : '',
+      environmentPath: typeof parsed.environmentPath === 'string'
+        ? parsed.environmentPath
         : '',
       simulatorProjectPath: typeof parsed.simulatorProjectPath === 'string'
         ? parsed.simulatorProjectPath
@@ -477,6 +562,77 @@ function readStoredConfig(): LocalRuntimeLaunchConfig {
   } catch {
     return { ...EMPTY_CONFIG }
   }
+}
+
+function runtimeProcessStatus(
+  snapshot: LocalRuntimeSnapshot,
+  kind: 'simulator',
+  enabled: boolean
+): ProcessDisplayStatus {
+  if (!enabled) return 'disabled'
+  if (snapshot.failedProcess === kind) return 'failed'
+  if (snapshot.phase === 'stopping' && processRunning(snapshot, kind)) {
+    return 'stopping'
+  }
+  if (
+    snapshot.phase === `starting_${kind}`
+    || snapshot.phase === `waiting_${kind}`
+  ) {
+    return 'starting'
+  }
+  if (processRunning(snapshot, kind)) return 'running'
+  return 'idle'
+}
+
+function edgeRuntimeStatus(
+  snapshot: LocalRuntimeSnapshot
+): ProcessDisplayStatus {
+  if (
+    snapshot.failedProcess === 'bridge'
+    || snapshot.failedProcess === 'edge'
+  ) {
+    return 'failed'
+  }
+  if (
+    snapshot.phase === 'stopping'
+    && (snapshot.bridgeRunning || snapshot.edgeRunning)
+  ) {
+    return 'stopping'
+  }
+  if (
+    snapshot.phase === 'ready'
+    && snapshot.bridgeRunning
+    && snapshot.edgeRunning
+  ) {
+    return 'running'
+  }
+  if (
+    snapshot.phase === 'starting_bridge'
+    || snapshot.phase === 'waiting_bridge'
+    || snapshot.phase === 'starting_edge'
+    || snapshot.phase === 'waiting_edge'
+    || snapshot.bridgeRunning
+    || snapshot.edgeRunning
+  ) {
+    return 'starting'
+  }
+  return 'idle'
+}
+
+function processRunning(
+  snapshot: LocalRuntimeSnapshot,
+  kind: 'simulator'
+): boolean {
+  return snapshot.simulatorRunning
+}
+
+function processStatusLabel(status: ProcessDisplayStatus): string {
+  if (status === 'running') return '运行中'
+  if (status === 'starting') return '启动中'
+  if (status === 'stopping') return '停止中'
+  if (status === 'failed') return '异常'
+  if (status === 'disabled') return '未启用'
+  return '未启动'
 }
 
 function desktopRuntimeApi(): DesktopRuntimeApi | undefined {

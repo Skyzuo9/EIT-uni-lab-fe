@@ -20,24 +20,27 @@
 
 ## 本地环境启动
 
-桌面端连接栏可选择设备图 JSON、Uni-Lab-OS 项目目录和 OPC 仿真项目目录，
-并以一个受控会话启动或停止 Edge 与仿真器。关闭“同时启动 OPC 仿真器”后，
-仿真项目目录不再必填，Edge 会直接使用设备图中配置的 OPC 服务。
+桌面端连接栏可选择以下路径，并以一个受控会话按顺序启动或停止本地调试环境：
 
-仿真项目需要提供根目录 `start.sh`（Windows 为 `start.bat`），或提供
-`unilab-launch.json`：
+- `unilab` Conda 环境目录（内部使用 `bin/python` 与 `bin/unilab`）
+- Uni-Lab-OS 项目根目录
+- Uni-Lab-SZLab 项目根目录
+- SZLab 设备图 JSON
+- PLC-Sim 项目根目录（可选，内部使用 `OpcUaSim/gui/backend.py`）
 
-```json
-{
-  "command": ".venv/bin/python",
-  "args": ["main.py"],
-  "readyPort": 4840
-}
-```
+启动顺序与固定端口如下：
 
-`command`、可选 `cwd` 中的路径必须位于所选仿真项目目录内。就绪条件必须使用
-`readyPort` 或 `readyUrl`；没有显式就绪条件的标准启动脚本只检查进程是否持续运行。
-所有命令均以参数数组直接启动，不经过 renderer 或任意 shell 字符串拼接。
+1. OPC UA：`python -m gui.backend`，监听 `127.0.0.1:18765`。
+2. SZLab Edge 内部服务：`deployment/local_bridge_entrypoint.py`，API 监听 `8014`，Schedule
+   WebSocket 监听 `8892`，连接 Edge `18003`。
+3. SZLab Edge：使用 ROS backend、`ROS_DOMAIN_ID=42`，HTTP 监听 `18003`。
+
+产品界面仅展示 OPC UA 与 SZLab Edge；内部服务随 SZLab Edge 一起启动和停止，
+不作为独立服务暴露给用户。
+
+启动前会校验项目结构、可执行文件和端口占用；任一进程启动失败或意外退出时，
+其余进程会被统一回收。所有命令均以参数数组直接启动，不经过 renderer 或任意
+shell 字符串拼接。日志分别写入 `simulator.log`、`bridge.log` 和 `edge.log`。
 
 ## 绝对不能做
 

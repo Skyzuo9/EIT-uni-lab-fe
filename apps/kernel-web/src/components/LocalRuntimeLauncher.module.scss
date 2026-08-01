@@ -64,8 +64,8 @@
 }
 
 .dialog {
-  width: min(640px, calc(100vw - 32px));
-  max-height: min(760px, calc(100vh - 32px));
+  width: min(700px, calc(100vw - 32px));
+  max-height: min(820px, calc(100vh - 32px));
   overflow: auto;
   color: var(--unilab-color-text);
   border-radius: var(--unilab-radius-lg);
@@ -263,18 +263,12 @@
   line-height: 1.4;
 }
 
-.statusStrip {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 7px 12px;
-  min-height: 36px;
-  padding: 8px 10px;
+.statusPanel {
+  overflow: hidden;
   color: var(--unilab-color-text-muted);
   border: 1px solid var(--unilab-color-border);
   border-radius: var(--unilab-radius-control);
   background: var(--unilab-color-surface-subtle);
-  font-size: 11px;
 
   &[data-phase='ready'] {
     color: var(--unilab-color-success);
@@ -296,14 +290,83 @@
     background: var(--unilab-color-danger-soft);
   }
 
+}
+
+.statusHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 8px 10px;
+
   strong {
+    color: currentColor;
     font-size: 12px;
   }
 }
 
-.processState {
-  color: currentColor;
-  opacity: .84;
+.processGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border-top: 1px solid currentColor;
+  border-top-color: color-mix(in srgb, currentColor 18%, transparent);
+}
+
+.processItem {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 10px;
+
+  & + & {
+    border-inline-start: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+  }
+
+  &[data-status='running'] {
+    color: var(--unilab-color-success);
+  }
+
+  &[data-status='starting'],
+  &[data-status='stopping'] {
+    color: var(--unilab-color-warning);
+  }
+
+  &[data-status='failed'] {
+    color: var(--unilab-color-danger);
+  }
+
+  &[data-status='disabled'] {
+    color: var(--unilab-color-text-subtle);
+  }
+}
+
+.processIdentity {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+
+  strong {
+    overflow: hidden;
+    color: var(--unilab-color-text);
+    font-size: 11px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  small {
+    overflow: hidden;
+    font: 10px/1.35 var(--unilab-font-mono);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.processStatus {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .error {
@@ -414,6 +477,15 @@
   .primaryButton,
   .stopButton {
     flex: 1 1 auto;
+  }
+
+  .processGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .processItem + .processItem {
+    border-block-start: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+    border-inline-start: 0;
   }
 
 }
