@@ -8,7 +8,7 @@ import {
 } from 'electron'
 import { basename, join } from 'path'
 import { appendFileSync } from 'node:fs'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { readFile, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { readSession, clearSession, runOAuthLogin } from './authManager'
@@ -210,13 +210,9 @@ app.whenReady().then(() => {
     assertMainWindowSender(event)
     return requireRuntimeManager().stopEdge()
   })
-  ipcMain.handle('runtime:openLogs', async (event) => {
+  ipcMain.handle('runtime:readLogs', async (event) => {
     assertMainWindowSender(event)
-    const logsDirectory = join(app.getPath('logs'), 'local-runtime')
-    await mkdir(logsDirectory, { recursive: true })
-    const openError = await shell.openPath(logsDirectory)
-    if (openError) throw new Error(openError)
-    return true
+    return requireRuntimeManager().readLogs()
   })
 
   // 读取当前登录会话(启动/刷新时使用)

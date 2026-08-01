@@ -15,6 +15,18 @@ export interface LocalRuntimeLaunchConfig {
 
 export type LocalRuntimeProcessKind = 'simulator' | 'bridge' | 'edge'
 
+export interface LocalRuntimeLogEntry {
+  kind: LocalRuntimeProcessKind
+  content: string
+  available: boolean
+  truncated: boolean
+}
+
+export interface LocalRuntimeLogsSnapshot {
+  readAt: number
+  entries: LocalRuntimeLogEntry[]
+}
+
 export type LocalRuntimePhase =
   | 'idle'
   | 'validating_simulator'

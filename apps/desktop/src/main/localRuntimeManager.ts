@@ -1,12 +1,14 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { constants as fsConstants, createWriteStream } from 'node:fs'
-import { access, mkdir, stat } from 'node:fs/promises'
+import { access, mkdir, open, stat } from 'node:fs/promises'
 import { createConnection } from 'node:net'
 import { delimiter, dirname, join, normalize, resolve } from 'node:path'
 
 import {
   IDLE_LOCAL_RUNTIME_SNAPSHOT,
   type LocalRuntimeLaunchConfig,
+  type LocalRuntimeLogEntry,
+  type LocalRuntimeLogsSnapshot,
   type LocalRuntimeProcessKind,
   type LocalRuntimeSnapshot
 } from '../shared/localRuntime'
@@ -29,6 +31,7 @@ export interface LocalSimulatorLaunchPlan {
 }
 
 interface ResolvedRuntimeConfig {
+  platform: NodeJS.Platform
   graphPath: string
   osProjectPath: string
   szlabProjectPath: string
@@ -68,6 +71,12 @@ const BRIDGE_HEALTH_URL = `http://${HOST}:${LOCAL_RUNTIME_PORTS.bridgeApi}/healt
 const ACTION_CATALOG_URL =
   `http://${HOST}:${LOCAL_RUNTIME_PORTS.bridgeApi}/api/runtime/local/actions`
 const PROCESS_READY_TIMEOUT_MS = 90_000
+const LOCAL_RUNTIME_LOG_READ_LIMIT_BYTES = 128 * 1024
+const LOCAL_RUNTIME_LOG_KINDS: readonly LocalRuntimeProcessKind[] = [
+  'simulator',
+  'bridge',
+  'edge'
+]
 
 export class LocalRuntimeManager {
   private snapshot: LocalRuntimeSnapshot = {
@@ -86,6 +95,10 @@ export class LocalRuntimeManager {
 
   getSnapshot(): LocalRuntimeSnapshot {
     return { ...this.snapshot }
+  }
+
+  readLogs(): Promise<LocalRuntimeLogsSnapshot> {
+    return readLocalRuntimeLogs(this.logsDirectory)
   }
 
   async startSimulator(
@@ -345,7 +358,7 @@ export class LocalRuntimeManager {
     this.publishFailure(
       `${label} 已意外退出`,
       kind,
-      '请打开日志目录查看本地启动日志'
+      '请点击右上角“查看日志”检查本地启动输出'
     )
   }
 
@@ -404,10 +417,67 @@ export class LocalRuntimeManager {
   }
 }
 
+export async function readLocalRuntimeLogs(
+  logsDirectory: string,
+  maxBytes = LOCAL_RUNTIME_LOG_READ_LIMIT_BYTES
+): Promise<LocalRuntimeLogsSnapshot> {
+  await mkdir(logsDirectory, { recursive: true })
+  const entries = await Promise.all(
+    LOCAL_RUNTIME_LOG_KINDS.map((kind) => readLocalRuntimeLogEntry(
+      logsDirectory,
+      kind,
+      Math.max(1, maxBytes)
+    ))
+  )
+  return { readAt: Date.now(), entries }
+}
+
+async function readLocalRuntimeLogEntry(
+  logsDirectory: string,
+  kind: LocalRuntimeProcessKind,
+  maxBytes: number
+): Promise<LocalRuntimeLogEntry> {
+  const logPath = join(logsDirectory, `${kind}.log`)
+  let handle: Awaited<ReturnType<typeof open>> | null = null
+  try {
+    handle = await open(logPath, 'r')
+    const file = await handle.stat()
+    const byteLength = Math.min(file.size, maxBytes)
+    const start = Math.max(0, file.size - byteLength)
+    const buffer = Buffer.alloc(byteLength)
+    const { bytesRead } = byteLength > 0
+      ? await handle.read(buffer, 0, byteLength, start)
+      : { bytesRead: 0 }
+    let contentStart = 0
+    if (start > 0) {
+      while (
+        contentStart < bytesRead
+        && (buffer[contentStart] & 0xc0) === 0x80
+      ) {
+        contentStart += 1
+      }
+    }
+    return {
+      kind,
+      content: buffer.subarray(contentStart, bytesRead).toString('utf8'),
+      available: true,
+      truncated: file.size > byteLength
+    }
+  } catch (error) {
+    if (isNodeError(error) && error.code === 'ENOENT') {
+      return { kind, content: '', available: false, truncated: false }
+    }
+    throw error
+  } finally {
+    await handle?.close()
+  }
+}
+
 export async function resolveLocalRuntimeLaunchPlan(
-  config: LocalRuntimeLaunchConfig
+  config: LocalRuntimeLaunchConfig,
+  platform: NodeJS.Platform = process.platform
 ): Promise<LocalRuntimeLaunchPlan> {
-  const resolvedConfig = await resolveRuntimeConfig(config)
+  const resolvedConfig = await resolveRuntimeConfig(config, platform)
   return {
     runtimeDirectory: resolvedConfig.runtimeDirectory,
     bridge: bridgeSpec(resolvedConfig),
@@ -416,19 +486,17 @@ export async function resolveLocalRuntimeLaunchPlan(
 }
 
 export async function resolveLocalSimulatorLaunchPlan(
-  config: LocalRuntimeLaunchConfig
+  config: LocalRuntimeLaunchConfig,
+  platform: NodeJS.Platform = process.platform
 ): Promise<LocalSimulatorLaunchPlan> {
-  const resolvedConfig = await resolveSimulatorConfig(config)
+  const resolvedConfig = await resolveSimulatorConfig(config, platform)
   return { simulator: simulatorSpec(resolvedConfig) }
 }
 
 async function resolveRuntimeConfig(
-  config: LocalRuntimeLaunchConfig
+  config: LocalRuntimeLaunchConfig,
+  platform: NodeJS.Platform
 ): Promise<ResolvedRuntimeConfig> {
-  if (process.platform === 'win32') {
-    throw new Error('当前 SZLab 本地调试命令仅支持 macOS 和 Linux')
-  }
-
   const graphPath = normalizeRequiredPath(config.graphPath, '请选择设备图 JSON')
   const osProjectPath = normalizeRequiredPath(
     config.osProjectPath,
@@ -451,10 +519,22 @@ async function resolveRuntimeConfig(
   await requireDirectory(szlabProjectPath, 'Uni-Lab-SZLab 项目根目录不存在')
   await requireDirectory(environmentPath, 'unilab Conda 环境目录不存在')
 
-  const pythonExecutable = join(environmentPath, 'bin', 'python')
-  const unilabExecutable = join(environmentPath, 'bin', 'unilab')
-  await requireExecutable(pythonExecutable, '所选 Conda 环境缺少 bin/python')
-  await requireExecutable(unilabExecutable, '所选 Conda 环境缺少 bin/unilab')
+  const { pythonExecutable, unilabExecutable } = runtimeExecutablePaths(
+    environmentPath,
+    platform
+  )
+  await requireExecutable(
+    pythonExecutable,
+    platform === 'win32'
+      ? '所选 Conda 环境缺少 python.exe'
+      : '所选 Conda 环境缺少 bin/python'
+  )
+  await requireExecutable(
+    unilabExecutable,
+    platform === 'win32'
+      ? '所选 Conda 环境缺少 Scripts/unilab.exe'
+      : '所选 Conda 环境缺少 bin/unilab'
+  )
 
   const bridgeEntrypoint = join(
     szlabProjectPath,
@@ -496,6 +576,7 @@ async function resolveRuntimeConfig(
   )
 
   return {
+    platform,
     graphPath,
     osProjectPath,
     szlabProjectPath,
@@ -512,11 +593,9 @@ async function resolveRuntimeConfig(
 }
 
 async function resolveSimulatorConfig(
-  config: LocalRuntimeLaunchConfig
+  config: LocalRuntimeLaunchConfig,
+  platform: NodeJS.Platform
 ): Promise<ResolvedSimulatorConfig> {
-  if (process.platform === 'win32') {
-    throw new Error('当前 PLC-Sim 本地启动命令仅支持 macOS 和 Linux')
-  }
   const environmentPath = normalizeRequiredPath(
     config.environmentPath,
     '请选择 unilab Conda 环境目录'
@@ -527,8 +606,16 @@ async function resolveSimulatorConfig(
   )
   await requireDirectory(environmentPath, 'unilab Conda 环境目录不存在')
   await requireDirectory(simulatorProjectPath, 'PLC-Sim 项目根目录不存在')
-  const pythonExecutable = join(environmentPath, 'bin', 'python')
-  await requireExecutable(pythonExecutable, '所选 Conda 环境缺少 bin/python')
+  const { pythonExecutable } = runtimeExecutablePaths(
+    environmentPath,
+    platform
+  )
+  await requireExecutable(
+    pythonExecutable,
+    platform === 'win32'
+      ? '所选 Conda 环境缺少 python.exe'
+      : '所选 Conda 环境缺少 bin/python'
+  )
   return {
     pythonExecutable,
     workingDirectory: await resolveSimulatorWorkingDirectory(
@@ -635,13 +722,37 @@ function runtimeEnvironment(
       config.osProjectPath,
       config.studioPythonPath,
       process.env['PYTHONPATH']
-    ]),
+    ], config.platform === 'win32' ? ';' : ':'),
     PYTHONUNBUFFERED: '1'
   }
 }
 
-function mergePathList(values: Array<string | undefined>): string {
-  return values.filter((value): value is string => Boolean(value)).join(delimiter)
+function mergePathList(
+  values: Array<string | undefined>,
+  separator = delimiter
+): string {
+  return values
+    .filter((value): value is string => Boolean(value))
+    .join(separator)
+}
+
+function runtimeExecutablePaths(
+  environmentPath: string,
+  platform: NodeJS.Platform
+): {
+  pythonExecutable: string
+  unilabExecutable: string
+} {
+  if (platform === 'win32') {
+    return {
+      pythonExecutable: join(environmentPath, 'python.exe'),
+      unilabExecutable: join(environmentPath, 'Scripts', 'unilab.exe')
+    }
+  }
+  return {
+    pythonExecutable: join(environmentPath, 'bin', 'python'),
+    unilabExecutable: join(environmentPath, 'bin', 'unilab')
+  }
 }
 
 async function resolveSimulatorWorkingDirectory(
@@ -757,8 +868,12 @@ function requireLivingProcess(
   label: string
 ): void {
   if (child.exitCode !== null || child.signalCode !== null) {
-    throw new Error(`${label} 在服务就绪前退出，请查看日志`)
+    throw new Error(`${label} 在服务就绪前退出，请点击右上角“查看日志”`)
   }
+}
+
+function isNodeError(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && 'code' in error
 }
 
 async function stopProcessTree(

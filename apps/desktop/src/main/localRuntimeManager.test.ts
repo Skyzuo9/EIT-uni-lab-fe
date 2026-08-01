@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import type { LocalRuntimeLaunchConfig } from '../shared/localRuntime'
 import {
+  readLocalRuntimeLogs,
   resolveLocalRuntimeLaunchPlan,
   resolveLocalSimulatorLaunchPlan
 } from './localRuntimeManager'
@@ -22,6 +23,38 @@ afterEach(async () => {
 })
 
 describe('LocalRuntimeManager command plan', () => {
+  it('reads only the tail of fixed local runtime log files', async () => {
+    const logsDirectory = await mkdtemp(join(tmpdir(), 'unilab-runtime-logs-'))
+    temporaryDirectories.push(logsDirectory)
+    await Promise.all([
+      writeFile(join(logsDirectory, 'simulator.log'), 'old-prefix-latest'),
+      writeFile(join(logsDirectory, 'edge.log'), '')
+    ])
+
+    const logs = await readLocalRuntimeLogs(logsDirectory, 6)
+
+    expect(logs.entries).toEqual([
+      {
+        kind: 'simulator',
+        content: 'latest',
+        available: true,
+        truncated: true
+      },
+      {
+        kind: 'bridge',
+        content: '',
+        available: false,
+        truncated: false
+      },
+      {
+        kind: 'edge',
+        content: '',
+        available: true,
+        truncated: false
+      }
+    ])
+  })
+
   it('maps the selected roots to the supplied OPC, Bridge and Edge commands', async () => {
     const fixture = await createFixture('packages')
     const plan = await resolveLocalRuntimeLaunchPlan(fixture.config)
@@ -131,6 +164,32 @@ describe('LocalRuntimeManager command plan', () => {
     )
   })
 
+  it('uses Windows Conda executables for PLC-Sim and Edge', async () => {
+    const fixture = await createFixture('packages', 'win32')
+    const plan = await resolveLocalRuntimeLaunchPlan(fixture.config, 'win32')
+    const simulatorPlan = await resolveLocalSimulatorLaunchPlan(
+      fixture.config,
+      'win32'
+    )
+
+    expect(fixture.python).toBe(
+      join(fixture.config.environmentPath, 'python.exe')
+    )
+    expect(fixture.unilab).toBe(
+      join(fixture.config.environmentPath, 'Scripts', 'unilab.exe')
+    )
+    expect(fixture.config.environmentPath).toContain(
+      'unilab windows runtime-'
+    )
+    expect(simulatorPlan.simulator.command).toBe(fixture.python)
+    expect(plan.bridge.command).toBe(fixture.python)
+    expect(plan.edge.command).toBe(fixture.unilab)
+    expect(plan.edge.env['PYTHONPATH']?.split(';').slice(0, 2)).toEqual([
+      fixture.osRoot,
+      join(fixture.szlabRoot, 'packages', 'szlab_poly_studio')
+    ])
+  })
+
   it('resolves PLC-Sim without requiring Edge project paths', async () => {
     const fixture = await createFixture('packages')
     const plan = await resolveLocalSimulatorLaunchPlan({
@@ -157,7 +216,8 @@ describe('LocalRuntimeManager command plan', () => {
 })
 
 async function createFixture(
-  layout: 'packages' | 'root'
+  layout: 'packages' | 'root',
+  platform: NodeJS.Platform = 'linux'
 ): Promise<{
   config: LocalRuntimeLaunchConfig
   graphPath: string
@@ -167,20 +227,28 @@ async function createFixture(
   szlabRoot: string
   unilab: string
 }> {
-  const root = await mkdtemp(join(tmpdir(), 'unilab-runtime-manager-'))
+  const fixturePrefix = platform === 'win32'
+    ? 'unilab windows runtime-'
+    : 'unilab-runtime-manager-'
+  const root = await mkdtemp(join(tmpdir(), fixturePrefix))
   temporaryDirectories.push(root)
   const osRoot = join(root, 'Uni-Lab-OS')
   const szlabRoot = join(root, 'Uni-Lab-SZLab')
   const environmentRoot = join(root, 'envs', 'unilab')
   const simulatorRoot = join(root, 'PLC-Sim')
   const graphPath = join(szlabRoot, 'deployment', 'graphs', 'device.json')
-  const python = join(environmentRoot, 'bin', 'python')
-  const unilab = join(environmentRoot, 'bin', 'unilab')
+  const python = platform === 'win32'
+    ? join(environmentRoot, 'python.exe')
+    : join(environmentRoot, 'bin', 'python')
+  const unilab = platform === 'win32'
+    ? join(environmentRoot, 'Scripts', 'unilab.exe')
+    : join(environmentRoot, 'bin', 'unilab')
 
   await Promise.all([
     mkdir(osRoot, { recursive: true }),
     mkdir(join(szlabRoot, 'deployment', 'graphs'), { recursive: true }),
-    mkdir(join(environmentRoot, 'bin'), { recursive: true }),
+    mkdir(dirname(python), { recursive: true }),
+    mkdir(dirname(unilab), { recursive: true }),
     mkdir(join(simulatorRoot, 'OpcUaSim', 'gui'), { recursive: true })
   ])
   await Promise.all([

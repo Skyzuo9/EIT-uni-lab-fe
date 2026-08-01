@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type {
   LocalRuntimeLaunchConfig,
+  LocalRuntimeLogsSnapshot,
   LocalRuntimePathKind,
   LocalRuntimeSnapshot
 } from '../shared/localRuntime'
@@ -76,7 +77,8 @@ const api = {
       ipcRenderer.invoke('runtime:startEdge', config),
     stopEdge: (): Promise<LocalRuntimeSnapshot> =>
       ipcRenderer.invoke('runtime:stopEdge'),
-    openLogs: (): Promise<boolean> => ipcRenderer.invoke('runtime:openLogs'),
+    readLogs: (): Promise<LocalRuntimeLogsSnapshot> =>
+      ipcRenderer.invoke('runtime:readLogs'),
     onSnapshot: (
       listener: (snapshot: LocalRuntimeSnapshot) => void
     ): (() => void) => {

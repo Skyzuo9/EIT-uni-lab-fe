@@ -3,10 +3,12 @@ import { describe, expect, it, vi } from 'vitest'
 
 import type {
   LocalRuntimeLaunchConfig,
+  LocalRuntimeLogsSnapshot,
   LocalRuntimeSnapshot
 } from '../types/electron'
 import {
   LocalRuntimeDialog,
+  LocalRuntimeLogDrawer,
   validateEdgeConfig,
   validateSimulatorConfig
 } from './LocalRuntimeLauncher'
@@ -47,6 +49,8 @@ describe('LocalRuntimeLauncher', () => {
 
   it('renders separate PLC and Edge controls with the variable-table reminder', () => {
     const markup = renderDialog(baseConfig, idleSnapshot)
+    const headerMarkup = markup.match(/<header[^>]*>.*?<\/header>/s)?.[0] ?? ''
+    const footerMarkup = markup.match(/<footer[^>]*>.*?<\/footer>/s)?.[0] ?? ''
 
     expect(markup).toContain('PLC-Sim（可选）')
     expect(markup).toContain('SZLab Edge')
@@ -64,6 +68,8 @@ describe('LocalRuntimeLauncher', () => {
     expect(markup).toContain('id="runtime-szlab-path" type="text"')
     expect(markup).toContain('id="runtime-simulator-path" type="text"')
     expect(markup.match(/<input/g)).toHaveLength(3)
+    expect(headerMarkup).toContain('查看日志')
+    expect(footerMarkup).not.toContain('查看日志')
   })
 
   it('keeps Edge available after PLC starts and reminds the user to upload variables', () => {
@@ -108,6 +114,52 @@ describe('LocalRuntimeLauncher', () => {
     expect(markup).toContain('正在启动…')
     expect(markup).not.toContain('Bridge')
   })
+
+  it('renders process output directly in the log drawer', () => {
+    const logsSnapshot: LocalRuntimeLogsSnapshot = {
+      readAt: 1_785_499_200_000,
+      entries: [
+        {
+          kind: 'simulator',
+          content: 'OPC UA ready on 127.0.0.1:18765',
+          available: true,
+          truncated: false
+        },
+        {
+          kind: 'bridge',
+          content: 'Edge service ready',
+          available: true,
+          truncated: false
+        },
+        {
+          kind: 'edge',
+          content: 'latest edge output',
+          available: true,
+          truncated: true
+        }
+      ]
+    }
+
+    const markup = renderToStaticMarkup(
+      <LocalRuntimeLogDrawer
+        snapshot={logsSnapshot}
+        activeKind="edge"
+        loading={false}
+        error={null}
+        onSelect={vi.fn()}
+        onRefresh={vi.fn()}
+        onClose={vi.fn()}
+      />
+    )
+
+    expect(markup).toContain('本地运行日志')
+    expect(markup).toContain('PLC-Sim')
+    expect(markup).toContain('Edge 服务')
+    expect(markup).toContain('Edge 运行时')
+    expect(markup).toContain('latest edge output')
+    expect(markup).toContain('当前展示最新 128 KB')
+    expect(markup).not.toContain('>Bridge<')
+  })
 })
 
 function renderDialog(
@@ -137,7 +189,15 @@ function renderDialog(
       onStopSimulator={vi.fn()}
       onStartEdge={vi.fn()}
       onStopEdge={vi.fn()}
+      logsOpen={false}
+      logsSnapshot={null}
+      activeLogKind="edge"
+      logsLoading={false}
+      logsError={null}
       onOpenLogs={vi.fn()}
+      onCloseLogs={vi.fn()}
+      onRefreshLogs={vi.fn()}
+      onSelectLog={vi.fn()}
     />
   )
 }

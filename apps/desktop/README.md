@@ -22,8 +22,9 @@
 
 桌面端连接栏可选择以下路径，并分别启动或停止 PLC-Sim 与 SZLab Edge：
 
-- `unilab` Conda 环境目录（自动识别本机兼容环境，也可手动选择；内部使用
-  `bin/python` 与 `bin/unilab`）
+- `unilab` Conda 环境目录（自动识别本机兼容环境，也可手动选择；macOS/Linux
+  使用 `bin/python` 与 `bin/unilab`，Windows 使用 `python.exe` 与
+  `Scripts/unilab.exe`）
 - Uni-Lab-OS 项目根目录
 - Uni-Lab-SZLab 项目根目录
 - SZLab 设备图 JSON
@@ -50,7 +51,8 @@
 
 启动前会校验项目结构、可执行文件和端口占用；任一进程启动失败或意外退出时，
 其余进程会被统一回收。所有命令均以参数数组直接启动，不经过 renderer 或任意
-shell 字符串拼接。日志分别写入 `simulator.log`、`bridge.log` 和 `edge.log`。
+shell 字符串拼接。日志分别写入 `simulator.log`、`bridge.log` 和 `edge.log`，可在
+应用右上角打开日志抽屉直接查看；日志目录与读取方式均由 Electron 按当前平台处理。
 
 ## 绝对不能做
 

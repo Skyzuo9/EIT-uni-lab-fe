@@ -36,6 +36,18 @@ export interface LocalRuntimeLaunchConfig {
 
 export type LocalRuntimeProcessKind = 'simulator' | 'bridge' | 'edge'
 
+export interface LocalRuntimeLogEntry {
+  kind: LocalRuntimeProcessKind
+  content: string
+  available: boolean
+  truncated: boolean
+}
+
+export interface LocalRuntimeLogsSnapshot {
+  readAt: number
+  entries: LocalRuntimeLogEntry[]
+}
+
 export type LocalRuntimePhase =
   | 'idle'
   | 'validating_simulator'
@@ -72,7 +84,7 @@ export interface DesktopRuntimeApi {
   stopSimulator: () => Promise<LocalRuntimeSnapshot>
   startEdge: (config: LocalRuntimeLaunchConfig) => Promise<LocalRuntimeSnapshot>
   stopEdge: () => Promise<LocalRuntimeSnapshot>
-  openLogs: () => Promise<boolean>
+  readLogs: () => Promise<LocalRuntimeLogsSnapshot>
   onSnapshot: (
     listener: (snapshot: LocalRuntimeSnapshot) => void
   ) => () => void

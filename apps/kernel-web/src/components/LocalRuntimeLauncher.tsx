@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
 import type {
   DesktopRuntimeApi,
   LocalRuntimeLaunchConfig,
+  LocalRuntimeLogsSnapshot,
   LocalRuntimePathKind,
+  LocalRuntimeProcessKind,
   LocalRuntimeSnapshot
 } from '../types/electron'
 
@@ -42,6 +44,15 @@ export default function LocalRuntimeLauncher({
   const [localError, setLocalError] = useState<string | null>(null)
   const [simulatorSubmitted, setSimulatorSubmitted] = useState(false)
   const [edgeSubmitted, setEdgeSubmitted] = useState(false)
+  const [logsOpen, setLogsOpen] = useState(false)
+  const [logsSnapshot, setLogsSnapshot] =
+    useState<LocalRuntimeLogsSnapshot | null>(null)
+  const [activeLogKind, setActiveLogKind] =
+    useState<LocalRuntimeProcessKind>('edge')
+  const [logsLoading, setLogsLoading] = useState(false)
+  const [logsError, setLogsError] = useState<string | null>(null)
+  const logReadSequenceRef = useRef(0)
+  const selectInitialLogRef = useRef(true)
 
   useEffect(() => {
     if (!runtimeApi) return
@@ -81,20 +92,75 @@ export default function LocalRuntimeLauncher({
     globalThis.localStorage.setItem(STORAGE_KEY, JSON.stringify(config))
   }, [config])
 
+  const refreshLogs = useCallback(async (): Promise<void> => {
+    if (!runtimeApi) return
+    const requestSequence = ++logReadSequenceRef.current
+    setLogsLoading(true)
+    setLogsError(null)
+    try {
+      const nextSnapshot = await runtimeApi.readLogs()
+      if (requestSequence !== logReadSequenceRef.current) return
+      setLogsSnapshot(nextSnapshot)
+      if (selectInitialLogRef.current) {
+        const preferredEntry = nextSnapshot.entries.find(
+          (entry) => entry.kind === 'edge' && entry.available
+        ) ?? nextSnapshot.entries.find((entry) => entry.available)
+        if (preferredEntry) setActiveLogKind(preferredEntry.kind)
+        selectInitialLogRef.current = false
+      }
+    } catch (error) {
+      if (requestSequence === logReadSequenceRef.current) {
+        setLogsError(errorMessage(error))
+      }
+    } finally {
+      if (requestSequence === logReadSequenceRef.current) {
+        setLogsLoading(false)
+      }
+    }
+  }, [runtimeApi])
+
+  useEffect(() => {
+    if (!logsOpen) return
+    void refreshLogs()
+    const refreshTimer = globalThis.setInterval(() => {
+      void refreshLogs()
+    }, 2_000)
+    return () => {
+      globalThis.clearInterval(refreshTimer)
+      logReadSequenceRef.current += 1
+    }
+  }, [logsOpen, refreshLogs])
+
   useEffect(() => {
     if (!open || typeof document === 'undefined') return
     const handleKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape' && !isTransitioning(snapshot)) setOpen(false)
+      if (event.key !== 'Escape') return
+      if (logsOpen) {
+        setLogsOpen(false)
+      } else if (!isTransitioning(snapshot)) {
+        setOpen(false)
+      }
     }
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [open, snapshot])
+  }, [logsOpen, open, snapshot])
 
   if (!runtimeApi) return null
 
   const simulatorValidation = validateSimulatorConfig(config)
   const edgeValidation = validateEdgeConfig(config)
   const transitioning = isTransitioning(snapshot)
+
+  const closeDialog = (): void => {
+    setLogsOpen(false)
+    setOpen(false)
+  }
+
+  const openLogs = (): void => {
+    selectInitialLogRef.current = true
+    setLogsError(null)
+    setLogsOpen(true)
+  }
 
   const choosePath = async (kind: LocalRuntimePathKind): Promise<void> => {
     setLocalError(null)
@@ -174,12 +240,20 @@ export default function LocalRuntimeLauncher({
               edgeValidation={edgeValidation}
               onChange={setConfig}
               onChoosePath={(kind) => void choosePath(kind)}
-              onClose={() => setOpen(false)}
+              onClose={closeDialog}
               onStartSimulator={() => void startSimulator()}
               onStopSimulator={() => void stopSimulator()}
               onStartEdge={() => void startEdge()}
               onStopEdge={() => void stopEdge()}
-              onOpenLogs={() => void runtimeApi.openLogs()}
+              logsOpen={logsOpen}
+              logsSnapshot={logsSnapshot}
+              activeLogKind={activeLogKind}
+              logsLoading={logsLoading}
+              logsError={logsError}
+              onOpenLogs={openLogs}
+              onCloseLogs={() => setLogsOpen(false)}
+              onRefreshLogs={() => void refreshLogs()}
+              onSelectLog={setActiveLogKind}
               transitioning={transitioning}
             />,
             document.body
@@ -198,6 +272,11 @@ interface LocalRuntimeDialogProps {
   simulatorValidation: ValidationResult
   edgeValidation: ValidationResult
   transitioning: boolean
+  logsOpen: boolean
+  logsSnapshot: LocalRuntimeLogsSnapshot | null
+  activeLogKind: LocalRuntimeProcessKind
+  logsLoading: boolean
+  logsError: string | null
   onChange: (config: LocalRuntimeLaunchConfig) => void
   onChoosePath: (kind: LocalRuntimePathKind) => void
   onClose: () => void
@@ -206,6 +285,9 @@ interface LocalRuntimeDialogProps {
   onStartEdge: () => void
   onStopEdge: () => void
   onOpenLogs: () => void
+  onCloseLogs: () => void
+  onRefreshLogs: () => void
+  onSelectLog: (kind: LocalRuntimeProcessKind) => void
 }
 
 export function LocalRuntimeDialog({
@@ -224,7 +306,15 @@ export function LocalRuntimeDialog({
   onStopSimulator,
   onStartEdge,
   onStopEdge,
-  onOpenLogs
+  logsOpen,
+  logsSnapshot,
+  activeLogKind,
+  logsLoading,
+  logsError,
+  onOpenLogs,
+  onCloseLogs,
+  onRefreshLogs,
+  onSelectLog
 }: LocalRuntimeDialogProps): React.JSX.Element {
   const simulatorTransitioning = isSimulatorTransitioning(snapshot)
   const edgeTransitioning = isEdgeTransitioning(snapshot)
@@ -253,15 +343,26 @@ export function LocalRuntimeDialog({
               分别启动 PLC-Sim 和 SZLab Edge，由你决定是否使用本地 PLC。
             </p>
           </div>
-          <button
-            type="button"
-            className={styles.closeButton}
-            aria-label="关闭本地环境配置"
-            disabled={transitioning}
-            onClick={onClose}
-          >
-            ×
-          </button>
+          <div className={styles.headerActions}>
+            <button
+              type="button"
+              className={`${styles.secondaryButton} ${styles.headerLogButton}`}
+              aria-expanded={logsOpen}
+              aria-controls="local-runtime-log-drawer"
+              onClick={onOpenLogs}
+            >
+              查看日志
+            </button>
+            <button
+              type="button"
+              className={styles.closeButton}
+              aria-label="关闭本地环境配置"
+              disabled={transitioning}
+              onClick={onClose}
+            >
+              ×
+            </button>
+          </div>
         </header>
 
         <div className={styles.body}>
@@ -431,14 +532,6 @@ export function LocalRuntimeDialog({
           <button
             type="button"
             className={styles.secondaryButton}
-            onClick={onOpenLogs}
-          >
-            查看日志
-          </button>
-          <span className={styles.footerSpacer} />
-          <button
-            type="button"
-            className={styles.secondaryButton}
             disabled={transitioning}
             onClick={onClose}
           >
@@ -446,6 +539,162 @@ export function LocalRuntimeDialog({
           </button>
         </footer>
       </section>
+      {logsOpen ? (
+        <LocalRuntimeLogDrawer
+          snapshot={logsSnapshot}
+          activeKind={activeLogKind}
+          loading={logsLoading}
+          error={logsError}
+          onSelect={onSelectLog}
+          onRefresh={onRefreshLogs}
+          onClose={onCloseLogs}
+        />
+      ) : null}
+    </div>
+  )
+}
+
+interface LocalRuntimeLogDrawerProps {
+  snapshot: LocalRuntimeLogsSnapshot | null
+  activeKind: LocalRuntimeProcessKind
+  loading: boolean
+  error: string | null
+  onSelect: (kind: LocalRuntimeProcessKind) => void
+  onRefresh: () => void
+  onClose: () => void
+}
+
+const LOG_TABS: Array<{
+  kind: LocalRuntimeProcessKind
+  label: string
+}> = [
+  { kind: 'simulator', label: 'PLC-Sim' },
+  { kind: 'bridge', label: 'Edge 服务' },
+  { kind: 'edge', label: 'Edge 运行时' }
+]
+
+export function LocalRuntimeLogDrawer({
+  snapshot,
+  activeKind,
+  loading,
+  error,
+  onSelect,
+  onRefresh,
+  onClose
+}: LocalRuntimeLogDrawerProps): React.JSX.Element {
+  const outputRef = useRef<HTMLPreElement>(null)
+  const activeEntry = snapshot?.entries.find(
+    (entry) => entry.kind === activeKind
+  )
+
+  useEffect(() => {
+    const output = outputRef.current
+    if (output) output.scrollTop = output.scrollHeight
+  }, [activeEntry?.content, activeKind])
+
+  return (
+    <div className={styles.logDrawerLayer}>
+      <button
+        type="button"
+        className={styles.logDrawerScrim}
+        aria-label="关闭运行日志"
+        onClick={onClose}
+      />
+      <aside
+        id="local-runtime-log-drawer"
+        className={styles.logDrawer}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="local-runtime-log-title"
+      >
+        <header className={styles.logDrawerHeader}>
+          <div>
+            <h3 id="local-runtime-log-title">本地运行日志</h3>
+            <p>直接展示最新输出，每 2 秒自动刷新。</p>
+          </div>
+          <div className={styles.logDrawerActions}>
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              disabled={loading}
+              onClick={onRefresh}
+            >
+              {loading ? '刷新中…' : '刷新'}
+            </button>
+            <button
+              type="button"
+              className={styles.closeButton}
+              aria-label="关闭运行日志"
+              onClick={onClose}
+            >
+              ×
+            </button>
+          </div>
+        </header>
+
+        <div className={styles.logTabs} role="tablist" aria-label="日志来源">
+          {LOG_TABS.map((tab) => {
+            const entry = snapshot?.entries.find(
+              (candidate) => candidate.kind === tab.kind
+            )
+            const hasOutput = Boolean(entry?.available && entry.content)
+            return (
+              <button
+                key={tab.kind}
+                id={`local-runtime-log-tab-${tab.kind}`}
+                type="button"
+                role="tab"
+                aria-selected={activeKind === tab.kind}
+                aria-controls="local-runtime-log-output"
+                data-available={hasOutput || undefined}
+                onClick={() => onSelect(tab.kind)}
+              >
+                <span>{tab.label}</span>
+                <small>
+                  {hasOutput ? '有输出' : entry?.available ? '等待输出' : '暂无'}
+                </small>
+              </button>
+            )
+          })}
+        </div>
+
+        <div
+          id="local-runtime-log-output"
+          className={styles.logDrawerBody}
+          role="tabpanel"
+          aria-labelledby={`local-runtime-log-tab-${activeKind}`}
+          aria-busy={loading}
+        >
+          {error ? (
+            <p className={styles.logError} role="alert">
+              日志读取失败：{error}
+            </p>
+          ) : null}
+          {loading && !snapshot ? (
+            <div className={styles.logEmpty} role="status">
+              正在读取日志…
+            </div>
+          ) : activeEntry?.available && activeEntry.content ? (
+            <>
+              {activeEntry.truncated ? (
+                <p className={styles.logNotice}>
+                  日志较长，当前展示最新 128 KB。
+                </p>
+              ) : null}
+              <pre ref={outputRef} className={styles.logOutput}>
+                {activeEntry.content}
+              </pre>
+            </>
+          ) : (
+            <div className={styles.logEmpty} role="status">
+              <strong>
+                {activeEntry?.available ? '暂时没有日志输出' : '尚未生成日志'}
+              </strong>
+              <span>启动相应服务后，输出会自动显示在这里。</span>
+            </div>
+          )}
+        </div>
+      </aside>
     </div>
   )
 }
