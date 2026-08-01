@@ -34,7 +34,8 @@ describe('laboratory service', () => {
                     volume: { type: 'number', default: 10 }
                   },
                   outputSchema: {},
-                  busy: true
+                  busy: true,
+                  currentJobId: 'job-aspirate'
                 }
               ]
             }
@@ -60,7 +61,8 @@ describe('laboratory service', () => {
             actionName: 'aspirate',
             actionRef: 'pump-1.aspirate',
             typeName: 'unilabos_msgs.action.Pump',
-            isBusy: true
+            isBusy: true,
+            currentJobId: 'job-aspirate'
           })
         ]
       }
@@ -187,6 +189,54 @@ describe('laboratory service', () => {
     ]) {
       expect(retiredMethod in service).toBe(false)
     }
+  })
+
+  it('uses the holder token for an operator-confirmed Action unlock', async () => {
+    const requests: Array<{
+      path: string
+      method?: string
+      body?: string
+    }> = []
+    const service = createLaboratoryService(
+      fixtureHttp(
+        {
+          '/api/v1/devices/robot%201/actions/move%2Fsafe/commands': {
+            status: 'released',
+            deviceId: 'robot 1',
+            actionName: 'move/safe',
+            releasedJobIds: ['job-active', 'job-queued'],
+            cancelRequestedJobIds: ['job-active']
+          }
+        },
+        requests
+      ),
+      getDefaultBackend('local-python')
+    )
+
+    await expect(
+      service.forceUnlockDeviceAction({
+        deviceId: 'robot 1',
+        actionName: 'move/safe',
+        expectedJobId: 'job-active'
+      })
+    ).resolves.toEqual({
+      status: 'released',
+      deviceId: 'robot 1',
+      actionName: 'move/safe',
+      releasedJobIds: ['job-active', 'job-queued'],
+      cancelRequestedJobIds: ['job-active']
+    })
+    expect(requests).toEqual([
+      {
+        path: '/api/v1/devices/robot%201/actions/move%2Fsafe/commands',
+        method: 'POST',
+        body: JSON.stringify({
+          command: 'force_unlock',
+          expectedJobId: 'job-active',
+          reason: 'operator_confirmed_device_safe'
+        })
+      }
+    ])
   })
 
   it('probes the production Edge/OS through its unified v1 health route', async () => {

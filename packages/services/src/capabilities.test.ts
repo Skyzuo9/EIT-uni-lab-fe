@@ -23,6 +23,7 @@ describe('server capability matrix', () => {
         const expected =
           (backendId === 'local-python' &&
             (capability === 'devices.listActions' ||
+              capability === 'devices.forceUnlock' ||
               capability === 'material.readTemplates' ||
               capability === 'material.readGraph' ||
               capability === 'material.create' ||

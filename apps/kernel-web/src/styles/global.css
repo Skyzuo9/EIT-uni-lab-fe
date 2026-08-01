@@ -1894,6 +1894,17 @@ body {
   white-space: nowrap;
 }
 
+.edge-device__list-lock {
+  flex: 0 0 auto;
+  padding: 2px 6px;
+  color: var(--unilab-color-warning);
+  border-radius: 999px;
+  background: var(--unilab-color-warning-soft);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
 .edge-device__chevron {
   color: var(--unilab-color-text-subtle);
   font-size: 18px;
@@ -2002,6 +2013,14 @@ body {
   gap: 8px;
 }
 
+.edge-device__identity-states {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
 .edge-device__identity p {
   margin: 4px 0 0;
   color: var(--unilab-color-text-muted);
@@ -2035,6 +2054,11 @@ body {
 }
 
 .edge-device__status-badge.is-pending {
+  color: var(--unilab-color-warning);
+  background: var(--unilab-color-warning-soft);
+}
+
+.edge-device__status-badge.is-locked {
   color: var(--unilab-color-warning);
   background: var(--unilab-color-warning-soft);
 }
@@ -2080,6 +2104,10 @@ body {
 
 .edge-device__metric.is-success strong {
   color: var(--unilab-color-success);
+}
+
+.edge-device__metric.is-warning strong {
+  color: var(--unilab-color-warning);
 }
 
 .edge-device__metric.is-muted strong {
@@ -2265,6 +2293,314 @@ body {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 11px;
+}
+
+.edge-device__lock-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px 14px;
+  margin-bottom: 13px;
+  padding: 11px 12px;
+  color: var(--unilab-color-text);
+  border: 1px solid color-mix(
+    in srgb,
+    var(--unilab-color-warning) 28%,
+    var(--unilab-color-border)
+  );
+  border-radius: 8px;
+  background: var(--unilab-color-warning-soft);
+}
+
+.edge-device__lock-copy {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 9px;
+}
+
+.edge-device__lock-icon {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  place-items: center;
+  color: var(--unilab-color-warning);
+  border-radius: 7px;
+  background: var(--unilab-color-surface);
+}
+
+.edge-device__lock-icon svg,
+.edge-device__unlock-dialog-icon svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+.edge-device__lock-copy strong {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--unilab-color-text);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.edge-device__lock-copy p {
+  margin: 0;
+  color: color-mix(
+    in srgb,
+    var(--unilab-color-warning) 58%,
+    var(--unilab-color-text)
+  );
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.edge-device__lock-copy code {
+  display: inline-block;
+  margin-top: 4px;
+  color: var(--unilab-color-text-muted);
+  font: 550 9px/1.4 var(--unilab-font-mono);
+}
+
+.edge-device__unlock-button {
+  min-height: 32px;
+  padding: 0 11px;
+  color: var(--unilab-color-danger);
+  border: 1px solid color-mix(
+    in srgb,
+    var(--unilab-color-danger) 36%,
+    var(--unilab-color-border)
+  );
+  border-radius: 7px;
+  background: var(--unilab-color-surface);
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.edge-device__unlock-button:hover:not(:disabled) {
+  background: var(--unilab-color-danger-soft);
+}
+
+.edge-device__unlock-button:disabled {
+  opacity: .52;
+  cursor: not-allowed;
+}
+
+.edge-device__lock-result {
+  grid-column: 1 / -1;
+  color: var(--unilab-color-text-muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.edge-device__lock-result strong,
+.edge-device__lock-result span {
+  display: block;
+}
+
+.edge-device__lock-result.is-error {
+  color: var(--unilab-color-danger);
+}
+
+.edge-device__lock-result.is-success {
+  margin-bottom: 13px;
+  padding: 10px 12px;
+  color: var(--unilab-color-success);
+  border: 1px solid color-mix(
+    in srgb,
+    var(--unilab-color-success) 26%,
+    var(--unilab-color-border)
+  );
+  border-radius: 8px;
+  background: var(--unilab-color-success-soft);
+}
+
+.edge-device__unlock-layer {
+  position: fixed;
+  z-index: 80;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgb(15 23 42 / 48%);
+}
+
+.edge-device__unlock-dialog {
+  width: min(520px, 100%);
+  max-height: min(680px, calc(100vh - 40px));
+  overflow: auto;
+  color: var(--unilab-color-text);
+  border-radius: 12px;
+  background: var(--unilab-color-surface);
+  box-shadow: 0 18px 48px rgb(15 23 42 / 22%);
+}
+
+.edge-device__unlock-dialog > header {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 17px 18px;
+  border-bottom: 1px solid var(--unilab-color-border);
+}
+
+.edge-device__unlock-dialog-icon {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
+  place-items: center;
+  color: var(--unilab-color-danger);
+  border-radius: 9px;
+  background: var(--unilab-color-danger-soft);
+}
+
+.edge-device__unlock-dialog h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 720;
+  letter-spacing: -.015em;
+}
+
+.edge-device__unlock-dialog header p {
+  margin: 3px 0 0;
+  color: var(--unilab-color-text-muted);
+  font-size: 11px;
+}
+
+.edge-device__unlock-dialog-body {
+  padding: 17px 18px;
+}
+
+.edge-device__unlock-dialog-body > p {
+  max-width: 68ch;
+  margin: 0;
+  color: var(--unilab-color-text-muted);
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.edge-device__unlock-warning {
+  margin-top: 12px;
+  padding: 10px 11px;
+  color: color-mix(
+    in srgb,
+    var(--unilab-color-warning) 52%,
+    var(--unilab-color-text)
+  );
+  border: 1px solid color-mix(
+    in srgb,
+    var(--unilab-color-warning) 28%,
+    var(--unilab-color-border)
+  );
+  border-radius: 8px;
+  background: var(--unilab-color-warning-soft);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.edge-device__unlock-dialog dl {
+  margin: 14px 0;
+  border-top: 1px solid var(--unilab-color-border);
+  border-bottom: 1px solid var(--unilab-color-border);
+}
+
+.edge-device__unlock-dialog dl > div {
+  display: grid;
+  grid-template-columns: 100px minmax(0, 1fr);
+  gap: 12px;
+  padding: 8px 0;
+}
+
+.edge-device__unlock-dialog dl > div + div {
+  border-top: 1px solid var(--unilab-color-border);
+}
+
+.edge-device__unlock-dialog dt {
+  color: var(--unilab-color-text-muted);
+  font-size: 10px;
+}
+
+.edge-device__unlock-dialog dd {
+  min-width: 0;
+  margin: 0;
+}
+
+.edge-device__unlock-dialog dd code {
+  display: block;
+  overflow-wrap: anywhere;
+  color: var(--unilab-color-text);
+  font: 550 10px/1.45 var(--unilab-font-mono);
+}
+
+.edge-device__unlock-confirmation {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  color: var(--unilab-color-text);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.edge-device__unlock-confirmation input {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 auto;
+  margin: 0;
+  accent-color: var(--unilab-color-danger);
+}
+
+.edge-device__unlock-confirmation input:focus-visible,
+.edge-device__unlock-dialog button:focus-visible {
+  outline: 2px solid var(--unilab-color-focus);
+  outline-offset: 2px;
+}
+
+.edge-device__unlock-dialog-error {
+  margin-top: 10px !important;
+  color: var(--unilab-color-danger) !important;
+}
+
+.edge-device__unlock-dialog > footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 13px 18px;
+  border-top: 1px solid var(--unilab-color-border);
+  background: var(--unilab-color-surface-subtle);
+}
+
+.edge-device__unlock-dialog footer button {
+  min-height: 36px;
+  padding: 0 13px;
+  border-radius: 7px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 680;
+}
+
+.edge-device__unlock-cancel {
+  color: var(--unilab-color-text);
+  border: 1px solid var(--unilab-color-border-strong);
+  background: var(--unilab-color-surface);
+}
+
+.edge-device__unlock-confirm {
+  color: #fff;
+  border: 1px solid var(--unilab-color-danger);
+  background: var(--unilab-color-danger);
+}
+
+.edge-device__unlock-dialog footer button:disabled {
+  opacity: .46;
+  cursor: not-allowed;
 }
 
 .edge-device__field {
@@ -2498,6 +2834,15 @@ body {
     justify-self: start;
   }
 
+  .edge-device__identity-states {
+    grid-column: 2;
+    justify-content: flex-start;
+  }
+
+  .edge-device__identity-states .edge-device__status-badge {
+    grid-column: auto;
+  }
+
   .edge-device__metrics,
   .edge-device__parameter-form {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2519,6 +2864,19 @@ body {
   .edge-device__debug-actions > span {
     margin-left: 0;
     text-align: left;
+  }
+
+  .edge-device__lock-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .edge-device__unlock-button {
+    justify-self: start;
+  }
+
+  .edge-device__unlock-dialog dl > div {
+    grid-template-columns: 1fr;
+    gap: 3px;
   }
 }
 
