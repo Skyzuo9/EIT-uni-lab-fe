@@ -5,6 +5,7 @@ import type {
   WorkflowAuthoringDiagnostic,
   WorkflowAuthoringGraph
 } from '@unilab/services'
+import { v5 as uuidV5 } from 'uuid'
 
 export interface TypedActionFieldProjection {
   handleUuid: string
@@ -48,6 +49,10 @@ export function createTypedActionNode(
   if (!input.name || graph.nodes.some((node) => node.name === input.name)) {
     throw new Error('Workflow Node 名称无效或重复')
   }
+  const nodeType = typeof template.wireValue?.node_type === 'string' &&
+    template.wireValue.node_type
+    ? template.wireValue.node_type
+    : 'device'
   return {
     ...graph,
     nodes: [
@@ -56,7 +61,19 @@ export function createTypedActionNode(
         uuid: input.nodeUuid,
         workflow_node_template_uuid: template.uuid,
         name: input.name,
-        param: {}
+        status: 'idle',
+        type: nodeType,
+        pose: {},
+        param: cloneRecord(template.goalDefault),
+        action_name: template.name,
+        execution_policy: {},
+        disabled: false,
+        minimized: false,
+        meta_data: {
+          unilab: {
+            input_bindings: {}
+          }
+        }
       }
     ]
   }
@@ -108,9 +125,14 @@ export function projectTypedActionEditor(
     }))
   for (const diagnostic of osDiagnostics) {
     if (diagnostic.node_id !== nodeUuid) continue
+    const handleUuid = diagnostic.workflow_handle_template_uuid || ''
+    if (
+      handleUuid &&
+      !targetHandles.some((handle) => handle.uuid === handleUuid)
+    ) continue
     diagnostics.push({
-      handleUuid: '',
-      fieldPath: '/param',
+      handleUuid,
+      fieldPath: diagnostic.path || '/param',
       severity: diagnostic.severity,
       code: diagnostic.code,
       message: diagnostic.message
@@ -153,12 +175,30 @@ export function updateTypedActionLiteral(
   }
   return {
     ...graph,
-    nodes: graph.nodes.map((item) => item.uuid !== nodeUuid
-      ? item
-      : {
-          ...item,
-          param: { ...recordValue(item.param), [dataKey]: value }
-        })
+    nodes: graph.nodes.map((item) => {
+      if (item.uuid !== nodeUuid) return item
+      const metaData = recordOrNull(item.meta_data) ?? {}
+      const unilab = recordOrNull(metaData.unilab) ?? {}
+      const inputBindings = {
+        ...(recordOrNull(unilab.input_bindings) ?? {})
+      }
+      delete inputBindings[handleUuid]
+      return {
+        ...item,
+        param: { ...recordValue(item.param), [dataKey]: value },
+        meta_data: {
+          ...metaData,
+          unilab: {
+            ...unilab,
+            input_bindings: inputBindings
+          }
+        }
+      }
+    }),
+    edges: graph.edges.filter((edge) => !(
+      edge.target_node_uuid === nodeUuid &&
+      edge.target_handle_uuid === handleUuid
+    ))
   }
 }
 
@@ -166,14 +206,23 @@ export function connectTypedActionEdge(
   catalog: WorkflowActionCatalogSnapshot,
   graph: WorkflowAuthoringGraph,
   input: {
-    edgeUuid: string
     sourceNodeUuid: string
     sourceHandleUuid: string
     targetNodeUuid: string
     targetHandleUuid: string
   }
 ): WorkflowAuthoringGraph {
-  if (graph.edges.some((edge) => edge.uuid === input.edgeUuid)) {
+  const edgeUuid = uuidV5(
+    `authoring-edge:${input.sourceNodeUuid}:${input.sourceHandleUuid}:` +
+      `${input.targetNodeUuid}:${input.targetHandleUuid}`,
+    requiredString(graph.workflow.uuid)
+  )
+  if (graph.edges.some(
+    (edge) => edge.target_handle_uuid === input.targetHandleUuid
+  )) {
+    throw new Error('Action target Handle 已有 provider')
+  }
+  if (graph.edges.some((edge) => edge.uuid === edgeUuid)) {
     throw new Error('Workflow Edge UUID 已存在')
   }
   requireNodeHandle(
@@ -190,12 +239,47 @@ export function connectTypedActionEdge(
     input.targetHandleUuid,
     'target'
   )
+  const targetNode = graph.nodes.find(
+    (node) => node.uuid === input.targetNodeUuid
+  )
+  if (!targetNode) throw new Error('Workflow target Node 不存在')
+  const targetTemplate = typedTemplate(
+    catalog,
+    requiredString(targetNode.workflow_node_template_uuid)
+  )
+  const targetHandle = targetTemplate.handles.find(
+    (handle) => handle.uuid === input.targetHandleUuid
+  )
+  if (!targetHandle) throw new Error('Action target Handle 不存在')
+  const dataKey = requiredString(targetHandle.dataKey)
   return {
     ...graph,
+    nodes: graph.nodes.map((node) => {
+      if (node.uuid !== input.targetNodeUuid) return node
+      const param = { ...recordValue(node.param) }
+      delete param[dataKey]
+      const metaData = recordOrNull(node.meta_data) ?? {}
+      const unilab = recordOrNull(metaData.unilab) ?? {}
+      const inputBindings = {
+        ...(recordOrNull(unilab.input_bindings) ?? {})
+      }
+      delete inputBindings[input.targetHandleUuid]
+      return {
+        ...node,
+        param,
+        meta_data: {
+          ...metaData,
+          unilab: {
+            ...unilab,
+            input_bindings: inputBindings
+          }
+        }
+      }
+    }),
     edges: [
       ...graph.edges,
       {
-        uuid: input.edgeUuid,
+        uuid: edgeUuid,
         source_node_uuid: input.sourceNodeUuid,
         source_handle_uuid: input.sourceHandleUuid,
         target_node_uuid: input.targetNodeUuid,
@@ -211,11 +295,14 @@ export function rehydrateTypedActionGraph(
   graph: WorkflowAuthoringGraph
 ): WorkflowAuthoringGraph {
   const nodeUuids = new Set<string>()
+  const referencedTemplateUuids = new Set<string>()
   for (const node of graph.nodes) {
     const nodeUuid = requiredString(node.uuid)
     if (nodeUuids.has(nodeUuid)) throw new Error('Workflow Node UUID 重复')
     nodeUuids.add(nodeUuid)
-    typedTemplate(catalog, requiredString(node.workflow_node_template_uuid))
+    const templateUuid = requiredString(node.workflow_node_template_uuid)
+    typedTemplate(catalog, templateUuid)
+    referencedTemplateUuids.add(templateUuid)
     recordValue(node.param)
   }
   const edgeUuids = new Set<string>()
@@ -238,12 +325,15 @@ export function rehydrateTypedActionGraph(
       'target'
     )
   }
+  const referencedTemplates = catalog.nodeTemplates.filter((template) =>
+    referencedTemplateUuids.has(template.uuid)
+  )
   return {
     ...graph,
-    node_templates: catalog.nodeTemplates.map((template) =>
+    node_templates: referencedTemplates.map((template) =>
       cloneRecord(template.wireValue ?? nodeTemplateWireValue(template))
     ),
-    handle_templates: catalog.nodeTemplates.flatMap((template) =>
+    handle_templates: referencedTemplates.flatMap((template) =>
       template.handles.map((handle) =>
         cloneRecord(handle.wireValue ?? handleTemplateWireValue(handle))
       )
@@ -361,7 +451,7 @@ function acceptsValue(schema: Record<string, unknown>, value: unknown): boolean 
   const values = enumValues(base)
   if (values && !values.some((item) => Object.is(item, value))) return false
   if (base.$slot === 'ResourceSlot') {
-    return typeof value === 'string' || recordOrNull(value) !== null
+    return recordOrNull(value) !== null
   }
   switch (base.type) {
     case 'string': return typeof value === 'string'

@@ -15,10 +15,23 @@ export function projectPersistentAuthoringGraph(
       template
     ])
   )
+  const handlesByTemplate = new Map<string, WorkflowNode['handles']>()
+  for (const handle of graph.handle_templates) {
+    const templateUuid = String(handle.workflow_node_template_uuid || '')
+    const ioType = String(handle.io_type || '')
+    if (!templateUuid || (ioType !== 'source' && ioType !== 'target')) continue
+    const handles = handlesByTemplate.get(templateUuid) ?? []
+    handles.push({
+      uuid: String(handle.uuid || ''),
+      handleKey: String(handle.handle_key || ''),
+      displayName: String(handle.display_name || handle.handle_key || ''),
+      ioType
+    })
+    handlesByTemplate.set(templateUuid, handles)
+  }
   const nodes: WorkflowNode[] = graph.nodes.map((node) => {
-    const template = templates.get(
-      String(node.workflow_node_template_uuid || '')
-    )
+    const templateUuid = String(node.workflow_node_template_uuid || '')
+    const template = templates.get(templateUuid)
     const type = String(
       node.type || template?.node_type || template?.type || 'action'
     )
@@ -33,6 +46,7 @@ export function projectPersistentAuthoringGraph(
         node.action_type || node.action_name || template?.class || type
       ),
       labNodeType: type,
+      handles: handlesByTemplate.get(templateUuid) ?? [],
       ...position
     }
   })
@@ -42,6 +56,8 @@ export function projectPersistentAuthoringGraph(
       source: String(edge.source_node_uuid),
       target: String(edge.target_node_uuid),
       type: 'control',
+      sourceHandleUuid: String(edge.source_handle_uuid || ''),
+      targetHandleUuid: String(edge.target_handle_uuid || ''),
       branch: typeof metaData.branch === 'string'
         ? metaData.branch
         : null

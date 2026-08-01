@@ -16,6 +16,7 @@ import ReactFlow, {
   Panel
 } from 'reactflow'
 import type {
+  Connection,
   EdgeChange,
   Node,
   NodeChange,
@@ -50,10 +51,17 @@ interface WorkflowDagProps {
   canBeautify?: boolean
   onBeautify?: () => void
   canvasMutationEnabled?: boolean
+  nodePositionMutationEnabled?: boolean
   onNodePositionChange?: (
     nodeId: string,
     position: { x: number; y: number }
   ) => void
+  onConnectHandles?: (connection: {
+    sourceNodeUuid: string
+    sourceHandleUuid: string
+    targetNodeUuid: string
+    targetHandleUuid: string
+  }) => void
 }
 
 // 注册自定义节点类型(在组件外定义,避免每次渲染重建)
@@ -74,7 +82,9 @@ export default function WorkflowDag({
   canBeautify = true,
   onBeautify,
   canvasMutationEnabled = false,
-  onNodePositionChange
+  nodePositionMutationEnabled = false,
+  onNodePositionChange,
+  onConnectHandles
 }: WorkflowDagProps): React.JSX.Element {
   const [isBeautifying, setIsBeautifying] = useState(false)
   const [expandedGroupIds, setExpandedGroupIds] = useState<Set<string>>(
@@ -120,12 +130,12 @@ export default function WorkflowDag({
   )
   const handleNodesChange = useCallback(
     (changes: NodeChange[]) => {
-      const visibleChanges = canvasMutationEnabled
+      const visibleChanges = nodePositionMutationEnabled
         ? changes
         : visibleReadOnlyNodeChanges(changes)
       if (visibleChanges.length > 0) onNodesChange(visibleChanges)
     },
-    [canvasMutationEnabled, onNodesChange]
+    [nodePositionMutationEnabled, onNodesChange]
   )
   const handleEdgesChange = useCallback(
     (changes: EdgeChange[]) => {
@@ -266,6 +276,21 @@ export default function WorkflowDag({
         edges={runtimeEdges}
         onNodesChange={handleNodesChange}
         onEdgesChange={handleEdgesChange}
+        onConnect={(connection: Connection) => {
+          if (
+            !canvasMutationEnabled ||
+            !connection.source ||
+            !connection.sourceHandle ||
+            !connection.target ||
+            !connection.targetHandle
+          ) return
+          onConnectHandles?.({
+            sourceNodeUuid: connection.source,
+            sourceHandleUuid: connection.sourceHandle,
+            targetNodeUuid: connection.target,
+            targetHandleUuid: connection.targetHandle
+          })
+        }}
         nodeTypes={nodeTypes}
         fitView
         fitViewOptions={{ padding: 0.16, minZoom: 0.2, maxZoom: 1 }}
@@ -275,6 +300,7 @@ export default function WorkflowDag({
             ? CANVAS_EDIT_WORKFLOW_CANVAS
             : READ_ONLY_WORKFLOW_CANVAS
         )}
+        nodesDraggable={nodePositionMutationEnabled}
         elementsSelectable
         proOptions={{ hideAttribution: true }}
         onInit={(instance) => {
@@ -282,7 +308,7 @@ export default function WorkflowDag({
         }}
         onNodeClick={(_event, node: Node<WorkflowNodeData>) => onNodeSelect(node.id)}
         onNodeDragStop={(_event, node: Node<WorkflowNodeData>) => {
-          if (!canvasMutationEnabled) return
+          if (!nodePositionMutationEnabled) return
           onNodePositionChange?.(node.id, node.position)
         }}
         onNodeContextMenu={(event, node: Node<WorkflowNodeData>) => {

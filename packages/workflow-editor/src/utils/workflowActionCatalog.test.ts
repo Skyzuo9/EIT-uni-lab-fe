@@ -21,6 +21,7 @@ const templateUuid = '20000000-0000-4000-8000-000000000001'
 const sourceTemplateUuid = '20000000-0000-4000-8000-000000000002'
 const nodeUuid = '40000000-0000-4000-8000-000000000001'
 const sourceNodeUuid = '40000000-0000-4000-8000-000000000002'
+const workflowUuid = '60000000-0000-4000-8000-000000000001'
 const requiredHandleUuid = '30000000-0000-4000-8000-000000000001'
 const defaultHandleUuid = '30000000-0000-4000-8000-000000000002'
 const nullableHandleUuid = '30000000-0000-4000-8000-000000000003'
@@ -33,7 +34,7 @@ const upstreamHandleUuid = '30000000-0000-4000-8000-000000000009'
 const fingerprint = `sha256:${'a'.repeat(64)}`
 
 describe('typed Action editor projection', () => {
-  it('creates a Node only from a real typed template UUID without materializing defaults', () => {
+  it('creates a Backend-shaped Node from canonical template defaults', () => {
     const emptyGraph: WorkflowAuthoringGraph = {
       ...graph,
       nodes: [],
@@ -49,9 +50,21 @@ describe('typed Action editor projection', () => {
       uuid: '40000000-0000-4000-8000-000000000003',
       workflow_node_template_uuid: templateUuid,
       name: 'transfer_2',
-      param: {}
+      status: 'idle',
+      type: 'device',
+      pose: {},
+      param: { temperature: 25, mode: 'safe', note: null },
+      action_name: 'transfer',
+      execution_policy: {},
+      disabled: false,
+      minimized: false,
+      meta_data: {
+        unilab: {
+          input_bindings: {}
+        }
+      }
     }])
-    expect(created.nodes[0]?.param).not.toHaveProperty('temperature')
+    expect(created.nodes[0]?.param).not.toHaveProperty('options')
     expect(() => createTypedActionNode(catalog, emptyGraph, {
       nodeUuid: '40000000-0000-4000-8000-000000000004',
       templateUuid: '20000000-0000-4000-8000-000000000099',
@@ -250,11 +263,36 @@ describe('typed Action editor projection', () => {
       samples: []
     })
     expect(withEmptyList.nodes[0]?.param).not.toHaveProperty('temperature')
+    expect(() => updateTypedActionLiteral(
+      catalog,
+      graph,
+      nodeUuid,
+      materialHandleUuid,
+      'material-1'
+    )).toThrow(/typed Action schema/)
   })
 
   it('creates and rehydrates edges only by real Handle UUID', () => {
-    const connected = connectTypedActionEdge(catalog, graph, {
-      edgeUuid: '50000000-0000-4000-8000-000000000001',
+    const occupiedGraph: WorkflowAuthoringGraph = {
+      ...graph,
+      nodes: graph.nodes.map((node) => node.uuid !== nodeUuid
+        ? node
+        : {
+            ...node,
+            param: {
+              ...(node.param as Record<string, unknown> || {}),
+              material: { uuid: 'material-1' }
+            },
+            meta_data: {
+              unilab: {
+                input_bindings: {
+                  [materialHandleUuid]: { parameter: 'sample' }
+                }
+              }
+            }
+          })
+    }
+    const connected = connectTypedActionEdge(catalog, occupiedGraph, {
       sourceNodeUuid,
       sourceHandleUuid: upstreamHandleUuid,
       targetNodeUuid: nodeUuid,
@@ -267,6 +305,7 @@ describe('typed Action editor projection', () => {
 
     expect(roundTripped.edges).toEqual([
       expect.objectContaining({
+        uuid: '4fa4270e-168f-5bd4-a2e5-1f6da91cf55d',
         source_node_uuid: sourceNodeUuid,
         source_handle_uuid: upstreamHandleUuid,
         target_node_uuid: nodeUuid,
@@ -281,6 +320,41 @@ describe('typed Action editor projection', () => {
     ])
     expect(roundTripped.handle_templates.map((item) => item.uuid))
       .toContain(materialHandleUuid)
+    expect(roundTripped.nodes[0]?.param).not.toHaveProperty('material')
+    expect(
+      (roundTripped.nodes[0]?.meta_data as Record<string, unknown>)?.unilab
+    ).toEqual(expect.objectContaining({ input_bindings: {} }))
+    expect(occupiedGraph.nodes[0]?.param).toEqual(expect.objectContaining({
+      material: { uuid: 'material-1' }
+    }))
+    expect(
+      (occupiedGraph.nodes[0]?.meta_data as {
+        unilab: { input_bindings: Record<string, unknown> }
+      }).unilab.input_bindings
+    ).toHaveProperty(materialHandleUuid)
+    const withLiteralProvider = updateTypedActionLiteral(
+      catalog,
+      connected,
+      nodeUuid,
+      materialHandleUuid,
+      { uuid: 'material-2' }
+    )
+    expect(withLiteralProvider.edges).toEqual([])
+    expect(withLiteralProvider.nodes[0]?.param).toEqual(expect.objectContaining({
+      material: { uuid: 'material-2' }
+    }))
+    expect(
+      (withLiteralProvider.nodes[0]?.meta_data as {
+        unilab: { input_bindings: Record<string, unknown> }
+      }).unilab.input_bindings
+    ).not.toHaveProperty(materialHandleUuid)
+    expect(connected.edges).toHaveLength(1)
+    expect(() => connectTypedActionEdge(catalog, connected, {
+      sourceNodeUuid,
+      sourceHandleUuid: upstreamHandleUuid,
+      targetNodeUuid: nodeUuid,
+      targetHandleUuid: materialHandleUuid
+    })).toThrow('Action target Handle 已有 provider')
   })
 
   it('retains both dirty buffers after a catalog fingerprint conflict', () => {
@@ -307,6 +381,7 @@ describe('typed Action editor projection', () => {
 
     expect(source).toContain('runtime.getWorkflowActionCatalog')
     expect(source).toContain('createTypedActionNode')
+    expect(source).toContain('connectTypedActionEdge')
     expect(source).toContain('projectTypedActionEditor')
     expect(source).toContain('data-workflow-handle-template-uuid')
     expect(source).not.toContain('lastIndexOf')
@@ -325,13 +400,17 @@ const catalog = {
 } satisfies WorkflowActionCatalogSnapshot
 
 const graph: WorkflowAuthoringGraph = {
-  workflow: { uuid: 'workflow-1', revision: 1 },
+  workflow: { uuid: workflowUuid, revision: 1 },
   nodes: [
     {
       uuid: nodeUuid,
       workflow_node_template_uuid: templateUuid,
       name: 'transfer',
-      param: { note: null, options: {}, samples: [] }
+      param: {
+        note: null,
+        options: {},
+        samples: []
+      }
     },
     {
       uuid: sourceNodeUuid,

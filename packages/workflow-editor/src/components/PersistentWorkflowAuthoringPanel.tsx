@@ -38,6 +38,7 @@ import {
 } from '../utils/persistentAuthoringGraph'
 import {
   createTypedActionNode,
+  connectTypedActionEdge,
   projectTypedActionEditor,
   rehydrateTypedActionGraph,
   updateTypedActionLiteral,
@@ -433,12 +434,16 @@ export function PersistentWorkflowAuthoringPanel({
 
   useEffect(() => {
     let active = true
+    setActionCatalog(null)
     void runtime.getWorkflowActionCatalog()
       .then((catalog) => {
         if (active) setActionCatalog(catalog)
       })
       .catch((catalogError) => {
-        if (active) setError(errorMessage(catalogError))
+        if (active) {
+          setActionCatalog(null)
+          setError(errorMessage(catalogError))
+        }
       })
     return () => {
       active = false
@@ -611,11 +616,20 @@ export function PersistentWorkflowAuthoringPanel({
       })
     )
     let graphValue = sourceGraph
-    let generated: WorkflowAuthoringTransformResult
+    let generated: WorkflowAuthoringTransformResult | null = null
+    let catalogFailure: unknown = null
     try {
       generated = await request(graphValue)
     } catch (generateError) {
       if (!isTemplateCatalogConflict(generateError)) throw generateError
+      catalogFailure = generateError
+    }
+    const diagnosticCatalogMismatch = generated?.diagnostics.some(
+      (diagnostic) => diagnostic.code === 'template_catalog_mismatch' ||
+        diagnostic.code === 'template_catalog_conflict'
+    ) ?? false
+    if (catalogFailure || diagnosticCatalogMismatch) {
+      setActionCatalog(null)
       const refreshedCatalog = await runtime.getWorkflowActionCatalog()
       setActionCatalog(refreshedCatalog)
       const decision = catalogConflictDecision({
@@ -628,7 +642,10 @@ export function PersistentWorkflowAuthoringPanel({
           actionCatalog?.fingerprint ?? '',
         currentFingerprint: refreshedCatalog.fingerprint
       })
-      if (!decision) throw generateError
+      if (!decision) {
+        if (catalogFailure) throw catalogFailure
+        throw new Error('Action Catalog mismatch 未产生新的 fingerprint')
+      }
       graphValue = rehydrateTypedActionGraph(
         refreshedCatalog,
         decision.retainLocalGraph
@@ -643,6 +660,7 @@ export function PersistentWorkflowAuthoringPanel({
       setMessage('Action Catalog 已更新；本地画布已按稳定 UUID 重新 hydrate')
       generated = await request(graphValue)
     }
+    if (!generated) throw new Error('OS 未返回 Authoring transform')
     const blocking = generated.diagnostics.filter(
       (diagnostic) => diagnostic.severity === 'error'
     )
@@ -899,12 +917,44 @@ export function PersistentWorkflowAuthoringPanel({
         )
       } catch (applyError) {
         if (!isAuthoringConflict(applyError)) throw applyError
+        let catalogRecovery: {
+          catalog: WorkflowActionCatalogSnapshot
+          localGraph: WorkflowAuthoringGraph
+        } | null = null
+        if (isTemplateCatalogConflict(applyError)) {
+          setActionCatalog(null)
+          const refreshedCatalog = await runtime.getWorkflowActionCatalog()
+          setActionCatalog(refreshedCatalog)
+          const currentGraph = localState.current.graph
+          if (currentGraph) {
+            catalogRecovery = {
+              catalog: refreshedCatalog,
+              localGraph: currentGraph
+            }
+          }
+        }
         remotePending.current = true
         const refreshed = await queue.run(
           () => runtime.getWorkflowAuthoring(workflowUuid)
         )
         remotePending.current = false
         installAggregate(refreshed, '预览已变化，已刷新最新 Authoring 状态')
+        if (catalogRecovery) {
+          const rehydrated = rehydrateTypedActionGraph(
+            catalogRecovery.catalog,
+            catalogRecovery.localGraph
+          )
+          setGraph(rehydrated)
+          setCanvasDirty(true)
+          localState.current = {
+            ...localState.current,
+            graph: rehydrated,
+            canvasDirty: true
+          }
+          setMessage(
+            'Action Catalog 与 Authoring 已刷新；本地画布按稳定 UUID 重新 hydrate'
+          )
+        }
         throw applyError
       }
     })
@@ -955,19 +1005,25 @@ export function PersistentWorkflowAuthoringPanel({
     ? authoringProjection(aggregate).kind
     : null
   const diagnostics = aggregate?.draft?.diagnostics ?? []
-  const selectedActionEditor = useMemo(() => {
-    if (!actionCatalog || !graph || !selectedNodeUuid) return null
+  const selectedActionProjection = useMemo(() => {
+    if (!actionCatalog || !graph || !selectedNodeUuid) {
+      return { editor: null, error: null }
+    }
     try {
-      return projectTypedActionEditor(
-        actionCatalog,
-        graph,
-        selectedNodeUuid,
-        diagnostics
-      )
-    } catch {
-      return null
+      return {
+        editor: projectTypedActionEditor(
+          actionCatalog,
+          graph,
+          selectedNodeUuid,
+          diagnostics
+        ),
+        error: null
+      }
+    } catch (projectionError) {
+      return { editor: null, error: errorMessage(projectionError) }
     }
   }, [actionCatalog, diagnostics, graph, selectedNodeUuid])
+  const selectedActionEditor = selectedActionProjection.editor
 
   const addTypedActionNode = (templateUuid: string): void => {
     if (!actionCatalog || !graph) return
@@ -1011,6 +1067,36 @@ export function PersistentWorkflowAuthoringPanel({
       setMessage('Action 参数已更新；保存前将生成完整 Python')
     } catch (updateError) {
       setError(errorMessage(updateError))
+    }
+  }
+
+  const updateTypedFieldFromRaw = (
+    field: TypedActionFieldProjection,
+    raw: string
+  ): void => {
+    try {
+      updateTypedField(field.handleUuid, parseTypedFieldValue(field, raw))
+    } catch (parseError) {
+      setError(errorMessage(parseError))
+    }
+  }
+
+  const connectTypedHandles = (connection: {
+    sourceNodeUuid: string
+    sourceHandleUuid: string
+    targetNodeUuid: string
+    targetHandleUuid: string
+  }): void => {
+    if (!actionCatalog || !graph) return
+    try {
+      const next = connectTypedActionEdge(actionCatalog, graph, {
+        ...connection
+      })
+      setGraph(next)
+      setCanvasDirty(true)
+      setMessage('已用真实 Handle UUID 创建 Edge；保存前将生成完整 Python')
+    } catch (connectError) {
+      setError(errorMessage(connectError))
     }
   }
 
@@ -1279,7 +1365,8 @@ export function PersistentWorkflowAuthoringPanel({
                       debugExecutionScope.beforeStartNodeIds
                     }
                     canBeautify={false}
-                    canvasMutationEnabled={false}
+                    canvasMutationEnabled={policy.canvasMutationEnabled}
+                    onConnectHandles={connectTypedHandles}
                   />
                 </div>
                 <aside
@@ -1321,7 +1408,12 @@ export function PersistentWorkflowAuthoringPanel({
                             >
                               <label>
                                 {field.displayName}
-                                {field.enumValues ? (
+                                {field.editorControl === 'material_port' ? (
+                                  <output>
+                                    由真实 target Handle 的 Material binding 提供；
+                                    A1 不把 ResourceSlot 伪造为字符串 literal
+                                  </output>
+                                ) : field.enumValues ? (
                                   <select
                                     value={typedFieldInputValue(field)}
                                     disabled={
@@ -1347,7 +1439,8 @@ export function PersistentWorkflowAuthoringPanel({
                                   </select>
                                 ) : (
                                   <input
-                                    value={typedFieldInputValue(field)}
+                                    key={`${field.handleUuid}:${typedFieldInputValue(field)}`}
+                                    defaultValue={typedFieldInputValue(field)}
                                     placeholder={field.hasDefault
                                       ? `默认 ${JSON.stringify(
                                           field.defaultValue
@@ -1356,12 +1449,9 @@ export function PersistentWorkflowAuthoringPanel({
                                     disabled={
                                       busy || !policy.canvasMutationEnabled
                                     }
-                                    onChange={(event) => updateTypedField(
-                                      field.handleUuid,
-                                      parseTypedFieldValue(
-                                        field,
-                                        event.target.value
-                                      )
+                                    onBlur={(event) => updateTypedFieldFromRaw(
+                                      field,
+                                      event.target.value
                                     )}
                                   />
                                 )}
@@ -1403,17 +1493,39 @@ export function PersistentWorkflowAuthoringPanel({
                                   {field.nullable ? '允许空值' : '不可为空'}
                                 </span>
                               </small>
+                              {selectedActionEditor.diagnostics.some(
+                                (diagnostic) => diagnostic.handleUuid ===
+                                  field.handleUuid
+                              ) && (
+                                <ul aria-label={
+                                  `Action 参数诊断 ${field.handleUuid}`
+                                }>
+                                  {selectedActionEditor.diagnostics
+                                    .filter((diagnostic) =>
+                                      diagnostic.handleUuid === field.handleUuid
+                                    )
+                                    .map((diagnostic, index) => (
+                                      <li key={`${diagnostic.code}:${index}`}>
+                                        {diagnostic.message}
+                                      </li>
+                                    ))}
+                                </ul>
+                              )}
                             </div>
                           ))}
-                          {selectedActionEditor.diagnostics.length > 0 && (
+                          {selectedActionEditor.diagnostics.some(
+                            (diagnostic) => !diagnostic.handleUuid
+                          ) && (
                             <ul aria-label="Action 字段诊断">
-                              {selectedActionEditor.diagnostics.map(
-                                (diagnostic, index) => (
+                              {selectedActionEditor.diagnostics
+                                .filter((diagnostic) =>
+                                  !diagnostic.handleUuid
+                                )
+                                .map((diagnostic, index) => (
                                   <li key={`${diagnostic.code}:${index}`}>
                                     {diagnostic.message}
                                   </li>
-                                )
-                              )}
+                                ))}
                             </ul>
                           )}
                           <div aria-label="Action Handle 端口">
@@ -1431,6 +1543,12 @@ export function PersistentWorkflowAuthoringPanel({
                             ))}
                           </div>
                         </section>
+                      )}
+                      {selectedActionProjection.error && (
+                        <p role="alert">
+                          Action template/Handle 投影失败：
+                          {selectedActionProjection.error}
+                        </p>
                       )}
                     </>
                   ) : (
@@ -1697,15 +1815,33 @@ function parseTypedFieldValue(
 ): unknown {
   if (field.enumValues) return raw === '' ? undefined : JSON.parse(raw)
   const base = typedNonNullSchema(field.valueSchema)
-  if (base.$slot === 'ResourceSlot' || base.type === 'string') return raw
-  if (base.type === 'number' || base.type === 'integer') return Number(raw)
+  if (base.$slot === 'ResourceSlot') {
+    throw new Error(`${field.displayName}必须通过 Material binding 提供`)
+  }
+  if (base.type === 'string') return raw
+  if (base.type === 'number' || base.type === 'integer') {
+    if (raw.trim() === '') return undefined
+    const value = Number(raw)
+    if (!Number.isFinite(value)) {
+      throw new Error(`${field.displayName}必须是有限数字`)
+    }
+    if (base.type === 'integer' && !Number.isInteger(value)) {
+      throw new Error(`${field.displayName}必须是整数`)
+    }
+    return value
+  }
   if (base.type === 'boolean') {
     if (raw !== 'true' && raw !== 'false') {
       throw new Error(`${field.displayName}必须是 true 或 false`)
     }
     return raw === 'true'
   }
-  return JSON.parse(raw)
+  if (raw.trim() === '') return undefined
+  try {
+    return JSON.parse(raw)
+  } catch {
+    throw new Error(`${field.displayName}必须是合法 JSON`)
+  }
 }
 
 function typedNonNullSchema(

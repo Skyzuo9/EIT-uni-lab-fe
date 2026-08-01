@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import type { Locator, Page } from '@playwright/test'
 
 import {
   startSzlabActionCatalogOs,
@@ -128,7 +129,9 @@ test('SZLab persisted Catalog reaches the original typed workflow editor', async
     name: '画布节点编辑器'
   })
   await expect(editor.getByText('Action 参数', { exact: true })).toBeVisible()
-  await expect(editor.getByLabel('磁搅位置')).toBeVisible()
+  await expect(editor.getByRole('textbox', {
+    name: '磁搅位置'
+  })).toBeVisible()
   await expect(editor.getByText('必填', { exact: true })).toBeVisible()
   await expect(editor.getByText('无默认值', { exact: true })).toBeVisible()
   await expect(editor.getByText('默认值', { exact: true }).first()).toBeVisible()
@@ -141,15 +144,184 @@ test('SZLab persisted Catalog reaches the original typed workflow editor', async
   ))
   expect(renderedHandleUuids).toEqual(expect.arrayContaining(handleUuids))
 
+  await page.getByLabel('Action 模板').selectOption(stirringSummary.uuid)
+  const newNodeLabel = page.locator('.wf-node__id').filter({
+    hasText: /^run_stirring$/
+  })
+  await expect(newNodeLabel).toBeVisible()
+  const newNode = newNodeLabel.locator(
+    'xpath=ancestor::*[@data-workflow-node-uuid]'
+  )
+  const existingNode = page.locator('.wf-node__id').filter({
+    hasText: /^stirring$/
+  }).locator('xpath=ancestor::*[@data-workflow-node-uuid]')
+  const newNodeUuid = await newNode.getAttribute('data-workflow-node-uuid')
+  expect(newNodeUuid).toMatch(UUID_PATTERN)
+  const readySource = existingNode.locator(
+    '[data-workflow-handle-key="ready"][data-workflow-handle-io="source"]'
+  )
+  const readyTarget = newNode.locator(
+    '[data-workflow-handle-key="ready"][data-workflow-handle-io="target"]'
+  )
+  await connectReactFlowHandles(page, readySource, readyTarget)
+  await expect(page.getByText(
+    '已用真实 Handle UUID 创建 Edge；保存前将生成完整 Python'
+  )).toBeVisible()
+
+  await newNode.click({ position: { x: 40, y: 40 } })
+  const positionInput = editor.getByRole('textbox', { name: '磁搅位置' })
+  await positionInput.fill('4')
+  await positionInput.press('Tab')
+  await expect(positionInput).toHaveValue('4')
+  const positionHandle = detail.handles.find(
+    (handle) => handle.handle_key === 'position' && handle.io_type === 'target'
+  )
+  expect(positionHandle).toBeDefined()
+  if (!positionHandle) throw new Error('run_stirring position Handle missing')
+  await expect(editor.locator(
+    `[aria-label="Action 参数诊断 ${positionHandle.uuid}"]`
+  )).toHaveCount(0)
+
+  await page.getByRole('button', { name: '保存草稿' }).click()
+  const diffDialog = page.getByRole('dialog', { name: '完整 Python 差异' })
+  await expect(diffDialog, os.logs().slice(-5_000)).toBeVisible()
+  const firstDraftWrite = page.waitForResponse((response) =>
+    response.url().endsWith(
+      `/api/v1/workflows/${os.workflowUuid}/authoring/draft`
+    ) && response.request().method() === 'PUT' && response.status() === 200
+  )
+  await diffDialog.getByRole('button', {
+    name: '接受完整差异并保存'
+  }).click()
+  await firstDraftWrite
+  await expect(diffDialog).toBeHidden()
+
+  const savedBeforeConflict = await readEnvelope<AuthoringAggregate>(
+    `${os.url}/api/v1/workflows/${os.workflowUuid}/authoring`
+  )
+  expect(savedBeforeConflict.candidate).not.toBeNull()
+  const savedGraph = savedBeforeConflict.candidate?.graph
+  if (!savedGraph) throw new Error('saved Candidate graph missing')
+  expect(savedGraph.nodes).toHaveLength(candidateBefore.graph.nodes.length + 1)
+  expect(savedGraph.edges).toHaveLength(candidateBefore.graph.edges.length + 1)
+  expect(savedGraph.nodes.find((node) => node.uuid === newNodeUuid)?.param)
+    .toEqual(expect.objectContaining({ position: 4 }))
+  const newEdge = savedGraph.edges.find((edge) =>
+    edge.target_node_uuid === newNodeUuid
+  )
+  expect(newEdge).toEqual(expect.objectContaining({
+    source_handle_uuid: detail.handles.find((handle) =>
+      handle.handle_key === 'ready' && handle.io_type === 'source'
+    )?.uuid,
+    target_handle_uuid: detail.handles.find((handle) =>
+      handle.handle_key === 'ready' && handle.io_type === 'target'
+    )?.uuid
+  }))
+
+  const bumped = await readEnvelope<{ catalog_fingerprint: string }>(
+    `${os.url}/__e2e/catalog-bump`,
+    { method: 'POST' }
+  )
+  expect(bumped.catalog_fingerprint).not.toBe(list.catalog_fingerprint)
+  const catalogReadsBeforeConflict = requests.filter(
+    (path) => path === '/api/v1/workflow-node-templates'
+  ).length
+  const conflictResponse = page.waitForResponse((response) =>
+    response.url().endsWith(
+      `/api/v1/workflows/${os.workflowUuid}/authoring/apply`
+    ) && response.status() === 409
+  )
+  await page.getByRole('button', { name: '应用工作流' }).click()
+  expect((await conflictResponse).status()).toBe(409)
+  await expect.poll(() => requests.filter(
+    (path) => path === '/api/v1/workflow-node-templates'
+  ).length).toBeGreaterThan(catalogReadsBeforeConflict)
+  await expect(page.getByText(
+    'Action Catalog 与 Authoring 已刷新；本地画布按稳定 UUID 重新 hydrate'
+  )).toBeVisible()
+  await page.getByRole('button', { name: '关闭' }).first().click()
+
+  await page.getByRole('button', { name: '保存草稿' }).click()
+  await expect(diffDialog).toBeVisible()
+  const refreshedDraftWrite = page.waitForResponse((response) =>
+    response.url().endsWith(
+      `/api/v1/workflows/${os.workflowUuid}/authoring/draft`
+    ) && response.request().method() === 'PUT' && response.status() === 200
+  )
+  await diffDialog.getByRole('button', {
+    name: '接受完整差异并保存'
+  }).click()
+  await refreshedDraftWrite
+  await expect(diffDialog).toBeHidden()
+
+  const refreshedCandidate = await readEnvelope<AuthoringAggregate>(
+    `${os.url}/api/v1/workflows/${os.workflowUuid}/authoring`
+  )
+  expect(refreshedCandidate.candidate?.template_catalog_fingerprint)
+    .toBe(bumped.catalog_fingerprint)
+  const applySuccess = page.waitForResponse((response) =>
+    response.url().endsWith(
+      `/api/v1/workflows/${os.workflowUuid}/authoring/apply`
+    ) && response.status() === 200
+  )
+  await page.getByRole('button', { name: '应用工作流' }).click()
+  await applySuccess
+  await expect(page.getByText(/工作流已应用|源码已应用/)).toBeVisible()
+
+  const aggregateApplied = await readEnvelope<AuthoringAggregate>(
+    `${os.url}/api/v1/workflows/${os.workflowUuid}/authoring`
+  )
+  expect(graphIdentity(aggregateApplied.applied_graph)).toEqual(
+    graphIdentity(refreshedCandidate.candidate?.graph as AuthoringGraph)
+  )
   await page.reload()
   await expect(page.getByText('完整控制流 DAG')).toBeVisible()
   const aggregateAfter = await readEnvelope<AuthoringAggregate>(
     `${os.url}/api/v1/workflows/${os.workflowUuid}/authoring`
   )
-  expect(aggregateAfter.candidate).not.toBeNull()
-  expect(graphIdentity(aggregateAfter.candidate?.graph as AuthoringGraph))
-    .toEqual(graphIdentity(candidateBefore.graph))
-  expect(browserErrors).toEqual([])
+  expect(graphIdentity(aggregateAfter.applied_graph)).toEqual(
+    graphIdentity(aggregateApplied.applied_graph)
+  )
+  const finalDetail = await readEnvelope<CatalogDetail>(
+    `${os.url}/api/v1/workflow-node-templates/${stirringSummary.uuid}`
+  )
+  const appliedTemplate = aggregateAfter.applied_graph.node_templates.find(
+    (template) => template.uuid === stirringSummary.uuid
+  )
+  expect(appliedTemplate?.uuid).toBe(finalDetail.template.uuid)
+  expect(appliedTemplate?.schema).toEqual(finalDetail.template.schema)
+  const finalGenerated = await readEnvelope<{
+    diagnostics: unknown[]
+    graph: AuthoringGraph | null
+    normalized_python_source: string
+  }>(`${os.url}/api/v1/authoring/generate-python`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      workflow_uuid: os.workflowUuid,
+      revision: aggregateAfter.workflow_revision,
+      source_uri: aggregateAfter.draft?.source_uri,
+      graph: aggregateAfter.applied_graph
+    })
+  })
+  expect(
+    finalGenerated.normalized_python_source,
+    JSON.stringify(finalGenerated.diagnostics, null, 2)
+  ).not.toBeNull()
+  expect(finalGenerated.normalized_python_source).toContain(
+    `# unilab:node_uuid=${newNodeUuid}`
+  )
+  expect(finalGenerated.normalized_python_source).toContain('position=4')
+  expect(graphIdentity(finalGenerated.graph as AuthoringGraph)).toEqual(
+    graphIdentity(aggregateAfter.applied_graph)
+  )
+  const expectedConflictErrors = browserErrors.filter((message) =>
+    message.includes('409 (Conflict)')
+  )
+  expect(expectedConflictErrors).toHaveLength(1)
+  expect(browserErrors.filter((message) =>
+    !message.includes('409 (Conflict)')
+  )).toEqual([])
 })
 
 const UUID_PATTERN =
@@ -171,6 +343,8 @@ interface CatalogDetail {
   handles: Array<{
     uuid: string
     workflow_node_template_uuid: string
+    handle_key: string
+    io_type: 'source' | 'target'
   }>
 }
 
@@ -182,7 +356,9 @@ interface AuthoringGraph {
   }>
   edges: Array<{
     uuid: string
+    source_node_uuid: string
     source_handle_uuid: string
+    target_node_uuid: string
     target_handle_uuid: string
   }>
   node_templates: Array<Record<string, unknown> & { uuid: string }>
@@ -196,9 +372,11 @@ interface AuthoringAggregate {
   workflow_revision: number
   draft: { source_uri: string } | null
   candidate: {
+    candidate_hash: string
     template_catalog_fingerprint: string
     graph: AuthoringGraph
   } | null
+  applied_graph: AuthoringGraph
 }
 
 function graphIdentity(graph: AuthoringGraph): Record<string, unknown> {
@@ -207,18 +385,42 @@ function graphIdentity(graph: AuthoringGraph): Record<string, unknown> {
       uuid: item.uuid,
       workflow_node_template_uuid: item.workflow_node_template_uuid,
       param: item.param
-    })),
+    })).sort((left, right) => left.uuid.localeCompare(right.uuid)),
     edges: graph.edges.map((item) => ({
       uuid: item.uuid,
       source_handle_uuid: item.source_handle_uuid,
       target_handle_uuid: item.target_handle_uuid
-    })),
-    nodeTemplates: graph.node_templates.map((item) => item.uuid),
+    })).sort((left, right) => left.uuid.localeCompare(right.uuid)),
+    nodeTemplates: graph.node_templates.map((item) => item.uuid).sort(),
     handleTemplates: graph.handle_templates.map((item) => ({
       uuid: item.uuid,
       workflow_node_template_uuid: item.workflow_node_template_uuid
-    }))
+    })).sort((left, right) => left.uuid.localeCompare(right.uuid))
   }
+}
+
+async function connectReactFlowHandles(
+  page: Page,
+  source: Locator,
+  target: Locator
+): Promise<void> {
+  await expect(source).toBeVisible()
+  await expect(target).toBeVisible()
+  const sourceBox = await source.boundingBox()
+  const targetBox = await target.boundingBox()
+  if (!sourceBox || !targetBox) throw new Error('ReactFlow Handle box missing')
+  const sourcePoint = {
+    x: sourceBox.x + sourceBox.width / 2,
+    y: sourceBox.y + sourceBox.height / 2
+  }
+  const targetPoint = {
+    x: targetBox.x + targetBox.width / 2,
+    y: targetBox.y + targetBox.height / 2
+  }
+  await page.mouse.move(sourcePoint.x, sourcePoint.y)
+  await page.mouse.down()
+  await page.mouse.move(targetPoint.x, targetPoint.y, { steps: 12 })
+  await page.mouse.up()
 }
 
 async function readEnvelope<Value>(

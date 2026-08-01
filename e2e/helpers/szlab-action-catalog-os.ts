@@ -1,4 +1,8 @@
-import { spawn, type ChildProcess } from 'node:child_process'
+import {
+  execFileSync,
+  spawn,
+  type ChildProcess
+} from 'node:child_process'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -6,6 +10,8 @@ import { join, resolve } from 'node:path'
 
 export const SZLAB_WORKFLOW_UUID =
   '67da810c-34f6-59c6-94ba-7e73dcc06207'
+export const SZLAB_FIXTURE_SHA =
+  '975e9b12282aeb68282022631d4ff5e30af3f0e9'
 
 export interface SzlabActionCatalogOs {
   url: string
@@ -15,19 +21,36 @@ export interface SzlabActionCatalogOs {
 }
 
 export async function startSzlabActionCatalogOs(): Promise<SzlabActionCatalogOs> {
-  const osRepository = resolve(
-    process.env.UNILAB_A1_OS_ROOT ||
-      '/home/changjunhan/Uni-Lab-Core/.worktrees/uni-lab-os-a1-action-catalog-e2e'
+  const osRepository = resolve(requiredEnvironment('UNILAB_A1_OS_ROOT'))
+  const szlabSourceRepository = resolve(
+    requiredEnvironment('UNILAB_SZLAB_REPOSITORY')
   )
-  const szlabRepository = resolve(
-    process.env.UNILAB_SZLAB_ROOT ||
-      '/home/changjunhan/Uni-Lab-Core/Uni-Lab-SZLab'
-  )
-  const python =
-    process.env.UNILAB_OS_PYTHON ||
-    '/home/changjunhan/.micromamba/envs/unilab/bin/python'
+  const python = process.env.UNILAB_OS_PYTHON || 'python'
   const directory = mkdtempSync(join(tmpdir(), 'unilab-a1-szlab-'))
+  const szlabRepository = join(directory, 'szlab-fixture')
   const workingDirectory = join(directory, 'unilabos_data')
+  try {
+    execFileSync(
+      'git',
+      ['clone', '--no-hardlinks', '--quiet', szlabSourceRepository, szlabRepository],
+      { stdio: 'pipe' }
+    )
+    execFileSync(
+      'git',
+      ['checkout', '--quiet', '--detach', SZLAB_FIXTURE_SHA],
+      { cwd: szlabRepository, stdio: 'pipe' }
+    )
+    const actualSha = execFileSync('git', ['rev-parse', 'HEAD'], {
+      cwd: szlabRepository,
+      encoding: 'utf8'
+    }).trim()
+    if (actualSha !== SZLAB_FIXTURE_SHA) {
+      throw new Error(`SZLab fixture SHA mismatch: ${actualSha}`)
+    }
+  } catch (error) {
+    rmSync(directory, { recursive: true, force: true })
+    throw error
+  }
   const port = await availablePort()
   const url = `http://127.0.0.1:${port}`
   let output = ''
@@ -79,18 +102,22 @@ export async function startSzlabActionCatalogOs(): Promise<SzlabActionCatalogOs>
 }
 
 const PYTHON_LAUNCHER = String.raw`
+import copy
 import sys
 from pathlib import Path
-from uuid import NAMESPACE_URL, uuid5
 
 from unilabos.config.config import BasicConfig
 from unilabos.package_manager import WorkspaceSource, compile_package_source
 from unilabos.registry.catalog_consumer import (
     register_package_catalog,
+    workflow_template_imports_from_registry_snapshot,
 )
 from unilabos.registry.registry import Registry
-from unilabos.workflow.catalog import CatalogAuthority
-from unilabos.workflow.composition import compose_workflow_runtime
+from unilabos.workflow.catalog import (
+    CatalogAuthority,
+    LocalResourceTemplateIdentityResolver,
+)
+from unilabos.workflow.composition import get_workflow_service
 from unilabos.workflow.service import WorkflowService
 from unilabos.workflow.store import WorkflowStore
 
@@ -104,12 +131,7 @@ registry = Registry()
 registry.device_type_registry = {}
 registry.resource_type_registry = {}
 register_package_catalog(registry, package_catalog)
-
-identity = {}
-for record in (*package_catalog.definitions.devices, *package_catalog.definitions.resources):
-    value = str(uuid5(NAMESPACE_URL, record.fqid))
-    identity[record.fqid] = value
-    identity[f"{record.module}:{record.symbol}"] = value
+registry_snapshot = copy.deepcopy(registry.device_type_registry)
 
 authority = CatalogAuthority(authority_id="szlab-local", kind="local")
 store = WorkflowStore(working_dir / "workflow.db")
@@ -127,21 +149,56 @@ try:
 finally:
     store.close()
 
-compose_workflow_runtime(
-    working_dir,
-    authority=authority,
-    editable_package_roots=(szlab_root,),
-    registry_snapshot=registry.device_type_registry,
-    resource_template_identity_resolver=identity.__getitem__,
-)
-
 BasicConfig.working_dir = str(working_dir)
 BasicConfig.workflow_graph_authority = authority
 BasicConfig.workflow_editable_package_roots = (szlab_root,)
 
-from unilabos.app.web.server import start_server
-start_server(host="127.0.0.1", port=port, open_browser=False)
+from unilabos.app.web import server
+
+server.setup_server(registry_snapshot=registry_snapshot)
+
+@server.app.post("/__e2e/catalog-bump")
+def bump_catalog():
+    bumped = copy.deepcopy(registry_snapshot)
+    changed = False
+    for device in bumped.values():
+        actions = device.get("class", {}).get("action_value_mappings", {})
+        action = actions.get("run_stirring")
+        if not isinstance(action, dict):
+            continue
+        position = action["schema"]["properties"]["goal"]["properties"]["position"]
+        position["description"] = "A1 E2E catalog revision 2"
+        changed = True
+        break
+    if not changed:
+        raise RuntimeError("run_stirring action missing")
+    service = get_workflow_service()
+    resolver = LocalResourceTemplateIdentityResolver(service._store, authority)
+    imports = workflow_template_imports_from_registry_snapshot(
+        bumped,
+        authority_id=authority.authority_id,
+        resource_template_identity_resolver=resolver,
+    )
+    snapshot = service.compiler.template_catalog.replace(authority, imports)
+    return {
+        "code": 0,
+        "data": {"catalog_fingerprint": snapshot.fingerprint},
+        "error": None,
+    }
+
+server.start_server(
+    host="127.0.0.1",
+    port=port,
+    open_browser=False,
+    registry_snapshot=registry_snapshot,
+)
 `
+
+function requiredEnvironment(name: string): string {
+  const value = process.env[name]
+  if (!value) throw new Error(`${name} must point at the fixture repository`)
+  return value
+}
 
 async function availablePort(): Promise<number> {
   return new Promise((resolvePort, rejectPort) => {

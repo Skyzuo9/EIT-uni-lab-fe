@@ -71,6 +71,8 @@ export interface WorkflowAuthoringDiagnostic {
   code: string
   message: string
   node_id?: string
+  path?: string
+  workflow_handle_template_uuid?: string
   source_range?: WorkflowAuthoringDiagnosticSourceRange
 }
 

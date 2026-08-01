@@ -11,6 +11,8 @@
  */
 import { Handle, Position } from 'reactflow'
 import type { NodeProps } from 'reactflow'
+import type { CSSProperties } from 'react'
+import type { WorkflowHandlePort } from '../utils/parseWorkflow'
 import styles from './workflow.module.scss'
 
 // 自定义节点承载的数据
@@ -27,6 +29,7 @@ export interface WorkflowNodeData {
   groupKind?: 'group' | 'subworkflow'
   groupExpanded?: boolean
   descendantCount?: number
+  handles?: WorkflowHandlePort[]
   onSetStart?: (nodeId: string) => void
   onToggleBreakpoint?: (nodeId: string) => void
   onToggleGroup?: (nodeId: string) => void
@@ -38,15 +41,18 @@ export default function WorkflowNodeCard({
   targetPosition = Position.Top,
   sourcePosition = Position.Bottom
 }: NodeProps<WorkflowNodeData>): React.JSX.Element {
+  const targetHandles = data.handles?.filter(
+    (handle) => handle.ioType === 'target'
+  )
+  const sourceHandles = data.handles?.filter(
+    (handle) => handle.ioType === 'source'
+  )
   return (
     <div
       className={`${styles.node} wf-node min-w-[150px] max-w-[220px] cursor-pointer overflow-visible rounded-[var(--unilab-radius-md)] border border-[var(--unilab-color-border)] bg-[var(--unilab-color-surface)] transition-[border-color,box-shadow] duration-200`}
+      data-workflow-node-uuid={data.id}
     >
-      <Handle
-        type="target"
-        position={targetPosition}
-        className="wf-node__handle"
-      />
+      {renderHandles(targetHandles, 'target', targetPosition)}
 
       <div className="wf-node__body">
         <div className="wf-node__markers">
@@ -136,13 +142,51 @@ export default function WorkflowNodeCard({
         )}
       </div>
 
-      <Handle
-        type="source"
-        position={sourcePosition}
-        className="wf-node__handle"
-      />
+      {renderHandles(sourceHandles, 'source', sourcePosition)}
     </div>
   )
+}
+
+function renderHandles(
+  handles: WorkflowHandlePort[] | undefined,
+  ioType: 'source' | 'target',
+  position: Position
+): React.JSX.Element | React.JSX.Element[] {
+  if (handles === undefined) {
+    return (
+      <Handle
+        type={ioType}
+        position={position}
+        className="wf-node__handle"
+      />
+    )
+  }
+  return handles.map((handle, index) => (
+    <Handle
+      key={handle.uuid}
+      id={handle.uuid}
+      type={ioType}
+      position={position}
+      className="wf-node__handle"
+      data-workflow-handle-template-uuid={handle.uuid}
+      data-workflow-handle-key={handle.handleKey}
+      data-workflow-handle-io={ioType}
+      aria-label={`${handle.displayName} ${ioType === 'target' ? '输入' : '输出'}端口`}
+      title={`${handle.handleKey} · ${handle.uuid}`}
+      style={handlePosition(position, index, handles.length)}
+    />
+  ))
+}
+
+function handlePosition(
+  position: Position,
+  index: number,
+  count: number
+): CSSProperties {
+  const offset = `${((index + 1) * 100) / (count + 1)}%`
+  return position === Position.Top || position === Position.Bottom
+    ? { left: offset }
+    : { top: offset }
 }
 
 function stateLabel(status: string): string {
