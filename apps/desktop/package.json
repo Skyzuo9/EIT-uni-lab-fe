@@ -11,7 +11,7 @@
     "package:mac": "electron-vite build && electron-builder --mac",
     "package:win": "electron-vite build && electron-builder --win",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "node scripts/verify-icons.mjs"
+    "test": "node scripts/verify-icons.mjs && node scripts/verify-installer.mjs"
   },
   "dependencies": {
     "@unilab/kernel-web": "workspace:*"

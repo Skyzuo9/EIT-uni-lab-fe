@@ -22,5 +22,6 @@ win:
 nsis:
   oneClick: false
   perMachine: false
+  include: build/installer.nsh
   allowToChangeInstallationDirectory: true
   artifactName: ${productName}-${version}-${arch}-setup.${ext}

@@ -254,6 +254,9 @@ test.describe('Edge device Action single run', () => {
       detail.getByRole('heading', { name: 'pump_1', exact: true })
     ).toBeVisible()
     await detail.getByRole('button', { name: '吸液 动作节点' }).click()
+    await expect(
+      detail.getByRole('button', { name: '吸液 动作节点' })
+    ).toHaveAttribute('title', '吸液')
 
     const volume = detail.getByRole('spinbutton', { name: '体积' })
     const settings = detail.getByRole('textbox', { name: '设置' })

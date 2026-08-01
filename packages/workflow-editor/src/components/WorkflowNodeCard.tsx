@@ -74,7 +74,12 @@ export default function WorkflowNodeCard({
                   ? '▣ 节点组'
                   : '操作节点'}
         </span>
-        <span className="wf-node__id">{data.name || data.id}</span>
+        <span
+          className="wf-node__id"
+          title={data.name || data.id}
+        >
+          {data.name || data.id}
+        </span>
         {data.groupKind === 'subworkflow' && (
           <button
             type="button"

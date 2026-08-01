@@ -546,6 +546,7 @@ function DeviceWorkspace({
                   }`}
                   aria-pressed={action.actionRef === selectedActionRef}
                   aria-label={`${action.displayName} 动作节点`}
+                  title={action.displayName}
                   disabled={
                     executionActive
                     && action.actionRef !== execution.actionRef
@@ -582,7 +583,9 @@ function DeviceWorkspace({
               <div className="edge-device__section-heading">
                 <div>
                   <span>单节点调试</span>
-                  <h3>{selectedAction.displayName}</h3>
+                  <h3 title={selectedAction.displayName}>
+                    {selectedAction.displayName}
+                  </h3>
                 </div>
                 <code>{selectedAction.actionName}</code>
               </div>
