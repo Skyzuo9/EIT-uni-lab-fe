@@ -9,7 +9,7 @@
  * Human Review Status: [ ] Pending  [ ] Reviewed  [ ] Approved
  * ============================================================
  */
-import { useCallback, useRef } from 'react';
+import { useCallback } from 'react';
 import { useWorkbench } from '../context/WorkbenchContext';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -52,31 +52,10 @@ const NAV_ITEMS: readonly AppShellNavigationItem[] =
 export default function AppShell(): React.JSX.Element {
   const { section, setSection } = useWorkbench();
   const { session, logout } = useAuth();
-  const hasUnsavedWorkflowChanges = useRef(false);
-  const handleWorkflowUnsavedChangesChange = useCallback(
-    (hasUnsavedChanges: boolean) => {
-      hasUnsavedWorkflowChanges.current = hasUnsavedChanges;
-    },
-    []
-  );
   const handleNavigate = useCallback(
     (navigationId: string) => {
       const nextSection = navigationId as WorkbenchSection;
       if (nextSection === section) return;
-
-      if (hasUnsavedWorkflowChanges.current) {
-        const destination = NAV_ITEMS.find(
-          (item) => item.id === nextSection
-        )?.label;
-        const shouldNavigate = globalThis.confirm(
-          `工作流代码有未保存的修改。切换到“${
-            destination || '其他模块'
-          }”后修改仍会保留，离开页面前请及时保存。是否继续？`
-        );
-        if (!shouldNavigate) return;
-        hasUnsavedWorkflowChanges.current = false;
-      }
-
       setSection(nextSection);
     },
     [section, setSection]
@@ -97,21 +76,14 @@ export default function AppShell(): React.JSX.Element {
       activeNavigationId={section}
       onNavigate={handleNavigate}
     >
-      <SectionView
-        section={section}
-        onWorkflowUnsavedChangesChange={handleWorkflowUnsavedChangesChange}
-      />
+      <SectionView section={section} />
     </AppShellLayout>
   );
 }
 
 // 根据当前方向渲染对应面板
-function SectionView({
-  section,
-  onWorkflowUnsavedChangesChange
-}: {
+function SectionView({ section }: {
   section: WorkbenchSection;
-  onWorkflowUnsavedChangesChange: (hasUnsavedChanges: boolean) => void;
 }): React.JSX.Element {
   if (section === 'device') return <DevicePanel />;
   if (section === 'material') {
@@ -119,7 +91,6 @@ function SectionView({
       <LabPanelWorkspace
         key="material-workspace"
         preset="lab"
-        onWorkflowUnsavedChangesChange={onWorkflowUnsavedChangesChange}
       />
     );
   }
@@ -135,7 +106,6 @@ function SectionView({
     <LabPanelWorkspace
       key="workflow-workspace"
       preset="workflow"
-      onWorkflowUnsavedChangesChange={onWorkflowUnsavedChangesChange}
     />
   );
 }

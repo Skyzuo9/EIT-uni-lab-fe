@@ -148,7 +148,7 @@ export function WorkflowStage({
               <summary>操作帮助</summary>
               <div>
                 单击节点可同步定位代码。起始点与断点可通过节点内按钮设置；
-                右键和双击仅作为快捷操作。
+                右键可作为设置起始点的快捷操作。
               </div>
             </details>
           </div>

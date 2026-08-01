@@ -9,6 +9,9 @@ import {
 
 let os: PersistentAuthoringOs
 
+const PREPARE_NODE_UUID = '20000000-0000-4000-8000-000000000021'
+const ANALYZE_NODE_UUID = '20000000-0000-4000-8000-000000000022'
+
 test.describe.configure({ mode: 'serial' })
 
 test.beforeAll(async () => {
@@ -25,7 +28,7 @@ test('existing Workflow UI drives Task/Jobs/commands through real OS HTTP and SS
   test.setTimeout(90_000)
   const artifactDirectory = resolve(
     process.env.UNILAB_E2E_ARTIFACT_DIR ||
-      resolve(process.cwd(), '../e2e-artifacts/ui1b-workflow-task-runtime')
+      resolve(process.cwd(), '../e2e-artifacts/ui1b-debug-ui-parity')
   )
   mkdirSync(artifactDirectory, { recursive: true })
   const browserErrors: string[] = []
@@ -98,10 +101,77 @@ test('existing Workflow UI drives Task/Jobs/commands through real OS HTTP and SS
     name: '开始运行',
     exact: true
   })).toBeEnabled()
+  await expect(panel.getByRole('button', {
+    name: `设为起始点 ${ANALYZE_NODE_UUID}`,
+    exact: true
+  })).toBeVisible()
+  await expect(panel.getByRole('button', {
+    name: `设置断点 ${PREPARE_NODE_UUID}`,
+    exact: true
+  })).toBeVisible()
   await page.screenshot({
-    path: join(artifactDirectory, '01-original-ui-ready.png'),
+    path: join(artifactDirectory, '01-original-debug-controls-ready.png'),
     fullPage: true
   })
+
+  await panel.getByRole('button', {
+    name: `设为起始点 ${ANALYZE_NODE_UUID}`,
+    exact: true
+  }).click()
+  await expect(panel.getByText(
+    '已设置 Debugger 起始点；普通 Task 不携带此配置',
+    { exact: true }
+  )).toBeVisible()
+  await expect(panel.locator('.wf-flow-node--start')).toHaveCount(1)
+  await expect(panel.locator('.wf-flow-node--before-start')).toHaveCount(1)
+  await expect(panel.locator('.cm-workflow-marker--start')).toBeVisible()
+  await expect(panel.locator('.cm-workflow-marker--before-start')).toBeVisible()
+  await page.screenshot({
+    path: join(artifactDirectory, '02-start-node-dag-and-code.png'),
+    fullPage: true
+  })
+
+  await panel.getByRole('button', {
+    name: `设置断点 ${ANALYZE_NODE_UUID}`,
+    exact: true
+  }).click()
+  await expect(panel.getByText(
+    '已设置 Debugger 断点；普通 Task 不携带此配置',
+    { exact: true }
+  )).toBeVisible()
+  await expect(panel.locator('.wf-flow-node--breakpoint')).toHaveCount(1)
+  await expect(panel.locator('.cm-workflow-marker--breakpoint')).toBeVisible()
+  await page.screenshot({
+    path: join(artifactDirectory, '03-breakpoint-dag-and-code.png'),
+    fullPage: true
+  })
+
+  await panel.getByRole('button', {
+    name: `取消断点 ${ANALYZE_NODE_UUID}`,
+    exact: true
+  }).click()
+  await panel.getByRole('button', {
+    name: `取消起始点 ${ANALYZE_NODE_UUID}`,
+    exact: true
+  }).click()
+  await expect(panel.locator('.wf-flow-node--start')).toHaveCount(0)
+  await expect(panel.locator('.wf-flow-node--before-start')).toHaveCount(0)
+  await expect(panel.locator('.wf-flow-node--breakpoint')).toHaveCount(0)
+  await expect(panel.locator('.cm-workflow-marker--start')).toHaveCount(0)
+  await expect(panel.locator('.cm-workflow-marker--breakpoint')).toHaveCount(0)
+  await page.screenshot({
+    path: join(artifactDirectory, '04-debug-configuration-cleared.png'),
+    fullPage: true
+  })
+
+  await panel.getByRole('button', {
+    name: `设为起始点 ${ANALYZE_NODE_UUID}`,
+    exact: true
+  }).click()
+  await panel.getByRole('button', {
+    name: `设置断点 ${ANALYZE_NODE_UUID}`,
+    exact: true
+  }).click()
 
   const createResponse = page.waitForResponse((response) => {
     const url = new URL(response.url())
@@ -112,7 +182,14 @@ test('existing Workflow UI drives Task/Jobs/commands through real OS HTTP and SS
     name: '开始运行',
     exact: true
   }).click()
-  expect((await createResponse).status()).toBe(201)
+  const created = await createResponse
+  expect(created.status()).toBe(201)
+  const createTaskBody = created.request().postDataJSON() as Record<
+    string,
+    unknown
+  >
+  expect(createTaskBody).not.toHaveProperty('start_node_id')
+  expect(createTaskBody).not.toHaveProperty('breakpoints')
   await expect(panel.locator('[data-run-status="pending"]')).toBeVisible()
   await expect(panel.locator('[data-node-state="pending"]')).toHaveCount(2)
   const taskIdentity = panel.locator('.workflow-runtime__debug-summary')
@@ -120,7 +197,7 @@ test('existing Workflow UI drives Task/Jobs/commands through real OS HTTP and SS
   await expect(taskIdentity).toBeVisible()
   const taskIdentityText = await taskIdentity.textContent()
   await page.screenshot({
-    path: join(artifactDirectory, '02-task-created-with-jobs.png'),
+    path: join(artifactDirectory, '05-task-created-with-jobs.png'),
     fullPage: true
   })
 
@@ -131,7 +208,7 @@ test('existing Workflow UI drives Task/Jobs/commands through real OS HTTP and SS
     .toBeVisible()
   await expect(panel.getByText('已暂停', { exact: true })).toBeVisible()
   await page.screenshot({
-    path: join(artifactDirectory, '03-pause-accepted-and-applied.png'),
+    path: join(artifactDirectory, '06-pause-accepted-and-applied.png'),
     fullPage: true
   })
 
@@ -142,7 +219,7 @@ test('existing Workflow UI drives Task/Jobs/commands through real OS HTTP and SS
     .toBeVisible()
   await expect(panel.getByText('控制可用', { exact: true })).toBeVisible()
   await page.screenshot({
-    path: join(artifactDirectory, '04-resume-accepted-and-applied.png'),
+    path: join(artifactDirectory, '07-resume-accepted-and-applied.png'),
     fullPage: true
   })
 
@@ -152,13 +229,14 @@ test('existing Workflow UI drives Task/Jobs/commands through real OS HTTP and SS
   }))
     .toBeVisible()
   await page.screenshot({
-    path: join(artifactDirectory, '05-cancel-durable-accepted.png'),
+    path: join(artifactDirectory, '08-cancel-durable-accepted.png'),
     fullPage: true
   })
   await expect(panel.locator('[data-run-status="canceled"]')).toBeVisible()
   await expect(panel.locator('[data-node-state="canceled"]')).toHaveCount(2)
+  await expect(panel.getByText('执行已结束', { exact: true })).toBeVisible()
   await page.screenshot({
-    path: join(artifactDirectory, '06-task-and-jobs-canceled.png'),
+    path: join(artifactDirectory, '09-task-and-jobs-canceled.png'),
     fullPage: true
   })
 
@@ -175,7 +253,7 @@ test('existing Workflow UI drives Task/Jobs/commands through real OS HTTP and SS
       .getByText(taskIdentityText || '')
   ).toBeVisible()
   await page.screenshot({
-    path: join(artifactDirectory, '07-reload-restores-task.png'),
+    path: join(artifactDirectory, '10-reload-restores-task.png'),
     fullPage: true
   })
 
