@@ -59,27 +59,30 @@ export function projectPersistentAuthoringGraph(
   }
 }
 
-export function updatePersistentAuthoringNodePosition(
+export function updatePersistentAuthoringNodeName(
   graph: WorkflowAuthoringGraph,
   nodeUuid: string,
-  position: { x: number; y: number }
+  rawName: string
 ): WorkflowAuthoringGraph {
+  const name = rawName.trim()
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+    throw new Error('节点名称必须是可生成 Python 的标识符')
+  }
+  if (graph.nodes.some(
+    (node) => node.uuid !== nodeUuid && node.name === name
+  )) {
+    throw new Error('节点名称不能重复')
+  }
+  if (!graph.nodes.some((node) => node.uuid === nodeUuid)) {
+    throw new Error('节点不存在或已被删除')
+  }
   return {
     ...graph,
     nodes: graph.nodes.map((node) => {
       if (node.uuid !== nodeUuid) return node
-      const pose = isRecord(node.pose) ? node.pose : {}
-      const currentPosition = isRecord(pose.position) ? pose.position : {}
       return {
         ...node,
-        pose: {
-          ...pose,
-          position: {
-            ...currentPosition,
-            x: position.x,
-            y: position.y
-          }
-        }
+        name
       }
     })
   }

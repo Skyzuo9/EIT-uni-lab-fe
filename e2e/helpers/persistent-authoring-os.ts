@@ -6,11 +6,15 @@ import { basename, join, resolve } from 'node:path'
 
 export const AUTHORING_WORKFLOW_UUID =
   '10000000-0000-4000-8000-000000000001'
+export const SECOND_AUTHORING_WORKFLOW_UUID =
+  '10000000-0000-4000-8000-000000000002'
 
 export interface PersistentAuthoringOs {
   url: string
   workflowUuid: string
+  secondWorkflowUuid: string
   sourcePath: string
+  secondSourcePath: string
   logs: () => string
   stop: () => Promise<void>
 }
@@ -31,6 +35,12 @@ export async function startPersistentAuthoringOs(): Promise<PersistentAuthoringO
     'production_lab',
     'workflows',
     'demo.py'
+  )
+  const secondSourcePath = join(
+    editableRoot,
+    'production_lab',
+    'workflows',
+    'second.py'
   )
   const port = await availablePort()
   const url = `http://127.0.0.1:${port}`
@@ -72,7 +82,9 @@ export async function startPersistentAuthoringOs(): Promise<PersistentAuthoringO
   return {
     url,
     workflowUuid: AUTHORING_WORKFLOW_UUID,
+    secondWorkflowUuid: SECOND_AUTHORING_WORKFLOW_UUID,
     sourcePath,
+    secondSourcePath,
     logs: () => output,
     stop: async () => {
       await stopChild(child)
@@ -85,7 +97,13 @@ const PYTHON_LAUNCHER = String.raw`
 import sys
 from pathlib import Path
 
-from tests.workflow.test_authoring_engine import WORKFLOW_UUID, _catalog_imports, _source
+from tests.workflow.test_authoring_engine import (
+    ANALYZE_NODE_UUID,
+    PREPARE_NODE_UUID,
+    WORKFLOW_UUID,
+    _catalog_imports,
+    _source,
+)
 from unilabos.config.config import BasicConfig
 from unilabos.workflow.catalog import CatalogAuthority, TemplateCatalog
 from unilabos.workflow.service import WorkflowService
@@ -96,8 +114,19 @@ editable_root = Path(sys.argv[2])
 port = int(sys.argv[3])
 package_root = editable_root / "production_lab"
 source_path = package_root / "workflows" / "demo.py"
+second_workflow_uuid = "${SECOND_AUTHORING_WORKFLOW_UUID}"
+second_source_path = package_root / "workflows" / "second.py"
 source_path.parent.mkdir(parents=True, exist_ok=True)
 source_path.write_text(_source(), encoding="utf-8")
+second_source = _source(workflow_uuid=second_workflow_uuid)
+second_source = second_source.replace(
+    PREPARE_NODE_UUID,
+    "20000000-0000-4000-8000-000000000011",
+).replace(
+    ANALYZE_NODE_UUID,
+    "20000000-0000-4000-8000-000000000012",
+)
+second_source_path.write_text(second_source, encoding="utf-8")
 editable_root.mkdir(parents=True, exist_ok=True)
 (editable_root / "package.yaml").write_text(
     "\n".join([
@@ -107,6 +136,8 @@ editable_root.mkdir(parents=True, exist_ok=True)
         "workflows:",
         f"  - workflow_uuid: {WORKFLOW_UUID}",
         "    source: production_lab/workflows/demo.py",
+        f"  - workflow_uuid: {second_workflow_uuid}",
+        "    source: production_lab/workflows/second.py",
         "",
     ]),
     encoding="utf-8",
@@ -122,6 +153,13 @@ try:
         description="Real persistent Authoring E2E",
         meta_data={},
         workflow_uuid=WORKFLOW_UUID,
+    )
+    service.create_workflow(
+        name="FE D117 second Workflow fixture",
+        tags=[],
+        description="Independent persistent Authoring session",
+        meta_data={},
+        workflow_uuid=second_workflow_uuid,
     )
     imports = _catalog_imports()
     for item in imports:

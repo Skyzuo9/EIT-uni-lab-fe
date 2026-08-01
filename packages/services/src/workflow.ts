@@ -82,6 +82,7 @@ export interface WorkflowAuthoringResult {
 
 export type WorkflowAuthoringState =
   | 'draft_missing'
+  | 'compiling'
   | 'draft_invalid'
   | 'candidate_stale'
   | 'unapplied_source_only'
@@ -162,7 +163,7 @@ export interface WorkflowAuthoringApplyResult {
   workflow_revision: number
   applied_candidate_hash: string
   applied_source_hash: string
-  warnings: string[]
+  warnings: unknown[]
 }
 
 export interface WorkflowAuthoringApplyResponse {
@@ -408,7 +409,7 @@ export function createWorkflowRuntime(
       let controller: AbortController | null = null
       let reconnectTimer: ReturnType<typeof globalThis.setTimeout> | null = null
       let cursor = options.lastEventId || ''
-      let lastInvalidationSignature = ''
+      const seenEventIds = new Set<string>()
 
       const scheduleReconnect = (): void => {
         if (disposed || reconnectTimer !== null) return
@@ -438,9 +439,14 @@ export function createWorkflowRuntime(
             if (frame.event !== 'workflow.authoring.changed') return
             const data = parseAuthoringChangedData(frame.data)
             if (!data || data.workflow_uuid !== workflowUuid) return
-            const signature = JSON.stringify(data)
-            if (signature === lastInvalidationSignature) return
-            lastInvalidationSignature = signature
+            if (frame.id && seenEventIds.has(frame.id)) return
+            if (frame.id) {
+              seenEventIds.add(frame.id)
+              if (seenEventIds.size > 512) {
+                const oldest = seenEventIds.values().next().value
+                if (oldest !== undefined) seenEventIds.delete(oldest)
+              }
+            }
             onInvalidate({
               id: frame.id,
               event: 'workflow.authoring.changed',

@@ -39,6 +39,7 @@ export interface WorkflowStepFocus {
 
 export interface WorkflowPanelProps {
   runtime: WorkflowRuntimePort
+  workflowUuid?: string
   activeWorkflowStorageKey?: string
   onStepFocus?: (focus: WorkflowStepFocus) => void
   onUnsavedChangesChange?: (hasUnsavedChanges: boolean) => void
@@ -68,11 +69,13 @@ interface WorkflowPanelSession
 
 export default function WorkflowPanel({
   runtime,
+  workflowUuid: explicitWorkflowUuid,
   activeWorkflowStorageKey,
   onStepFocus,
   onUnsavedChangesChange
 }: WorkflowPanelProps): React.JSX.Element {
-  const workflowUuid = readActiveWorkflowId(activeWorkflowStorageKey)
+  const workflowUuid = explicitWorkflowUuid ||
+    readActiveWorkflowId(activeWorkflowStorageKey)
   if (workflowUuid && isWorkflowUuid(workflowUuid)) {
     return (
       <PersistentWorkflowAuthoringPanel

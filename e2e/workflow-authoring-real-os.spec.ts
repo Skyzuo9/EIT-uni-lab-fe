@@ -152,6 +152,106 @@ test('real production OS regenerates its persisted Candidate graph', async () =>
   expect(generated.normalized_python_source.length).toBeGreaterThan(0)
 })
 
+test('two configured Workflow panels keep mode, dirty state and saves isolated', async ({
+  page
+}) => {
+  test.setTimeout(90_000)
+  await page.addInitScript(({ firstWorkflowUuid, secondWorkflowUuid }) => {
+    localStorage.setItem(
+      'unilab.panel-layout.workflow.v1',
+      JSON.stringify({
+        version: 1,
+        layout: {
+          id: 'two-workflow-root',
+          type: 'split',
+          direction: 'horizontal',
+          sizes: [50, 50],
+          children: [
+            {
+              id: 'workflow-a-group',
+              type: 'group',
+              panels: [{
+                id: 'workflow-a',
+                panelType: 'workflow-dag',
+                title: 'Workflow A',
+                config: { workflow_uuid: firstWorkflowUuid }
+              }],
+              activePanelId: 'workflow-a'
+            },
+            {
+              id: 'workflow-b-group',
+              type: 'group',
+              panels: [{
+                id: 'workflow-b',
+                panelType: 'workflow-dag',
+                title: 'Workflow B',
+                config: { workflow_uuid: secondWorkflowUuid }
+              }],
+              activePanelId: 'workflow-b'
+            }
+          ]
+        }
+      })
+    )
+  }, {
+    firstWorkflowUuid: os.workflowUuid,
+    secondWorkflowUuid: os.secondWorkflowUuid
+  })
+
+  await page.goto(
+    `/?section=workflow&localOsUrl=${encodeURIComponent(os.url)}`
+  )
+  const panelA = page.locator('[data-panel-instance-id="workflow-a"]')
+  const panelB = page.locator('[data-panel-instance-id="workflow-b"]')
+  await expect(panelA.getByText('完整控制流 DAG')).toBeVisible()
+  await expect(panelB.getByText('完整控制流 DAG')).toBeVisible()
+
+  await panelA.getByRole('button', {
+    name: '画布模式',
+    exact: true
+  }).click()
+  await expect(panelA.locator('.cm-content:visible'))
+    .toHaveAttribute('contenteditable', 'false')
+  await expect(panelB.locator('.cm-content:visible'))
+    .toHaveAttribute('contenteditable', 'true')
+  await expect(panelB.getByRole('button', {
+    name: '代码模式',
+    exact: true
+  })).toHaveAttribute('aria-pressed', 'true')
+
+  const panelANode = panelA.locator('.react-flow__node-wfNode').first()
+  await panelANode.click()
+  const panelAName = panelA.getByRole('textbox', { name: '节点名称' })
+  await panelAName.fill('prepared_panel_a')
+
+  const firstSourceBefore = readFileSync(os.sourcePath, 'utf8')
+  const secondSourceBefore = readFileSync(os.secondSourcePath, 'utf8')
+  const secondSourceAfter = secondSourceBefore.replace('= 3,', '= 4,')
+  expect(secondSourceAfter).not.toBe(secondSourceBefore)
+  const panelBEditor = panelB.locator('.cm-content:visible')
+  await panelBEditor.click()
+  await page.keyboard.press('Control+a')
+  await page.keyboard.insertText(secondSourceAfter)
+  await panelB.getByRole('button', {
+    name: '保存草稿',
+    exact: true
+  }).click()
+
+  await expect(panelB.getByText(
+    '草稿已保存，有尚未应用的工作流修改',
+    { exact: true }
+  )).toBeVisible()
+  expect(readFileSync(os.secondSourcePath, 'utf8')).toContain('= 4,')
+  expect(readFileSync(os.sourcePath, 'utf8')).toBe(firstSourceBefore)
+  await expect(panelAName).toHaveValue('prepared_panel_a')
+  await expect(panelA.getByRole('button', {
+    name: '应用工作流',
+    exact: true
+  })).toBeDisabled()
+  await expect(page.getByRole('dialog', { name: '远端修改冲突' }))
+    .toHaveCount(0)
+})
+
 test('kernel-web uses D-117 single edit authority through the real OS', async ({
   page
 }) => {
@@ -265,9 +365,11 @@ test('kernel-web uses D-117 single edit authority through the real OS', async ({
     'PUT',
     `/workflows/${os.workflowUuid}/authoring/draft`
   )).toBe(draftPutBeforeCodeSave + 1)
-  await expect.poll(
-    () => readFileSync(os.sourcePath, 'utf8')
-  ).toContain('= 4,')
+  await expect(page.getByText(
+    '草稿已保存，有尚未应用的工作流修改',
+    { exact: true }
+  )).toBeVisible()
+  expect(readFileSync(os.sourcePath, 'utf8')).toContain('= 4,')
   await expect(page.getByText('● 未保存', { exact: true })).toHaveCount(0)
   await expect(page.getByText('Authoring 操作失败', { exact: true }))
     .toHaveCount(0)
@@ -293,13 +395,39 @@ test('kernel-web uses D-117 single edit authority through the real OS', async ({
     ? sourceBeforeExternalEdit.replace('= 4,', '= 5,')
     : sourceBeforeExternalEdit.replace('= 3,', '= 4,')
   expect(externallyEditedSource).not.toBe(sourceBeforeExternalEdit)
+  const localConflictSource = sourceBeforeExternalEdit.includes('= 4,')
+    ? sourceBeforeExternalEdit.replace('= 4,', '= 6,')
+    : sourceBeforeExternalEdit.replace('= 3,', '= 6,')
+  await editor.click()
+  await page.keyboard.press('Control+a')
+  await page.keyboard.insertText(localConflictSource)
+  await expect(applyButton).toBeDisabled()
   writeFileSync(os.sourcePath, externallyEditedSource, 'utf8')
   await expect.poll(() => countRequests(
     authoringRequests,
     'GET',
     `/workflows/${os.workflowUuid}/authoring`
   ), { timeout: 15_000 }).toBeGreaterThan(aggregateGetsBeforeExternalEdit)
-  await expect(page.getByText(/已同步外部修改/)).toBeVisible()
+  const conflictDialog = page.getByRole('dialog', { name: '远端修改冲突' })
+  await expect(conflictDialog).toBeVisible()
+  await expect(editor).toContainText('= 6,')
+  await conflictDialog.getByRole('button', {
+    name: '查看差异并用本地重试'
+  }).click()
+  const conflictDiff = page.getByRole('dialog', { name: /完整 Python 差异/ })
+  await expect(conflictDiff.getByText('冲突重试检查')).toBeVisible()
+  await expect(conflictDiff.locator('pre').nth(0)).toContainText('= 5,')
+  await expect(conflictDiff.locator('pre').nth(1)).toContainText('= 6,')
+  await conflictDiff.getByRole('button', {
+    name: /接受完整差异并保存/
+  }).click()
+  await expect(page.getByText(
+    '草稿已保存，有尚未应用的工作流修改',
+    { exact: true }
+  )).toBeVisible()
+  expect(readFileSync(os.sourcePath, 'utf8')).toContain('= 6,')
+  await expect(page.getByText('Authoring 操作失败', { exact: true }))
+    .toHaveCount(0)
 
   await canvasMode.click()
   await expect(canvasMode).toHaveAttribute('aria-pressed', 'true')
@@ -309,7 +437,11 @@ test('kernel-web uses D-117 single edit authority through the real OS', async ({
   ).toBeVisible()
   const canvasPosition = await projectedNode.getAttribute('style')
   await dragNode(page, projectedNode, 100, 50)
-  expect(await projectedNode.getAttribute('style')).not.toBe(canvasPosition)
+  expect(await projectedNode.getAttribute('style')).toBe(canvasPosition)
+  await projectedNode.click()
+  const nodeName = page.getByRole('textbox', { name: '节点名称' })
+  await expect(nodeName).toBeEnabled()
+  await nodeName.fill('prepared_canvas')
   await expect(applyButton).toBeDisabled()
 
   const draftPutBeforeDiffAcceptance = countRequests(
@@ -337,6 +469,14 @@ test('kernel-web uses D-117 single edit authority through the real OS', async ({
     'PUT',
     `/workflows/${os.workflowUuid}/authoring/draft`
   )).toBe(draftPutBeforeDiffAcceptance + 1)
+  const canvasSaved = await readEnvelope<AuthoringAggregate>(
+    `${os.url}/api/v1/workflows/${os.workflowUuid}/authoring`
+  )
+  expect(canvasSaved.candidate?.graph.nodes).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ name: 'prepared_canvas' })
+    ])
+  )
 
   await expect(applyButton).toBeEnabled()
   await applyButton.click()
@@ -353,6 +493,32 @@ test('kernel-web uses D-117 single edit authority through the real OS', async ({
   expect(Object.keys(applyRequest.body as Record<string, unknown>)).toEqual([
     'candidate_hash'
   ])
+  const canvasApplied = await readEnvelope<AuthoringAggregate>(
+    `${os.url}/api/v1/workflows/${os.workflowUuid}/authoring`
+  )
+  expect(canvasApplied.applied_graph.nodes).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ name: 'prepared_canvas' })
+    ])
+  )
+
+  await codeMode.click()
+  await expect(editor).toHaveAttribute('contenteditable', 'true')
+  await editor.click()
+  await page.keyboard.press('Control+a')
+  await page.keyboard.insertText('def broken(:\n')
+  await page.getByRole('button', { name: '保存草稿', exact: true }).click()
+  await expect(page.getByText(
+    '草稿已保存，但存在错误，修复后才能应用',
+    { exact: true }
+  )).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Python 草稿诊断' }))
+    .toContainText('syntax_error')
+  await expect(page.getByText(
+    '当前显示 Applied Graph；暂无可应用候选',
+    { exact: true }
+  )).toBeVisible()
+  await expect(applyButton).toBeDisabled()
   expect(browserErrors).toEqual([])
 })
 
@@ -368,8 +534,21 @@ interface AuthoringAggregate {
   candidate: {
     candidate_hash: string
     normalized_python_source: string
-    graph: Record<string, unknown>
+    graph: {
+      workflow: Record<string, unknown>
+      nodes: Array<Record<string, unknown>>
+      edges: Array<Record<string, unknown>>
+      node_templates: Array<Record<string, unknown>>
+      handle_templates: Array<Record<string, unknown>>
+    }
   } | null
+  applied_graph: {
+    workflow: Record<string, unknown>
+    nodes: Array<Record<string, unknown>>
+    edges: Array<Record<string, unknown>>
+    node_templates: Array<Record<string, unknown>>
+    handle_templates: Array<Record<string, unknown>>
+  }
 }
 
 interface SseEvent {

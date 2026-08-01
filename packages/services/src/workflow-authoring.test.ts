@@ -165,7 +165,7 @@ describe('persistent workflow authoring port', () => {
     ).rejects.toMatchObject({ code: 'INVALID_API_RESPONSE' })
   })
 
-  it('resumes SSE with Last-Event-ID and filters, de-duplicates, then disposes', async () => {
+  it('resumes SSE with Last-Event-ID and de-duplicates by event ID', async () => {
     const streamController: {
       current?: ReadableStreamDefaultController<Uint8Array>
     } = {}
@@ -211,6 +211,10 @@ describe('persistent workflow authoring port', () => {
       'event: workflow.authoring.changed',
       `data: ${JSON.stringify(changedData(WORKFLOW_UUID, HASH_A, HASH_B))}`,
       '',
+      'id: 43',
+      'event: workflow.authoring.changed',
+      `data: ${JSON.stringify(changedData(WORKFLOW_UUID, HASH_A, HASH_B))}`,
+      '',
       'id: 44',
       'event: workflow.authoring.changed',
       `data: ${JSON.stringify(changedData(WORKFLOW_UUID, HASH_A, HASH_B))}`,
@@ -222,8 +226,8 @@ describe('persistent workflow authoring port', () => {
       ''
     ].join('\n')))
 
-    await vi.waitFor(() => expect(invalidations).toHaveLength(2))
-    expect(invalidations.map((event) => event.id)).toEqual(['43', '45'])
+    await vi.waitFor(() => expect(invalidations).toHaveLength(3))
+    expect(invalidations.map((event) => event.id)).toEqual(['43', '44', '45'])
     expect(errors).toEqual([])
 
     subscription.dispose()

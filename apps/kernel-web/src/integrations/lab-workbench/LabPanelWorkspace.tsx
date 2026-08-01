@@ -7,6 +7,7 @@ import {
 import {
   useCallback,
   useEffect,
+  useRef,
   useState
 } from 'react'
 
@@ -16,6 +17,7 @@ import {
   parsePanelPresetDocument,
   type LabPanelPreset
 } from './panelLayouts'
+import { WorkflowDirtySessions } from './workflowSessions'
 
 export function LabPanelWorkspace({
   preset,
@@ -40,7 +42,21 @@ function LabPanelWorkspaceSession({
   preset: LabPanelPreset
   onWorkflowUnsavedChangesChange?: (hasUnsavedChanges: boolean) => void
 }): React.JSX.Element {
-  const adapter = useLabPanelAdapter(onWorkflowUnsavedChangesChange)
+  const parentDirtyCallback = useRef(onWorkflowUnsavedChangesChange)
+  parentDirtyCallback.current = onWorkflowUnsavedChangesChange
+  const dirtySessions = useRef<WorkflowDirtySessions | null>(null)
+  if (dirtySessions.current === null) {
+    dirtySessions.current = new WorkflowDirtySessions((hasUnsavedChanges) => {
+      parentDirtyCallback.current?.(hasUnsavedChanges)
+    })
+  }
+  const handleWorkflowUnsavedChangesChange = useCallback((
+    sessionId: string,
+    hasUnsavedChanges: boolean
+  ) => {
+    dirtySessions.current?.update(sessionId, hasUnsavedChanges)
+  }, [])
+  const adapter = useLabPanelAdapter(handleWorkflowUnsavedChangesChange)
   const storageKey = `unilab.panel-layout.${preset}.v1`
   const [document, setDocument] = useState<PanelLayoutDocument>(
     () => panelPresetDocument(preset)
