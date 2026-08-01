@@ -28,7 +28,8 @@ spec。
 | `subscribeWorkflowRuntime(onInvalidate, options?)` | 全局 `GET /api/v1/events` SSE | 仅 `workflow.runtime.changed` invalidation |
 
 HTTP 全部要求 Backend-shaped `{code: 0, data: ...}` success envelope；缺失
-`code`、非零 `code` 或缺失 `data` 一律拒绝为 `INVALID_API_RESPONSE`，不把
+`code`、非零 `code`、缺失 `data` 或同时携带 `error` 一律拒绝为
+`INVALID_API_RESPONSE`，不把
 非合同值交给 controller。UUID path segment 使用 `encodeURIComponent`。query 使用
 `URLSearchParams`，不拼接未编码值。
 

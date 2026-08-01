@@ -209,6 +209,191 @@ export interface WorkflowAuthoringSubscriptionOptions {
   onError?: (error: Error) => void
 }
 
+export type WorkflowTaskStatus =
+  | 'pending'
+  | 'running'
+  | 'canceling'
+  | 'succeeded'
+  | 'failed'
+  | 'canceled'
+  | 'timeout'
+
+export type WorkflowTaskRunMode = 'normal' | 'step' | 'single_node'
+
+export type WorkflowTaskControlStatus =
+  | 'active'
+  | 'paused'
+  | 'waiting_reconciliation'
+
+export type WorkflowTaskCleanupStatus =
+  | 'none'
+  | 'pending'
+  | 'canceling'
+  | 'settled'
+  | 'requires_attention'
+
+export interface WorkflowTaskCreateRequest {
+  workflow_uuid: string
+  run_mode?: WorkflowTaskRunMode
+  target_node_uuid?: string | null
+  input?: Record<string, unknown>
+  description?: string | null
+  meta_data?: Record<string, unknown>
+}
+
+export interface WorkflowTaskListQuery {
+  page?: number
+  page_size?: number
+  workflow_uuid?: string
+  status?: WorkflowTaskStatus
+  cleanup_status?: WorkflowTaskCleanupStatus
+}
+
+export interface WorkflowTask {
+  uuid: string
+  create_time: string
+  update_time: string
+  description?: string
+  meta_data: Record<string, unknown>
+  workflow_uuid: string
+  status: WorkflowTaskStatus
+  workflow_snapshot: Record<string, unknown>
+  execution_plan: Record<string, unknown>
+  run_mode: WorkflowTaskRunMode
+  target_node_uuid?: string
+  control_status: WorkflowTaskControlStatus
+  cleanup_status: WorkflowTaskCleanupStatus
+  trace_context: Record<string, unknown>
+  input: Record<string, unknown>
+  output: Record<string, unknown>
+  error_info: unknown[]
+  timeout_at?: string
+  attention_reason?: string
+  terminal_ghost_detected_at?: string
+  reconciliation_resume_control_status?: 'active' | 'paused'
+  started_at?: string
+  finished_at?: string
+}
+
+export interface WorkflowTaskPage {
+  items: WorkflowTask[]
+  total: number
+  page: number
+  page_size: number
+}
+
+export type WorkflowNodeJobStatus =
+  | 'pending'
+  | 'dispatched'
+  | 'running'
+  | 'intervention_required'
+  | 'cancel_requested'
+  | 'execution_unknown'
+  | 'succeeded'
+  | 'failed'
+  | 'skipped'
+  | 'canceled'
+  | 'timeout'
+
+export interface WorkflowNodeJob {
+  uuid: string
+  create_time: string
+  update_time: string
+  description?: string
+  meta_data: Record<string, unknown>
+  workflow_task_uuid: string
+  workflow_node_uuid: string
+  material_uuid?: string
+  edge_uuid?: string
+  edge_command_uuid?: string
+  feedback_sequence: number
+  topological_index: number
+  executor_kind: string
+  execution_policy: Record<string, unknown>
+  execution_timeout_seconds: number
+  status: WorkflowNodeJobStatus
+  attempt: number
+  param: Record<string, unknown>
+  feedback_data: Record<string, unknown>
+  return_info: Record<string, unknown>
+  control_data: Record<string, unknown>
+  error_info: unknown[]
+  dispatch_deadline_at?: string
+  execution_deadline_at?: string
+  cancel_command_uuid?: string
+  cancel_ack_deadline_at?: string
+  cancel_complete_deadline_at?: string
+  uncertainty_reason?: string
+  started_at?: string
+  finished_at?: string
+}
+
+export interface WorkflowNodeJobFeedback {
+  uuid: string
+  create_time: string
+  update_time: string
+  description?: string
+  meta_data: Record<string, unknown>
+  workflow_node_job_uuid: string
+  sequence: number
+  feedback_type: string
+  data: Record<string, unknown>
+  observed_at: string
+  received_at: string
+  published_at?: string
+  idempotency_key: string
+}
+
+export interface WorkflowNodeJobFeedbackQuery {
+  after_sequence?: number
+  limit?: number
+}
+
+export interface WorkflowNodeJobFeedbackPage {
+  items: WorkflowNodeJobFeedback[]
+  next_cursor: number
+  has_more: boolean
+}
+
+export interface WorkflowRuntimeChangedEvent {
+  id: string
+  event: 'workflow.runtime.changed'
+  data: {
+    workflow_task_uuid: string
+  }
+}
+
+export interface WorkflowRuntimeSubscriptionOptions {
+  lastEventId?: string
+  onError?: (error: Error) => void
+}
+
+export type WorkflowTaskCommandType = 'step' | 'pause' | 'resume' | 'cancel'
+
+export interface WorkflowTaskCommandRequest {
+  type: WorkflowTaskCommandType
+  target_node_uuid?: string | null
+  idempotency_key: string
+  description?: string | null
+  meta_data?: Record<string, unknown>
+}
+
+export interface WorkflowTaskCommand {
+  uuid: string
+  create_time: string
+  update_time: string
+  description?: string
+  meta_data: Record<string, unknown>
+  workflow_task_uuid: string
+  type: WorkflowTaskCommandType
+  target_node_uuid?: string
+  idempotency_key: string
+  status: 'pending' | 'succeeded' | 'rejected'
+  result: Record<string, unknown>
+  trace_context: Record<string, unknown>
+  consumed_at?: string
+}
+
 export interface WorkflowDebugProjection {
   enabled: boolean
   status:
@@ -231,6 +416,7 @@ export interface WorkflowDebugProjection {
   semantics?: string
 }
 
+/** @deprecated UI1 Runtime 不得使用 Run identity；待旧 panel 调用方移除后删除。 */
 export interface WorkflowRun {
   id: string
   status:
@@ -246,6 +432,7 @@ export interface WorkflowRun {
   debug?: WorkflowDebugProjection
 }
 
+/** @deprecated UI1 Runtime 必须读取 WorkflowNodeJob 权威投影。 */
 export interface WorkflowRunNode {
   nodeId: string
   sourceNodeId: string
@@ -257,6 +444,7 @@ export interface WorkflowRunNode {
   attempt: number
 }
 
+/** @deprecated UI1 Runtime 只使用全局 SSE invalidation 后的 REST 补读。 */
 export interface WorkflowRunEvent {
   seq: number
   runId: string
@@ -266,6 +454,7 @@ export interface WorkflowRunEvent {
   payload: Record<string, unknown>
 }
 
+/** @deprecated 共享 command 只有 step/pause/resume/cancel。 */
 export type WorkflowDebugCommand =
   | 'set_breakpoints'
   | 'pause'
@@ -339,19 +528,49 @@ export interface WorkflowRuntimePort {
     baseRevisionId: string,
     candidate: WorkflowAuthoringCandidate
   ) => Promise<WorkflowAuthoringResult>
+  createWorkflowTask: (
+    request: WorkflowTaskCreateRequest
+  ) => Promise<WorkflowTask>
+  listWorkflowTasks: (
+    query?: WorkflowTaskListQuery
+  ) => Promise<WorkflowTaskPage>
+  getWorkflowTask: (taskUuid: string) => Promise<WorkflowTask>
+  listWorkflowTaskJobs: (
+    taskUuid: string
+  ) => Promise<WorkflowNodeJob[]>
+  commandWorkflowTask: (
+    taskUuid: string,
+    request: WorkflowTaskCommandRequest
+  ) => Promise<WorkflowTaskCommand>
+  getWorkflowNodeJob: (jobUuid: string) => Promise<WorkflowNodeJob>
+  listWorkflowNodeJobFeedback: (
+    jobUuid: string,
+    query?: WorkflowNodeJobFeedbackQuery
+  ) => Promise<WorkflowNodeJobFeedbackPage>
+  subscribeWorkflowRuntime: (
+    onInvalidate: (event: WorkflowRuntimeChangedEvent) => void,
+    options?: WorkflowRuntimeSubscriptionOptions
+  ) => WorkflowEventSubscription
+  /** @deprecated UI1 Runtime 使用 createWorkflowTask。 */
   createRun: (request: WorkflowRunRequest) => Promise<WorkflowRun>
+  /** @deprecated UI1 Runtime 使用 getWorkflowTask。 */
   getRun: (runId: string) => Promise<WorkflowRun>
+  /** @deprecated UI1 Runtime 使用 listWorkflowTaskJobs。 */
   listRunNodes: (runId: string) => Promise<WorkflowRunNode[]>
+  /** @deprecated 不得使用 Task-scoped event page。 */
   listRunEvents: (
     runId: string,
     afterSeq?: number
   ) => Promise<{ events: WorkflowRunEvent[]; nextSeq: number }>
+  /** @deprecated UI1 Runtime 使用 commandWorkflowTask。 */
   command: (
     runId: string,
     command: WorkflowDebugCommand,
     payload?: Record<string, unknown>
   ) => Promise<WorkflowRun>
+  /** @deprecated cancel 是 WorkflowTask command。 */
   cancelRun: (runId: string) => Promise<WorkflowRun>
+  /** @deprecated UI1 Runtime 只订阅全局 SSE。 */
   subscribeRunEvents: (
     runId: string,
     onEvent: (event: WorkflowRunEvent) => void,
@@ -378,6 +597,13 @@ export function createWorkflowRuntime(
     path: string,
     init?: RequestInit
   ): Promise<Value> => strictAuthoringData<Value>(
+    await http.request<unknown>(path, init)
+  )
+
+  const runtimeRequest = async <Value>(
+    path: string,
+    init?: RequestInit
+  ): Promise<Value> => strictRuntimeData<Value>(
     await http.request<unknown>(path, init)
   )
 
@@ -532,6 +758,114 @@ export function createWorkflowRuntime(
           candidate
         })
       }),
+    createWorkflowTask: (body) =>
+      runtimeRequest('/api/v1/workflow-tasks', {
+        method: 'POST',
+        headers: jsonHeaders(),
+        body: JSON.stringify(body)
+      }),
+    listWorkflowTasks: (query = {}) =>
+      runtimeRequest(workflowTaskListPath(query)),
+    getWorkflowTask: (taskUuid) =>
+      runtimeRequest(
+        `/api/v1/workflow-tasks/${encodeURIComponent(taskUuid)}`
+      ),
+    listWorkflowTaskJobs: (taskUuid) =>
+      runtimeRequest(
+        `/api/v1/workflow-tasks/${encodeURIComponent(taskUuid)}/jobs`
+      ),
+    commandWorkflowTask: (taskUuid, body) =>
+      runtimeRequest(
+        `/api/v1/workflow-tasks/${encodeURIComponent(taskUuid)}/commands`,
+        {
+          method: 'POST',
+          headers: jsonHeaders(),
+          body: JSON.stringify(body)
+        }
+      ),
+    getWorkflowNodeJob: (jobUuid) =>
+      runtimeRequest(
+        `/api/v1/workflow-node-jobs/${encodeURIComponent(jobUuid)}`
+      ),
+    listWorkflowNodeJobFeedback: (jobUuid, query = {}) =>
+      runtimeRequest(workflowNodeJobFeedbackPath(jobUuid, query)),
+    subscribeWorkflowRuntime: (onInvalidate, options = {}) => {
+      let disposed = false
+      let controller: AbortController | null = null
+      let reconnectTimer: ReturnType<typeof globalThis.setTimeout> | null = null
+      let cursor = options.lastEventId || ''
+      const seenEventIds = new Set<string>()
+
+      const scheduleReconnect = (): void => {
+        if (disposed || reconnectTimer !== null) return
+        reconnectTimer = globalThis.setTimeout(() => {
+          reconnectTimer = null
+          void connect()
+        }, 3000)
+      }
+
+      const connect = async (): Promise<void> => {
+        if (disposed) return
+        controller = new AbortController()
+        const headers = new Headers({ Accept: 'text/event-stream' })
+        if (cursor) headers.set('Last-Event-ID', cursor)
+        try {
+          const response = await globalThis.fetch(
+            workflowEventsUrl(backend),
+            { headers, signal: controller.signal }
+          )
+          if (!response.ok || !response.body) {
+            throw new Error(
+              `Workflow Runtime SSE 连接失败: ${response.status} ${response.statusText}`
+            )
+          }
+          await readSseStream(response.body, (frame) => {
+            if (frame.id) cursor = frame.id
+            if (frame.event !== 'workflow.runtime.changed') return
+            if (frame.id && seenEventIds.has(frame.id)) return
+            if (frame.id) {
+              seenEventIds.add(frame.id)
+              if (seenEventIds.size > 512) {
+                const oldest = seenEventIds.values().next().value
+                if (oldest !== undefined) seenEventIds.delete(oldest)
+              }
+            }
+            const data = parseRuntimeChangedData(frame.data)
+            if (!data) {
+              options.onError?.(
+                new Error('Workflow Runtime SSE 返回了无效事件')
+              )
+              return
+            }
+            onInvalidate({
+              id: frame.id,
+              event: 'workflow.runtime.changed',
+              data
+            })
+          }, controller.signal)
+          scheduleReconnect()
+        } catch (error) {
+          if (disposed || controller.signal.aborted) return
+          options.onError?.(asError(error))
+          scheduleReconnect()
+        }
+      }
+
+      const subscription: WorkflowEventSubscription = {
+        dispose: () => {
+          if (disposed) return
+          disposed = true
+          controller?.abort()
+          if (reconnectTimer !== null) {
+            globalThis.clearTimeout(reconnectTimer)
+          }
+          subscriptions.delete(subscription)
+        }
+      }
+      subscriptions.add(subscription)
+      void connect()
+      return subscription
+    },
     createRun: (body) =>
       request('/api/v1/runtime/runs', {
         method: 'POST',
@@ -658,10 +992,33 @@ function strictAuthoringData<Value>(raw: unknown): Value {
   return envelope.data as Value
 }
 
+function strictRuntimeData<Value>(raw: unknown): Value {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    throw invalidRuntimeResponse()
+  }
+  const envelope = raw as Record<string, unknown>
+  if (
+    envelope.code !== 0 ||
+    !Object.prototype.hasOwnProperty.call(envelope, 'data') ||
+    Object.prototype.hasOwnProperty.call(envelope, 'error')
+  ) {
+    throw invalidRuntimeResponse()
+  }
+  return envelope.data as Value
+}
+
 function invalidAuthoringResponse(): ServiceError {
   return new ServiceError({
     code: 'INVALID_API_RESPONSE',
     message: 'Authoring 服务返回了无效响应',
+    retryable: false
+  })
+}
+
+function invalidRuntimeResponse(): ServiceError {
+  return new ServiceError({
+    code: 'INVALID_API_RESPONSE',
+    message: 'Workflow Runtime 服务返回了无效响应',
     retryable: false
   })
 }
@@ -692,6 +1049,38 @@ function workflowEventsUrl(backend: BackendConfig): string {
   url.search = ''
   url.hash = ''
   return url.toString()
+}
+
+function workflowTaskListPath(query: WorkflowTaskListQuery): string {
+  const search = new URLSearchParams()
+  for (const key of [
+    'page',
+    'page_size',
+    'workflow_uuid',
+    'status',
+    'cleanup_status'
+  ] as const) {
+    const value = query[key]
+    if (value !== undefined && value !== '') search.set(key, String(value))
+  }
+  const suffix = search.toString()
+  return `/api/v1/workflow-tasks${suffix ? `?${suffix}` : ''}`
+}
+
+function workflowNodeJobFeedbackPath(
+  jobUuid: string,
+  query: WorkflowNodeJobFeedbackQuery
+): string {
+  const search = new URLSearchParams()
+  if (query.after_sequence !== undefined) {
+    search.set('after_sequence', String(query.after_sequence))
+  }
+  if (query.limit !== undefined) search.set('limit', String(query.limit))
+  const suffix = search.toString()
+  const base = `/api/v1/workflow-node-jobs/${
+    encodeURIComponent(jobUuid)
+  }/feedback`
+  return `${base}${suffix ? `?${suffix}` : ''}`
 }
 
 interface ParsedSseFrame {
@@ -739,7 +1128,7 @@ function parseSseFrame(value: string): ParsedSseFrame | null {
     else if (field === 'event') event = fieldValue
     else if (field === 'data') data.push(fieldValue)
   }
-  if (data.length === 0) return null
+  if (data.length === 0 && id === '') return null
   return { id, event, data: data.join('\n') }
 }
 
@@ -770,6 +1159,24 @@ function parseAuthoringChangedData(
       draft_hash: data.draft_hash,
       candidate_hash: data.candidate_hash
     }
+  } catch {
+    return null
+  }
+}
+
+function parseRuntimeChangedData(
+  value: string
+): WorkflowRuntimeChangedEvent['data'] | null {
+  try {
+    const data = JSON.parse(value) as Record<string, unknown>
+    if (
+      Object.keys(data).length !== 1 ||
+      typeof data.workflow_task_uuid !== 'string' ||
+      data.workflow_task_uuid.trim() === ''
+    ) {
+      return null
+    }
+    return { workflow_task_uuid: data.workflow_task_uuid }
   } catch {
     return null
   }
