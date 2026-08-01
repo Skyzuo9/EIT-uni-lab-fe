@@ -5,7 +5,9 @@ import { shouldShowConnectionRecovery } from '../context/connectionPolicy'
 import { useBackendConnection } from '../hooks/useBackendConnection'
 
 import styles from './ConnectionBar.module.scss'
-import LocalRuntimeLauncher from './LocalRuntimeLauncher'
+import LocalRuntimeLauncher, {
+  LocalRuntimeLogLauncher
+} from './LocalRuntimeLauncher'
 
 export default function ConnectionBar(): React.JSX.Element {
   const {
@@ -31,11 +33,14 @@ export default function ConnectionBar(): React.JSX.Element {
   const hasDraftChange = trimmedDraftUrl !== backend.apiUrl
   const targetName = backend.serverKind === 'edge' ? 'Edge' : backend.name
   const showConnected = backendEnabled && connection === 'connected'
+  const showDisconnected = backendEnabled && connection === 'disconnected'
   const statusLabel = showRecovery
     ? `${targetName} 连接失败`
     : showConnected
       ? `${targetName} 已连接`
-      : null
+      : showDisconnected
+        ? `${targetName} 未连接`
+        : null
 
   const handleApply = (): void => {
     const trimmed = draftUrl.trim()
@@ -70,6 +75,7 @@ export default function ConnectionBar(): React.JSX.Element {
       aria-label={`${targetName} 连接配置`}
       data-connection-state={connection}
     >
+      <LocalRuntimeLogLauncher />
       {statusLabel ? (
         <span
           className={styles.status}

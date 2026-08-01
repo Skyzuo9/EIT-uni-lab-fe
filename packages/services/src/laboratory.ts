@@ -40,6 +40,14 @@ export interface DeviceAction {
   outputSchema: Record<string, DeviceActionInputSchema>
 }
 
+export interface DeviceActionUnlockResult {
+  status: 'released' | 'already_unlocked'
+  deviceId: string
+  actionName: string
+  releasedJobIds: string[]
+  cancelRequestedJobIds: string[]
+}
+
 export interface DeviceActionInputSchema {
   type?: string
   title?: string
@@ -85,6 +93,7 @@ interface RuntimeActionTemplate {
   label: string
   typeName: string
   isBusy: boolean
+  currentJobId: string | null
   inputSchema: Record<string, unknown>
   outputSchema: Record<string, unknown>
 }
@@ -158,6 +167,43 @@ export function createLaboratoryService(
       return mapDeviceActionSchema(template)
     },
 
+    async forceUnlockDeviceAction(input: {
+      deviceId: string
+      actionName: string
+      expectedJobId: string
+    }): Promise<DeviceActionUnlockResult> {
+      const response = await http.request<Record<string, unknown>>(
+        `/api/v1/devices/${encodeURIComponent(input.deviceId)}`
+          + `/actions/${encodeURIComponent(input.actionName)}/commands`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            command: 'force_unlock',
+            expectedJobId: input.expectedJobId,
+            reason: 'operator_confirmed_device_safe'
+          })
+        }
+      )
+      const status = str(response.status)
+      if (status !== 'released' && status !== 'already_unlocked') {
+        throw new ServiceError({
+          code: 'INVALID_DEVICE_UNLOCK_RESPONSE',
+          message: '设备解锁响应状态无效',
+          retryable: false
+        })
+      }
+      return {
+        status,
+        deviceId: str(response.deviceId) || input.deviceId,
+        actionName: str(response.actionName) || input.actionName,
+        releasedJobIds: stringArray(response.releasedJobIds),
+        cancelRequestedJobIds: stringArray(
+          response.cancelRequestedJobIds
+        )
+      }
+    },
+
     async getResources(): Promise<ResourceNode[]> {
       const raw = await requestData<Record<string, unknown>[]>(
         http,
@@ -179,7 +225,7 @@ function mapDeviceAction(template: RuntimeActionTemplate): DeviceAction {
     label: template.label,
     typeName: template.typeName,
     isBusy: template.isBusy,
-    currentJobId: null,
+    currentJobId: template.currentJobId,
     schema,
     inputSchema: mapActionSchema(schema.properties),
     outputSchema: mapActionSchema(template.outputSchema)
@@ -195,7 +241,7 @@ function mapDeviceActionSchema(
     goalDefault: defaultsFromInputSchema(schema),
     actionType: template.typeName || template.actionRef,
     isBusy: template.isBusy,
-    currentJobId: null
+    currentJobId: template.currentJobId
   }
 }
 
@@ -240,6 +286,7 @@ async function getRuntimeDevices(
               label: str(action.name) || actionName,
               typeName: str(action.typeName) || actionRef,
               isBusy: Boolean(action.busy),
+              currentJobId: optionalString(action.currentJobId),
               inputSchema: asRecord(action.inputSchema),
               outputSchema: asRecord(action.outputSchema)
             }
@@ -304,6 +351,17 @@ function str(value: unknown): string {
 function num(value: unknown): number {
   const n = Number(value)
   return Number.isFinite(n) ? n : 0
+}
+
+function optionalString(value: unknown): string | null {
+  const valueString = str(value).trim()
+  return valueString || null
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.map(str).filter(Boolean)
+    : []
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

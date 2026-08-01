@@ -1611,8 +1611,6 @@ export function PersistentWorkflowAuthoringPanel({
           title="运行输出"
           countLabel="个 Job 已结束"
           nodesTabLabel="Job 状态"
-          eventsTabLabel="Feedback"
-          eventsEmptyLabel="等待 OS Job feedback……"
           onExpandedChange={setOutputExpanded}
           onTabChange={setOutputTab}
           onNodeSelect={setSelectedJobNodeUuid}

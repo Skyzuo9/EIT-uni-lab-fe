@@ -20,34 +20,72 @@
 
 ## 本地环境启动
 
-桌面端连接栏可选择以下路径，并以一个受控会话按顺序启动或停止本地调试环境：
+桌面端连接栏可选择以下路径，并分别启动或停止 PLC-Sim 与 SZLab Edge：
 
-- `unilab` Conda 环境目录（自动识别本机兼容环境，也可手动选择；内部使用
-  `bin/python` 与 `bin/unilab`）
+- `unilab` Conda 环境目录（自动识别本机兼容环境，也可手动选择；macOS/Linux
+  使用 `bin/python` 与 `bin/unilab`，Windows 使用 `python.exe` 与
+  `Scripts/unilab.exe`。Windows 子进程还会注入所选环境的 `CONDA_PREFIX`，并按
+  Conda 激活顺序前置环境目录、`Library/bin` 与 `Scripts` 到 `PATH`）
 - Uni-Lab-OS 项目根目录
 - Uni-Lab-SZLab 项目根目录
 - SZLab 设备图 JSON
 - PLC-Sim 项目根目录（可选，内部使用 `OpcUaSim/gui/backend.py`）
 
-启动顺序与固定端口如下：
+两个服务不再绑定为一次启动操作：
 
-1. OPC UA：`python -m gui.backend`，监听 `127.0.0.1:18765`。
-2. SZLab Edge 内部服务：`deployment/local_bridge_entrypoint.py`，API 监听 `8014`，Schedule
+1. PLC-Sim（可选）：用户单独启动 `python -m gui.backend`，监听
+   `127.0.0.1:18765`。
+2. 如需使用 PLC，用户在 PLC-Sim 中上传 PLC 变量表并确认完成。
+3. SZLab Edge：用户再单独启动内部服务与 Edge。内部服务使用
+   `deployment/local_bridge_entrypoint.py`，API 监听 `8014`，Schedule
    WebSocket 监听 `8892`，连接 Edge `18003`。
-3. SZLab Edge：使用 ROS backend、`ROS_DOMAIN_ID=42`，HTTP 监听 `18003`。
+   Edge 使用 ROS backend、`ROS_DOMAIN_ID=42`，HTTP 监听 `18003`。
    每次启动会在 `runtime/ideawit-e2e` 下生成独立的
    `edge-runtime-YYYYMMDD-HHMMSS.sqlite3`，并通过 `UNILABOS_RUNTIME_DB`
    传给 Edge。
 
-启用本地 OPC UA 时，步骤 2 和步骤 3 必须等待 `18765` 确认就绪后再执行，
-PLC-Sim 与 SZLab Edge 不并行启动。
+停止 SZLab Edge 不会停止 PLC-Sim；为避免变量表与设备目录状态不一致，Edge
+运行期间不能启动或停止 PLC-Sim。退出桌面应用时仍会统一回收两个服务。
 
 产品界面仅展示 OPC UA 与 SZLab Edge；内部服务随 SZLab Edge 一起启动和停止，
 不作为独立服务暴露给用户。
 
 启动前会校验项目结构、可执行文件和端口占用；任一进程启动失败或意外退出时，
 其余进程会被统一回收。所有命令均以参数数组直接启动，不经过 renderer 或任意
-shell 字符串拼接。日志分别写入 `simulator.log`、`bridge.log` 和 `edge.log`。
+shell 字符串拼接。日志分别写入 `simulator.log`、`bridge.log` 和 `edge.log`，可在
+应用右上角打开日志抽屉直接查看；日志目录与读取方式均由 Electron 按当前平台处理。
+
+## Trace 日志
+
+Electron main 使用 `@arizeai/phoenix-otel` 将应用生命周期、renderer 异常、登录和
+本地运行时启停等关键操作作为 OpenTelemetry span 上报到 Uni-Lab-OS。默认 OTLP
+地址为：
+
+```text
+http://127.0.0.1:18003/api/v1/observability/otlp/v1/traces
+```
+
+Uni-Lab-OS 未启动、未启用 observability 或 Phoenix 暂不可用时，上报自动降级，
+不得阻断 Electron 启动和业务操作。原有 `~/lab-pc-client.log` 文件日志继续保留。
+主进程退出前会在限定时间内 flush，并通过 preload 提供 status、trace 列表和详情
+查询；renderer 不直接访问 OTLP 地址。
+
+Electron 一键启动 Edge 时会为该子进程启用 Uni-Lab-OS observability，并把用户选择的
+Conda 环境 `bin` 放到 `PATH` 首位，以便 Uni-Lab-OS 找到同一环境中的 `phoenix`。
+该环境需要预先安装 Uni-Lab-OS 的 `observability` 可选依赖；未安装时 Edge 继续启动，
+trace 状态显示为降级。
+
+可选环境变量：
+
+- `UNILABOS_TRACE_ENABLED=0`：关闭 Electron trace 上报。
+- `UNILABOS_OBSERVABILITY_URL`：覆盖 Uni-Lab-OS observability 根地址，仅接受无凭据
+  的 loopback HTTP 地址。
+- `UNILABOS_TRACE_PROJECT`：覆盖 Phoenix project，默认 `uni-lab-electron`。
+- `UNILABOS_TRACE_REQUEST_TIMEOUT_MS`：查询超时，默认 `5000`。
+- `UNILABOS_TRACE_SHUTDOWN_TIMEOUT_MS`：退出 flush 超时，默认 `3000`。
+
+上报前会清除 URL 凭据与查询参数、Bearer/token/password/cookie 等敏感值，并将用户
+家目录替换为 `$HOME`。不要在新增 span 属性中放入设备动作完整参数或文件内容。
 
 ## 绝对不能做
 

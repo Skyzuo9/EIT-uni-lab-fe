@@ -1,9 +1,17 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type {
   LocalRuntimeLaunchConfig,
+  LocalRuntimeLogsSnapshot,
   LocalRuntimePathKind,
   LocalRuntimeSnapshot
 } from '../shared/localRuntime'
+import type {
+  ObservabilityStatus,
+  TraceDetailQuery,
+  TraceDetailResult,
+  TraceListQuery,
+  TraceListResult
+} from '../shared/observability'
 
 // 登录会话结构(与主进程 authManager.AuthSession 保持一致)
 export interface AuthUserInfo {
@@ -64,11 +72,20 @@ const api = {
       ipcRenderer.invoke('runtime:getDefaultEnvironmentPath'),
     getSnapshot: (): Promise<LocalRuntimeSnapshot> =>
       ipcRenderer.invoke('runtime:getSnapshot'),
-    start: (config: LocalRuntimeLaunchConfig): Promise<LocalRuntimeSnapshot> =>
-      ipcRenderer.invoke('runtime:start', config),
-    stop: (): Promise<LocalRuntimeSnapshot> =>
-      ipcRenderer.invoke('runtime:stop'),
-    openLogs: (): Promise<boolean> => ipcRenderer.invoke('runtime:openLogs'),
+    startSimulator: (
+      config: LocalRuntimeLaunchConfig
+    ): Promise<LocalRuntimeSnapshot> =>
+      ipcRenderer.invoke('runtime:startSimulator', config),
+    stopSimulator: (): Promise<LocalRuntimeSnapshot> =>
+      ipcRenderer.invoke('runtime:stopSimulator'),
+    startEdge: (
+      config: LocalRuntimeLaunchConfig
+    ): Promise<LocalRuntimeSnapshot> =>
+      ipcRenderer.invoke('runtime:startEdge', config),
+    stopEdge: (): Promise<LocalRuntimeSnapshot> =>
+      ipcRenderer.invoke('runtime:stopEdge'),
+    readLogs: (): Promise<LocalRuntimeLogsSnapshot> =>
+      ipcRenderer.invoke('runtime:readLogs'),
     onSnapshot: (
       listener: (snapshot: LocalRuntimeSnapshot) => void
     ): (() => void) => {
@@ -79,6 +96,17 @@ const api = {
       ipcRenderer.on('runtime:snapshot', wrapped)
       return () => ipcRenderer.removeListener('runtime:snapshot', wrapped)
     }
+  },
+  observability: {
+    getStatus: (): Promise<ObservabilityStatus> =>
+      ipcRenderer.invoke('observability:getStatus'),
+    listTraces: (query?: TraceListQuery): Promise<TraceListResult> =>
+      ipcRenderer.invoke('observability:listTraces', query),
+    getTrace: (
+      traceId: string,
+      query?: TraceDetailQuery
+    ): Promise<TraceDetailResult> =>
+      ipcRenderer.invoke('observability:getTrace', traceId, query)
   }
 }
 

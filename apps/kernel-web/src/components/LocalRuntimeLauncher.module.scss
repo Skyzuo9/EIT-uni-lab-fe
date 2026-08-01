@@ -25,7 +25,8 @@
     outline-offset: 2px;
   }
 
-  &[data-runtime-phase='ready'] {
+  &[data-runtime-phase='ready'],
+  &[data-runtime-phase='simulator_ready'] {
     color: var(--unilab-color-success);
     border-color: color-mix(
       in srgb,
@@ -97,6 +98,20 @@
   }
 }
 
+.headerActions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--unilab-space-2);
+}
+
+.headerLogButton {
+  height: 30px;
+  flex: 0 0 auto;
+  padding-inline: 10px;
+  white-space: nowrap;
+}
+
 .closeButton {
   width: 30px;
   height: 30px;
@@ -132,48 +147,74 @@
   padding: 20px 24px;
 }
 
-.simulatorOption {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--unilab-space-4);
-  padding: 12px 14px;
-  border-radius: var(--unilab-radius-md);
-  background: var(--unilab-color-surface-subtle);
-  cursor: pointer;
+.serviceSection {
+  display: grid;
+  gap: 12px;
+  padding-block-start: 16px;
+  border-block-start: 1px solid var(--unilab-color-border);
+}
 
-  > span {
+.serviceHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+
+  > div {
     display: grid;
-    gap: 3px;
+    min-width: 0;
+    gap: 4px;
   }
 
-  strong {
-    font-size: 13px;
+  h3 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 700;
     line-height: 1.4;
   }
 
-  small {
+  p {
+    margin: 0;
     color: var(--unilab-color-text-muted);
     font-size: 11px;
-    line-height: 1.45;
+    line-height: 1.5;
+  }
+
+  > button {
+    flex: 0 0 auto;
   }
 }
 
-.switchInput {
-  width: 38px;
-  height: 22px;
-  flex: 0 0 auto;
-  margin: 0;
-  accent-color: var(--unilab-color-primary);
-  cursor: pointer;
+.dependencyNotice {
+  display: grid;
+  gap: 3px;
+  padding: 10px 12px;
+  color: var(--unilab-color-warning);
+  border: 1px solid color-mix(
+    in srgb,
+    var(--unilab-color-warning) 30%,
+    var(--unilab-color-border)
+  );
+  border-radius: var(--unilab-radius-control);
+  background: color-mix(
+    in srgb,
+    var(--unilab-color-warning) 7%,
+    var(--unilab-color-surface)
+  );
 
-  &:focus-visible {
-    outline: 2px solid var(--unilab-color-focus);
-    outline-offset: 2px;
+  strong {
+    font-size: 12px;
+    line-height: 1.45;
   }
 
-  &:disabled {
-    cursor: not-allowed;
+  span {
+    color: color-mix(
+      in srgb,
+      var(--unilab-color-warning) 74%,
+      var(--unilab-color-text)
+    );
+    font-size: 11px;
+    line-height: 1.5;
   }
 }
 
@@ -345,7 +386,8 @@
   border-radius: var(--unilab-radius-control);
   background: var(--unilab-color-surface-subtle);
 
-  &[data-phase='ready'] {
+  &[data-phase='ready'],
+  &[data-phase='simulator_ready'] {
     color: var(--unilab-color-success);
     border-color: color-mix(
       in srgb,
@@ -457,13 +499,10 @@
 .footer {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: var(--unilab-space-2);
   padding: 14px 24px 18px;
   border-top: 1px solid var(--unilab-color-border);
-}
-
-.footerSpacer {
-  flex: 1;
 }
 
 .secondaryButton,
@@ -522,6 +561,216 @@
   }
 }
 
+.logDrawerLayer {
+  position: fixed;
+  z-index: 1300;
+  inset: 0;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.logDrawerScrim {
+  position: absolute;
+  inset: 0;
+  padding: 0;
+  border: 0;
+  background: rgb(15 23 42 / 28%);
+  cursor: default;
+}
+
+.logDrawer {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  width: min(720px, calc(100vw - 48px));
+  height: 100%;
+  color: var(--unilab-color-text);
+  border-inline-start: 1px solid var(--unilab-color-border);
+  background: var(--unilab-color-surface);
+  box-shadow: -18px 0 48px rgb(15 23 42 / 18%);
+  animation: log-drawer-enter var(--unilab-motion-normal) ease-out;
+}
+
+.logDrawerHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--unilab-space-4);
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid var(--unilab-color-border);
+
+  h3 {
+    margin: 0;
+    font-size: 16px;
+    line-height: 1.4;
+  }
+
+  p {
+    margin: 4px 0 0;
+    color: var(--unilab-color-text-muted);
+    font-size: 12px;
+    line-height: 1.5;
+  }
+}
+
+.logDrawerActions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--unilab-space-2);
+
+  .secondaryButton {
+    height: 30px;
+  }
+}
+
+.logTabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding-inline: 12px;
+  border-bottom: 1px solid var(--unilab-color-border);
+  background: var(--unilab-color-surface-subtle);
+
+  button {
+    position: relative;
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    height: 44px;
+    padding-inline: 10px;
+    color: var(--unilab-color-text-muted);
+    border: 0;
+    border-bottom: 2px solid transparent;
+    background: transparent;
+    font-size: 12px;
+    cursor: pointer;
+
+    &:hover {
+      color: var(--unilab-color-text);
+      background: var(--unilab-color-surface-muted);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--unilab-color-focus);
+      outline-offset: -3px;
+    }
+
+    &[aria-selected='true'] {
+      color: var(--unilab-color-primary);
+      border-bottom-color: var(--unilab-color-primary);
+      background: var(--unilab-color-surface);
+      font-weight: 600;
+    }
+
+    &[data-available='true'] small::before {
+      background: var(--unilab-color-success);
+    }
+
+    span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    small {
+      display: inline-flex;
+      flex: 0 0 auto;
+      align-items: center;
+      gap: 4px;
+      color: var(--unilab-color-text-subtle);
+      font-size: 10px;
+      font-weight: 500;
+    }
+
+    small::before {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--unilab-color-border-strong);
+      content: '';
+    }
+  }
+}
+
+.logDrawerBody {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: var(--unilab-space-2);
+  padding: var(--unilab-space-3);
+  background: var(--unilab-color-bg-subtle);
+}
+
+.logOutput {
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  margin: 0;
+  padding: 14px;
+  overflow: auto;
+  color: var(--unilab-color-text);
+  border: 1px solid var(--unilab-color-border);
+  border-radius: var(--unilab-radius-control);
+  background: var(--unilab-color-surface);
+  font: 11px/1.6 var(--unilab-font-mono);
+  overflow-wrap: anywhere;
+  tab-size: 2;
+  white-space: pre-wrap;
+}
+
+.logEmpty {
+  display: grid;
+  flex: 1;
+  place-content: center;
+  gap: 6px;
+  min-height: 220px;
+  color: var(--unilab-color-text-muted);
+  text-align: center;
+
+  strong {
+    color: var(--unilab-color-text);
+    font-size: 13px;
+  }
+
+  span {
+    font-size: 12px;
+  }
+}
+
+.logNotice,
+.logError {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: var(--unilab-radius-control);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.logNotice {
+  color: var(--unilab-color-text-muted);
+  background: var(--unilab-color-surface-muted);
+}
+
+.logError {
+  color: var(--unilab-color-danger);
+  background: var(--unilab-color-danger-soft);
+}
+
+@keyframes log-drawer-enter {
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
 @media (max-width: 640px) {
   .backdrop {
     align-items: end;
@@ -544,14 +793,23 @@
     padding-inline: 16px;
   }
 
-  .footerSpacer {
-    display: none;
+  .serviceHeader {
+    align-items: stretch;
+    flex-direction: column;
+
+    > button {
+      width: 100%;
+    }
   }
 
   .secondaryButton,
   .primaryButton,
   .stopButton {
     flex: 1 1 auto;
+  }
+
+  .headerLogButton {
+    flex: 0 0 auto;
   }
 
   .processGrid {
@@ -561,6 +819,36 @@
   .processItem + .processItem {
     border-block-start: 1px solid color-mix(in srgb, currentColor 18%, transparent);
     border-inline-start: 0;
+  }
+
+  .logDrawer {
+    width: 100%;
+  }
+
+  .logDrawerScrim {
+    display: none;
+  }
+
+  .logDrawerHeader {
+    padding-inline: 16px;
+  }
+
+  .logTabs {
+    padding-inline: 4px;
+
+    button {
+      flex-direction: column;
+      gap: 1px;
+      height: 52px;
+      padding-inline: 4px;
+    }
+  }
+
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .logDrawer {
+    animation: none;
   }
 
 }

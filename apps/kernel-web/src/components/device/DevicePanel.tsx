@@ -2,11 +2,13 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState
 } from 'react'
 import {
   type DeviceAction,
-  type DeviceActionInputSchema
+  type DeviceActionInputSchema,
+  useServices
 } from '@unilab/services'
 
 import { useWorkbench } from '../../context/WorkbenchContext'
@@ -15,8 +17,24 @@ import { useDevices } from '../../hooks/useDevices'
 
 type ArgumentDraft = Record<string, string | boolean>
 
+interface UnlockIntent {
+  deviceId: string
+  deviceName: string
+  actionName: string
+  actionRef: string
+  actionLabel: string
+  expectedJobId: string
+}
+
+interface UnlockOperation {
+  actionRef: string
+  state: 'pending' | 'success' | 'error'
+  message: string
+}
+
 export default function DevicePanel(): React.JSX.Element {
   const { backend, connection } = useWorkbench()
+  const services = useServices()
   const {
     devices,
     loading,
@@ -27,6 +45,10 @@ export default function DevicePanel(): React.JSX.Element {
   const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null)
   const [selectedActionRef, setSelectedActionRef] = useState<string | null>(null)
   const [argumentDraft, setArgumentDraft] = useState<ArgumentDraft>({})
+  const [unlockIntent, setUnlockIntent] = useState<UnlockIntent | null>(null)
+  const [unlockOperation, setUnlockOperation] =
+    useState<UnlockOperation | null>(null)
+  const canForceUnlock = services.capabilities.devices.forceUnlock
 
   const selectedDevice = useMemo(
     () =>
@@ -105,12 +127,63 @@ export default function DevicePanel(): React.JSX.Element {
     [argumentDraftKey]
   )
 
+  const handleRequestUnlock = useCallback(
+    (device: ManagedDevice, action: DeviceAction) => {
+      if (!action.currentJobId) return
+      setUnlockOperation(null)
+      setUnlockIntent({
+        deviceId: device.id,
+        deviceName: device.displayName,
+        actionName: action.actionName,
+        actionRef: action.actionRef,
+        actionLabel: action.displayName,
+        expectedJobId: action.currentJobId
+      })
+    },
+    []
+  )
+
+  const handleConfirmUnlock = useCallback(async () => {
+    const intent = unlockIntent
+    if (!intent) return
+    setUnlockOperation({
+      actionRef: intent.actionRef,
+      state: 'pending',
+      message: '正在请求 OS 取消当前动作并释放锁…'
+    })
+    try {
+      const result = await services.laboratory.forceUnlockDeviceAction({
+        deviceId: intent.deviceId,
+        actionName: intent.actionName,
+        expectedJobId: intent.expectedJobId
+      })
+      setUnlockIntent(null)
+      setUnlockOperation({
+        actionRef: intent.actionRef,
+        state: 'success',
+        message: result.status === 'already_unlocked'
+          ? '该动作锁已由 OS 释放，正在复核最新目录状态。'
+          : `OS 已释放 ${result.releasedJobIds.length} 个关联 Job，正在复核最新目录状态。`
+      })
+      await refresh()
+    } catch (error) {
+      setUnlockOperation({
+        actionRef: intent.actionRef,
+        state: 'error',
+        message: error instanceof Error
+          ? error.message
+          : '设备解锁失败，请刷新状态后重试'
+      })
+    }
+  }, [refresh, services.laboratory, unlockIntent])
+
   return (
-    <section
-      className={`section section--split device-page edge-device${
-        devices.length ? '' : ' is-empty'
-      }`}
-    >
+    <>
+      <section
+        className={`section section--split device-page edge-device${
+          devices.length ? '' : ' is-empty'
+        }`}
+      >
       <aside className="section__list" aria-label="Edge 设备列表">
         <header className="section__list-head edge-device__list-head">
           <div>
@@ -181,6 +254,9 @@ export default function DevicePanel(): React.JSX.Element {
             argumentDraft={argumentDraft}
             onSelectAction={setSelectedActionRef}
             onArgumentChange={handleArgumentChange}
+            canForceUnlock={canForceUnlock}
+            unlockOperation={unlockOperation}
+            onRequestUnlock={handleRequestUnlock}
           />
         ) : (
           <div className="device-empty device-empty--detail">
@@ -188,8 +264,19 @@ export default function DevicePanel(): React.JSX.Element {
             <p>请确认 Edge 已启动并连接到本地桥。</p>
           </div>
         )}
-      </main>
-    </section>
+        </main>
+      </section>
+      {unlockIntent ? (
+        <UnlockConfirmationDialog
+          intent={unlockIntent}
+          operation={unlockOperation}
+          onCancel={() => {
+            if (unlockOperation?.state !== 'pending') setUnlockIntent(null)
+          }}
+          onConfirm={() => void handleConfirmUnlock()}
+        />
+      ) : null}
+    </>
   )
 }
 
@@ -240,6 +327,9 @@ function DeviceListItem({
   selected: boolean
   onSelect: (deviceId: string) => void
 }): React.JSX.Element {
+  const lockedActionCount = device.actions.filter(
+    (action) => action.isBusy
+  ).length
   return (
     <li>
       <button
@@ -261,9 +351,15 @@ function DeviceListItem({
               }`}
             />
             <span className="device-list__name">{device.displayName}</span>
+            {lockedActionCount ? (
+              <span className="edge-device__list-lock">
+                已锁定
+              </span>
+            ) : null}
           </span>
           <span className="device-list__key">
             {device.displayDetail} · {device.actions.length} 个动作
+            {lockedActionCount ? ` · ${lockedActionCount} 个占用` : ''}
           </span>
         </span>
         <span className="edge-device__chevron" aria-hidden="true">›</span>
@@ -278,7 +374,10 @@ function DeviceWorkspace({
   selectedActionRef,
   argumentDraft,
   onSelectAction,
-  onArgumentChange
+  onArgumentChange,
+  canForceUnlock,
+  unlockOperation,
+  onRequestUnlock
 }: {
   device: ManagedDevice
   selectedAction: DeviceAction | null
@@ -286,7 +385,13 @@ function DeviceWorkspace({
   argumentDraft: ArgumentDraft
   onSelectAction: (actionRef: string) => void
   onArgumentChange: (name: string, value: string | boolean) => void
+  canForceUnlock: boolean
+  unlockOperation: UnlockOperation | null
+  onRequestUnlock: (device: ManagedDevice, action: DeviceAction) => void
 }): React.JSX.Element {
+  const lockedActionCount = device.actions.filter(
+    (action) => action.isBusy
+  ).length
   return (
     <div className="edge-device__workspace">
       <header className="edge-device__identity">
@@ -299,13 +404,20 @@ function DeviceWorkspace({
           </div>
           <p>{device.deviceKey || `${device.namespace}/${device.id}`}</p>
         </div>
-        <span
-          className={`edge-device__status-badge ${
-            device.online ? 'is-online' : 'is-offline'
-          }`}
-        >
-          {device.online ? '在线' : '离线'}
-        </span>
+        <div className="edge-device__identity-states">
+          {lockedActionCount ? (
+            <span className="edge-device__status-badge is-locked">
+              已锁定 · {lockedActionCount} 个动作
+            </span>
+          ) : null}
+          <span
+            className={`edge-device__status-badge ${
+              device.online ? 'is-online' : 'is-offline'
+            }`}
+          >
+            {device.online ? '在线' : '离线'}
+          </span>
+        </div>
       </header>
 
       <div className="edge-device__metrics" aria-label="设备目录信息">
@@ -317,8 +429,12 @@ function DeviceWorkspace({
         <Metric label="动作节点" value={`${device.actions.length}`} />
         <Metric
           label="当前状态"
-          value={device.online ? '可编排' : '不可用'}
-          tone={device.online ? 'success' : 'muted'}
+          value={lockedActionCount
+            ? `${lockedActionCount} 个动作占用`
+            : device.online ? '可编排' : '不可用'}
+          tone={lockedActionCount
+            ? 'warning'
+            : device.online ? 'success' : 'muted'}
         />
       </div>
 
@@ -381,6 +497,14 @@ function DeviceWorkspace({
                 </div>
                 <code>{selectedAction.actionName}</code>
               </div>
+              <DeviceLockControl
+                action={selectedAction}
+                canForceUnlock={canForceUnlock}
+                operation={unlockOperation}
+                onRequestUnlock={() => {
+                  onRequestUnlock(device, selectedAction)
+                }}
+              />
               <ActionParameterForm
                 action={selectedAction}
                 draft={argumentDraft}
@@ -417,6 +541,189 @@ export function DeviceActionAvailability(): React.JSX.Element {
   )
 }
 
+export function DeviceLockControl({
+  action,
+  canForceUnlock,
+  operation,
+  onRequestUnlock
+}: {
+  action: DeviceAction
+  canForceUnlock: boolean
+  operation: UnlockOperation | null
+  onRequestUnlock: () => void
+}): React.JSX.Element | null {
+  const currentOperation = operation?.actionRef === action.actionRef
+    ? operation
+    : null
+  if (!action.isBusy) {
+    return currentOperation?.state === 'success' ? (
+      <div
+        className="edge-device__lock-result is-success"
+        role="status"
+      >
+        <strong>动作锁已释放</strong>
+        <span>{currentOperation.message}</span>
+      </div>
+    ) : null
+  }
+
+  const pending = currentOperation?.state === 'pending'
+  return (
+    <div className="edge-device__lock-panel" aria-label="设备动作锁状态">
+      <div className="edge-device__lock-copy">
+        <span className="edge-device__lock-icon" aria-hidden="true">
+          <LockIcon />
+        </span>
+        <div>
+          <strong>此动作被设备锁占用</strong>
+          <p>
+            {action.currentJobId
+              ? '锁持有者已确认；请先核对关联运行，再决定是否手动解锁。'
+              : '锁持有者信息缺失。为避免误释放新任务，当前只允许刷新设备状态。'}
+          </p>
+          {action.currentJobId ? (
+            <code title={action.currentJobId}>
+              Job {shortIdentifier(action.currentJobId)}
+            </code>
+          ) : null}
+        </div>
+      </div>
+      {canForceUnlock && action.currentJobId ? (
+        <button
+          type="button"
+          className="edge-device__unlock-button"
+          disabled={pending}
+          onClick={onRequestUnlock}
+        >
+          {pending ? '正在解锁…' : '手动解锁'}
+        </button>
+      ) : null}
+      {currentOperation ? (
+        <div
+          className={`edge-device__lock-result is-${currentOperation.state}`}
+          role={currentOperation.state === 'error' ? 'alert' : 'status'}
+        >
+          <span>{currentOperation.message}</span>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+export function UnlockConfirmationDialog({
+  intent,
+  operation,
+  onCancel,
+  onConfirm
+}: {
+  intent: UnlockIntent
+  operation: UnlockOperation | null
+  onCancel: () => void
+  onConfirm: () => void
+}): React.JSX.Element {
+  const [confirmed, setConfirmed] = useState(false)
+  const confirmationRef = useRef<HTMLInputElement>(null)
+  const currentOperation = operation?.actionRef === intent.actionRef
+    ? operation
+    : null
+  const pending = currentOperation?.state === 'pending'
+
+  useEffect(() => {
+    setConfirmed(false)
+    confirmationRef.current?.focus()
+  }, [intent.actionRef, intent.expectedJobId])
+
+  return (
+    <div
+      className="edge-device__unlock-layer"
+      onKeyDown={(event) => {
+        if (event.key === 'Escape' && !pending) onCancel()
+      }}
+    >
+      <section
+        className="edge-device__unlock-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="device-unlock-title"
+        aria-describedby="device-unlock-description"
+      >
+        <header>
+          <span className="edge-device__unlock-dialog-icon" aria-hidden="true">
+            <LockIcon />
+          </span>
+          <div>
+            <h2 id="device-unlock-title">确认手动解锁</h2>
+            <p>{intent.deviceName} · {intent.actionLabel}</p>
+          </div>
+        </header>
+        <div className="edge-device__unlock-dialog-body">
+          <p id="device-unlock-description">
+            手动解锁不会证明物理动作已自然结束。OS 会请求取消当前动作，
+            并释放该 Action 的当前与排队 Job。
+          </p>
+          <div className="edge-device__unlock-warning" role="note">
+            只有在现场确认设备已经停止、无人仍在操作、相关工作流不会继续下发动作时，
+            才能继续。
+          </div>
+          <dl>
+            <div>
+              <dt>Action</dt>
+              <dd><code>{intent.actionRef}</code></dd>
+            </div>
+            <div>
+              <dt>当前 holder</dt>
+              <dd><code>{intent.expectedJobId}</code></dd>
+            </div>
+          </dl>
+          <label className="edge-device__unlock-confirmation">
+            <input
+              ref={confirmationRef}
+              type="checkbox"
+              checked={confirmed}
+              disabled={pending}
+              onChange={(event) => setConfirmed(event.target.checked)}
+            />
+            <span>我已确认设备处于安全状态，并理解此操作会取消关联 Job。</span>
+          </label>
+          {currentOperation?.state === 'error' ? (
+            <p className="edge-device__unlock-dialog-error" role="alert">
+              {currentOperation.message}。请刷新设备状态，确认 holder 后再重试。
+            </p>
+          ) : null}
+        </div>
+        <footer>
+          <button
+            type="button"
+            className="edge-device__unlock-cancel"
+            disabled={pending}
+            onClick={onCancel}
+          >
+            取消
+          </button>
+          <button
+            type="button"
+            className="edge-device__unlock-confirm"
+            disabled={!confirmed || pending}
+            onClick={onConfirm}
+          >
+            {pending ? '正在请求 OS…' : '确认并解锁'}
+          </button>
+        </footer>
+      </section>
+    </div>
+  )
+}
+
+function LockIcon(): React.JSX.Element {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <rect x="5" y="10" width="14" height="10" rx="2" />
+      <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+      <path d="M12 14v2" />
+    </svg>
+  )
+}
+
 function Metric({
   label,
   value,
@@ -424,7 +731,7 @@ function Metric({
 }: {
   label: string
   value: string
-  tone?: 'success' | 'muted'
+  tone?: 'success' | 'warning' | 'muted'
 }): React.JSX.Element {
   return (
     <span className={`edge-device__metric${tone ? ` is-${tone}` : ''}`}>
@@ -651,4 +958,10 @@ function formatTime(timestamp: number): string {
     minute: '2-digit',
     second: '2-digit'
   }).format(timestamp)
+}
+
+function shortIdentifier(value: string): string {
+  return value.length > 16
+    ? `${value.slice(0, 8)}…${value.slice(-6)}`
+    : value
 }

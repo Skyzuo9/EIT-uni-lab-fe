@@ -14,6 +14,7 @@
     "test": "vitest run && node scripts/verify-icons.mjs && node scripts/verify-installer.mjs"
   },
   "dependencies": {
+    "@arizeai/phoenix-otel": "2.1.0",
     "@unilab/kernel-web": "workspace:*"
   },
   "devDependencies": {

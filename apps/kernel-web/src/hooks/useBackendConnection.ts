@@ -13,6 +13,8 @@ import { useCallback, useEffect } from 'react'
 import { useServices, type LaboratoryService } from '@unilab/services'
 import { useWorkbench } from '../context/WorkbenchContext'
 
+const HEALTH_CHECK_INTERVAL_MS = 3_000
+
 interface UseBackendConnectionResult {
   client: LaboratoryService
   isOnline: boolean
@@ -30,16 +32,37 @@ export function useBackendConnection(): UseBackendConnectionResult {
     setConnection(ok ? 'connected' : 'error')
   }, [client, setConnection])
 
-  // 进入在线模式或地址变化时自动探测一次
+  // 保持健康探测，避免 Edge 断开后界面仍停留在已连接状态。
   useEffect(() => {
     if (!backendEnabled) return
     let cancelled = false
+    let hasConnected = false
+    let timer: ReturnType<typeof globalThis.setTimeout> | null = null
+
+    const scheduleNextProbe = (): void => {
+      if (cancelled) return
+      timer = globalThis.setTimeout(() => {
+        void probe()
+      }, HEALTH_CHECK_INTERVAL_MS)
+    }
+
+    const probe = async (): Promise<void> => {
+      const ok = await client.ping()
+      if (cancelled) return
+      if (ok) {
+        hasConnected = true
+        setConnection('connected')
+      } else {
+        setConnection(hasConnected ? 'disconnected' : 'error')
+      }
+      scheduleNextProbe()
+    }
+
     setConnection('connecting')
-    client.ping().then((ok) => {
-      if (!cancelled) setConnection(ok ? 'connected' : 'error')
-    })
+    void probe()
     return () => {
       cancelled = true
+      if (timer != null) globalThis.clearTimeout(timer)
     }
   }, [backendEnabled, client, setConnection])
 

@@ -32,22 +32,36 @@ export interface LocalRuntimeLaunchConfig {
   szlabProjectPath: string
   environmentPath: string
   simulatorProjectPath: string
-  startSimulator: boolean
 }
 
 export type LocalRuntimeProcessKind = 'simulator' | 'bridge' | 'edge'
 
+export interface LocalRuntimeLogEntry {
+  kind: LocalRuntimeProcessKind
+  content: string
+  available: boolean
+  truncated: boolean
+}
+
+export interface LocalRuntimeLogsSnapshot {
+  readAt: number
+  entries: LocalRuntimeLogEntry[]
+}
+
 export type LocalRuntimePhase =
   | 'idle'
-  | 'validating'
+  | 'validating_simulator'
   | 'starting_simulator'
   | 'waiting_simulator'
+  | 'simulator_ready'
+  | 'validating_edge'
   | 'starting_bridge'
   | 'waiting_bridge'
   | 'starting_edge'
   | 'waiting_edge'
   | 'ready'
-  | 'stopping'
+  | 'stopping_simulator'
+  | 'stopping_edge'
   | 'failed'
 
 export interface LocalRuntimeSnapshot {
@@ -64,12 +78,71 @@ export interface DesktopRuntimeApi {
   selectPath: (kind: LocalRuntimePathKind) => Promise<string | null>
   getDefaultEnvironmentPath: () => Promise<string | null>
   getSnapshot: () => Promise<LocalRuntimeSnapshot>
-  start: (config: LocalRuntimeLaunchConfig) => Promise<LocalRuntimeSnapshot>
-  stop: () => Promise<LocalRuntimeSnapshot>
-  openLogs: () => Promise<boolean>
+  startSimulator: (
+    config: LocalRuntimeLaunchConfig
+  ) => Promise<LocalRuntimeSnapshot>
+  stopSimulator: () => Promise<LocalRuntimeSnapshot>
+  startEdge: (config: LocalRuntimeLaunchConfig) => Promise<LocalRuntimeSnapshot>
+  stopEdge: () => Promise<LocalRuntimeSnapshot>
+  readLogs: () => Promise<LocalRuntimeLogsSnapshot>
   onSnapshot: (
     listener: (snapshot: LocalRuntimeSnapshot) => void
   ) => () => void
+}
+
+export type ObservabilityState =
+  | 'disabled'
+  | 'stopped'
+  | 'starting'
+  | 'ready'
+  | 'degraded'
+
+export interface ObservabilityStatus {
+  enabled: boolean
+  state: ObservabilityState
+  provider: 'phoenix'
+  storage: 'sqlite'
+  project_name: string
+  managed_process: boolean
+  last_error: string | null
+}
+
+export interface TraceListQuery {
+  limit?: number
+  cursor?: string
+  startTime?: string
+  endTime?: string
+  sort?: 'start_time' | 'latency_ms'
+  order?: 'asc' | 'desc'
+  includeSpans?: boolean
+  sessionIdentifiers?: string[]
+}
+
+export interface TraceDetailQuery {
+  limit?: number
+  cursor?: string
+}
+
+export interface TraceListResult {
+  project_name: string
+  traces: Record<string, unknown>[]
+  next_cursor: string | null
+}
+
+export interface TraceDetailResult {
+  project_name: string
+  trace_id: string
+  spans: Record<string, unknown>[]
+  next_cursor: string | null
+}
+
+export interface DesktopObservabilityApi {
+  getStatus: () => Promise<ObservabilityStatus>
+  listTraces: (query?: TraceListQuery) => Promise<TraceListResult>
+  getTrace: (
+    traceId: string,
+    query?: TraceDetailQuery
+  ) => Promise<TraceDetailResult>
 }
 
 interface DesktopApi {
@@ -84,6 +157,7 @@ interface DesktopApi {
     save: (payload: SaveFilePayload) => Promise<SavedFile | null>
   }
   runtime?: DesktopRuntimeApi
+  observability?: DesktopObservabilityApi
 }
 
 declare global {

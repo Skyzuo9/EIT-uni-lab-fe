@@ -8,12 +8,16 @@ import {
 } from 'electron'
 import { basename, join } from 'path'
 import { appendFileSync } from 'node:fs'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { readFile, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { readSession, clearSession, runOAuthLogin } from './authManager'
 import { discoverDefaultCondaEnvironment } from './localRuntimeEnvironment'
 import { LocalRuntimeManager } from './localRuntimeManager'
+import {
+  createElectronObservability,
+  resolveElectronObservabilityOptions
+} from './observability'
 import type {
   LocalRuntimeLaunchConfig,
   LocalRuntimePathKind
@@ -40,15 +44,29 @@ function logLine(message: string): void {
     // 忽略日志写入失败
   }
 }
+
+const isDev = !app.isPackaged
+const electronObservability = createMainObservability()
+
 process.on('uncaughtException', (error) => {
   logLine(`uncaughtException: ${error instanceof Error ? error.stack : String(error)}`)
+  electronObservability.record(
+    'electron.process.uncaught_exception',
+    { 'exception.type': error instanceof Error ? error.name : 'unknown' },
+    error
+  )
 })
 process.on('unhandledRejection', (reason) => {
   logLine(`unhandledRejection: ${reason instanceof Error ? reason.stack : String(reason)}`)
+  electronObservability.record(
+    'electron.process.unhandled_rejection',
+    { 'exception.type': reason instanceof Error ? reason.name : 'unknown' },
+    reason
+  )
 })
 logLine(`main 加载 electron=${process.versions.electron ?? 'unknown'} node=${process.versions.node}`)
+electronObservability.record('electron.app.loaded')
 
-const isDev = !app.isPackaged
 // electron-vite 的开发态 main bundle 位于 out/main；本地图标保留在
 // apps/desktop/build。安装包继续由 electron-builder 的 icns/png 配置负责。
 const localAppIcon = join(__dirname, '../../build/icon.png')
@@ -56,7 +74,8 @@ const localAppIcon = join(__dirname, '../../build/icon.png')
 // 主窗口引用,供 OAuth 弹窗作为模态父窗口使用
 let mainWindow: BrowserWindow | null = null
 let localRuntimeManager: LocalRuntimeManager | null = null
-let quitAfterRuntimeStops = false
+let quitCleanupStarted = false
+let quitCleanupFinished = false
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -78,6 +97,7 @@ function createWindow(): void {
 
   mainWindow.on('ready-to-show', () => {
     logLine('window ready-to-show')
+    electronObservability.record('electron.renderer.ready')
     mainWindow?.show()
   })
 
@@ -87,13 +107,40 @@ function createWindow(): void {
 
   mainWindow.webContents.on('did-fail-load', (_e, code, desc, url) => {
     logLine(`renderer 加载失败 code=${code} desc=${desc} url=${url}`)
+    electronObservability.record(
+      'electron.renderer.load_failed',
+      {
+        'renderer.error_code': code,
+        'renderer.url': url
+      },
+      new Error(desc)
+    )
   })
   mainWindow.webContents.on('render-process-gone', (_e, details) => {
     logLine(`renderer 进程退出: ${JSON.stringify(details)}`)
+    electronObservability.record(
+      'electron.renderer.process_gone',
+      {
+        'renderer.reason': details.reason,
+        'process.exit_code': details.exitCode
+      },
+      new Error(`Renderer 进程退出：${details.reason}`)
+    )
   })
-  mainWindow.webContents.on('console-message', (_e, level, message, line, sourceId) => {
-    if (level >= 2) logLine(`renderer console: ${message} (${sourceId}:${line})`)
-  })
+  mainWindow.webContents.on(
+    'console-message',
+    (_e, level, message, line, sourceId) => {
+      if (level >= 2) {
+        logLine(`renderer console: ${message} (${sourceId}:${line})`)
+        electronObservability.record('electron.renderer.console', {
+          'log.severity_number': level,
+          'log.message': message,
+          'code.filepath': sourceId,
+          'code.lineno': line
+        })
+      }
+    }
+  )
   mainWindow.webContents.on('will-prevent-unload', (event) => {
     const window = mainWindow
     if (!window || window.isDestroyed()) return
@@ -109,6 +156,7 @@ function createWindow(): void {
       detail: '关闭窗口将丢失这些修改。'
     })
     if (choice === 1) {
+      electronObservability.record('electron.renderer.unsaved_changes_discarded')
       event.preventDefault()
     }
   })
@@ -147,17 +195,38 @@ function createWindow(): void {
   const devServerUrl = process.env['ELECTRON_RENDERER_URL']
   if (isDev && devServerUrl) {
     logLine(`加载 dev 渲染地址: ${devServerUrl}`)
-    void mainWindow.loadURL(devServerUrl)
+    void electronObservability
+      .run(
+        'electron.renderer.load',
+        { 'renderer.mode': 'development', 'renderer.url': devServerUrl },
+        () => mainWindow?.loadURL(devServerUrl) ?? Promise.resolve()
+      )
+      .catch((error) => {
+        logLine(
+          `加载 dev 渲染地址失败: ${error instanceof Error ? error.message : String(error)}`
+        )
+      })
     mainWindow.webContents.openDevTools({ mode: 'detach' })
   } else {
     const file = join(__dirname, '../renderer/index.html')
     logLine(`加载生产渲染文件: ${file}`)
-    void mainWindow.loadFile(file)
+    void electronObservability
+      .run(
+        'electron.renderer.load',
+        { 'renderer.mode': 'production' },
+        () => mainWindow?.loadFile(file) ?? Promise.resolve()
+      )
+      .catch((error) => {
+        logLine(
+          `加载生产渲染文件失败: ${error instanceof Error ? error.message : String(error)}`
+        )
+      })
   }
 }
 
 app.whenReady().then(() => {
   logLine('app ready')
+  electronObservability.record('electron.app.ready')
   // macOS 开发态运行的是 Electron 可执行文件，BrowserWindow.icon 不会改变
   // Dock 图标；安装包则从 icon.icns 自动获得图标。
   if (isDev && process.platform === 'darwin') {
@@ -168,6 +237,15 @@ app.whenReady().then(() => {
   localRuntimeManager = new LocalRuntimeManager(
     join(app.getPath('logs'), 'local-runtime'),
     (snapshot) => {
+      electronObservability.record('electron.runtime.state_changed', {
+        'runtime.phase': snapshot.phase,
+        'runtime.simulator_running': snapshot.simulatorRunning,
+        'runtime.bridge_running': snapshot.bridgeRunning,
+        'runtime.edge_running': snapshot.edgeRunning,
+        'runtime.failed_process': snapshot.failedProcess,
+        'runtime.error': snapshot.error
+      })
+      if (snapshot.phase === 'ready') void electronObservability.flush()
       const window = mainWindow
       if (window && !window.isDestroyed()) {
         window.webContents.send('runtime:snapshot', snapshot)
@@ -192,42 +270,114 @@ app.whenReady().then(() => {
   })
   ipcMain.handle('runtime:getDefaultEnvironmentPath', async (event) => {
     assertMainWindowSender(event)
-    return discoverDefaultCondaEnvironment({ homeDirectory: homedir() })
+    return electronObservability.run(
+      'electron.runtime.discover_environment',
+      {},
+      () => discoverDefaultCondaEnvironment({ homeDirectory: homedir() })
+    )
   })
-  ipcMain.handle('runtime:start', async (event, payload: unknown) => {
+  ipcMain.handle('runtime:startSimulator', async (event, payload: unknown) => {
     assertMainWindowSender(event)
-    return requireRuntimeManager().start(parseRuntimeConfig(payload))
+    return electronObservability.run(
+      'electron.runtime.start',
+      { 'runtime.target': 'simulator' },
+      async () => {
+        const config = parseRuntimeConfig(payload)
+        electronObservability.record('electron.runtime.start_requested', {
+          'runtime.target': 'simulator'
+        })
+        return requireRuntimeManager().startSimulator(config)
+      }
+    )
   })
-  ipcMain.handle('runtime:stop', async (event) => {
+  ipcMain.handle('runtime:stopSimulator', async (event) => {
     assertMainWindowSender(event)
-    return requireRuntimeManager().stop()
+    return electronObservability.run(
+      'electron.runtime.stop',
+      { 'runtime.target': 'simulator' },
+      () => requireRuntimeManager().stopSimulator()
+    )
   })
-  ipcMain.handle('runtime:openLogs', async (event) => {
+  ipcMain.handle('runtime:startEdge', async (event, payload: unknown) => {
     assertMainWindowSender(event)
-    const logsDirectory = join(app.getPath('logs'), 'local-runtime')
-    await mkdir(logsDirectory, { recursive: true })
-    const openError = await shell.openPath(logsDirectory)
-    if (openError) throw new Error(openError)
-    return true
+    return electronObservability.run(
+      'electron.runtime.start',
+      { 'runtime.target': 'edge' },
+      async () => {
+        const config = parseRuntimeConfig(payload)
+        electronObservability.record('electron.runtime.start_requested', {
+          'runtime.target': 'edge'
+        })
+        return requireRuntimeManager().startEdge(config)
+      }
+    )
   })
+  ipcMain.handle('runtime:stopEdge', async (event) => {
+    assertMainWindowSender(event)
+    return electronObservability.run(
+      'electron.runtime.stop',
+      { 'runtime.target': 'edge' },
+      () => requireRuntimeManager().stopEdge()
+    )
+  })
+  ipcMain.handle('runtime:readLogs', async (event) => {
+    assertMainWindowSender(event)
+    return electronObservability.run(
+      'electron.runtime.read_logs',
+      {},
+      () => requireRuntimeManager().readLogs()
+    )
+  })
+
+  ipcMain.handle('observability:getStatus', (event) => {
+    assertMainWindowSender(event)
+    return electronObservability.run(
+      'electron.observability.get_status',
+      {},
+      () => electronObservability.getStatus()
+    )
+  })
+  ipcMain.handle('observability:listTraces', (event, query: unknown) => {
+    assertMainWindowSender(event)
+    return electronObservability.run(
+      'electron.observability.list_traces',
+      {},
+      () => electronObservability.listTraces(query)
+    )
+  })
+  ipcMain.handle(
+    'observability:getTrace',
+    (event, traceId: unknown, query: unknown) => {
+      assertMainWindowSender(event)
+      return electronObservability.run(
+        'electron.observability.get_trace',
+        {},
+        () => electronObservability.getTrace(traceId, query)
+      )
+    }
+  )
 
   // 读取当前登录会话(启动/刷新时使用)
   ipcMain.handle('auth:getSession', () => readSession())
 
   // 发起 Bohrium OAuth 登录(与 web 登录方式一致)
   ipcMain.handle('auth:login', async () => {
-    try {
-      return await runOAuthLogin(mainWindow)
-    } catch (error) {
-      logLine(`OAuth 登录失败: ${error instanceof Error ? error.stack : String(error)}`)
-      throw error
-    }
+    return electronObservability.run('electron.auth.login', {}, async () => {
+      try {
+        return await runOAuthLogin(mainWindow)
+      } catch (error) {
+        logLine(`OAuth 登录失败: ${error instanceof Error ? error.stack : String(error)}`)
+        throw error
+      }
+    })
   })
 
   // 登出:清除本地会话与 token cookie
   ipcMain.handle('auth:logout', async () => {
-    await clearSession()
-    return true
+    return electronObservability.run('electron.auth.logout', {}, async () => {
+      await clearSession()
+      return true
+    })
   })
 
   // 打开本地文件:弹出选择框并读取文本内容。
@@ -276,6 +426,7 @@ app.whenReady().then(() => {
   })
 }).catch((error) => {
   logLine(`whenReady 失败: ${error instanceof Error ? error.stack : String(error)}`)
+  electronObservability.record('electron.app.ready_failed', {}, error)
 })
 
 app.on('window-all-closed', () => {
@@ -285,20 +436,65 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', (event) => {
-  const manager = localRuntimeManager
-  if (
-    quitAfterRuntimeStops ||
-    !manager ||
-    manager.getSnapshot().phase === 'idle'
-  ) {
-    return
-  }
+  if (quitCleanupFinished) return
   event.preventDefault()
-  void manager.stop().finally(() => {
-    quitAfterRuntimeStops = true
+  if (quitCleanupStarted) return
+  quitCleanupStarted = true
+  void cleanupBeforeQuit().finally(() => {
+    quitCleanupFinished = true
     app.quit()
   })
 })
+
+async function cleanupBeforeQuit(): Promise<void> {
+  const manager = localRuntimeManager
+  try {
+    if (manager && manager.getSnapshot().phase !== 'idle') {
+      await electronObservability.run(
+        'electron.runtime.stop_on_quit',
+        {},
+        () => manager.stop()
+      )
+    }
+  } catch (error) {
+    logLine(
+      `退出时停止本地运行时失败: ${error instanceof Error ? error.stack : String(error)}`
+    )
+    electronObservability.record(
+      'electron.runtime.stop_on_quit_failed',
+      {},
+      error
+    )
+  }
+  electronObservability.record('electron.app.quit')
+  await electronObservability.shutdown()
+}
+
+function createMainObservability(): ReturnType<
+  typeof createElectronObservability
+> {
+  const common = {
+    appVersion: app.getVersion(),
+    isPackaged: app.isPackaged,
+    homeDirectory: homedir(),
+    log: logLine
+  }
+  try {
+    return createElectronObservability(
+      resolveElectronObservabilityOptions(common)
+    )
+  } catch (error) {
+    logLine(
+      `Trace 配置无效，已禁用远程上报: ${error instanceof Error ? error.message : String(error)}`
+    )
+    return createElectronObservability(
+      resolveElectronObservabilityOptions({
+        ...common,
+        environment: { UNILABOS_TRACE_ENABLED: '0' }
+      })
+    )
+  }
+}
 
 function assertMainWindowSender(event: IpcMainInvokeEvent): void {
   if (!mainWindow || event.sender !== mainWindow.webContents) {
@@ -344,8 +540,7 @@ function parseRuntimeConfig(value: unknown): LocalRuntimeLaunchConfig {
     typeof candidate.osProjectPath !== 'string' ||
     typeof candidate.szlabProjectPath !== 'string' ||
     typeof candidate.environmentPath !== 'string' ||
-    typeof candidate.simulatorProjectPath !== 'string' ||
-    typeof candidate.startSimulator !== 'boolean'
+    typeof candidate.simulatorProjectPath !== 'string'
   ) {
     throw new Error('本地运行时启动配置字段不完整')
   }
@@ -354,7 +549,6 @@ function parseRuntimeConfig(value: unknown): LocalRuntimeLaunchConfig {
     osProjectPath: candidate.osProjectPath,
     szlabProjectPath: candidate.szlabProjectPath,
     environmentPath: candidate.environmentPath,
-    simulatorProjectPath: candidate.simulatorProjectPath,
-    startSimulator: candidate.startSimulator
+    simulatorProjectPath: candidate.simulatorProjectPath
   }
 }
