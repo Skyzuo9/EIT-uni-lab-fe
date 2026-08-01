@@ -72,6 +72,61 @@ export interface DesktopRuntimeApi {
   ) => () => void
 }
 
+export type ObservabilityState =
+  | 'disabled'
+  | 'stopped'
+  | 'starting'
+  | 'ready'
+  | 'degraded'
+
+export interface ObservabilityStatus {
+  enabled: boolean
+  state: ObservabilityState
+  provider: 'phoenix'
+  storage: 'sqlite'
+  project_name: string
+  managed_process: boolean
+  last_error: string | null
+}
+
+export interface TraceListQuery {
+  limit?: number
+  cursor?: string
+  startTime?: string
+  endTime?: string
+  sort?: 'start_time' | 'latency_ms'
+  order?: 'asc' | 'desc'
+  includeSpans?: boolean
+  sessionIdentifiers?: string[]
+}
+
+export interface TraceDetailQuery {
+  limit?: number
+  cursor?: string
+}
+
+export interface TraceListResult {
+  project_name: string
+  traces: Record<string, unknown>[]
+  next_cursor: string | null
+}
+
+export interface TraceDetailResult {
+  project_name: string
+  trace_id: string
+  spans: Record<string, unknown>[]
+  next_cursor: string | null
+}
+
+export interface DesktopObservabilityApi {
+  getStatus: () => Promise<ObservabilityStatus>
+  listTraces: (query?: TraceListQuery) => Promise<TraceListResult>
+  getTrace: (
+    traceId: string,
+    query?: TraceDetailQuery
+  ) => Promise<TraceDetailResult>
+}
+
 interface DesktopApi {
   getVersion: () => Promise<string>
   auth: {
@@ -84,6 +139,7 @@ interface DesktopApi {
     save: (payload: SaveFilePayload) => Promise<SavedFile | null>
   }
   runtime?: DesktopRuntimeApi
+  observability?: DesktopObservabilityApi
 }
 
 declare global {

@@ -459,6 +459,8 @@ function edgeSpec(config: ResolvedRuntimeConfig): LocalRuntimeSpawnSpec {
     env: {
       ...runtimeEnvironment(config),
       UNILABOS_RUNTIME_DB: edgeRuntimeDatabasePath(config.runtimeDirectory),
+      UNILABOS_OBSERVABILITYCONFIG_ENABLED: 'true',
+      UNILABOS_OBSERVABILITYCONFIG_PROJECT_NAME: 'uni-lab-electron',
       ROS_DOMAIN_ID: '42'
     }
   }
@@ -489,6 +491,10 @@ function runtimeEnvironment(
 ): NodeJS.ProcessEnv {
   return {
     ...process.env,
+    PATH: mergePathList([
+      join(config.environmentPath, 'bin'),
+      process.env['PATH']
+    ]),
     PYTHONPATH: mergePathList([
       config.osProjectPath,
       config.studioPythonPath,

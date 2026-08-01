@@ -49,6 +49,38 @@ PLC-Sim 与 SZLab Edge 不并行启动。
 其余进程会被统一回收。所有命令均以参数数组直接启动，不经过 renderer 或任意
 shell 字符串拼接。日志分别写入 `simulator.log`、`bridge.log` 和 `edge.log`。
 
+## Trace 日志
+
+Electron main 使用 `@arizeai/phoenix-otel` 将应用生命周期、renderer 异常、登录和
+本地运行时启停等关键操作作为 OpenTelemetry span 上报到 Uni-Lab-OS。默认 OTLP
+地址为：
+
+```text
+http://127.0.0.1:18003/api/v1/observability/otlp/v1/traces
+```
+
+Uni-Lab-OS 未启动、未启用 observability 或 Phoenix 暂不可用时，上报自动降级，
+不得阻断 Electron 启动和业务操作。原有 `~/lab-pc-client.log` 文件日志继续保留。
+主进程退出前会在限定时间内 flush，并通过 preload 提供 status、trace 列表和详情
+查询；renderer 不直接访问 OTLP 地址。
+
+Electron 一键启动 Edge 时会为该子进程启用 Uni-Lab-OS observability，并把用户选择的
+Conda 环境 `bin` 放到 `PATH` 首位，以便 Uni-Lab-OS 找到同一环境中的 `phoenix`。
+该环境需要预先安装 Uni-Lab-OS 的 `observability` 可选依赖；未安装时 Edge 继续启动，
+trace 状态显示为降级。
+
+可选环境变量：
+
+- `UNILABOS_TRACE_ENABLED=0`：关闭 Electron trace 上报。
+- `UNILABOS_OBSERVABILITY_URL`：覆盖 Uni-Lab-OS observability 根地址，仅接受无凭据
+  的 loopback HTTP 地址。
+- `UNILABOS_TRACE_PROJECT`：覆盖 Phoenix project，默认 `uni-lab-electron`。
+- `UNILABOS_TRACE_REQUEST_TIMEOUT_MS`：查询超时，默认 `5000`。
+- `UNILABOS_TRACE_SHUTDOWN_TIMEOUT_MS`：退出 flush 超时，默认 `3000`。
+
+上报前会清除 URL 凭据与查询参数、Bearer/token/password/cookie 等敏感值，并将用户
+家目录替换为 `$HOME`。不要在新增 span 属性中放入设备动作完整参数或文件内容。
+
 ## 绝对不能做
 
 - 不得复制 `kernel-web` 页面形成第二套 renderer。
