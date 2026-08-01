@@ -5,6 +5,7 @@ import { shouldShowConnectionRecovery } from '../context/connectionPolicy'
 import { useBackendConnection } from '../hooks/useBackendConnection'
 
 import styles from './ConnectionBar.module.scss'
+import LocalRuntimeLauncher from './LocalRuntimeLauncher'
 
 export default function ConnectionBar(): React.JSX.Element {
   const {
@@ -41,6 +42,18 @@ export default function ConnectionBar(): React.JSX.Element {
     if (!trimmed) return
     if (trimmed !== backend.apiUrl) {
       updateBackend({ apiUrl: trimmed })
+      return
+    }
+    void reconnect()
+  }
+
+  const handleRuntimeReady = (): void => {
+    if (backend.id !== 'local-python') {
+      selectBackend('local-python')
+      return
+    }
+    if (backend.apiUrl !== 'http://127.0.0.1:8014') {
+      updateBackend({ apiUrl: 'http://127.0.0.1:8014' })
       return
     }
     void reconnect()
@@ -103,6 +116,7 @@ export default function ConnectionBar(): React.JSX.Element {
           {hasDraftChange ? '应用' : '重试'}
         </button>
       ) : null}
+      <LocalRuntimeLauncher onReady={handleRuntimeReady} />
     </div>
   )
 }

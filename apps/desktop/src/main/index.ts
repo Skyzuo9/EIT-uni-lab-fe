@@ -1,10 +1,23 @@
-import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
+import {
+  app,
+  shell,
+  BrowserWindow,
+  ipcMain,
+  dialog,
+  type IpcMainInvokeEvent
+} from 'electron'
 import { basename, join } from 'path'
 import { appendFileSync } from 'node:fs'
-import { readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { readSession, clearSession, runOAuthLogin } from './authManager'
+import { discoverDefaultCondaEnvironment } from './localRuntimeEnvironment'
+import { LocalRuntimeManager } from './localRuntimeManager'
+import type {
+  LocalRuntimeLaunchConfig,
+  LocalRuntimePathKind
+} from '../shared/localRuntime'
 
 // 保存文件的入参:path 为 null 时弹出"另存为"对话框
 interface SaveFilePayload {
@@ -42,6 +55,8 @@ const localAppIcon = join(__dirname, '../../build/icon.png')
 
 // 主窗口引用,供 OAuth 弹窗作为模态父窗口使用
 let mainWindow: BrowserWindow | null = null
+let localRuntimeManager: LocalRuntimeManager | null = null
+let quitAfterRuntimeStops = false
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -150,6 +165,52 @@ app.whenReady().then(() => {
   }
   ipcMain.handle('app:getVersion', () => app.getVersion())
 
+  localRuntimeManager = new LocalRuntimeManager(
+    join(app.getPath('logs'), 'local-runtime'),
+    (snapshot) => {
+      const window = mainWindow
+      if (window && !window.isDestroyed()) {
+        window.webContents.send('runtime:snapshot', snapshot)
+      }
+    }
+  )
+
+  ipcMain.handle(
+    'runtime:selectPath',
+    async (event, kind: LocalRuntimePathKind) => {
+      assertMainWindowSender(event)
+      const options = runtimePathDialogOptions(kind)
+      const result = mainWindow
+        ? await dialog.showOpenDialog(mainWindow, options)
+        : await dialog.showOpenDialog(options)
+      return result.canceled ? null : result.filePaths[0] ?? null
+    }
+  )
+  ipcMain.handle('runtime:getSnapshot', (event) => {
+    assertMainWindowSender(event)
+    return requireRuntimeManager().getSnapshot()
+  })
+  ipcMain.handle('runtime:getDefaultEnvironmentPath', async (event) => {
+    assertMainWindowSender(event)
+    return discoverDefaultCondaEnvironment({ homeDirectory: homedir() })
+  })
+  ipcMain.handle('runtime:start', async (event, payload: unknown) => {
+    assertMainWindowSender(event)
+    return requireRuntimeManager().start(parseRuntimeConfig(payload))
+  })
+  ipcMain.handle('runtime:stop', async (event) => {
+    assertMainWindowSender(event)
+    return requireRuntimeManager().stop()
+  })
+  ipcMain.handle('runtime:openLogs', async (event) => {
+    assertMainWindowSender(event)
+    const logsDirectory = join(app.getPath('logs'), 'local-runtime')
+    await mkdir(logsDirectory, { recursive: true })
+    const openError = await shell.openPath(logsDirectory)
+    if (openError) throw new Error(openError)
+    return true
+  })
+
   // 读取当前登录会话(启动/刷新时使用)
   ipcMain.handle('auth:getSession', () => readSession())
 
@@ -222,3 +283,78 @@ app.on('window-all-closed', () => {
     app.quit()
   }
 })
+
+app.on('before-quit', (event) => {
+  const manager = localRuntimeManager
+  if (
+    quitAfterRuntimeStops ||
+    !manager ||
+    manager.getSnapshot().phase === 'idle'
+  ) {
+    return
+  }
+  event.preventDefault()
+  void manager.stop().finally(() => {
+    quitAfterRuntimeStops = true
+    app.quit()
+  })
+})
+
+function assertMainWindowSender(event: IpcMainInvokeEvent): void {
+  if (!mainWindow || event.sender !== mainWindow.webContents) {
+    throw new Error('拒绝来自未知窗口的本地运行时请求')
+  }
+}
+
+function requireRuntimeManager(): LocalRuntimeManager {
+  if (!localRuntimeManager) throw new Error('本地运行时尚未初始化')
+  return localRuntimeManager
+}
+
+function runtimePathDialogOptions(
+  kind: LocalRuntimePathKind
+): Electron.OpenDialogOptions {
+  if (kind === 'graph') {
+    return {
+      title: '选择设备图 JSON',
+      filters: [{ name: 'JSON', extensions: ['json'] }],
+      properties: ['openFile']
+    }
+  }
+  const titles: Record<Exclude<LocalRuntimePathKind, 'graph'>, string> = {
+    os: '选择 Uni-Lab-OS 项目根目录',
+    szlab: '选择 Uni-Lab-SZLab 项目根目录',
+    environment: '选择 unilab Conda 环境目录',
+    simulator: '选择 PLC-Sim 项目根目录'
+  }
+  if (!(kind in titles)) throw new Error('不支持的本地运行时路径类型')
+  return {
+    title: titles[kind as Exclude<LocalRuntimePathKind, 'graph'>],
+    properties: ['openDirectory']
+  }
+}
+
+function parseRuntimeConfig(value: unknown): LocalRuntimeLaunchConfig {
+  if (!value || typeof value !== 'object') {
+    throw new Error('本地运行时启动配置无效')
+  }
+  const candidate = value as Record<string, unknown>
+  if (
+    typeof candidate.graphPath !== 'string' ||
+    typeof candidate.osProjectPath !== 'string' ||
+    typeof candidate.szlabProjectPath !== 'string' ||
+    typeof candidate.environmentPath !== 'string' ||
+    typeof candidate.simulatorProjectPath !== 'string' ||
+    typeof candidate.startSimulator !== 'boolean'
+  ) {
+    throw new Error('本地运行时启动配置字段不完整')
+  }
+  return {
+    graphPath: candidate.graphPath,
+    osProjectPath: candidate.osProjectPath,
+    szlabProjectPath: candidate.szlabProjectPath,
+    environmentPath: candidate.environmentPath,
+    simulatorProjectPath: candidate.simulatorProjectPath,
+    startSimulator: candidate.startSimulator
+  }
+}

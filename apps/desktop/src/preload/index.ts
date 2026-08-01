@@ -1,4 +1,9 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import type {
+  LocalRuntimeLaunchConfig,
+  LocalRuntimePathKind,
+  LocalRuntimeSnapshot
+} from '../shared/localRuntime'
 
 // 登录会话结构(与主进程 authManager.AuthSession 保持一致)
 export interface AuthUserInfo {
@@ -51,6 +56,29 @@ const api = {
     // 保存文本到本地文件(path 为 null 时弹出"另存为"),取消返回 null
     save: (payload: SaveFilePayload): Promise<SavedFile | null> =>
       ipcRenderer.invoke('file:save', payload)
+  },
+  runtime: {
+    selectPath: (kind: LocalRuntimePathKind): Promise<string | null> =>
+      ipcRenderer.invoke('runtime:selectPath', kind),
+    getDefaultEnvironmentPath: (): Promise<string | null> =>
+      ipcRenderer.invoke('runtime:getDefaultEnvironmentPath'),
+    getSnapshot: (): Promise<LocalRuntimeSnapshot> =>
+      ipcRenderer.invoke('runtime:getSnapshot'),
+    start: (config: LocalRuntimeLaunchConfig): Promise<LocalRuntimeSnapshot> =>
+      ipcRenderer.invoke('runtime:start', config),
+    stop: (): Promise<LocalRuntimeSnapshot> =>
+      ipcRenderer.invoke('runtime:stop'),
+    openLogs: (): Promise<boolean> => ipcRenderer.invoke('runtime:openLogs'),
+    onSnapshot: (
+      listener: (snapshot: LocalRuntimeSnapshot) => void
+    ): (() => void) => {
+      const wrapped = (
+        _event: Electron.IpcRendererEvent,
+        snapshot: LocalRuntimeSnapshot
+      ): void => listener(snapshot)
+      ipcRenderer.on('runtime:snapshot', wrapped)
+      return () => ipcRenderer.removeListener('runtime:snapshot', wrapped)
+    }
   }
 }
 
