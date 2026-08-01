@@ -2,7 +2,7 @@ import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, delimiter, dirname, join } from 'node:path'
 
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { LocalRuntimeLaunchConfig } from '../shared/localRuntime'
 import {
@@ -14,6 +14,7 @@ import {
 const temporaryDirectories: string[] = []
 
 afterEach(async () => {
+  vi.unstubAllEnvs()
   await Promise.all(
     temporaryDirectories.splice(0).map((path) => rm(path, {
       recursive: true,
@@ -165,6 +166,9 @@ describe('LocalRuntimeManager command plan', () => {
   })
 
   it('uses Windows Conda executables for PLC-Sim and Edge', async () => {
+    const inheritedWindowsPath = 'C:\\Windows\\System32'
+    vi.stubEnv('PATH', '')
+    vi.stubEnv('Path', inheritedWindowsPath)
     const fixture = await createFixture('packages', 'win32')
     const plan = await resolveLocalRuntimeLaunchPlan(fixture.config, 'win32')
     const simulatorPlan = await resolveLocalSimulatorLaunchPlan(
@@ -188,6 +192,26 @@ describe('LocalRuntimeManager command plan', () => {
       fixture.osRoot,
       join(fixture.szlabRoot, 'packages', 'szlab_poly_studio')
     ])
+    const activatedPath = [
+      fixture.config.environmentPath,
+      join(fixture.config.environmentPath, 'Library', 'mingw-w64', 'bin'),
+      join(fixture.config.environmentPath, 'Library', 'usr', 'bin'),
+      join(fixture.config.environmentPath, 'Library', 'bin'),
+      join(fixture.config.environmentPath, 'Scripts'),
+      join(fixture.config.environmentPath, 'bin')
+    ]
+    for (const spec of [simulatorPlan.simulator, plan.bridge, plan.edge]) {
+      expect(spec.env['CONDA_PREFIX']).toBe(fixture.config.environmentPath)
+      expect(spec.env['CONDA_DEFAULT_ENV']).toBe(
+        basename(fixture.config.environmentPath)
+      )
+      expect(spec.env['CONDA_SHLVL']).toBe('1')
+      expect(spec.env['PATH']?.split(';').slice(0, activatedPath.length))
+        .toEqual(activatedPath)
+      expect(spec.env['PATH']?.split(';').at(-1)).toBe(inheritedWindowsPath)
+      expect(Object.keys(spec.env).filter((key) => key.toLowerCase() === 'path'))
+        .toEqual(['PATH'])
+    }
   })
 
   it('resolves PLC-Sim without requiring Edge project paths', async () => {

@@ -2,7 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { constants as fsConstants, createWriteStream } from 'node:fs'
 import { access, mkdir, open, stat } from 'node:fs/promises'
 import { createConnection } from 'node:net'
-import { delimiter, dirname, join, normalize, resolve } from 'node:path'
+import { basename, delimiter, dirname, join, normalize, resolve } from 'node:path'
 
 import {
   IDLE_LOCAL_RUNTIME_SNAPSHOT,
@@ -47,6 +47,8 @@ interface ResolvedRuntimeConfig {
 }
 
 interface ResolvedSimulatorConfig {
+  platform: NodeJS.Platform
+  environmentPath: string
   pythonExecutable: string
   workingDirectory: string
 }
@@ -617,6 +619,8 @@ async function resolveSimulatorConfig(
       : '所选 Conda 环境缺少 bin/python'
   )
   return {
+    platform,
+    environmentPath,
     pythonExecutable,
     workingDirectory: await resolveSimulatorWorkingDirectory(
       simulatorProjectPath
@@ -630,7 +634,7 @@ function simulatorSpec(config: ResolvedSimulatorConfig): LocalRuntimeSpawnSpec {
     args: ['-m', 'gui.backend', '--host', HOST, '--port', String(LOCAL_RUNTIME_PORTS.simulator)],
     cwd: config.workingDirectory,
     env: {
-      ...process.env,
+      ...activatedCondaEnvironment(config.environmentPath, config.platform),
       PYTHONUNBUFFERED: '1'
     }
   }
@@ -716,15 +720,68 @@ function twoDigits(value: number): string {
 function runtimeEnvironment(
   config: ResolvedRuntimeConfig
 ): NodeJS.ProcessEnv {
+  const environment = activatedCondaEnvironment(
+    config.environmentPath,
+    config.platform
+  )
   return {
-    ...process.env,
+    ...environment,
     PYTHONPATH: mergePathList([
       config.osProjectPath,
       config.studioPythonPath,
-      process.env['PYTHONPATH']
+      environmentValue(environment, 'PYTHONPATH')
     ], config.platform === 'win32' ? ';' : ':'),
     PYTHONUNBUFFERED: '1'
   }
+}
+
+function activatedCondaEnvironment(
+  environmentPath: string,
+  platform: NodeJS.Platform,
+  inheritedEnvironment: NodeJS.ProcessEnv = process.env
+): NodeJS.ProcessEnv {
+  if (platform !== 'win32') return { ...inheritedEnvironment }
+
+  const inheritedPath = environmentValue(inheritedEnvironment, 'PATH')
+  const environment = Object.fromEntries(
+    Object.entries(inheritedEnvironment).filter(([key]) => {
+      const normalizedKey = key.toUpperCase()
+      return normalizedKey !== 'PATH'
+        && normalizedKey !== 'CONDA_PREFIX'
+        && normalizedKey !== 'CONDA_DEFAULT_ENV'
+        && normalizedKey !== 'CONDA_SHLVL'
+        && normalizedKey !== 'CONDA_PROMPT_MODIFIER'
+        && !/^CONDA_PREFIX_\d+$/.test(normalizedKey)
+    })
+  )
+  const environmentName = basename(environmentPath)
+
+  return {
+    ...environment,
+    CONDA_PREFIX: environmentPath,
+    CONDA_DEFAULT_ENV: environmentName,
+    CONDA_SHLVL: '1',
+    CONDA_PROMPT_MODIFIER: `(${environmentName}) `,
+    PATH: mergePathList([
+      environmentPath,
+      join(environmentPath, 'Library', 'mingw-w64', 'bin'),
+      join(environmentPath, 'Library', 'usr', 'bin'),
+      join(environmentPath, 'Library', 'bin'),
+      join(environmentPath, 'Scripts'),
+      join(environmentPath, 'bin'),
+      inheritedPath
+    ], ';')
+  }
+}
+
+function environmentValue(
+  environment: NodeJS.ProcessEnv,
+  name: string
+): string | undefined {
+  const normalizedName = name.toUpperCase()
+  return Object.entries(environment).find(
+    ([key, value]) => key.toUpperCase() === normalizedName && Boolean(value)
+  )?.[1]
 }
 
 function mergePathList(

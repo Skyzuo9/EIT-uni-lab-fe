@@ -24,7 +24,8 @@
 
 - `unilab` Conda 环境目录（自动识别本机兼容环境，也可手动选择；macOS/Linux
   使用 `bin/python` 与 `bin/unilab`，Windows 使用 `python.exe` 与
-  `Scripts/unilab.exe`）
+  `Scripts/unilab.exe`。Windows 子进程还会注入所选环境的 `CONDA_PREFIX`，并按
+  Conda 激活顺序前置环境目录、`Library/bin` 与 `Scripts` 到 `PATH`）
 - Uni-Lab-OS 项目根目录
 - Uni-Lab-SZLab 项目根目录
 - SZLab 设备图 JSON
