@@ -64,10 +64,18 @@ const api = {
       ipcRenderer.invoke('runtime:getDefaultEnvironmentPath'),
     getSnapshot: (): Promise<LocalRuntimeSnapshot> =>
       ipcRenderer.invoke('runtime:getSnapshot'),
-    start: (config: LocalRuntimeLaunchConfig): Promise<LocalRuntimeSnapshot> =>
-      ipcRenderer.invoke('runtime:start', config),
-    stop: (): Promise<LocalRuntimeSnapshot> =>
-      ipcRenderer.invoke('runtime:stop'),
+    startSimulator: (
+      config: LocalRuntimeLaunchConfig
+    ): Promise<LocalRuntimeSnapshot> =>
+      ipcRenderer.invoke('runtime:startSimulator', config),
+    stopSimulator: (): Promise<LocalRuntimeSnapshot> =>
+      ipcRenderer.invoke('runtime:stopSimulator'),
+    startEdge: (
+      config: LocalRuntimeLaunchConfig
+    ): Promise<LocalRuntimeSnapshot> =>
+      ipcRenderer.invoke('runtime:startEdge', config),
+    stopEdge: (): Promise<LocalRuntimeSnapshot> =>
+      ipcRenderer.invoke('runtime:stopEdge'),
     openLogs: (): Promise<boolean> => ipcRenderer.invoke('runtime:openLogs'),
     onSnapshot: (
       listener: (snapshot: LocalRuntimeSnapshot) => void

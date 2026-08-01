@@ -5,7 +5,10 @@ import { basename, delimiter, dirname, join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import type { LocalRuntimeLaunchConfig } from '../shared/localRuntime'
-import { resolveLocalRuntimeLaunchPlan } from './localRuntimeManager'
+import {
+  resolveLocalRuntimeLaunchPlan,
+  resolveLocalSimulatorLaunchPlan
+} from './localRuntimeManager'
 
 const temporaryDirectories: string[] = []
 
@@ -22,8 +25,9 @@ describe('LocalRuntimeManager command plan', () => {
   it('maps the selected roots to the supplied OPC, Bridge and Edge commands', async () => {
     const fixture = await createFixture('packages')
     const plan = await resolveLocalRuntimeLaunchPlan(fixture.config)
+    const simulatorPlan = await resolveLocalSimulatorLaunchPlan(fixture.config)
 
-    expect(plan.simulator).toMatchObject({
+    expect(simulatorPlan.simulator).toMatchObject({
       command: fixture.python,
       cwd: join(fixture.simulatorRoot, 'OpcUaSim'),
       args: [
@@ -109,15 +113,10 @@ describe('LocalRuntimeManager command plan', () => {
     ])
   })
 
-  it('supports the current root-level szlab_poly_studio layout without OPC', async () => {
+  it('supports the current root-level szlab_poly_studio layout', async () => {
     const fixture = await createFixture('root')
-    const plan = await resolveLocalRuntimeLaunchPlan({
-      ...fixture.config,
-      simulatorProjectPath: '',
-      startSimulator: false
-    })
+    const plan = await resolveLocalRuntimeLaunchPlan(fixture.config)
 
-    expect(plan.simulator).toBeUndefined()
     expect(plan.bridge.args).toContain(
       join(
         fixture.szlabRoot,
@@ -129,6 +128,21 @@ describe('LocalRuntimeManager command plan', () => {
     )
     expect(plan.edge.args).toContain(
       join(fixture.szlabRoot, 'szlab_poly_studio')
+    )
+  })
+
+  it('resolves PLC-Sim without requiring Edge project paths', async () => {
+    const fixture = await createFixture('packages')
+    const plan = await resolveLocalSimulatorLaunchPlan({
+      ...fixture.config,
+      graphPath: '',
+      osProjectPath: '',
+      szlabProjectPath: ''
+    })
+
+    expect(plan.simulator.command).toBe(fixture.python)
+    expect(plan.simulator.cwd).toBe(
+      join(fixture.simulatorRoot, 'OpcUaSim')
     )
   })
 
@@ -216,8 +230,7 @@ async function createFixture(
       osProjectPath: osRoot,
       szlabProjectPath: szlabRoot,
       environmentPath: environmentRoot,
-      simulatorProjectPath: simulatorRoot,
-      startSimulator: true
+      simulatorProjectPath: simulatorRoot
     },
     graphPath,
     osRoot,

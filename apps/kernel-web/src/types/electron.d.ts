@@ -32,22 +32,24 @@ export interface LocalRuntimeLaunchConfig {
   szlabProjectPath: string
   environmentPath: string
   simulatorProjectPath: string
-  startSimulator: boolean
 }
 
 export type LocalRuntimeProcessKind = 'simulator' | 'bridge' | 'edge'
 
 export type LocalRuntimePhase =
   | 'idle'
-  | 'validating'
+  | 'validating_simulator'
   | 'starting_simulator'
   | 'waiting_simulator'
+  | 'simulator_ready'
+  | 'validating_edge'
   | 'starting_bridge'
   | 'waiting_bridge'
   | 'starting_edge'
   | 'waiting_edge'
   | 'ready'
-  | 'stopping'
+  | 'stopping_simulator'
+  | 'stopping_edge'
   | 'failed'
 
 export interface LocalRuntimeSnapshot {
@@ -64,8 +66,12 @@ export interface DesktopRuntimeApi {
   selectPath: (kind: LocalRuntimePathKind) => Promise<string | null>
   getDefaultEnvironmentPath: () => Promise<string | null>
   getSnapshot: () => Promise<LocalRuntimeSnapshot>
-  start: (config: LocalRuntimeLaunchConfig) => Promise<LocalRuntimeSnapshot>
-  stop: () => Promise<LocalRuntimeSnapshot>
+  startSimulator: (
+    config: LocalRuntimeLaunchConfig
+  ) => Promise<LocalRuntimeSnapshot>
+  stopSimulator: () => Promise<LocalRuntimeSnapshot>
+  startEdge: (config: LocalRuntimeLaunchConfig) => Promise<LocalRuntimeSnapshot>
+  stopEdge: () => Promise<LocalRuntimeSnapshot>
   openLogs: () => Promise<boolean>
   onSnapshot: (
     listener: (snapshot: LocalRuntimeSnapshot) => void

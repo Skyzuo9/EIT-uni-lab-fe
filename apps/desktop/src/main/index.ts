@@ -194,13 +194,21 @@ app.whenReady().then(() => {
     assertMainWindowSender(event)
     return discoverDefaultCondaEnvironment({ homeDirectory: homedir() })
   })
-  ipcMain.handle('runtime:start', async (event, payload: unknown) => {
+  ipcMain.handle('runtime:startSimulator', async (event, payload: unknown) => {
     assertMainWindowSender(event)
-    return requireRuntimeManager().start(parseRuntimeConfig(payload))
+    return requireRuntimeManager().startSimulator(parseRuntimeConfig(payload))
   })
-  ipcMain.handle('runtime:stop', async (event) => {
+  ipcMain.handle('runtime:stopSimulator', async (event) => {
     assertMainWindowSender(event)
-    return requireRuntimeManager().stop()
+    return requireRuntimeManager().stopSimulator()
+  })
+  ipcMain.handle('runtime:startEdge', async (event, payload: unknown) => {
+    assertMainWindowSender(event)
+    return requireRuntimeManager().startEdge(parseRuntimeConfig(payload))
+  })
+  ipcMain.handle('runtime:stopEdge', async (event) => {
+    assertMainWindowSender(event)
+    return requireRuntimeManager().stopEdge()
   })
   ipcMain.handle('runtime:openLogs', async (event) => {
     assertMainWindowSender(event)
@@ -344,8 +352,7 @@ function parseRuntimeConfig(value: unknown): LocalRuntimeLaunchConfig {
     typeof candidate.osProjectPath !== 'string' ||
     typeof candidate.szlabProjectPath !== 'string' ||
     typeof candidate.environmentPath !== 'string' ||
-    typeof candidate.simulatorProjectPath !== 'string' ||
-    typeof candidate.startSimulator !== 'boolean'
+    typeof candidate.simulatorProjectPath !== 'string'
   ) {
     throw new Error('本地运行时启动配置字段不完整')
   }
@@ -354,7 +361,6 @@ function parseRuntimeConfig(value: unknown): LocalRuntimeLaunchConfig {
     osProjectPath: candidate.osProjectPath,
     szlabProjectPath: candidate.szlabProjectPath,
     environmentPath: candidate.environmentPath,
-    simulatorProjectPath: candidate.simulatorProjectPath,
-    startSimulator: candidate.startSimulator
+    simulatorProjectPath: candidate.simulatorProjectPath
   }
 }

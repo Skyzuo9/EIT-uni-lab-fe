@@ -19,11 +19,13 @@ export interface LocalRuntimeSpawnSpec {
 }
 
 export interface LocalRuntimeLaunchPlan {
-  startSimulator: boolean
   runtimeDirectory: string
-  simulator?: LocalRuntimeSpawnSpec
   bridge: LocalRuntimeSpawnSpec
   edge: LocalRuntimeSpawnSpec
+}
+
+export interface LocalSimulatorLaunchPlan {
+  simulator: LocalRuntimeSpawnSpec
 }
 
 interface ResolvedRuntimeConfig {
@@ -39,8 +41,11 @@ interface ResolvedRuntimeConfig {
   profilePath: string
   devicesPath: string
   studioPythonPath: string
-  simulatorWorkingDirectory?: string
-  startSimulator: boolean
+}
+
+interface ResolvedSimulatorConfig {
+  pythonExecutable: string
+  workingDirectory: string
 }
 
 interface PortRequirement {
@@ -49,6 +54,7 @@ interface PortRequirement {
 }
 
 type SnapshotListener = (snapshot: LocalRuntimeSnapshot) => void
+type ActiveOperation = 'simulator' | 'edge' | 'all'
 
 export const LOCAL_RUNTIME_PORTS = {
   simulator: 18_765,
@@ -71,6 +77,7 @@ export class LocalRuntimeManager {
   private bridgeProcess: ChildProcessWithoutNullStreams | null = null
   private simulatorProcess: ChildProcessWithoutNullStreams | null = null
   private stopping = false
+  private activeOperation: ActiveOperation | null = null
 
   constructor(
     private readonly logsDirectory: string,
@@ -81,46 +88,78 @@ export class LocalRuntimeManager {
     return { ...this.snapshot }
   }
 
-  async validate(config: LocalRuntimeLaunchConfig): Promise<void> {
-    await resolveRuntimeConfig(config)
-  }
-
-  async start(
+  async startSimulator(
     config: LocalRuntimeLaunchConfig
   ): Promise<LocalRuntimeSnapshot> {
-    if (this.snapshot.phase !== 'idle' && this.snapshot.phase !== 'failed') {
-      throw new Error('本地调试环境正在运行，请先停止当前会话')
+    this.beginOperation('simulator')
+    if (this.simulatorProcess) {
+      this.activeOperation = null
+      throw new Error('PLC-Sim 已在运行')
+    }
+    if (this.bridgeProcess || this.edgeProcess) {
+      this.activeOperation = null
+      throw new Error('请先停止 SZLab Edge，再启动 PLC-Sim')
     }
 
-    this.stopping = false
-    this.publishState('validating', '正在检查项目、Conda 环境与固定端口…')
+    this.publishState('validating_simulator', '正在检查 PLC-Sim 与 Conda 环境…')
+
+    try {
+      const plan = await resolveLocalSimulatorLaunchPlan(config)
+      await requireAvailablePorts([{
+        port: LOCAL_RUNTIME_PORTS.simulator,
+        label: 'OPC UA'
+      }])
+      await mkdir(this.logsDirectory, { recursive: true })
+      this.publishState('starting_simulator', '正在启动 PLC-Sim OPC UA…')
+      this.simulatorProcess = this.spawnManaged('simulator', plan.simulator)
+      this.publishState('waiting_simulator', 'PLC-Sim 已启动，正在等待 18765 端口…')
+      await waitForPort(
+        HOST,
+        LOCAL_RUNTIME_PORTS.simulator,
+        [{ child: this.simulatorProcess, label: 'PLC-Sim OPC UA' }],
+        PROCESS_READY_TIMEOUT_MS
+      )
+      this.publishState(
+        'simulator_ready',
+        'PLC-Sim 已就绪；请上传 PLC 变量表后再启动 SZLab Edge'
+      )
+      return this.getSnapshot()
+    } catch (error) {
+      const message = errorMessage(error)
+      this.stopping = true
+      await this.stopSimulatorProcess()
+      this.stopping = false
+      this.publishFailure('PLC-Sim 启动失败', 'simulator', message)
+      throw new Error(message)
+    } finally {
+      this.activeOperation = null
+    }
+  }
+
+  async startEdge(
+    config: LocalRuntimeLaunchConfig
+  ): Promise<LocalRuntimeSnapshot> {
+    this.beginOperation('edge')
+    if (this.bridgeProcess || this.edgeProcess) {
+      this.activeOperation = null
+      throw new Error('SZLab Edge 已在运行')
+    }
+
+    this.publishState('validating_edge', '正在检查 Edge 项目、Conda 环境与固定端口…')
 
     try {
       const plan = await resolveLocalRuntimeLaunchPlan(config)
-      await requireAvailablePorts(plan.startSimulator)
+      await requireAvailablePorts([
+        { port: LOCAL_RUNTIME_PORTS.bridgeApi, label: 'SZLab Edge API' },
+        { port: LOCAL_RUNTIME_PORTS.edgeHttp, label: 'SZLab Edge HTTP' },
+        { port: LOCAL_RUNTIME_PORTS.schedule, label: 'Schedule WebSocket' }
+      ])
       await mkdir(this.logsDirectory, { recursive: true })
       await mkdir(plan.runtimeDirectory, { recursive: true })
 
-      if (plan.simulator) {
-        this.publishState('starting_simulator', '正在启动本地 OPC UA…')
-        this.simulatorProcess = this.spawnManaged(
-          'simulator',
-          plan.simulator
-        )
-        this.publishState('waiting_simulator', 'OPC UA 已启动，正在等待 18765 端口…')
-        await waitForPort(
-          HOST,
-          LOCAL_RUNTIME_PORTS.simulator,
-          [{ child: this.simulatorProcess, label: 'OPC UA' }],
-          PROCESS_READY_TIMEOUT_MS
-        )
-      }
-
       this.publishState(
         'starting_bridge',
-        plan.startSimulator
-          ? 'OPC UA 已就绪，正在启动 SZLab Edge…'
-          : '正在启动 SZLab Edge…'
+        '正在启动 SZLab Edge…'
       )
       this.bridgeProcess = this.spawnManaged(
         'bridge',
@@ -153,32 +192,91 @@ export class LocalRuntimeManager {
 
       this.publishState(
         'ready',
-        plan.startSimulator
-          ? 'OPC UA 与 SZLab Edge 已就绪'
+        this.simulatorProcess
+          ? 'PLC-Sim 与 SZLab Edge 已就绪'
           : 'SZLab Edge 已就绪'
       )
       return this.getSnapshot()
     } catch (error) {
       const message = errorMessage(error)
-      await this.stopProcesses()
-      this.publish({
-        ...IDLE_LOCAL_RUNTIME_SNAPSHOT,
-        phase: 'failed',
-        message: '本地调试环境启动失败',
-        error: message
-      })
+      this.stopping = true
+      await this.stopEdgeProcesses()
+      this.stopping = false
+      this.publishFailure('SZLab Edge 启动失败', 'edge', message)
       throw new Error(message)
+    } finally {
+      this.activeOperation = null
+    }
+  }
+
+  async stopSimulator(): Promise<LocalRuntimeSnapshot> {
+    this.beginOperation('simulator')
+    if (this.bridgeProcess || this.edgeProcess) {
+      this.activeOperation = null
+      throw new Error('请先停止 SZLab Edge，再停止 PLC-Sim')
+    }
+    if (!this.simulatorProcess) {
+      this.activeOperation = null
+      return this.getSnapshot()
+    }
+
+    this.stopping = true
+    this.publishState('stopping_simulator', '正在停止 PLC-Sim…')
+    try {
+      await this.stopSimulatorProcess()
+      this.stopping = false
+      this.publish({ ...IDLE_LOCAL_RUNTIME_SNAPSHOT })
+      return this.getSnapshot()
+    } finally {
+      this.stopping = false
+      this.activeOperation = null
+    }
+  }
+
+  async stopEdge(): Promise<LocalRuntimeSnapshot> {
+    this.beginOperation('edge')
+    if (!this.bridgeProcess && !this.edgeProcess) {
+      this.activeOperation = null
+      return this.getSnapshot()
+    }
+
+    this.stopping = true
+    this.publishState('stopping_edge', '正在停止 SZLab Edge…')
+    try {
+      await this.stopEdgeProcesses()
+      this.stopping = false
+      if (this.simulatorProcess) {
+        this.publishState(
+          'simulator_ready',
+          'PLC-Sim 仍在运行；上传变量表后可再次启动 SZLab Edge'
+        )
+      } else {
+        this.publish({ ...IDLE_LOCAL_RUNTIME_SNAPSHOT })
+      }
+      return this.getSnapshot()
+    } finally {
+      this.stopping = false
+      this.activeOperation = null
     }
   }
 
   async stop(): Promise<LocalRuntimeSnapshot> {
-    if (this.snapshot.phase === 'idle') return this.getSnapshot()
+    this.activeOperation = 'all'
     this.stopping = true
-    this.publishState('stopping', '正在停止 SZLab Edge 与 OPC UA…')
+    this.publishState('stopping_edge', '正在停止本地服务…')
     await this.stopProcesses()
     this.stopping = false
+    this.activeOperation = null
     this.publish({ ...IDLE_LOCAL_RUNTIME_SNAPSHOT })
     return this.getSnapshot()
+  }
+
+  private beginOperation(operation: ActiveOperation): void {
+    if (this.activeOperation) {
+      throw new Error('本地服务正在执行其他操作，请稍后再试')
+    }
+    this.activeOperation = operation
+    this.stopping = false
   }
 
   private spawnManaged(
@@ -207,7 +305,11 @@ export class LocalRuntimeManager {
         `\n[launcher] process exited code=${String(code)} signal=${String(signal)}\n`
       )
       this.clearProcess(kind, child)
-      if (!this.stopping && this.snapshot.phase !== 'failed') {
+      if (
+        !this.stopping
+        && !this.activeOperation
+        && this.snapshot.phase !== 'failed'
+      ) {
         void this.handleUnexpectedExit(kind)
       }
     })
@@ -233,29 +335,54 @@ export class LocalRuntimeManager {
     kind: LocalRuntimeProcessKind
   ): Promise<void> {
     const label = processLabel(kind)
-    await this.stopProcesses()
-    this.publish({
-      ...IDLE_LOCAL_RUNTIME_SNAPSHOT,
-      phase: 'failed',
-      message: `${label} 已意外退出`,
-      failedProcess: kind,
-      error: '请打开日志目录查看本地启动日志'
-    })
+    this.stopping = true
+    if (kind === 'simulator') {
+      await this.stopProcesses()
+    } else {
+      await this.stopEdgeProcesses()
+    }
+    this.stopping = false
+    this.publishFailure(
+      `${label} 已意外退出`,
+      kind,
+      '请打开日志目录查看本地启动日志'
+    )
   }
 
-  private async stopProcesses(): Promise<void> {
-    this.stopping = true
-    const processes = [
-      this.edgeProcess,
-      this.bridgeProcess,
-      this.simulatorProcess
-    ]
+  private async stopSimulatorProcess(): Promise<void> {
+    const child = this.simulatorProcess
+    this.simulatorProcess = null
+    if (child) await stopProcessTree(child)
+  }
+
+  private async stopEdgeProcesses(): Promise<void> {
+    const processes = [this.edgeProcess, this.bridgeProcess]
     this.edgeProcess = null
     this.bridgeProcess = null
-    this.simulatorProcess = null
     for (const child of processes) {
       if (child) await stopProcessTree(child)
     }
+  }
+
+  private async stopProcesses(): Promise<void> {
+    await this.stopEdgeProcesses()
+    await this.stopSimulatorProcess()
+  }
+
+  private publishFailure(
+    message: string,
+    failedProcess: LocalRuntimeProcessKind,
+    error: string
+  ): void {
+    this.publish({
+      phase: 'failed',
+      message,
+      simulatorRunning: Boolean(this.simulatorProcess),
+      bridgeRunning: Boolean(this.bridgeProcess),
+      edgeRunning: Boolean(this.edgeProcess),
+      failedProcess,
+      error
+    })
   }
 
   private publishState(
@@ -282,14 +409,17 @@ export async function resolveLocalRuntimeLaunchPlan(
 ): Promise<LocalRuntimeLaunchPlan> {
   const resolvedConfig = await resolveRuntimeConfig(config)
   return {
-    startSimulator: resolvedConfig.startSimulator,
     runtimeDirectory: resolvedConfig.runtimeDirectory,
-    simulator: resolvedConfig.startSimulator
-      ? simulatorSpec(resolvedConfig)
-      : undefined,
     bridge: bridgeSpec(resolvedConfig),
     edge: edgeSpec(resolvedConfig)
   }
+}
+
+export async function resolveLocalSimulatorLaunchPlan(
+  config: LocalRuntimeLaunchConfig
+): Promise<LocalSimulatorLaunchPlan> {
+  const resolvedConfig = await resolveSimulatorConfig(config)
+  return { simulator: simulatorSpec(resolvedConfig) }
 }
 
 async function resolveRuntimeConfig(
@@ -365,18 +495,6 @@ async function resolveRuntimeConfig(
     'Uni-Lab-SZLab 缺少 szlab_poly_studio 设备包'
   )
 
-  let simulatorWorkingDirectory: string | undefined
-  if (config.startSimulator) {
-    const simulatorProjectPath = normalizeRequiredPath(
-      config.simulatorProjectPath,
-      '请选择 PLC-Sim 项目根目录'
-    )
-    await requireDirectory(simulatorProjectPath, 'PLC-Sim 项目根目录不存在')
-    simulatorWorkingDirectory = await resolveSimulatorWorkingDirectory(
-      simulatorProjectPath
-    )
-  }
-
   return {
     graphPath,
     osProjectPath,
@@ -389,21 +507,45 @@ async function resolveRuntimeConfig(
     runtimeDirectory: join(szlabProjectPath, 'runtime', 'ideawit-e2e'),
     profilePath,
     devicesPath,
-    studioPythonPath: dirname(devicesPath),
-    simulatorWorkingDirectory,
-    startSimulator: config.startSimulator
+    studioPythonPath: dirname(devicesPath)
   }
 }
 
-function simulatorSpec(config: ResolvedRuntimeConfig): LocalRuntimeSpawnSpec {
-  if (!config.simulatorWorkingDirectory) {
-    throw new Error('OPC UA 启动目录尚未解析')
+async function resolveSimulatorConfig(
+  config: LocalRuntimeLaunchConfig
+): Promise<ResolvedSimulatorConfig> {
+  if (process.platform === 'win32') {
+    throw new Error('当前 PLC-Sim 本地启动命令仅支持 macOS 和 Linux')
   }
+  const environmentPath = normalizeRequiredPath(
+    config.environmentPath,
+    '请选择 unilab Conda 环境目录'
+  )
+  const simulatorProjectPath = normalizeRequiredPath(
+    config.simulatorProjectPath,
+    '请选择 PLC-Sim 项目根目录'
+  )
+  await requireDirectory(environmentPath, 'unilab Conda 环境目录不存在')
+  await requireDirectory(simulatorProjectPath, 'PLC-Sim 项目根目录不存在')
+  const pythonExecutable = join(environmentPath, 'bin', 'python')
+  await requireExecutable(pythonExecutable, '所选 Conda 环境缺少 bin/python')
+  return {
+    pythonExecutable,
+    workingDirectory: await resolveSimulatorWorkingDirectory(
+      simulatorProjectPath
+    )
+  }
+}
+
+function simulatorSpec(config: ResolvedSimulatorConfig): LocalRuntimeSpawnSpec {
   return {
     command: config.pythonExecutable,
     args: ['-m', 'gui.backend', '--host', HOST, '--port', String(LOCAL_RUNTIME_PORTS.simulator)],
-    cwd: config.simulatorWorkingDirectory,
-    env: runtimeEnvironment(config)
+    cwd: config.workingDirectory,
+    env: {
+      ...process.env,
+      PYTHONUNBUFFERED: '1'
+    }
   }
 }
 
@@ -525,18 +667,9 @@ async function resolveSimulatorWorkingDirectory(
   )
 }
 
-async function requireAvailablePorts(startSimulator: boolean): Promise<void> {
-  const requirements: PortRequirement[] = [
-    { port: LOCAL_RUNTIME_PORTS.bridgeApi, label: 'SZLab Edge API' },
-    { port: LOCAL_RUNTIME_PORTS.edgeHttp, label: 'SZLab Edge HTTP' },
-    { port: LOCAL_RUNTIME_PORTS.schedule, label: 'Schedule WebSocket' }
-  ]
-  if (startSimulator) {
-    requirements.unshift({
-      port: LOCAL_RUNTIME_PORTS.simulator,
-      label: 'OPC UA'
-    })
-  }
+async function requireAvailablePorts(
+  requirements: PortRequirement[]
+): Promise<void> {
   for (const requirement of requirements) {
     if (await canConnect(HOST, requirement.port)) {
       throw new Error(

@@ -11,22 +11,24 @@ export interface LocalRuntimeLaunchConfig {
   szlabProjectPath: string
   environmentPath: string
   simulatorProjectPath: string
-  startSimulator: boolean
 }
 
 export type LocalRuntimeProcessKind = 'simulator' | 'bridge' | 'edge'
 
 export type LocalRuntimePhase =
   | 'idle'
-  | 'validating'
+  | 'validating_simulator'
   | 'starting_simulator'
   | 'waiting_simulator'
+  | 'simulator_ready'
+  | 'validating_edge'
   | 'starting_bridge'
   | 'waiting_bridge'
   | 'starting_edge'
   | 'waiting_edge'
   | 'ready'
-  | 'stopping'
+  | 'stopping_simulator'
+  | 'stopping_edge'
   | 'failed'
 
 export interface LocalRuntimeSnapshot {
@@ -41,7 +43,7 @@ export interface LocalRuntimeSnapshot {
 
 export const IDLE_LOCAL_RUNTIME_SNAPSHOT: LocalRuntimeSnapshot = {
   phase: 'idle',
-  message: '本地调试环境未启动',
+  message: 'PLC-Sim 与 SZLab Edge 均未启动',
   simulatorRunning: false,
   bridgeRunning: false,
   edgeRunning: false

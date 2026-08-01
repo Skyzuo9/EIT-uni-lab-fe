@@ -25,7 +25,8 @@
     outline-offset: 2px;
   }
 
-  &[data-runtime-phase='ready'] {
+  &[data-runtime-phase='ready'],
+  &[data-runtime-phase='simulator_ready'] {
     color: var(--unilab-color-success);
     border-color: color-mix(
       in srgb,
@@ -132,48 +133,74 @@
   padding: 20px 24px;
 }
 
-.simulatorOption {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--unilab-space-4);
-  padding: 12px 14px;
-  border-radius: var(--unilab-radius-md);
-  background: var(--unilab-color-surface-subtle);
-  cursor: pointer;
+.serviceSection {
+  display: grid;
+  gap: 12px;
+  padding-block-start: 16px;
+  border-block-start: 1px solid var(--unilab-color-border);
+}
 
-  > span {
+.serviceHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+
+  > div {
     display: grid;
-    gap: 3px;
+    min-width: 0;
+    gap: 4px;
   }
 
-  strong {
-    font-size: 13px;
+  h3 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 700;
     line-height: 1.4;
   }
 
-  small {
+  p {
+    margin: 0;
     color: var(--unilab-color-text-muted);
     font-size: 11px;
-    line-height: 1.45;
+    line-height: 1.5;
+  }
+
+  > button {
+    flex: 0 0 auto;
   }
 }
 
-.switchInput {
-  width: 38px;
-  height: 22px;
-  flex: 0 0 auto;
-  margin: 0;
-  accent-color: var(--unilab-color-primary);
-  cursor: pointer;
+.dependencyNotice {
+  display: grid;
+  gap: 3px;
+  padding: 10px 12px;
+  color: var(--unilab-color-warning);
+  border: 1px solid color-mix(
+    in srgb,
+    var(--unilab-color-warning) 30%,
+    var(--unilab-color-border)
+  );
+  border-radius: var(--unilab-radius-control);
+  background: color-mix(
+    in srgb,
+    var(--unilab-color-warning) 7%,
+    var(--unilab-color-surface)
+  );
 
-  &:focus-visible {
-    outline: 2px solid var(--unilab-color-focus);
-    outline-offset: 2px;
+  strong {
+    font-size: 12px;
+    line-height: 1.45;
   }
 
-  &:disabled {
-    cursor: not-allowed;
+  span {
+    color: color-mix(
+      in srgb,
+      var(--unilab-color-warning) 74%,
+      var(--unilab-color-text)
+    );
+    font-size: 11px;
+    line-height: 1.5;
   }
 }
 
@@ -345,7 +372,8 @@
   border-radius: var(--unilab-radius-control);
   background: var(--unilab-color-surface-subtle);
 
-  &[data-phase='ready'] {
+  &[data-phase='ready'],
+  &[data-phase='simulator_ready'] {
     color: var(--unilab-color-success);
     border-color: color-mix(
       in srgb,
@@ -546,6 +574,15 @@
 
   .footerSpacer {
     display: none;
+  }
+
+  .serviceHeader {
+    align-items: stretch;
+    flex-direction: column;
+
+    > button {
+      width: 100%;
+    }
   }
 
   .secondaryButton,
