@@ -458,9 +458,30 @@ function edgeSpec(config: ResolvedRuntimeConfig): LocalRuntimeSpawnSpec {
     cwd: config.szlabProjectPath,
     env: {
       ...runtimeEnvironment(config),
+      UNILABOS_RUNTIME_DB: edgeRuntimeDatabasePath(config.runtimeDirectory),
       ROS_DOMAIN_ID: '42'
     }
   }
+}
+
+function edgeRuntimeDatabasePath(
+  runtimeDirectory: string,
+  now = new Date()
+): string {
+  const timestamp = [
+    now.getFullYear(),
+    twoDigits(now.getMonth() + 1),
+    twoDigits(now.getDate()),
+    '-',
+    twoDigits(now.getHours()),
+    twoDigits(now.getMinutes()),
+    twoDigits(now.getSeconds())
+  ].join('')
+  return join(runtimeDirectory, `edge-runtime-${timestamp}.sqlite3`)
+}
+
+function twoDigits(value: number): string {
+  return String(value).padStart(2, '0')
 }
 
 function runtimeEnvironment(

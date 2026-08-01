@@ -22,7 +22,8 @@
 
 桌面端连接栏可选择以下路径，并以一个受控会话按顺序启动或停止本地调试环境：
 
-- `unilab` Conda 环境目录（内部使用 `bin/python` 与 `bin/unilab`）
+- `unilab` Conda 环境目录（自动识别本机兼容环境，也可手动选择；内部使用
+  `bin/python` 与 `bin/unilab`）
 - Uni-Lab-OS 项目根目录
 - Uni-Lab-SZLab 项目根目录
 - SZLab 设备图 JSON
@@ -34,6 +35,12 @@
 2. SZLab Edge 内部服务：`deployment/local_bridge_entrypoint.py`，API 监听 `8014`，Schedule
    WebSocket 监听 `8892`，连接 Edge `18003`。
 3. SZLab Edge：使用 ROS backend、`ROS_DOMAIN_ID=42`，HTTP 监听 `18003`。
+   每次启动会在 `runtime/ideawit-e2e` 下生成独立的
+   `edge-runtime-YYYYMMDD-HHMMSS.sqlite3`，并通过 `UNILABOS_RUNTIME_DB`
+   传给 Edge。
+
+启用本地 OPC UA 时，步骤 2 和步骤 3 必须等待 `18765` 确认就绪后再执行，
+PLC-Sim 与 SZLab Edge 不并行启动。
 
 产品界面仅展示 OPC UA 与 SZLab Edge；内部服务随 SZLab Edge 一起启动和停止，
 不作为独立服务暴露给用户。

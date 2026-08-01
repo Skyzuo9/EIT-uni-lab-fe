@@ -232,6 +232,81 @@
   }
 }
 
+.pathEditor {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  align-items: stretch;
+  width: 100%;
+  min-width: 0;
+  height: 38px;
+  overflow: hidden;
+  border: 1px solid var(--unilab-color-border-strong);
+  border-radius: var(--unilab-radius-control);
+  background: var(--unilab-color-surface);
+
+  &:focus-within {
+    border-color: var(--unilab-color-primary);
+    outline: 2px solid var(--unilab-color-focus);
+    outline-offset: 1px;
+  }
+
+  &[data-invalid='true'] {
+    border-color: var(--unilab-color-danger);
+  }
+
+  &[data-disabled='true'] {
+    background: var(--unilab-color-surface-subtle);
+    opacity: .72;
+  }
+}
+
+.pathInput {
+  min-width: 0;
+  padding: 0 10px;
+  color: var(--unilab-color-text);
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font: 12px/1 var(--unilab-font-mono);
+
+  &::placeholder {
+    color: var(--unilab-color-text-subtle);
+  }
+
+  &:disabled {
+    color: var(--unilab-color-text-muted);
+    cursor: not-allowed;
+  }
+}
+
+.pathBrowse {
+  padding-inline: 12px;
+  color: var(--unilab-color-text);
+  border: 0;
+  border-inline-start: 1px solid var(--unilab-color-border-strong);
+  background: var(--unilab-color-surface);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    color: var(--unilab-color-primary);
+    background: var(--unilab-color-primary-soft);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--unilab-color-focus);
+    outline-offset: -3px;
+  }
+
+  &:disabled {
+    color: var(--unilab-color-text-muted);
+    background: var(--unilab-color-surface-subtle);
+    cursor: not-allowed;
+  }
+}
+
 .pathValue,
 .pathPlaceholder {
   align-self: center;

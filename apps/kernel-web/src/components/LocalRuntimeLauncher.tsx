@@ -61,6 +61,22 @@ export default function LocalRuntimeLauncher({
   }, [runtimeApi])
 
   useEffect(() => {
+    if (!runtimeApi || config.environmentPath.trim()) return
+    let active = true
+    void runtimeApi.getDefaultEnvironmentPath().then((environmentPath) => {
+      if (!active || !environmentPath) return
+      setConfig((current) => current.environmentPath.trim()
+        ? current
+        : { ...current, environmentPath })
+    }).catch(() => {
+      // 自动识别是非阻塞增强，失败时保留系统目录选择入口。
+    })
+    return () => {
+      active = false
+    }
+  }, [config.environmentPath, runtimeApi])
+
+  useEffect(() => {
     if (typeof globalThis.localStorage === 'undefined') return
     globalThis.localStorage.setItem(STORAGE_KEY, JSON.stringify(config))
   }, [config])
@@ -237,7 +253,7 @@ export function LocalRuntimeDialog({
               id="runtime-environment-path"
               label="unilab Conda 环境目录"
               value={config.environmentPath}
-              placeholder="例如 /Users/dp/miniforge3/envs/unilab"
+              placeholder="自动识别，或选择 Conda 环境目录"
               buttonLabel="选择目录"
               disabled={disabled}
               invalid={submitted && Boolean(validation.errors.environmentPath)}
@@ -254,6 +270,11 @@ export function LocalRuntimeDialog({
               disabled={disabled}
               invalid={submitted && Boolean(validation.errors.osProjectPath)}
               error={submitted ? validation.errors.osProjectPath : undefined}
+              editable
+              onValueChange={(osProjectPath) => onChange({
+                ...config,
+                osProjectPath
+              })}
               onChoose={() => onChoosePath('os')}
             />
             <PathField
@@ -265,6 +286,11 @@ export function LocalRuntimeDialog({
               disabled={disabled}
               invalid={submitted && Boolean(validation.errors.szlabProjectPath)}
               error={submitted ? validation.errors.szlabProjectPath : undefined}
+              editable
+              onValueChange={(szlabProjectPath) => onChange({
+                ...config,
+                szlabProjectPath
+              })}
               onChoose={() => onChoosePath('szlab')}
             />
             <PathField
@@ -293,6 +319,11 @@ export function LocalRuntimeDialog({
               error={submitted
                 ? validation.errors.simulatorProjectPath
                 : undefined}
+              editable
+              onValueChange={(simulatorProjectPath) => onChange({
+                ...config,
+                simulatorProjectPath
+              })}
               onChoose={() => onChoosePath('simulator')}
             />
           </div>
@@ -361,6 +392,8 @@ function PathField({
   invalid,
   error,
   autoFocus = false,
+  editable = false,
+  onValueChange,
   onChoose
 }: {
   id: string
@@ -372,6 +405,8 @@ function PathField({
   invalid: boolean
   error?: string
   autoFocus?: boolean
+  editable?: boolean
+  onValueChange?: (value: string) => void
   onChoose: () => void
 }): React.JSX.Element {
   const errorId = `${id}-error`
@@ -380,31 +415,63 @@ function PathField({
   const actionId = `${id}-action`
   return (
     <div className={styles.field}>
-      <span className={styles.fieldLabel} id={labelId}>
+      <label className={styles.fieldLabel} id={labelId} htmlFor={id}>
         {label}
-      </span>
-      <button
-        id={id}
-        type="button"
-        className={styles.pathPicker}
-        disabled={disabled}
-        aria-labelledby={`${labelId} ${valueId} ${actionId}`}
-        aria-invalid={invalid || undefined}
-        aria-describedby={invalid ? errorId : undefined}
-        autoFocus={autoFocus}
-        title={value || undefined}
-        onClick={onChoose}
-      >
-        <span
-          id={valueId}
-          className={value ? styles.pathValue : styles.pathPlaceholder}
+      </label>
+      {editable ? (
+        <div
+          className={styles.pathEditor}
+          data-disabled={disabled || undefined}
+          data-invalid={invalid || undefined}
         >
-          {value || placeholder}
-        </span>
-        <span className={styles.pathAction} id={actionId}>
-          {buttonLabel}
-        </span>
-      </button>
+          <input
+            id={id}
+            type="text"
+            className={styles.pathInput}
+            value={value}
+            placeholder={placeholder}
+            disabled={disabled}
+            aria-invalid={invalid || undefined}
+            aria-describedby={invalid ? errorId : undefined}
+            autoFocus={autoFocus}
+            spellCheck={false}
+            title={value || undefined}
+            onChange={(event) => onValueChange?.(event.target.value)}
+          />
+          <button
+            type="button"
+            className={styles.pathBrowse}
+            disabled={disabled}
+            aria-label={`${label}：${buttonLabel}`}
+            onClick={onChoose}
+          >
+            {buttonLabel}
+          </button>
+        </div>
+      ) : (
+        <button
+          id={id}
+          type="button"
+          className={styles.pathPicker}
+          disabled={disabled}
+          aria-labelledby={`${labelId} ${valueId} ${actionId}`}
+          aria-invalid={invalid || undefined}
+          aria-describedby={invalid ? errorId : undefined}
+          autoFocus={autoFocus}
+          title={value || undefined}
+          onClick={onChoose}
+        >
+          <span
+            id={valueId}
+            className={value ? styles.pathValue : styles.pathPlaceholder}
+          >
+            {value || placeholder}
+          </span>
+          <span className={styles.pathAction} id={actionId}>
+            {buttonLabel}
+          </span>
+        </button>
+      )}
       {invalid && error ? (
         <small className={styles.fieldError} id={errorId}>
           {error}

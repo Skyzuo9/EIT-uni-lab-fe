@@ -12,6 +12,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { readSession, clearSession, runOAuthLogin } from './authManager'
+import { discoverDefaultCondaEnvironment } from './localRuntimeEnvironment'
 import { LocalRuntimeManager } from './localRuntimeManager'
 import type {
   LocalRuntimeLaunchConfig,
@@ -188,6 +189,10 @@ app.whenReady().then(() => {
   ipcMain.handle('runtime:getSnapshot', (event) => {
     assertMainWindowSender(event)
     return requireRuntimeManager().getSnapshot()
+  })
+  ipcMain.handle('runtime:getDefaultEnvironmentPath', async (event) => {
+    assertMainWindowSender(event)
+    return discoverDefaultCondaEnvironment({ homeDirectory: homedir() })
   })
   ipcMain.handle('runtime:start', async (event, payload: unknown) => {
     assertMainWindowSender(event)

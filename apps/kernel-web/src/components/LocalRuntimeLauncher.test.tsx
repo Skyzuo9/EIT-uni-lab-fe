@@ -36,7 +36,7 @@ describe('LocalRuntimeLauncher', () => {
     })
   })
 
-  it('renders all paths as system picker buttons and no editable text fields', () => {
+  it('allows project directories to be typed or selected from the system picker', () => {
     const config: LocalRuntimeLaunchConfig = {
       graphPath: '',
       osProjectPath: '',
@@ -67,16 +67,21 @@ describe('LocalRuntimeLauncher', () => {
     expect(markup).toContain('Uni-Lab-OS 项目根目录')
     expect(markup).toContain('Uni-Lab-SZLab 项目根目录')
     expect(markup).toContain('unilab Conda 环境目录')
+    expect(markup).toContain('自动识别，或选择 Conda 环境目录')
     expect(markup).toContain('PLC-Sim 项目根目录')
     expect(markup).toContain('role="switch"')
     expect(markup).toContain('同时启动本地 OPC UA')
     expect(markup).toContain('id="runtime-environment-path" type="button"')
     expect(markup).toContain('id="runtime-graph-path" type="button"')
-    expect(markup).toContain('id="runtime-os-path" type="button"')
-    expect(markup).toContain('id="runtime-szlab-path" type="button"')
-    expect(markup).toContain('id="runtime-simulator-path" type="button"')
-    expect(markup.match(/<input/g)).toHaveLength(1)
-    expect(markup).not.toContain('<input id="runtime-')
+    expect(markup).toContain('id="runtime-os-path" type="text"')
+    expect(markup).toContain('id="runtime-szlab-path" type="text"')
+    expect(markup).toContain('id="runtime-simulator-path" type="text"')
+    expect(markup.match(/<input/g)).toHaveLength(4)
+    expect(markup).not.toContain('<input id="runtime-environment-path"')
+    expect(markup).not.toContain('<input id="runtime-graph-path"')
+    expect(markup).toContain('aria-label="Uni-Lab-OS 项目根目录：选择目录"')
+    expect(markup).toContain('aria-label="Uni-Lab-SZLab 项目根目录：选择目录"')
+    expect(markup).toContain('aria-label="PLC-Sim 项目根目录：选择目录"')
     expect(markup).not.toContain('start_local_edge_runtime.sh')
     expect(markup).toContain('OPC UA')
     expect(markup).toContain('SZLab Edge')
@@ -111,7 +116,10 @@ describe('LocalRuntimeLauncher', () => {
     )
 
     expect(markup).toMatch(
-      /<button id="runtime-simulator-path"[^>]*disabled=""/
+      /<input id="runtime-simulator-path"[^>]*disabled=""/
+    )
+    expect(markup).toMatch(
+      /<button[^>]*disabled=""[^>]*aria-label="PLC-Sim 项目根目录：选择目录"/
     )
     expect(markup).toContain('未启用本地 OPC UA，无需选择')
   })

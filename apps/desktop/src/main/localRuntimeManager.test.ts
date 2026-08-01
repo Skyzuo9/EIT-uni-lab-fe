@@ -1,6 +1,6 @@
 import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { delimiter, join } from 'node:path'
+import { basename, delimiter, dirname, join } from 'node:path'
 
 import { afterEach, describe, expect, it } from 'vitest'
 
@@ -89,6 +89,19 @@ describe('LocalRuntimeManager command plan', () => {
       '--skip_env_check'
     ])
     expect(plan.edge.env['ROS_DOMAIN_ID']).toBe('42')
+    expect(plan.edge.env['PYTHONUNBUFFERED']).toBe('1')
+    expect(plan.edge.env['PYTHONPATH']?.split(delimiter).slice(0, 2)).toEqual([
+      fixture.osRoot,
+      join(fixture.szlabRoot, 'packages', 'szlab_poly_studio')
+    ])
+    const runtimeDatabase = plan.edge.env['UNILABOS_RUNTIME_DB']
+    expect(runtimeDatabase).toBeDefined()
+    expect(dirname(runtimeDatabase ?? '')).toBe(
+      join(fixture.szlabRoot, 'runtime', 'ideawit-e2e')
+    )
+    expect(basename(runtimeDatabase ?? '')).toMatch(
+      /^edge-runtime-\d{8}-\d{6}\.sqlite3$/
+    )
     expect(plan.bridge.env['PYTHONUNBUFFERED']).toBe('1')
     expect(plan.bridge.env['PYTHONPATH']?.split(delimiter).slice(0, 2)).toEqual([
       fixture.osRoot,

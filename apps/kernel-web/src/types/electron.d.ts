@@ -62,6 +62,7 @@ export interface LocalRuntimeSnapshot {
 
 export interface DesktopRuntimeApi {
   selectPath: (kind: LocalRuntimePathKind) => Promise<string | null>
+  getDefaultEnvironmentPath: () => Promise<string | null>
   getSnapshot: () => Promise<LocalRuntimeSnapshot>
   start: (config: LocalRuntimeLaunchConfig) => Promise<LocalRuntimeSnapshot>
   stop: () => Promise<LocalRuntimeSnapshot>

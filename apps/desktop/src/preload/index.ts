@@ -60,6 +60,8 @@ const api = {
   runtime: {
     selectPath: (kind: LocalRuntimePathKind): Promise<string | null> =>
       ipcRenderer.invoke('runtime:selectPath', kind),
+    getDefaultEnvironmentPath: (): Promise<string | null> =>
+      ipcRenderer.invoke('runtime:getDefaultEnvironmentPath'),
     getSnapshot: (): Promise<LocalRuntimeSnapshot> =>
       ipcRenderer.invoke('runtime:getSnapshot'),
     start: (config: LocalRuntimeLaunchConfig): Promise<LocalRuntimeSnapshot> =>
