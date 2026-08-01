@@ -191,6 +191,43 @@ test.describe.serial('visible workflow debugger actions', () => {
     })
   })
 
+  test('full workflow run enables the existing debugger terminate action', async ({
+    page,
+    request
+  }) => {
+    const observation = observeCommands(page)
+    await openWorkflow(page, bridge.url)
+    const responsePromise = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'POST' &&
+        response.url().endsWith('/api/v1/runtime/runs')
+    )
+
+    await page.getByRole('button', { name: /整图执行/ }).click()
+    const response = await responsePromise
+    expect(response.status()).toBe(200)
+    const { id: runId } = await response.json() as { id: string }
+    const terminate = page.getByRole('button', {
+      name: '终止',
+      exact: true
+    })
+    await expect(terminate).toBeEnabled()
+
+    const cancelResponsePromise = page.waitForResponse(
+      (cancelResponse) =>
+        cancelResponse.request().method() === 'POST' &&
+        cancelResponse.url().endsWith(`/runtime/runs/${runId}/cancel`)
+    )
+    await terminate.click()
+    expect((await cancelResponsePromise).status()).toBe(200)
+    await expect(page.locator('.workflow-runtime__run-state'))
+      .toHaveText('整体：已取消')
+    expect((await snapshot(request, bridge.url, runId)).run.status)
+      .toBe('cancelled')
+    expect(observation.commands).toEqual([])
+    expect(observation.browserErrors).toEqual([])
+  })
+
   test('step over, step into and emergency stop stay out of the toolbar', async ({
     page
   }) => {
@@ -263,6 +300,12 @@ async function clearDefaultBreakpoint(page: Page): Promise<void> {
 }
 
 async function startDebug(page: Page): Promise<string> {
+  const debugMode = page.getByRole('button', {
+    name: '调试运行',
+    exact: true
+  })
+  await debugMode.click()
+  await expect(debugMode).toHaveAttribute('aria-pressed', 'true')
   const responsePromise = page.waitForResponse(
     (response) =>
       response.request().method() === 'POST' &&

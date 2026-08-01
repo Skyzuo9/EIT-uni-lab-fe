@@ -159,4 +159,78 @@ describe('WorkflowOutput', () => {
     expect(nodePanel).not.toContain('Traceback: unselected camera failure')
     expect(nodePanel).not.toContain('aria-label="加热样品 节点结果"')
   })
+
+  it('shows logs from the selected successful node and its completion event', () => {
+    const selectedNode = {
+      nodeId: 'job-heat',
+      sourceNodeId: 'heat',
+      nodeType: 'action',
+      deviceId: 'heater-1',
+      action: 'heat',
+      state: 'success' as const,
+      result: {
+        stdout: 'heater reached 80 C'
+      },
+      attempt: 1
+    }
+    const html = renderToStaticMarkup(
+      <WorkflowOutput
+        expanded
+        activeTab="nodes"
+        completedNodeCount={2}
+        expectedNodeCount={2}
+        nodes={[
+          selectedNode,
+          {
+            nodeId: 'job-camera',
+            sourceNodeId: 'camera',
+            nodeType: 'action',
+            deviceId: 'camera-1',
+            action: 'capture',
+            state: 'success',
+            result: {},
+            attempt: 1
+          }
+        ]}
+        nodeNames={{ heat: '加热样品', camera: '拍摄样品' }}
+        events={[
+          {
+            seq: 7,
+            runId: 'run-1',
+            type: 'node.result',
+            nodeId: 'job-heat',
+            timestamp: 1,
+            payload: {
+              logs: ['temperature stable', 'sample heating completed']
+            }
+          },
+          {
+            seq: 8,
+            runId: 'run-1',
+            type: 'node.result',
+            nodeId: 'job-camera',
+            timestamp: 2,
+            payload: { logs: ['camera-only log'] }
+          }
+        ]}
+        error={null}
+        selectedNode={selectedNode}
+        selectedNodeId="heat"
+        pausedBeforeNodeId={null}
+        onExpandedChange={() => {}}
+        onTabChange={() => {}}
+        onNodeSelect={() => {}}
+        onClearError={() => {}}
+      />
+    )
+
+    const nodePanel = html.slice(
+      html.indexOf('id="workflow-output-panel-nodes"'),
+      html.indexOf('id="workflow-output-panel-events"')
+    )
+    expect(nodePanel).toContain('aria-label="加热样品 运行日志"')
+    expect(nodePanel).toContain('heater reached 80 C')
+    expect(nodePanel).toContain('sample heating completed')
+    expect(nodePanel).not.toContain('camera-only log')
+  })
 })

@@ -53,6 +53,9 @@ export function WorkflowOutput({
   const selectedNodeHasResult = Boolean(
     selectedNode && Object.keys(selectedNode.result).length > 0
   )
+  const selectedNodeLog = selectedNode && selectedNode.state !== 'failed'
+    ? workflowNodeLogText(selectedNode, events)
+    : ''
   const errorCount = nodeFailures.length + (error ? 1 : 0)
 
   return (
@@ -160,7 +163,9 @@ export function WorkflowOutput({
                 )
               })}
             </div>
-            {selectedNode && (selectedNodeFailure || selectedNodeHasResult) && (
+            {selectedNode && (
+              selectedNodeFailure || selectedNodeLog || selectedNodeHasResult
+            ) && (
               <div className="workflow-runtime__node-details">
                 {selectedNodeFailure && (
                   <article
@@ -186,6 +191,24 @@ export function WorkflowOutput({
                     ) : (
                       <p>节点已失败，但 OS 未返回详细错误日志。</p>
                     )}
+                  </article>
+                )}
+                {selectedNodeLog && (
+                  <article className="workflow-runtime__node-log">
+                    <header>
+                      <strong>
+                        {nodeNames[selectedNode.sourceNodeId] ||
+                          selectedNode.sourceNodeId} 运行日志
+                      </strong>
+                      {selectedNode.attempt > 0 && (
+                        <small>第 {selectedNode.attempt} 次尝试</small>
+                      )}
+                    </header>
+                    <pre
+                      aria-label={`${nodeNames[selectedNode.sourceNodeId] || selectedNode.sourceNodeId} 运行日志`}
+                    >
+                      {selectedNodeLog}
+                    </pre>
                   </article>
                 )}
                 {selectedNodeHasResult && (
@@ -344,6 +367,49 @@ const FAILURE_LOG_FIELDS = [
   ['info', 'info']
 ] as const
 
+const NODE_LOG_FIELDS = [
+  ['stdout', 'stdout'],
+  ['stderr', 'stderr'],
+  ['logs', 'logs'],
+  ['log', 'log'],
+  ['info', 'info'],
+  ['message', '']
+] as const
+
+function workflowNodeLogText(
+  node: WorkflowRunNode,
+  events: readonly WorkflowRunEvent[]
+): string {
+  const matchingEventPayloads = events
+    .filter((event) => (
+      event.type !== 'node.exception' &&
+      (event.nodeId === node.nodeId || event.nodeId === node.sourceNodeId)
+    ))
+    .map((event) => event.payload)
+  const logs: string[] = []
+  const seen = new Set<string>()
+
+  const append = (value: unknown, label: string): void => {
+    const text = formatLogValue(value)
+    if (!text || seen.has(text)) return
+    seen.add(text)
+    logs.push(label ? `${label}:\n${text}` : text)
+  }
+  const visit = (value: Record<string, unknown>): void => {
+    for (const [field, label] of NODE_LOG_FIELDS) {
+      append(value[field], label)
+    }
+    for (const field of ['result', 'output']) {
+      const nested = value[field]
+      if (isRecord(nested)) visit(nested)
+    }
+  }
+
+  visit(node.result)
+  matchingEventPayloads.forEach(visit)
+  return logs.join('\n\n')
+}
+
 function workflowNodeFailureLogs(
   nodes: readonly WorkflowRunNode[],
   nodeNames: Readonly<Record<string, string>>,
@@ -476,6 +542,7 @@ const EVENT_TYPE_LABELS: Readonly<Record<string, string>> = {
   'run.failed': '运行失败',
   'node.ready': '节点已就绪',
   'node.started': '节点开始执行',
+  'node.result': '节点执行成功',
   'node.completed': '节点执行成功',
   'node.skipped': '节点已跳过',
   'node.exception': '节点执行异常',

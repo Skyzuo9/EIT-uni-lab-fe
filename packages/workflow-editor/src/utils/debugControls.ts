@@ -54,6 +54,10 @@ const RUNNING_DEBUG_STATES = new Set<WorkflowDebugProjection['status']>([
   'pause_pending',
   'stepping'
 ])
+const TERMINATABLE_RUN_STATES = new Set<WorkflowRun['status']>([
+  'pending',
+  'running'
+])
 
 export function workflowDebugControls(
   state: WorkflowDebugControlState
@@ -65,6 +69,13 @@ export function workflowDebugControls(
     !TERMINAL_RUN_STATES.has(state.runStatus as WorkflowRun['status']) &&
     !TERMINAL_DEBUG_STATES.has(state.debugStatus)
   const blocked = state.busy || !canCommand
+  const canTerminate = !state.busy && (
+    state.debugEnabled
+      ? canCommand && (paused || running)
+      : TERMINATABLE_RUN_STATES.has(
+          state.runStatus as WorkflowRun['status']
+        )
+  )
 
   return [
     {
@@ -119,7 +130,7 @@ export function workflowDebugControls(
       title: '终止当前运行，并取消尚未完成的节点',
       message: '终止请求已由 OS 接受；等待当前运行收敛',
       danger: true,
-      disabled: blocked || (!paused && !running)
+      disabled: !canTerminate
     },
     {
       command: 'emergency_stop',

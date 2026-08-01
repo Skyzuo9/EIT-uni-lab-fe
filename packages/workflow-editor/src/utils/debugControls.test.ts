@@ -64,14 +64,26 @@ describe('workflowDebugControls', () => {
     ])
   })
 
-  it('blocks every command while busy, disabled, or terminal', () => {
+  it('blocks every command while busy or terminal', () => {
     expect(controls('paused', { busy: true }).every((item) => item.disabled))
-      .toBe(true)
-    expect(controls('paused', { enabled: false }).every((item) => item.disabled))
       .toBe(true)
     for (const status of ['completed', 'failed', 'cancelled', 'terminated'] as const) {
       expect(controls(status).every((item) => item.disabled)).toBe(true)
     }
+  })
+
+  it('enables only terminate for a normal full workflow run', () => {
+    expect(
+      controls('disabled', { enabled: false, runStatus: 'running' })
+        .filter((control) => !control.disabled)
+        .map((control) => control.command)
+    ).toEqual(['terminate'])
+    expect(
+      controls('disabled', {
+        enabled: false,
+        runStatus: 'cancel_requested'
+      }).every((control) => control.disabled)
+    ).toBe(true)
   })
 
   it('describes emergency stop truthfully as run-scoped rather than a site-wide hard stop', () => {

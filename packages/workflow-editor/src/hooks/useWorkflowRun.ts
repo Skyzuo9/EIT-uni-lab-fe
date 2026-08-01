@@ -254,6 +254,10 @@ export function useWorkflowRun({
 
   const debugStatus = run?.debug?.status || 'disabled'
   const runStatus = run?.status || 'draft'
+  const runActive = Boolean(
+    run && !TERMINAL_RUN_STATES.has(run.status)
+  )
+  const terminationPending = runStatus === 'cancel_requested'
   const outputNodes: WorkflowRunNode[] = runNodes.length
     ? runNodes
     : nodes.map((node) => ({
@@ -268,6 +272,24 @@ export function useWorkflowRun({
         result: {},
         attempt: 0
       }))
+
+  const terminateRun = (): void => {
+    if (!run || !runActive || terminationPending) return
+    if (run.debug?.enabled) {
+      command(
+        'terminate',
+        {},
+        '终止请求已由 OS 接受；等待当前运行收敛'
+      )
+      return
+    }
+    void withBusy(async () => {
+      const next = await runtime.cancelRun(run.id)
+      setRun(next)
+      await refreshRun(run.id)
+      setMessage('终止请求已由 OS 接受；等待当前运行收敛')
+    })
+  }
 
   return {
     run,
@@ -294,6 +316,7 @@ export function useWorkflowRun({
     ).length,
     outputNodes,
     startRun,
+    terminateRun,
     command,
     toggleBreakpoint,
     setExecutionStart,

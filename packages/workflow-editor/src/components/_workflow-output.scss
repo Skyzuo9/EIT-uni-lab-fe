@@ -242,6 +242,43 @@
   font: 12px/1.5 var(--unilab-font-mono);
 }
 
+.workflow :global(.workflow-runtime__node-log) {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--unilab-color-border);
+  border-radius: var(--unilab-radius-control);
+  background: var(--unilab-color-surface);
+}
+
+.workflow :global(.workflow-runtime__node-log) header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--unilab-space-2);
+  padding: 6px var(--unilab-space-2);
+  color: var(--unilab-color-text);
+  border-bottom: 1px solid var(--unilab-color-border);
+  font-size: 12px;
+}
+
+.workflow :global(.workflow-runtime__node-log) small {
+  color: var(--unilab-color-text-muted);
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.workflow :global(.workflow-runtime__node-log) pre {
+  max-height: 120px;
+  margin: 0;
+  padding: var(--unilab-space-2);
+  overflow: auto;
+  color: var(--unilab-color-text);
+  background: var(--unilab-color-surface-muted);
+  font: 12px/1.5 var(--unilab-font-mono);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
 .workflow :global(.workflow-runtime__events) {
   height: 100%;
   padding: var(--unilab-space-2) var(--unilab-space-3);

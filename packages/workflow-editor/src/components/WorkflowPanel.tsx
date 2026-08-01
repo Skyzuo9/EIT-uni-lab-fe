@@ -507,9 +507,13 @@ export default function WorkflowPanel({
           startNodeId={workflowRun.executionScope.startNodeId}
           breakpointCount={workflowRun.breakpoints.size}
           controls={workflowRun.debugControls}
-          onCommand={(nextCommand, acceptedMessage) =>
+          onCommand={(nextCommand, acceptedMessage) => {
+            if (nextCommand === 'terminate') {
+              workflowRun.terminateRun()
+              return
+            }
             workflowRun.command(nextCommand, {}, acceptedMessage)
-          }
+          }}
         />
 
         <WorkflowOutput
