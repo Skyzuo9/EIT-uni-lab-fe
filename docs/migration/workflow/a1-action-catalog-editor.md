@@ -2,18 +2,18 @@
 
 日期：2026-08-01
 
-实现分支：`migration/a1-action-catalog-editor`
+实现分支：`migration/a1-action-catalog-e2e`
 
-Frontend 基线：`integration/fe-os-migration@a641fa6fa38b223ec90648a2c308c67d4a57b6fd`
+Frontend 基线：`integration/fe-os-migration@95c0720`
 
-OS 合同基线：`integration/workflow-task-runtime@91b00dd030483058a6d0aafc42f143de829cc1bc`
+OS 合同基线：`integration/workflow-task-runtime@21e42beee58062abcf3417841e2db4c44a154dc9`
 
 跨仓协议权威：[Uni-Lab-Core #153](https://github.com/Uni-Lab-OS/Uni-Lab-Core/issues/153)
 
 跨仓验收门：[Uni-Lab-Core #159](https://github.com/Uni-Lab-OS/Uni-Lab-Core/issues/159)
 
-状态：**implementation spec 已起草；只允许文档工作。production RED 与 production
-implementation 仍被第 10 节的跨仓治理冲突阻塞。**
+状态：**HUMAN APPROVED / IMPLEMENTATION AUTHORIZED — 2026-08-01。用户已完成本 spec
+评审并授权在真实 OS TemplateCatalog HTTP 上接入原 Persistent workbench。**
 
 ## 1. 结果边界
 
@@ -70,7 +70,7 @@ WorkflowNodeTemplate/WorkflowHandleTemplate 与 fingerprint。
 - 不实现 M1 Reservation/Claim、Material 冲突决策、M2 selector、ExecutionPlan、设备执行、
   Task output 或 Debugger Hold。
 - 不把模板 identity 与在线 device instance 混为一体，不显示伪造的 busy/online 状态。
-- 本 spec 阶段不修改 production/test source，也不提交 RED。
+- 本轮在独立 RED 与 exact-SHA review 门内修改 production/test source。
 
 ## 4. services 深模块 Interface
 
@@ -226,12 +226,12 @@ Cloud 旧 panel、静态 JSON、测试 fixture、live device action list 或上�
 5. **A1-FE-4 cross-repo gate**：连接真实 OS persisted Catalog，删除 production heuristics，
    产出 Python/JSON/DAG 与刷新证据。
 
-具体分轮只能在第 10 节治理冲突解决后建立。本 spec 不授权先写一个前端假 DTO 再等待 OS
-追赶。
+这些切片属于同一个 A1 owning round；不得先写前端假 DTO 再等待 OS，也不得把未合入切片
+堆成新 round。
 
 ## 9. 测试与接受门
 
-治理解除后，独立 RED 至少覆盖：
+独立 RED 至少覆盖：
 
 - services exact route/envelope、snake_case→typed projection、authority/fingerprint 隔离；
 - malformed/partial Catalog、重复 UUID、错误 parent、未知 editor control 全部 fail closed；
@@ -265,20 +265,14 @@ Core gate 固定 OS/FE exact SHA，证明同一 Action 在 Python、JSON、DAG �
 Catalog 更新产生 fingerprint conflict，保存/刷新 identity 不漂移，非法类型/缺参/错误
 Handle 由 OS 拒绝，浏览器无 `console.error`/`pageerror`，且不存在 parallel workbench。
 
-## 10. 当前治理阻塞
+## 10. 本轮授权与门禁
 
-[Core #158](https://github.com/Uni-Lab-OS/Uni-Lab-Core/issues/158) 正在裁决以下冲突：
-[Core #104](https://github.com/Uni-Lab-OS/Uni-Lab-Core/issues/104) 当前有效文本要求每个
-implementation round **至少两名**独立 test-author 与 **至少三名**独立 reviewer；OS
-`AGENTS.md` 要求 **恰好一名** test-author、**恰好一名** reviewer，并禁止并发 subagent。
-A1 是跨仓同一合同，不能用 FE 单边 RED 绕过 OS owning round 的冲突。
+用户在本会话中完成 OS/FE spec 评审并明确授权实现。A1 作为同一跨仓 owning round，按 OS
+仓 `AGENTS.md` 使用同一名独立 test-author 与同一名独立 reviewer：
 
-因此在权威治理文档明确 supersede/收窄其中一组规则前：
-
-- 本分支只允许本 implementation spec；
-- 不分派 production RED author，不创建/合入 RED commit；
-- 不修改 production code，不用 mock Catalog 建立既成 DTO；
-- 不宣称进入 `stage:implementation`。
-
-Core #153 继续保持 `stage:protocol-definition`。治理冲突解决、OS/FE implementation spec
-与 Core integration spec 复核完成后，才允许按最终唯一门禁并行启动 OS/FE RED。
+- FE 从当前 `integration/fe-os-migration` 建独立分支，并固定 OS integration SHA；
+- test-author 先提交 services/workflow-editor RED，不写 production；
+- FE 只消费真实 OS persisted Catalog，不以 page route、静态 fixture 或 live device list
+  冒充 E2E；
+- 最终 reviewer 同时检查 OS/FE exact SHA 与 SZLab 证据；除非用户另行要求，不修改远端
+  GitHub issue 或 stage。
