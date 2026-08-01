@@ -220,8 +220,8 @@ export function formatAuthoringDiagnostics(
 ): string {
   return diagnostics
     .map((item) => {
-      const location = item.start_line
-        ? `L${item.start_line}:${item.start_column || 1} `
+      const location = item.source_range
+        ? `L${item.source_range.start_line}:${item.source_range.start_column} `
         : ''
       return `${location}${item.code}: ${item.message}`
     })

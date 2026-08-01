@@ -48,15 +48,19 @@ export interface WorkflowValidationResult {
   edgeCount?: number
 }
 
+export interface WorkflowAuthoringDiagnosticSourceRange {
+  start_line: number
+  start_column: number
+  end_line: number
+  end_column: number
+}
+
 export interface WorkflowAuthoringDiagnostic {
   severity: 'error' | 'warning'
   code: string
   message: string
   node_id?: string
-  start_line?: number
-  start_column?: number
-  end_line?: number
-  end_column?: number
+  source_range?: WorkflowAuthoringDiagnosticSourceRange
 }
 
 export type WorkflowAuthoringCandidate = Record<string, unknown> & {

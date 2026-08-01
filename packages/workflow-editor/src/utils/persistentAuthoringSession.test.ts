@@ -9,6 +9,7 @@ import {
   AuthoringOperationQueue,
   authoringProjection,
   authoringStateMessage,
+  diagnosticRange,
   draftSaveMessage,
   isSameAuthoringVersion,
   isCurrentAuthoringInvalidation
@@ -89,6 +90,18 @@ describe('persistent Authoring session coordination', () => {
       .toBe('草稿已保存，但存在错误，修复后才能应用')
     expect(authoringProjection(aggregate()).kind).toBe('candidate')
     expect(authoringProjection(aggregate({ candidate: null })).kind).toBe('applied')
+  })
+
+  it('renders the nested diagnostic source range returned by OS', () => {
+    expect(diagnosticRange({
+      source_range: {
+        start_line: 3,
+        start_column: 5,
+        end_line: 4,
+        end_column: 8
+      }
+    })).toBe('3:5–4:8')
+    expect(diagnosticRange({})).toBe('')
   })
 
   it('ignores an SSE tuple already represented by the installed aggregate', () => {

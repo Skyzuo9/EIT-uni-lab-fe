@@ -92,13 +92,15 @@ export function isAuthoringConflict(value: unknown): boolean {
 }
 
 export function diagnosticRange(diagnostic: {
-  start_line?: number
-  start_column?: number
-  end_line?: number
-  end_column?: number
+  source_range?: {
+    start_line: number
+    start_column: number
+    end_line: number
+    end_column: number
+  }
 }): string {
-  if (diagnostic.start_line === undefined) return ''
-  const start = `${diagnostic.start_line}:${diagnostic.start_column ?? 1}`
-  if (diagnostic.end_line === undefined) return start
-  return `${start}–${diagnostic.end_line}:${diagnostic.end_column ?? 1}`
+  const range = diagnostic.source_range
+  if (!range) return ''
+  const start = `${range.start_line}:${range.start_column}`
+  return `${start}–${range.end_line}:${range.end_column}`
 }
