@@ -113,8 +113,10 @@ function SectionView({ section }: {
 function DeviceIcon(): React.JSX.Element {
   return (
     <svg aria-hidden="true" viewBox="0 0 20 20">
-      <circle cx="10" cy="10" r="3.2" />
-      <path d="M10 2.2v2M10 15.8v2M2.2 10h2M15.8 10h2M4.5 4.5l1.4 1.4M14.1 14.1l1.4 1.4M15.5 4.5l-1.4 1.4M5.9 14.1l-1.4 1.4" />
+      <rect x="2.5" y="3" width="15" height="14" rx="2" />
+      <rect x="5" y="6" width="6" height="4" rx="0.75" />
+      <circle cx="14.25" cy="8" r="1.25" />
+      <path d="M5 13.5h5.5M13 13.5h1.5" />
     </svg>
   );
 }
@@ -140,10 +142,10 @@ function SceneIcon(): React.JSX.Element {
 function WorkflowIcon(): React.JSX.Element {
   return (
     <svg aria-hidden="true" viewBox="0 0 20 20">
-      <circle cx="4" cy="5" r="1.5" />
-      <circle cx="16" cy="5" r="1.5" />
-      <circle cx="16" cy="15" r="1.5" />
-      <path d="M5.5 5h3a3 3 0 0 1 3 3v4a3 3 0 0 0 3 3M11.5 8a3 3 0 0 1 3-3" />
+      <rect x="2.5" y="2.5" width="5" height="4" rx="1" />
+      <rect x="12.5" y="2.5" width="5" height="4" rx="1" />
+      <rect x="7.5" y="13.5" width="5" height="4" rx="1" />
+      <path d="M5 6.5V9h5v4.5M15 6.5V9h-5" />
     </svg>
   );
 }
