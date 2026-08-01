@@ -13,9 +13,15 @@ WorkflowNodeJob REST 与全局 `/api/v1/events` SSE。
 
 ## 2. UI 复用边界
 
+本切片的前端基线必须包含活跃产品分支
+`origin/kernel-workbench-20260720@5a986181d3cdc6be74d1519e51d2d17db8b7d89d`；
+不得从缺少该基线的旧迁移分支重新实现工作台。
+
 下列既有实现必须复用，不建立平行 UI：
 
 - `WorkflowDag` 与 Authoring 代码/DAG 双面工作台；
+- `WorkflowNodeCard` 已有的 `⚑` 起始点、`●` 断点按钮，以及 DAG 右键/双击快捷交互；
+- `CodeEditor/useCodeMirror` 已有的起始点、断点、不执行与 Runtime 状态行标记；
 - `WorkflowDebugger` 的控制条 DOM、class、按钮分组、状态标记和键盘语义；
 - `WorkflowOutput` 的折叠 dock、节点列表、tab、错误区域和响应式布局；
 - `workflow.module.scss` 现有 palette、design tokens、密度与断点。
@@ -23,6 +29,12 @@ WorkflowNodeJob REST 与全局 `/api/v1/events` SSE。
 允许的改动仅限：把两个 Runtime 组件的 props 最小泛化为中性 view model、增加
 Task/Job 状态 label/class、在 Persistent panel 中组合运行区，以及为新组合增加必要
 尺寸规则。不得创建截图专用页面、替代工作台、新视觉系统或重排 Authoring 主流程。
+
+起始点与断点在 UI1B 中是下一次 Debugger launch 的本地配置投影：设置、取消后必须
+同时反映到原 DAG 卡片/连线和原代码 gutter，但普通 `normal | step` Task create/command
+不得携带或暗中应用这些参数。专用 OS Debugger launch contract、多个起始 UUID 的协议与
+真实调试执行归 FE #1 / Core #6；UI1B 不得为恢复 UI 而重新调用旧
+`/api/v1/runtime/runs*`、旧 `set_breakpoints` command 或 Runtime WebSocket。
 
 ## 3. Controller public seam
 
@@ -68,14 +80,17 @@ feedback cursor、partial-failure 的可见恢复流程、SSE 断连补水和 OS
 Playwright 使用 production OS 进程、真实 SQLite、真实 HTTP/SSE 和 production web UI；
 不得 `page.route`、返回伪造 Task/Job DTO 或访问测试专用页面。一个 serial 场景覆盖：
 
-1. Authoring/DAG 就绪，原 UI 未被替换；
-2. 创建 normal Task，显示 Task identity 与预创建 Jobs；
-3. pause command 先显示 accepted，随后 SSE/REST 显示 paused；
-4. resume command 先显示 accepted，随后显示 active；
-5. cancel command 先显示 accepted，随后 Task/Jobs 显示 canceled；
-6. reload 后恢复同一 Task 与 Jobs。
+1. Authoring/DAG 就绪，原节点 `⚑` / `●` 控件可见，原 UI 未被替换；
+2. 设置起始点，DAG 显示起点及起点前不执行投影，代码 gutter 显示对应标记；
+3. 设置断点，DAG 与代码 gutter 同时显示对应标记；
+4. 取消断点和起始点，两个表面同步清除配置投影；
+5. 创建 normal Task，显示 Task identity 与预创建 Jobs；
+6. pause command 先显示 accepted，随后 SSE/REST 显示 paused；
+7. resume command 先显示 accepted，随后显示 active；
+8. cancel command 先显示 accepted，随后 Task/Jobs 显示 canceled；
+9. reload 后恢复同一 Task 与 Jobs。
 
-至少保存 6 张有上述不同语义的浏览器截图。测试同时记录所有 Runtime requests，
+至少保存 8 张有上述不同语义的浏览器截图。测试同时记录所有 Runtime requests，
 断言只出现 `/api/v1/workflow-tasks*` 与 `/api/v1/events`，不出现
 `/api/v1/runtime/runs*`、Runtime WebSocket、Task-scoped event route 或 polling。
 
