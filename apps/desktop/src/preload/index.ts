@@ -4,6 +4,13 @@ import type {
   LocalRuntimePathKind,
   LocalRuntimeSnapshot
 } from '../shared/localRuntime'
+import type {
+  ObservabilityStatus,
+  TraceDetailQuery,
+  TraceDetailResult,
+  TraceListQuery,
+  TraceListResult
+} from '../shared/observability'
 
 // 登录会话结构(与主进程 authManager.AuthSession 保持一致)
 export interface AuthUserInfo {
@@ -79,6 +86,17 @@ const api = {
       ipcRenderer.on('runtime:snapshot', wrapped)
       return () => ipcRenderer.removeListener('runtime:snapshot', wrapped)
     }
+  },
+  observability: {
+    getStatus: (): Promise<ObservabilityStatus> =>
+      ipcRenderer.invoke('observability:getStatus'),
+    listTraces: (query?: TraceListQuery): Promise<TraceListResult> =>
+      ipcRenderer.invoke('observability:listTraces', query),
+    getTrace: (
+      traceId: string,
+      query?: TraceDetailQuery
+    ): Promise<TraceDetailResult> =>
+      ipcRenderer.invoke('observability:getTrace', traceId, query)
   }
 }
 

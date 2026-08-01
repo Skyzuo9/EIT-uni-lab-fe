@@ -89,7 +89,14 @@ describe('LocalRuntimeManager command plan', () => {
       '--skip_env_check'
     ])
     expect(plan.edge.env['ROS_DOMAIN_ID']).toBe('42')
+    expect(plan.edge.env['UNILABOS_OBSERVABILITYCONFIG_ENABLED']).toBe('true')
+    expect(plan.edge.env['UNILABOS_OBSERVABILITYCONFIG_PROJECT_NAME']).toBe(
+      'uni-lab-electron'
+    )
     expect(plan.edge.env['PYTHONUNBUFFERED']).toBe('1')
+    expect(plan.edge.env['PATH']?.split(delimiter)[0]).toBe(
+      join(fixture.config.environmentPath, 'bin')
+    )
     expect(plan.edge.env['PYTHONPATH']?.split(delimiter).slice(0, 2)).toEqual([
       fixture.osRoot,
       join(fixture.szlabRoot, 'packages', 'szlab_poly_studio')
