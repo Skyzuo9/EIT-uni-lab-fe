@@ -8,17 +8,15 @@
     "dev": "unset ELECTRON_RUN_AS_NODE; electron-vite dev",
     "build": "electron-vite build",
     "preview": "unset ELECTRON_RUN_AS_NODE; electron-vite preview",
-    "package:mac": "electron-vite build && electron-builder --mac",
-    "package:win": "electron-vite build && electron-builder --win",
+    "package:mac": "node scripts/package-macos.mjs",
+    "package:win": "node scripts/package-windows.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run && node scripts/verify-icons.mjs && node scripts/verify-installer.mjs"
-  },
-  "dependencies": {
-    "@unilab/kernel-web": "workspace:*"
   },
   "devDependencies": {
     "@tailwindcss/vite": "4.1.14",
     "@types/node": "^22.10.0",
+    "@unilab/kernel-web": "workspace:*",
     "@vitejs/plugin-react": "^4.3.4",
     "electron": "^33.2.0",
     "electron-builder": "^25.1.8",
