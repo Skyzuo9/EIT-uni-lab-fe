@@ -10,9 +10,6 @@ let os: PersistentAuthoringOs
 
 const PREPARE_NODE_UUID = '20000000-0000-4000-8000-000000000001'
 const ANALYZE_NODE_UUID = '20000000-0000-4000-8000-000000000002'
-const PREPARE_CYCLES_TARGET = '40000000-0000-4000-8000-000000000002'
-const PREPARE_SAMPLE_SOURCE = '40000000-0000-4000-8000-000000000005'
-const ANALYZE_REPORT_SOURCE = '41000000-0000-4000-8000-000000000004'
 
 test.describe.configure({ mode: 'serial' })
 
@@ -199,6 +196,29 @@ test('Candidate Workflow I/O survives real OS apply and result-record round-trip
       JSON.stringify({ version: 1, workflowId: workflowUuid })
     )
   }, { key: storageKey, workflowUuid: os.workflowUuid })
+  const published = await readEnvelope<AuthoringAggregate>(
+    `${os.url}/api/v1/workflows/${os.workflowUuid}/authoring`
+  )
+  const publishedGraph = published.candidate?.graph
+  if (!publishedGraph) throw new Error('Published Candidate graph is missing')
+  const prepareCyclesTarget = requireHandleUuid(
+    publishedGraph,
+    PREPARE_NODE_UUID,
+    'cycles',
+    'target'
+  )
+  const prepareSampleSource = requireHandleUuid(
+    publishedGraph,
+    PREPARE_NODE_UUID,
+    'prepared',
+    'source'
+  )
+  const analyzeReportSource = requireHandleUuid(
+    publishedGraph,
+    ANALYZE_NODE_UUID,
+    'report',
+    'source'
+  )
   await page.goto(
     `/?section=workflow&localOsUrl=${encodeURIComponent(os.url)}`
   )
@@ -220,7 +240,7 @@ test('Candidate Workflow I/O survives real OS apply and result-record round-trip
   })
   const cyclesTargetOption = cyclesTarget.locator(
     `option[data-workflow-node-uuid="${PREPARE_NODE_UUID}"]` +
-    `[data-workflow-handle-template-uuid="${PREPARE_CYCLES_TARGET}"]`
+    `[data-workflow-handle-template-uuid="${prepareCyclesTarget}"]`
   )
   const cyclesTargetValue = await cyclesTargetOption.getAttribute('value')
   expect(cyclesTargetValue).not.toBeNull()
@@ -237,7 +257,7 @@ test('Candidate Workflow I/O survives real OS apply and result-record round-trip
   })
   const reportSourceOption = reportSource.locator(
     `option[data-workflow-node-uuid="${ANALYZE_NODE_UUID}"]` +
-    `[data-workflow-handle-template-uuid="${ANALYZE_REPORT_SOURCE}"]`
+    `[data-workflow-handle-template-uuid="${analyzeReportSource}"]`
   )
   const reportSourceValue = await reportSourceOption.getAttribute('value')
   expect(reportSourceValue).not.toBeNull()
@@ -320,18 +340,18 @@ test('Candidate Workflow I/O survives real OS apply and result-record round-trip
       sample: {
         kind: 'node_output',
         workflow_node_uuid: PREPARE_NODE_UUID,
-        source_handle_uuid: PREPARE_SAMPLE_SOURCE
+        source_handle_uuid: prepareSampleSource
       },
       analysis_report: {
         kind: 'node_output',
         workflow_node_uuid: ANALYZE_NODE_UUID,
-        source_handle_uuid: ANALYZE_REPORT_SOURCE
+        source_handle_uuid: analyzeReportSource
       }
     }
   })
   expect(nodeInputBindings(applied.applied_graph, PREPARE_NODE_UUID)).toEqual(
     expect.objectContaining({
-      [PREPARE_CYCLES_TARGET]: { parameter: 'repeat_count' }
+      [prepareCyclesTarget]: { parameter: 'repeat_count' }
     })
   )
 
@@ -937,6 +957,28 @@ function nodeInputBindings(
   const metaData = node.meta_data as Record<string, unknown>
   const unilab = metaData.unilab as Record<string, unknown>
   return unilab.input_bindings as Record<string, unknown>
+}
+
+function requireHandleUuid(
+  graph: AuthoringAggregate['applied_graph'],
+  nodeUuid: string,
+  handleKey: string,
+  ioType: 'source' | 'target'
+): string {
+  const node = graph.nodes.find(({ uuid }) => uuid === nodeUuid)
+  if (!node) throw new Error(`Workflow Node ${nodeUuid} is missing`)
+  const templateUuid = String(node.workflow_node_template_uuid || '')
+  const matches = graph.handle_templates.filter((handle) =>
+    handle.workflow_node_template_uuid === templateUuid &&
+    handle.handle_key === handleKey &&
+    handle.io_type === ioType
+  )
+  if (matches.length !== 1 || typeof matches[0]?.uuid !== 'string') {
+    throw new Error(
+      `Expected one ${ioType} Handle ${handleKey} owned by ${nodeUuid}`
+    )
+  }
+  return matches[0].uuid
 }
 
 async function dragNode(

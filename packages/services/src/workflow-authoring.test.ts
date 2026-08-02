@@ -29,6 +29,9 @@ interface PersistentAuthoringPort {
     }
     authoring: AuthoringAggregate
   }>
+  validateWorkflowAuthoring: (
+    request: AuthoringTransformRequest
+  ) => Promise<AuthoringTransform>
   subscribeWorkflowAuthoring: (
     workflowUuid: string,
     onInvalidate: (event: AuthoringChangedEvent) => void,
@@ -69,6 +72,24 @@ interface AuthoringChangedEvent {
     draft_hash: string | null
     candidate_hash: string | null
   }
+}
+
+interface AuthoringTransformRequest {
+  workflow_uuid: string
+  revision: number
+  source_uri: string
+  graph: Record<string, unknown>
+  python_source: string
+}
+
+interface AuthoringTransform {
+  diagnostics: unknown[]
+  graph: Record<string, unknown> | null
+  normalized_python_source: string | null
+  source_map: unknown[]
+  changeset: Record<string, unknown> | null
+  compiler_version: string
+  template_catalog_fingerprint: string
 }
 
 const aggregate: AuthoringAggregate = {
@@ -156,6 +177,52 @@ describe('persistent workflow authoring port', () => {
     expect(JSON.parse(String(init.body))).toEqual({
       candidate_hash: HASH_B
     })
+  })
+
+  it('validates a persistent graph/source pair through the closed transform port', async () => {
+    const transform: AuthoringTransform = {
+      diagnostics: [],
+      graph: aggregate.applied_graph,
+      normalized_python_source: 'result = build()\n',
+      source_map: [],
+      changeset: null,
+      compiler_version: 'i1-e2e',
+      template_catalog_fingerprint: HASH_A
+    }
+    const request = vi.fn()
+      .mockResolvedValueOnce({ code: 0, data: transform })
+      .mockResolvedValueOnce({
+        code: 0,
+        data: { ...transform, unexpected: true }
+      })
+    const runtime = persistentPort(request)
+    const body: AuthoringTransformRequest = {
+      workflow_uuid: WORKFLOW_UUID,
+      revision: 7,
+      source_uri: 'package://production_lab/workflows/demo.py',
+      graph: aggregate.applied_graph,
+      python_source: 'result = build()\n'
+    }
+
+    await expect(runtime.validateWorkflowAuthoring(body))
+      .resolves.toEqual(transform)
+    expect(request.mock.calls[0]?.[0]).toBe('/api/v1/authoring/validate')
+    const init = request.mock.calls[0]?.[1] as RequestInit
+    expect(init.method).toBe('POST')
+    const requestBody = JSON.parse(
+      String(init.body)
+    ) as Record<string, unknown>
+    expect(requestBody).toEqual(body)
+    expect(Object.keys(requestBody)).toEqual([
+      'workflow_uuid',
+      'revision',
+      'source_uri',
+      'graph',
+      'python_source'
+    ])
+
+    await expect(runtime.validateWorkflowAuthoring(body))
+      .rejects.toMatchObject({ code: 'INVALID_API_RESPONSE' })
   })
 
   it.each([
