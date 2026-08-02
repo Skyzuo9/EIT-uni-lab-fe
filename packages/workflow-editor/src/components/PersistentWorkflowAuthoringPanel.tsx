@@ -77,8 +77,16 @@ import {
 } from './WorkflowOutput'
 import { WorkflowIoSummary } from './WorkflowIoSummary'
 import { WorkflowIoEditor } from './WorkflowIoEditor'
+import { WorkflowTaskInputForm } from './WorkflowTaskInputForm'
 import { useWorkflowSessionStore } from './WorkflowSessionProvider'
 import { WorkflowTraceViewer } from './WorkflowTraceViewer'
+import {
+  createWorkflowTaskInputForm,
+  setWorkflowTaskInputField,
+  submitWorkflowTaskInput,
+  type WorkflowTaskInputFieldState,
+  type WorkflowTaskInputFormState
+} from '../utils/workflowTaskInputForm'
 import styles from './workflow.module.scss'
 
 interface PersistentWorkflowAuthoringPanelProps {
@@ -157,6 +165,11 @@ export function PersistentWorkflowAuthoringPanel({
   const [taskRunMode, setTaskRunMode] =
     useState<Exclude<WorkflowTaskRunMode, 'single_node'>>('normal')
   const [runtimeBusy, setRuntimeBusy] = useState(false)
+  const [taskInputAuthority, setTaskInputAuthority] =
+    useState<WorkflowAuthoringAggregate | null>(null)
+  const [taskInputForm, setTaskInputForm] =
+    useState<WorkflowTaskInputFormState | null>(null)
+  const [taskInputProblem, setTaskInputProblem] = useState<string | null>(null)
   const [traceViewerOpen, setTraceViewerOpen] = useState(false)
   const [outputExpanded, setOutputExpanded] = useState(true)
   const [outputTab, setOutputTab] = useState<WorkflowOutputTab>('nodes')
@@ -1154,6 +1167,72 @@ export function PersistentWorkflowAuthoringPanel({
       setError(errorMessage(connectError))
     }
   }
+
+  const openTaskInputForm = (): void => {
+    setTaskInputProblem(null)
+    runRuntime(async () => {
+      try {
+        const latest = await queue.run(
+          () => runtime.getWorkflowAuthoring(workflowUuid)
+        )
+        setTaskInputAuthority(latest)
+        setTaskInputForm(createWorkflowTaskInputForm(latest))
+        setMessage(
+          `本次运行使用 Applied revision ${latest.workflow_revision}；` +
+          '未填写 default 字段将保持省略'
+        )
+      } catch (openError) {
+        setError(errorMessage(openError))
+        throw openError
+      }
+    })
+  }
+
+  const updateTaskInput = (
+    name: string,
+    state: WorkflowTaskInputFieldState
+  ): void => {
+    if (!taskInputForm) return
+    const next = setWorkflowTaskInputField(taskInputForm, name, state)
+    setTaskInputForm(next)
+    setTaskInputProblem(null)
+  }
+
+  const submitTaskInput = (): void => {
+    if (!taskInputAuthority || !taskInputForm) return
+    const submittedForm = taskInputForm
+    runRuntime(async () => {
+      try {
+        const result = await submitWorkflowTaskInput({
+          form: submittedForm,
+          readApplied: () => queue.run(
+            () => runtime.getWorkflowAuthoring(workflowUuid)
+          ),
+          createTask: (input) => taskRuntime.create(taskRunMode, input)
+        })
+        if (result.kind === 'reproject_before_create') {
+          setTaskInputAuthority(result.authority)
+          setTaskInputForm(result.form)
+          setTaskInputProblem(result.message)
+          return
+        }
+        if (result.kind === 'reproject_after_create') {
+          setTaskInputAuthority(result.authority)
+          setTaskInputForm(result.form)
+          setTaskInputProblem(result.message)
+          setMessage(result.message)
+          return
+        }
+        setTaskInputAuthority(null)
+        setTaskInputForm(null)
+        setTaskInputProblem(null)
+        setMessage(result.message)
+      } catch (submitError) {
+        setTaskInputProblem(errorMessage(submitError))
+        throw submitError
+      }
+    })
+  }
   const appliedIo = aggregate
     ? workflowIoMetadata(aggregate.applied_graph)
     : null
@@ -1294,18 +1373,16 @@ export function PersistentWorkflowAuthoringPanel({
               busy ||
               runtimeBusy ||
               dirty ||
-              aggregate?.state !== 'applied'
+              !aggregate
             }
             title={
               dirty
                 ? '请先保存当前可写表示'
-                : aggregate?.state !== 'applied'
-                  ? '请先应用当前工作流候选'
-                  : undefined
+                : aggregate
+                  ? `将使用 Applied revision ${aggregate.workflow_revision}`
+                  : 'Applied Workflow 尚未就绪'
             }
-            onClick={() => runRuntime(
-              () => taskRuntime.create(taskRunMode)
-            )}
+            onClick={openTaskInputForm}
           >
             {runtimeBusy ? '处理中…' : '开始运行'}
           </button>
@@ -1338,6 +1415,22 @@ export function PersistentWorkflowAuthoringPanel({
           </button>
           <button type="button" onClick={taskRuntime.clearError}>关闭</button>
         </div>
+      )}
+      {taskInputAuthority && taskInputForm && (
+        <WorkflowTaskInputForm
+          aggregate={taskInputAuthority}
+          form={taskInputForm}
+          busy={runtimeBusy}
+          problem={taskInputProblem}
+          onChange={updateTaskInput}
+          onProblem={setTaskInputProblem}
+          onSubmit={submitTaskInput}
+          onCancel={() => {
+            setTaskInputAuthority(null)
+            setTaskInputForm(null)
+            setTaskInputProblem(null)
+          }}
+        />
       )}
       {diagnostics.length > 0 && (
         <section

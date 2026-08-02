@@ -356,6 +356,92 @@
     justify-self: start;
   }
 
+  :global(.workflow-task-input-form) {
+    display: grid;
+    max-height: min(440px, 52vh);
+    overflow: auto;
+    gap: 10px;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--unilab-color-border);
+    background: var(--unilab-color-surface);
+  }
+
+  :global(.workflow-task-input-form) > header,
+  :global(.workflow-task-input-form) > header > div,
+  :global(.workflow-task-input-form) li {
+    display: grid;
+    gap: 5px;
+  }
+
+  :global(.workflow-task-input-form) > header p,
+  :global(.workflow-task-input-form) li p {
+    margin: 0;
+    color: var(--unilab-color-text-muted);
+    font-size: 11px;
+  }
+
+  :global(.workflow-task-input-form) ol {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  :global(.workflow-task-input-form) li {
+    min-width: 0;
+    padding: 10px;
+    border: 1px solid var(--unilab-color-border);
+    border-radius: var(--unilab-radius-md);
+    background: var(--unilab-color-surface-subtle);
+  }
+
+  :global(.workflow-task-input-form__heading),
+  :global(.workflow-task-input-form) > footer {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  :global(.workflow-task-input-form__heading) code,
+  :global(.workflow-task-input-form__heading) span {
+    color: var(--unilab-color-text-muted);
+    font-size: 10px;
+  }
+
+  :global(.workflow-task-input-form) label {
+    display: grid;
+    gap: 4px;
+    color: var(--unilab-color-text-muted);
+    font-size: 10px;
+  }
+
+  :global(.workflow-task-input-form) input,
+  :global(.workflow-task-input-form) select,
+  :global(.workflow-task-input-form) textarea {
+    min-width: 0;
+    padding: 6px 8px;
+    color: var(--unilab-color-text);
+    border: 1px solid var(--unilab-color-border-strong);
+    border-radius: var(--unilab-radius-control);
+    background: var(--unilab-color-surface);
+    font: 11px var(--unilab-font-mono, monospace);
+  }
+
+  :global(.workflow-task-input-form) textarea {
+    min-height: 72px;
+    resize: vertical;
+  }
+
+  :global(.workflow-task-input-form) > footer {
+    position: sticky;
+    bottom: -12px;
+    justify-content: flex-end;
+    padding: 10px 0 0;
+    background: var(--unilab-color-surface);
+  }
+
   :global(.persistent-authoring__empty) {
     margin: 0;
     padding: 24px;
@@ -417,6 +503,10 @@
     }
 
     :global(.persistent-authoring__io-editor-grid) {
+      grid-template-columns: 1fr;
+    }
+
+    :global(.workflow-task-input-form) ol {
       grid-template-columns: 1fr;
     }
 

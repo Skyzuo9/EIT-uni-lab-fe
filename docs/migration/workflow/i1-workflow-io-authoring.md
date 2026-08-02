@@ -1,21 +1,58 @@
 # I1 Workflow I/O authoring and Task form implementation spec
 
-<!-- current-i1-fe-round:2026-08-02-candidate-editor-review-remediation -->
+<!-- current-i1-fe-round:2026-08-02-applied-task-input-form-e2e-green -->
 > [!IMPORTANT]
 > 本块是本文唯一 current 实现状态；下文早期 baseline、分支名与 RED 启动记录保留为
 > provenance，但由本块 supersede。
 >
-> Candidate editor round 从远端 `integration/fe-os-migration@65588b75272747a48bc260dc28ddf799ef229280`
-> 建立 `migration/i1-workflow-io-editor`。原 `PersistentWorkflowAuthoringPanel` 现已支持编辑
-> Workflow Input/Output、保存真实 target/source Handle UUID binding、只读展示隐式
-> ResourceSlot pass-through，并通过 OS generate-python → validate → Apply → reload → compile
-> fixed point。没有建立第二工作台或前端 schema authority。
+> Candidate editor 已以 non-squash merge 集成到
+> `integration/fe-os-migration@0bf83ea93de9aff5a10f0419a3322cff27b48595`。本轮从该精确
+> 基线建立 `migration/i1-applied-task-input-form`，在原
+> `PersistentWorkflowAuthoringPanel` 中加入 Applied-contract Task 启动表单；没有建立第二
+> 工作台、第二 store 或浏览器 schema authority。
 >
-> 修复后的 OS dependency 已发布到
-> `integration/workflow-task-runtime@96f96ff42be7da881f2b6e6d81e6462e12daf1c6`；完整真实 OS
-> Authoring browser suite 为 `6 passed`。本轮只完成 Candidate editor，Applied-contract Task
-> form、ResourceSlot control 与完整 Core #157 gate 仍是下一 round；整个 I1 继续保持
-> implementation，不提前实现 O1。
+> 普通 Run 现在只从最新 Applied aggregate 投影输入表单；Candidate 即使存在也不会进入 Task
+> payload。表单保留 omitted / explicit null / explicit value 三态，提交前重新读取 Applied
+> revision，创建后核对 Task snapshot revision。真实 OS 标量输入/default browser gate 已通过，
+> 完整 Authoring suite 为 `7 passed`。ResourceSlot control 与完整 Core #157 gate 仍是下一
+> round；整个 I1 继续保持 implementation，不提前实现 O1。
+
+## Applied Task input form round ledger（2026-08-02）
+
+本轮沿用 I1 唯一独立 test-author `/root/i1_fe_io_editor_red`。实现基线为 FE integration
+`0bf83ea93de9aff5a10f0419a3322cff27b48595`，tests-only 原始提交与实现分支 cherry-pick 如下：
+
+| 行为 | tests-only 原始提交 | 实现分支提交 |
+|---|---|---|
+| Applied-only form projection、三态 codec 与 Task payload RED | `fa530496478b17653d30a0e04b8afa1b167bfec2` | `f7df68eccc874e00bf9526bdb55a8269c6a093d1` |
+| 真实 OS scalar input/default browser RED | `21899bcea70b715d11badcff360fa374215cd6c5` | `6cc9b675c3c0ad5cebb536d6afe01f832a276326` |
+
+首轮测试在 production 实现前为 `7 failed / 12 passed`；第二轮真实 OS 夹具已成功 compile、Apply，
+并在旧 production 点击 Run 后因不存在输入表单而得到预期 RED。生产提交
+`8891fa0ac2f98cb47b42a53aae573c712a172a57` 完成以下合同：
+
+- `WorkflowTaskController.create(runMode, input?)` 只转发共享 Task 字段和用户明确 input；
+- Run 打开表单前读取 Applied graph，提交前再次 rehydrate；revision/contract 变化时重投影并要求
+  用户重新确认，Task 创建后再核对 snapshot revision；
+- required omission 被本地即时拒绝；optional untouched 保持 omission，让 OS 应用 authoritative
+  default；`""`、`0`、`false`、`[]`、`{}` 与显式 `null` 均原样提交；
+- scalar、object、list 采用 strict no-coercion validation；ResourceSlot 在本轮 fail closed，等待
+  下一 round 由应用装配层注入 Material readonly projection；
+- 起点、断点、target node、FE revision hint 均不进入普通 WorkflowTask payload。
+
+首次候选 `2f72e7dd497a8973dd2b7fb0fd4b345088b06570` 的独立双审为 Standards
+`0B/0NB`、Spec `3B/0NB`。同一 test-author 以原始 tests-only
+`3dae7c5e5ec453fc21fb2268b49af2d370b527fa`（实现分支 cherry-pick
+`8b88039b8f33199ed21bea80c1f40f7e520a3e8d`）冻结审查补测，在首次候选上得到
+`7 passed / 4 failed`：受约束值被过早拒绝、缺少 pre/post-create revision race seam、panel
+未委托该 seam。生产修复将编辑中间态的结构校验与最终 build 的完整约束校验分离，并把
+pre-create no-POST 与 post-create authority rehydrate/reproject 收敛到同一个可测提交 seam。
+
+当前证据：workflow-editor 为 `17 files / 111 tests passed`，
+services 为 `10 files / 68 tests passed`，根级 typecheck 与 runtime static contract 通过；真实 OS
+Authoring browser suite 为 `7 passed`，其中 scalar 用例精确验证 request omission、OS canonical
+default、snapshot revision，并保持 forbidden request / WebSocket / pageerror / application error 为
+`0`。完整全仓 test、Web/Desktop build、exact-SHA 独立双审与 publication 在候选门禁完成后补记。
 
 ## Candidate editor round ledger（2026-08-02）
 

@@ -15,6 +15,8 @@ export const SECOND_AUTHORING_WORKFLOW_UUID =
   '10000000-0000-4000-8000-000000000002'
 export const RUNTIME_AUTHORING_WORKFLOW_UUID =
   '10000000-0000-4000-8000-000000000003'
+export const SCALAR_INPUT_WORKFLOW_UUID =
+  '10000000-0000-4000-8000-000000000004'
 
 export interface PersistentAuthoringOs {
   url: string
@@ -22,6 +24,7 @@ export interface PersistentAuthoringOs {
   workflowUuid: string
   secondWorkflowUuid: string
   runtimeWorkflowUuid: string
+  scalarInputWorkflowUuid: string
   sourcePath: string
   secondSourcePath: string
   logs: () => string
@@ -148,6 +151,7 @@ export async function startPersistentAuthoringOs(
     workflowUuid: AUTHORING_WORKFLOW_UUID,
     secondWorkflowUuid: SECOND_AUTHORING_WORKFLOW_UUID,
     runtimeWorkflowUuid: RUNTIME_AUTHORING_WORKFLOW_UUID,
+    scalarInputWorkflowUuid: SCALAR_INPUT_WORKFLOW_UUID,
     sourcePath,
     secondSourcePath,
     logs: () => output,
@@ -224,6 +228,8 @@ second_workflow_uuid = "${SECOND_AUTHORING_WORKFLOW_UUID}"
 second_source_path = package_root / "workflows" / "second.py"
 runtime_workflow_uuid = "${RUNTIME_AUTHORING_WORKFLOW_UUID}"
 runtime_source_path = package_root / "workflows" / "runtime.py"
+scalar_input_workflow_uuid = "${SCALAR_INPUT_WORKFLOW_UUID}"
+scalar_input_source_path = package_root / "workflows" / "scalar_input.py"
 source_path.parent.mkdir(parents=True, exist_ok=True)
 source_path.write_text(_source(), encoding="utf-8")
 second_source = _source(workflow_uuid=second_workflow_uuid)
@@ -257,6 +263,36 @@ def runtime_control_demo():
 ''',
     encoding="utf-8",
 )
+scalar_input_source_path.write_text(
+    f'''from lab.devices import Reactor
+from unilabos.registry.annotations import JSONValue
+from unilabos.workflow.authoring import device, workflow_definition, workflow_output
+
+
+reactor: Reactor = device()
+
+
+@workflow_definition(
+    workflow_uuid="{scalar_input_workflow_uuid}",
+    displayname="Scalar input Task form",
+    description="I1 real-OS scalar input/default gate.",
+)
+def scalar_input_task(
+    *,
+    label: str,
+    count: int,
+    enabled: bool,
+    tags: list[str],
+    config: dict[str, JSONValue],
+    note: str | None = None,
+    attempts: int = 3,
+):
+    # unilab:node_uuid=20000000-0000-4000-8000-000000000031
+    completed = reactor.finalize(report=label)
+    return workflow_output(report=completed.report)
+''',
+    encoding="utf-8",
+)
 editable_root.mkdir(parents=True, exist_ok=True)
 (editable_root / "package.yaml").write_text(
     "\n".join([
@@ -270,6 +306,8 @@ editable_root.mkdir(parents=True, exist_ok=True)
         "    source: production_lab/workflows/second.py",
         f"  - workflow_uuid: {runtime_workflow_uuid}",
         "    source: production_lab/workflows/runtime.py",
+        f"  - workflow_uuid: {scalar_input_workflow_uuid}",
+        "    source: production_lab/workflows/scalar_input.py",
         "",
     ]),
     encoding="utf-8",
@@ -302,6 +340,13 @@ try:
             description="Real Task/Job Runtime E2E",
             meta_data={},
             workflow_uuid=runtime_workflow_uuid,
+        )
+        service.create_workflow(
+            name="I1 scalar input Task form fixture",
+            tags=[],
+            description="Real OS scalar Task input/default E2E",
+            meta_data={},
+            workflow_uuid=scalar_input_workflow_uuid,
         )
         imports = _catalog_imports()
         for item in imports:
