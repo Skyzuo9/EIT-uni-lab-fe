@@ -16,6 +16,15 @@ Handle binding 与由 Applied Contract 生成的 Task 启动表单。OS 继续�
 跨仓验收门为
 [Core #157](https://github.com/Uni-Lab-OS/Uni-Lab-Core/issues/157)。
 
+### 2026-08-02 continuation 基线
+
+旧 implementation branch 只保留冻结 spec provenance。当前续作从最新远端
+`integration/fe-os-migration@ff12bfa033a67045732e7fa738b9e4a9979d71e5`
+建立 `migration/i1-workflow-io-authoring-ff12`。本轮唯一独立 test-author 的首个 RED 为
+`d60869a7d2c8cd2154cf72206e024bbbcf91ec98`，对应 services typed-contract GREEN 为
+`8d8c57f`。后续 integration/E2E/review 必须固定续作分支 exact SHA；不得把
+`a641fa6...` 表述为当前 production 起点。
+
 本轮复用现有 `packages/workflow-editor`、`packages/services/src/workflow.ts`、
 CodeMirror、DAG、Debugger 与 Output，不建立第二套工作台、第二个 Workflow store 或
 OS/backend 分叉组件。
