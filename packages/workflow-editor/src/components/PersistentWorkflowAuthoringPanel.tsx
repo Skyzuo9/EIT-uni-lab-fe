@@ -93,6 +93,7 @@ import {
   type WorkflowResourceSlotOptionsPort,
   type WorkflowResourceSlotOptionsState
 } from '../utils/workflowResourceSlotOptions'
+import { workflowTaskInputProblem } from '../utils/workflowTaskInputProblem'
 import styles from './workflow.module.scss'
 
 interface PersistentWorkflowAuthoringPanelProps {
@@ -1247,7 +1248,7 @@ export function PersistentWorkflowAuthoringPanel({
         setTaskInputProblem(null)
         setMessage(result.message)
       } catch (submitError) {
-        setTaskInputProblem(errorMessage(submitError))
+        setTaskInputProblem(workflowTaskInputProblem(submitError))
         throw submitError
       }
     })
