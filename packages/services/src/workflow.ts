@@ -244,6 +244,11 @@ export interface WorkflowAuthoringGeneratePythonRequest {
   graph: WorkflowAuthoringGraph
 }
 
+export interface WorkflowAuthoringValidateRequest
+  extends WorkflowAuthoringGeneratePythonRequest {
+  python_source: string
+}
+
 export interface WorkflowAuthoringChangedEvent {
   id: string
   event: 'workflow.authoring.changed'
@@ -492,6 +497,9 @@ export interface WorkflowRuntimePort {
   generateWorkflowAuthoringPython: (
     request: WorkflowAuthoringGeneratePythonRequest
   ) => Promise<WorkflowAuthoringTransformResult>
+  validateWorkflowAuthoring: (
+    request: WorkflowAuthoringValidateRequest
+  ) => Promise<WorkflowAuthoringTransformResult>
   getWorkflow: (workflowId: string) => Promise<WorkflowDocument>
   saveWorkflow: (
     workflowId: string,
@@ -675,12 +683,20 @@ export function createWorkflowRuntime(
       void connect()
       return subscription
     },
-    generateWorkflowAuthoringPython: (body) =>
-      authoringRequest('/api/v1/authoring/generate-python', {
+    generateWorkflowAuthoringPython: async (body) =>
+      decodeWorkflowAuthoringTransform(await authoringRequest(
+        '/api/v1/authoring/generate-python', {
         method: 'POST',
         headers: jsonHeaders(),
         body: JSON.stringify(body)
-      }),
+      })),
+    validateWorkflowAuthoring: async (body) =>
+      decodeWorkflowAuthoringTransform(await authoringRequest(
+        '/api/v1/authoring/validate', {
+        method: 'POST',
+        headers: jsonHeaders(),
+        body: JSON.stringify(body)
+      })),
     getWorkflow: (workflowId) =>
       request(`/api/v1/workflows/${encodeURIComponent(workflowId)}/graph`),
     saveWorkflow: (workflowId, revision, expectedRevisionId) =>
@@ -896,8 +912,116 @@ function decodeWorkflowAuthoringAggregate(
   }
 }
 
+function decodeWorkflowAuthoringTransform(
+  value: unknown
+): WorkflowAuthoringTransformResult {
+  try {
+    const transform = authoringRecord(value)
+    requireExactAuthoringKeys(transform, [
+      'diagnostics',
+      'graph',
+      'normalized_python_source',
+      'source_map',
+      'changeset',
+      'compiler_version',
+      'template_catalog_fingerprint'
+    ])
+    if (!Array.isArray(transform.diagnostics)) throw invalidAuthoringResponse()
+    for (const diagnostic of transform.diagnostics) {
+      decodeAuthoringDiagnostic(diagnostic)
+    }
+    if (transform.graph !== null) decodeWorkflowAuthoringGraph(transform.graph)
+    if (
+      transform.normalized_python_source !== null &&
+      typeof transform.normalized_python_source !== 'string'
+    ) throw invalidAuthoringResponse()
+    if (!Array.isArray(transform.source_map)) throw invalidAuthoringResponse()
+    for (const entry of transform.source_map) decodeAuthoringSourceMap(entry)
+    if (transform.changeset !== null) authoringRecord(transform.changeset)
+    if (
+      typeof transform.compiler_version !== 'string' ||
+      !transform.compiler_version
+    ) throw invalidAuthoringResponse()
+    if (
+      typeof transform.template_catalog_fingerprint !== 'string' ||
+      !/^sha256:[0-9a-f]{64}$/.test(
+        transform.template_catalog_fingerprint
+      )
+    ) throw invalidAuthoringResponse()
+    return transform as unknown as WorkflowAuthoringTransformResult
+  } catch (error) {
+    if (error instanceof ServiceError) throw error
+    throw invalidAuthoringResponse()
+  }
+}
+
+function decodeAuthoringDiagnostic(value: unknown): void {
+  const diagnostic = authoringRecord(value)
+  requireAllowedAuthoringKeys(
+    diagnostic,
+    ['severity', 'code', 'message'],
+    ['node_id', 'path', 'workflow_handle_template_uuid', 'source_range']
+  )
+  if (
+    (diagnostic.severity !== 'error' && diagnostic.severity !== 'warning') ||
+    typeof diagnostic.code !== 'string' ||
+    typeof diagnostic.message !== 'string'
+  ) throw invalidAuthoringResponse()
+  for (const key of [
+    'node_id',
+    'path',
+    'workflow_handle_template_uuid'
+  ]) {
+    if (diagnostic[key] !== undefined && typeof diagnostic[key] !== 'string') {
+      throw invalidAuthoringResponse()
+    }
+  }
+  if (diagnostic.source_range !== undefined) {
+    const range = authoringRecord(diagnostic.source_range)
+    requireExactAuthoringKeys(range, [
+      'start_line',
+      'start_column',
+      'end_line',
+      'end_column'
+    ])
+    for (const key of [
+      'start_line',
+      'start_column',
+      'end_line',
+      'end_column'
+    ]) {
+      if (!Number.isInteger(range[key])) throw invalidAuthoringResponse()
+    }
+  }
+}
+
+function decodeAuthoringSourceMap(value: unknown): void {
+  const entry = authoringRecord(value)
+  requireExactAuthoringKeys(entry, [
+    'workflow_node_uuid',
+    'start_line',
+    'start_column',
+    'end_line',
+    'end_column'
+  ])
+  if (typeof entry.workflow_node_uuid !== 'string') {
+    throw invalidAuthoringResponse()
+  }
+  for (const key of [
+    'start_line',
+    'start_column',
+    'end_line',
+    'end_column'
+  ]) {
+    if (!Number.isInteger(entry[key])) throw invalidAuthoringResponse()
+  }
+}
+
 function decodeWorkflowAuthoringGraph(value: unknown): void {
   const graph = authoringRecord(value)
+  for (const key of ['nodes', 'edges', 'node_templates', 'handle_templates']) {
+    if (!Array.isArray(graph[key])) throw invalidAuthoringResponse()
+  }
   const workflow = authoringRecord(graph.workflow)
   if (workflow.meta_data === undefined) return
   const metaData = authoringRecord(workflow.meta_data)
@@ -906,6 +1030,28 @@ function decodeWorkflowAuthoringGraph(value: unknown): void {
   const ioKeys = ['input_contract', 'output_contract', 'output_bindings']
   if (!ioKeys.some((key) => Object.hasOwn(unilab, key))) return
   decodeWorkflowIoMetadata(unilab)
+}
+
+function requireExactAuthoringKeys(
+  value: Record<string, unknown>,
+  keys: string[]
+): void {
+  if (
+    Object.keys(value).length !== keys.length ||
+    keys.some((key) => !Object.hasOwn(value, key))
+  ) throw invalidAuthoringResponse()
+}
+
+function requireAllowedAuthoringKeys(
+  value: Record<string, unknown>,
+  required: string[],
+  optional: string[]
+): void {
+  const allowed = new Set([...required, ...optional])
+  if (
+    required.some((key) => !Object.hasOwn(value, key)) ||
+    Object.keys(value).some((key) => !allowed.has(key))
+  ) throw invalidAuthoringResponse()
 }
 
 function authoringRecord(value: unknown): Record<string, unknown> {

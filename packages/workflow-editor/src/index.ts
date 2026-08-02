@@ -6,6 +6,7 @@ export {
   WorkflowSessionProvider
 } from './components/WorkflowSessionProvider'
 export { WorkflowIoSummary } from './components/WorkflowIoSummary'
+export { WorkflowIoEditor } from './components/WorkflowIoEditor'
 export type {
   WorkflowTraceDetailQuery,
   WorkflowTraceDetailResult,

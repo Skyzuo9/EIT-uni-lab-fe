@@ -1,5 +1,79 @@
 # I1 Workflow I/O authoring and Task form implementation spec
 
+<!-- current-i1-fe-round:2026-08-02-candidate-editor-review-remediation -->
+> [!IMPORTANT]
+> 本块是本文唯一 current 实现状态；下文早期 baseline、分支名与 RED 启动记录保留为
+> provenance，但由本块 supersede。
+>
+> Candidate editor round 从远端 `integration/fe-os-migration@65588b75272747a48bc260dc28ddf799ef229280`
+> 建立 `migration/i1-workflow-io-editor`。原 `PersistentWorkflowAuthoringPanel` 现已支持编辑
+> Workflow Input/Output、保存真实 target/source Handle UUID binding、只读展示隐式
+> ResourceSlot pass-through，并通过 OS generate-python → validate → Apply → reload → compile
+> fixed point。没有建立第二工作台或前端 schema authority。
+>
+> 修复后的 OS dependency 已发布到
+> `integration/workflow-task-runtime@96f96ff42be7da881f2b6e6d81e6462e12daf1c6`；完整真实 OS
+> Authoring browser suite 为 `6 passed`。本轮只完成 Candidate editor，Applied-contract Task
+> form、ResourceSlot control 与完整 Core #157 gate 仍是下一 round；整个 I1 继续保持
+> implementation，不提前实现 O1。
+
+## Candidate editor round ledger（2026-08-02）
+
+本轮唯一独立 test-author 为 `/root/i1_fe_io_editor_red`，tests-only 分支
+`test/i1-workflow-io-editor`。测试原始提交与实现分支 cherry-pick 对应如下：
+
+| 行为 | tests-only 原始提交 | 实现分支提交 |
+|---|---|---|
+| Candidate I/O mutation 与原工作台 markup RED | `ae1301e85fc1c45da7bacc2e1bcfabb8d199232b` | `1cdf06f` |
+| 真实 OS Candidate browser fixed point | `12fde5b119048fd2f34bbebaa0f0faadfaeb5250` | `b2c1789` |
+| D-068 显式同名 output 保留 | `0d6aed62984cb3330bb42f8aae39514fa5dd62fd` | `70587c4` |
+| 真实 Catalog Handle identity 与 transport | `1f29dae15bd37f89814d2ced62ad56b5acc09e27` | `8c4bde0` |
+| E2E OS diagnostic log | `4918843a19c759c77f38db7498c2fe2d01f4cbc8` | `662a7e6` |
+| read/write graph fixed-point semantics | `07be80e22e9004bec3514bfac685f7da2a924ef0` | `e3f88ee` |
+| ReactFlow MiniMap 外真实 pointer click | `164adf6dac524c9a210b8cbba95488520b81de2a` | `a526f7e` |
+
+Production 实现提交为：`0d3c33b`（I/O contract mutation）、`4261060`（保留原布局）、
+`85cd791`（OS Validate gate）、`25707a8`（closed Authoring transform response）、
+`4bee7ae454a9ce1dad778c1bdaf802dcd407e2c2`（完整 v1 schema、ordered descriptor、
+稳定 target identity、直接 unbind 与 ResourceSlot required/default 语义）。
+
+独立 reviewer 对 `fa365fc4822a6649e076f586891db40cbcfacb12` 的首次精确审查为
+Standards `0B/0NB`、Spec `3B/2NB`。唯一 test-author 为五项审查发现补入 tests-only
+`826a52aa4d446ed06f3878c93c2ca4aeef6c090d`，实现分支 cherry-pick 为 `182843c`；
+补测先得到 `9 failed / 14 passed`，再由 `4bee7ae...` 收敛为 `23/23 passed`。
+
+核心合同：
+
+- selector label 只用于显示；持久化只使用 selected graph 中 Node owner 对应的真实 Handle UUID；
+- input rename/delete 会同步清理 binding，output binding 只允许 Workflow input 或真实 source Handle；
+- 所有 Workflow ResourceSlot input 在不存在显式同名 output 时合成 OS-managed 同名透传；
+  显式同名 output 保留，其 schema assignability 由 OS 校验；Action target compatibility 与
+  allowlist 传导是独立 binding gate，不是 D-068 合成前提；
+- recursive nullable/list ResourceSlot schema 按 D-067 producer allowlist ⊆ consumer allowlist；
+- JSON edit 先 generate canonical Python，再显式 Validate，最后沿用现有 diff/draft/apply；
+- production 不按 label、`data_key`、Action 类型或 port ordinal 猜测 identity。
+
+审查修复前 production head 为 `a526f7ec6593d9101eedda2d997a2f365b5a3df1`；审查修复
+production head 为 `4bee7ae454a9ce1dad778c1bdaf802dcd407e2c2`。最终 exact-SHA
+必须包含本 ledger，并由同一名独立 reviewer 完成 Standards/Spec 双审闭环。
+
+根级 project-reference typecheck 随后发现一个只影响 TypeScript union narrowing 的门禁问题，
+由 `2d790c85ffc22375c7ed61c4d8b4fa367661be67` 修复；它不改变 ResourceSlot/default
+合同，审查补测仍为 `23/23 passed`。因此最终 review 前 production head 为 `2d790c8...`。
+
+已完成证据：
+
+| 门禁 | 结果 |
+|---|---|
+| workflow-editor unit/component | `15 files / 99 tests passed`；其中审查补测 `23/23 passed` |
+| services unit | `8 files / 59 tests passed` |
+| 真实 OS Authoring browser suite | `6 passed`；forbidden request / WebSocket / pageerror / application error 为 `0` |
+| OS retained Catalog projection | OS candidate `ee6b23ec715fb3253686f654ab80375c32ba51fb`、integration `96f96ff42be7da881f2b6e6d81e6462e12daf1c6`、Standards/Spec `0B/0NB` |
+| FE 根级门禁 | 全仓 typecheck/test、Web build、Desktop build、runtime static contract 与 diff-check 均通过 |
+
+全仓 typecheck/test、Web/Desktop build、runtime static contract、diff-check 与本轮 exact-SHA
+review 结果在最终候选门禁后记录到 repository-local ticket；Task form 不混入本 round。
+
 ## Outcome 与基线
 
 本轮在原 `PersistentWorkflowAuthoringPanel` 中增加 Workflow Input/Output definition、真实

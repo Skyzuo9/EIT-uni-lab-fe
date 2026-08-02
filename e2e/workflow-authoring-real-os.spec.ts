@@ -8,6 +8,9 @@ import {
 
 let os: PersistentAuthoringOs
 
+const PREPARE_NODE_UUID = '20000000-0000-4000-8000-000000000001'
+const ANALYZE_NODE_UUID = '20000000-0000-4000-8000-000000000002'
+
 test.describe.configure({ mode: 'serial' })
 
 test.beforeAll(async () => {
@@ -150,6 +153,307 @@ test('real production OS regenerates its persisted Candidate graph', async () =>
 
   expect(generated.graph).toEqual(aggregate.candidate.graph)
   expect(generated.normalized_python_source.length).toBeGreaterThan(0)
+})
+
+test('Candidate Workflow I/O survives real OS apply and result-record round-trip', async ({
+  page
+}) => {
+  test.setTimeout(120_000)
+  const browserErrors: string[] = []
+  const applicationErrors: string[] = []
+  const webSockets: string[] = []
+  const requests: Array<{ method: string; url: string; path: string }> = []
+  page.on('console', (message) => {
+    if (message.type() === 'error') browserErrors.push(message.text())
+  })
+  page.on('pageerror', (error) => browserErrors.push(error.message))
+  page.on('websocket', (webSocket) => webSockets.push(webSocket.url()))
+  page.on('request', (request) => {
+    requests.push({
+      method: request.method(),
+      url: request.url(),
+      path: new URL(request.url()).pathname
+    })
+  })
+  page.on('response', (response) => {
+    if (
+      response.url().startsWith(`${os.url}/api/v1/`) &&
+      response.status() >= 400
+    ) {
+      applicationErrors.push(
+        `${response.request().method()} ${new URL(response.url()).pathname} ` +
+        `${response.status()}`
+      )
+    }
+  })
+
+  const storageKey = `unilab.workflow.active.${
+    encodeURIComponent(`local-python:${os.url}`)
+  }.v1`
+  await page.addInitScript(({ key, workflowUuid }) => {
+    localStorage.setItem(
+      key,
+      JSON.stringify({ version: 1, workflowId: workflowUuid })
+    )
+  }, { key: storageKey, workflowUuid: os.workflowUuid })
+  const published = await readEnvelope<AuthoringAggregate>(
+    `${os.url}/api/v1/workflows/${os.workflowUuid}/authoring`
+  )
+  const publishedGraph = published.candidate?.graph
+  if (!publishedGraph) throw new Error('Published Candidate graph is missing')
+  const prepareCyclesTarget = requireHandleUuid(
+    publishedGraph,
+    PREPARE_NODE_UUID,
+    'cycles',
+    'target'
+  )
+  const prepareSampleSource = requireHandleUuid(
+    publishedGraph,
+    PREPARE_NODE_UUID,
+    'prepared',
+    'source'
+  )
+  const analyzeReportSource = requireHandleUuid(
+    publishedGraph,
+    ANALYZE_NODE_UUID,
+    'report',
+    'source'
+  )
+  await page.goto(
+    `/?section=workflow&localOsUrl=${encodeURIComponent(os.url)}`
+  )
+  await expect(page.getByText('完整控制流 DAG')).toBeVisible()
+  await page.getByRole('button', {
+    name: '画布模式',
+    exact: true
+  }).click()
+
+  const ioEditor = page.getByRole('region', {
+    name: 'Workflow I/O 编辑器'
+  })
+  await expect(ioEditor).toBeVisible()
+  const cyclesInput = ioEditor.locator(
+    '[data-workflow-input-name="cycles"]'
+  )
+  const cyclesTarget = cyclesInput.getByRole('combobox', {
+    name: 'Action input 绑定'
+  })
+  const cyclesTargetOption = cyclesTarget.locator(
+    `option[data-workflow-node-uuid="${PREPARE_NODE_UUID}"]` +
+    `[data-workflow-handle-template-uuid="${prepareCyclesTarget}"]`
+  )
+  const cyclesTargetValue = await cyclesTargetOption.getAttribute('value')
+  expect(cyclesTargetValue).not.toBeNull()
+  await cyclesTarget.selectOption(cyclesTargetValue as string)
+  await cyclesInput.getByRole('textbox', { name: '输入名称' })
+    .fill('repeat_count')
+  await page.keyboard.press('Tab')
+
+  const reportOutput = ioEditor.locator(
+    '[data-workflow-output-name="report"]'
+  )
+  const reportSource = reportOutput.getByRole('combobox', {
+    name: 'Workflow output 绑定'
+  })
+  const reportSourceOption = reportSource.locator(
+    `option[data-workflow-node-uuid="${ANALYZE_NODE_UUID}"]` +
+    `[data-workflow-handle-template-uuid="${analyzeReportSource}"]`
+  )
+  const reportSourceValue = await reportSourceOption.getAttribute('value')
+  expect(reportSourceValue).not.toBeNull()
+  await reportSource.selectOption(reportSourceValue as string)
+  await reportOutput.getByRole('textbox', { name: '输出名称' })
+    .fill('analysis_report')
+  await page.keyboard.press('Tab')
+
+  const generationBeforeSave = countRequests(
+    requests,
+    'POST',
+    '/authoring/generate-python'
+  )
+  const validationBeforeSave = countRequests(
+    requests,
+    'POST',
+    '/authoring/validate'
+  )
+  await page.getByRole('button', { name: '保存草稿', exact: true }).click()
+  const diffDialog = page.getByRole('dialog', { name: '完整 Python 差异' })
+  await expect(diffDialog).toBeVisible()
+  await expect.poll(() => countRequests(
+    requests,
+    'POST',
+    '/authoring/generate-python'
+  )).toBeGreaterThan(generationBeforeSave)
+  await expect.poll(() => countRequests(
+    requests,
+    'POST',
+    '/authoring/validate'
+  )).toBeGreaterThan(validationBeforeSave)
+
+  const draftSaved = page.waitForResponse((response) =>
+    response.url().endsWith(
+      `/api/v1/workflows/${os.workflowUuid}/authoring/draft`
+    ) && response.request().method() === 'PUT' && response.status() === 200
+  )
+  await diffDialog.getByRole('button', {
+    name: '接受完整差异并保存'
+  }).click()
+  await draftSaved
+  await expect(page.getByRole('button', {
+    name: '应用工作流',
+    exact: true
+  })).toBeEnabled()
+  const appliedResponse = page.waitForResponse((response) =>
+    response.url().endsWith(
+      `/api/v1/workflows/${os.workflowUuid}/authoring/apply`
+    ) && response.request().method() === 'POST' && response.status() === 200
+  )
+  await page.getByRole('button', {
+    name: '应用工作流',
+    exact: true
+  }).click()
+  await appliedResponse
+
+  const applied = await readEnvelope<AuthoringAggregate>(
+    `${os.url}/api/v1/workflows/${os.workflowUuid}/authoring`
+  )
+  expect(workflowIo(applied.applied_graph)).toMatchObject({
+    input_contract: {
+      parameters: expect.arrayContaining([
+        expect.objectContaining({ name: 'repeat_count' })
+      ])
+    },
+    output_contract: {
+      outputs: expect.arrayContaining([
+        expect.objectContaining({
+          name: 'sample',
+          schema: { $slot: 'ResourceSlot' },
+          implicit: false
+        }),
+        expect.objectContaining({
+          name: 'analysis_report',
+          implicit: false
+        })
+      ])
+    },
+    output_bindings: {
+      sample: {
+        kind: 'node_output',
+        workflow_node_uuid: PREPARE_NODE_UUID,
+        source_handle_uuid: prepareSampleSource
+      },
+      analysis_report: {
+        kind: 'node_output',
+        workflow_node_uuid: ANALYZE_NODE_UUID,
+        source_handle_uuid: analyzeReportSource
+      }
+    }
+  })
+  expect(nodeInputBindings(applied.applied_graph, PREPARE_NODE_UUID)).toEqual(
+    expect.objectContaining({
+      [prepareCyclesTarget]: { parameter: 'repeat_count' }
+    })
+  )
+
+  await page.reload()
+  await expect(page.getByText('完整控制流 DAG')).toBeVisible()
+  const reloaded = await readEnvelope<AuthoringAggregate>(
+    `${os.url}/api/v1/workflows/${os.workflowUuid}/authoring`
+  )
+  expect(workflowIo(reloaded.applied_graph))
+    .toEqual(workflowIo(applied.applied_graph))
+  expect(nodeInputBindings(reloaded.applied_graph, PREPARE_NODE_UUID))
+    .toEqual(nodeInputBindings(applied.applied_graph, PREPARE_NODE_UUID))
+
+  const sourceUri = reloaded.draft?.source_uri
+  if (!sourceUri) throw new Error('Applied Workflow has no source URI')
+  const generated = await readEnvelope<AuthoringTransform>(
+    `${os.url}/api/v1/authoring/generate-python`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        workflow_uuid: os.workflowUuid,
+        revision: reloaded.workflow_revision,
+        source_uri: sourceUri,
+        graph: reloaded.applied_graph
+      })
+    }
+  )
+  expect(generated.normalized_python_source)
+    .toMatch(/class\s+\w+Result\(TypedDict\):/)
+  expect(generated.normalized_python_source).toContain(
+    "return {'sample': prepared.prepared, 'analysis_report': analyzed.report}"
+  )
+  expect(generated.normalized_python_source).not.toContain('workflow_output')
+  expect(generated.graph).not.toBeNull()
+  if (!generated.graph) throw new Error('Generated Applied graph is missing')
+  expect(generated.graph).toEqual(reloaded.applied_graph)
+
+  const compiled = await readEnvelope<AuthoringTransform>(
+    `${os.url}/api/v1/authoring/compile`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        workflow_uuid: os.workflowUuid,
+        revision: reloaded.workflow_revision,
+        source_uri: sourceUri,
+        python_source: generated.normalized_python_source,
+        applied_graph: reloaded.applied_graph
+      })
+    }
+  )
+  expect(compiled.graph).not.toBeNull()
+  const regenerated = await readEnvelope<AuthoringTransform>(
+    `${os.url}/api/v1/authoring/generate-python`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        workflow_uuid: os.workflowUuid,
+        revision: reloaded.workflow_revision,
+        source_uri: sourceUri,
+        graph: compiled.graph
+      })
+    }
+  )
+  expect(regenerated.normalized_python_source)
+    .toBe(generated.normalized_python_source)
+  expect(regenerated.graph).not.toBeNull()
+  if (!compiled.graph || !regenerated.graph) {
+    throw new Error('Candidate round-trip graph is missing')
+  }
+  expect(regenerated.graph).toEqual(compiled.graph)
+
+  const appliedWorkflowIo = workflowIo(reloaded.applied_graph)
+  const appliedNodeBindings = allNodeInputBindings(reloaded.applied_graph)
+  const appliedGraphSemantics = graphAuthoringSemantics(reloaded.applied_graph)
+  expect(workflowIo(generated.graph)).toEqual(appliedWorkflowIo)
+  expect(allNodeInputBindings(generated.graph)).toEqual(appliedNodeBindings)
+  expect(graphAuthoringSemantics(generated.graph)).toEqual(
+    appliedGraphSemantics
+  )
+  for (const candidateGraph of [compiled.graph, regenerated.graph]) {
+    expect(workflowIo(candidateGraph)).toEqual(appliedWorkflowIo)
+    expect(allNodeInputBindings(candidateGraph)).toEqual(appliedNodeBindings)
+    expect(graphAuthoringSemantics(candidateGraph)).toEqual(
+      appliedGraphSemantics
+    )
+  }
+
+  const forbidden = requests.filter(({ path }) =>
+    path === '/api/run' ||
+    path.startsWith('/api/runtime/local/') ||
+    path.startsWith('/api/v1/runtime/runs') ||
+    path.startsWith('/ws/workflow/')
+  )
+  expect(forbidden).toEqual([])
+  expect(webSockets).toEqual([])
+  await expect(page.getByText('Authoring 操作失败', { exact: true }))
+    .toHaveCount(0)
+  expect(applicationErrors).toEqual([])
+  expect(browserErrors).toEqual([])
 })
 
 test('two configured Workflow panels keep mode, dirty state and saves isolated', async ({
@@ -438,7 +742,7 @@ test('kernel-web uses D-117 single edit authority through the real OS', async ({
   const canvasPosition = await projectedNode.getAttribute('style')
   await dragNode(page, projectedNode, 100, 50)
   expect(await projectedNode.getAttribute('style')).toBe(canvasPosition)
-  await projectedNode.click()
+  await clickNodeOutsideMiniMap(page, projectedNode)
   const nodeName = page.getByRole('textbox', { name: '节点名称' })
   await expect(nodeName).toBeEnabled()
   await nodeName.fill('prepared_canvas')
@@ -551,6 +855,12 @@ interface AuthoringAggregate {
   }
 }
 
+interface AuthoringTransform {
+  diagnostics: unknown[]
+  graph: AuthoringAggregate['applied_graph'] | null
+  normalized_python_source: string
+}
+
 interface SseEvent {
   id: string
   event: string
@@ -563,7 +873,11 @@ async function readEnvelope<Value>(
 ): Promise<Value> {
   const response = await fetch(url, init)
   const responseText = await response.text()
-  expect(response.status, responseText).toBe(200)
+  const osLogTail = os?.logs().slice(-8_000) ?? 'OS logs unavailable'
+  expect(
+    response.status,
+    `${responseText}\n\nOS log tail:\n${osLogTail}`
+  ).toBe(200)
   const envelope = JSON.parse(responseText) as {
     code: number
     data: Value
@@ -654,6 +968,119 @@ function lastRequest(
   return found
 }
 
+function workflowIo(
+  graph: AuthoringAggregate['applied_graph']
+): Record<string, unknown> {
+  const metaData = graph.workflow.meta_data as Record<string, unknown>
+  return (metaData.unilab ?? {}) as Record<string, unknown>
+}
+
+function nodeInputBindings(
+  graph: AuthoringAggregate['applied_graph'],
+  nodeUuid: string
+): Record<string, unknown> {
+  const node = graph.nodes.find(({ uuid }) => uuid === nodeUuid)
+  if (!node) throw new Error(`Workflow Node ${nodeUuid} is missing`)
+  const metaData = node.meta_data as Record<string, unknown>
+  const unilab = metaData.unilab as Record<string, unknown>
+  return unilab.input_bindings as Record<string, unknown>
+}
+
+function allNodeInputBindings(
+  graph: AuthoringAggregate['applied_graph']
+): Record<string, unknown> {
+  return Object.fromEntries(
+    graph.nodes
+      .map((node) => {
+        const metaData = node.meta_data as Record<string, unknown> | undefined
+        const unilab = metaData?.unilab as Record<string, unknown> | undefined
+        return [String(node.uuid), unilab?.input_bindings ?? {}]
+      })
+      .sort(([left], [right]) => String(left).localeCompare(String(right)))
+  )
+}
+
+const WORKFLOW_NODE_AUTHORING_FIELDS = [
+  'uuid',
+  'workflow_node_template_uuid',
+  'parent_uuid',
+  'material_uuid',
+  'name',
+  'status',
+  'type',
+  'icon',
+  'pose',
+  'param',
+  'footer',
+  'action_name',
+  'action_type',
+  'execution_policy',
+  'disabled',
+  'minimized',
+  'script',
+  'description',
+  'meta_data'
+] as const
+
+const WORKFLOW_EDGE_AUTHORING_FIELDS = [
+  'uuid',
+  'source_node_uuid',
+  'target_node_uuid',
+  'source_handle_uuid',
+  'target_handle_uuid',
+  'description',
+  'meta_data'
+] as const
+
+function graphAuthoringSemantics(
+  graph: AuthoringAggregate['applied_graph']
+): Record<string, unknown> {
+  return {
+    nodes: graph.nodes
+      .map((node) => pickFields(node, WORKFLOW_NODE_AUTHORING_FIELDS))
+      .sort(compareUuid),
+    edges: graph.edges
+      .map((edge) => pickFields(edge, WORKFLOW_EDGE_AUTHORING_FIELDS))
+      .sort(compareUuid)
+  }
+}
+
+function pickFields(
+  value: Record<string, unknown>,
+  fields: readonly string[]
+): Record<string, unknown> {
+  return Object.fromEntries(fields.map((field) => [field, value[field]]))
+}
+
+function compareUuid(
+  left: Record<string, unknown>,
+  right: Record<string, unknown>
+): number {
+  return String(left.uuid).localeCompare(String(right.uuid))
+}
+
+function requireHandleUuid(
+  graph: AuthoringAggregate['applied_graph'],
+  nodeUuid: string,
+  handleKey: string,
+  ioType: 'source' | 'target'
+): string {
+  const node = graph.nodes.find(({ uuid }) => uuid === nodeUuid)
+  if (!node) throw new Error(`Workflow Node ${nodeUuid} is missing`)
+  const templateUuid = String(node.workflow_node_template_uuid || '')
+  const matches = graph.handle_templates.filter((handle) =>
+    handle.workflow_node_template_uuid === templateUuid &&
+    handle.handle_key === handleKey &&
+    handle.io_type === ioType
+  )
+  if (matches.length !== 1 || typeof matches[0]?.uuid !== 'string') {
+    throw new Error(
+      `Expected one ${ioType} Handle ${handleKey} owned by ${nodeUuid}`
+    )
+  }
+  return matches[0].uuid
+}
+
 async function dragNode(
   page: import('@playwright/test').Page,
   node: import('@playwright/test').Locator,
@@ -668,4 +1095,46 @@ async function dragNode(
   await page.mouse.down()
   await page.mouse.move(startX + deltaX, startY + deltaY, { steps: 5 })
   await page.mouse.up()
+}
+
+async function clickNodeOutsideMiniMap(
+  page: import('@playwright/test').Page,
+  node: import('@playwright/test').Locator
+): Promise<void> {
+  const nodeBox = await node.boundingBox()
+  if (!nodeBox) throw new Error('workflow node has no bounding box')
+  const visibleMiniMaps = page.locator('.react-flow__minimap:visible')
+  const miniMapBox = await visibleMiniMaps.count() > 0
+    ? await visibleMiniMaps.first().boundingBox()
+    : null
+  const inset = Math.min(12, nodeBox.width / 4, nodeBox.height / 4)
+  const candidates = [
+    { x: nodeBox.width / 2, y: nodeBox.height / 2 },
+    { x: nodeBox.width / 4, y: nodeBox.height / 2 },
+    { x: (nodeBox.width * 3) / 4, y: nodeBox.height / 2 },
+    { x: nodeBox.width / 2, y: nodeBox.height / 4 },
+    { x: nodeBox.width / 2, y: (nodeBox.height * 3) / 4 },
+    { x: inset, y: inset },
+    { x: nodeBox.width - inset, y: inset },
+    { x: inset, y: nodeBox.height - inset },
+    { x: nodeBox.width - inset, y: nodeBox.height - inset }
+  ]
+  const clickPoint = candidates.find(({ x, y }) => {
+    if (!miniMapBox) return true
+    const pageX = nodeBox.x + x
+    const pageY = nodeBox.y + y
+    return !(
+      pageX >= miniMapBox.x &&
+      pageX <= miniMapBox.x + miniMapBox.width &&
+      pageY >= miniMapBox.y &&
+      pageY <= miniMapBox.y + miniMapBox.height
+    )
+  })
+
+  expect(
+    clickPoint,
+    'Workflow node must expose a pointer target outside the ReactFlow MiniMap'
+  ).toBeDefined()
+  if (!clickPoint) throw new Error('workflow node is fully covered by the MiniMap')
+  await node.click({ position: clickPoint })
 }
