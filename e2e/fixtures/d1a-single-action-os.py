@@ -28,6 +28,7 @@ from unilabos.registry.registry import Registry
 from unilabos.ros.nodes.presets.host_node import HostNode
 from unilabos.utils.type_check import serialize_result_info
 from unilabos.workflow.catalog import CatalogAuthority
+from unilabos.workflow.composition import compose_workflow_runtime
 
 DEVICE_ID = "D1ADevice1"
 ACTION_NAME = "test_hold"
@@ -198,9 +199,17 @@ def create_fixture_app(working_dir: Path):
     HostNode.get_instance = classmethod(  # type: ignore[method-assign]
         lambda cls, timeout=None: host
     )
+    workflow_service = compose_workflow_runtime(
+        BasicConfig.working_dir,
+        authority=BasicConfig.workflow_graph_authority,
+        editable_package_roots=BasicConfig.workflow_editable_package_roots,
+        registry_snapshot=device_snapshot,
+        resource_registry_snapshot=resource_snapshot,
+    )
     _scheduler, backend = setup_edge_scheduler(
         ws_client=client,
         host_node_getter=lambda: host,
+        workflow_tasks=workflow_service,
         device_state_db_path="off",
         workflow_history_db_path=str(working_dir / "workflow-history.db"),
     )

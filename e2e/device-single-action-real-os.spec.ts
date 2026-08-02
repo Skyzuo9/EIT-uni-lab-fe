@@ -234,6 +234,46 @@ test('one device Action becomes a formal Task/Job and returns through the origin
   )
   await capture(page, artifactDirectory, screenshots, '08-second-formal-run-succeeded.png')
 
+  const timelineResponse = await request.get(`${os.url}/api/v1/timeline`)
+  expect(timelineResponse.ok(), await timelineResponse.text()).toBe(true)
+  const timeline = await timelineResponse.json() as {
+    completed: Array<Record<string, unknown> & {
+      job_id: string
+      node_id: string
+    }>
+  }
+  assertNoSystemSource(timeline)
+  const acceptedTimelineEntry = timeline.completed.find(
+    (entry) => entry.job_id === acceptedEnvelope.data.job_uuid
+  )
+  expect(acceptedTimelineEntry).toBeDefined()
+  expect(acceptedTimelineEntry?.node_id).toBe(acceptedEnvelope.data.job_uuid)
+
+  const monitorResponse = await request.get(
+    `${os.url}/api/v1/monitor/snapshot`
+  )
+  expect(monitorResponse.ok(), await monitorResponse.text()).toBe(true)
+  const monitorSnapshot = await monitorResponse.json() as Record<string, unknown>
+  assertNoSystemSource(monitorSnapshot)
+  expect(JSON.stringify(monitorSnapshot)).toContain(
+    acceptedEnvelope.data.job_uuid
+  )
+  const schedulerWireChecks = {
+    timeline: {
+      path: '/api/v1/timeline',
+      status: timelineResponse.status(),
+      publicJobUuid: acceptedEnvelope.data.job_uuid,
+      opaqueNodeIdentity: acceptedTimelineEntry?.node_id,
+      internalSourceFields: 0
+    },
+    monitorSnapshot: {
+      path: '/api/v1/monitor/snapshot',
+      status: monitorResponse.status(),
+      containsPublicJobUuid: true,
+      internalSourceFields: 0
+    }
+  }
+
   const browserPosts = browserRequests.filter(
     (entry) => entry.method === 'POST' &&
       entry.path === '/api/v1/device-action-tasks'
@@ -273,6 +313,7 @@ test('one device Action becomes a formal Task/Job and returns through the origin
         taskUuid: acceptedEnvelope.data.task_uuid,
         jobUuid: acceptedEnvelope.data.job_uuid
       },
+      schedulerWireChecks,
       browserRequests,
       websocketUrls,
       browserErrors,
