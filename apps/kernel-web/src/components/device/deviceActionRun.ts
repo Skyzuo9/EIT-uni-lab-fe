@@ -11,7 +11,7 @@ export function matchDeviceActionTemplate(
   catalog: WorkflowActionCatalogSnapshot,
   action: DeviceAction
 ): WorkflowActionNodeTemplate | null {
-  const matches = catalog.nodeTemplates.filter((template) =>
+  const matches = catalog.actionTemplates.filter((template) =>
     template.name === action.actionName &&
     template.actionType === action.typeName
   )

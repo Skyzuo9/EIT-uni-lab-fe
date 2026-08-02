@@ -38,16 +38,50 @@ export interface WorkflowActionNodeTemplate {
   wireValue?: Record<string, unknown>
 }
 
-export interface WorkflowActionCatalogSnapshot {
+export interface WorkflowPublishedSource {
+  kind: 'package'
+  definitionFqid: string
+  module: string
+  symbol: string
+  packageCatalogDigest: string
+  definitionContentHash: string
+}
+
+export interface WorkflowPublishedNodeTemplate {
+  uuid: string
+  resourceTemplateUuid: string
+  name: string
+  displayName: string
+  workflowClass: string
+  workflowUuid: string
+  workflowRevision: number
+  appliedSourceHash: string
+  contractDigest: string
+  compositionAllowTransparent: boolean
+  inputOrder: string[]
+  outputOrder: string[]
+  schema: Record<string, unknown>
+  goal: Record<string, unknown>
+  goalDefault: Record<string, unknown>
+  result: Record<string, unknown>
+  source: WorkflowPublishedSource
+  handles: WorkflowActionHandleTemplate[]
+  wireValue?: Record<string, unknown>
+}
+
+export interface WorkflowExecutableCatalogSnapshot {
   authorityId: string
   authorityKind: 'local' | 'backend'
   fingerprint: string
-  nodeTemplates: WorkflowActionNodeTemplate[]
+  actionTemplates: WorkflowActionNodeTemplate[]
+  workflowTemplates: WorkflowPublishedNodeTemplate[]
 }
+
+export type WorkflowActionCatalogSnapshot = WorkflowExecutableCatalogSnapshot
 
 export async function loadWorkflowActionCatalog(
   http: HttpClient
-): Promise<WorkflowActionCatalogSnapshot> {
+): Promise<WorkflowExecutableCatalogSnapshot> {
   const summaries: Record<string, unknown>[] = []
   let authority: ReturnType<typeof authorityValue> | null = null
   let fingerprint: string | null = null
@@ -92,13 +126,16 @@ export async function loadWorkflowActionCatalog(
       name: stringValue(summary.name),
       displayName: stringValue(summary.display_name),
       actionType: stringValue(summary.type),
+      nodeType: stringValue(summary.node_type),
       resourceTemplateUuid: uuidValue(resource.uuid)
     }
   })
 
   const projected = await Promise.all(summaryValues.map(async (
     summary
-  ): Promise<WorkflowActionNodeTemplate | null> => {
+  ): Promise<
+    WorkflowActionNodeTemplate | WorkflowPublishedNodeTemplate | null
+  > => {
     const data = catalogEnvelope(await http.request<unknown>(
       `/api/v1/workflow-node-templates/${encodeURIComponent(summary.uuid)}`
     ))
@@ -116,12 +153,24 @@ export async function loadWorkflowActionCatalog(
       resourceTemplateUuid !== summary.resourceTemplateUuid ||
       stringValue(template.name) !== summary.name ||
       stringValue(template.display_name) !== summary.displayName ||
-      stringValue(template.type) !== summary.actionType
+      stringValue(template.type) !== summary.actionType ||
+      stringValue(template.node_type) !== summary.nodeType
     ) {
       invalidCatalog()
     }
-    const schema = typedActionSchema(template.schema)
-    if (!schema) return null
+    const rawSchema = template.schema
+    const actionSchema = typedActionSchema(rawSchema)
+    const workflowSchema = typedWorkflowSchema(rawSchema)
+    if (actionSchema && workflowSchema) invalidCatalog()
+    if (workflowSchema) {
+      return projectPublishedWorkflow(
+        template,
+        recordArray(data.handles),
+        summary,
+        workflowSchema
+      )
+    }
+    if (!actionSchema) return null
     return attachWireValue({
       uuid,
       resourceTemplateUuid,
@@ -129,7 +178,7 @@ export async function loadWorkflowActionCatalog(
       displayName: summary.displayName,
       actionClass: nullableString(template.class),
       actionType: summary.actionType,
-      schema,
+      schema: actionSchema,
       goal: recordValue(template.goal),
       goalDefault: recordValue(template.goal_default),
       handles: recordArray(data.handles).map((handle) =>
@@ -137,12 +186,17 @@ export async function loadWorkflowActionCatalog(
       )
     }, template)
   }))
-  const details = projected.filter(
-    (value): value is WorkflowActionNodeTemplate => value !== null
+  const actionTemplates = projected.filter(
+    (value): value is WorkflowActionNodeTemplate =>
+      value !== null && 'actionType' in value
+  )
+  const workflowTemplates = projected.filter(
+    (value): value is WorkflowPublishedNodeTemplate =>
+      value !== null && 'workflowUuid' in value
   )
 
   const handleUuids = new Set<string>()
-  for (const detail of details) {
+  for (const detail of [...actionTemplates, ...workflowTemplates]) {
     for (const handle of detail.handles) {
       if (handleUuids.has(handle.uuid)) invalidCatalog()
       handleUuids.add(handle.uuid)
@@ -152,8 +206,102 @@ export async function loadWorkflowActionCatalog(
     authorityId: authority.authorityId,
     authorityKind: authority.kind,
     fingerprint,
-    nodeTemplates: details
+    actionTemplates,
+    workflowTemplates
   }
+}
+
+interface WorkflowSchemaProjection {
+  schema: Record<string, unknown>
+  workflowUuid: string
+  workflowRevision: number
+  appliedSourceHash: string
+  contractDigest: string
+  compositionAllowTransparent: boolean
+  inputOrder: string[]
+  outputOrder: string[]
+  inputSchemas: Record<string, Record<string, unknown>>
+  outputSchemas: Record<string, Record<string, unknown>>
+  requiredInputs: Set<string>
+}
+
+function projectPublishedWorkflow(
+  template: Record<string, unknown>,
+  rawHandles: Record<string, unknown>[],
+  summary: {
+    uuid: string
+    name: string
+    displayName: string
+    actionType: string
+    nodeType: string
+    resourceTemplateUuid: string
+  },
+  contract: WorkflowSchemaProjection
+): WorkflowPublishedNodeTemplate {
+  if (
+    summary.actionType !== 'workflow' ||
+    summary.nodeType !== 'workflow' ||
+    summary.name !== `workflow:${contract.workflowUuid}`
+  ) invalidCatalog()
+  const unilab = closedRecord(
+    recordValue(template.meta_data).unilab,
+    ['framework_owner_only', 'workflow_source']
+  )
+  if (unilab.framework_owner_only !== true) invalidCatalog()
+  const rawSource = closedRecord(unilab.workflow_source, [
+    'kind',
+    'definition_fqid',
+    'module',
+    'symbol',
+    'package_catalog_digest',
+    'definition_content_hash'
+  ])
+  const module = absoluteModule(rawSource.module)
+  const symbol = identifierValue(rawSource.symbol)
+  const workflowClass = stringValue(template.class)
+  if (workflowClass !== `${module}:${symbol}` || rawSource.kind !== 'package') {
+    invalidCatalog()
+  }
+  const source: WorkflowPublishedSource = {
+    kind: 'package',
+    definitionFqid: stringValue(rawSource.definition_fqid),
+    module,
+    symbol,
+    packageCatalogDigest: digestValue(rawSource.package_catalog_digest),
+    definitionContentHash: digestValue(rawSource.definition_content_hash)
+  }
+  const handles = rawHandles.map((handle) =>
+    projectHandle(handle, summary.uuid)
+  )
+  validatePublishedHandles(handles, contract)
+  const goal = recordValue(template.goal)
+  const goalDefault = recordValue(template.goal_default)
+  const result = recordValue(template.result)
+  if (
+    !stringMapMatches(goal, contract.inputOrder) ||
+    !stringMapMatches(result, contract.outputOrder) ||
+    !defaultsMatch(goalDefault, contract)
+  ) invalidCatalog()
+  return attachWireValue({
+    uuid: summary.uuid,
+    resourceTemplateUuid: summary.resourceTemplateUuid,
+    name: summary.name,
+    displayName: summary.displayName,
+    workflowClass,
+    workflowUuid: contract.workflowUuid,
+    workflowRevision: contract.workflowRevision,
+    appliedSourceHash: contract.appliedSourceHash,
+    contractDigest: contract.contractDigest,
+    compositionAllowTransparent: contract.compositionAllowTransparent,
+    inputOrder: contract.inputOrder,
+    outputOrder: contract.outputOrder,
+    schema: contract.schema,
+    goal,
+    goalDefault,
+    result,
+    source,
+    handles
+  }, template)
 }
 
 function projectHandle(
@@ -227,6 +375,294 @@ function typedActionSchema(raw: unknown): Record<string, unknown> | null {
     invalidCatalog()
   }
   return schema
+}
+
+function typedWorkflowSchema(raw: unknown): WorkflowSchemaProjection | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const schema = raw as Record<string, unknown>
+  if (!Object.prototype.hasOwnProperty.call(
+    schema,
+    'x-unilabos-workflow-contract'
+  )) return null
+  requireKeys(schema, [
+    'type',
+    'additionalProperties',
+    'properties',
+    'required',
+    'x-unilabos-workflow-contract'
+  ])
+  if (schema.type !== 'object' || schema.additionalProperties !== false) {
+    invalidCatalog()
+  }
+  const properties = closedRecord(schema.properties, ['goal', 'result'])
+  const required = stringArray(schema.required)
+  if (!sameStrings(required, ['goal', 'result'])) invalidCatalog()
+  const goal = objectEnvelope(properties.goal)
+  const result = objectEnvelope(properties.result)
+  const extension = closedRecord(schema['x-unilabos-workflow-contract'], [
+    'version',
+    'compatibility_version',
+    'workflow_uuid',
+    'workflow_revision',
+    'applied_source_hash',
+    'contract_digest',
+    'composition_allow_transparent',
+    'input_order',
+    'output_order'
+  ])
+  if (extension.version !== 1 || extension.compatibility_version !== 1) {
+    invalidCatalog()
+  }
+  const inputOrder = uniqueStringArray(extension.input_order)
+  const outputOrder = uniqueStringArray(extension.output_order)
+  if (
+    !sameStrings(inputOrder, Object.keys(goal.properties)) ||
+    !sameStrings(outputOrder, Object.keys(result.properties))
+  ) invalidCatalog()
+  return {
+    schema,
+    workflowUuid: uuidValue(extension.workflow_uuid),
+    workflowRevision: positiveInteger(extension.workflow_revision),
+    appliedSourceHash: digestValue(extension.applied_source_hash),
+    contractDigest: digestValue(extension.contract_digest),
+    compositionAllowTransparent: booleanValue(
+      extension.composition_allow_transparent
+    ),
+    inputOrder,
+    outputOrder,
+    inputSchemas: goal.properties,
+    outputSchemas: result.properties,
+    requiredInputs: new Set(goal.required)
+  }
+}
+
+function objectEnvelope(raw: unknown): {
+  properties: Record<string, Record<string, unknown>>
+  required: string[]
+} {
+  const value = closedRecord(raw, [
+    'type',
+    'additionalProperties',
+    'properties',
+    'required'
+  ])
+  if (value.type !== 'object' || value.additionalProperties !== false) {
+    invalidCatalog()
+  }
+  const properties = recordValue(value.properties)
+  const normalized: Record<string, Record<string, unknown>> = {}
+  for (const [name, property] of Object.entries(properties)) {
+    if (!name) invalidCatalog()
+    normalized[name] = recordValue(property)
+  }
+  const required = uniqueStringArray(value.required)
+  if (required.some((name) => !(name in normalized))) invalidCatalog()
+  return { properties: normalized, required }
+}
+
+function validatePublishedHandles(
+  handles: WorkflowActionHandleTemplate[],
+  contract: WorkflowSchemaProjection
+): void {
+  if (handles.length !== contract.inputOrder.length +
+    contract.outputOrder.length + 2) invalidCatalog()
+  let index = 0
+  for (const name of contract.inputOrder) {
+    const handle = handles[index++]
+    if (!handle) invalidCatalog()
+    validateBusinessHandle(
+      handle,
+      name,
+      'target',
+      'goal',
+      contract.inputSchemas[name],
+      contract.requiredInputs.has(name)
+    )
+  }
+  for (const name of contract.outputOrder) {
+    const handle = handles[index++]
+    if (!handle) invalidCatalog()
+    validateBusinessHandle(
+      handle,
+      name,
+      'source',
+      'result',
+      contract.outputSchemas[name],
+      false
+    )
+  }
+  validateReadyHandle(handles[index++], 'target')
+  validateReadyHandle(handles[index], 'source')
+}
+
+function validateBusinessHandle(
+  handle: WorkflowActionHandleTemplate,
+  name: string,
+  ioType: 'source' | 'target',
+  dataSource: 'goal' | 'result',
+  schema: Record<string, unknown> | undefined,
+  required: boolean
+): void {
+  if (
+    !schema ||
+    handle.handleKey !== name ||
+    handle.ioType !== ioType ||
+    handle.dataSource !== dataSource ||
+    handle.dataKey !== name ||
+    handle.required !== required ||
+    handle.structuralRole !== null ||
+    handle.valueType !== workflowValueType(schema) ||
+    handle.editorControl !== (
+      resourceSlotSchema(schema) ? 'material_port' : 'variable_selector'
+    ) ||
+    !jsonEquals(handle.valueSchema, schema) ||
+    !sameAllowlist(handle.allowedResourceTemplateUuids, schemaAllowlist(schema))
+  ) invalidCatalog()
+}
+
+function validateReadyHandle(
+  handle: WorkflowActionHandleTemplate | undefined,
+  ioType: 'source' | 'target'
+): void {
+  if (
+    !handle ||
+    handle.handleKey !== 'ready' ||
+    handle.ioType !== ioType ||
+    handle.dataSource !== 'dependency' ||
+    handle.dataKey !== 'ready' ||
+    handle.valueType !== 'boolean' ||
+    handle.required ||
+    handle.editorControl !== 'variable_selector' ||
+    handle.allowedResourceTemplateUuids !== null ||
+    handle.implicitPassthrough ||
+    handle.structuralRole !== 'ready' ||
+    !jsonEquals(handle.valueSchema, { type: 'boolean' })
+  ) invalidCatalog()
+}
+
+function schemaAllowlist(schema: Record<string, unknown>): string[] | null {
+  const slot = resourceSlotSchema(schema)
+  if (slot) {
+    const raw = slot.allowed_resource_template_uuids
+    return raw === undefined ? null : allowlistValue(raw)
+  }
+  return null
+}
+
+function resourceSlotSchema(
+  schema: Record<string, unknown>
+): Record<string, unknown> | null {
+  if (schema.$slot === 'ResourceSlot') return schema
+  if (schema.items && typeof schema.items === 'object' &&
+    !Array.isArray(schema.items)) {
+    const nested = resourceSlotSchema(schema.items as Record<string, unknown>)
+    if (nested) return nested
+  }
+  if (Array.isArray(schema.anyOf)) {
+    for (const member of schema.anyOf) {
+      if (member && typeof member === 'object' && !Array.isArray(member)) {
+        const nested = resourceSlotSchema(member as Record<string, unknown>)
+        if (nested) return nested
+      }
+    }
+  }
+  return null
+}
+
+function workflowValueType(schema: Record<string, unknown>): string {
+  const members = Array.isArray(schema.anyOf) ? schema.anyOf : []
+  const base = members.find((member) =>
+    member && typeof member === 'object' && !Array.isArray(member) &&
+    (member as Record<string, unknown>).type !== 'null'
+  ) as Record<string, unknown> | undefined ?? schema
+  if (base.type === 'array') return 'array'
+  if (resourceSlotSchema(base)) return 'ResourceSlot'
+  return typeof base.type === 'string' ? base.type : 'object'
+}
+
+function sameAllowlist(left: string[] | null, right: string[] | null): boolean {
+  return left === null
+    ? right === null
+    : right !== null && sameStrings(left, right)
+}
+
+function stringMapMatches(
+  raw: Record<string, unknown>,
+  order: string[]
+): boolean {
+  return sameStrings(Object.keys(raw), order) &&
+    order.every((name) => raw[name] === name)
+}
+
+function defaultsMatch(
+  defaults: Record<string, unknown>,
+  contract: WorkflowSchemaProjection
+): boolean {
+  const expected = contract.inputOrder.filter((name) =>
+    Object.prototype.hasOwnProperty.call(contract.inputSchemas[name], 'default')
+  )
+  return sameStrings(Object.keys(defaults), expected) && expected.every((name) =>
+    jsonEquals(defaults[name], contract.inputSchemas[name]?.default)
+  )
+}
+
+function closedRecord(raw: unknown, keys: string[]): Record<string, unknown> {
+  const value = recordValue(raw)
+  requireKeys(value, keys)
+  return value
+}
+
+function requireKeys(raw: Record<string, unknown>, keys: string[]): void {
+  if (!sameStrings(Object.keys(raw).sort(), [...keys].sort())) invalidCatalog()
+}
+
+function uniqueStringArray(raw: unknown): string[] {
+  const values = stringArray(raw)
+  if (new Set(values).size !== values.length) invalidCatalog()
+  return values
+}
+
+function sameStrings(left: string[], right: string[]): boolean {
+  return left.length === right.length &&
+    left.every((value, index) => value === right[index])
+}
+
+function jsonEquals(left: unknown, right: unknown): boolean {
+  if (left === right) return true
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return Array.isArray(left) && Array.isArray(right) &&
+      left.length === right.length &&
+      left.every((item, index) => jsonEquals(item, right[index]))
+  }
+  if (
+    !left || typeof left !== 'object' ||
+    !right || typeof right !== 'object'
+  ) return false
+  const leftRecord = left as Record<string, unknown>
+  const rightRecord = right as Record<string, unknown>
+  const leftKeys = Object.keys(leftRecord).sort()
+  const rightKeys = Object.keys(rightRecord).sort()
+  return sameStrings(leftKeys, rightKeys) && leftKeys.every((key) =>
+    jsonEquals(leftRecord[key], rightRecord[key])
+  )
+}
+
+function digestValue(raw: unknown): string {
+  const value = stringValue(raw)
+  if (!/^sha256:[0-9a-f]{64}$/.test(value)) invalidCatalog()
+  return value
+}
+
+function absoluteModule(raw: unknown): string {
+  const value = stringValue(raw)
+  if (!/^[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*$/.test(value)) invalidCatalog()
+  return value
+}
+
+function identifierValue(raw: unknown): string {
+  const value = stringValue(raw)
+  if (!/^[A-Za-z_]\w*$/.test(value)) invalidCatalog()
+  return value
 }
 
 function catalogEnvelope(raw: unknown): Record<string, unknown> {

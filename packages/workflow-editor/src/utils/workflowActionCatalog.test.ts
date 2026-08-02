@@ -36,6 +36,39 @@ const upstreamHandleUuid = '30000000-0000-4000-8000-000000000009'
 const fingerprint = `sha256:${'a'.repeat(64)}`
 
 describe('typed Action editor projection', () => {
+  it('keeps Action creation on the Action side of an executable union', () => {
+    const executableCatalog = {
+      authorityId: catalog.authorityId,
+      authorityKind: catalog.authorityKind,
+      fingerprint: catalog.fingerprint,
+      actionTemplates: catalog.actionTemplates,
+      workflowTemplates: [{
+        uuid: '20000000-0000-4000-8000-000000000099',
+        displayName: 'Published child must not become an Action'
+      }]
+    } as unknown as WorkflowActionCatalogSnapshot
+    const emptyGraph: WorkflowAuthoringGraph = {
+      ...graph,
+      nodes: [],
+      edges: []
+    }
+
+    const created = createTypedActionNode(executableCatalog, emptyGraph, {
+      nodeUuid: secondNodeUuid,
+      templateUuid,
+      name: 'transfer_2'
+    })
+
+    expect(created.nodes).toHaveLength(1)
+    expect(created.nodes[0]).toMatchObject({
+      uuid: secondNodeUuid,
+      workflow_node_template_uuid: templateUuid,
+      name: 'transfer_2',
+      action_name: 'transfer',
+      type: 'device'
+    })
+  })
+
   it('creates a Backend-shaped Node without materializing schema defaults', () => {
     const emptyGraph: WorkflowAuthoringGraph = {
       ...graph,
@@ -75,8 +108,8 @@ describe('typed Action editor projection', () => {
 
     const catalogWithAuto: WorkflowActionCatalogSnapshot = {
       ...catalog,
-      nodeTemplates: [
-        ...catalog.nodeTemplates,
+      actionTemplates: [
+        ...catalog.actionTemplates,
         {
           ...actionTemplate(),
           uuid: '20000000-0000-4000-8000-000000000003',
@@ -517,10 +550,11 @@ const catalog = {
   authorityId: 'os-local',
   authorityKind: 'local',
   fingerprint,
-  nodeTemplates: [
+  actionTemplates: [
     actionTemplate(),
     sourceTemplate()
-  ]
+  ],
+  workflowTemplates: []
 } satisfies WorkflowActionCatalogSnapshot
 
 const graph: WorkflowAuthoringGraph = {
@@ -570,7 +604,7 @@ const graph: WorkflowAuthoringGraph = {
   handle_templates: []
 }
 
-function actionTemplate(): WorkflowActionCatalogSnapshot['nodeTemplates'][number] {
+function actionTemplate(): WorkflowActionCatalogSnapshot['actionTemplates'][number] {
   return {
     uuid: templateUuid,
     resourceTemplateUuid: '10000000-0000-4000-8000-000000000001',
@@ -607,7 +641,7 @@ function actionTemplate(): WorkflowActionCatalogSnapshot['nodeTemplates'][number
   }
 }
 
-function sourceTemplate(): WorkflowActionCatalogSnapshot['nodeTemplates'][number] {
+function sourceTemplate(): WorkflowActionCatalogSnapshot['actionTemplates'][number] {
   return {
     uuid: sourceTemplateUuid,
     resourceTemplateUuid: '10000000-0000-4000-8000-000000000002',
@@ -654,7 +688,7 @@ function handle(
   required = false,
   editorControl: 'material_port' | 'site_selector' | 'variable_selector' =
     'variable_selector'
-): WorkflowActionCatalogSnapshot['nodeTemplates'][number]['handles'][number] {
+): WorkflowActionCatalogSnapshot['actionTemplates'][number]['handles'][number] {
   return {
     uuid,
     workflowNodeTemplateUuid: templateUuid,

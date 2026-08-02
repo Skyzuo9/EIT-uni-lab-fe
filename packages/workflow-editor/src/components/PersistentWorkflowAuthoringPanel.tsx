@@ -1085,7 +1085,7 @@ export function PersistentWorkflowAuthoringPanel({
 
   const addTypedActionNode = (templateUuid: string): void => {
     if (!actionCatalog || !graph) return
-    const template = actionCatalog.nodeTemplates.find(
+    const template = actionCatalog.actionTemplates.find(
       (item) => item.uuid === templateUuid
     )
     if (!template) return
@@ -1517,24 +1517,42 @@ export function PersistentWorkflowAuthoringPanel({
             </p>
           </header>
           {actionCatalog && (
-            <label className="persistent-authoring__template-picker">
-              Action 模板
-              <select
-                aria-label="Action 模板"
-                value=""
-                disabled={busy || !policy.canvasMutationEnabled || !graph}
-                onChange={(event) => {
-                  if (event.target.value) addTypedActionNode(event.target.value)
-                }}
-              >
-                <option value="">选择 typed @action…</option>
-                {actionCatalog.nodeTemplates.map((template) => (
-                  <option key={template.uuid} value={template.uuid}>
-                    {template.displayName}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <div className="persistent-authoring__template-pickers">
+              <label className="persistent-authoring__template-picker">
+                Action 模板
+                <select
+                  aria-label="Action 模板"
+                  value=""
+                  disabled={busy || !policy.canvasMutationEnabled || !graph}
+                  onChange={(event) => {
+                    if (event.target.value) addTypedActionNode(event.target.value)
+                  }}
+                >
+                  <option value="">选择 typed @action…</option>
+                  {actionCatalog.actionTemplates.map((template) => (
+                    <option key={template.uuid} value={template.uuid}>
+                      {template.displayName}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="persistent-authoring__template-picker">
+                子工作流模板
+                <select
+                  aria-label="子工作流模板"
+                  value=""
+                  disabled
+                  title="子工作流 boundary insertion 将在 C1 R2 开放"
+                >
+                  <option value="">选择已发布子工作流…</option>
+                  {actionCatalog.workflowTemplates.map((template) => (
+                    <option key={template.uuid} value={template.uuid}>
+                      {template.displayName}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
           )}
           {graph && mode === 'canvas' && (
             <WorkflowIoEditor
@@ -1790,7 +1808,7 @@ export function PersistentWorkflowAuthoringPanel({
                             </ul>
                           )}
                           <div aria-label="Action Handle 端口">
-                            {actionCatalog?.nodeTemplates.find(
+                            {actionCatalog?.actionTemplates.find(
                               (template) => template.uuid ===
                                 selectedActionEditor.templateUuid
                             )?.handles.map((handle) => (

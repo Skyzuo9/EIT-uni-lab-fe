@@ -8,6 +8,13 @@ const nodeUuid = '20000000-0000-4000-8000-000000000001'
 const targetUuid = '30000000-0000-4000-8000-000000000001'
 const sourceUuid = '30000000-0000-4000-8000-000000000002'
 const resourceTemplateUuid = '10000000-0000-4000-8000-000000000001'
+const workflowNodeUuid = '20000000-0000-4000-8000-000000000002'
+const workflowUuid = '40000000-0000-4000-8000-000000000001'
+const workflowInputUuid = '30000000-0000-4000-8000-000000000010'
+const workflowOutputUuid = '30000000-0000-4000-8000-000000000011'
+const workflowReadyTargetUuid = '30000000-0000-4000-8000-000000000012'
+const workflowReadySourceUuid = '30000000-0000-4000-8000-000000000013'
+const hostResourceTemplateUuid = '10000000-0000-4000-8000-000000000002'
 const frameworkNodeUuid = '20000000-0000-4000-8000-000000000099'
 const frameworkResourceTemplateUuid =
   '10000000-0000-4000-8000-000000000099'
@@ -26,7 +33,7 @@ describe('Workflow Action Catalog adapter', () => {
       authorityId: 'os-local',
       authorityKind: 'local',
       fingerprint,
-      nodeTemplates: [
+      actionTemplates: [
         {
           uuid: nodeUuid,
           resourceTemplateUuid,
@@ -75,12 +82,151 @@ describe('Workflow Action Catalog adapter', () => {
             }
           ]
         }
-      ]
+      ],
+      workflowTemplates: []
     })
     expect(requests).toEqual([
       '/api/v1/workflow-node-templates?page=1&page_size=100',
       `/api/v1/workflow-node-templates/${nodeUuid}`
     ])
+  })
+
+  it('loads one coherent executable union with a complete Published Workflow projection', async () => {
+    const requests: string[] = []
+    const responses = executableCatalogResponses()
+    const runtime = createWorkflowRuntime(
+      fixtureHttp(responses, requests),
+      getDefaultBackend('local-python')
+    )
+
+    const catalog = await runtime.getWorkflowActionCatalog() as unknown as {
+      authorityId: string
+      authorityKind: string
+      fingerprint: string
+      actionTemplates: Array<Record<string, unknown>>
+      workflowTemplates: Array<Record<string, unknown>>
+    }
+
+    expect(catalog).toEqual({
+      authorityId: 'os-local',
+      authorityKind: 'local',
+      fingerprint,
+      actionTemplates: [expect.objectContaining({
+        uuid: nodeUuid,
+        name: 'transfer.sample.v1'
+      })],
+      workflowTemplates: [{
+        uuid: workflowNodeUuid,
+        resourceTemplateUuid: hostResourceTemplateUuid,
+        name: `workflow:${workflowUuid}`,
+        displayName: 'Prepare sample',
+        workflowClass: 'c1_published_lab.workflows.child:prepare_sample',
+        workflowUuid,
+        workflowRevision: 7,
+        appliedSourceHash: `sha256:${'b'.repeat(64)}`,
+        contractDigest: `sha256:${'c'.repeat(64)}`,
+        compositionAllowTransparent: false,
+        inputOrder: ['sample'],
+        outputOrder: ['final_sample'],
+        schema: workflowSchema(),
+        goal: { sample: 'sample' },
+        goalDefault: {},
+        result: { final_sample: 'final_sample' },
+        source: {
+          kind: 'package',
+          definitionFqid: 'c1_published_lab.workflows.prepare_sample',
+          module: 'c1_published_lab.workflows.child',
+          symbol: 'prepare_sample',
+          packageCatalogDigest: `sha256:${'d'.repeat(64)}`,
+          definitionContentHash: `sha256:${'e'.repeat(64)}`
+        },
+        handles: [
+          expectedWorkflowHandle({
+            uuid: workflowInputUuid,
+            handleKey: 'sample',
+            ioType: 'target',
+            displayName: 'Sample',
+            valueType: 'ResourceSlot',
+            required: true,
+            dataSource: 'goal',
+            dataKey: 'sample',
+            valueSchema: resourceSlotSchema(),
+            editorControl: 'material_port',
+            allowedResourceTemplateUuids: [resourceTemplateUuid],
+            implicitPassthrough: false,
+            structuralRole: null
+          }),
+          expectedWorkflowHandle({
+            uuid: workflowOutputUuid,
+            handleKey: 'final_sample',
+            ioType: 'source',
+            displayName: 'Final sample',
+            valueType: 'ResourceSlot',
+            required: false,
+            dataSource: 'result',
+            dataKey: 'final_sample',
+            valueSchema: nullableResourceSlotSchema(),
+            editorControl: 'material_port',
+            allowedResourceTemplateUuids: [resourceTemplateUuid],
+            implicitPassthrough: true,
+            structuralRole: null
+          }),
+          expectedWorkflowHandle({
+            uuid: workflowReadyTargetUuid,
+            handleKey: 'ready',
+            ioType: 'target',
+            displayName: 'Ready',
+            valueType: 'boolean',
+            required: false,
+            dataSource: 'dependency',
+            dataKey: 'ready',
+            valueSchema: { type: 'boolean' },
+            editorControl: 'variable_selector',
+            allowedResourceTemplateUuids: null,
+            implicitPassthrough: false,
+            structuralRole: 'ready'
+          }),
+          expectedWorkflowHandle({
+            uuid: workflowReadySourceUuid,
+            handleKey: 'ready',
+            ioType: 'source',
+            displayName: 'Ready',
+            valueType: 'boolean',
+            required: false,
+            dataSource: 'dependency',
+            dataKey: 'ready',
+            valueSchema: { type: 'boolean' },
+            editorControl: 'variable_selector',
+            allowedResourceTemplateUuids: null,
+            implicitPassthrough: false,
+            structuralRole: 'ready'
+          })
+        ]
+      }]
+    })
+    expect(requests).toEqual([
+      '/api/v1/workflow-node-templates?page=1&page_size=100',
+      `/api/v1/workflow-node-templates/${nodeUuid}`,
+      `/api/v1/workflow-node-templates/${workflowNodeUuid}`,
+      `/api/v1/workflow-node-templates/${frameworkNodeUuid}`
+    ])
+
+    const workflowTemplate = catalog.workflowTemplates[0]!
+    expect(Object.keys(workflowTemplate)).not.toContain('wireValue')
+    expect(Object.getOwnPropertyDescriptor(
+      workflowTemplate,
+      'wireValue'
+    )).toMatchObject({ enumerable: false, writable: false })
+    expect(workflowTemplate.wireValue).toEqual(
+      detailDataFor(responses, workflowNodeUuid).template
+    )
+    for (const handle of workflowTemplate.handles as Array<
+      Record<string, unknown>
+    >) {
+      expect(Object.keys(handle)).not.toContain('wireValue')
+      expect(Object.getOwnPropertyDescriptor(handle, 'wireValue'))
+        .toMatchObject({ enumerable: false, writable: false })
+    }
   })
 
   it('reads every page and excludes non-Action framework templates', async () => {
@@ -148,7 +294,8 @@ describe('Workflow Action Catalog adapter', () => {
 
     const catalog = await runtime.getWorkflowActionCatalog()
 
-    expect(catalog.nodeTemplates.map((item) => item.uuid)).toEqual([nodeUuid])
+    expect(catalog.actionTemplates.map((item) => item.uuid)).toEqual([nodeUuid])
+    expect(catalog.workflowTemplates).toEqual([])
     expect(requests).toEqual([
       '/api/v1/workflow-node-templates?page=1&page_size=100',
       '/api/v1/workflow-node-templates?page=2&page_size=100',
@@ -247,6 +394,218 @@ describe('Workflow Action Catalog adapter', () => {
     })
   })
 
+  it.each([
+    {
+      name: 'workflow discriminator on an Action-shaped template',
+      mutate: (responses: Record<string, unknown>) => {
+        workflowSummary(responses).type = 'UniLabJsonCommand'
+        workflowSummary(responses).node_type = 'device'
+        workflowDetail(responses).type = 'UniLabJsonCommand'
+        workflowDetail(responses).node_type = 'device'
+      }
+    },
+    {
+      name: 'workflow node_type',
+      mutate: (responses: Record<string, unknown>) => {
+        workflowSummary(responses).node_type = 'device'
+        workflowDetail(responses).node_type = 'device'
+      }
+    },
+    {
+      name: 'framework renderer owner flag',
+      mutate: (responses: Record<string, unknown>) => {
+        workflowUnilab(responses).framework_owner_only = false
+      }
+    },
+    {
+      name: 'workflow contract version',
+      mutate: (responses: Record<string, unknown>) => {
+        workflowExtension(responses).version = 2
+      }
+    },
+    {
+      name: 'workflow compatibility version',
+      mutate: (responses: Record<string, unknown>) => {
+        workflowExtension(responses).compatibility_version = 2
+      }
+    },
+    {
+      name: 'workflow contract extension field',
+      mutate: (responses: Record<string, unknown>) => {
+        workflowExtension(responses).frontend_compatibility_guess = true
+      }
+    },
+    {
+      name: 'workflow revision',
+      mutate: (responses: Record<string, unknown>) => {
+        workflowExtension(responses).workflow_revision = 0
+      }
+    },
+    {
+      name: 'workflow UUID identity',
+      mutate: (responses: Record<string, unknown>) => {
+        workflowExtension(responses).workflow_uuid =
+          '40000000-0000-4000-8000-000000000099'
+      }
+    },
+    {
+      name: 'Applied source hash',
+      mutate: (responses: Record<string, unknown>) => {
+        workflowExtension(responses).applied_source_hash = 'source-hash'
+      }
+    },
+    {
+      name: 'contract digest',
+      mutate: (responses: Record<string, unknown>) => {
+        workflowExtension(responses).contract_digest =
+          `sha256:${'A'.repeat(64)}`
+      }
+    },
+    {
+      name: 'duplicate input order',
+      mutate: (responses: Record<string, unknown>) => {
+        workflowExtension(responses).input_order = ['sample', 'sample']
+      }
+    },
+    {
+      name: 'input order/schema correspondence',
+      mutate: (responses: Record<string, unknown>) => {
+        workflowExtension(responses).input_order = ['missing']
+      }
+    },
+    {
+      name: 'output order/schema correspondence',
+      mutate: (responses: Record<string, unknown>) => {
+        workflowExtension(responses).output_order = []
+      }
+    },
+    {
+      name: 'closed workflow schema',
+      mutate: (responses: Record<string, unknown>) => {
+        workflowSchemaValue(responses).frontend_derived = true
+      }
+    },
+    {
+      name: 'missing Package provenance field',
+      mutate: (responses: Record<string, unknown>) => {
+        delete workflowSource(responses).definition_fqid
+      }
+    },
+    {
+      name: 'extra Package provenance field',
+      mutate: (responses: Record<string, unknown>) => {
+        workflowSource(responses).device_name = 'host_node'
+      }
+    },
+    {
+      name: 'Package provenance kind',
+      mutate: (responses: Record<string, unknown>) => {
+        workflowSource(responses).kind = 'registry'
+      }
+    },
+    {
+      name: 'absolute Package module',
+      mutate: (responses: Record<string, unknown>) => {
+        workflowSource(responses).module = '.workflows.child'
+      }
+    },
+    {
+      name: 'Package class/source correspondence',
+      mutate: (responses: Record<string, unknown>) => {
+        workflowDetail(responses).class =
+          'c1_published_lab.workflows.other:prepare_sample'
+      }
+    },
+    {
+      name: 'workflow Handle parent',
+      mutate: (responses: Record<string, unknown>) => {
+        workflowHandles(responses)[0]!.workflow_node_template_uuid = nodeUuid
+      }
+    },
+    {
+      name: 'input Handle direction',
+      mutate: (responses: Record<string, unknown>) => {
+        workflowHandles(responses)[0]!.io_type = 'source'
+      }
+    },
+    {
+      name: 'input Handle data source',
+      mutate: (responses: Record<string, unknown>) => {
+        workflowHandles(responses)[0]!.data_source = 'result'
+      }
+    },
+    {
+      name: 'input Handle data key',
+      mutate: (responses: Record<string, unknown>) => {
+        workflowHandles(responses)[0]!.data_key = 'guessed_sample'
+      }
+    },
+    {
+      name: 'input Handle value schema',
+      mutate: (responses: Record<string, unknown>) => {
+        workflowHandleUnilab(responses, 0).value_schema = { type: 'string' }
+      }
+    },
+    {
+      name: 'ResourceSlot allowlist correspondence',
+      mutate: (responses: Record<string, unknown>) => {
+        workflowHandleUnilab(responses, 0)
+          .allowed_resource_template_uuids = [hostResourceTemplateUuid]
+      }
+    },
+    {
+      name: 'missing structural ready Handle',
+      mutate: (responses: Record<string, unknown>) => {
+        workflowHandles(responses).pop()
+      }
+    },
+    {
+      name: 'ready Handle structural role',
+      mutate: (responses: Record<string, unknown>) => {
+        delete workflowHandleUnilab(responses, 2).structural_role
+      }
+    },
+    {
+      name: 'ready Handle data source',
+      mutate: (responses: Record<string, unknown>) => {
+        workflowHandles(responses)[2]!.data_source = 'goal'
+      }
+    },
+    {
+      name: 'Published Handle order',
+      mutate: (responses: Record<string, unknown>) => {
+        const handles = workflowHandles(responses)
+        ;[handles[0], handles[1]] = [handles[1]!, handles[0]!]
+      }
+    },
+    {
+      name: 'global Action/Workflow Handle UUID',
+      mutate: (responses: Record<string, unknown>) => {
+        workflowHandles(responses)[0]!.uuid = targetUuid
+      }
+    },
+    {
+      name: 'output Handle required flag',
+      mutate: (responses: Record<string, unknown>) => {
+        workflowHandles(responses)[1]!.required = true
+      }
+    }
+  ])('fails closed for malformed Published Workflow $name', async ({
+    mutate
+  }) => {
+    const responses = executableCatalogResponses()
+    mutate(responses)
+    const runtime = createWorkflowRuntime(
+      fixtureHttp(responses),
+      getDefaultBackend('local-python')
+    )
+
+    await expect(runtime.getWorkflowActionCatalog()).rejects.toMatchObject({
+      code: 'INVALID_API_RESPONSE',
+      retryable: false
+    })
+  })
+
   it('does not retain a catalog from another authority or fingerprint', async () => {
     const first = createWorkflowRuntime(
       fixtureHttp(catalogResponses()),
@@ -302,9 +661,82 @@ interface RawHandle {
 function detailData(responses: Record<string, unknown>): {
   handles: RawHandle[]
 } {
+  return detailDataFor(responses, nodeUuid)
+}
+
+function detailDataFor(
+  responses: Record<string, unknown>,
+  templateUuid: string
+): {
+  template: Record<string, unknown>
+  handles: RawHandle[]
+} {
   return (responses[
-    `/api/v1/workflow-node-templates/${nodeUuid}`
-  ] as Envelope).data as { handles: RawHandle[] }
+    `/api/v1/workflow-node-templates/${templateUuid}`
+  ] as Envelope).data as {
+    template: Record<string, unknown>
+    handles: RawHandle[]
+  }
+}
+
+function workflowSummary(
+  responses: Record<string, unknown>
+): Record<string, unknown> {
+  const list = (responses[
+    '/api/v1/workflow-node-templates?page=1&page_size=100'
+  ] as Envelope).data as { items: Array<Record<string, unknown>> }
+  const value = list.items.find((item) => item.uuid === workflowNodeUuid)
+  if (!value) throw new Error('Published Workflow summary fixture missing')
+  return value
+}
+
+function workflowDetail(
+  responses: Record<string, unknown>
+): Record<string, unknown> {
+  return detailDataFor(responses, workflowNodeUuid).template
+}
+
+function workflowSchemaValue(
+  responses: Record<string, unknown>
+): Record<string, unknown> {
+  return workflowDetail(responses).schema as Record<string, unknown>
+}
+
+function workflowExtension(
+  responses: Record<string, unknown>
+): Record<string, unknown> {
+  return workflowSchemaValue(responses)[
+    'x-unilabos-workflow-contract'
+  ] as Record<string, unknown>
+}
+
+function workflowUnilab(
+  responses: Record<string, unknown>
+): Record<string, unknown> {
+  return (workflowDetail(responses).meta_data as Record<string, unknown>)
+    .unilab as Record<string, unknown>
+}
+
+function workflowSource(
+  responses: Record<string, unknown>
+): Record<string, unknown> {
+  return workflowUnilab(responses).workflow_source as Record<string, unknown>
+}
+
+function workflowHandles(
+  responses: Record<string, unknown>
+): RawHandle[] {
+  return detailDataFor(responses, workflowNodeUuid).handles
+}
+
+function workflowHandleUnilab(
+  responses: Record<string, unknown>,
+  index: number
+): Record<string, unknown> {
+  const handle = workflowHandles(responses)[index]
+  if (!handle) throw new Error(`Published Workflow Handle ${index} missing`)
+  return (handle.meta_data as Record<string, unknown>)
+    .unilab as Record<string, unknown>
 }
 
 function actionSchema(): Record<string, unknown> {
@@ -338,6 +770,256 @@ function actionSchema(): Record<string, unknown> {
       input_order: ['sample', 'mode'],
       output_order: ['sample'],
       resource_template_symbols: { goal: {}, result: {} }
+    }
+  }
+}
+
+function resourceSlotSchema(): Record<string, unknown> {
+  return {
+    $slot: 'ResourceSlot',
+    allowed_resource_template_uuids: [resourceTemplateUuid]
+  }
+}
+
+function nullableResourceSlotSchema(): Record<string, unknown> {
+  return {
+    anyOf: [resourceSlotSchema(), { type: 'null' }]
+  }
+}
+
+function workflowSchema(): Record<string, unknown> {
+  return {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      goal: {
+        type: 'object',
+        additionalProperties: false,
+        properties: { sample: resourceSlotSchema() },
+        required: ['sample']
+      },
+      result: {
+        type: 'object',
+        additionalProperties: false,
+        properties: { final_sample: nullableResourceSlotSchema() },
+        required: ['final_sample']
+      }
+    },
+    required: ['goal', 'result'],
+    'x-unilabos-workflow-contract': {
+      version: 1,
+      compatibility_version: 1,
+      workflow_uuid: workflowUuid,
+      workflow_revision: 7,
+      applied_source_hash: `sha256:${'b'.repeat(64)}`,
+      contract_digest: `sha256:${'c'.repeat(64)}`,
+      composition_allow_transparent: false,
+      input_order: ['sample'],
+      output_order: ['final_sample']
+    }
+  }
+}
+
+function expectedWorkflowHandle(
+  value: Omit<Record<string, unknown>, 'workflowNodeTemplateUuid'>
+): Record<string, unknown> {
+  return {
+    ...value,
+    workflowNodeTemplateUuid: workflowNodeUuid
+  }
+}
+
+function executableCatalogResponses(): Record<string, unknown> {
+  const responses = catalogResponses()
+  const list = (responses[
+    '/api/v1/workflow-node-templates?page=1&page_size=100'
+  ] as Envelope).data as { items: Array<Record<string, unknown>>; total: number }
+  list.items.push(
+    {
+      uuid: workflowNodeUuid,
+      name: `workflow:${workflowUuid}`,
+      display_name: 'Prepare sample',
+      type: 'workflow',
+      node_type: 'workflow',
+      resource_template: {
+        uuid: hostResourceTemplateUuid,
+        name: 'host_node',
+        display_name: 'Host Node'
+      }
+    },
+    {
+      uuid: frameworkNodeUuid,
+      name: 'group',
+      display_name: 'Group',
+      type: 'group',
+      node_type: 'group',
+      resource_template: {
+        uuid: frameworkResourceTemplateUuid,
+        name: 'host_node',
+        display_name: 'Host Node'
+      }
+    }
+  )
+  list.total = 3
+  responses[`/api/v1/workflow-node-templates/${workflowNodeUuid}`] = {
+    code: 0,
+    data: {
+      authority,
+      catalog_fingerprint: fingerprint,
+      template: {
+        uuid: workflowNodeUuid,
+        resource_template_uuid: hostResourceTemplateUuid,
+        name: `workflow:${workflowUuid}`,
+        display_name: 'Prepare sample',
+        class: 'c1_published_lab.workflows.child:prepare_sample',
+        type: 'workflow',
+        node_type: 'workflow',
+        schema: workflowSchema(),
+        goal: { sample: 'sample' },
+        goal_default: {},
+        feedback: {},
+        result: { final_sample: 'final_sample' },
+        meta_data: {
+          unilab: {
+            framework_owner_only: true,
+            workflow_source: {
+              kind: 'package',
+              definition_fqid:
+                'c1_published_lab.workflows.prepare_sample',
+              module: 'c1_published_lab.workflows.child',
+              symbol: 'prepare_sample',
+              package_catalog_digest: `sha256:${'d'.repeat(64)}`,
+              definition_content_hash: `sha256:${'e'.repeat(64)}`
+            }
+          }
+        }
+      },
+      handles: [
+        rawWorkflowHandle({
+          uuid: workflowInputUuid,
+          handle_key: 'sample',
+          io_type: 'target',
+          display_name: 'Sample',
+          type: 'ResourceSlot',
+          required: true,
+          data_source: 'goal',
+          data_key: 'sample',
+          valueSchema: resourceSlotSchema(),
+          editorControl: 'material_port',
+          allowedResourceTemplateUuids: [resourceTemplateUuid],
+          implicitPassthrough: false
+        }),
+        rawWorkflowHandle({
+          uuid: workflowOutputUuid,
+          handle_key: 'final_sample',
+          io_type: 'source',
+          display_name: 'Final sample',
+          type: 'ResourceSlot',
+          required: false,
+          data_source: 'result',
+          data_key: 'final_sample',
+          valueSchema: nullableResourceSlotSchema(),
+          editorControl: 'material_port',
+          allowedResourceTemplateUuids: [resourceTemplateUuid],
+          implicitPassthrough: true
+        }),
+        rawWorkflowHandle({
+          uuid: workflowReadyTargetUuid,
+          handle_key: 'ready',
+          io_type: 'target',
+          display_name: 'Ready',
+          type: 'boolean',
+          required: false,
+          data_source: 'dependency',
+          data_key: 'ready',
+          valueSchema: { type: 'boolean' },
+          editorControl: 'variable_selector',
+          allowedResourceTemplateUuids: null,
+          implicitPassthrough: false,
+          structuralRole: 'ready'
+        }),
+        rawWorkflowHandle({
+          uuid: workflowReadySourceUuid,
+          handle_key: 'ready',
+          io_type: 'source',
+          display_name: 'Ready',
+          type: 'boolean',
+          required: false,
+          data_source: 'dependency',
+          data_key: 'ready',
+          valueSchema: { type: 'boolean' },
+          editorControl: 'variable_selector',
+          allowedResourceTemplateUuids: null,
+          implicitPassthrough: false,
+          structuralRole: 'ready'
+        })
+      ]
+    }
+  }
+  responses[`/api/v1/workflow-node-templates/${frameworkNodeUuid}`] = {
+    code: 0,
+    data: {
+      authority,
+      catalog_fingerprint: fingerprint,
+      template: {
+        uuid: frameworkNodeUuid,
+        resource_template_uuid: frameworkResourceTemplateUuid,
+        name: 'group',
+        display_name: 'Group',
+        class: 'unilabos.workflow.authoring:group',
+        type: 'group',
+        node_type: 'group',
+        schema: null,
+        goal: {},
+        goal_default: {},
+        feedback: {},
+        result: {},
+        meta_data: {
+          unilab: { framework_owner_only: true }
+        }
+      },
+      handles: []
+    }
+  }
+  return responses
+}
+
+function rawWorkflowHandle(input: {
+  uuid: string
+  handle_key: string
+  io_type: string
+  display_name: string
+  type: string
+  required: boolean
+  data_source: string
+  data_key: string
+  valueSchema: Record<string, unknown>
+  editorControl: string
+  allowedResourceTemplateUuids: string[] | null
+  implicitPassthrough: boolean
+  structuralRole?: 'ready'
+}): Record<string, unknown> {
+  return {
+    uuid: input.uuid,
+    workflow_node_template_uuid: workflowNodeUuid,
+    handle_key: input.handle_key,
+    io_type: input.io_type,
+    display_name: input.display_name,
+    type: input.type,
+    required: input.required,
+    data_source: input.data_source,
+    data_key: input.data_key,
+    meta_data: {
+      unilab: {
+        value_schema: input.valueSchema,
+        editor_control: input.editorControl,
+        allowed_resource_template_uuids:
+          input.allowedResourceTemplateUuids,
+        implicit_passthrough: input.implicitPassthrough,
+        ...(input.structuralRole
+          ? { structural_role: input.structuralRole }
+          : {})
+      }
     }
   }
 }
