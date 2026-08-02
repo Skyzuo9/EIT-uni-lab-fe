@@ -21,6 +21,12 @@ export const RESOURCE_SLOT_INPUT_WORKFLOW_UUID =
   '10000000-0000-4000-8000-000000000005'
 export const RESOURCE_SLOT_MATERIAL_UUID =
   '11000000-0000-4000-8000-000000000005'
+export const COMPOSITE_CHILD_WORKFLOW_UUID =
+  '10000000-0000-4000-8000-000000000006'
+export const COMPOSITE_PARENT_WORKFLOW_UUID =
+  '10000000-0000-4000-8000-000000000007'
+export const COMPOSITE_INVOCATION_UUID =
+  '20000000-0000-4000-8000-000000000062'
 
 export interface PersistentAuthoringOs {
   url: string
@@ -31,6 +37,9 @@ export interface PersistentAuthoringOs {
   scalarInputWorkflowUuid: string
   resourceSlotInputWorkflowUuid: string
   resourceSlotMaterialUuid: string
+  compositeChildWorkflowUuid: string
+  compositeParentWorkflowUuid: string
+  compositeInvocationUuid: string
   sourcePath: string
   secondSourcePath: string
   logs: () => string
@@ -79,6 +88,7 @@ export type MaterialAuthorityRaceState =
 
 export interface PersistentAuthoringOsOptions {
   faultProxy?: boolean
+  compositeFixture?: boolean
 }
 
 export async function startPersistentAuthoringOs(
@@ -119,7 +129,8 @@ export async function startPersistentAuthoringOs(
         PYTHON_LAUNCHER,
         workingDirectory,
         editableRoot,
-        String(port)
+        String(port),
+        options.compositeFixture ? '1' : '0'
       ],
       {
         cwd: osRepository,
@@ -178,6 +189,9 @@ export async function startPersistentAuthoringOs(
     scalarInputWorkflowUuid: SCALAR_INPUT_WORKFLOW_UUID,
     resourceSlotInputWorkflowUuid: RESOURCE_SLOT_INPUT_WORKFLOW_UUID,
     resourceSlotMaterialUuid: RESOURCE_SLOT_MATERIAL_UUID,
+    compositeChildWorkflowUuid: COMPOSITE_CHILD_WORKFLOW_UUID,
+    compositeParentWorkflowUuid: COMPOSITE_PARENT_WORKFLOW_UUID,
+    compositeInvocationUuid: COMPOSITE_INVOCATION_UUID,
     sourcePath,
     secondSourcePath,
     logs: () => output,
@@ -250,6 +264,7 @@ from unilabos.workflow.store import WorkflowStore
 working_dir = Path(sys.argv[1])
 editable_root = Path(sys.argv[2])
 port = int(sys.argv[3])
+composite_fixture = sys.argv[4] == "1"
 package_root = editable_root / "production_lab"
 source_path = package_root / "workflows" / "demo.py"
 second_workflow_uuid = "${SECOND_AUTHORING_WORKFLOW_UUID}"
@@ -261,6 +276,31 @@ scalar_input_source_path = package_root / "workflows" / "scalar_input.py"
 resource_slot_input_workflow_uuid = "${RESOURCE_SLOT_INPUT_WORKFLOW_UUID}"
 resource_slot_input_source_path = package_root / "workflows" / "resource_slot_input.py"
 resource_slot_material_uuid = "${RESOURCE_SLOT_MATERIAL_UUID}"
+composite_child_workflow_uuid = "${COMPOSITE_CHILD_WORKFLOW_UUID}"
+composite_parent_workflow_uuid = "${COMPOSITE_PARENT_WORKFLOW_UUID}"
+composite_invocation_uuid = "${COMPOSITE_INVOCATION_UUID}"
+composite_child_source_path = package_root / "workflows" / "composite_child.py"
+composite_parent_source_path = package_root / "workflows" / "composite_parent.py"
+
+def fixture_catalog_imports():
+    imports = _catalog_imports()
+    if not composite_fixture:
+        return imports
+    from unilabos.workflow.catalog import NodeTemplateImport
+    from unilabos.workflow.handle_projection import structural_ready_handle
+    return tuple(
+        NodeTemplateImport(
+            template=dict(item.template),
+            handles=tuple(
+                structural_ready_handle(str(handle["io_type"]))
+                if handle.get("handle_key") == "ready"
+                else dict(handle)
+                for handle in item.handles
+            ),
+        )
+        for item in imports
+    )
+
 source_path.parent.mkdir(parents=True, exist_ok=True)
 source_path.write_text(_source(), encoding="utf-8")
 second_source = _source(workflow_uuid=second_workflow_uuid)
@@ -339,6 +379,52 @@ def resource_slot_input_task(*, sample: ResourceSlot):
 ''',
     encoding="utf-8",
 )
+if composite_fixture:
+    composite_child_source_path.write_text(
+        f'''from c1_lifecycle.device import MeasurementDevice
+from unilabos.workflow.authoring import device, workflow_definition, workflow_output
+
+
+measurement_device: MeasurementDevice = device()
+
+
+@workflow_definition(
+    workflow_uuid="{composite_child_workflow_uuid}",
+    displayname="C1 Published child",
+    description="PackageCatalog-backed child with one internal action.",
+)
+def published_child(*, value: float):
+    # unilab:node_uuid=20000000-0000-4000-8000-000000000061
+    completed = measurement_device.measure(value=value)
+    return workflow_output(result=completed.result)
+''',
+        encoding="utf-8",
+    )
+    composite_parent_source_path.write_text(
+        f'''from c1_lifecycle.device import MeasurementDevice
+from production_lab.workflows.composite_child import published_child
+from unilabos.workflow.authoring import device, workflow_definition, workflow_output
+
+
+measurement_device: MeasurementDevice = device()
+
+
+@workflow_definition(
+    workflow_uuid="{composite_parent_workflow_uuid}",
+    displayname="C1 Composite parent",
+    description="Real PackageCatalog Composite browser gate.",
+)
+def composite_parent():
+    # unilab:node_uuid=20000000-0000-4000-8000-000000000063
+    prepared = measurement_device.measure(value=1)
+    # unilab:node_uuid={composite_invocation_uuid}
+    child = published_child(value=prepared.result)
+    # unilab:node_uuid=20000000-0000-4000-8000-000000000064
+    finalized = measurement_device.measure(value=child.result)
+    return workflow_output(report=finalized.result)
+''',
+        encoding="utf-8",
+    )
 editable_root.mkdir(parents=True, exist_ok=True)
 (editable_root / "package.yaml").write_text(
     "\n".join([
@@ -356,6 +442,12 @@ editable_root.mkdir(parents=True, exist_ok=True)
         "    source: production_lab/workflows/scalar_input.py",
         f"  - workflow_uuid: {resource_slot_input_workflow_uuid}",
         "    source: production_lab/workflows/resource_slot_input.py",
+        *([
+            f"  - workflow_uuid: {composite_child_workflow_uuid}",
+            "    source: production_lab/workflows/composite_child.py",
+            f"  - workflow_uuid: {composite_parent_workflow_uuid}",
+            "    source: production_lab/workflows/composite_parent.py",
+        ] if composite_fixture else []),
         "",
     ]),
     encoding="utf-8",
@@ -403,7 +495,22 @@ try:
             meta_data={},
             workflow_uuid=resource_slot_input_workflow_uuid,
         )
-        imports = _catalog_imports()
+        if composite_fixture:
+            service.create_workflow(
+                name="C1 Published child fixture",
+                tags=[],
+                description="PackageCatalog-backed Composite child",
+                meta_data={},
+                workflow_uuid=composite_child_workflow_uuid,
+            )
+            service.create_workflow(
+                name="C1 Composite parent fixture",
+                tags=[],
+                description="Persistent Composite Authoring E2E",
+                meta_data={},
+                workflow_uuid=composite_parent_workflow_uuid,
+            )
+        imports = fixture_catalog_imports()
         for item in imports:
             item.template.pop("uuid", None)
             for handle in item.handles:
@@ -411,6 +518,57 @@ try:
         TemplateCatalog(store).replace(authority, imports)
 finally:
     store.close()
+
+runtime_catalog_options = {}
+if composite_fixture:
+    from unilabos.package_manager import (
+        DefinitionCatalog,
+        DefinitionRecord,
+        DistributionIdentity,
+        PackageCatalog,
+    )
+    from tests.workflow.test_c1_catalog_publication_lifecycle import (
+        _registry_snapshot,
+    )
+
+    package_catalog = PackageCatalog.create(
+        distribution=DistributionIdentity(
+            name="production-lab",
+            normalized_name="production-lab",
+            version="1.0.0",
+            requires_python=">=3.11",
+        ),
+        import_package="production_lab",
+        namespace="e2e.production_lab",
+        definitions=DefinitionCatalog(
+            workflows=(
+                DefinitionRecord(
+                    kind="workflow",
+                    id="published_child",
+                    fqid="production_lab.workflows.published_child",
+                    module="production_lab.workflows.composite_child",
+                    symbol="published_child",
+                    declaring_file="production_lab/workflows/composite_child.py",
+                    content_hash="sha256:" + "6" * 64,
+                    displayname="C1 Published child",
+                    description="C1 real OS child fixture",
+                    details={
+                        "workflow_uuid": composite_child_workflow_uuid,
+                        "source_uri": (
+                            "package://production_lab/workflows/composite_child.py"
+                        ),
+                    },
+                ),
+            )
+        ),
+        content_digest="sha256:" + "8" * 64,
+    )
+    registry_snapshot = _registry_snapshot(include_host=True)
+    runtime_catalog_options = {
+        "registry_snapshot": registry_snapshot,
+        "resource_registry_snapshot": {},
+        "workflow_package_catalogs": (package_catalog,),
+    }
 
 if initialize_store:
     from unilabos.app.scheduler.inventory import (
@@ -451,7 +609,42 @@ workflow_service = compose_workflow_runtime(
     BasicConfig.working_dir,
     authority=authority,
     editable_package_roots=BasicConfig.workflow_editable_package_roots,
+    **runtime_catalog_options,
 )
+if composite_fixture:
+    def apply_fixture(workflow_uuid, source_path):
+        before = workflow_service.get_authoring(workflow_uuid)
+        aggregate = workflow_service.save_draft(
+            workflow_uuid,
+            python_source=source_path.read_text(encoding="utf-8"),
+            expected_draft_hash=before["draft"]["draft_hash"],
+            expected_workflow_revision=before["workflow_revision"],
+        )
+        candidate = aggregate["candidate"]
+        if candidate is None and aggregate["state"] == "applied":
+            return
+        if candidate is None:
+            raise RuntimeError(aggregate)
+        normalized_source = candidate["normalized_python_source"]
+        if aggregate["draft"]["python_source"] != normalized_source:
+            aggregate = workflow_service.save_draft(
+                workflow_uuid,
+                python_source=normalized_source,
+                expected_draft_hash=aggregate["draft"]["draft_hash"],
+                expected_workflow_revision=aggregate["workflow_revision"],
+            )
+            candidate = aggregate["candidate"]
+            if candidate is None:
+                raise RuntimeError(aggregate)
+        workflow_service.apply_authoring(
+            workflow_uuid,
+            candidate_hash=candidate["candidate_hash"],
+        )
+        source_path.write_text(normalized_source, encoding="utf-8")
+
+    apply_fixture(composite_child_workflow_uuid, composite_child_source_path)
+    apply_fixture(composite_parent_workflow_uuid, composite_parent_source_path)
+
 inventory_service = get_workflow_inventory_service()
 if inventory_service is None:
     raise RuntimeError("Workflow composition did not expose InventoryService")
@@ -463,7 +656,12 @@ setup_edge_scheduler(
 )
 
 from unilabos.app.web.server import start_server
-start_server(host="127.0.0.1", port=port, open_browser=False)
+start_server(
+    host="127.0.0.1",
+    port=port,
+    open_browser=False,
+    **runtime_catalog_options,
+)
 `
 
 const PYTHON_RUNTIME_MUTATOR = String.raw`

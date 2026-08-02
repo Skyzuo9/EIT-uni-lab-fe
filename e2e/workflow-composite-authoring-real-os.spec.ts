@@ -1,0 +1,268 @@
+import { expect, test } from '@playwright/test'
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+
+import {
+  startPersistentAuthoringOs,
+  type PersistentAuthoringOs
+} from './helpers/persistent-authoring-os'
+
+let os: PersistentAuthoringOs
+
+test.describe.configure({ mode: 'serial' })
+
+test.beforeAll(async () => {
+  os = await startPersistentAuthoringOs({ compositeFixture: true })
+})
+
+test.afterAll(async () => {
+  await os?.stop()
+})
+
+test('Published child stays a boundary while its OS-owned graph expands locally', async ({
+  page
+}) => {
+  test.setTimeout(120_000)
+  const artifactDirectory = resolve(
+    process.env.UNILAB_C1_E2E_ARTIFACT_DIR ||
+      '../e2e-artifacts/c1-composite-authoring'
+  )
+  mkdirSync(artifactDirectory, { recursive: true })
+
+  const authoringPath =
+    `/api/v1/workflows/${os.compositeParentWorkflowUuid}/authoring`
+  const authoringUrl = `${os.url}${authoringPath}`
+  const before = await readEnvelope<AuthoringAggregate>(authoringUrl)
+  expect(before.state).toBe('applied')
+  writeFileSync(
+    resolve(artifactDirectory, 'authoring-before.json'),
+    `${JSON.stringify(before, null, 2)}\n`,
+    'utf8'
+  )
+  const catalogList = await readRawJson(
+    `${os.url}/api/v1/workflow-node-templates?page=1&page_size=100`
+  )
+  const catalogItems = ((catalogList as CatalogEnvelope).data.items ?? [])
+  const catalogDetails = await Promise.all(catalogItems.map((item) =>
+    readRawJson(
+      `${os.url}/api/v1/workflow-node-templates/${encodeURIComponent(item.uuid)}`
+    )
+  ))
+  writeFileSync(
+    resolve(artifactDirectory, 'catalog-wire.json'),
+    `${JSON.stringify({ list: catalogList, details: catalogDetails }, null, 2)}\n`,
+    'utf8'
+  )
+  const invocation = before.applied_graph.nodes.find(
+    (node) => node.uuid === os.compositeInvocationUuid
+  )
+  expect(invocation).toBeTruthy()
+  const internals = before.applied_graph.nodes.filter(
+    (node) => node.parent_uuid === os.compositeInvocationUuid
+  )
+  expect(internals.length).toBeGreaterThan(0)
+  const boundaryEdges = before.applied_graph.edges.filter((edge) =>
+    edge.source_node_uuid === os.compositeInvocationUuid ||
+    edge.target_node_uuid === os.compositeInvocationUuid
+  )
+  expect(boundaryEdges).toHaveLength(2)
+  expect(boundaryEdges.every((edge) =>
+    Boolean(edge.source_handle_uuid && edge.target_handle_uuid)
+  )).toBe(true)
+  expect(before.draft?.python_source).toContain(
+    'from production_lab.workflows.composite_child import published_child'
+  )
+  expect(before.draft?.python_source.match(/child = published_child\(/g))
+    .toHaveLength(1)
+
+  const browserErrors: string[] = []
+  const applicationErrors: string[] = []
+  const webSockets: string[] = []
+  const requests: RequestLedgerEntry[] = []
+  page.on('console', (message) => {
+    if (message.type() === 'error') browserErrors.push(message.text())
+  })
+  page.on('pageerror', (error) => browserErrors.push(error.message))
+  page.on('websocket', (webSocket) => webSockets.push(webSocket.url()))
+  page.on('request', (request) => {
+    if (!request.url().startsWith(`${os.url}/api/v1/`)) return
+    requests.push({
+      method: request.method(),
+      path: new URL(request.url()).pathname
+    })
+  })
+  page.on('response', (response) => {
+    if (
+      response.url().startsWith(`${os.url}/api/v1/`) &&
+      response.status() >= 400
+    ) {
+      applicationErrors.push(
+        `${response.request().method()} ` +
+        `${new URL(response.url()).pathname} ${response.status()}`
+      )
+    }
+  })
+
+  const storageKey = `unilab.workflow.active.${
+    encodeURIComponent(`local-python:${os.url}`)
+  }.v1`
+  await page.addInitScript(({ key, workflowUuid }) => {
+    localStorage.setItem(
+      key,
+      JSON.stringify({ version: 1, workflowId: workflowUuid })
+    )
+  }, { key: storageKey, workflowUuid: os.compositeParentWorkflowUuid })
+
+  await page.goto(
+    `/?section=workflow&localOsUrl=${encodeURIComponent(os.url)}`
+  )
+  await expect(page.getByText('完整控制流 DAG')).toBeVisible()
+  await expect(page.getByLabel('Action 模板')).toBeVisible()
+  await expect(page.getByLabel('子工作流模板')).toBeVisible()
+  await expect(page.getByText('Workflow Action Catalog 返回了无效响应'))
+    .toHaveCount(0)
+  const invocationCard = page.locator(
+    `.react-flow__node [data-workflow-node-uuid="${os.compositeInvocationUuid}"]`
+  )
+  const internalCard = page.locator(
+    `.react-flow__node [data-workflow-node-uuid="${internals[0]?.uuid}"]`
+  )
+  await expect(invocationCard).toBeVisible()
+  await expect(internalCard).toHaveCount(0)
+  await page.screenshot({
+    path: resolve(artifactDirectory, '01-collapsed.png'),
+    fullPage: true
+  })
+
+  requests.length = 0
+  await invocationCard.getByRole('button', {
+    name: /展开子工作流/
+  }).click()
+  await expect(internalCard).toBeVisible()
+  await page.screenshot({
+    path: resolve(artifactDirectory, '02-expanded.png'),
+    fullPage: true
+  })
+  await invocationCard.getByRole('button', {
+    name: /折叠子工作流/
+  }).click()
+  await expect(internalCard).toHaveCount(0)
+
+  const toggleRequests = [...requests]
+  expect(toggleRequests.filter(isAuthoringMutation)).toEqual([])
+  expect(toggleRequests.filter(isRuntimeRequest)).toEqual([])
+  expect(webSockets).toEqual([])
+  expect(applicationErrors).toEqual([])
+  expect(browserErrors).toEqual([])
+
+  await page.reload()
+  await expect(page.getByText('完整控制流 DAG')).toBeVisible()
+  await expect(invocationCard).toBeVisible()
+  await expect(internalCard).toHaveCount(0)
+  await page.screenshot({
+    path: resolve(artifactDirectory, '03-reload-collapsed.png'),
+    fullPage: true
+  })
+
+  const after = await readEnvelope<AuthoringAggregate>(authoringUrl)
+  expect(after.applied_graph).toEqual(before.applied_graph)
+  expect(after.candidate?.graph).toEqual(before.candidate?.graph)
+  expect(after.draft?.python_source).toBe(before.draft?.python_source)
+  expect(after.workflow_revision).toBe(before.workflow_revision)
+
+  writeFileSync(
+    resolve(artifactDirectory, 'network-graph-ledger.json'),
+    `${JSON.stringify({
+      schema_version: 1,
+      workflow_uuid: os.compositeParentWorkflowUuid,
+      workflow_revision: before.workflow_revision,
+      invocation_uuid: os.compositeInvocationUuid,
+      internal_node_uuids: internals.map((node) => node.uuid).sort(),
+      boundary_edges: boundaryEdges.map((edge) => ({
+        source_node_uuid: edge.source_node_uuid,
+        source_handle_uuid: edge.source_handle_uuid,
+        target_node_uuid: edge.target_node_uuid,
+        target_handle_uuid: edge.target_handle_uuid
+      })),
+      toggle_requests: toggleRequests,
+      toggle_authoring_mutations: 0,
+      toggle_runtime_requests: 0,
+      websocket_count: webSockets.length,
+      application_error_count: applicationErrors.length,
+      page_error_count: browserErrors.length,
+      reload_reset_to_collapsed: true,
+      graph_unchanged: true,
+      python_unchanged: true
+    }, null, 2)}\n`,
+    'utf8'
+  )
+})
+
+interface AuthoringAggregate {
+  state: string
+  workflow_revision: number
+  draft: { python_source: string } | null
+  candidate: { graph: AuthoringGraph } | null
+  applied_graph: AuthoringGraph
+}
+
+interface AuthoringGraph {
+  nodes: Array<{ uuid: string; parent_uuid?: string | null }>
+  edges: Array<{
+    source_node_uuid: string
+    source_handle_uuid: string
+    target_node_uuid: string
+    target_handle_uuid: string
+  }>
+  [key: string]: unknown
+}
+
+interface RequestLedgerEntry {
+  method: string
+  path: string
+}
+
+interface CatalogEnvelope {
+  data: {
+    items?: Array<{ uuid: string }>
+  }
+}
+
+function isAuthoringMutation(entry: RequestLedgerEntry): boolean {
+  return entry.method !== 'GET' && (
+    entry.path.includes('/authoring') ||
+    entry.path.endsWith('/graph') ||
+    entry.path.includes('/workflow-nodes') ||
+    entry.path.includes('/workflow-edges')
+  )
+}
+
+function isRuntimeRequest(entry: RequestLedgerEntry): boolean {
+  return (
+    entry.path.includes('/workflow-tasks') ||
+    entry.path.includes('/workflow-node-jobs') ||
+    entry.path.includes('/commands') ||
+    entry.path.includes('/feedback')
+  )
+}
+
+async function readEnvelope<T>(
+  url: string,
+  init?: RequestInit
+): Promise<T> {
+  const response = await fetch(url, init)
+  if (!response.ok) {
+    throw new Error(`${response.status} ${await response.text()}`)
+  }
+  const envelope = await response.json() as { code: number; data: T }
+  expect(envelope.code).toBe(0)
+  return envelope.data
+}
+
+async function readRawJson(url: string): Promise<unknown> {
+  const response = await fetch(url)
+  if (!response.ok) {
+    throw new Error(`${response.status} ${await response.text()}`)
+  }
+  return response.json()
+}
