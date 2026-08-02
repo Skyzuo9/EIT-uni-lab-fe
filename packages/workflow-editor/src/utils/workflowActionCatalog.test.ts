@@ -33,6 +33,8 @@ const listHandleUuid = '30000000-0000-4000-8000-000000000006'
 const materialHandleUuid = '30000000-0000-4000-8000-000000000007'
 const siteHandleUuid = '30000000-0000-4000-8000-000000000008'
 const upstreamHandleUuid = '30000000-0000-4000-8000-000000000009'
+const readyTargetHandleUuid = '30000000-0000-4000-8000-000000000010'
+const readySourceHandleUuid = '30000000-0000-4000-8000-000000000011'
 const fingerprint = `sha256:${'a'.repeat(64)}`
 
 describe('typed Action editor projection', () => {
@@ -100,6 +102,22 @@ describe('typed Action editor projection', () => {
       }
     }])
     expect(created.nodes[0]?.param).not.toHaveProperty('options')
+    expect(created.handle_templates.map((item) => item.uuid)).toEqual(
+      expect.arrayContaining(actionTemplate().handles.map((handle) => handle.uuid))
+    )
+    expect(created.handle_templates).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        uuid: readyTargetHandleUuid,
+        handle_key: 'ready',
+        io_type: 'target'
+      }),
+      expect.objectContaining({
+        uuid: readySourceHandleUuid,
+        handle_key: 'ready',
+        io_type: 'source'
+      })
+    ]))
+    expect(created.node_templates.map((item) => item.uuid)).toContain(templateUuid)
     expect(() => createTypedActionNode(catalog, emptyGraph, {
       nodeUuid: '40000000-0000-4000-8000-000000000004',
       templateUuid: '20000000-0000-4000-8000-000000000099',
@@ -619,6 +637,8 @@ function actionTemplate(): WorkflowActionCatalogSnapshot['actionTemplates'][numb
     goal: {},
     goalDefault: { temperature: 25, mode: 'safe', note: null },
     handles: [
+      readyHandle(readyTargetHandleUuid, 'target'),
+      readyHandle(readySourceHandleUuid, 'source'),
       handle(requiredHandleUuid, 'count', { type: 'integer' }, true),
       handle(defaultHandleUuid, 'temperature', {
         type: 'number', default: 25
@@ -658,6 +678,28 @@ function sourceTemplate(): WorkflowActionCatalogSnapshot['actionTemplates'][numb
       ioType: 'source',
       dataSource: 'result'
     }]
+  }
+}
+
+function readyHandle(
+  uuid: string,
+  ioType: 'source' | 'target'
+): WorkflowActionCatalogSnapshot['nodeTemplates'][number]['handles'][number] {
+  return {
+    uuid,
+    workflowNodeTemplateUuid: templateUuid,
+    handleKey: 'ready',
+    ioType,
+    displayName: 'Ready',
+    valueType: 'boolean',
+    required: false,
+    dataSource: ioType === 'source' ? 'result' : 'goal',
+    dataKey: 'ready',
+    valueSchema: { type: 'boolean' },
+    editorControl: 'variable_selector',
+    allowedResourceTemplateUuids: null,
+    implicitPassthrough: true,
+    structuralRole: 'ready'
   }
 }
 
