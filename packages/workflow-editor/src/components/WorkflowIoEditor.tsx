@@ -933,7 +933,10 @@ function withoutDefault(
 
 function defaultValue(schema: WorkflowValueSchema): WorkflowJsonValue {
   const base = nonNullSchema(schema)
-  if (containsResourceSlot(base)) {
+  if (
+    '$slot' in base ||
+    (base.type === 'array' && containsResourceSlot(base.items))
+  ) {
     throw new Error('ResourceSlot input 不允许浏览器生成 default')
   }
   switch (base.type) {
