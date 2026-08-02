@@ -11,6 +11,7 @@ let os: PersistentAuthoringOs
 const PREPARE_NODE_UUID = '20000000-0000-4000-8000-000000000001'
 const ANALYZE_NODE_UUID = '20000000-0000-4000-8000-000000000002'
 const PREPARE_CYCLES_TARGET = '40000000-0000-4000-8000-000000000002'
+const PREPARE_SAMPLE_SOURCE = '40000000-0000-4000-8000-000000000005'
 const ANALYZE_REPORT_SOURCE = '41000000-0000-4000-8000-000000000004'
 
 test.describe.configure({ mode: 'serial' })
@@ -305,12 +306,22 @@ test('Candidate Workflow I/O survives real OS apply and result-record round-trip
     output_contract: {
       outputs: expect.arrayContaining([
         expect.objectContaining({
+          name: 'sample',
+          schema: { $slot: 'ResourceSlot' },
+          implicit: false
+        }),
+        expect.objectContaining({
           name: 'analysis_report',
           implicit: false
         })
       ])
     },
     output_bindings: {
+      sample: {
+        kind: 'node_output',
+        workflow_node_uuid: PREPARE_NODE_UUID,
+        source_handle_uuid: PREPARE_SAMPLE_SOURCE
+      },
       analysis_report: {
         kind: 'node_output',
         workflow_node_uuid: ANALYZE_NODE_UUID,

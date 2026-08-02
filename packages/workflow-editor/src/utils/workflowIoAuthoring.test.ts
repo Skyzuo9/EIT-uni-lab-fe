@@ -29,6 +29,7 @@ const otherTemplateUuid = '20000000-0000-4000-8000-000000000003'
 const targetHandleUuid = '30000000-0000-4000-8000-000000000001'
 const sourceHandleUuid = '30000000-0000-4000-8000-000000000002'
 const foreignSourceHandleUuid = '30000000-0000-4000-8000-000000000003'
+const resourceSourceHandleUuid = '30000000-0000-4000-8000-000000000004'
 
 describe('Workflow I/O authoring', () => {
   it('adds, renames, binds, and removes an input by real target Handle UUID', () => {
@@ -144,6 +145,37 @@ describe('Workflow I/O authoring', () => {
     })).toThrow(/implicit|隐式|只读/i)
   })
 
+  it('preserves an assignable same-name explicit ResourceSlot output', () => {
+    const graph = explicitResourceSlotOutputGraph()
+    const withCount = addWorkflowInput(graph, input('count'))
+    const renamed = updateWorkflowInput(
+      withCount,
+      'count',
+      input('repeat_count')
+    )
+
+    expect(inputParameters(renamed)).toEqual([
+      {
+        name: 'sample',
+        schema: { $slot: 'ResourceSlot' },
+        required: true
+      },
+      input('repeat_count')
+    ])
+    expect(outputDescriptors(renamed)).toEqual([{
+      name: 'sample',
+      schema: { $slot: 'ResourceSlot' },
+      implicit: false
+    }])
+    expect(outputBindings(renamed)).toEqual({
+      sample: {
+        kind: 'node_output',
+        workflow_node_uuid: sourceNodeUuid,
+        source_handle_uuid: resourceSourceHandleUuid
+      }
+    })
+  })
+
   it('renames and removes an explicit output without changing its source identity', () => {
     const graph = addWorkflowOutput(emptyIoGraph(), output('report'))
     const bound = bindWorkflowOutput(graph, 'report', {
@@ -215,6 +247,11 @@ describe('Workflow I/O authoring', () => {
           kind: 'node_output',
           workflowNodeUuid: sourceNodeUuid,
           sourceHandleUuid
+        },
+        {
+          kind: 'node_output',
+          workflowNodeUuid: sourceNodeUuid,
+          sourceHandleUuid: resourceSourceHandleUuid
         },
         {
           kind: 'node_output',
@@ -293,6 +330,15 @@ function emptyIoGraph(): WorkflowAuthoringGraph {
         value_schema: { type: 'object' }
       },
       {
+        uuid: resourceSourceHandleUuid,
+        workflow_node_template_uuid: sourceTemplateUuid,
+        handle_key: 'sample',
+        data_key: 'sample',
+        display_name: '样品',
+        io_type: 'source',
+        value_schema: { $slot: 'ResourceSlot' }
+      },
+      {
         uuid: foreignSourceHandleUuid,
         workflow_node_template_uuid: otherTemplateUuid,
         handle_key: 'foreign_result',
@@ -302,6 +348,44 @@ function emptyIoGraph(): WorkflowAuthoringGraph {
         value_schema: { type: 'object' }
       }
     ]
+  }
+}
+
+function explicitResourceSlotOutputGraph(): WorkflowAuthoringGraph {
+  const graph = emptyIoGraph()
+  return {
+    ...graph,
+    workflow: {
+      ...graph.workflow,
+      meta_data: {
+        ...graph.workflow.meta_data,
+        unilab: {
+          input_contract: {
+            version: 1,
+            parameters: [{
+              name: 'sample',
+              schema: { $slot: 'ResourceSlot' },
+              required: true
+            }]
+          },
+          output_contract: {
+            version: 1,
+            outputs: [{
+              name: 'sample',
+              schema: { $slot: 'ResourceSlot' },
+              implicit: false
+            }]
+          },
+          output_bindings: {
+            sample: {
+              kind: 'node_output',
+              workflow_node_uuid: sourceNodeUuid,
+              source_handle_uuid: resourceSourceHandleUuid
+            }
+          }
+        }
+      }
+    }
   }
 }
 
