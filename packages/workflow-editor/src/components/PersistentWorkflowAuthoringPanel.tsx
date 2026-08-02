@@ -1325,21 +1325,6 @@ export function PersistentWorkflowAuthoringPanel({
 
       {appliedIo && <WorkflowIoSummary io={appliedIo} />}
 
-      {graph && (
-        <WorkflowIoEditor
-          graph={graph}
-          editable={!busy && policy.canvasMutationEnabled}
-          onGraphChange={(nextGraph) => {
-            setGraph(nextGraph)
-            setCanvasDirty(true)
-            setError(null)
-            setMessage(
-              'Candidate I/O 已修改；保存前将由 OS 生成 canonical Python'
-            )
-          }}
-        />
-      )}
-
       <main className="persistent-authoring__workbench">
         <section
           className="persistent-authoring__pane persistent-authoring__code"
@@ -1397,6 +1382,20 @@ export function PersistentWorkflowAuthoringPanel({
                 ))}
               </select>
             </label>
+          )}
+          {graph && mode === 'canvas' && (
+            <WorkflowIoEditor
+              graph={graph}
+              editable={!busy && policy.canvasMutationEnabled}
+              onGraphChange={(nextGraph) => {
+                setGraph(nextGraph)
+                setCanvasDirty(true)
+                setError(null)
+                setMessage(
+                  'Candidate I/O 已修改；保存前将由 OS 生成 canonical Python'
+                )
+              }}
+            />
           )}
           <div className="persistent-authoring__canvas-body">
             {graph ? (

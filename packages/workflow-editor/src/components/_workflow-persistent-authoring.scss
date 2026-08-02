@@ -219,8 +219,8 @@
 
   :global(.persistent-authoring__io-editor) {
     display: grid;
-    flex: 0 0 auto;
-    max-height: min(42vh, 460px);
+    flex: 0 1 auto;
+    max-height: 320px;
     overflow: auto;
     border-bottom: 1px solid var(--unilab-color-border);
     background: var(--unilab-color-surface);
