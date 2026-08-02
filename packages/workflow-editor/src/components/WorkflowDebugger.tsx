@@ -9,6 +9,8 @@ interface WorkflowDebuggerProps {
   startNodeId: string | null
   breakpointCount: number
   controls: readonly WorkflowDebugControl[]
+  traceAvailable?: boolean
+  onTraceOpen?: () => void
   onCommand: (
     command: WorkflowDebugCommand,
     message: string
@@ -22,6 +24,8 @@ export function WorkflowDebugger({
   startNodeId,
   breakpointCount,
   controls,
+  traceAvailable = false,
+  onTraceOpen,
   onCommand
 }: WorkflowDebuggerProps): React.JSX.Element {
   return (
@@ -69,6 +73,25 @@ export function WorkflowDebugger({
         </div>
       </div>
       <div className="workflow-runtime__debug-actions">
+        {traceAvailable && onTraceOpen && (
+          <button
+            type="button"
+            className="workflow-runtime__trace-open"
+            aria-label="查看工作流 Trace"
+            title="查看 Electron 与 Uni-Lab-OS 上报的运行 Trace"
+            onClick={onTraceOpen}
+          >
+            <span aria-hidden="true">
+              <svg viewBox="0 0 20 20">
+                <circle cx="4" cy="5" r="1.75" />
+                <circle cx="15.5" cy="10" r="1.75" />
+                <circle cx="7" cy="15" r="1.75" />
+                <path d="M5.6 5.8 13.8 9M14 11.2 8.5 14.3M5.1 6.6l1.4 6.7" />
+              </svg>
+            </span>
+            查看 Trace
+          </button>
+        )}
         <DebugActionGroup
           controls={controls.filter((control) => !control.danger)}
           onCommand={onCommand}

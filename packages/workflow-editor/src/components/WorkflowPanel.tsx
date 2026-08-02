@@ -13,6 +13,8 @@ import type {
   WorkflowRuntimePort
 } from '@unilab/services'
 
+import type { WorkflowTracePort } from '../traceRuntime'
+
 import {
   useWorkflowAuthoring,
   type WorkflowAuthoringMode,
@@ -27,6 +29,7 @@ import { WorkflowOutput } from './WorkflowOutput'
 import { WorkflowSavePrompt } from './WorkflowSavePrompt'
 import { useWorkflowSessionStore } from './WorkflowSessionProvider'
 import { WorkflowStage } from './WorkflowStage'
+import { WorkflowTraceViewer } from './WorkflowTraceViewer'
 import { WorkflowToolbar } from './WorkflowToolbar'
 import styles from './workflow.module.scss'
 
@@ -37,6 +40,7 @@ export interface WorkflowStepFocus {
 
 export interface WorkflowPanelProps {
   runtime: WorkflowRuntimePort
+  traceRuntime?: WorkflowTracePort
   activeWorkflowStorageKey?: string
   onStepFocus?: (focus: WorkflowStepFocus) => void
   onUnsavedChangesChange?: (hasUnsavedChanges: boolean) => void
@@ -66,6 +70,7 @@ interface WorkflowPanelSession
 
 export default function WorkflowPanel({
   runtime,
+  traceRuntime,
   activeWorkflowStorageKey,
   onStepFocus,
   onUnsavedChangesChange
@@ -106,6 +111,7 @@ export default function WorkflowPanel({
     initialSession?.error ?? null
   )
   const [busy, setBusy] = useState(false)
+  const [traceViewerOpen, setTraceViewerOpen] = useState(false)
   const withBusy = useCallback(async (
     operation: () => Promise<void>
   ): Promise<void> => {
@@ -507,6 +513,8 @@ export default function WorkflowPanel({
           startNodeId={workflowRun.executionScope.startNodeId}
           breakpointCount={workflowRun.breakpoints.size}
           controls={workflowRun.debugControls}
+          traceAvailable={Boolean(traceRuntime)}
+          onTraceOpen={() => setTraceViewerOpen(true)}
           onCommand={(nextCommand, acceptedMessage) =>
             workflowRun.command(nextCommand, {}, acceptedMessage)
           }
@@ -534,6 +542,14 @@ export default function WorkflowPanel({
           onClearError={() => setError(null)}
         />
       </WorkflowStage>
+      {traceRuntime && (
+        <WorkflowTraceViewer
+          open={traceViewerOpen}
+          currentRunId={workflowRun.run?.id ?? null}
+          runtime={traceRuntime}
+          onClose={() => setTraceViewerOpen(false)}
+        />
+      )}
     </div>
   )
 }
