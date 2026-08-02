@@ -501,11 +501,20 @@ for (const scenario of [
   }) => {
     test.setTimeout(120_000)
     const browserErrors: string[] = []
+    const expectedAuthorityConsoleErrors: string[] = []
     const applicationErrors: string[] = []
     const webSockets: string[] = []
     const requests: Array<{ method: string; path: string }> = []
     page.on('console', (message) => {
-      if (message.type() === 'error') browserErrors.push(message.text())
+      if (message.type() !== 'error') return
+      const text = message.text()
+      if (new RegExp(
+        `^Failed to load resource: the server responded with a status of ${scenario.status} \\([^)]*\\)$`
+      ).test(text)) {
+        expectedAuthorityConsoleErrors.push(text)
+        return
+      }
+      browserErrors.push(text)
     })
     page.on('pageerror', (error) => browserErrors.push(error.message))
     page.on('websocket', (webSocket) => webSockets.push(webSocket.url()))
@@ -623,6 +632,11 @@ for (const scenario of [
     expect(forbiddenRequests).toEqual([])
     expect(webSockets).toEqual([])
     expect(applicationErrors).toEqual([])
+    expect(expectedAuthorityConsoleErrors).toEqual([
+      expect.stringMatching(new RegExp(
+        `^Failed to load resource: the server responded with a status of ${scenario.status} \\([^)]*\\)$`
+      ))
+    ])
     expect(browserErrors).toEqual([])
   })
 }
