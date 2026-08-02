@@ -29,15 +29,65 @@ export function projectPersistentAuthoringGraph(
     })
     handlesByTemplate.set(templateUuid, handles)
   }
+  const nodeByUuid = new Map(
+    graph.nodes.map((node) => [String(node.uuid || ''), node])
+  )
+  const childrenByParent = new Map<string, string[]>()
+  for (const node of graph.nodes) {
+    const nodeUuid = String(node.uuid || '')
+    const parentUuid = nullableString(node.parent_uuid)
+    if (!nodeUuid || !parentUuid || !nodeByUuid.has(parentUuid)) continue
+    const children = childrenByParent.get(parentUuid) ?? []
+    children.push(nodeUuid)
+    childrenByParent.set(parentUuid, children)
+  }
+  const compositeByNode = new Map<string, PublishedWorkflowProjection>()
+  for (const node of graph.nodes) {
+    const nodeUuid = String(node.uuid || '')
+    const templateUuid = String(node.workflow_node_template_uuid || '')
+    const projection = publishedWorkflowProjection(templates.get(templateUuid))
+    if (nodeUuid && projection) compositeByNode.set(nodeUuid, projection)
+  }
+  const owningComposite = (nodeUuid: string): string | null => {
+    let current = nodeByUuid.get(nodeUuid)
+    const visited = new Set<string>()
+    while (current) {
+      const parentUuid = nullableString(current.parent_uuid)
+      if (!parentUuid || visited.has(parentUuid)) return null
+      if (compositeByNode.has(parentUuid)) return parentUuid
+      visited.add(parentUuid)
+      current = nodeByUuid.get(parentUuid)
+    }
+    return null
+  }
+  const descendants = (nodeUuid: string): string[] => {
+    const result: string[] = []
+    const visited = new Set([nodeUuid])
+    const visit = (parentUuid: string): void => {
+      for (const childUuid of childrenByParent.get(parentUuid) ?? []) {
+        if (visited.has(childUuid)) continue
+        visited.add(childUuid)
+        result.push(childUuid)
+        visit(childUuid)
+      }
+    }
+    visit(nodeUuid)
+    return result
+  }
   const nodes: WorkflowNode[] = graph.nodes.map((node) => {
+    const nodeUuid = String(node.uuid)
     const templateUuid = String(node.workflow_node_template_uuid || '')
     const template = templates.get(templateUuid)
+    const composite = compositeByNode.get(nodeUuid)
+    const parentUuid = nullableString(node.parent_uuid)
+    const ownerUuid = composite ? nodeUuid : owningComposite(nodeUuid)
+    const owner = ownerUuid ? compositeByNode.get(ownerUuid) : undefined
     const type = String(
       node.type || template?.node_type || template?.type || 'action'
     )
     const position = nodePosition(node.pose)
     return {
-      id: String(node.uuid),
+      id: nodeUuid,
       name: String(
         node.name || template?.display_name || template?.name || node.uuid
       ),
@@ -47,6 +97,26 @@ export function projectPersistentAuthoringGraph(
       ),
       labNodeType: type,
       handles: handlesByTemplate.get(templateUuid) ?? [],
+      ...(parentUuid && nodeByUuid.has(parentUuid)
+        ? { parentGroupId: parentUuid, authoringReadOnly: true }
+        : {}),
+      ...(composite
+        ? {
+            groupKind: 'subworkflow' as const,
+            childNodeIds: [...(childrenByParent.get(nodeUuid) ?? [])],
+            descendantNodeIds: descendants(nodeUuid),
+            collapsedByDefault: true,
+            openChildWorkflowUuid: composite.workflowUuid,
+            compositeSignature: [
+              String(graph.workflow.uuid || ''),
+              String(graph.workflow.revision ?? ''),
+              nodeUuid,
+              composite.contractDigest
+            ].join(':')
+          }
+        : owner
+          ? { openChildWorkflowUuid: owner.workflowUuid }
+          : {}),
       ...position
     }
   })
@@ -73,6 +143,26 @@ export function projectPersistentAuthoringGraph(
     })),
     error: null
   }
+}
+
+interface PublishedWorkflowProjection {
+  workflowUuid: string
+  contractDigest: string
+}
+
+function publishedWorkflowProjection(
+  template: Record<string, unknown> | undefined
+): PublishedWorkflowProjection | null {
+  if (!template) return null
+  const schema = isRecord(template.schema) ? template.schema : {}
+  const contract = isRecord(schema['x-unilabos-workflow-contract'])
+    ? schema['x-unilabos-workflow-contract']
+    : null
+  if (!contract || contract.version !== 1) return null
+  const workflowUuid = nullableString(contract.workflow_uuid)
+  const contractDigest = nullableString(contract.contract_digest)
+  if (!workflowUuid || !contractDigest) return null
+  return { workflowUuid, contractDigest }
 }
 
 export function updatePersistentAuthoringNodeName(
@@ -181,6 +271,10 @@ function finite(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value)
     ? value
     : undefined
+}
+
+function nullableString(value: unknown): string | null {
+  return typeof value === 'string' && value.length > 0 ? value : null
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
