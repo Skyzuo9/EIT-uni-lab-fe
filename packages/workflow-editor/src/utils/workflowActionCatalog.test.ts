@@ -41,7 +41,7 @@ describe('typed Action editor projection', () => {
       authorityId: catalog.authorityId,
       authorityKind: catalog.authorityKind,
       fingerprint: catalog.fingerprint,
-      actionTemplates: catalog.nodeTemplates,
+      actionTemplates: catalog.actionTemplates,
       workflowTemplates: [{
         uuid: '20000000-0000-4000-8000-000000000099',
         displayName: 'Published child must not become an Action'
@@ -108,8 +108,8 @@ describe('typed Action editor projection', () => {
 
     const catalogWithAuto: WorkflowActionCatalogSnapshot = {
       ...catalog,
-      nodeTemplates: [
-        ...catalog.nodeTemplates,
+      actionTemplates: [
+        ...catalog.actionTemplates,
         {
           ...actionTemplate(),
           uuid: '20000000-0000-4000-8000-000000000003',
@@ -550,10 +550,11 @@ const catalog = {
   authorityId: 'os-local',
   authorityKind: 'local',
   fingerprint,
-  nodeTemplates: [
+  actionTemplates: [
     actionTemplate(),
     sourceTemplate()
-  ]
+  ],
+  workflowTemplates: []
 } satisfies WorkflowActionCatalogSnapshot
 
 const graph: WorkflowAuthoringGraph = {
@@ -603,7 +604,7 @@ const graph: WorkflowAuthoringGraph = {
   handle_templates: []
 }
 
-function actionTemplate(): WorkflowActionCatalogSnapshot['nodeTemplates'][number] {
+function actionTemplate(): WorkflowActionCatalogSnapshot['actionTemplates'][number] {
   return {
     uuid: templateUuid,
     resourceTemplateUuid: '10000000-0000-4000-8000-000000000001',
@@ -640,7 +641,7 @@ function actionTemplate(): WorkflowActionCatalogSnapshot['nodeTemplates'][number
   }
 }
 
-function sourceTemplate(): WorkflowActionCatalogSnapshot['nodeTemplates'][number] {
+function sourceTemplate(): WorkflowActionCatalogSnapshot['actionTemplates'][number] {
   return {
     uuid: sourceTemplateUuid,
     resourceTemplateUuid: '10000000-0000-4000-8000-000000000002',
@@ -687,7 +688,7 @@ function handle(
   required = false,
   editorControl: 'material_port' | 'site_selector' | 'variable_selector' =
     'variable_selector'
-): WorkflowActionCatalogSnapshot['nodeTemplates'][number]['handles'][number] {
+): WorkflowActionCatalogSnapshot['actionTemplates'][number]['handles'][number] {
   return {
     uuid,
     workflowNodeTemplateUuid: templateUuid,

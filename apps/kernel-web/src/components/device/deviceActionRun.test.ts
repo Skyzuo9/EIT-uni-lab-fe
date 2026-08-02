@@ -106,13 +106,14 @@ function liveAction(): DeviceAction {
 }
 
 function actionCatalog(
-  nodeTemplates: WorkflowActionNodeTemplate[]
+  actionTemplates: WorkflowActionNodeTemplate[]
 ): WorkflowActionCatalogSnapshot {
   return {
     authorityId: 'os-local',
     authorityKind: 'local',
     fingerprint: `sha256:${'a'.repeat(64)}`,
-    nodeTemplates
+    actionTemplates,
+    workflowTemplates: []
   }
 }
 

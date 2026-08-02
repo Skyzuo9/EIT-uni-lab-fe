@@ -14,7 +14,10 @@ export type {
   WorkflowActionCatalogSnapshot,
   WorkflowActionEditorControl,
   WorkflowActionHandleTemplate,
-  WorkflowActionNodeTemplate
+  WorkflowActionNodeTemplate,
+  WorkflowExecutableCatalogSnapshot,
+  WorkflowPublishedNodeTemplate,
+  WorkflowPublishedSource
 } from './workflowActionCatalog'
 export type {
   WorkflowInputContract,

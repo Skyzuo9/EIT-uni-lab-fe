@@ -33,7 +33,7 @@ describe('Workflow Action Catalog adapter', () => {
       authorityId: 'os-local',
       authorityKind: 'local',
       fingerprint,
-      nodeTemplates: [
+      actionTemplates: [
         {
           uuid: nodeUuid,
           resourceTemplateUuid,
@@ -82,7 +82,8 @@ describe('Workflow Action Catalog adapter', () => {
             }
           ]
         }
-      ]
+      ],
+      workflowTemplates: []
     })
     expect(requests).toEqual([
       '/api/v1/workflow-node-templates?page=1&page_size=100',
@@ -293,7 +294,8 @@ describe('Workflow Action Catalog adapter', () => {
 
     const catalog = await runtime.getWorkflowActionCatalog()
 
-    expect(catalog.nodeTemplates.map((item) => item.uuid)).toEqual([nodeUuid])
+    expect(catalog.actionTemplates.map((item) => item.uuid)).toEqual([nodeUuid])
+    expect(catalog.workflowTemplates).toEqual([])
     expect(requests).toEqual([
       '/api/v1/workflow-node-templates?page=1&page_size=100',
       '/api/v1/workflow-node-templates?page=2&page_size=100',

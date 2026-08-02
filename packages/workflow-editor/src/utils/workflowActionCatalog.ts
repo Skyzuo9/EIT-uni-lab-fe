@@ -411,7 +411,7 @@ export function rehydrateTypedActionGraph(
       'target'
     )
   }
-  const referencedTemplates = catalog.nodeTemplates.filter((template) =>
+  const referencedTemplates = catalog.actionTemplates.filter((template) =>
     referencedTemplateUuids.has(template.uuid)
   )
   return {
@@ -532,7 +532,7 @@ function typedTemplate(
   catalog: WorkflowActionCatalogSnapshot,
   templateUuid: string
 ): WorkflowActionNodeTemplate {
-  const template = catalog.nodeTemplates.find((item) => item.uuid === templateUuid)
+  const template = catalog.actionTemplates.find((item) => item.uuid === templateUuid)
   const extension = template && recordOrNull(
     template.schema['x-unilabos-action-contract']
   )
