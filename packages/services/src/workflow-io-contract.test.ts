@@ -5,6 +5,7 @@ import type { HttpClient } from './http'
 import { createWorkflowRuntime } from './workflow'
 
 const WORKFLOW_UUID = '11111111-1111-4111-8111-111111111111'
+const RESOURCE_TEMPLATE_UUID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
 
 const inputContract = {
   version: 1,
@@ -95,6 +96,85 @@ describe('Workflow I/O contract projection', () => {
     ]
   ])('fails closed for %s', async (_label, invalidIo) => {
     const runtime = runtimeFor(authoringAggregate(invalidIo))
+
+    await expect(runtime.getWorkflowAuthoring(WORKFLOW_UUID)).rejects
+      .toMatchObject({ code: 'INVALID_API_RESPONSE' })
+  })
+
+  it.each([
+    [
+      'string minimum',
+      {
+        name: 'review_minimum',
+        schema: { type: 'number', minimum: '1' },
+        required: true
+      }
+    ],
+    [
+      'minimum greater than maximum',
+      {
+        name: 'review_bounds',
+        schema: { type: 'number', minimum: 2, maximum: 1 },
+        required: true
+      }
+    ],
+    [
+      'wrong enum member family',
+      {
+        name: 'review_enum_family',
+        schema: { type: 'integer', enum: [true] },
+        required: true
+      }
+    ],
+    [
+      'duplicate enum member',
+      {
+        name: 'review_enum_duplicate',
+        schema: { type: 'string', enum: ['safe', 'safe'] },
+        required: true
+      }
+    ],
+    [
+      'default with the wrong type or declared constraint',
+      {
+        name: 'review_default',
+        schema: { type: 'integer', minimum: 2 },
+        required: false,
+        default: true
+      }
+    ],
+    [
+      'invalid ResourceSlot allowlist UUID',
+      {
+        name: 'review_allowlist_uuid',
+        schema: {
+          $slot: 'ResourceSlot',
+          allowed_resource_template_uuids: ['not-a-uuid']
+        },
+        required: true
+      }
+    ],
+    [
+      'duplicate canonical ResourceSlot allowlist UUID',
+      {
+        name: 'review_allowlist_duplicate',
+        schema: {
+          $slot: 'ResourceSlot',
+          allowed_resource_template_uuids: [
+            RESOURCE_TEMPLATE_UUID,
+            RESOURCE_TEMPLATE_UUID
+          ]
+        },
+        required: true
+      }
+    ]
+  ])('rejects reviewer-blocking %s', async (_label, invalidParameter) => {
+    const runtime = runtimeFor(authoringAggregate({
+      input_contract: {
+        version: 1,
+        parameters: [inputContract.parameters[0], invalidParameter]
+      }
+    }))
 
     await expect(runtime.getWorkflowAuthoring(WORKFLOW_UUID)).rejects
       .toMatchObject({ code: 'INVALID_API_RESPONSE' })
