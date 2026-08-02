@@ -15,6 +15,7 @@ import {
   projectWorkflowIoBindingOptions,
   removeWorkflowInput,
   removeWorkflowOutput,
+  unbindWorkflowInput,
   updateWorkflowInput,
   updateWorkflowOutput
 } from './workflowIoAuthoring'
@@ -30,6 +31,8 @@ const targetHandleUuid = '30000000-0000-4000-8000-000000000001'
 const sourceHandleUuid = '30000000-0000-4000-8000-000000000002'
 const foreignSourceHandleUuid = '30000000-0000-4000-8000-000000000003'
 const resourceSourceHandleUuid = '30000000-0000-4000-8000-000000000004'
+const resourceTemplateUuid = '70000000-0000-4000-8000-000000000001'
+const otherResourceTemplateUuid = '70000000-0000-4000-8000-000000000002'
 
 describe('Workflow I/O authoring', () => {
   it('adds, renames, binds, and removes an input by real target Handle UUID', () => {
@@ -283,6 +286,243 @@ describe('Workflow I/O authoring', () => {
     )
     expect(JSON.stringify(outputBindings(withOutput)))
       .not.toMatch(/label|data_key|ordinal/)
+  })
+
+  it('preserves the complete closed v1 schema while editing a descriptor', () => {
+    const schemas: WorkflowValueSchema[] = [
+      {
+        type: 'number',
+        enum: [20, 40],
+        minimum: 10,
+        maximum: 80
+      },
+      {
+        type: 'array',
+        items: {
+          type: 'string',
+          enum: ['fast', 'safe'],
+          minLength: 4,
+          maxLength: 8
+        },
+        minItems: 1,
+        maxItems: 3
+      },
+      { type: 'array', items: { type: 'object' } },
+      {
+        $slot: 'ResourceSlot',
+        allowed_resource_template_uuids: [
+          resourceTemplateUuid,
+          otherResourceTemplateUuid
+        ]
+      }
+    ]
+    let edited = emptyIoGraph()
+    for (const [index, schema] of schemas.entries()) {
+      edited = addWorkflowInput(edited, {
+        name: `field_${index}`,
+        schema,
+        required: true
+      })
+    }
+
+    edited = updateWorkflowInput(edited, 'field_1', {
+      name: 'labels',
+      schema: schemas[1] as WorkflowValueSchema,
+      required: true,
+      title: 'Labels',
+      description: 'Preserve recursive item constraints'
+    })
+
+    expect(inputParameters(edited)).toEqual([
+      { name: 'field_0', schema: schemas[0], required: true },
+      {
+        name: 'labels',
+        schema: schemas[1],
+        required: true,
+        title: 'Labels',
+        description: 'Preserve recursive item constraints'
+      },
+      { name: 'field_2', schema: schemas[2], required: true },
+      { name: 'field_3', schema: schemas[3], required: true }
+    ])
+
+    const withOutput = updateWorkflowOutput(
+      addWorkflowOutput(edited, {
+        name: 'metrics',
+        schema: {
+          type: 'array',
+          items: { type: 'number', minimum: 0, maximum: 1 },
+          minItems: 1,
+          maxItems: 8
+        },
+        implicit: false
+      }),
+      'metrics',
+      {
+        name: 'normalized_metrics',
+        schema: {
+          type: 'array',
+          items: { type: 'number', minimum: 0, maximum: 1 },
+          minItems: 1,
+          maxItems: 8
+        },
+        title: 'Normalized metrics',
+        implicit: false
+      }
+    )
+    expect(outputDescriptors(withOutput)).toEqual([
+      {
+        name: 'field_3',
+        schema: schemas[3],
+        implicit: true
+      },
+      {
+        name: 'normalized_metrics',
+        schema: {
+          type: 'array',
+          items: { type: 'number', minimum: 0, maximum: 1 },
+          minItems: 1,
+          maxItems: 8
+        },
+        title: 'Normalized metrics',
+        implicit: false
+      }
+    ])
+  })
+
+  it.each([
+    ['ResourceSlot', { $slot: 'ResourceSlot' }],
+    ['list[ResourceSlot]', {
+      type: 'array',
+      items: { $slot: 'ResourceSlot' }
+    }]
+  ] satisfies Array<[string, WorkflowValueSchema]>)
+  ('requires nullable schema instead of inventing a default for optional %s',
+    (_label, schema) => {
+      const required = addWorkflowInput(emptyIoGraph(), {
+        name: 'sample',
+        schema,
+        required: true
+      })
+
+      expect(() => updateWorkflowInput(required, 'sample', {
+        name: 'sample',
+        schema,
+        required: false
+      })).toThrow(/nullable|ResourceSlot|default|可空/i)
+      expect(inputParameters(required)).toEqual([{
+        name: 'sample',
+        schema,
+        required: true
+      }])
+
+      const nullableSchema: WorkflowValueSchema = {
+        anyOf: [schema as Exclude<WorkflowValueSchema, { anyOf: unknown }>, {
+          type: 'null'
+        }]
+      }
+      const optional = updateWorkflowInput(required, 'sample', {
+        name: 'sample',
+        schema: nullableSchema,
+        required: false,
+        default: null
+      })
+      expect(inputParameters(optional)).toEqual([{
+        name: 'sample',
+        schema: nullableSchema,
+        required: false,
+        default: null
+      }])
+    })
+
+  it('reorders ordered descriptors without changing binding identity', async () => {
+    const authoring = await import('./workflowIoAuthoring') as unknown as {
+      moveWorkflowInput?: (
+        graph: WorkflowAuthoringGraph,
+        name: string,
+        direction: 'up' | 'down'
+      ) => WorkflowAuthoringGraph
+      moveWorkflowOutput?: (
+        graph: WorkflowAuthoringGraph,
+        name: string,
+        direction: 'up' | 'down'
+      ) => WorkflowAuthoringGraph
+    }
+    expect(authoring.moveWorkflowInput).toBeTypeOf('function')
+    expect(authoring.moveWorkflowOutput).toBeTypeOf('function')
+    if (!authoring.moveWorkflowInput || !authoring.moveWorkflowOutput) return
+
+    let graph = bindWorkflowInput(
+      addWorkflowInput(
+        addWorkflowInput(emptyIoGraph(), input('first')),
+        input('second')
+      ),
+      {
+        parameter: 'second',
+        workflowNodeUuid: targetNodeUuid,
+        targetHandleUuid
+      }
+    )
+    graph = bindWorkflowOutput(
+      addWorkflowOutput(
+        addWorkflowOutput(graph, output('alpha')),
+        output('beta')
+      ),
+      'beta',
+      {
+        kind: 'node_output',
+        workflow_node_uuid: sourceNodeUuid,
+        source_handle_uuid: sourceHandleUuid
+      }
+    )
+
+    const inputsMoved = authoring.moveWorkflowInput(graph, 'second', 'up')
+    const outputsMoved = authoring.moveWorkflowOutput(inputsMoved, 'beta', 'up')
+
+    expect(inputParameters(outputsMoved).map(({ name }) => name))
+      .toEqual(['second', 'first'])
+    expect(outputDescriptors(outputsMoved).map(({ name }) => name))
+      .toEqual(['beta', 'alpha'])
+    expect(nodeInputBindings(outputsMoved, targetNodeUuid)).toEqual({
+      [targetHandleUuid]: { parameter: 'second' }
+    })
+    expect(outputBindings(outputsMoved).beta).toEqual({
+      kind: 'node_output',
+      workflow_node_uuid: sourceNodeUuid,
+      source_handle_uuid: sourceHandleUuid
+    })
+  })
+
+  it('directly unbinds one input target without deleting its descriptor', () => {
+    const withSecondTarget = structuredClone(emptyIoGraph())
+    withSecondTarget.handle_templates.push({
+      uuid: '30000000-0000-4000-8000-000000000005',
+      workflow_node_template_uuid: targetTemplateUuid,
+      handle_key: 'other_target',
+      io_type: 'target'
+    })
+    let bound = addWorkflowInput(withSecondTarget, input('count'))
+    bound = bindWorkflowInput(bound, {
+      parameter: 'count',
+      workflowNodeUuid: targetNodeUuid,
+      targetHandleUuid
+    })
+    bound = bindWorkflowInput(bound, {
+      parameter: 'count',
+      workflowNodeUuid: targetNodeUuid,
+      targetHandleUuid: '30000000-0000-4000-8000-000000000005'
+    })
+
+    const unbound = unbindWorkflowInput(
+      bound,
+      targetNodeUuid,
+      targetHandleUuid
+    )
+
+    expect(inputParameters(unbound)).toEqual([input('count')])
+    expect(nodeInputBindings(unbound, targetNodeUuid)).toEqual({
+      '30000000-0000-4000-8000-000000000005': { parameter: 'count' }
+    })
   })
 })
 
