@@ -1,8 +1,9 @@
 import type {
   WorkflowAuthoringAggregate,
-  WorkflowInputDescriptor
+  WorkflowInputDescriptor,
+  WorkflowTask
 } from '@unilab/services'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 type FieldState =
   | { kind: 'untouched' }
@@ -24,6 +25,28 @@ interface InputFormModule {
     state: FieldState
   ): InputForm
   buildWorkflowTaskInput(form: InputForm): Record<string, unknown>
+  submitWorkflowTaskInput(options: {
+    form: InputForm
+    readApplied: () => Promise<WorkflowAuthoringAggregate>
+    createTask: (input: Record<string, unknown>) => Promise<WorkflowTask>
+  }): Promise<
+    | {
+        kind: 'reproject_before_create'
+        form: InputForm
+        message: string
+      }
+    | {
+        kind: 'created'
+        task: WorkflowTask
+        message: string
+      }
+    | {
+        kind: 'reproject_after_create'
+        task: WorkflowTask
+        form: InputForm
+        message: string
+      }
+  >
 }
 
 const modulePath = './workflowTaskInputForm'
@@ -103,6 +126,127 @@ describe('WorkflowTaskInputForm pure builder', () => {
       { kind: 'value', value: 'false' }
     )).toThrow(/boolean|类型/i)
   })
+
+  it('accepts structurally typed constrained intermediates but rejects them at build', () => {
+    expect(formModule.createWorkflowTaskInputForm).toBeTypeOf('function')
+    expect(formModule.setWorkflowTaskInputField).toBeTypeOf('function')
+    expect(formModule.buildWorkflowTaskInput).toBeTypeOf('function')
+    let form = formModule.createWorkflowTaskInputForm!(aggregate({
+      parameters: [
+        {
+          name: 'short_code',
+          schema: { type: 'string', minLength: 2 },
+          required: true
+        },
+        {
+          name: 'steps',
+          schema: {
+            type: 'array',
+            items: { type: 'string' },
+            minItems: 1
+          },
+          required: true
+        }
+      ]
+    }))
+
+    expect(() => {
+      form = formModule.setWorkflowTaskInputField!(
+        form,
+        'short_code',
+        { kind: 'value', value: '' }
+      )
+      form = formModule.setWorkflowTaskInputField!(
+        form,
+        'steps',
+        { kind: 'value', value: [] }
+      )
+    }).not.toThrow()
+    expect(form.fields.map(({ state }) => state)).toEqual([
+      { kind: 'value', value: '' },
+      { kind: 'value', value: [] }
+    ])
+    expect(() => formModule.buildWorkflowTaskInput!(form))
+      .toThrow(/short_code.*minLength|minLength.*short_code/i)
+
+    form = formModule.setWorkflowTaskInputField!(
+      form,
+      'short_code',
+      { kind: 'value', value: 'ok' }
+    )
+    expect(() => formModule.buildWorkflowTaskInput!(form))
+      .toThrow(/steps.*minItems|minItems.*steps/i)
+    form = formModule.setWorkflowTaskInputField!(
+      form,
+      'steps',
+      { kind: 'value', value: ['mix'] }
+    )
+    expect(formModule.buildWorkflowTaskInput!(form)).toEqual({
+      short_code: 'ok',
+      steps: ['mix']
+    })
+  })
+
+  it('reprojects a changed Applied contract before create and performs no POST', async () => {
+    expect(formModule.submitWorkflowTaskInput).toBeTypeOf('function')
+    const submitted = requiredValues(
+      formModule.createWorkflowTaskInputForm!(aggregate())
+    )
+    const latest = aggregate({ revision: 8 })
+    const createTask = vi.fn(async () => workflowTask(8))
+
+    const result = await formModule.submitWorkflowTaskInput!({
+      form: submitted,
+      readApplied: vi.fn(async () => latest),
+      createTask
+    })
+
+    expect(createTask).not.toHaveBeenCalled()
+    expect(result).toMatchObject({
+      kind: 'reproject_before_create',
+      form: { appliedRevision: 8 },
+      message: expect.stringMatching(/7[\s\S]*8|revision.*更新/i)
+    })
+    if (result.kind !== 'reproject_before_create') {
+      throw new Error(`Expected pre-create reproject, received ${result.kind}`)
+    }
+    expect(result.form.fields.every(({ state }) => state.kind === 'untouched'))
+      .toBe(true)
+  })
+
+  it('rehydrates authority and reprojects after a created Task snapshot race', async () => {
+    expect(formModule.submitWorkflowTaskInput).toBeTypeOf('function')
+    const submitted = requiredValues(
+      formModule.createWorkflowTaskInputForm!(aggregate())
+    )
+    const beforeCreate = aggregate({ revision: 7 })
+    const afterCreate = aggregate({ revision: 9 })
+    const readApplied = vi.fn()
+      .mockResolvedValueOnce(beforeCreate)
+      .mockResolvedValueOnce(afterCreate)
+    const created = workflowTask(8)
+    const createTask = vi.fn(async () => created)
+
+    const result = await formModule.submitWorkflowTaskInput!({
+      form: submitted,
+      readApplied,
+      createTask
+    })
+
+    expect(createTask).toHaveBeenCalledOnce()
+    expect(readApplied).toHaveBeenCalledTimes(2)
+    expect(result).toMatchObject({
+      kind: 'reproject_after_create',
+      task: created,
+      form: { appliedRevision: 9 },
+      message: expect.stringMatching(/Task.*已创建[\s\S]*8[\s\S]*9/i)
+    })
+    if (result.kind !== 'reproject_after_create') {
+      throw new Error(`Expected post-create reproject, received ${result.kind}`)
+    }
+    expect(result.form.fields.every(({ state }) => state.kind === 'untouched'))
+      .toBe(true)
+  })
 })
 
 function requiredValues(initial: InputForm): InputForm {
@@ -123,8 +267,11 @@ function requiredValues(initial: InputForm): InputForm {
   return form
 }
 
-function aggregate(): WorkflowAuthoringAggregate {
-  const parameters: WorkflowInputDescriptor[] = [
+function aggregate(options: {
+  revision?: number
+  parameters?: WorkflowInputDescriptor[]
+} = {}): WorkflowAuthoringAggregate {
+  const parameters: WorkflowInputDescriptor[] = options.parameters ?? [
     { name: 'count', schema: { type: 'integer' }, required: true },
     { name: 'enabled', schema: { type: 'boolean' }, required: true },
     { name: 'label', schema: { type: 'string' }, required: true },
@@ -150,7 +297,7 @@ function aggregate(): WorkflowAuthoringAggregate {
   const appliedGraph = graph(parameters)
   return {
     workflow_uuid: '10000000-0000-4000-8000-000000000001',
-    workflow_revision: 7,
+    workflow_revision: options.revision ?? 7,
     state: 'unapplied_graph',
     applied_graph: appliedGraph,
     draft: null,
@@ -169,6 +316,28 @@ function aggregate(): WorkflowAuthoringAggregate {
       compiler_version: 'test',
       template_catalog_fingerprint: 'catalog-1'
     }
+  }
+}
+
+function workflowTask(snapshotRevision: number): WorkflowTask {
+  return {
+    uuid: '30000000-0000-4000-8000-000000000001',
+    create_time: '2026-08-02T00:00:00Z',
+    update_time: '2026-08-02T00:00:00Z',
+    meta_data: {},
+    workflow_uuid: '10000000-0000-4000-8000-000000000001',
+    status: 'pending',
+    workflow_snapshot: {
+      workflow: { revision: snapshotRevision }
+    },
+    execution_plan: {},
+    run_mode: 'normal',
+    control_status: 'active',
+    cleanup_status: 'none',
+    trace_context: {},
+    input: {},
+    output: {},
+    error_info: []
   }
 }
 
