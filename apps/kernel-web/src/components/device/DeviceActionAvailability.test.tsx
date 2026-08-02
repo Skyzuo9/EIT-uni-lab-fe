@@ -9,11 +9,69 @@ import {
 } from './DevicePanel'
 
 describe('device action Runtime availability', () => {
-  it('keeps direct execution unavailable until an applied Workflow owns the Task', () => {
-    const markup = renderToStaticMarkup(<DeviceActionAvailability />)
+  it('re-enables the original run control only for a typed D1A Action', () => {
+    const markup = renderToStaticMarkup(
+      <DeviceActionAvailability
+        state={{ kind: 'ready', message: '参数已就绪' }}
+        onRun={() => {}}
+      />
+    )
+
+    expect(markup).toContain('运行此动作')
+    expect(markup).not.toContain('disabled')
+    expect(markup).toContain('参数已就绪')
+  })
+
+  it('keeps unsupported material contracts fail closed', () => {
+    const markup = renderToStaticMarkup(
+      <DeviceActionAvailability
+        state={{
+          kind: 'unavailable',
+          message: '该动作包含物料语义，请在工作流中运行'
+        }}
+        onRun={() => {}}
+      />
+    )
 
     expect(markup).toContain('请在工作流中运行')
     expect(markup).toContain('disabled')
+  })
+
+  it('separates HTTP acceptance from running and terminal result', () => {
+    const pending = renderToStaticMarkup(
+      <DeviceActionAvailability
+        state={{ kind: 'submitting', message: '正在创建正式任务…' }}
+        onRun={() => {}}
+      />
+    )
+    const accepted = renderToStaticMarkup(
+      <DeviceActionAvailability
+        state={{
+          kind: 'accepted',
+          message: '任务已接受，正在等待设备',
+          taskUuid: '10000000-0000-4000-8000-000000000001'
+        }}
+        onRun={() => {}}
+      />
+    )
+    const succeeded = renderToStaticMarkup(
+      <DeviceActionAvailability
+        state={{
+          kind: 'succeeded',
+          message: '动作执行完成',
+          taskUuid: '10000000-0000-4000-8000-000000000001',
+          output: { position: 'safe' }
+        }}
+        onRun={() => {}}
+      />
+    )
+
+    expect(pending).toContain('正在创建正式任务')
+    expect(pending).toContain('disabled')
+    expect(accepted).toContain('任务已接受，正在等待设备')
+    expect(accepted).not.toContain('动作执行完成')
+    expect(succeeded).toContain('动作执行完成')
+    expect(succeeded).toContain('&quot;position&quot;: &quot;safe&quot;')
   })
 })
 
