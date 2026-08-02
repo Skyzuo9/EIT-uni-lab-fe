@@ -110,27 +110,11 @@ export function createMaterialService(
     getGraph: async (scope) => {
       requireReadGraph()
       assertSingletonScope(scope)
-
-      const aggregates: MaterialAggregate[] = []
-      let page = 1
-      let total = Number.POSITIVE_INFINITY
-      while (aggregates.length < total) {
-        const response = await requestData<{
-          items?: Record<string, unknown>[]
-          total?: number
-          page?: number
-          page_size?: number
-        }>(
-          http,
-          `/api/v1/materials?page=${page}&page_size=100`
-        )
-        const items = response.items ?? []
-        aggregates.push(...items.map(mapMaterialAggregate))
-        total = finiteNumber(response.total, aggregates.length)
-        if (items.length === 0 || aggregates.length >= total) break
-        page += 1
-      }
-      return aggregates
+      const response = await requestData<Record<string, unknown>>(
+        http,
+        '/api/v1/materials/graph'
+      )
+      return mapBackendMaterialGraph(response)
     },
     createMaterial: async (scope, input) => {
       requireCreate()
@@ -570,6 +554,250 @@ function mapCreateMaterialResult(
     ),
     edgeSyncState
   }
+}
+
+/**
+ * Backend 的 MaterialGraph 是共享 wire contract；MaterialAggregate 只是 FE
+ * 内部渲染模型。所有 snake_case、相对位置及 Site 占用关系只在这个 adapter
+ * seam 转换，UI 不读取 Inventory 私有 DTO，也不猜测字段名。
+ */
+function mapBackendMaterialGraph(
+  raw: Record<string, unknown>
+): MaterialAggregate[] {
+  if (!Array.isArray(raw.nodes) || raw.nodes.some((node) => !isRecord(node))) {
+    throw invalidGraph('nodes must be an object array')
+  }
+
+  const nodes = raw.nodes as Record<string, unknown>[]
+  const siteById = new Map<
+    string,
+    { ownerMaterialId: string; site: MaterialSite }
+  >()
+  for (const node of nodes) {
+    if (!Array.isArray(node.sites)) {
+      throw invalidGraph('node.sites must be an array')
+    }
+    for (const rawSite of node.sites) {
+      const site = mapBackendSite(rawSite)
+      if (siteById.has(site.id)) {
+        throw invalidGraph(`Duplicate Site uuid: ${site.id}`)
+      }
+      siteById.set(site.id, {
+        ownerMaterialId: site.ownerMaterialId,
+        site
+      })
+    }
+  }
+
+  return nodes.map((node) => {
+    const material = recordValue(node.material)
+    const id = requiredString(material.uuid, 'material.uuid')
+    const updateTime = requiredString(
+      material.update_time,
+      'material.update_time'
+    )
+    const position = optionalRecord(node.relative_position)
+    if (
+      position &&
+      requiredString(position.material_uuid, 'relative_position.material_uuid') !== id
+    ) {
+      throw invalidGraph(
+        `RelativePosition owner does not match Material ${id}`
+      )
+    }
+    const sites = (node.sites as unknown[]).map(mapBackendSite)
+    for (const site of sites) {
+      if (site.ownerMaterialId !== id) {
+        throw invalidGraph(
+          `Site ${site.id} owner ${site.ownerMaterialId} does not match ${id}`
+        )
+      }
+    }
+
+    const config = mapBackendMaterialConfig(material.config, position)
+    return {
+      material: {
+        id,
+        sourceTemplateId: requiredString(
+          material.resource_template_uuid,
+          'material.resource_template_uuid'
+        ),
+        code: optionalString(material.barcode) ?? '',
+        name: requiredString(material.name, 'material.name'),
+        description: optionalString(material.description),
+        config,
+        createdAt: requiredString(
+          material.create_time,
+          'material.create_time'
+        ),
+        updatedAt: updateTime
+      },
+      placement: mapBackendPlacement(
+        material,
+        position,
+        node.current_site_uuid,
+        siteById
+      ),
+      sites,
+      // Backend baseline deliberately does not expose Inventory.version. This
+      // adapter-local token only drives the read-only FE store.
+      revision: adapterRevision(updateTime)
+    }
+  })
+}
+
+function mapBackendMaterialConfig(
+  value: unknown,
+  position: Record<string, unknown> | undefined
+): Record<string, unknown> {
+  const config = recordValue(value)
+  const rawRendering = isRecord(config.rendering)
+    ? config.rendering
+    : {}
+  if (!position) return config
+  return {
+    ...config,
+    rendering: {
+      ...rawRendering,
+      kind: optionalString(rawRendering.kind) ?? 'custom',
+      dimensionsMm: [
+        finiteGraphNumber(position.width, 'relative_position.width'),
+        finiteGraphNumber(position.depth, 'relative_position.depth'),
+        finiteGraphNumber(position.length, 'relative_position.length')
+      ]
+    }
+  }
+}
+
+function mapBackendPlacement(
+  material: Record<string, unknown>,
+  position: Record<string, unknown> | undefined,
+  currentSiteUuid: unknown,
+  siteById: ReadonlyMap<
+    string,
+    { ownerMaterialId: string; site: MaterialSite }
+  >
+): MaterialPlacement {
+  const siteId = optionalString(currentSiteUuid)
+  if (siteId) {
+    const entry = siteById.get(siteId)
+    if (!entry) {
+      throw invalidGraph(`current_site_uuid does not resolve: ${siteId}`)
+    }
+    return {
+      kind: 'site',
+      parentId: entry.ownerMaterialId,
+      siteId,
+      offsetPose: zeroPose()
+    }
+  }
+  if (!position) return { kind: 'unplaced' }
+
+  const pose = mapBackendPose(position, 'relative_position')
+  const parentId = optionalString(material.parent_uuid)
+  return parentId
+    ? {
+        kind: 'parent',
+        parentId,
+        anchor: { kind: 'root' },
+        localPose: pose
+      }
+    : { kind: 'world', pose }
+}
+
+function mapBackendSite(value: unknown): MaterialSite {
+  const raw = recordValue(value)
+  const metaData = isRecord(raw.meta_data) ? raw.meta_data : {}
+  const occupiedMaterialId = optionalString(raw.occupied_material_uuid)
+  return {
+    id: requiredString(raw.uuid, 'site.uuid'),
+    ownerMaterialId: requiredString(
+      raw.material_uuid,
+      'site.material_uuid'
+    ),
+    key:
+      optionalString(metaData.key) ??
+      requiredString(raw.name, 'site.name'),
+    name: requiredString(raw.name, 'site.name'),
+    anchor: { kind: 'root' },
+    poseInAnchor: {
+      positionMm: [
+        finiteGraphNumber(raw.position_x, 'site.position_x'),
+        finiteGraphNumber(raw.position_y, 'site.position_y'),
+        finiteGraphNumber(raw.position_z, 'site.position_z')
+      ],
+      rotationDegXYZ: [0, 0, 0]
+    },
+    sizeMm: [
+      finiteGraphNumber(raw.width, 'site.width'),
+      finiteGraphNumber(raw.length, 'site.length'),
+      finiteGraphNumber(raw.depth, 'site.depth')
+    ],
+    capacity: 1,
+    allowedTemplateIds: stringArray(
+      raw.allowed_resource_template_uuids
+    ),
+    occupiedMaterialIds: occupiedMaterialId
+      ? [occupiedMaterialId]
+      : [],
+    kind: siteKind(metaData.kind) ?? 'site',
+    visible: metaData.visible == null ? true : Boolean(metaData.visible),
+    visual: {
+      state: occupiedMaterialId ? 'occupied' : 'empty',
+      fillFraction: occupiedMaterialId ? 1 : 0
+    }
+  }
+}
+
+function mapBackendPose(
+  raw: Record<string, unknown>,
+  field: string
+): LabPose {
+  return {
+    positionMm: [
+      finiteGraphNumber(raw.position_x, `${field}.position_x`),
+      finiteGraphNumber(raw.position_y, `${field}.position_y`),
+      finiteGraphNumber(raw.position_z, `${field}.position_z`)
+    ],
+    rotationDegXYZ: [
+      finiteGraphNumber(raw.rotation_x, `${field}.rotation_x`),
+      finiteGraphNumber(raw.rotation_y, `${field}.rotation_y`),
+      finiteGraphNumber(raw.rotation_z, `${field}.rotation_z`)
+    ]
+  }
+}
+
+function zeroPose(): LabPose {
+  return {
+    positionMm: [0, 0, 0],
+    rotationDegXYZ: [0, 0, 0]
+  }
+}
+
+function adapterRevision(updateTime: string): number {
+  const parsed = Date.parse(updateTime)
+  if (Number.isFinite(parsed) && parsed > 0) return parsed
+  let hash = 2166136261
+  for (const character of updateTime) {
+    hash ^= character.codePointAt(0) ?? 0
+    hash = Math.imul(hash, 16777619)
+  }
+  return Math.max(1, hash >>> 0)
+}
+
+function optionalRecord(
+  value: unknown
+): Record<string, unknown> | undefined {
+  if (value == null) return undefined
+  return recordValue(value)
+}
+
+function finiteGraphNumber(value: unknown, field: string): number {
+  const result = Number(value)
+  if (!Number.isFinite(result)) {
+    throw invalidGraph(`${field} must be finite`)
+  }
+  return result
 }
 
 function mapMaterialAggregate(

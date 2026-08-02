@@ -16,10 +16,12 @@ describe('material template adapter', () => {
       }
     })
     const backend = getDefaultBackend('local-python')
+    const capabilities = resolveServerCapabilities(backend)
+    capabilities.material.readTemplates = true
     const service = createMaterialService(
       http,
       backend,
-      resolveServerCapabilities(backend)
+      capabilities
     )
 
     const result = await service.listTemplates({ kind: 'singleton' })
@@ -90,10 +92,12 @@ describe('material template adapter', () => {
       }
     })
     const backend = getDefaultBackend('local-python')
+    const capabilities = resolveServerCapabilities(backend)
+    capabilities.material.readTemplates = true
     const service = createMaterialService(
       http,
       backend,
-      resolveServerCapabilities(backend)
+      capabilities
     )
 
     await expect(
@@ -138,10 +142,12 @@ describe('material template adapter', () => {
   it('does not manufacture laboratory scope for the singleton adapter', async () => {
     const { http, request } = mockHttp(undefined)
     const backend = getDefaultBackend('local-python')
+    const capabilities = resolveServerCapabilities(backend)
+    capabilities.material.readTemplates = true
     const service = createMaterialService(
       http,
       backend,
-      resolveServerCapabilities(backend)
+      capabilities
     )
 
     await expect(
@@ -190,52 +196,78 @@ describe('material template adapter', () => {
     expect(request).not.toHaveBeenCalled()
   })
 
-  it('maps the OS Material list into shared aggregates', async () => {
+  it('maps the frozen Backend MaterialGraph into shared aggregates', async () => {
     const { http, request } = mockHttp({
       data: {
-        items: [
+        nodes: [
           {
-            uuid: 'material-root',
-            resource_template_uuid: 'template-device',
-            code: 'liquid_handler',
-            name: 'Liquid Handler',
-            create_time: '2026-07-26T00:00:00Z',
-            update_time: '2026-07-26T00:00:00Z',
-            config: {
-              placement: {
-                kind: 'world',
-                pose: {
-                  positionMm: [100, 200, 0],
-                  rotationDegXYZ: [0, 0, 0]
-                }
+            material: {
+              uuid: 'material-root',
+              resource_template_uuid: 'template-device',
+              class: 'liquid_handler',
+              barcode: 'LH-001',
+              name: 'Liquid Handler',
+              create_time: '2026-07-26T00:00:00Z',
+              update_time: '2026-07-26T00:00:00Z',
+              meta_data: {},
+              config: {
+                rendering: { kind: 'table' }
               },
-              rendering: {
-                kind: 'table',
-                dimensionsMm: [1400, 180, 720]
-              },
-              sites: [
-                {
-                  id: 'site-a1',
-                  ownerMaterialId: 'material-root',
-                  key: 'A1',
-                  name: 'A1',
-                  anchor: { kind: 'root' },
-                  poseInAnchor: {
-                    positionMm: [10, 20, 30],
-                    rotationDegXYZ: [0, 0, 0]
-                  },
-                  sizeMm: [9, 9, 1],
-                  capacity: 1,
-                  allowedTemplateIds: [],
-                  occupiedMaterialIds: []
-                }
-              ]
-            }
+              data: {}
+            },
+            relative_position: rawBackendPosition(
+              'position-root',
+              'material-root',
+              [100, 200, 0],
+              [1400, 720, 180]
+            ),
+            sites: [
+              {
+                uuid: 'site-a1',
+                material_uuid: 'material-root',
+                name: 'A1',
+                meta_data: { key: 'deck-A1', kind: 'deck-slot' },
+                create_time: '2026-07-26T00:00:00Z',
+                update_time: '2026-07-26T00:00:00Z',
+                sort_order: 0,
+                allowed_resource_template_uuids: ['template-vessel'],
+                occupied_material_uuid: 'material-vessel',
+                position_x: 10,
+                position_y: 20,
+                position_z: 30,
+                width: 90,
+                length: 100,
+                depth: 120
+              }
+            ],
+            current_site_uuid: null,
+            handles: []
+          },
+          {
+            material: {
+              uuid: 'material-vessel',
+              resource_template_uuid: 'template-vessel',
+              parent_uuid: 'material-root',
+              class: 'sample_vial',
+              barcode: '',
+              name: 'Sample vial',
+              create_time: '2026-07-26T00:00:00Z',
+              update_time: '2026-07-26T00:00:01Z',
+              meta_data: {},
+              config: { rendering: { kind: 'vial' } },
+              data: {}
+            },
+            relative_position: rawBackendPosition(
+              'position-vessel',
+              'material-vessel',
+              [120, 100, 30],
+              [80, 80, 140]
+            ),
+            sites: [],
+            current_site_uuid: 'site-a1',
+            handles: []
           }
-        ],
-        total: 1,
-        page: 1,
-        page_size: 100
+        ]
       }
     })
     const backend = getDefaultBackend('local-python')
@@ -252,11 +284,14 @@ describe('material template adapter', () => {
         material: {
           id: 'material-root',
           sourceTemplateId: 'template-device',
-          code: 'liquid_handler',
+          code: 'LH-001',
           name: 'Liquid Handler',
           description: undefined,
           config: expect.objectContaining({
-            rendering: expect.objectContaining({ kind: 'table' })
+            rendering: {
+              kind: 'table',
+              dimensionsMm: [1400, 180, 720]
+            }
           }),
           createdAt: '2026-07-26T00:00:00Z',
           updatedAt: '2026-07-26T00:00:00Z'
@@ -272,17 +307,44 @@ describe('material template adapter', () => {
           expect.objectContaining({
             id: 'site-a1',
             ownerMaterialId: 'material-root',
+            key: 'deck-A1',
+            allowedTemplateIds: ['template-vessel'],
+            occupiedMaterialIds: ['material-vessel'],
             poseInAnchor: {
               positionMm: [10, 20, 30],
               rotationDegXYZ: [0, 0, 0]
             }
           })
         ],
-        revision: 1
+        revision: Date.parse('2026-07-26T00:00:00Z')
+      },
+      {
+        material: expect.objectContaining({
+          id: 'material-vessel',
+          sourceTemplateId: 'template-vessel',
+          code: '',
+          config: expect.objectContaining({
+            rendering: {
+              kind: 'vial',
+              dimensionsMm: [80, 140, 80]
+            }
+          })
+        }),
+        placement: {
+          kind: 'site',
+          parentId: 'material-root',
+          siteId: 'site-a1',
+          offsetPose: {
+            positionMm: [0, 0, 0],
+            rotationDegXYZ: [0, 0, 0]
+          }
+        },
+        sites: [],
+        revision: Date.parse('2026-07-26T00:00:01Z')
       }
     ])
     expect(request).toHaveBeenCalledWith(
-      '/api/v1/materials?page=1&page_size=100',
+      '/api/v1/materials/graph',
       undefined
     )
   })
@@ -311,10 +373,12 @@ describe('material template adapter', () => {
       }
     })
     const backend = getDefaultBackend('local-python')
+    const capabilities = resolveServerCapabilities(backend)
+    capabilities.material.create = true
     const service = createMaterialService(
       http,
       backend,
-      resolveServerCapabilities(backend)
+      capabilities
     )
 
     await expect(
@@ -363,10 +427,12 @@ describe('material template adapter', () => {
   it('sends the revisioned create compensation command', async () => {
     const { http, request } = mockHttp({ data: {} })
     const backend = getDefaultBackend('local-python')
+    const capabilities = resolveServerCapabilities(backend)
+    capabilities.edge.undoCreate = true
     const service = createMaterialService(
       http,
       backend,
-      resolveServerCapabilities(backend)
+      capabilities
     )
 
     await service.undoCreate({
@@ -393,26 +459,34 @@ describe('material template adapter', () => {
   it('rejects malformed OS Material placement data', async () => {
     const { http } = mockHttp({
       data: {
-        items: [
+        nodes: [
           {
-            uuid: 'material-bad',
-            resource_template_uuid: 'template-device',
-            code: 'bad',
-            name: 'Bad material',
-            create_time: '2026-07-26T00:00:00Z',
-            update_time: '2026-07-26T00:00:00Z',
-            config: {
-              placement: {
-                kind: 'world',
-                pose: {
-                  positionMm: [0, 0],
-                  rotationDegXYZ: [0, 0, 0]
-                }
-              }
-            }
+            material: {
+              uuid: 'material-bad',
+              resource_template_uuid: 'template-device',
+              barcode: 'bad',
+              name: 'Bad material',
+              create_time: '2026-07-26T00:00:00Z',
+              update_time: '2026-07-26T00:00:00Z',
+              config: {},
+              data: {},
+              meta_data: {},
+              class: 'bad'
+            },
+            relative_position: {
+              ...rawBackendPosition(
+                'position-bad',
+                'material-bad',
+                [0, 0, 0],
+                [100, 100, 100]
+              ),
+              rotation_z: 'not-a-number'
+            },
+            sites: [],
+            current_site_uuid: null,
+            handles: []
           }
-        ],
-        total: 1
+        ]
       }
     })
     const backend = getDefaultBackend('local-python')
@@ -429,6 +503,33 @@ describe('material template adapter', () => {
     })
   })
 })
+
+function rawBackendPosition(
+  uuid: string,
+  materialUuid: string,
+  position: readonly [number, number, number],
+  dimensions: readonly [number, number, number]
+): Record<string, unknown> {
+  return {
+    uuid,
+    material_uuid: materialUuid,
+    create_time: '2026-07-26T00:00:00Z',
+    update_time: '2026-07-26T00:00:00Z',
+    meta_data: {},
+    position_x: position[0],
+    position_y: position[1],
+    position_z: position[2],
+    width: dimensions[0],
+    length: dimensions[1],
+    depth: dimensions[2],
+    scale_x: 1,
+    scale_y: 1,
+    scale_z: 1,
+    rotation_x: 0,
+    rotation_y: 0,
+    rotation_z: 0
+  }
+}
 
 function rawTemplateSummary(): Record<string, unknown> {
   return {

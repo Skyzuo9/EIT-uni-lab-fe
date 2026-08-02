@@ -24,10 +24,7 @@ describe('server capability matrix', () => {
           (backendId === 'local-python' &&
             (capability === 'devices.listActions' ||
               capability === 'devices.forceUnlock' ||
-              capability === 'material.readTemplates' ||
-              capability === 'material.readGraph' ||
-              capability === 'material.create' ||
-              capability === 'edge.undoCreate'))
+              capability === 'material.readGraph'))
         expect(hasServerCapability(capabilities, capability)).toBe(expected)
 
         const status = getCapabilityStatus(

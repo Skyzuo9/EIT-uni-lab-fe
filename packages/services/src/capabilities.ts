@@ -209,10 +209,7 @@ function localPythonCapabilities(): ServerCapabilities {
   const capabilities = unavailableCapabilities()
   capabilities.devices.listActions = true
   capabilities.devices.forceUnlock = true
-  capabilities.material.readTemplates = true
   capabilities.material.readGraph = true
-  capabilities.material.create = true
-  capabilities.edge.undoCreate = true
   return capabilities
 }
 
