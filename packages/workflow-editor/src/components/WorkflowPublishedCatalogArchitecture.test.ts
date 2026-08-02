@@ -78,14 +78,17 @@ describe('Published Workflow Catalog in the original Authoring panel', () => {
     )
   })
 
-  it('does not add a component fetch, second Catalog loader, or profile branch', () => {
+  it('keeps Catalog loading behind the runtime without a Published-specific loader', () => {
     const source = readFileSync(panelPath, 'utf8')
     const catalogMethods = [...source.matchAll(
       /runtime\.(getWorkflow[A-Za-z]+Catalog)\(/g
     )].map((match) => match[1])
 
     expect(catalogMethods.length).toBeGreaterThan(0)
-    expect(new Set(catalogMethods).size).toBe(1)
+    expect(new Set(catalogMethods)).toEqual(new Set([
+      'getWorkflowActionCatalog',
+      'getWorkflowMaterialSourceCatalog'
+    ]))
     expect(source).not.toMatch(/\bfetch\s*\(/)
     expect(source).not.toContain('/api/v1/workflow-node-templates')
     expect(source).not.toMatch(/getPublishedWorkflowCatalog/)

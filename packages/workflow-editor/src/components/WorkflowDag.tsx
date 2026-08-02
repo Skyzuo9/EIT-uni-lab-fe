@@ -90,6 +90,7 @@ export default function WorkflowDag({
   const [expandedGroupIds, setExpandedGroupIds] = useState<Set<string>>(
     () => new Set()
   )
+  const containerRef = useRef<HTMLDivElement | null>(null)
   const flowInstanceRef = useRef<ReactFlowInstance | null>(null)
   const beautifyTimerRef = useRef<
     ReturnType<typeof globalThis.setTimeout> | null
@@ -188,8 +189,12 @@ export default function WorkflowDag({
           pausedBefore,
           groupExpanded: expandedGroupIds.has(node.id),
           onToggleGroup: toggleGroup,
-          onSetStart,
-          onToggleBreakpoint
+          onSetStart: sourceNode?.type === 'material_source'
+            ? undefined
+            : onSetStart,
+          onToggleBreakpoint: sourceNode?.type === 'material_source'
+            ? undefined
+            : onToggleBreakpoint
         }
       }
     }),
@@ -247,6 +252,26 @@ export default function WorkflowDag({
       cancelAnimationFrame(fitFrame)
     }
   }, [graphSignature])
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container || typeof ResizeObserver === 'undefined') return
+    let fitFrame = 0
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(fitFrame)
+      fitFrame = requestAnimationFrame(() => {
+        void flowInstanceRef.current?.fitView({
+          padding: 0.16,
+          minZoom: 0.2,
+          maxZoom: 1
+        })
+      })
+    })
+    observer.observe(container)
+    return () => {
+      observer.disconnect()
+      cancelAnimationFrame(fitFrame)
+    }
+  }, [])
   const handleBeautify = useCallback(() => {
     if (!canBeautify || !onBeautify) return
     setIsBeautifying(true)
@@ -269,7 +294,20 @@ export default function WorkflowDag({
   }
 
   return (
-    <div className={styles.dag}>
+    <div
+      ref={containerRef}
+      className={styles.dag}
+      onKeyDown={(event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return
+        const target = event.target
+        if (!(target instanceof Element)) return
+        const node = target.closest('.react-flow__node[data-id]')
+        const nodeId = node?.getAttribute('data-id')
+        if (!nodeId) return
+        event.preventDefault()
+        onNodeSelect(nodeId)
+      }}
+    >
       <ReactFlow
         className={isBeautifying ? 'is-beautifying' : undefined}
         nodes={runtimeNodes}
@@ -313,11 +351,13 @@ export default function WorkflowDag({
         }}
         onNodeContextMenu={(event, node: Node<WorkflowNodeData>) => {
           event.preventDefault()
+          if (node.data.kind === 'material_source') return
           onSetStart?.(node.id)
         }}
-        onNodeDoubleClick={(_event, node: Node<WorkflowNodeData>) =>
+        onNodeDoubleClick={(_event, node: Node<WorkflowNodeData>) => {
+          if (node.data.kind === 'material_source') return
           onToggleBreakpoint?.(node.id)
-        }
+        }}
       >
         <Background gap={16} color="var(--unilab-color-border)" />
         <Controls showInteractive={false} />

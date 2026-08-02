@@ -572,13 +572,6 @@ describe('Workflow Action Catalog adapter', () => {
       }
     },
     {
-      name: 'Published Handle order',
-      mutate: (responses: Record<string, unknown>) => {
-        const handles = workflowHandles(responses)
-        ;[handles[0], handles[1]] = [handles[1]!, handles[0]!]
-      }
-    },
-    {
       name: 'global Action/Workflow Handle UUID',
       mutate: (responses: Record<string, unknown>) => {
         workflowHandles(responses)[0]!.uuid = targetUuid
@@ -604,6 +597,25 @@ describe('Workflow Action Catalog adapter', () => {
       code: 'INVALID_API_RESPONSE',
       retryable: false
     })
+  })
+
+  it('normalizes Published Handles to the frozen contract order', async () => {
+    const responses = executableCatalogResponses()
+    const handles = workflowHandles(responses)
+    ;[handles[0], handles[1]] = [handles[1]!, handles[0]!]
+    const runtime = createWorkflowRuntime(
+      fixtureHttp(responses),
+      getDefaultBackend('local-python')
+    )
+
+    const catalog = await runtime.getWorkflowActionCatalog()
+    expect(catalog.workflowTemplates[0]?.handles.map((handle) => handle.uuid))
+      .toEqual([
+        workflowInputUuid,
+        workflowOutputUuid,
+        workflowReadyTargetUuid,
+        workflowReadySourceUuid
+      ])
   })
 
   it('does not retain a catalog from another authority or fingerprint', async () => {

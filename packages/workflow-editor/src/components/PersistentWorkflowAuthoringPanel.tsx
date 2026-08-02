@@ -1,13 +1,23 @@
+/*
+ * THESIS: MaterialSource should read as an OS-owned material declaration flowing into compact Actions, not as another executable card.
+ * OWN-WORLD: Extend the established “精密仪器台 / Precision Instrument Bench” with LINQ-inspired palette, trace, and Properties relationships.
+ * STORY: Choose a source, configure its closed selector, review the generated Python diff, Apply, then let OS Task admission bind real Inventory.
+ * FIRST VIEWPORT: Canvas mode reveals MaterialSource palette → graph trace → Properties inspector before secondary authoring detail.
+ * FORM: Cool neutral instrument surfaces, restrained control blue, deterministic purple/indigo identity accents, and textual state evidence.
+ * FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
+ */
 import { useCodeMirror, CodeEditor } from '@unilab/code-editor'
 import type {
   WorkflowActionCatalogSnapshot,
   WorkflowNodeJob,
   WorkflowNodeJobFeedback,
+  WorkflowAuthoringDiagnostic,
   WorkflowAuthoringAggregate,
   WorkflowAuthoringGraph,
   WorkflowAuthoringSourceMapEntry,
   WorkflowAuthoringTransformResult,
   WorkflowIoMetadata,
+  WorkflowMaterialSourceCatalogSnapshot,
   WorkflowRuntimePort,
   WorkflowTask,
   WorkflowTaskCommand,
@@ -49,6 +59,15 @@ import {
   type TypedActionFieldProjection
 } from '../utils/workflowActionCatalog'
 import {
+  connectMaterialSourceToTypedActionEdge,
+  createMaterialSourceNode,
+  projectMaterialSourceEditor,
+  updateMaterialSourceSelector,
+  type MaterialSourceEditorProjection,
+  type MaterialSourceSelectorUpdate
+} from '../utils/workflowMaterialSource'
+import { materialTraceAccent } from '../utils/workflowMaterialTrace'
+import {
   AuthoringOperationQueue,
   authoringProjection,
   authoringStateMessage,
@@ -61,14 +80,20 @@ import {
   isTemplateCatalogConflict
 } from '../utils/persistentAuthoringSession'
 import { projectWorkflowCodeMarkers } from '../utils/workflowCodeMarkers'
+import {
+  workflowTaskControlStatusLabel,
+  workflowTaskControls,
+  workflowTaskStatusLabel,
+  workflowTaskVisualStatus
+} from '../utils/workflowTaskPresentation'
 import { useWorkflowTaskRuntime } from '../hooks/useWorkflowTaskRuntime'
 import type {
   WorkflowTaskRuntimeSnapshot
 } from '../runtime/WorkflowTaskController'
 import WorkflowDag from './WorkflowDag'
+import { workflowNodeStateLabel } from './WorkflowNodeCard'
 import {
-  WorkflowDebugger,
-  type WorkflowRuntimeControl
+  WorkflowDebugger
 } from './WorkflowDebugger'
 import {
   WorkflowOutput,
@@ -158,6 +183,12 @@ export function PersistentWorkflowAuthoringPanel({
   const [graph, setGraph] = useState<WorkflowAuthoringGraph | null>(null)
   const [actionCatalog, setActionCatalog] =
     useState<WorkflowActionCatalogSnapshot | null>(null)
+  const [materialSourceCatalog, setMaterialSourceCatalog] =
+    useState<WorkflowMaterialSourceCatalogSnapshot | null>(null)
+  const [materialSourceCatalogLoading, setMaterialSourceCatalogLoading] =
+    useState(true)
+  const [materialSourceCatalogError, setMaterialSourceCatalogError] =
+    useState<string | null>(null)
   const [canvasDirty, setCanvasDirty] = useState(false)
   const [selectedNodeUuid, setSelectedNodeUuid] = useState<string | null>(null)
   const [selectedNodeName, setSelectedNodeName] = useState('')
@@ -307,6 +338,73 @@ export function PersistentWorkflowAuthoringPanel({
       : { nodes: [], links: [], steps: [], error: null },
     [graph]
   )
+  const effectiveMaterialSourceCatalog = useMemo(() => {
+    if (!materialSourceCatalog) return null
+    const templateLabels = new Map(
+      materialSourceCatalog.resourceTemplates.map((template) => [
+        template.uuid,
+        template.displayName
+      ])
+    )
+    for (const node of graph?.nodes ?? []) {
+      if (node.type !== 'material_source' || !isRecordValue(node.param)) continue
+      const templateUuid = node.param.resource_template_uuid
+      if (typeof templateUuid === 'string' && templateUuid) {
+        templateLabels.set(
+          templateUuid,
+          templateLabels.get(templateUuid) ?? shortTemplateLabel(templateUuid)
+        )
+      }
+    }
+    for (const template of [
+      ...(actionCatalog?.actionTemplates ?? []),
+      ...(actionCatalog?.workflowTemplates ?? [])
+    ]) {
+      for (const handle of template.handles) {
+        for (const templateUuid of handle.allowedResourceTemplateUuids ?? []) {
+          templateLabels.set(
+            templateUuid,
+            templateLabels.get(templateUuid) ?? shortTemplateLabel(templateUuid)
+          )
+        }
+      }
+    }
+    return {
+      ...materialSourceCatalog,
+      resourceTemplates: [...templateLabels.entries()]
+        .map(([uuid, displayName]) => ({ uuid, displayName }))
+        .sort((left, right) => left.uuid.localeCompare(right.uuid))
+    }
+  }, [actionCatalog, graph, materialSourceCatalog])
+  const materialSourceAuthorityBlocked = useMemo(() => {
+    const sourceNodes = graph?.nodes.filter(
+      (node) => node.type === 'material_source'
+    ) ?? []
+    if (sourceNodes.length === 0) return false
+    if (
+      materialSourceCatalogLoading ||
+      materialSourceCatalogError ||
+      !effectiveMaterialSourceCatalog ||
+      !graph
+    ) return true
+    return sourceNodes.some((node) => {
+      if (typeof node.uuid !== 'string' || !node.uuid) return true
+      try {
+        return projectMaterialSourceEditor(
+          effectiveMaterialSourceCatalog,
+          graph,
+          node.uuid
+        ).staleReferences.length > 0
+      } catch {
+        return true
+      }
+    })
+  }, [
+    effectiveMaterialSourceCatalog,
+    graph,
+    materialSourceCatalogError,
+    materialSourceCatalogLoading
+  ])
   const debugExecutionScope = useMemo(
     () => createWorkflowExecutionScope(
       structure.nodes,
@@ -355,9 +453,14 @@ export function PersistentWorkflowAuthoringPanel({
   const taskNodeStates = useMemo(
     () => Object.fromEntries(taskJobs.map((job) => [
       job.workflow_node_uuid,
-      workflowTaskDagState(job.status)
+      workflowTaskDagState(
+        job.status,
+        structure.nodes.find((node) => node.id === job.workflow_node_uuid)
+          ?.type === 'material_source',
+        task?.status
+      )
     ])),
-    [taskJobs]
+    [structure.nodes, task?.status, taskJobs]
   )
   const codeSourceMap = useMemo(
     () => workflowSourceMap(aggregate, editor.value),
@@ -485,6 +588,50 @@ export function PersistentWorkflowAuthoringPanel({
       active = false
     }
   }, [runtime])
+
+  const refreshMaterialSourceCatalog = useCallback(async (): Promise<void> => {
+    setMaterialSourceCatalogLoading(true)
+    setMaterialSourceCatalogError(null)
+    try {
+      setMaterialSourceCatalog(
+        await runtime.getWorkflowMaterialSourceCatalog()
+      )
+    } catch (catalogError) {
+      setMaterialSourceCatalog(null)
+      setMaterialSourceCatalogError(errorMessage(catalogError))
+    } finally {
+      setMaterialSourceCatalogLoading(false)
+    }
+  }, [runtime])
+
+  const refreshWorkflowCatalogsAfterConflict = useCallback(async (): Promise<{
+    action: WorkflowActionCatalogSnapshot
+    materialSource: WorkflowMaterialSourceCatalogSnapshot
+  }> => {
+    setActionCatalog(null)
+    setMaterialSourceCatalog(null)
+    setMaterialSourceCatalogLoading(true)
+    setMaterialSourceCatalogError(null)
+    try {
+      const [action, materialSource] = await Promise.all([
+        runtime.getWorkflowActionCatalog(),
+        runtime.getWorkflowMaterialSourceCatalog()
+      ])
+      setActionCatalog(action)
+      setMaterialSourceCatalog(materialSource)
+      return { action, materialSource }
+    } catch (catalogError) {
+      const message = errorMessage(catalogError)
+      setMaterialSourceCatalogError(message)
+      throw catalogError
+    } finally {
+      setMaterialSourceCatalogLoading(false)
+    }
+  }, [runtime])
+
+  useEffect(() => {
+    void refreshMaterialSourceCatalog()
+  }, [refreshMaterialSourceCatalog])
 
   useEffect(() => {
     let active = true
@@ -665,9 +812,9 @@ export function PersistentWorkflowAuthoringPanel({
         diagnostic.code === 'template_catalog_conflict'
     ) ?? false
     if (catalogFailure || diagnosticCatalogMismatch) {
-      setActionCatalog(null)
-      const refreshedCatalog = await runtime.getWorkflowActionCatalog()
-      setActionCatalog(refreshedCatalog)
+      const refreshedCatalog = (
+        await refreshWorkflowCatalogsAfterConflict()
+      ).action
       const decision = catalogConflictDecision({
         dirty: localState.current.canvasDirty,
         localPython: localState.current.editorValue,
@@ -730,7 +877,14 @@ export function PersistentWorkflowAuthoringPanel({
       )
     }
     return validated
-  }, [actionCatalog?.fingerprint, aggregate, queue, runtime, workflowUuid])
+  }, [
+    actionCatalog?.fingerprint,
+    aggregate,
+    queue,
+    refreshWorkflowCatalogsAfterConflict,
+    runtime,
+    workflowUuid
+  ])
 
   const enterMode = useCallback(async (
     nextMode: WorkflowEditMode
@@ -981,9 +1135,9 @@ export function PersistentWorkflowAuthoringPanel({
           localGraph: WorkflowAuthoringGraph
         } | null = null
         if (isTemplateCatalogConflict(applyError)) {
-          setActionCatalog(null)
-          const refreshedCatalog = await runtime.getWorkflowActionCatalog()
-          setActionCatalog(refreshedCatalog)
+          const refreshedCatalog = (
+            await refreshWorkflowCatalogsAfterConflict()
+          ).action
           const currentGraph = localState.current.graph
           if (currentGraph) {
             catalogRecovery = {
@@ -1064,8 +1218,17 @@ export function PersistentWorkflowAuthoringPanel({
     ? authoringProjection(aggregate).kind
     : null
   const diagnostics = aggregate?.draft?.diagnostics ?? []
+  const selectedGraphNode = graph?.nodes.find(
+    (node) => node.uuid === selectedNodeUuid
+  )
+  const selectedIsMaterialSource = selectedGraphNode?.type === 'material_source'
   const selectedActionProjection = useMemo(() => {
-    if (!actionCatalog || !graph || !selectedNodeUuid) {
+    if (
+      !actionCatalog ||
+      !graph ||
+      !selectedNodeUuid ||
+      selectedIsMaterialSource
+    ) {
       return { editor: null, error: null }
     }
     try {
@@ -1081,13 +1244,45 @@ export function PersistentWorkflowAuthoringPanel({
     } catch (projectionError) {
       return { editor: null, error: errorMessage(projectionError) }
     }
-  }, [actionCatalog, diagnostics, graph, selectedNodeUuid])
+  }, [
+    actionCatalog,
+    diagnostics,
+    graph,
+    selectedIsMaterialSource,
+    selectedNodeUuid
+  ])
   const selectedActionEditor = selectedActionProjection.editor
   const selectedNodeIsInternal = graph?.nodes.some((node) =>
     node.uuid === selectedNodeUuid &&
     node.parent_uuid !== undefined &&
     node.parent_uuid !== null
   ) ?? false
+  const selectedMaterialSourceProjection = useMemo(() => {
+    if (
+      !effectiveMaterialSourceCatalog ||
+      !graph ||
+      !selectedNodeUuid ||
+      !selectedIsMaterialSource
+    ) return { editor: null, error: null }
+    try {
+      return {
+        editor: projectMaterialSourceEditor(
+          effectiveMaterialSourceCatalog,
+          graph,
+          selectedNodeUuid
+        ),
+        error: null
+      }
+    } catch (projectionError) {
+      return { editor: null, error: errorMessage(projectionError) }
+    }
+  }, [
+    graph,
+    effectiveMaterialSourceCatalog,
+    selectedIsMaterialSource,
+    selectedNodeUuid
+  ])
+  const selectedMaterialSourceEditor = selectedMaterialSourceProjection.editor
 
   const addTypedActionNode = (templateUuid: string): void => {
     if (!actionCatalog || !graph) return
@@ -1146,6 +1341,89 @@ export function PersistentWorkflowAuthoringPanel({
     }
   }
 
+  const addMaterialSourceNode = (): void => {
+    if (
+      !effectiveMaterialSourceCatalog ||
+      !graph ||
+      materialSourceAuthorityBlocked
+    ) return
+    let name = 'material_source'
+    let suffix = 2
+    while (graph.nodes.some((item) => item.name === name)) {
+      name = `material_source_${suffix}`
+      suffix += 1
+    }
+    try {
+      const nodeUuid = globalThis.crypto.randomUUID()
+      const next = createMaterialSourceNode(effectiveMaterialSourceCatalog, graph, {
+        nodeUuid,
+        name
+      })
+      setGraph(next)
+      setCanvasDirty(true)
+      setSelectedNodeUuid(nodeUuid)
+      setSelectedNodeName(name)
+      setSelectedNodeNameDirty(false)
+      setMessage('已添加 MaterialSource；请在 Properties 中完成 closed selector')
+    } catch (createError) {
+      setError(errorMessage(createError))
+    }
+  }
+
+  const updateMaterialSource = (
+    editorProjection: MaterialSourceEditorProjection,
+    patch: Partial<MaterialSourceSelectorUpdate>
+  ): void => {
+    if (
+      !effectiveMaterialSourceCatalog ||
+      !graph ||
+      !selectedNodeUuid ||
+      materialSourceAuthorityBlocked
+    ) return
+    const changingTemplate = patch.resourceTemplateUuid !== undefined &&
+      patch.resourceTemplateUuid !== editorProjection.resourceTemplateUuid
+    const changingMount = patch.mountUuid !== undefined &&
+      patch.mountUuid !== editorProjection.mountUuid
+    const next: MaterialSourceSelectorUpdate = {
+      mode: patch.mode ?? editorProjection.mode,
+      resourceTemplateUuid: patch.resourceTemplateUuid ??
+        editorProjection.resourceTemplateUuid,
+      mountUuid: patch.mountUuid ?? editorProjection.mountUuid,
+      fixedMaterialUuid: patch.fixedMaterialUuid !== undefined
+        ? patch.fixedMaterialUuid
+        : changingTemplate
+          ? null
+          : editorProjection.fixedMaterialUuid,
+      siteScope: patch.siteScope ?? (
+        changingTemplate || changingMount ? 'all' : editorProjection.siteScope
+      ),
+      fixedSiteUuid: patch.fixedSiteUuid !== undefined
+        ? patch.fixedSiteUuid
+        : changingTemplate || changingMount
+          ? null
+          : editorProjection.fixedSiteUuid,
+      candidateSiteUuids: patch.candidateSiteUuids ?? (
+        changingTemplate || changingMount
+          ? []
+          : editorProjection.candidateSiteUuids
+      ),
+      flowRole: patch.flowRole ?? editorProjection.flowRole
+    }
+    try {
+      const updated = updateMaterialSourceSelector(
+        effectiveMaterialSourceCatalog,
+        graph,
+        selectedNodeUuid,
+        next
+      )
+      setGraph(updated)
+      setCanvasDirty(true)
+      setError(null)
+      setMessage('MaterialSource selector 已更新；保存前将生成完整 Python')
+    } catch (updateError) {
+      setError(errorMessage(updateError))
+    }
+  }
   const updateTypedField = (handleUuid: string, value: unknown): void => {
     if (!actionCatalog || !graph || !selectedNodeUuid) return
     try {
@@ -1204,9 +1482,23 @@ export function PersistentWorkflowAuthoringPanel({
   }): void => {
     if (!actionCatalog || !graph) return
     try {
-      const next = connectTypedActionEdge(actionCatalog, graph, {
-        ...connection
-      })
+      const sourceNode = graph.nodes.find(
+        (node) => node.uuid === connection.sourceNodeUuid
+      )
+      let next: WorkflowAuthoringGraph
+      if (sourceNode?.type === 'material_source') {
+        if (!materialSourceCatalog) {
+          throw new Error('MaterialSource catalog 尚未就绪')
+        }
+        next = connectMaterialSourceToTypedActionEdge(
+          actionCatalog,
+          materialSourceCatalog,
+          graph,
+          connection
+        )
+      } else {
+        next = connectTypedActionEdge(actionCatalog, graph, connection)
+      }
       setGraph(next)
       setCanvasDirty(true)
       setMessage('已用真实 Handle UUID 创建 Edge；保存前将生成完整 Python')
@@ -1393,8 +1685,19 @@ export function PersistentWorkflowAuthoringPanel({
           <button
             type="button"
             className="workflow-runtime__primary"
-            disabled={busy || dirty || !aggregate?.candidate}
-            title={dirty ? '请先保存当前可写表示' : undefined}
+            disabled={
+              busy ||
+              dirty ||
+              !aggregate?.candidate ||
+              materialSourceAuthorityBlocked
+            }
+            title={
+              dirty
+                ? '请先保存当前可写表示'
+                : materialSourceAuthorityBlocked
+                  ? 'MaterialSource 目录或引用已失效，请先刷新'
+                  : undefined
+            }
             onClick={applyCandidate}
           >
             应用工作流
@@ -1514,7 +1817,10 @@ export function PersistentWorkflowAuthoringPanel({
 
       {appliedIo && <WorkflowIoSummary io={appliedIo} />}
 
-      <main className="persistent-authoring__workbench">
+      <main className={[
+        'persistent-authoring__workbench',
+        mode === 'canvas' ? 'is-canvas-mode' : ''
+      ].filter(Boolean).join(' ')}>
         <section
           className="persistent-authoring__pane persistent-authoring__code"
           aria-label="Python 编写面"
@@ -1611,6 +1917,72 @@ export function PersistentWorkflowAuthoringPanel({
           <div className="persistent-authoring__canvas-body">
             {graph ? (
               <>
+                <aside
+                  className="persistent-authoring__palette"
+                  aria-label="工作流节点 palette"
+                >
+                  <header>
+                    <strong>节点</strong>
+                    <span>添加到 Candidate</span>
+                  </header>
+                  <section>
+                    <h3>物料</h3>
+                    <button
+                      type="button"
+                      className="persistent-authoring__palette-source"
+                      disabled={
+                        busy ||
+                        !policy.canvasMutationEnabled ||
+                        !effectiveMaterialSourceCatalog ||
+                        materialSourceAuthorityBlocked
+                      }
+                      onClick={addMaterialSourceNode}
+                    >
+                      <span aria-hidden="true">▱</span>
+                      <span>
+                        <strong>MaterialSource</strong>
+                        <small>OS 准入声明</small>
+                      </span>
+                    </button>
+                    {materialSourceCatalogLoading && (
+                      <p role="status">正在读取 Material / Site 目录…</p>
+                    )}
+                    {materialSourceCatalogError && (
+                      <div className="persistent-authoring__palette-problem">
+                        <p>{materialSourceCatalogError}</p>
+                        <button
+                          type="button"
+                          onClick={() => void refreshMaterialSourceCatalog()}
+                        >
+                          重新读取
+                        </button>
+                      </div>
+                    )}
+                  </section>
+                  <section>
+                    <h3>操作</h3>
+                    <div className="persistent-authoring__palette-actions">
+                      {actionCatalog?.actionTemplates.map((template) => (
+                        <button
+                          type="button"
+                          key={template.uuid}
+                          disabled={
+                            busy ||
+                            !policy.canvasMutationEnabled ||
+                            !graph
+                          }
+                          onClick={() => addTypedActionNode(template.uuid)}
+                        >
+                          <span aria-hidden="true">⌁</span>
+                          <span>
+                            <strong>{template.displayName}</strong>
+                            <small>{template.name}</small>
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+                </aside>
                 <div className="persistent-authoring__graph-stage">
                   <WorkflowDag
                     nodes={structure.nodes}
@@ -1630,10 +2002,40 @@ export function PersistentWorkflowAuthoringPanel({
                   />
                 </div>
                 <aside
-                  className="persistent-authoring__node-editor"
+                  className={[
+                    'persistent-authoring__node-editor',
+                    selectedNodeUuid ? '' : 'is-empty'
+                  ].filter(Boolean).join(' ')}
                   aria-label="画布节点编辑器"
                 >
-                  <strong>节点属性</strong>
+                  <header className="persistent-authoring__inspector-heading">
+                    <span>
+                      <span>Properties</span>
+                      <strong>
+                        {selectedIsMaterialSource ? 'MaterialSource' : '节点属性'}
+                      </strong>
+                    </span>
+                    {selectedNodeUuid && (
+                      <button
+                        type="button"
+                        aria-label="关闭 Properties"
+                        title="关闭 Properties"
+                        onClick={() => {
+                          const nodeUuid = selectedNodeUuid
+                          setSelectedNodeUuid(null)
+                          setSelectedNodeName('')
+                          setSelectedNodeNameDirty(false)
+                          requestAnimationFrame(() => {
+                            document.querySelector<HTMLElement>(
+                              `.react-flow__node[data-id="${nodeUuid}"]`
+                            )?.focus({ preventScroll: true })
+                          })
+                        }}
+                      >
+                        ×
+                      </button>
+                    )}
+                  </header>
                   {selectedNodeUuid ? (
                     <>
                       <label>
@@ -1654,6 +2056,30 @@ export function PersistentWorkflowAuthoringPanel({
                           }}
                         />
                       </label>
+                      {selectedMaterialSourceEditor && (
+                        <MaterialSourceInspector
+                          editor={selectedMaterialSourceEditor}
+                          editable={
+                            !busy && policy.canvasMutationEnabled &&
+                            !materialSourceCatalogLoading &&
+                            !materialSourceAuthorityBlocked
+                          }
+                          status={taskNodeStates[selectedNodeUuid] || 'pending'}
+                          diagnostics={diagnostics.filter((diagnostic) =>
+                            diagnostic.node_id === selectedNodeUuid
+                          )}
+                          onChange={(patch) => updateMaterialSource(
+                            selectedMaterialSourceEditor,
+                            patch
+                          )}
+                        />
+                      )}
+                      {selectedMaterialSourceProjection.error && (
+                        <p role="alert">
+                          MaterialSource selector 投影失败：
+                          {selectedMaterialSourceProjection.error}
+                        </p>
+                      )}
                       {selectedActionEditor && (
                         <section
                           className="persistent-authoring__action-fields"
@@ -2082,6 +2508,314 @@ export function PersistentWorkflowAuthoringPanel({
   )
 }
 
+export interface MaterialSourceInspectorProps {
+  editor: MaterialSourceEditorProjection
+  editable: boolean
+  status: string
+  diagnostics: readonly WorkflowAuthoringDiagnostic[]
+  onChange: (patch: Partial<MaterialSourceSelectorUpdate>) => void
+}
+
+export function MaterialSourceInspector({
+  editor,
+  editable,
+  status,
+  diagnostics,
+  onChange
+}: MaterialSourceInspectorProps): React.JSX.Element {
+  const accent = materialTraceAccent(editor.nodeUuid)
+  const [siteQuery, setSiteQuery] = useState('')
+  const visibleSites = useMemo(
+    () => filterMaterialSourceSites(editor.sites, siteQuery),
+    [editor.sites, siteQuery]
+  )
+  useEffect(() => setSiteQuery(''), [editor.nodeUuid])
+  return (
+    <section
+      className="persistent-authoring__material-source-inspector"
+      aria-label="MaterialSource Properties"
+      data-material-source-node-uuid={editor.nodeUuid}
+      style={{ '--wf-material-accent': accent } as React.CSSProperties}
+    >
+      <div className="persistent-authoring__material-identity">
+        <span className="persistent-authoring__material-hex" aria-hidden="true">
+          ▱
+        </span>
+        <span>
+          <strong>{editor.name}</strong>
+          <small>
+            {materialFlowRoleLabel(editor.flowRole)} · {' '}
+            {editor.nodeUuid.replace(/-/g, '').slice(-6)}
+          </small>
+        </span>
+        <span className="persistent-authoring__material-status">
+          {workflowNodeStateLabel('material_source', status)}
+        </span>
+      </div>
+
+      <fieldset>
+        <legend>物料</legend>
+        <label>
+          物料角色
+          <select
+            aria-label="物料角色"
+            value={editor.flowRole}
+            disabled={!editable}
+            onChange={(event) => onChange({
+              flowRole: event.target.value as MaterialSourceSelectorUpdate['flowRole']
+            })}
+          >
+            <option value="primary_sample">主样品</option>
+            <option value="aliquot_sample">分装样品</option>
+            <option value="reagent">试剂</option>
+            <option value="consumable">耗材</option>
+          </select>
+        </label>
+        <label>
+          ResourceTemplate
+          <select
+            aria-label="ResourceTemplate"
+            value={editor.resourceTemplateUuid}
+            disabled={!editable}
+            onChange={(event) => onChange({
+              resourceTemplateUuid: event.target.value
+            })}
+          >
+            {editor.resourceTemplates.map((template) => (
+              <option
+                key={template.uuid}
+                value={template.uuid}
+                title={template.uuid}
+              >
+                {template.displayName}
+              </option>
+            ))}
+          </select>
+        </label>
+      </fieldset>
+
+      <fieldset>
+        <legend>来源</legend>
+        <div
+          className="persistent-authoring__segmented"
+          role="group"
+          aria-label="取得方式"
+        >
+          <button
+            type="button"
+            className={editor.mode === 'existing' ? 'is-active' : ''}
+            aria-pressed={editor.mode === 'existing'}
+            disabled={!editable}
+            onClick={() => onChange({ mode: 'existing' })}
+          >
+            已有物料
+          </button>
+          <button
+            type="button"
+            className={editor.mode === 'create_new' ? 'is-active' : ''}
+            aria-pressed={editor.mode === 'create_new'}
+            disabled={!editable}
+            onClick={() => onChange({ mode: 'create_new' })}
+          >
+            新建物料
+          </button>
+        </div>
+        <label>
+          Mount
+          <select
+            aria-label="Mount"
+            value={editor.mountUuid}
+            disabled={!editable}
+            onChange={(event) => onChange({ mountUuid: event.target.value })}
+          >
+            {editor.mounts.map((mount) => (
+              <option key={mount.uuid} value={mount.uuid}>
+                {mount.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        {editor.mode === 'existing' && (
+          <label>
+            Fixed Material
+            <select
+              aria-label="Fixed Material"
+              value={editor.fixedMaterialUuid ?? ''}
+              disabled={!editable}
+              onChange={(event) => onChange({
+                fixedMaterialUuid: event.target.value || null
+              })}
+            >
+              <option value="">运行时自动选择</option>
+              {editor.fixedMaterials.map((material) => (
+                <option key={material.uuid} value={material.uuid}>
+                  {material.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+      </fieldset>
+
+      <fieldset>
+        <legend>库位范围</legend>
+        <label>
+          Site scope
+          <select
+            aria-label="Site scope"
+            value={editor.siteScope}
+            disabled={!editable}
+            onChange={(event) => {
+              const scope = event.target.value as MaterialSourceSelectorUpdate['siteScope']
+              const firstSite = editor.sites[0]?.uuid ?? null
+              onChange({
+                siteScope: scope,
+                fixedSiteUuid: scope === 'fixed' ? firstSite : null,
+                candidateSiteUuids: scope === 'candidates' && firstSite
+                  ? [firstSite]
+                  : []
+              })
+            }}
+          >
+            <option value="all">全部兼容 direct Sites</option>
+            <option value="fixed" disabled={editor.sites.length === 0}>
+              固定 Site
+            </option>
+            <option value="candidates" disabled={editor.sites.length === 0}>
+              候选 Site 集
+            </option>
+          </select>
+        </label>
+        {editor.siteScope === 'fixed' && (
+          <label>
+            固定 Site
+            <select
+              aria-label="固定 Site"
+              value={editor.fixedSiteUuid ?? ''}
+              disabled={!editable}
+              onChange={(event) => onChange({
+                fixedSiteUuid: event.target.value
+              })}
+            >
+              {editor.sites.map((site) => (
+                <option key={site.uuid} value={site.uuid}>
+                  {site.name} · #{site.sortOrder}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        {editor.siteScope === 'candidates' && (
+          <div className="persistent-authoring__candidate-site-selector">
+            <label>
+              搜索候选 Site
+              <input
+                type="search"
+                aria-label="搜索候选 Site"
+                value={siteQuery}
+                placeholder="名称、顺序或 UUID"
+                onChange={(event) => setSiteQuery(event.target.value)}
+              />
+            </label>
+            <p role="status">
+              已选择 {editor.candidateSiteUuids.length} / {editor.sites.length}
+              {siteQuery && ` · 显示 ${visibleSites.length}`}
+            </p>
+            <div
+              className="persistent-authoring__candidate-sites"
+              role="group"
+              aria-label="候选 Sites"
+            >
+              {visibleSites.map((site) => {
+                const checked = editor.candidateSiteUuids.includes(site.uuid)
+                return (
+                  <label key={site.uuid}>
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      disabled={!editable || (
+                        checked && editor.candidateSiteUuids.length === 1
+                      )}
+                      onChange={(event) => onChange({
+                        candidateSiteUuids: event.target.checked
+                          ? [...editor.candidateSiteUuids, site.uuid]
+                          : editor.candidateSiteUuids.filter((uuid) =>
+                              uuid !== site.uuid
+                            )
+                      })}
+                    />
+                    <span>
+                      {site.name}
+                      <small>
+                        Site #{site.sortOrder} · {' '}
+                        {site.occupiedMaterialUuid ? '已占用' : '空闲'}
+                      </small>
+                    </span>
+                  </label>
+                )
+              })}
+              {visibleSites.length === 0 && (
+                <p role="status">没有匹配的候选 Site</p>
+              )}
+            </div>
+          </div>
+        )}
+        {editor.sites.length === 0 && (
+          <p role="status">当前 Mount 没有兼容 direct Site；OS Preview 将给出诊断。</p>
+        )}
+      </fieldset>
+
+      {editor.staleReferences.length > 0 && (
+        <div className="persistent-authoring__selector-warning" role="alert">
+          <strong>引用已失效</strong>
+          {editor.staleReferences.map((reference) => (
+            <span key={reference}>{reference}</span>
+          ))}
+        </div>
+      )}
+      {diagnostics.length > 0 && (
+        <ul className="persistent-authoring__selector-diagnostics">
+          {diagnostics.map((diagnostic, index) => (
+            <li key={`${diagnostic.code}:${index}`}>
+              <code>{diagnostic.code}</code>
+              <span>{diagnostic.message}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="persistent-authoring__selector-authority">
+        仅保存稳定 UUID；Site 按业务顺序展示，候选集按 UUID 规范持久化。
+      </p>
+    </section>
+  )
+}
+
+export function filterMaterialSourceSites(
+  sites: MaterialSourceEditorProjection['sites'],
+  query: string
+): MaterialSourceEditorProjection['sites'] {
+  const normalized = query.trim().toLocaleLowerCase()
+  if (!normalized) return sites
+  return sites.filter((site) => (
+    `${site.name} #${site.sortOrder} ${site.uuid}`
+      .toLocaleLowerCase()
+      .includes(normalized)
+  ))
+}
+
+function materialFlowRoleLabel(flowRole: string): string {
+  return {
+    primary_sample: '主样品',
+    aliquot_sample: '分装样品',
+    reagent: '试剂',
+    consumable: '耗材'
+  }[flowRole] || flowRole
+}
+
+function shortTemplateLabel(uuid: string): string {
+  return `Template · ${uuid.replace(/-/g, '').slice(-6)}`
+}
+
 function workflowIoMetadata(
   graph: WorkflowAuthoringGraph
 ): WorkflowIoMetadata | null {
@@ -2210,12 +2944,9 @@ function typedNonNullSchema(
   return value as Record<string, unknown> || {}
 }
 
-const TERMINAL_TASK_STATUSES = new Set([
-  'succeeded',
-  'failed',
-  'canceled',
-  'timeout'
-])
+function isRecordValue(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
 
 const TERMINAL_JOB_STATUSES = new Set([
   'succeeded',
@@ -2224,51 +2955,6 @@ const TERMINAL_JOB_STATUSES = new Set([
   'canceled',
   'timeout'
 ])
-
-function workflowTaskControls(
-  task: WorkflowTask | null,
-  busy: boolean
-): ReadonlyArray<WorkflowRuntimeControl<WorkflowTaskCommandType>> {
-  const terminal = !task || TERMINAL_TASK_STATUSES.has(task.status)
-  return [
-    {
-      command: 'pause',
-      label: '暂停',
-      title: '提交 durable pause intent；等待 OS 权威状态确认',
-      message: 'pause 已由 OS 接受，等待 Task 状态补读',
-      glyph: 'Ⅱ',
-      disabled: busy || terminal || task.control_status !== 'active'
-    },
-    {
-      command: 'resume',
-      label: '继续',
-      title: '提交 durable resume intent；等待 OS 权威状态确认',
-      message: 'resume 已由 OS 接受，等待 Task 状态补读',
-      glyph: '▶',
-      primary: true,
-      disabled: busy || terminal || task.control_status !== 'paused'
-    },
-    {
-      command: 'step',
-      label: '单步',
-      title: '仅 step 模式且权威状态为 paused 时提交一步执行 intent',
-      message: 'step 已由 OS 接受，等待 Job/Task 状态补读',
-      glyph: '→',
-      disabled: busy || terminal ||
-        task.run_mode !== 'step' ||
-        task.control_status !== 'paused'
-    },
-    {
-      command: 'cancel',
-      label: '取消',
-      title: '提交 durable cancel intent；等待 Task/Jobs 权威终态',
-      message: 'cancel 已由 OS 接受，等待 Task/Jobs 状态补读',
-      glyph: '■',
-      danger: true,
-      disabled: busy || terminal
-    }
-  ]
-}
 
 function projectWorkflowJob(job: WorkflowNodeJob): WorkflowOutputNode {
   return {
@@ -2308,7 +2994,26 @@ function projectWorkflowFeedback(
   }))
 }
 
-function workflowTaskDagState(status: WorkflowNodeJob['status']): string {
+function workflowTaskDagState(
+  status: WorkflowNodeJob['status'],
+  materialSource: boolean,
+  taskStatus: WorkflowTask['status'] | undefined
+): string {
+  if (materialSource) {
+    if (status === 'succeeded') return 'success'
+    if (
+      status === 'failed' ||
+      status === 'intervention_required' ||
+      status === 'timeout' ||
+      status === 'execution_unknown'
+    ) return 'failed'
+    if (status === 'canceled' || status === 'cancel_requested') {
+      return 'cancelled'
+    }
+    if (status === 'skipped') return 'skipped'
+    if (taskStatus === 'admission_blocked') return 'material_waiting'
+    return 'pending'
+  }
   const states: Record<WorkflowNodeJob['status'], string> = {
     pending: 'pending',
     dispatched: 'ready',
@@ -2366,39 +3071,6 @@ function workflowTaskMetadata(
           : '已确认'
     }
   ]
-}
-
-function workflowTaskVisualStatus(task: WorkflowTask | null): string {
-  if (!task) return 'disabled'
-  if (task.status === 'succeeded') return 'completed'
-  if (task.status === 'canceled') return 'cancelled'
-  if (task.status === 'failed' || task.status === 'timeout') return 'failed'
-  if (task.control_status === 'paused') return 'paused'
-  if (task.control_status === 'waiting_reconciliation') return 'reconciling'
-  return task.status
-}
-
-function workflowTaskControlStatusLabel(task: WorkflowTask | null): string {
-  if (!task) return '未创建 Task'
-  if (TERMINAL_TASK_STATUSES.has(task.status)) return '执行已结束'
-  return {
-    active: '控制可用',
-    paused: '已暂停',
-    waiting_reconciliation: '等待状态核对'
-  }[task.control_status]
-}
-
-function workflowTaskStatusLabel(status: WorkflowTask['status'] | undefined): string {
-  if (!status) return '未开始'
-  return {
-    pending: '等待执行',
-    running: '运行中',
-    canceling: '正在取消',
-    succeeded: '执行成功',
-    failed: '执行失败',
-    canceled: '已取消',
-    timeout: '执行超时'
-  }[status]
 }
 
 function workflowTaskCommandLabel(type: WorkflowTaskCommandType): string {

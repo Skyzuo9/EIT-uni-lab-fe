@@ -16,6 +16,10 @@ import { layoutDag } from '../utils/dagLayout'
 import { getNodeColor } from '../utils/nodeColors'
 import type { WorkflowLink, WorkflowNode } from '../utils/parseWorkflow'
 import type { WorkflowNodeData } from '../components/WorkflowNodeCard'
+import {
+  materialTraceAccent,
+  projectMaterialTraces
+} from '../utils/workflowMaterialTrace'
 
 interface UseWorkflowDagResult {
   nodes: Node<WorkflowNodeData>[]
@@ -49,6 +53,7 @@ export function useWorkflowDag(nodes: WorkflowNode[], links: WorkflowLink[]): Us
       direction
     } = layoutDag(nodes, links)
     const horizontal = direction === 'horizontal'
+    const materialTraces = projectMaterialTraces(nodes, links)
 
     const flowNodes: Node<WorkflowNodeData>[] = laidOut.map((node) => ({
       id: node.id,
@@ -64,7 +69,12 @@ export function useWorkflowDag(nodes: WorkflowNode[], links: WorkflowLink[]): Us
         kind: node.type,
         groupKind: node.groupKind,
         descendantCount: node.descendantNodeIds?.length,
-        handles: node.handles
+        handles: node.handles,
+        materialSource: node.materialSource,
+        traceAccent: node.type === 'material_source'
+          ? materialTraceAccent(node.id)
+          : undefined,
+        materialChips: materialTraces.chipsByNode.get(node.id) ?? []
       }
     }))
 
@@ -86,10 +96,13 @@ export function useWorkflowDag(nodes: WorkflowNode[], links: WorkflowLink[]): Us
         type: 'default',
         animated: isComm,
         style: {
-          stroke: EDGE_COLOR,
-          strokeWidth: 1.6,
+          stroke: materialTraces.edgeAccents.get(index) ?? EDGE_COLOR,
+          strokeWidth: materialTraces.edgeAccents.has(index) ? 2.2 : 1.6,
           strokeDasharray: isComm ? '4 4' : undefined
-        }
+        },
+        className: materialTraces.edgeAccents.has(index)
+          ? 'wf-flow-edge--material-trace'
+          : undefined
       }
     })
 

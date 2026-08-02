@@ -1,0 +1,56 @@
+{
+  "nodes": [
+    {
+      "id": "m2b_mount",
+      "uuid": "64000000-0000-4000-8000-0000000002b0",
+      "name": "Stacker A",
+      "children": ["slot_a", "slot_b"],
+      "parent": null,
+      "type": "device",
+      "class": "m2b_mount",
+      "position": {"x": 0, "y": 0, "z": 0},
+      "config": {
+        "category": "stacker",
+        "size_x": 360,
+        "size_y": 300,
+        "size_z": 720
+      },
+      "data": {}
+    },
+    {
+      "id": "slot_a",
+      "uuid": "64000000-0000-4000-8000-0000000002b1",
+      "name": "Slot 1",
+      "children": [],
+      "parent": "m2b_mount",
+      "type": "well",
+      "class": "",
+      "position": {"x": 0, "y": 0, "z": 40},
+      "config": {
+        "category": "well",
+        "size_x": 100,
+        "size_y": 100,
+        "size_z": 24
+      },
+      "data": {}
+    },
+    {
+      "id": "slot_b",
+      "uuid": "64000000-0000-4000-8000-0000000002b2",
+      "name": "Slot 2",
+      "children": [],
+      "parent": "m2b_mount",
+      "type": "well",
+      "class": "",
+      "position": {"x": 120, "y": 0, "z": 40},
+      "config": {
+        "category": "well",
+        "size_x": 100,
+        "size_y": 100,
+        "size_z": 24
+      },
+      "data": {}
+    }
+  ],
+  "links": []
+}

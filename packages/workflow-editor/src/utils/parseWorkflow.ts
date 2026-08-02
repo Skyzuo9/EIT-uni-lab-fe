@@ -33,6 +33,11 @@ export interface WorkflowNode {
   // Resets session-only expansion when the authoritative OS graph changes.
   compositeSignature?: string
   handles?: WorkflowHandlePort[]
+  materialSource?: {
+    mode: string
+    flowRole: string
+    mountUuid: string
+  }
 }
 
 export interface WorkflowHandlePort {

@@ -385,6 +385,80 @@ export function connectTypedActionEdge(
 ): WorkflowAuthoringGraph {
   assertParentBoundaryNode(graph, input.sourceNodeUuid)
   assertParentBoundaryNode(graph, input.targetNodeUuid)
+  const sourceHandle = requireNodeHandle(
+    catalog,
+    graph,
+    input.sourceNodeUuid,
+    input.sourceHandleUuid,
+    'source'
+  )
+  return connectTypedActionTarget(
+    catalog,
+    graph,
+    input,
+    sourceHandle.valueType,
+    null
+  )
+}
+
+export function connectFrameworkSourceToTypedActionEdge(
+  catalog: WorkflowActionCatalogSnapshot,
+  graph: WorkflowAuthoringGraph,
+  input: {
+    sourceNodeUuid: string
+    sourceHandleUuid: string
+    targetNodeUuid: string
+    targetHandleUuid: string
+  },
+  source: {
+    nodeType: string
+    nodeTemplateUuid: string
+    handleUuid: string
+    valueType: string
+    resourceTemplateUuid: string | null
+  }
+): WorkflowAuthoringGraph {
+  assertParentBoundaryNode(graph, input.sourceNodeUuid)
+  assertParentBoundaryNode(graph, input.targetNodeUuid)
+  const sourceNode = graph.nodes.find(
+    (node) => node.uuid === input.sourceNodeUuid
+  )
+  if (
+    !sourceNode ||
+    sourceNode.type !== source.nodeType ||
+    sourceNode.workflow_node_template_uuid !== source.nodeTemplateUuid ||
+    input.sourceHandleUuid !== source.handleUuid
+  ) throw new Error('Framework source Node/Handle identity 不匹配')
+  const graphHandle = graph.handle_templates.find(
+    (handle) => handle.uuid === input.sourceHandleUuid
+  )
+  if (
+    !graphHandle ||
+    graphHandle.workflow_node_template_uuid !== source.nodeTemplateUuid ||
+    graphHandle.io_type !== 'source' ||
+    graphHandle.type !== source.valueType
+  ) throw new Error('Framework source Handle 不在 Candidate Graph 中')
+  return connectTypedActionTarget(
+    catalog,
+    graph,
+    input,
+    source.valueType,
+    source.resourceTemplateUuid
+  )
+}
+
+function connectTypedActionTarget(
+  catalog: WorkflowActionCatalogSnapshot,
+  graph: WorkflowAuthoringGraph,
+  input: {
+    sourceNodeUuid: string
+    sourceHandleUuid: string
+    targetNodeUuid: string
+    targetHandleUuid: string
+  },
+  sourceValueType: string,
+  sourceResourceTemplateUuid: string | null
+): WorkflowAuthoringGraph {
   const edgeUuid = uuidV5(
     `authoring-edge:${input.sourceNodeUuid}:${input.sourceHandleUuid}:` +
       `${input.targetNodeUuid}:${input.targetHandleUuid}`,
@@ -400,32 +474,23 @@ export function connectTypedActionEdge(
   if (graph.edges.some((edge) => edge.uuid === edgeUuid)) {
     throw new Error('Workflow Edge UUID 已存在')
   }
-  requireNodeHandle(
-    catalog,
-    graph,
-    input.sourceNodeUuid,
-    input.sourceHandleUuid,
-    'source'
-  )
-  requireNodeHandle(
+  const targetHandle = requireNodeHandle(
     catalog,
     graph,
     input.targetNodeUuid,
     input.targetHandleUuid,
     'target'
   )
-  const targetNode = graph.nodes.find(
-    (node) => node.uuid === input.targetNodeUuid
-  )
-  if (!targetNode) throw new Error('Workflow target Node 不存在')
-  const targetTemplate = typedTemplate(
-    catalog,
-    requiredString(targetNode.workflow_node_template_uuid)
-  )
-  const targetHandle = targetTemplate.handles.find(
-    (handle) => handle.uuid === input.targetHandleUuid
-  )
-  if (!targetHandle) throw new Error('Action target Handle 不存在')
+  if (sourceValueType !== targetHandle.valueType) {
+    throw new Error('Workflow Edge source/target Handle 类型不兼容')
+  }
+  if (
+    sourceResourceTemplateUuid &&
+    targetHandle.allowedResourceTemplateUuids?.length &&
+    !targetHandle.allowedResourceTemplateUuids.includes(
+      sourceResourceTemplateUuid
+    )
+  ) throw new Error('MaterialSource ResourceTemplate 不被 Action target 接受')
   const dataKey = requiredString(targetHandle.dataKey)
   return {
     ...graph,
@@ -470,14 +535,31 @@ export function rehydrateTypedActionGraph(
   graph: WorkflowAuthoringGraph
 ): WorkflowAuthoringGraph {
   const nodeUuids = new Set<string>()
-  const referencedTemplateUuids = new Set<string>()
+  const nodesByUuid = new Map<string, WorkflowAuthoringGraph['nodes'][number]>()
+  const referencedActionTemplateUuids = new Set<string>()
+  const referencedFrameworkTemplateUuids = new Set<string>()
   for (const node of graph.nodes) {
     const nodeUuid = requiredString(node.uuid)
     if (nodeUuids.has(nodeUuid)) throw new Error('Workflow Node UUID 重复')
     nodeUuids.add(nodeUuid)
+    nodesByUuid.set(nodeUuid, node)
     const templateUuid = requiredString(node.workflow_node_template_uuid)
-    typedTemplate(catalog, templateUuid)
-    referencedTemplateUuids.add(templateUuid)
+    if (node.type === 'material_source') {
+      const wireTemplate = graph.node_templates.find(
+        (template) => template.uuid === templateUuid
+      )
+      if (
+        !wireTemplate ||
+        (
+          wireTemplate.type !== 'material_source' &&
+          wireTemplate.node_type !== 'material_source'
+        )
+      ) throw new Error('MaterialSource framework template 不在 Candidate Graph 中')
+      referencedFrameworkTemplateUuids.add(templateUuid)
+    } else {
+      typedTemplate(catalog, templateUuid)
+      referencedActionTemplateUuids.add(templateUuid)
+    }
     recordValue(node.param)
   }
   const edgeUuids = new Set<string>()
@@ -485,16 +567,14 @@ export function rehydrateTypedActionGraph(
     const edgeUuid = requiredString(edge.uuid)
     if (edgeUuids.has(edgeUuid)) throw new Error('Workflow Edge UUID 重复')
     edgeUuids.add(edgeUuid)
-    requireNodeHandle(
-      catalog,
-      graph,
+    requireRehydratedNodeHandle(
+      catalog, graph, nodesByUuid,
       requiredString(edge.source_node_uuid),
       requiredString(edge.source_handle_uuid),
       'source'
     )
-    requireNodeHandle(
-      catalog,
-      graph,
+    requireRehydratedNodeHandle(
+      catalog, graph, nodesByUuid,
       requiredString(edge.target_node_uuid),
       requiredString(edge.target_handle_uuid),
       'target'
@@ -503,20 +583,59 @@ export function rehydrateTypedActionGraph(
   const referencedTemplates = [
     ...catalog.actionTemplates,
     ...catalog.workflowTemplates
-  ].filter((template) => referencedTemplateUuids.has(template.uuid))
+  ].filter((template) =>
+    referencedActionTemplateUuids.has(template.uuid)
+  )
+  const frameworkTemplates = graph.node_templates.filter((template) =>
+    referencedFrameworkTemplateUuids.has(requiredString(template.uuid))
+  )
+  const frameworkHandles = graph.handle_templates.filter((handle) =>
+    typeof handle.workflow_node_template_uuid === 'string' &&
+    referencedFrameworkTemplateUuids.has(handle.workflow_node_template_uuid)
+  )
   return {
     ...graph,
-    node_templates: referencedTemplates.map((template) =>
-      cloneRecord(template.wireValue ?? executableNodeTemplateWireValue(
-        template
-      ))
-    ),
-    handle_templates: referencedTemplates.flatMap((template) =>
-      template.handles.map((handle) =>
-        cloneRecord(handle.wireValue ?? handleTemplateWireValue(handle))
-      )
-    )
+    node_templates: [
+      ...referencedTemplates.map((template) =>
+        cloneRecord(template.wireValue ?? executableNodeTemplateWireValue(
+          template
+        ))
+      ),
+      ...frameworkTemplates.map(cloneRecord)
+    ],
+    handle_templates: [
+      ...referencedTemplates.flatMap((template) =>
+        template.handles.map((handle) =>
+          cloneRecord(handle.wireValue ?? handleTemplateWireValue(handle))
+        )
+      ),
+      ...frameworkHandles.map(cloneRecord)
+    ]
   }
+}
+
+function requireRehydratedNodeHandle(
+  catalog: WorkflowActionCatalogSnapshot,
+  graph: WorkflowAuthoringGraph,
+  nodesByUuid: ReadonlyMap<string, WorkflowAuthoringGraph['nodes'][number]>,
+  nodeUuid: string,
+  handleUuid: string,
+  ioType: 'source' | 'target'
+): void {
+  const node = nodesByUuid.get(nodeUuid)
+  if (!node) throw new Error('Workflow Edge 引用了不存在的 Node')
+  if (node.type !== 'material_source') {
+    requireNodeHandle(catalog, graph, nodeUuid, handleUuid, ioType)
+    return
+  }
+  const handle = graph.handle_templates.find(
+    (item) => item.uuid === handleUuid
+  )
+  if (
+    !handle ||
+    handle.workflow_node_template_uuid !== node.workflow_node_template_uuid ||
+    handle.io_type !== ioType
+  ) throw new Error('Framework Node Handle 不在 Candidate Graph 中')
 }
 
 function nodeTemplateWireValue(

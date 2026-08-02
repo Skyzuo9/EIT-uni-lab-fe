@@ -12,6 +12,7 @@
 .workflow :global(.workflow__toolbar) {
   display: flex;
   min-height: 58px;
+  flex: 0 0 auto;
   align-items: center;
   gap: 12px;
   padding: 10px 14px;
@@ -172,8 +173,8 @@
   position: relative;
   min-width: 150px;
   max-width: 220px;
-  background: #ffffff;
-  border: 1px solid #cbd5e1;
+  background: var(--unilab-color-surface);
+  border: 1px solid var(--unilab-color-border-strong);
   border-radius: 8px;
   box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
   /* 允许 handle 溢出显示,使其落在节点边缘的连线上 */
@@ -186,12 +187,17 @@
   box-shadow: 0 4px 14px rgba(15, 23, 42, 0.14);
 }
 
-/* 选中/聚焦节点:去掉紫色描边,仅用轻微阴影提示 */
+/* ReactFlow's selection remains quiet; keyboard focus keeps an explicit ring. */
 .workflow :global(.react-flow__node-wfNode):global(.selected),
-.workflow :global(.react-flow__node-wfNode):focus,
-.workflow :global(.react-flow__node-wfNode):focus-visible {
+.workflow :global(.react-flow__node-wfNode):focus {
   outline: none;
   box-shadow: none;
+}
+
+.workflow :global(.react-flow__node-wfNode):focus-visible {
+  outline: 3px solid var(--unilab-color-focus);
+  outline-offset: 4px;
+  border-radius: var(--unilab-radius-md);
 }
 
 .workflow :global(.react-flow__node-wfNode):global(.selected) :global(.wf-node) {
@@ -220,7 +226,7 @@
 .workflow :global(.wf-node__handle) {
   width: 10px;
   height: 10px;
-  background: #ffffff;
+  background: var(--unilab-color-surface);
   border: 2px solid var(--unilab-color-workflow);
   border-radius: 50%;
   transition: border-color 0.2s, transform 0.15s;
