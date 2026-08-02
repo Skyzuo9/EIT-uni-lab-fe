@@ -15,8 +15,10 @@ import { useMaterialRuntime } from './MaterialRuntimeProvider'
 import type { LabViewMode } from './UnifiedLabViewport'
 
 export function SceneWorkbench({
+  showSites = true,
   viewMode = '3d'
 }: {
+  showSites?: boolean
   viewMode?: LabViewMode
 }): React.JSX.Element {
   const { backend } = useWorkbench()
@@ -111,6 +113,7 @@ export function SceneWorkbench({
     <PascalLabWorkbench
       aggregates={aggregates}
       shapes={shapeLibrary}
+      showSites={showSites}
       viewMode={viewMode}
       projectId={`unilab-${backend.id}-${scopeKey}`}
       editable={moveStatus.available}

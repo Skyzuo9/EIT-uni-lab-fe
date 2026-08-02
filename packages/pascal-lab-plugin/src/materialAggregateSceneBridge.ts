@@ -39,6 +39,7 @@ export interface MaterialSceneMove {
 
 export interface MaterialSceneProjectionOptions {
   fitSceneRevision?: number
+  showSites?: boolean
 }
 
 export interface MaterialRenderingSnapshot {
@@ -121,17 +122,20 @@ export function materialAggregatesToSceneGraph(
         worldPositionMm: worldPose.positionMm,
         worldRotationDegXYZ: worldPose.rotationDegXYZ,
         footprintMm: rendering.footprintMm,
-        sites: aggregate.sites.map((site) => ({
-          id: site.id,
-          key: site.key,
-          name: site.name,
-          kind: site.kind,
-          shape: site.shape,
-          positionMm: site.poseInAnchor.positionMm,
-          sizeMm: site.sizeMm,
-          visible: site.visible !== false,
-          visualState: site.visual?.state ?? 'empty'
-        }))
+        sites:
+          options.showSites === false
+            ? []
+            : aggregate.sites.map((site) => ({
+                id: site.id,
+                key: site.key,
+                name: site.name,
+                kind: site.kind,
+                shape: site.shape,
+                positionMm: site.poseInAnchor.positionMm,
+                sizeMm: site.sizeMm,
+                visible: site.visible !== false,
+                visualState: site.visual?.state ?? 'empty'
+              }))
       }
     }
 

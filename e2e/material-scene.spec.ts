@@ -150,6 +150,25 @@ test('SZLab MaterialGraph renders complete 2.5D and 3D views', async ({
     .evaluate((element) => element.scrollIntoView({ block: 'center' }))
   await captureMaterialTree(page, 'szlab-material-tree-empty.png')
 
+  const siteLayerToggle = page.getByRole('button', {
+    name: '库位和点位',
+    exact: true
+  })
+  await expect(siteLayerToggle).toHaveAttribute('aria-pressed', 'true')
+  const twoDimensionalCanvas = page.locator('.material-canvas').first()
+  await expect(twoDimensionalCanvas).toHaveAttribute(
+    'data-site-layer-visible',
+    'true'
+  )
+  await siteLayerToggle.click()
+  await expect(twoDimensionalCanvas).toHaveClass(/is-sites-hidden/)
+  await expect(twoDimensionalCanvas).toHaveAttribute(
+    'data-site-layer-visible',
+    'false'
+  )
+  await siteLayerToggle.click()
+  await expect(twoDimensionalCanvas).not.toHaveClass(/is-sites-hidden/)
+
   await page.getByRole('button', { name: '2.5D', exact: true }).click()
   const oblique = page.locator('[data-material-oblique-view]')
   await expect(oblique).toBeVisible()
@@ -168,7 +187,18 @@ test('SZLab MaterialGraph renders complete 2.5D and 3D views', async ({
   ).toBeVisible()
   await captureViewport(page, 'szlab-materials-2_5d.png')
 
+  await siteLayerToggle.click()
+  await expect(siteLayerToggle).toHaveAttribute('aria-pressed', 'false')
+  await expect(oblique).toHaveAttribute('data-site-layer-visible', 'false')
+  await expect(oblique.locator('[data-oblique-site-bounds]')).toHaveCount(0)
+
   await page.getByRole('button', { name: '3D', exact: true }).click()
+  await expect(page.locator('.lab-unified-viewport')).toHaveAttribute(
+    'data-site-layer-visible',
+    'false'
+  )
+  await siteLayerToggle.click()
+  await expect(siteLayerToggle).toHaveAttribute('aria-pressed', 'true')
   const viewer = page.locator('[data-pascal-viewer-3d]')
   await expect(viewer).toBeVisible({ timeout: 30_000 })
   await expect(viewer.locator('canvas')).toBeVisible()

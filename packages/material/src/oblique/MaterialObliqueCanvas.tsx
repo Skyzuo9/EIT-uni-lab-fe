@@ -29,6 +29,7 @@ export interface MaterialObliqueCanvasProps {
    * 物料退回实心包围盒——画布本身不认识任何具体设备。
    */
   shapes?: MaterialShapeLibrary
+  showSites?: boolean
   selectedMaterialIds?: readonly MaterialId[]
   highlightedMaterialIds?: readonly MaterialId[]
   onSelectionChange?: (materialIds: readonly MaterialId[]) => void
@@ -42,6 +43,7 @@ export interface MaterialObliqueCanvasProps {
 export function MaterialObliqueCanvas({
   aggregates,
   shapes,
+  showSites = true,
   selectedMaterialIds = [],
   highlightedMaterialIds = [],
   onSelectionChange
@@ -80,6 +82,7 @@ export function MaterialObliqueCanvas({
     <div
       className={materialScopeClassName('material-oblique-canvas')}
       data-material-oblique-view
+      data-site-layer-visible={showSites}
     >
       <div className="material-oblique-canvas__header">
         <strong>实验室 2.5D · SVG</strong>
@@ -123,6 +126,7 @@ export function MaterialObliqueCanvas({
                 object={object}
                 selected={isSelected}
                 highlighted={isHighlighted}
+                showSites={showSites}
                 showTag={
                   isEquipmentKind(object.kind) ||
                   isSelected ||
@@ -161,6 +165,7 @@ function ObliqueMaterial({
   object,
   selected,
   highlighted,
+  showSites,
   showTag,
   onClick,
   onKeyDown,
@@ -170,6 +175,7 @@ function ObliqueMaterial({
   object: MaterialObliqueObject
   selected: boolean
   highlighted: boolean
+  showSites: boolean
   showTag: boolean
   onClick: (event: MouseEvent<SVGGElement>) => void
   onKeyDown: (event: KeyboardEvent<SVGGElement>) => void
@@ -207,11 +213,15 @@ function ObliqueMaterial({
         {`${object.name} · ${object.widthMm}×${object.depthMm}×${object.heightMm} mm`}
       </title>
       {object.shape ? (
-        <ObliqueSpecBody object={object} shape={object.shape} />
+        <ObliqueSpecBody
+          object={object}
+          shape={object.shape}
+          showSites={showSites}
+        />
       ) : (
         <ObliqueSolidBody object={object} />
       )}
-      <ObliqueSiteBounds object={object} />
+      {showSites ? <ObliqueSiteBounds object={object} /> : null}
       {showTag && (
         <g
           className="material-oblique-object__tag"
@@ -279,10 +289,12 @@ function ObliqueSolidBody({
  */
 function ObliqueSpecBody({
   object,
-  shape
+  shape,
+  showSites
 }: {
   object: MaterialObliqueObject
   shape: MaterialObliqueShape
+  showSites: boolean
 }): React.JSX.Element {
   return (
     <>
@@ -292,6 +304,7 @@ function ObliqueSpecBody({
           key={`${primitive.kind}-${index}`}
           object={object}
           primitive={primitive}
+          showSites={showSites}
         />
       ))}
     </>
@@ -300,10 +313,12 @@ function ObliqueSpecBody({
 
 function ObliquePrimitiveNode({
   object,
-  primitive
+  primitive,
+  showSites
 }: {
   object: MaterialObliqueObject
   primitive: MaterialShapePrimitive
+  showSites: boolean
 }): React.JSX.Element | null {
   const partClass = (style: string): string =>
     `material-oblique-part material-oblique-part--${style}`
@@ -402,6 +417,7 @@ function ObliquePrimitiveNode({
         />
       )
     case 'site-holes':
+      if (!showSites) return null
       return (
         <ObliqueSiteHoles
           collarTopZMm={primitive.collarTopZMm}

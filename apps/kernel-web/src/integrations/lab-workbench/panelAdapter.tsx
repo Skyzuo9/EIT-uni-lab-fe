@@ -123,10 +123,11 @@ function MaterialRenderer(
         props.unified
           ? (_viewportProps) => (
               <UnifiedLabViewport
-                renderView={(viewMode) => (
+                renderView={(viewMode, { showSites }) => (
                   <SceneRenderer
                     {...props}
                     viewMode={viewMode}
+                    showSites={showSites}
                   />
                 )}
               />
@@ -185,6 +186,7 @@ function WorkflowRenderer(
 function SceneRenderer(
   props: PanelRendererProps<LabPanelScope> & {
     viewMode?: LabViewMode
+    showSites?: boolean
   }
 ): React.JSX.Element {
   const runtime = useMaterialRuntime()
@@ -213,6 +215,7 @@ function SceneRenderer(
       fallback={<div className="app-loading">正在加载 3D 编辑器…</div>}
     >
       <SceneWorkbench
+        showSites={props.showSites}
         viewMode={props.viewMode}
       />
     </Suspense>

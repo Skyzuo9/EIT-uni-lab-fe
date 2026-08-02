@@ -9,9 +9,14 @@ import {
 export type LabViewMode = '2d' | '2.5d' | '3d' | 'split'
 
 const STORAGE_KEY = 'unilab.lab.view-mode'
+const SITE_LAYER_STORAGE_KEY = 'unilab.lab.site-layer-visible'
+
+export interface LabViewOptions {
+  showSites: boolean
+}
 
 export interface UnifiedLabViewportProps {
-  renderView: (mode: LabViewMode) => ReactNode
+  renderView: (mode: LabViewMode, options: LabViewOptions) => ReactNode
 }
 
 /**
@@ -23,53 +28,83 @@ export function UnifiedLabViewport({
   renderView
 }: UnifiedLabViewportProps): React.JSX.Element {
   const [mode, setMode] = useState<LabViewMode>(readStoredMode)
+  const [showSites, setShowSites] = useState(readStoredSiteLayer)
 
   useEffect(() => {
     globalThis.localStorage?.setItem(STORAGE_KEY, mode)
   }, [mode])
 
+  useEffect(() => {
+    globalThis.localStorage?.setItem(
+      SITE_LAYER_STORAGE_KEY,
+      String(showSites)
+    )
+  }, [showSites])
+
   return (
     <div
       className="lab-unified-viewport"
       data-lab-view-mode={mode}
+      data-site-layer-visible={showSites}
     >
       <div className="lab-unified-viewport__surface">
         <LabViewErrorBoundary mode={mode}>
           <LabViewSurface
             mode={mode}
             renderView={renderView}
+            showSites={showSites}
           />
         </LabViewErrorBoundary>
       </div>
-      <div
-        aria-label="实验室视图"
-        className="lab-view-mode-toggle"
-        role="group"
-      >
-        <ViewModeButton
-          active={mode === '2d'}
-          icon={<GridIcon />}
-          label="2D"
-          onClick={() => setMode('2d')}
-        />
-        <ViewModeButton
-          active={mode === '2.5d'}
-          icon={<ObliqueIcon />}
-          label="2.5D"
-          onClick={() => setMode('2.5d')}
-        />
-        <ViewModeButton
-          active={mode === '3d'}
-          icon={<CubeIcon />}
-          label="3D"
-          onClick={() => setMode('3d')}
-        />
-        <ViewModeButton
-          active={mode === 'split'}
-          icon={<SplitIcon />}
-          label="分屏"
-          onClick={() => setMode('split')}
-        />
+      <div className="lab-viewport-controls">
+        <div
+          aria-label="实验室视图"
+          className="lab-view-mode-toggle"
+          role="group"
+        >
+          <ViewModeButton
+            active={mode === '2d'}
+            icon={<GridIcon />}
+            label="2D"
+            onClick={() => setMode('2d')}
+          />
+          <ViewModeButton
+            active={mode === '2.5d'}
+            icon={<ObliqueIcon />}
+            label="2.5D"
+            onClick={() => setMode('2.5d')}
+          />
+          <ViewModeButton
+            active={mode === '3d'}
+            icon={<CubeIcon />}
+            label="3D"
+            onClick={() => setMode('3d')}
+          />
+          <ViewModeButton
+            active={mode === 'split'}
+            icon={<SplitIcon />}
+            label="分屏"
+            onClick={() => setMode('split')}
+          />
+        </div>
+        <div
+          aria-label="场景图层"
+          className="lab-site-layer-toggle"
+          role="group"
+        >
+          <button
+            type="button"
+            aria-label="库位和点位"
+            aria-pressed={showSites}
+            className={showSites ? 'is-active' : undefined}
+            onClick={() => setShowSites((visible) => !visible)}
+            title={showSites ? '隐藏库位和点位' : '显示库位和点位'}
+          >
+            <SiteLayerIcon />
+            <span>库位和点位</span>
+            <i aria-hidden="true" />
+          </button>
+        </div>
       </div>
     </div>
   )
@@ -77,12 +112,14 @@ export function UnifiedLabViewport({
 
 function LabViewSurface({
   mode,
-  renderView
+  renderView,
+  showSites
 }: {
   mode: LabViewMode
   renderView: UnifiedLabViewportProps['renderView']
+  showSites: boolean
 }): React.JSX.Element {
-  return <>{renderView(mode)}</>
+  return <>{renderView(mode, { showSites })}</>
 }
 
 interface LabViewErrorBoundaryProps {
@@ -156,6 +193,16 @@ function ObliqueIcon(): React.JSX.Element {
   )
 }
 
+function SiteLayerIcon(): React.JSX.Element {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 18 16">
+      <path d="m2 6 7-3.5L16 6l-7 3.5L2 6Z" />
+      <path d="M2 6v5l7 3.5 7-3.5V6" />
+      <circle cx="9" cy="6" r="1.5" />
+    </svg>
+  )
+}
+
 function ViewModeButton({
   active,
   icon,
@@ -219,4 +266,8 @@ function readStoredMode(): LabViewMode {
     value === 'split'
     ? value
     : '2d'
+}
+
+function readStoredSiteLayer(): boolean {
+  return globalThis.localStorage?.getItem(SITE_LAYER_STORAGE_KEY) !== 'false'
 }

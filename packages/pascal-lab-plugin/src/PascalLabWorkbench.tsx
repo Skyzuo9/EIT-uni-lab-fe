@@ -38,6 +38,8 @@ export interface PascalLabWorkbenchProps {
   aggregates: readonly MaterialAggregate[]
   /** 设备包声明的 2.5D 外形，透传给斜二测画布。 */
   shapes?: MaterialShapeLibrary
+  /** 统一控制 2D、2.5D 与 3D 中的库位/点位图层。 */
+  showSites?: boolean
   viewMode?: '2d' | '2.5d' | '3d' | 'split'
   projectId?: string
   modelRuntime?: LabModelRuntime
@@ -54,6 +56,7 @@ export interface PascalLabWorkbenchProps {
 export function PascalLabWorkbench({
   aggregates,
   shapes,
+  showSites = true,
   viewMode = '3d',
   projectId = 'unilab-local-scene',
   modelRuntime,
@@ -67,9 +70,10 @@ export function PascalLabWorkbench({
   const scene = useMemo(
     () =>
       materialAggregatesToSceneGraph(aggregates, {
-        fitSceneRevision
+        fitSceneRevision,
+        showSites
       }),
-    [aggregates, fitSceneRevision]
+    [aggregates, fitSceneRevision, showSites]
   )
   const [saveStatus, setSaveStatus] = useState<
     'saved' | 'dirty' | 'saving'
@@ -204,6 +208,7 @@ export function PascalLabWorkbench({
             <MaterialCanvas
               floorplanOverlay
               physicalLayout
+              showSites={showSites}
               readStatus={{ available: true }}
               moveStatus={{
                 available: editable,
@@ -234,6 +239,7 @@ export function PascalLabWorkbench({
           <MaterialObliqueCanvas
             aggregates={aggregates}
             shapes={shapes}
+            showSites={showSites}
             selectedMaterialIds={selectedMaterialIds}
             highlightedMaterialIds={highlightedMaterialIds}
             onSelectionChange={(materialIds) => {

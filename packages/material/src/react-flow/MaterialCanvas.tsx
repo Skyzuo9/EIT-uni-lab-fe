@@ -34,6 +34,7 @@ export interface MaterialCanvasProps {
   moveStatus: CapabilityStatus
   floorplanOverlay?: boolean
   physicalLayout?: boolean
+  showSites?: boolean
   selectedMaterialIds?: readonly MaterialId[]
   highlightedMaterialIds?: readonly MaterialId[]
   onSelectionChange?: (materialIds: readonly MaterialId[]) => void
@@ -44,6 +45,7 @@ export function MaterialCanvas({
   moveStatus,
   floorplanOverlay = false,
   physicalLayout,
+  showSites = true,
   selectedMaterialIds = [],
   highlightedMaterialIds = [],
   onSelectionChange
@@ -150,8 +152,11 @@ export function MaterialCanvas({
       className={materialScopeClassName(
         `material-canvas${
           floorplanOverlay ? ' is-floorplan-overlay' : ''
+        }${
+          showSites ? '' : ' is-sites-hidden'
         }`
       )}
+      data-site-layer-visible={showSites}
     >
       {error ? <MaterialLoadError technicalMessage={error} /> : null}
       <div

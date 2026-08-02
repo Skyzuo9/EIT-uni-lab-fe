@@ -296,6 +296,11 @@
   transition: background 120ms ease;
 }
 
+:where(.scope, .scope *):global(.material-canvas.is-sites-hidden)
+  :global(.material-flow-node__sites) {
+  display: none;
+}
+
 :where(.scope, .scope *):global(.material-tree-sidebar):hover :global(.material-tree-sidebar__resize-hint) {
   background: color-mix(
     in srgb,

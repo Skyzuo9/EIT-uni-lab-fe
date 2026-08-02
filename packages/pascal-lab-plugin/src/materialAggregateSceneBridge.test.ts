@@ -201,6 +201,7 @@ describe('Material Aggregate / Pascal bridge', () => {
     const scene = materialAggregatesToSceneGraph([rack])
     const node = scene.nodes['lab-rack']
     if (!isLabDeviceNode(node)) throw new Error('Expected lab device')
+    expect(node.floorplanSnapshot?.sites).toHaveLength(1)
     expect(node.model.instances?.items).toHaveLength(1)
     expectTupleCloseTo(
       node.model.instances?.items[0]?.position ?? [],
@@ -210,6 +211,16 @@ describe('Material Aggregate / Pascal bridge', () => {
       -Math.PI / 2,
       8
     )
+
+    const hiddenScene = materialAggregatesToSceneGraph([rack], {
+      showSites: false
+    })
+    const hiddenNode = hiddenScene.nodes['lab-rack']
+    if (!isLabDeviceNode(hiddenNode)) {
+      throw new Error('Expected hidden lab device')
+    }
+    expect(hiddenNode.floorplanSnapshot?.sites).toEqual([])
+    expect(hiddenNode.model.instances?.items).toHaveLength(1)
   })
 
   it('flattens a static root-anchored child into world space', () => {
