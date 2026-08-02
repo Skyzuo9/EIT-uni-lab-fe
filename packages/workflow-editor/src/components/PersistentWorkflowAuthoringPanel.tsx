@@ -1083,6 +1083,11 @@ export function PersistentWorkflowAuthoringPanel({
     }
   }, [actionCatalog, diagnostics, graph, selectedNodeUuid])
   const selectedActionEditor = selectedActionProjection.editor
+  const selectedNodeIsInternal = graph?.nodes.some((node) =>
+    node.uuid === selectedNodeUuid &&
+    node.parent_uuid !== undefined &&
+    node.parent_uuid !== null
+  ) ?? false
 
   const addTypedActionNode = (templateUuid: string): void => {
     if (!actionCatalog || !graph) return
@@ -1636,7 +1641,8 @@ export function PersistentWorkflowAuthoringPanel({
                         <input
                           value={selectedNodeName}
                           disabled={
-                            busy || !policy.canvasMutationEnabled
+                            busy || !policy.canvasMutationEnabled ||
+                            selectedNodeIsInternal
                           }
                           aria-describedby="persistent-node-name-help"
                           onChange={(event) => {
