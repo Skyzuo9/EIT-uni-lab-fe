@@ -39,8 +39,9 @@ Production 实现提交为：`0d3c33b`（I/O contract mutation）、`4261060`（
 
 - selector label 只用于显示；持久化只使用 selected graph 中 Node owner 对应的真实 Handle UUID；
 - input rename/delete 会同步清理 binding，output binding 只允许 Workflow input 或真实 source Handle；
-- ResourceSlot 仅在 Workflow input 与 Action input 同名且类型/allowlist 可传导时合成只读
-  implicit output；显式同名 output 按 D-068 保留；
+- 所有 Workflow ResourceSlot input 在不存在显式同名 output 时合成 OS-managed 同名透传；
+  显式同名 output 保留，其 schema assignability 由 OS 校验；Action target compatibility 与
+  allowlist 传导是独立 binding gate，不是 D-068 合成前提；
 - recursive nullable/list ResourceSlot schema 按 D-067 producer allowlist ⊆ consumer allowlist；
 - JSON edit 先 generate canonical Python，再显式 Validate，最后沿用现有 diff/draft/apply；
 - production 不按 label、`data_key`、Action 类型或 port ordinal 猜测 identity。

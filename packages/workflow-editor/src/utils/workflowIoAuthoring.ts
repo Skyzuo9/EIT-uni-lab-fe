@@ -31,6 +31,7 @@ export function addWorkflowInput(
   graph: WorkflowAuthoringGraph,
   descriptor: WorkflowInputDescriptor
 ): WorkflowAuthoringGraph {
+  requireInputDescriptorContract(descriptor)
   const next = cloneGraph(graph)
   const io = mutableIo(next)
   requireNewName(
@@ -48,6 +49,7 @@ export function updateWorkflowInput(
   currentName: string,
   descriptor: WorkflowInputDescriptor
 ): WorkflowAuthoringGraph {
+  requireInputDescriptorContract(descriptor)
   const next = cloneGraph(graph)
   const io = mutableIo(next)
   const index = requireNamedIndex(
@@ -118,6 +120,17 @@ export function removeWorkflowInput(
     (output) => !(output.name === name && output.implicit)
   )
   synchronizeImplicitOutputs(io)
+  return next
+}
+
+export function moveWorkflowInput(
+  graph: WorkflowAuthoringGraph,
+  name: string,
+  direction: 'up' | 'down'
+): WorkflowAuthoringGraph {
+  const next = cloneGraph(graph)
+  const parameters = mutableIo(next).inputContract.parameters
+  moveNamedDescriptor(parameters, name, direction, 'Workflow input')
   return next
 }
 
@@ -251,6 +264,21 @@ export function removeWorkflowOutput(
   }
   io.outputContract.outputs.splice(index, 1)
   delete io.outputBindings[name]
+  return next
+}
+
+export function moveWorkflowOutput(
+  graph: WorkflowAuthoringGraph,
+  name: string,
+  direction: 'up' | 'down'
+): WorkflowAuthoringGraph {
+  const next = cloneGraph(graph)
+  const outputs = mutableIo(next).outputContract.outputs
+  const output = outputs.find((item) => item.name === name)
+  if (output?.implicit) {
+    throw new Error('implicit Workflow output 顺序是 server-managed 只读合同')
+  }
+  moveNamedDescriptor(outputs, name, direction, 'Workflow output')
   return next
 }
 
@@ -412,6 +440,44 @@ function containsResourceSlot(schema: WorkflowValueSchema): boolean {
   if ('$slot' in schema) return true
   if ('anyOf' in schema) return containsResourceSlot(schema.anyOf[0])
   return schema.type === 'array' && containsResourceSlot(schema.items)
+}
+
+function requireInputDescriptorContract(
+  descriptor: WorkflowInputDescriptor
+): void {
+  const nullable = 'anyOf' in descriptor.schema
+  const hasDefault = Object.hasOwn(descriptor, 'default')
+  if (descriptor.required) {
+    if (nullable || hasDefault) {
+      throw new Error('required Workflow input 必须 non-nullable 且没有 default')
+    }
+    return
+  }
+  if (containsResourceSlot(descriptor.schema) && !nullable) {
+    throw new Error('optional ResourceSlot Workflow input 必须使用 nullable schema')
+  }
+  if (!hasDefault) {
+    throw new Error('optional Workflow input 必须声明 default')
+  }
+  if (nullable && descriptor.default !== null) {
+    throw new Error('nullable Workflow input 的 default 必须是 null')
+  }
+}
+
+function moveNamedDescriptor<T extends { name: string }>(
+  descriptors: T[],
+  name: string,
+  direction: 'up' | 'down',
+  label: string
+): void {
+  const index = requireNamedIndex(name, descriptors, label)
+  const target = direction === 'up' ? index - 1 : index + 1
+  if (target < 0 || target >= descriptors.length) return
+  const current = descriptors[index]
+  const replacement = descriptors[target]
+  if (!current || !replacement) return
+  descriptors[index] = replacement
+  descriptors[target] = current
 }
 
 function renameInputBindings(

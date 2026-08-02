@@ -13,9 +13,12 @@ import {
   addWorkflowOutput,
   bindWorkflowInput,
   bindWorkflowOutput,
+  moveWorkflowInput,
+  moveWorkflowOutput,
   projectWorkflowIoBindingOptions,
   removeWorkflowInput,
   removeWorkflowOutput,
+  unbindWorkflowInput,
   unbindWorkflowOutput,
   updateWorkflowInput,
   updateWorkflowOutput
@@ -33,8 +36,17 @@ type SchemaMode =
   | 'number'
   | 'boolean'
   | 'object'
+  | 'array'
   | 'resource_slot'
-  | 'resource_slot_list'
+
+type NonNullableSchema = Exclude<
+  WorkflowValueSchema,
+  { anyOf: unknown }
+>
+type ArrayItemSchema = Exclude<
+  NonNullableSchema,
+  { type: 'array' }
+>
 
 export function WorkflowIoEditor({
   graph,
@@ -87,22 +99,46 @@ export function WorkflowIoEditor({
       <div className="persistent-authoring__io-editor-grid">
         <ContractEditor title="Workflow Inputs">
           <ol>
-            {io.inputs.map((descriptor) => (
+            {io.inputs.map((descriptor, index) => (
               <li
                 key={descriptor.name}
                 data-workflow-input-name={descriptor.name}
               >
                 <div className="persistent-authoring__io-editor-row-heading">
                   <code>{descriptor.name}</code>
-                  <button
-                    type="button"
-                    disabled={!editable}
-                    onClick={() => mutate(() =>
-                      removeWorkflowInput(graph, descriptor.name)
-                    )}
-                  >
-                    删除
-                  </button>
+                  <span>
+                    <button
+                      type="button"
+                      disabled={!editable || index === 0}
+                      onClick={() => mutate(() => moveWorkflowInput(
+                        graph,
+                        descriptor.name,
+                        'up'
+                      ))}
+                    >
+                      上移
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!editable || index === io.inputs.length - 1}
+                      onClick={() => mutate(() => moveWorkflowInput(
+                        graph,
+                        descriptor.name,
+                        'down'
+                      ))}
+                    >
+                      下移
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!editable}
+                      onClick={() => mutate(() =>
+                        removeWorkflowInput(graph, descriptor.name)
+                      )}
+                    >
+                      删除
+                    </button>
+                  </span>
                 </div>
                 <label>
                   Name
@@ -121,9 +157,10 @@ export function WorkflowIoEditor({
                   />
                 </label>
                 <SchemaControl
-                  label={`${descriptor.name} input type`}
+                  label={`${descriptor.name} input`}
                   schema={descriptor.schema}
                   disabled={!editable}
+                  onProblem={setProblem}
                   onChange={(schema) => updateInput(descriptor.name, {
                     ...descriptor,
                     schema
@@ -133,7 +170,12 @@ export function WorkflowIoEditor({
                   <input
                     type="checkbox"
                     checked={descriptor.required}
-                    disabled={!editable}
+                    disabled={
+                      !editable || (
+                        containsResourceSlot(descriptor.schema) &&
+                        !isNullable(descriptor.schema)
+                      )
+                    }
                     onChange={(event) => updateInput(descriptor.name, {
                       ...descriptor,
                       required: event.target.checked
@@ -153,7 +195,9 @@ export function WorkflowIoEditor({
                         : nonNullSchema(descriptor.schema),
                       required: event.target.checked
                         ? false
-                        : descriptor.required
+                        : containsResourceSlot(descriptor.schema)
+                          ? true
+                          : descriptor.required
                     })}
                   />
                   Nullable
@@ -168,7 +212,10 @@ export function WorkflowIoEditor({
                     placeholder={descriptor.required
                       ? 'required input has no default'
                       : 'JSON value'}
-                    disabled={!editable || descriptor.required}
+                    disabled={
+                      !editable || descriptor.required ||
+                      containsResourceSlot(descriptor.schema)
+                    }
                     onBlur={(event) => {
                       const raw = event.target.value.trim()
                       mutate(() => updateWorkflowInput(
@@ -198,9 +245,9 @@ export function WorkflowIoEditor({
                     disabled={!editable || options.inputTargets.length === 0}
                     onChange={(event) => {
                       if (!event.target.value) return
-                      const target = options.inputTargets[
-                        Number(event.target.value)
-                      ]
+                      const target = options.inputTargets.find((item) =>
+                        inputTargetValue(item) === event.target.value
+                      )
                       if (!target) return
                       mutate(() => bindWorkflowInput(graph, {
                         parameter: descriptor.name,
@@ -209,10 +256,10 @@ export function WorkflowIoEditor({
                     }}
                   >
                     <option value="">选择 Node target Handle…</option>
-                    {options.inputTargets.map((target, index) => (
+                    {options.inputTargets.map((target) => (
                       <option
                         key={`${target.workflowNodeUuid}:${target.targetHandleUuid}`}
-                        value={index}
+                        value={inputTargetValue(target)}
                         data-workflow-node-uuid={target.workflowNodeUuid}
                         data-workflow-handle-template-uuid={
                           target.targetHandleUuid
@@ -227,7 +274,14 @@ export function WorkflowIoEditor({
                     ))}
                   </select>
                 </label>
-                <BindingList graph={graph} parameter={descriptor.name} />
+                <BindingList
+                  graph={graph}
+                  parameter={descriptor.name}
+                  editable={editable}
+                  onUnbind={(nodeUuid, handleUuid) => mutate(() =>
+                    unbindWorkflowInput(graph, nodeUuid, handleUuid)
+                  )}
+                />
               </li>
             ))}
           </ol>
@@ -246,7 +300,7 @@ export function WorkflowIoEditor({
 
         <ContractEditor title="Workflow Outputs">
           <ol>
-            {io.outputs.map((descriptor) => {
+            {io.outputs.map((descriptor, index) => {
               const readonly = descriptor.implicit || !editable
               const binding = io.outputBindings[descriptor.name]
               return (
@@ -260,15 +314,41 @@ export function WorkflowIoEditor({
                     {descriptor.implicit ? (
                       <span>implicit · OS-managed</span>
                     ) : (
-                      <button
-                        type="button"
-                        disabled={!editable}
-                        onClick={() => mutate(() =>
-                          removeWorkflowOutput(graph, descriptor.name)
-                        )}
-                      >
-                        删除
-                      </button>
+                      <span>
+                        <button
+                          type="button"
+                          disabled={!editable || index === 0}
+                          onClick={() => mutate(() => moveWorkflowOutput(
+                            graph,
+                            descriptor.name,
+                            'up'
+                          ))}
+                        >
+                          上移
+                        </button>
+                        <button
+                          type="button"
+                          disabled={
+                            !editable || index === io.outputs.length - 1
+                          }
+                          onClick={() => mutate(() => moveWorkflowOutput(
+                            graph,
+                            descriptor.name,
+                            'down'
+                          ))}
+                        >
+                          下移
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!editable}
+                          onClick={() => mutate(() =>
+                            removeWorkflowOutput(graph, descriptor.name)
+                          )}
+                        >
+                          删除
+                        </button>
+                      </span>
                     )}
                   </div>
                   <label>
@@ -288,9 +368,10 @@ export function WorkflowIoEditor({
                     />
                   </label>
                   <SchemaControl
-                    label={`${descriptor.name} output type`}
+                    label={`${descriptor.name} output`}
                     schema={descriptor.schema}
                     disabled={readonly}
+                    onProblem={setProblem}
                     onChange={(schema) => updateOutput(descriptor.name, {
                       ...descriptor,
                       schema
@@ -407,34 +488,308 @@ function SchemaControl({
   label,
   schema,
   disabled,
+  onProblem,
   onChange
 }: {
   label: string
   schema: WorkflowValueSchema
   disabled: boolean
+  onProblem: (message: string | null) => void
   onChange: (schema: WorkflowValueSchema) => void
 }): React.JSX.Element {
   const nullable = isNullable(schema)
+  const base = nonNullSchema(schema)
+  const apply = (operation: () => NonNullableSchema): void => {
+    try {
+      const next = operation()
+      onChange(nullable ? nullableSchema(next) : next)
+      onProblem(null)
+    } catch (value) {
+      onProblem(value instanceof Error ? value.message : String(value))
+    }
+  }
+  return (
+    <>
+      <SchemaTypeSelect
+        label={label}
+        mode={schemaMode(base)}
+        allowArray
+        disabled={disabled}
+        onChange={(mode) => apply(() => schemaForMode(mode))}
+      />
+      {isArraySchema(base) ? (
+        <>
+          <SchemaTypeSelect
+            label={`${label} items`}
+            mode={schemaMode(base.items)}
+            allowArray={false}
+            disabled={disabled}
+            onChange={(mode) => apply(() => ({
+              ...base,
+              items: schemaForItemMode(mode)
+            }))}
+          />
+          <SchemaConstraintFields
+            label={`${label} items`}
+            schema={base.items as ArrayItemSchema}
+            disabled={disabled}
+            onChange={(items) => apply(() => ({ ...base, items }))}
+            onProblem={onProblem}
+          />
+          <OptionalNumberField
+            label="Min items"
+            ariaLabel={`${label} min items`}
+            value={base.minItems}
+            integer
+            nonNegative
+            disabled={disabled}
+            onChange={(value) => apply(() => withSchemaField(
+              base,
+              'minItems',
+              value
+            ))}
+          />
+          <OptionalNumberField
+            label="Max items"
+            ariaLabel={`${label} max items`}
+            value={base.maxItems}
+            integer
+            nonNegative
+            disabled={disabled}
+            onChange={(value) => apply(() => withSchemaField(
+              base,
+              'maxItems',
+              value
+            ))}
+          />
+        </>
+      ) : (
+        <SchemaConstraintFields
+          label={label}
+          schema={base as ArrayItemSchema}
+          disabled={disabled}
+          onChange={(next) => apply(() => next)}
+          onProblem={onProblem}
+        />
+      )}
+    </>
+  )
+}
+
+function SchemaTypeSelect({
+  label,
+  mode,
+  allowArray,
+  disabled,
+  onChange
+}: {
+  label: string
+  mode: SchemaMode
+  allowArray: boolean
+  disabled: boolean
+  onChange: (mode: SchemaMode) => void
+}): React.JSX.Element {
   return (
     <label>
       Type
       <select
-        aria-label={label}
-        value={schemaMode(schema)}
+        aria-label={`${label} type`}
+        value={mode}
         disabled={disabled}
-        onChange={(event) => {
-          const next = schemaForMode(event.target.value as SchemaMode)
-          onChange(nullable ? nullableSchema(next) : next)
-        }}
+        onChange={(event) => onChange(event.target.value as SchemaMode)}
       >
         <option value="string">string</option>
         <option value="integer">integer</option>
         <option value="number">number</option>
         <option value="boolean">boolean</option>
         <option value="object">object (opaque JSON)</option>
+        {allowArray && <option value="array">list</option>}
         <option value="resource_slot">ResourceSlot</option>
-        <option value="resource_slot_list">list[ResourceSlot]</option>
       </select>
+    </label>
+  )
+}
+
+function SchemaConstraintFields({
+  label,
+  schema,
+  disabled,
+  onChange,
+  onProblem
+}: {
+  label: string
+  schema: ArrayItemSchema
+  disabled: boolean
+  onChange: (schema: ArrayItemSchema) => void
+  onProblem: (message: string | null) => void
+}): React.JSX.Element | null {
+  const applyJsonArray = (
+    raw: string,
+    field: 'enum' | 'allowed_resource_template_uuids'
+  ): void => {
+    try {
+      const trimmed = raw.trim()
+      if (!trimmed) {
+        onChange(withSchemaField(schema, field, undefined))
+        onProblem(null)
+        return
+      }
+      const parsed = JSON.parse(trimmed) as unknown
+      if (!Array.isArray(parsed) || parsed.length === 0) {
+        throw new Error(`${field} 必须是非空 JSON array`)
+      }
+      onChange(withSchemaField(schema, field, parsed))
+      onProblem(null)
+    } catch (value) {
+      onProblem(value instanceof Error ? value.message : String(value))
+    }
+  }
+
+  if ('$slot' in schema) {
+    return (
+      <label>
+        Allowed ResourceTemplate UUIDs JSON
+        <input
+          aria-label={`${label} allowed resource template UUIDs`}
+          defaultValue={jsonValue(schema.allowed_resource_template_uuids)}
+          placeholder='["resource-template-uuid"]'
+          disabled={disabled}
+          onBlur={(event) => applyJsonArray(
+            event.target.value,
+            'allowed_resource_template_uuids'
+          )}
+        />
+      </label>
+    )
+  }
+  if (schema.type === 'object') return null
+
+  const enumField = (
+    <label>
+      Enum JSON
+      <input
+        aria-label={`${label} enum JSON`}
+        defaultValue={jsonValue(schema.enum)}
+        placeholder="[value, ...]"
+        disabled={disabled}
+        onBlur={(event) => applyJsonArray(event.target.value, 'enum')}
+      />
+    </label>
+  )
+  if (schema.type === 'boolean') return enumField
+  if (schema.type === 'integer' || schema.type === 'number') {
+    return (
+      <>
+        {enumField}
+        <OptionalNumberField
+          label="Minimum"
+          ariaLabel={`${label} minimum`}
+          value={schema.minimum}
+          integer={schema.type === 'integer'}
+          disabled={disabled}
+          onChange={(value) => onChange(withSchemaField(
+            schema,
+            'minimum',
+            value
+          ))}
+        />
+        <OptionalNumberField
+          label="Maximum"
+          ariaLabel={`${label} maximum`}
+          value={schema.maximum}
+          integer={schema.type === 'integer'}
+          disabled={disabled}
+          onChange={(value) => onChange(withSchemaField(
+            schema,
+            'maximum',
+            value
+          ))}
+        />
+      </>
+    )
+  }
+  const stringSchema = schema as Extract<ArrayItemSchema, { type: 'string' }>
+  return (
+    <>
+      {enumField}
+      <OptionalNumberField
+        label="Min length"
+        ariaLabel={`${label} min length`}
+        value={stringSchema.minLength}
+        integer
+        nonNegative
+        disabled={disabled}
+        onChange={(value) => onChange(withSchemaField(
+          stringSchema,
+          'minLength',
+          value
+        ))}
+      />
+      <OptionalNumberField
+        label="Max length"
+        ariaLabel={`${label} max length`}
+        value={stringSchema.maxLength}
+        integer
+        nonNegative
+        disabled={disabled}
+        onChange={(value) => onChange(withSchemaField(
+          stringSchema,
+          'maxLength',
+          value
+        ))}
+      />
+      <label>
+        Editor control
+        <select
+          aria-label={`${label} editor control`}
+          value={stringSchema['x-unilabos-editor-control'] ?? ''}
+          disabled={disabled}
+          onChange={(event) => onChange(withSchemaField(
+            stringSchema,
+            'x-unilabos-editor-control',
+            event.target.value || undefined
+          ))}
+        >
+          <option value="">default</option>
+          <option value="site_selector">Site selector</option>
+        </select>
+      </label>
+    </>
+  )
+}
+
+function OptionalNumberField({
+  label,
+  ariaLabel,
+  value,
+  integer,
+  nonNegative = false,
+  disabled,
+  onChange
+}: {
+  label: string
+  ariaLabel: string
+  value: number | undefined
+  integer: boolean
+  nonNegative?: boolean
+  disabled: boolean
+  onChange: (value: number | undefined) => void
+}): React.JSX.Element {
+  return (
+    <label>
+      {label}
+      <input
+        type="number"
+        step={integer ? 1 : 'any'}
+        min={nonNegative ? 0 : undefined}
+        aria-label={ariaLabel}
+        defaultValue={value}
+        disabled={disabled}
+        onBlur={(event) => {
+          const raw = event.target.value.trim()
+          onChange(raw ? Number(raw) : undefined)
+        }}
+      />
     </label>
   )
 }
@@ -483,10 +838,14 @@ function DescriptorTextFields<T extends {
 
 function BindingList({
   graph,
-  parameter
+  parameter,
+  editable,
+  onUnbind
 }: {
   graph: WorkflowAuthoringGraph
   parameter: string
+  editable: boolean
+  onUnbind: (nodeUuid: string, handleUuid: string) => void
 }): React.JSX.Element | null {
   const bindings = graph.nodes.flatMap((node) => {
     const inputBindings = recordOrEmpty(
@@ -501,11 +860,23 @@ function BindingList({
   })
   if (bindings.length === 0) return null
   return (
-    <small>
-      Bound: {bindings.map(({ nodeUuid, handleUuid }) =>
-        handleLabel(graph, nodeUuid, handleUuid)
-      ).join(', ')}
-    </small>
+    <div>
+      <small>Bound:</small>
+      {bindings.map(({ nodeUuid, handleUuid }) => (
+        <span key={`${nodeUuid}:${handleUuid}`}>
+          {handleLabel(graph, nodeUuid, handleUuid)}
+          <button
+            type="button"
+            data-workflow-node-uuid={nodeUuid}
+            data-workflow-handle-template-uuid={handleUuid}
+            disabled={!editable}
+            onClick={() => onUnbind(nodeUuid, handleUuid)}
+          >
+            解除绑定
+          </button>
+        </span>
+      ))}
+    </div>
   )
 }
 
@@ -545,7 +916,10 @@ function normalizeInputDescriptor(
   if (isNullable(descriptor.schema)) {
     return { ...descriptor, default: null }
   }
-  if ('default' in descriptor) return descriptor
+  if (containsResourceSlot(descriptor.schema)) {
+    throw new Error('optional ResourceSlot input 必须先设为 Nullable')
+  }
+  if ('default' in descriptor && descriptor.default !== null) return descriptor
   return { ...descriptor, default: defaultValue(descriptor.schema) }
 }
 
@@ -559,7 +933,9 @@ function withoutDefault(
 
 function defaultValue(schema: WorkflowValueSchema): WorkflowJsonValue {
   const base = nonNullSchema(schema)
-  if ('$slot' in base) return { uuid: '' }
+  if (containsResourceSlot(base)) {
+    throw new Error('ResourceSlot input 不允许浏览器生成 default')
+  }
   switch (base.type) {
     case 'string': return ''
     case 'integer':
@@ -568,23 +944,24 @@ function defaultValue(schema: WorkflowValueSchema): WorkflowJsonValue {
     case 'object': return {}
     case 'array': return []
   }
+  throw new Error('Workflow input schema 不支持浏览器 default')
 }
 
 function schemaMode(schema: WorkflowValueSchema): SchemaMode {
   const base = nonNullSchema(schema)
   if ('$slot' in base) return 'resource_slot'
-  if (base.type === 'array' && '$slot' in base.items) {
-    return 'resource_slot_list'
-  }
-  return base.type as Exclude<SchemaMode, 'resource_slot' | 'resource_slot_list'>
+  return base.type
 }
 
-function schemaForMode(mode: SchemaMode): WorkflowValueSchema {
+function schemaForMode(mode: SchemaMode): NonNullableSchema {
   if (mode === 'resource_slot') return { $slot: 'ResourceSlot' }
-  if (mode === 'resource_slot_list') {
-    return { type: 'array', items: { $slot: 'ResourceSlot' } }
-  }
+  if (mode === 'array') return { type: 'array', items: { type: 'string' } }
   return { type: mode }
+}
+
+function schemaForItemMode(mode: SchemaMode): ArrayItemSchema {
+  if (mode === 'array') throw new Error('Workflow v1 不支持 nested list schema')
+  return schemaForMode(mode) as ArrayItemSchema
 }
 
 function nullableSchema(schema: WorkflowValueSchema): WorkflowValueSchema {
@@ -601,6 +978,29 @@ function nonNullSchema(schema: WorkflowValueSchema): Exclude<
 
 function isNullable(schema: WorkflowValueSchema): boolean {
   return 'anyOf' in schema
+}
+
+function isArraySchema(
+  schema: NonNullableSchema
+): schema is Extract<NonNullableSchema, { type: 'array' }> {
+  return 'type' in schema && schema.type === 'array'
+}
+
+function containsResourceSlot(schema: WorkflowValueSchema): boolean {
+  if ('anyOf' in schema) return containsResourceSlot(schema.anyOf[0])
+  if ('$slot' in schema) return true
+  return schema.type === 'array' && containsResourceSlot(schema.items)
+}
+
+function withSchemaField<T extends NonNullableSchema>(
+  schema: T,
+  field: string,
+  value: unknown
+): T {
+  const next = { ...schema } as Record<string, unknown>
+  if (value === undefined) delete next[field]
+  else next[field] = value
+  return next as T
 }
 
 function bindingValue(binding: WorkflowOutputBinding | undefined): string {
@@ -622,6 +1022,13 @@ function sourceValue(
   return source.kind === 'workflow_input'
     ? `input:${source.parameter}`
     : `node:${source.workflowNodeUuid}:${source.sourceHandleUuid}`
+}
+
+function inputTargetValue(target: {
+  workflowNodeUuid: string
+  targetHandleUuid: string
+}): string {
+  return `node:${target.workflowNodeUuid}:${target.targetHandleUuid}`
 }
 
 function handleLabel(
