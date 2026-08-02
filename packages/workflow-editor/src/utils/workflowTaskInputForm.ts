@@ -172,11 +172,6 @@ function validateFieldState(
     }
     return
   }
-  if (containsResourceSlotInput(descriptor.schema)) {
-    throw new Error(
-      `${descriptor.name} ResourceSlot selector 本轮尚不可用`
-    )
-  }
   requireSchemaValue(
     descriptor.schema,
     state.value,
@@ -199,7 +194,8 @@ function requireSchemaValue(
     return
   }
   if ('$slot' in schema) {
-    throw new Error(`${path} ResourceSlot selector 本轮尚不可用`)
+    requireClosedResourceSlot(value, path)
+    return
   }
   switch (schema.type) {
     case 'string':
@@ -291,6 +287,23 @@ function requireSchemaValue(
           enforceConstraints
         )
       )
+  }
+}
+
+function requireClosedResourceSlot(value: unknown, path: string): void {
+  if (!isJsonObject(value)) {
+    throw new Error(`${path} ResourceSlot 必须是 closed {uuid} object`)
+  }
+  const keys = Object.keys(value)
+  if (keys.length !== 1 || keys[0] !== 'uuid') {
+    throw new Error(`${path} ResourceSlot 只允许 uuid 字段`)
+  }
+  if (
+    typeof value.uuid !== 'string' ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+      .test(value.uuid)
+  ) {
+    throw new Error(`${path} ResourceSlot uuid 无效`)
   }
 }
 

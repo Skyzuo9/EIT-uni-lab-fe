@@ -17,6 +17,10 @@ export const RUNTIME_AUTHORING_WORKFLOW_UUID =
   '10000000-0000-4000-8000-000000000003'
 export const SCALAR_INPUT_WORKFLOW_UUID =
   '10000000-0000-4000-8000-000000000004'
+export const RESOURCE_SLOT_INPUT_WORKFLOW_UUID =
+  '10000000-0000-4000-8000-000000000005'
+export const RESOURCE_SLOT_MATERIAL_UUID =
+  '11000000-0000-4000-8000-000000000005'
 
 export interface PersistentAuthoringOs {
   url: string
@@ -25,6 +29,8 @@ export interface PersistentAuthoringOs {
   secondWorkflowUuid: string
   runtimeWorkflowUuid: string
   scalarInputWorkflowUuid: string
+  resourceSlotInputWorkflowUuid: string
+  resourceSlotMaterialUuid: string
   sourcePath: string
   secondSourcePath: string
   logs: () => string
@@ -42,6 +48,9 @@ export interface PersistentAuthoringOs {
     taskUuid: string,
     idempotencyKey: string
   ) => Promise<RuntimeCommandMutationResult>
+  mutateResourceSlotMaterialAuthority: (
+    state: MaterialAuthorityRaceState
+  ) => Promise<void>
   stopProcess: () => Promise<void>
   restart: () => Promise<void>
   stop: () => Promise<void>
@@ -61,6 +70,12 @@ export interface RuntimeCommandMutationResult {
   result: Record<string, unknown>
   [key: string]: unknown
 }
+
+export type MaterialAuthorityRaceState =
+  | 'invalid_input'
+  | 'not_found'
+  | 'conflict'
+  | 'restore'
 
 export interface PersistentAuthoringOsOptions {
   faultProxy?: boolean
@@ -144,6 +159,15 @@ export async function startPersistentAuthoringOs(
       workingDirectory,
       payload
     })
+  const mutateResourceSlotMaterialAuthority = (
+    state: MaterialAuthorityRaceState
+  ): Promise<void> => runMaterialAuthorityMutation({
+    python,
+    osRepository,
+    workingDirectory,
+    materialUuid: RESOURCE_SLOT_MATERIAL_UUID,
+    state
+  })
 
   return {
     url: faultProxy?.url ?? upstreamUrl,
@@ -152,6 +176,8 @@ export async function startPersistentAuthoringOs(
     secondWorkflowUuid: SECOND_AUTHORING_WORKFLOW_UUID,
     runtimeWorkflowUuid: RUNTIME_AUTHORING_WORKFLOW_UUID,
     scalarInputWorkflowUuid: SCALAR_INPUT_WORKFLOW_UUID,
+    resourceSlotInputWorkflowUuid: RESOURCE_SLOT_INPUT_WORKFLOW_UUID,
+    resourceSlotMaterialUuid: RESOURCE_SLOT_MATERIAL_UUID,
     sourcePath,
     secondSourcePath,
     logs: () => output,
@@ -184,6 +210,7 @@ export async function startPersistentAuthoringOs(
       if (!result) throw new Error('Terminal command race returned no result')
       return result as RuntimeCommandMutationResult
     },
+    mutateResourceSlotMaterialAuthority,
     stopProcess: async () => {
       if (!child) return
       await stopChild(child)
@@ -210,6 +237,7 @@ from pathlib import Path
 from tests.workflow.test_authoring_engine import (
     ANALYZE_NODE_UUID,
     PREPARE_NODE_UUID,
+    RESOURCE_TEMPLATE_UUID,
     WORKFLOW_UUID,
     _catalog_imports,
     _source,
@@ -230,6 +258,9 @@ runtime_workflow_uuid = "${RUNTIME_AUTHORING_WORKFLOW_UUID}"
 runtime_source_path = package_root / "workflows" / "runtime.py"
 scalar_input_workflow_uuid = "${SCALAR_INPUT_WORKFLOW_UUID}"
 scalar_input_source_path = package_root / "workflows" / "scalar_input.py"
+resource_slot_input_workflow_uuid = "${RESOURCE_SLOT_INPUT_WORKFLOW_UUID}"
+resource_slot_input_source_path = package_root / "workflows" / "resource_slot_input.py"
+resource_slot_material_uuid = "${RESOURCE_SLOT_MATERIAL_UUID}"
 source_path.parent.mkdir(parents=True, exist_ok=True)
 source_path.write_text(_source(), encoding="utf-8")
 second_source = _source(workflow_uuid=second_workflow_uuid)
@@ -293,6 +324,21 @@ def scalar_input_task(
 ''',
     encoding="utf-8",
 )
+resource_slot_input_source_path.write_text(
+    f'''from unilabos.registry.placeholder_type import ResourceSlot
+from unilabos.workflow.authoring import workflow_definition, workflow_output
+
+
+@workflow_definition(
+    workflow_uuid="{resource_slot_input_workflow_uuid}",
+    displayname="ResourceSlot input Task form",
+    description="I1 real-OS ResourceSlot input and Material resolution gate.",
+)
+def resource_slot_input_task(*, sample: ResourceSlot):
+    return workflow_output(sample=sample)
+''',
+    encoding="utf-8",
+)
 editable_root.mkdir(parents=True, exist_ok=True)
 (editable_root / "package.yaml").write_text(
     "\n".join([
@@ -308,6 +354,8 @@ editable_root.mkdir(parents=True, exist_ok=True)
         "    source: production_lab/workflows/runtime.py",
         f"  - workflow_uuid: {scalar_input_workflow_uuid}",
         "    source: production_lab/workflows/scalar_input.py",
+        f"  - workflow_uuid: {resource_slot_input_workflow_uuid}",
+        "    source: production_lab/workflows/resource_slot_input.py",
         "",
     ]),
     encoding="utf-8",
@@ -348,6 +396,13 @@ try:
             meta_data={},
             workflow_uuid=scalar_input_workflow_uuid,
         )
+        service.create_workflow(
+            name="I1 ResourceSlot input Task form fixture",
+            tags=[],
+            description="Real OS ResourceSlot Task input E2E",
+            meta_data={},
+            workflow_uuid=resource_slot_input_workflow_uuid,
+        )
         imports = _catalog_imports()
         for item in imports:
             item.template.pop("uuid", None)
@@ -357,9 +412,55 @@ try:
 finally:
     store.close()
 
+if initialize_store:
+    from unilabos.app.scheduler.inventory import (
+        InventoryService,
+        ResourceTemplateIdentity,
+    )
+
+    seed_inventory = InventoryService.open(
+        working_dir=working_dir,
+        resource_templates={
+            RESOURCE_TEMPLATE_UUID: ResourceTemplateIdentity(
+                uuid=RESOURCE_TEMPLATE_UUID,
+                material_class="lab.resources:plate_96",
+            ),
+        },
+    )
+    try:
+        seed_inventory.create_material(
+            material_uuid=resource_slot_material_uuid,
+            resource_template_uuid=RESOURCE_TEMPLATE_UUID,
+            barcode="I1-RESOURCE-SLOT-005",
+            name="I1 ResourceSlot sample",
+        )
+    finally:
+        seed_inventory.close()
+
 BasicConfig.working_dir = str(working_dir)
 BasicConfig.workflow_graph_authority = authority
 BasicConfig.workflow_editable_package_roots = (editable_root,)
+
+from unilabos.app.scheduler.integration import setup_edge_scheduler
+from unilabos.workflow.composition import (
+    compose_workflow_runtime,
+    get_workflow_inventory_service,
+)
+
+workflow_service = compose_workflow_runtime(
+    BasicConfig.working_dir,
+    authority=authority,
+    editable_package_roots=BasicConfig.workflow_editable_package_roots,
+)
+inventory_service = get_workflow_inventory_service()
+if inventory_service is None:
+    raise RuntimeError("Workflow composition did not expose InventoryService")
+setup_edge_scheduler(
+    inventory_service=inventory_service,
+    workflow_tasks=workflow_service,
+    device_state_db_path="off",
+    workflow_history_db_path="off",
+)
 
 from unilabos.app.web.server import start_server
 start_server(host="127.0.0.1", port=port, open_browser=False)
@@ -404,6 +505,61 @@ try:
         print("UNILAB_RUNTIME_RESULT=" + json.dumps(result, sort_keys=True))
 finally:
     store.close()
+`
+
+const PYTHON_MATERIAL_AUTHORITY_MUTATOR = String.raw`
+import sqlite3
+import sys
+from pathlib import Path
+
+working_dir = Path(sys.argv[1])
+material_uuid = sys.argv[2]
+state = sys.argv[3]
+database_path = working_dir / "inventory.db"
+if not database_path.is_file():
+    raise RuntimeError(f"independent Material authority is missing: {database_path}")
+
+connection = sqlite3.connect(database_path, timeout=10)
+try:
+    connection.create_collation(
+        "UNICODE_CASEFOLD",
+        lambda left, right: (left.casefold() > right.casefold())
+        - (left.casefold() < right.casefold()),
+    )
+    connection.execute("PRAGMA foreign_keys = ON")
+    if state == "invalid_input":
+        connection.execute(
+            "UPDATE material SET material_kind = 'device', disposition = NULL "
+            "WHERE uuid = ?",
+            (material_uuid,),
+        )
+    elif state == "not_found":
+        connection.execute(
+            "UPDATE material SET deleted_at = '2099-01-01T00:00:00Z' "
+            "WHERE uuid = ?",
+            (material_uuid,),
+        )
+    elif state == "conflict":
+        connection.execute(
+            "UPDATE material SET material_kind = 'business', "
+            "disposition = 'quarantined' WHERE uuid = ?",
+            (material_uuid,),
+        )
+    elif state == "restore":
+        connection.execute(
+            "UPDATE material SET material_kind = 'business', "
+            "disposition = 'active', deleted_at = NULL WHERE uuid = ?",
+            (material_uuid,),
+        )
+    else:
+        raise RuntimeError(f"unknown Material authority race: {state}")
+    if connection.execute(
+        "SELECT changes()"
+    ).fetchone()[0] != 1:
+        raise RuntimeError(f"Material authority race target is missing: {material_uuid}")
+    connection.commit()
+finally:
+    connection.close()
 `
 
 async function runRuntimeMutation({
@@ -452,6 +608,59 @@ async function runRuntimeMutation({
       resolveMutation(resultLine
         ? JSON.parse(resultLine.slice('UNILAB_RUNTIME_RESULT='.length)) as Record<string, unknown>
         : null)
+    })
+  })
+}
+
+async function runMaterialAuthorityMutation({
+  python,
+  osRepository,
+  workingDirectory,
+  materialUuid,
+  state
+}: {
+  python: string
+  osRepository: string
+  workingDirectory: string
+  materialUuid: string
+  state: MaterialAuthorityRaceState
+}): Promise<void> {
+  await new Promise<void>((resolveMutation, rejectMutation) => {
+    const mutation = spawn(
+      python,
+      [
+        '-c',
+        PYTHON_MATERIAL_AUTHORITY_MUTATOR,
+        workingDirectory,
+        materialUuid,
+        state
+      ],
+      {
+        cwd: osRepository,
+        env: {
+          ...process.env,
+          PYTHONPATH: osRepository,
+          PYTHONUNBUFFERED: '1'
+        },
+        stdio: ['ignore', 'pipe', 'pipe']
+      }
+    )
+    let output = ''
+    mutation.stdout?.on('data', (chunk) => {
+      output += chunk.toString()
+    })
+    mutation.stderr?.on('data', (chunk) => {
+      output += chunk.toString()
+    })
+    mutation.once('error', rejectMutation)
+    mutation.once('exit', (code) => {
+      if (code === 0) {
+        resolveMutation()
+        return
+      }
+      rejectMutation(new Error(
+        `Material authority race fixture exited with ${code}\n${output}`
+      ))
     })
   })
 }

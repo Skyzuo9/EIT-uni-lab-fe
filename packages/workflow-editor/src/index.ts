@@ -9,6 +9,11 @@ export { WorkflowIoSummary } from './components/WorkflowIoSummary'
 export { WorkflowIoEditor } from './components/WorkflowIoEditor'
 export { WorkflowTaskInputForm } from './components/WorkflowTaskInputForm'
 export type {
+  WorkflowResourceSlotOption,
+  WorkflowResourceSlotOptionsPort,
+  WorkflowResourceSlotOptionsState
+} from './utils/workflowResourceSlotOptions'
+export type {
   WorkflowTraceDetailQuery,
   WorkflowTraceDetailResult,
   WorkflowTraceListQuery,

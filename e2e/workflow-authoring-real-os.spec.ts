@@ -3,6 +3,7 @@ import { readFileSync, writeFileSync } from 'node:fs'
 
 import {
   startPersistentAuthoringOs,
+  type MaterialAuthorityRaceState,
   type PersistentAuthoringOs
 } from './helpers/persistent-authoring-os'
 
@@ -310,6 +311,335 @@ test('Applied scalar Task form preserves explicit falsy/null and leaves OS defau
   expect(applicationErrors).toEqual([])
   expect(browserErrors).toEqual([])
 })
+
+test('Applied ResourceSlot Task form selects a real Material and OS freezes its canonical identity', async ({
+  page
+}) => {
+  test.setTimeout(120_000)
+  const browserErrors: string[] = []
+  const applicationErrors: string[] = []
+  const webSockets: string[] = []
+  const requests: Array<{ method: string; path: string }> = []
+  page.on('console', (message) => {
+    if (message.type() === 'error') browserErrors.push(message.text())
+  })
+  page.on('pageerror', (error) => browserErrors.push(error.message))
+  page.on('websocket', (webSocket) => webSockets.push(webSocket.url()))
+  page.on('request', (request) => {
+    requests.push({
+      method: request.method(),
+      path: new URL(request.url()).pathname
+    })
+  })
+  page.on('response', (response) => {
+    if (
+      response.url().startsWith(`${os.url}/api/v1/`) &&
+      response.status() >= 400
+    ) {
+      applicationErrors.push(
+        `${response.request().method()} ${new URL(response.url()).pathname} ` +
+        `${response.status()}`
+      )
+    }
+  })
+
+  const applied = await ensureAppliedWorkflow(
+    os.resourceSlotInputWorkflowUuid
+  )
+  const materialGraph = await readEnvelope<{
+    nodes: Array<{
+      material: {
+        uuid: string
+        resource_template_uuid: string
+        name: string
+      }
+    }>
+  }>(`${os.url}/api/v1/materials/graph`)
+  const fixtureMaterial = materialGraph.nodes.find(({ material }) =>
+    material.uuid === os.resourceSlotMaterialUuid
+  )?.material
+  expect(fixtureMaterial).toEqual({
+    uuid: os.resourceSlotMaterialUuid,
+    resource_template_uuid: '31000000-0000-4000-8000-000000000001',
+    name: 'I1 ResourceSlot sample',
+    barcode: 'I1-RESOURCE-SLOT-005',
+    class: 'lab.resources:plate_96',
+    config: {},
+    create_time: expect.any(String),
+    data: {},
+    meta_data: {},
+    update_time: expect.any(String)
+  })
+
+  const storageKey = `unilab.workflow.active.${
+    encodeURIComponent(`local-python:${os.url}`)
+  }.v1`
+  await page.addInitScript(({ key, workflowUuid }) => {
+    localStorage.setItem(
+      key,
+      JSON.stringify({ version: 1, workflowId: workflowUuid })
+    )
+  }, { key: storageKey, workflowUuid: os.resourceSlotInputWorkflowUuid })
+
+  await page.goto(
+    `/?section=workflow&localOsUrl=${encodeURIComponent(os.url)}`
+  )
+  await expect(page.getByText('完整控制流 DAG')).toBeVisible()
+  await page.getByRole('button', { name: '开始运行', exact: true }).click()
+
+  const form = page.getByRole('region', {
+    name: 'Workflow Task 输入表单'
+  })
+  await expect(form).toBeVisible()
+  await expect(form).toContainText(
+    `使用 Applied revision ${applied.workflow_revision}`
+  )
+  const inputState = form.getByRole('combobox', {
+    name: 'sample 输入状态'
+  })
+  await expect(inputState).toBeEnabled({ timeout: 10_000 })
+  await inputState.selectOption('value')
+  const materialSelector = form.getByRole('combobox', {
+    name: 'sample ResourceSlot'
+  })
+  await expect(materialSelector).toContainText('I1 ResourceSlot sample')
+  await materialSelector.selectOption(os.resourceSlotMaterialUuid)
+
+  const createdResponse = page.waitForResponse((response) =>
+    response.request().method() === 'POST' &&
+    new URL(response.url()).pathname === '/api/v1/workflow-tasks'
+  )
+  await form.getByRole('button', {
+    name: '确认并创建 Task',
+    exact: true
+  }).click()
+  const created = await createdResponse
+  expect(created.status()).toBe(201)
+  expect(created.request().postDataJSON()).toEqual({
+    workflow_uuid: os.resourceSlotInputWorkflowUuid,
+    run_mode: 'normal',
+    input: {
+      sample: { uuid: os.resourceSlotMaterialUuid }
+    }
+  })
+
+  const responseEnvelope = await created.json() as {
+    code: number
+    data: {
+      input: Record<string, unknown>
+      workflow_snapshot: {
+        workflow: {
+          revision: number
+          meta_data: {
+            unilab: { input_contract: Record<string, unknown> }
+          }
+        }
+      }
+    }
+  }
+  expect(responseEnvelope.code).toBe(0)
+  expect(responseEnvelope.data.input).toEqual({
+    sample: {
+      uuid: os.resourceSlotMaterialUuid,
+      resource_template_uuid: fixtureMaterial?.resource_template_uuid
+    }
+  })
+  expect(responseEnvelope.data.workflow_snapshot.workflow.revision)
+    .toBe(applied.workflow_revision)
+  expect(responseEnvelope.data.workflow_snapshot.workflow.meta_data.unilab)
+    .toMatchObject({
+      input_contract: {
+        version: 1,
+        parameters: [{
+          name: 'sample',
+          schema: { $slot: 'ResourceSlot' },
+          required: true
+        }]
+      }
+    })
+
+  expect(requests).toContainEqual({
+    method: 'GET',
+    path: '/api/v1/materials/graph'
+  })
+  expect(webSockets).toEqual([])
+  expect(applicationErrors).toEqual([])
+  expect(browserErrors).toEqual([])
+})
+
+for (const scenario of [
+  {
+    state: 'invalid_input',
+    status: 400,
+    code: 'invalid_input',
+    message: '提交内容格式不正确',
+    actionable: /输入不被 OS 接受.*检查.*重试/
+  },
+  {
+    state: 'not_found',
+    status: 404,
+    code: 'not_found',
+    message: '请求的资源不存在',
+    actionable: /Workflow.*Material.*数据.*刷新.*重试/
+  },
+  {
+    state: 'conflict',
+    status: 409,
+    code: 'conflict',
+    message: '资源已发生冲突，请刷新后重试',
+    actionable: /权威状态.*冲突.*刷新.*重试/
+  }
+] as const satisfies ReadonlyArray<{
+  state: Exclude<MaterialAuthorityRaceState, 'restore'>
+  status: number
+  code: string
+  message: string
+  actionable: RegExp
+}>) {
+  test(`ResourceSlot authority ${scenario.status} keeps the selected form actionable and writes no Task`, async ({
+    page
+  }) => {
+    test.setTimeout(120_000)
+    const browserErrors: string[] = []
+    const expectedAuthorityConsoleErrors: string[] = []
+    const applicationErrors: string[] = []
+    const webSockets: string[] = []
+    const requests: Array<{ method: string; path: string }> = []
+    page.on('console', (message) => {
+      if (message.type() !== 'error') return
+      const text = message.text()
+      if (new RegExp(
+        `^Failed to load resource: the server responded with a status of ${scenario.status} \\([^)]*\\)$`
+      ).test(text)) {
+        expectedAuthorityConsoleErrors.push(text)
+        return
+      }
+      browserErrors.push(text)
+    })
+    page.on('pageerror', (error) => browserErrors.push(error.message))
+    page.on('websocket', (webSocket) => webSockets.push(webSocket.url()))
+    page.on('request', (request) => {
+      requests.push({
+        method: request.method(),
+        path: new URL(request.url()).pathname
+      })
+    })
+    page.on('response', (response) => {
+      const path = new URL(response.url()).pathname
+      const expectedAuthorityRejection =
+        response.request().method() === 'POST' &&
+        path === '/api/v1/workflow-tasks' &&
+        response.status() === scenario.status
+      if (
+        response.url().startsWith(`${os.url}/api/v1/`) &&
+        response.status() >= 400 &&
+        !expectedAuthorityRejection
+      ) {
+        applicationErrors.push(
+          `${response.request().method()} ${path} ${response.status()}`
+        )
+      }
+    })
+
+    await os.mutateResourceSlotMaterialAuthority('restore')
+    await ensureAppliedWorkflow(os.resourceSlotInputWorkflowUuid)
+    const taskCountBefore = await workflowTaskCount(
+      os.resourceSlotInputWorkflowUuid
+    )
+    const storageKey = `unilab.workflow.active.${
+      encodeURIComponent(`local-python:${os.url}`)
+    }.v1`
+    await page.addInitScript(({ key, workflowUuid }) => {
+      localStorage.setItem(
+        key,
+        JSON.stringify({ version: 1, workflowId: workflowUuid })
+      )
+    }, { key: storageKey, workflowUuid: os.resourceSlotInputWorkflowUuid })
+
+    await page.goto(
+      `/?section=workflow&localOsUrl=${encodeURIComponent(os.url)}`
+    )
+    await expect(page.getByText('完整控制流 DAG')).toBeVisible()
+    await page.getByRole('button', {
+      name: '开始运行',
+      exact: true
+    }).click()
+    const form = page.getByRole('region', {
+      name: 'Workflow Task 输入表单'
+    })
+    await expect(form).toBeVisible()
+    const inputState = form.getByRole('combobox', {
+      name: 'sample 输入状态'
+    })
+    await expect(inputState).toBeEnabled({ timeout: 10_000 })
+    await inputState.selectOption('value')
+    const materialSelector = form.getByRole('combobox', {
+      name: 'sample ResourceSlot'
+    })
+    await expect(materialSelector).toContainText('I1 ResourceSlot sample')
+    await materialSelector.selectOption(os.resourceSlotMaterialUuid)
+    await expect(materialSelector).toHaveValue(os.resourceSlotMaterialUuid)
+
+    await os.mutateResourceSlotMaterialAuthority(scenario.state)
+    try {
+      const rejectedResponse = page.waitForResponse((response) =>
+        response.request().method() === 'POST' &&
+        new URL(response.url()).pathname === '/api/v1/workflow-tasks'
+      )
+      await form.getByRole('button', {
+        name: '确认并创建 Task',
+        exact: true
+      }).click()
+      const rejected = await rejectedResponse
+      expect(rejected.status()).toBe(scenario.status)
+      expect(rejected.request().postDataJSON()).toEqual({
+        workflow_uuid: os.resourceSlotInputWorkflowUuid,
+        run_mode: 'normal',
+        input: { sample: { uuid: os.resourceSlotMaterialUuid } }
+      })
+      expect(await rejected.json()).toEqual({
+        code: scenario.status,
+        error: {
+          code: scenario.code,
+          message: scenario.message
+        }
+      })
+
+      await expect(form).toBeVisible()
+      await expect(materialSelector).toHaveValue(os.resourceSlotMaterialUuid)
+      const alert = form.getByRole('alert')
+      await expect(alert).toContainText(scenario.actionable)
+      await expect(alert).toContainText(
+        `OS ${scenario.status} ${scenario.code}：${scenario.message}`
+      )
+      await expect(alert).not.toContainText(/已删除|已不存在|已占用|类型不兼容/)
+      await expect(form.getByRole('button', {
+        name: '确认并创建 Task',
+        exact: true
+      })).toBeEnabled()
+      expect(await workflowTaskCount(os.resourceSlotInputWorkflowUuid))
+        .toBe(taskCountBefore)
+    } finally {
+      await os.mutateResourceSlotMaterialAuthority('restore')
+    }
+
+    const forbiddenRequests = requests.filter(({ path }) =>
+      path === '/api/run' ||
+      path.startsWith('/api/runtime/local/') ||
+      path.startsWith('/api/v1/runtime/runs') ||
+      path.startsWith('/ws/workflow/')
+    )
+    expect(forbiddenRequests).toEqual([])
+    expect(webSockets).toEqual([])
+    expect(applicationErrors).toEqual([])
+    expect(expectedAuthorityConsoleErrors).toEqual([
+      expect.stringMatching(new RegExp(
+        `^Failed to load resource: the server responded with a status of ${scenario.status} \\([^)]*\\)$`
+      ))
+    ])
+    expect(browserErrors).toEqual([])
+  })
+}
 
 test('Candidate Workflow I/O survives real OS apply and result-record round-trip', async ({
   page
@@ -1040,6 +1370,18 @@ async function readEnvelope<Value>(
   }
   expect(envelope.code).toBe(0)
   return envelope.data
+}
+
+async function workflowTaskCount(workflowUuid: string): Promise<number> {
+  const page = await readEnvelope<{
+    items: unknown[]
+    total: number
+  }>(
+    `${os.url}/api/v1/workflow-tasks?` +
+    `workflow_uuid=${encodeURIComponent(workflowUuid)}&page_size=100`
+  )
+  expect(page.items).toHaveLength(page.total)
+  return page.total
 }
 
 async function ensureAppliedWorkflow(

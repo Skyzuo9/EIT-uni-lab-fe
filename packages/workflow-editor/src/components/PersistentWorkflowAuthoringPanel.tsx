@@ -82,17 +82,25 @@ import { useWorkflowSessionStore } from './WorkflowSessionProvider'
 import { WorkflowTraceViewer } from './WorkflowTraceViewer'
 import {
   createWorkflowTaskInputForm,
+  containsResourceSlotInput,
   setWorkflowTaskInputField,
   submitWorkflowTaskInput,
   type WorkflowTaskInputFieldState,
   type WorkflowTaskInputFormState
 } from '../utils/workflowTaskInputForm'
+import {
+  loadWorkflowResourceSlotOptions,
+  type WorkflowResourceSlotOptionsPort,
+  type WorkflowResourceSlotOptionsState
+} from '../utils/workflowResourceSlotOptions'
+import { workflowTaskInputProblem } from '../utils/workflowTaskInputProblem'
 import styles from './workflow.module.scss'
 
 interface PersistentWorkflowAuthoringPanelProps {
   runtime: WorkflowRuntimePort
   workflowUuid: string
   traceRuntime?: WorkflowTracePort
+  resourceSlotOptionsPort?: WorkflowResourceSlotOptionsPort
   onUnsavedChangesChange?: (hasUnsavedChanges: boolean) => void
   onChooseWorkflow?: () => void
 }
@@ -125,6 +133,7 @@ export function PersistentWorkflowAuthoringPanel({
   runtime,
   workflowUuid,
   traceRuntime,
+  resourceSlotOptionsPort,
   onUnsavedChangesChange,
   onChooseWorkflow
 }: PersistentWorkflowAuthoringPanelProps): React.JSX.Element {
@@ -170,6 +179,8 @@ export function PersistentWorkflowAuthoringPanel({
   const [taskInputForm, setTaskInputForm] =
     useState<WorkflowTaskInputFormState | null>(null)
   const [taskInputProblem, setTaskInputProblem] = useState<string | null>(null)
+  const [resourceSlotOptions, setResourceSlotOptions] =
+    useState<WorkflowResourceSlotOptionsState | undefined>(undefined)
   const [traceViewerOpen, setTraceViewerOpen] = useState(false)
   const [outputExpanded, setOutputExpanded] = useState(true)
   const [outputTab, setOutputTab] = useState<WorkflowOutputTab>('nodes')
@@ -1175,8 +1186,17 @@ export function PersistentWorkflowAuthoringPanel({
         const latest = await queue.run(
           () => runtime.getWorkflowAuthoring(workflowUuid)
         )
+        const nextForm = createWorkflowTaskInputForm(latest)
         setTaskInputAuthority(latest)
-        setTaskInputForm(createWorkflowTaskInputForm(latest))
+        setTaskInputForm(nextForm)
+        setResourceSlotOptions(undefined)
+        if (nextForm.fields.some(({ descriptor }) =>
+          containsResourceSlotInput(descriptor.schema)
+        )) {
+          setResourceSlotOptions(
+            await loadWorkflowResourceSlotOptions(resourceSlotOptionsPort)
+          )
+        }
         setMessage(
           `本次运行使用 Applied revision ${latest.workflow_revision}；` +
           '未填写 default 字段将保持省略'
@@ -1228,7 +1248,9 @@ export function PersistentWorkflowAuthoringPanel({
         setTaskInputProblem(null)
         setMessage(result.message)
       } catch (submitError) {
-        setTaskInputProblem(errorMessage(submitError))
+        setTaskInputProblem(
+          workflowTaskInputProblem(submitError, submittedForm)
+        )
         throw submitError
       }
     })
@@ -1422,6 +1444,7 @@ export function PersistentWorkflowAuthoringPanel({
           form={taskInputForm}
           busy={runtimeBusy}
           problem={taskInputProblem}
+          resourceSlotOptions={resourceSlotOptions}
           onChange={updateTaskInput}
           onProblem={setTaskInputProblem}
           onSubmit={submitTaskInput}
@@ -1429,6 +1452,7 @@ export function PersistentWorkflowAuthoringPanel({
             setTaskInputAuthority(null)
             setTaskInputForm(null)
             setTaskInputProblem(null)
+            setResourceSlotOptions(undefined)
           }}
         />
       )}

@@ -247,6 +247,94 @@ describe('WorkflowTaskInputForm pure builder', () => {
     expect(result.form.fields.every(({ state }) => state.kind === 'untouched'))
       .toBe(true)
   })
+
+  it('builds closed single/nullable/list ResourceSlot values without identity leakage', () => {
+    expect(formModule.createWorkflowTaskInputForm).toBeTypeOf('function')
+    expect(formModule.setWorkflowTaskInputField).toBeTypeOf('function')
+    expect(formModule.buildWorkflowTaskInput).toBeTypeOf('function')
+    let form = formModule.createWorkflowTaskInputForm!(aggregate({
+      parameters: [
+        {
+          name: 'sample',
+          schema: {
+            $slot: 'ResourceSlot',
+            allowed_resource_template_uuids: [
+              'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+            ]
+          },
+          required: true
+        },
+        {
+          name: 'optional_sample',
+          schema: {
+            anyOf: [
+              { $slot: 'ResourceSlot' },
+              { type: 'null' }
+            ]
+          },
+          required: false,
+          default: null
+        },
+        {
+          name: 'samples',
+          schema: {
+            type: 'array',
+            items: { $slot: 'ResourceSlot' }
+          },
+          required: true
+        }
+      ]
+    }))
+    const first = '11111111-1111-4111-8111-111111111111'
+    const second = '33333333-3333-4333-8333-333333333333'
+    form = formModule.setWorkflowTaskInputField!(form, 'sample', {
+      kind: 'value',
+      value: { uuid: first }
+    })
+    form = formModule.setWorkflowTaskInputField!(form, 'optional_sample', {
+      kind: 'explicit_null'
+    })
+    form = formModule.setWorkflowTaskInputField!(form, 'samples', {
+      kind: 'value',
+      value: [{ uuid: second }, { uuid: first }, { uuid: second }]
+    })
+
+    expect(formModule.buildWorkflowTaskInput!(form)).toEqual({
+      sample: { uuid: first },
+      optional_sample: null,
+      samples: [{ uuid: second }, { uuid: first }, { uuid: second }]
+    })
+    expect(JSON.stringify(formModule.buildWorkflowTaskInput!(form)))
+      .not.toMatch(/resource_template|display|label|tree|index/i)
+  })
+
+  it('rejects open or malformed ResourceSlot selector values', () => {
+    expect(formModule.createWorkflowTaskInputForm).toBeTypeOf('function')
+    expect(formModule.setWorkflowTaskInputField).toBeTypeOf('function')
+    const createForm = (): InputForm =>
+      formModule.createWorkflowTaskInputForm!(aggregate({
+        parameters: [{
+          name: 'sample',
+          schema: { $slot: 'ResourceSlot' },
+          required: true
+        }]
+      }))
+    const uuid = '11111111-1111-4111-8111-111111111111'
+
+    for (const value of [
+      uuid,
+      {},
+      { uuid, resource_template_uuid: 'leak' },
+      { uuid, displayLabel: 'leak' },
+      { uuid, index: 0 }
+    ]) {
+      expect(() => formModule.setWorkflowTaskInputField!(
+        createForm(),
+        'sample',
+        { kind: 'value', value }
+      )).toThrow(/ResourceSlot|uuid|closed|字段/i)
+    }
+  })
 })
 
 function requiredValues(initial: InputForm): InputForm {
