@@ -2,7 +2,11 @@
 
 本证据集由 `e2e/device-manual-unlock-real-os.spec.ts` 通过独占的前端预览服务
 与真实 Uni-Lab-OS FastAPI composition 生成。对应 OS 代码提交为
-`bebc2128fe5ab6fd525e3d7c0f28c35691cced86`。
+`da64ca2adeb9a0d7e5f89d75d52f45929ff68a7d`。
+
+最终复跑目录为
+`e2e-artifacts/device-manual-unlock-current-20260802-run6`，结果为 1/1
+通过，固化 10 张截图；浏览器错误为 0。
 
 测试全程复用现有仪器设备页、Action 卡片、锁状态面板和二次确认框，只替换
 服务适配及后端接口。顺序覆盖：
