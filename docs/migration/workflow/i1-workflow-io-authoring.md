@@ -57,6 +57,10 @@ Standards `0B/0NB`、Spec `3B/2NB`。唯一 test-author 为五项审查发现补
 production head 为 `4bee7ae454a9ce1dad778c1bdaf802dcd407e2c2`。最终 exact-SHA
 必须包含本 ledger，并由同一名独立 reviewer 完成 Standards/Spec 双审闭环。
 
+根级 project-reference typecheck 随后发现一个只影响 TypeScript union narrowing 的门禁问题，
+由 `2d790c85ffc22375c7ed61c4d8b4fa367661be67` 修复；它不改变 ResourceSlot/default
+合同，审查补测仍为 `23/23 passed`。因此最终 review 前 production head 为 `2d790c8...`。
+
 已完成证据：
 
 | 门禁 | 结果 |
@@ -65,6 +69,7 @@ production head 为 `4bee7ae454a9ce1dad778c1bdaf802dcd407e2c2`。最终 exact-SH
 | services unit | `8 files / 59 tests passed` |
 | 真实 OS Authoring browser suite | `6 passed`；forbidden request / WebSocket / pageerror / application error 为 `0` |
 | OS retained Catalog projection | OS candidate `ee6b23ec715fb3253686f654ab80375c32ba51fb`、integration `96f96ff42be7da881f2b6e6d81e6462e12daf1c6`、Standards/Spec `0B/0NB` |
+| FE 根级门禁 | 全仓 typecheck/test、Web build、Desktop build、runtime static contract 与 diff-check 均通过 |
 
 全仓 typecheck/test、Web/Desktop build、runtime static contract、diff-check 与本轮 exact-SHA
 review 结果在最终候选门禁后记录到 repository-local ticket；Task form 不混入本 round。
