@@ -850,7 +850,11 @@ async function readEnvelope<Value>(
 ): Promise<Value> {
   const response = await fetch(url, init)
   const responseText = await response.text()
-  expect(response.status, responseText).toBe(200)
+  const osLogTail = os?.logs().slice(-8_000) ?? 'OS logs unavailable'
+  expect(
+    response.status,
+    `${responseText}\n\nOS log tail:\n${osLogTail}`
+  ).toBe(200)
   const envelope = JSON.parse(responseText) as {
     code: number
     data: Value
