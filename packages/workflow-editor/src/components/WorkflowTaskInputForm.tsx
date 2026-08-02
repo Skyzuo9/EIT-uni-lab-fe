@@ -134,7 +134,7 @@ export function WorkflowTaskInputForm({
                   </select>
                 </label>
                 {resourceSlot ? (
-                  WorkflowResourceSlotControl({
+                  renderWorkflowResourceSlotControl({
                     name: descriptor.name,
                     schema: descriptor.schema,
                     state,
@@ -186,7 +186,7 @@ export function WorkflowTaskInputForm({
   )
 }
 
-function WorkflowResourceSlotControl({
+function renderWorkflowResourceSlotControl({
   name,
   schema,
   state,
