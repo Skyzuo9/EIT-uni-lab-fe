@@ -16,6 +16,9 @@ describe('Workflow ResourceSlot application boundary', () => {
     expect(authoringPanel).toMatch(/WorkflowResourceSlotOptionsPort/)
     expect(authoringPanel).toMatch(/resourceSlotOptionsPort/)
     expect(authoringPanel).toMatch(/loadWorkflowResourceSlotOptions/)
+    expect(authoringPanel).toMatch(
+      /workflowTaskInputProblem\s*\(\s*submitError\s*\)/
+    )
   })
 
   it('keeps workflow-editor free of Material HTTP and Material-store authority', () => {

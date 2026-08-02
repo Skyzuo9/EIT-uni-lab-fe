@@ -311,6 +311,161 @@ test('Applied scalar Task form preserves explicit falsy/null and leaves OS defau
   expect(browserErrors).toEqual([])
 })
 
+test('Applied ResourceSlot Task form selects a real Material and OS freezes its canonical identity', async ({
+  page
+}) => {
+  test.setTimeout(120_000)
+  const browserErrors: string[] = []
+  const applicationErrors: string[] = []
+  const webSockets: string[] = []
+  const requests: Array<{ method: string; path: string }> = []
+  page.on('console', (message) => {
+    if (message.type() === 'error') browserErrors.push(message.text())
+  })
+  page.on('pageerror', (error) => browserErrors.push(error.message))
+  page.on('websocket', (webSocket) => webSockets.push(webSocket.url()))
+  page.on('request', (request) => {
+    requests.push({
+      method: request.method(),
+      path: new URL(request.url()).pathname
+    })
+  })
+  page.on('response', (response) => {
+    if (
+      response.url().startsWith(`${os.url}/api/v1/`) &&
+      response.status() >= 400
+    ) {
+      applicationErrors.push(
+        `${response.request().method()} ${new URL(response.url()).pathname} ` +
+        `${response.status()}`
+      )
+    }
+  })
+
+  const applied = await ensureAppliedWorkflow(
+    os.resourceSlotInputWorkflowUuid
+  )
+  const materialGraph = await readEnvelope<{
+    nodes: Array<{
+      material: {
+        uuid: string
+        resource_template_uuid: string
+        name: string
+      }
+    }>
+  }>(`${os.url}/api/v1/materials/graph`)
+  const fixtureMaterial = materialGraph.nodes.find(({ material }) =>
+    material.uuid === os.resourceSlotMaterialUuid
+  )?.material
+  expect(fixtureMaterial).toEqual({
+    uuid: os.resourceSlotMaterialUuid,
+    resource_template_uuid: '31000000-0000-4000-8000-000000000001',
+    name: 'I1 ResourceSlot sample',
+    barcode: 'I1-RESOURCE-SLOT-005',
+    class: 'lab.resources:plate_96',
+    config: {},
+    create_time: expect.any(String),
+    data: {},
+    meta_data: {},
+    update_time: expect.any(String)
+  })
+
+  const storageKey = `unilab.workflow.active.${
+    encodeURIComponent(`local-python:${os.url}`)
+  }.v1`
+  await page.addInitScript(({ key, workflowUuid }) => {
+    localStorage.setItem(
+      key,
+      JSON.stringify({ version: 1, workflowId: workflowUuid })
+    )
+  }, { key: storageKey, workflowUuid: os.resourceSlotInputWorkflowUuid })
+
+  await page.goto(
+    `/?section=workflow&localOsUrl=${encodeURIComponent(os.url)}`
+  )
+  await expect(page.getByText('完整控制流 DAG')).toBeVisible()
+  await page.getByRole('button', { name: '开始运行', exact: true }).click()
+
+  const form = page.getByRole('region', {
+    name: 'Workflow Task 输入表单'
+  })
+  await expect(form).toBeVisible()
+  await expect(form).toContainText(
+    `使用 Applied revision ${applied.workflow_revision}`
+  )
+  const inputState = form.getByRole('combobox', {
+    name: 'sample 输入状态'
+  })
+  await expect(inputState).toBeEnabled({ timeout: 10_000 })
+  await inputState.selectOption('value')
+  const materialSelector = form.getByRole('combobox', {
+    name: 'sample ResourceSlot'
+  })
+  await expect(materialSelector).toContainText('I1 ResourceSlot sample')
+  await materialSelector.selectOption(os.resourceSlotMaterialUuid)
+
+  const createdResponse = page.waitForResponse((response) =>
+    response.request().method() === 'POST' &&
+    new URL(response.url()).pathname === '/api/v1/workflow-tasks'
+  )
+  await form.getByRole('button', {
+    name: '确认并创建 Task',
+    exact: true
+  }).click()
+  const created = await createdResponse
+  expect(created.status()).toBe(201)
+  expect(created.request().postDataJSON()).toEqual({
+    workflow_uuid: os.resourceSlotInputWorkflowUuid,
+    run_mode: 'normal',
+    input: {
+      sample: { uuid: os.resourceSlotMaterialUuid }
+    }
+  })
+
+  const responseEnvelope = await created.json() as {
+    code: number
+    data: {
+      input: Record<string, unknown>
+      workflow_snapshot: {
+        workflow: {
+          revision: number
+          meta_data: {
+            unilab: { input_contract: Record<string, unknown> }
+          }
+        }
+      }
+    }
+  }
+  expect(responseEnvelope.code).toBe(0)
+  expect(responseEnvelope.data.input).toEqual({
+    sample: {
+      uuid: os.resourceSlotMaterialUuid,
+      resource_template_uuid: fixtureMaterial?.resource_template_uuid
+    }
+  })
+  expect(responseEnvelope.data.workflow_snapshot.workflow.revision)
+    .toBe(applied.workflow_revision)
+  expect(responseEnvelope.data.workflow_snapshot.workflow.meta_data.unilab)
+    .toMatchObject({
+      input_contract: {
+        version: 1,
+        parameters: [{
+          name: 'sample',
+          schema: { $slot: 'ResourceSlot' },
+          required: true
+        }]
+      }
+    })
+
+  expect(requests).toContainEqual({
+    method: 'GET',
+    path: '/api/v1/materials/graph'
+  })
+  expect(webSockets).toEqual([])
+  expect(applicationErrors).toEqual([])
+  expect(browserErrors).toEqual([])
+})
+
 test('Candidate Workflow I/O survives real OS apply and result-record round-trip', async ({
   page
 }) => {
