@@ -7,6 +7,7 @@ import type {
   WorkflowAuthoringGraph,
   WorkflowAuthoringSourceMapEntry,
   WorkflowAuthoringTransformResult,
+  WorkflowIoMetadata,
   WorkflowRuntimePort,
   WorkflowTask,
   WorkflowTaskCommand,
@@ -73,6 +74,7 @@ import {
   type WorkflowOutputNode,
   type WorkflowOutputTab
 } from './WorkflowOutput'
+import { WorkflowIoSummary } from './WorkflowIoSummary'
 import { useWorkflowSessionStore } from './WorkflowSessionProvider'
 import styles from './workflow.module.scss'
 
@@ -1121,6 +1123,9 @@ export function PersistentWorkflowAuthoringPanel({
       setError(errorMessage(connectError))
     }
   }
+  const appliedIo = aggregate
+    ? workflowIoMetadata(aggregate.applied_graph)
+    : null
 
   return (
     <div
@@ -1311,6 +1316,8 @@ export function PersistentWorkflowAuthoringPanel({
           </ul>
         </section>
       )}
+
+      {appliedIo && <WorkflowIoSummary io={appliedIo} />}
 
       <main className="persistent-authoring__workbench">
         <section
@@ -1830,6 +1837,22 @@ export function PersistentWorkflowAuthoringPanel({
       )}
     </div>
   )
+}
+
+function workflowIoMetadata(
+  graph: WorkflowAuthoringGraph
+): WorkflowIoMetadata | null {
+  const unilab = graph.workflow.meta_data?.unilab
+  if (
+    !unilab?.input_contract ||
+    !unilab.output_contract ||
+    !unilab.output_bindings
+  ) return null
+  return {
+    input_contract: unilab.input_contract,
+    output_contract: unilab.output_contract,
+    output_bindings: unilab.output_bindings
+  }
 }
 
 function authoritativePython(

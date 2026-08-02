@@ -5,5 +5,6 @@ export {
 export {
   WorkflowSessionProvider
 } from './components/WorkflowSessionProvider'
+export { WorkflowIoSummary } from './components/WorkflowIoSummary'
 export * from './utils/parseWorkflow'
 export * from './utils/parseWorkflowJson'
