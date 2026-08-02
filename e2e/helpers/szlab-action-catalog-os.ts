@@ -3,7 +3,12 @@ import {
   spawn,
   type ChildProcess
 } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
+import {
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync
+} from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -47,6 +52,7 @@ export async function startSzlabActionCatalogOs(): Promise<SzlabActionCatalogOs>
     if (actualSha !== SZLAB_FIXTURE_SHA) {
       throw new Error(`SZLab fixture SHA mismatch: ${actualSha}`)
     }
+    applyA1WorkflowInputCompatibility(szlabRepository)
   } catch (error) {
     rmSync(directory, { recursive: true, force: true })
     throw error
@@ -101,6 +107,25 @@ export async function startSzlabActionCatalogOs(): Promise<SzlabActionCatalogOs>
   }
 }
 
+function applyA1WorkflowInputCompatibility(repository: string): void {
+  const workflowPath = join(
+    repository,
+    'szlab_poly_studio/workflows/magnetic_stirring.py'
+  )
+  const source = readFileSync(workflowPath, 'utf8')
+  const compatible = source
+    .replace('speed: float = 300.0,', 'speed: int = 300,')
+    .replace('temperature: float = 25.0,', 'temperature: int = 25,')
+  if (
+    compatible === source ||
+    compatible.includes('speed: float = 300.0,') ||
+    compatible.includes('temperature: float = 25.0,')
+  ) {
+    throw new Error('SZLab A1 input compatibility fixture no longer applies')
+  }
+  writeFileSync(workflowPath, compatible, 'utf8')
+}
+
 const PYTHON_LAUNCHER = String.raw`
 import copy
 import sys
@@ -115,7 +140,7 @@ from unilabos.registry.catalog_consumer import (
 from unilabos.registry.registry import Registry
 from unilabos.workflow.catalog import (
     CatalogAuthority,
-    LocalResourceTemplateIdentityResolver,
+    LocalResourceTemplateIdentityIndex,
 )
 from unilabos.workflow.composition import get_workflow_service
 from unilabos.workflow.service import WorkflowService
@@ -132,6 +157,7 @@ registry.device_type_registry = {}
 registry.resource_type_registry = {}
 register_package_catalog(registry, package_catalog)
 registry_snapshot = copy.deepcopy(registry.device_type_registry)
+resource_registry_snapshot = copy.deepcopy(registry.resource_type_registry)
 
 authority = CatalogAuthority(authority_id="szlab-local", kind="local")
 store = WorkflowStore(working_dir / "workflow.db")
@@ -155,7 +181,10 @@ BasicConfig.workflow_editable_package_roots = (szlab_root,)
 
 from unilabos.app.web import server
 
-server.setup_server(registry_snapshot=registry_snapshot)
+server.setup_server(
+    registry_snapshot=registry_snapshot,
+    resource_registry_snapshot=resource_registry_snapshot,
+)
 
 @server.app.post("/__e2e/catalog-bump")
 def bump_catalog():
@@ -173,11 +202,26 @@ def bump_catalog():
     if not changed:
         raise RuntimeError("run_stirring action missing")
     service = get_workflow_service()
-    resolver = LocalResourceTemplateIdentityResolver(service._store, authority)
+    known_source_identities = {
+        device.get("source_fqid") or registry_key
+        for registry_key, device in bumped.items()
+        if isinstance(device, dict)
+    }
+    known_source_identities.update(
+        resource.get("class", {}).get("module")
+        for resource in resource_registry_snapshot.values()
+        if isinstance(resource, dict)
+        and isinstance(resource.get("class", {}).get("module"), str)
+    )
+    identity_index = LocalResourceTemplateIdentityIndex(
+        service._store,
+        authority,
+        sorted(known_source_identities),
+    )
     imports = workflow_template_imports_from_registry_snapshot(
         bumped,
         authority_id=authority.authority_id,
-        resource_template_identity_resolver=resolver,
+        resource_template_identity_resolver=identity_index,
     )
     snapshot = service.compiler.template_catalog.replace(authority, imports)
     return {
@@ -191,6 +235,7 @@ server.start_server(
     port=port,
     open_browser=False,
     registry_snapshot=registry_snapshot,
+    resource_registry_snapshot=resource_registry_snapshot,
 )
 `
 
@@ -230,13 +275,20 @@ async function waitUntilReady(
     if (child.exitCode !== null) {
       throw new Error(`SZLab A1 OS exited with ${child.exitCode}\n${logs()}`)
     }
+    let response: Response
     try {
-      const response = await fetch(`${url}/api/v1/workflow-node-templates`)
-      if (response.ok) return
+      response = await fetch(`${url}/api/v1/workflow-node-templates`)
     } catch {
-      // 服务仍在启动。
+      if (child.exitCode !== null) {
+        throw new Error(`SZLab A1 OS exited with ${child.exitCode}\n${logs()}`)
+      }
+      await new Promise((resolveWait) => setTimeout(resolveWait, 250))
+      continue
     }
-    await new Promise((resolveWait) => setTimeout(resolveWait, 250))
+    if (response.ok) return
+    throw new Error(
+      `SZLab A1 catalog readiness returned ${response.status}\n${logs()}`
+    )
   }
   throw new Error(`SZLab A1 OS did not become ready\n${logs()}`)
 }
