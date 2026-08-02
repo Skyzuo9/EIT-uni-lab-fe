@@ -742,7 +742,7 @@ test('kernel-web uses D-117 single edit authority through the real OS', async ({
   const canvasPosition = await projectedNode.getAttribute('style')
   await dragNode(page, projectedNode, 100, 50)
   expect(await projectedNode.getAttribute('style')).toBe(canvasPosition)
-  await projectedNode.click()
+  await clickNodeOutsideMiniMap(page, projectedNode)
   const nodeName = page.getByRole('textbox', { name: '节点名称' })
   await expect(nodeName).toBeEnabled()
   await nodeName.fill('prepared_canvas')
@@ -1095,4 +1095,46 @@ async function dragNode(
   await page.mouse.down()
   await page.mouse.move(startX + deltaX, startY + deltaY, { steps: 5 })
   await page.mouse.up()
+}
+
+async function clickNodeOutsideMiniMap(
+  page: import('@playwright/test').Page,
+  node: import('@playwright/test').Locator
+): Promise<void> {
+  const nodeBox = await node.boundingBox()
+  if (!nodeBox) throw new Error('workflow node has no bounding box')
+  const visibleMiniMaps = page.locator('.react-flow__minimap:visible')
+  const miniMapBox = await visibleMiniMaps.count() > 0
+    ? await visibleMiniMaps.first().boundingBox()
+    : null
+  const inset = Math.min(12, nodeBox.width / 4, nodeBox.height / 4)
+  const candidates = [
+    { x: nodeBox.width / 2, y: nodeBox.height / 2 },
+    { x: nodeBox.width / 4, y: nodeBox.height / 2 },
+    { x: (nodeBox.width * 3) / 4, y: nodeBox.height / 2 },
+    { x: nodeBox.width / 2, y: nodeBox.height / 4 },
+    { x: nodeBox.width / 2, y: (nodeBox.height * 3) / 4 },
+    { x: inset, y: inset },
+    { x: nodeBox.width - inset, y: inset },
+    { x: inset, y: nodeBox.height - inset },
+    { x: nodeBox.width - inset, y: nodeBox.height - inset }
+  ]
+  const clickPoint = candidates.find(({ x, y }) => {
+    if (!miniMapBox) return true
+    const pageX = nodeBox.x + x
+    const pageY = nodeBox.y + y
+    return !(
+      pageX >= miniMapBox.x &&
+      pageX <= miniMapBox.x + miniMapBox.width &&
+      pageY >= miniMapBox.y &&
+      pageY <= miniMapBox.y + miniMapBox.height
+    )
+  })
+
+  expect(
+    clickPoint,
+    'Workflow node must expose a pointer target outside the ReactFlow MiniMap'
+  ).toBeDefined()
+  if (!clickPoint) throw new Error('workflow node is fully covered by the MiniMap')
+  await node.click({ position: clickPoint })
 }
