@@ -56,7 +56,7 @@ export function createTypedActionNode(
     template.wireValue.node_type
     ? template.wireValue.node_type
     : 'device'
-  return {
+  return rehydrateTypedActionGraph(catalog, {
     ...graph,
     nodes: [
       ...graph.nodes,
@@ -79,7 +79,7 @@ export function createTypedActionNode(
         }
       }
     ]
-  }
+  })
 }
 
 export function projectTypedActionEditor(
