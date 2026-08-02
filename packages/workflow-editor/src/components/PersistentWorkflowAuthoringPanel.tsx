@@ -670,7 +670,7 @@ export function PersistentWorkflowAuthoringPanel({
       generated = await request(graphValue)
     }
     if (!generated) throw new Error('OS 未返回 Authoring transform')
-    const blocking = generated.diagnostics.filter(
+    let blocking = generated.diagnostics.filter(
       (diagnostic) => diagnostic.severity === 'error'
     )
     if (blocking.length > 0 || !generated.normalized_python_source) {
@@ -679,7 +679,30 @@ export function PersistentWorkflowAuthoringPanel({
         'OS 未返回完整规范化 Python'
       )
     }
-    return generated
+    if (!generated.graph) throw new Error('OS 未返回完整 Authoring Graph')
+    const validated = await queue.run(
+      () => runtime.validateWorkflowAuthoring({
+        workflow_uuid: workflowUuid,
+        revision: authority.workflow_revision,
+        source_uri: sourceUri,
+        graph: generated.graph as WorkflowAuthoringGraph,
+        python_source: generated.normalized_python_source as string
+      })
+    )
+    blocking = validated.diagnostics.filter(
+      (diagnostic) => diagnostic.severity === 'error'
+    )
+    if (
+      blocking.length > 0 ||
+      !validated.graph ||
+      !validated.normalized_python_source
+    ) {
+      throw new Error(
+        blocking.map((item) => `${item.code}: ${item.message}`).join('\n') ||
+        'OS 未通过 Candidate I/O Authoring validate'
+      )
+    }
+    return validated
   }, [actionCatalog?.fingerprint, aggregate, queue, runtime, workflowUuid])
 
   const enterMode = useCallback(async (

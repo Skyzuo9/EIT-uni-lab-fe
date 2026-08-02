@@ -73,7 +73,7 @@ export function WorkflowIoEditor({
   return (
     <section
       className="persistent-authoring__io-editor"
-      aria-label="Candidate Workflow I/O"
+      aria-label="Workflow I/O 编辑器"
     >
       <header>
         <div>
@@ -107,7 +107,7 @@ export function WorkflowIoEditor({
                 <label>
                   Name
                   <input
-                    aria-label={`${descriptor.name} input name`}
+                    aria-label="输入名称"
                     defaultValue={descriptor.name}
                     disabled={!editable}
                     onBlur={(event) => {
@@ -193,7 +193,7 @@ export function WorkflowIoEditor({
                 <label>
                   Bind to target Handle
                   <select
-                    aria-label={`${descriptor.name} target Handle`}
+                    aria-label="Action input 绑定"
                     value=""
                     disabled={!editable || options.inputTargets.length === 0}
                     onChange={(event) => {
@@ -274,7 +274,7 @@ export function WorkflowIoEditor({
                   <label>
                     Name
                     <input
-                      aria-label={`${descriptor.name} output name`}
+                      aria-label="输出名称"
                       defaultValue={descriptor.name}
                       disabled={readonly}
                       onBlur={(event) => {
@@ -296,6 +296,20 @@ export function WorkflowIoEditor({
                       schema
                     })}
                   />
+                  <label className="persistent-authoring__io-check">
+                    <input
+                      type="checkbox"
+                      checked={isNullable(descriptor.schema)}
+                      disabled={readonly}
+                      onChange={(event) => updateOutput(descriptor.name, {
+                        ...descriptor,
+                        schema: event.target.checked
+                          ? nullableSchema(descriptor.schema)
+                          : nonNullSchema(descriptor.schema)
+                      })}
+                    />
+                    Nullable
+                  </label>
                   <DescriptorTextFields
                     descriptor={descriptor}
                     disabled={readonly}
@@ -304,7 +318,7 @@ export function WorkflowIoEditor({
                   <label>
                     Producer
                     <select
-                      aria-label={`${descriptor.name} output producer`}
+                      aria-label="Workflow output 绑定"
                       value={bindingValue(binding)}
                       disabled={readonly}
                       onChange={(event) => {

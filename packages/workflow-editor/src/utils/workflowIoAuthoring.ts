@@ -381,9 +381,10 @@ function synchronizeImplicitOutputs(io: MutableIo): void {
     const existing = io.outputContract.outputs.find(
       (output) => output.name === name
     )
-    if (existing && !existing.implicit) {
-      throw new Error('ResourceSlot input 名称与显式 Workflow output 冲突')
-    }
+    // D-068 keeps historical explicit same-name outputs compatible. The OS
+    // checks their schema assignability; FE only synthesizes the server-managed
+    // pass-through when no explicit producer already owns that output name.
+    if (existing && !existing.implicit) continue
     const implicit: WorkflowOutputDescriptor = {
       name,
       schema: structuredClone(descriptor.schema),

@@ -222,6 +222,11 @@ export interface WorkflowAuthoringGeneratePythonRequest {
   graph: WorkflowAuthoringGraph
 }
 
+export interface WorkflowAuthoringValidateRequest
+  extends WorkflowAuthoringGeneratePythonRequest {
+  python_source: string
+}
+
 export interface WorkflowAuthoringChangedEvent {
   id: string
   event: 'workflow.authoring.changed'
@@ -457,6 +462,9 @@ export interface WorkflowRuntimePort {
   generateWorkflowAuthoringPython: (
     request: WorkflowAuthoringGeneratePythonRequest
   ) => Promise<WorkflowAuthoringTransformResult>
+  validateWorkflowAuthoring: (
+    request: WorkflowAuthoringValidateRequest
+  ) => Promise<WorkflowAuthoringTransformResult>
   getWorkflow: (workflowId: string) => Promise<WorkflowDocument>
   saveWorkflow: (
     workflowId: string,
@@ -640,6 +648,12 @@ export function createWorkflowRuntime(
     },
     generateWorkflowAuthoringPython: (body) =>
       authoringRequest('/api/v1/authoring/generate-python', {
+        method: 'POST',
+        headers: jsonHeaders(),
+        body: JSON.stringify(body)
+      }),
+    validateWorkflowAuthoring: (body) =>
+      authoringRequest('/api/v1/authoring/validate', {
         method: 'POST',
         headers: jsonHeaders(),
         body: JSON.stringify(body)
