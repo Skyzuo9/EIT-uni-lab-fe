@@ -70,6 +70,7 @@ export class WorkflowTaskController {
     this.started = true
     this.subscription = this.runtime.subscribeWorkflowRuntime(
       (event) => {
+        if (event.event !== 'workflow.runtime.changed') return
         void this.requestRefresh(event.data.workflow_task_uuid)
       },
       {

@@ -156,8 +156,9 @@ deprecated Run 类型/方法只是待删除代码，不是可使用合同；UI1 
 ## 异常与实时事件
 
 - 全局 SSE 使用 event `id` 去重，断开后用 `Last-Event-ID` 续接。
-  `workflow.runtime.changed` payload 只有 `workflow_task_uuid`，不是状态 patch；
-  收到后重新读取 Task/Jobs，feedback 按 sequence cursor 补读。
+  `workflow.runtime.changed` payload 只有 `workflow_task_uuid`；设备页 D1A 使用
+  `device_action_task.changed`，payload 只有 `task_uuid`。两者都只是 invalidation，
+  不是状态 patch；收到后重新读取对应 Task/Jobs，feedback 按 sequence cursor 补读。
 - HTTP 接受或 command 返回，不等于 Job 或 Task 成功。终态只能由
   后续权威 REST 投影确认。
 - `dispatch_unknown`、`reconciling`、资源等待、取消中和结构化 problem detail 必须如实显示，

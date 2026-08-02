@@ -322,7 +322,10 @@ export default function DevicePanel(): React.JSX.Element {
     if (!activeTaskUuid || !runOperation) return
     const actionRef = runOperation.actionRef
     const subscription = services.workflow.subscribeWorkflowRuntime((event) => {
-      if (event.data.workflow_task_uuid !== activeTaskUuid) return
+      if (
+        event.event !== 'device_action_task.changed' ||
+        event.data.task_uuid !== activeTaskUuid
+      ) return
       void queueDeviceActionTaskRefresh(activeTaskUuid, actionRef).catch((error) => {
         setRunOperation((current) => {
           if (

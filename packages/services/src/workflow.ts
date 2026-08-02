@@ -397,6 +397,18 @@ export interface WorkflowRuntimeChangedEvent {
   }
 }
 
+export interface DeviceActionTaskChangedEvent {
+  id: string
+  event: 'device_action_task.changed'
+  data: {
+    task_uuid: string
+  }
+}
+
+export type WorkflowRuntimeInvalidationEvent =
+  | WorkflowRuntimeChangedEvent
+  | DeviceActionTaskChangedEvent
+
 export interface WorkflowRuntimeSubscriptionOptions {
   lastEventId?: string
   onOpen?: (state: {
@@ -501,7 +513,7 @@ export interface WorkflowRuntimePort {
     query?: WorkflowNodeJobFeedbackQuery
   ) => Promise<WorkflowNodeJobFeedbackPage>
   subscribeWorkflowRuntime: (
-    onInvalidate: (event: WorkflowRuntimeChangedEvent) => void,
+    onInvalidate: (event: WorkflowRuntimeInvalidationEvent) => void,
     options?: WorkflowRuntimeSubscriptionOptions
   ) => WorkflowEventSubscription
   dispose: () => void
@@ -759,7 +771,10 @@ export function createWorkflowRuntime(
           openedConnections += 1
           await readSseStream(response.body, (frame) => {
             if (frame.id) cursor = frame.id
-            if (frame.event !== 'workflow.runtime.changed') return
+            if (
+              frame.event !== 'workflow.runtime.changed' &&
+              frame.event !== 'device_action_task.changed'
+            ) return
             if (frame.id && seenEventIds.has(frame.id)) return
             if (frame.id) {
               seenEventIds.add(frame.id)
@@ -768,7 +783,9 @@ export function createWorkflowRuntime(
                 if (oldest !== undefined) seenEventIds.delete(oldest)
               }
             }
-            const data = parseRuntimeChangedData(frame.data)
+            const data = frame.event === 'workflow.runtime.changed'
+              ? parseRuntimeChangedData(frame.data)
+              : parseDeviceActionTaskChangedData(frame.data)
             if (!data) {
               options.onError?.(
                 new Error('Workflow Runtime SSE 返回了无效事件')
@@ -777,9 +794,9 @@ export function createWorkflowRuntime(
             }
             onInvalidate({
               id: frame.id,
-              event: 'workflow.runtime.changed',
+              event: frame.event,
               data
-            })
+            } as WorkflowRuntimeInvalidationEvent)
           }, controller.signal)
           if (!disposed && !controller.signal.aborted) {
             options.onError?.(
@@ -1042,6 +1059,24 @@ function parseRuntimeChangedData(
       return null
     }
     return { workflow_task_uuid: data.workflow_task_uuid }
+  } catch {
+    return null
+  }
+}
+
+function parseDeviceActionTaskChangedData(
+  value: string
+): DeviceActionTaskChangedEvent['data'] | null {
+  try {
+    const data = JSON.parse(value) as Record<string, unknown>
+    if (
+      Object.keys(data).length !== 1 ||
+      typeof data.task_uuid !== 'string' ||
+      data.task_uuid.trim() === ''
+    ) {
+      return null
+    }
+    return { task_uuid: data.task_uuid }
   } catch {
     return null
   }
