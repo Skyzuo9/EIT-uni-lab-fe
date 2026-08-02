@@ -56,7 +56,7 @@ export function createTypedActionNode(
     template.wireValue.node_type
     ? template.wireValue.node_type
     : 'device'
-  return rehydrateTypedActionGraph(catalog, {
+  return {
     ...graph,
     nodes: [
       ...graph.nodes,
@@ -78,8 +78,41 @@ export function createTypedActionNode(
           }
         }
       }
-    ]
-  })
+    ],
+    node_templates: appendCatalogRecords(
+      graph.node_templates,
+      [cloneRecord(template.wireValue ?? nodeTemplateWireValue(template))],
+      'Workflow NodeTemplate'
+    ),
+    handle_templates: appendCatalogRecords(
+      graph.handle_templates,
+      template.handles.map((handle) =>
+        cloneRecord(handle.wireValue ?? handleTemplateWireValue(handle))
+      ),
+      'Workflow HandleTemplate'
+    )
+  }
+}
+
+function appendCatalogRecords(
+  existing: Array<Record<string, unknown>>,
+  additions: Array<Record<string, unknown>>,
+  label: string
+): Array<Record<string, unknown>> {
+  const identities = new Set<string>()
+  for (const item of existing) {
+    const uuid = requiredString(item.uuid)
+    if (identities.has(uuid)) throw new Error(`${label} UUID 重复`)
+    identities.add(uuid)
+  }
+  const appended = [...existing]
+  for (const item of additions) {
+    const uuid = requiredString(item.uuid)
+    if (identities.has(uuid)) continue
+    identities.add(uuid)
+    appended.push(item)
+  }
+  return appended
 }
 
 export function projectTypedActionEditor(
