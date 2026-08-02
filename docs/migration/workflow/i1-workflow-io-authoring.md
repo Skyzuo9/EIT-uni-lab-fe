@@ -1,6 +1,6 @@
 # I1 Workflow I/O authoring and Task form implementation spec
 
-<!-- current-i1-fe-round:2026-08-02-candidate-editor-complete -->
+<!-- current-i1-fe-round:2026-08-02-candidate-editor-review-remediation -->
 > [!IMPORTANT]
 > 本块是本文唯一 current 实现状态；下文早期 baseline、分支名与 RED 启动记录保留为
 > provenance，但由本块 supersede。
@@ -33,7 +33,14 @@
 | ReactFlow MiniMap 外真实 pointer click | `164adf6dac524c9a210b8cbba95488520b81de2a` | `a526f7e` |
 
 Production 实现提交为：`0d3c33b`（I/O contract mutation）、`4261060`（保留原布局）、
-`85cd791`（OS Validate gate）、`25707a8`（closed Authoring transform response）。
+`85cd791`（OS Validate gate）、`25707a8`（closed Authoring transform response）、
+`4bee7ae454a9ce1dad778c1bdaf802dcd407e2c2`（完整 v1 schema、ordered descriptor、
+稳定 target identity、直接 unbind 与 ResourceSlot required/default 语义）。
+
+独立 reviewer 对 `fa365fc4822a6649e076f586891db40cbcfacb12` 的首次精确审查为
+Standards `0B/0NB`、Spec `3B/2NB`。唯一 test-author 为五项审查发现补入 tests-only
+`826a52aa4d446ed06f3878c93c2ca4aeef6c090d`，实现分支 cherry-pick 为 `182843c`；
+补测先得到 `9 failed / 14 passed`，再由 `4bee7ae...` 收敛为 `23/23 passed`。
 
 核心合同：
 
@@ -46,14 +53,15 @@ Production 实现提交为：`0d3c33b`（I/O contract mutation）、`4261060`（
 - JSON edit 先 generate canonical Python，再显式 Validate，最后沿用现有 diff/draft/apply；
 - production 不按 label、`data_key`、Action 类型或 port ordinal 猜测 identity。
 
-当前 production head（ledger 前）为 `a526f7ec6593d9101eedda2d997a2f365b5a3df1`。
-最终 exact-SHA 包含本 ledger，并接受一名独立 reviewer 的 Standards/Spec 双审。
+审查修复前 production head 为 `a526f7ec6593d9101eedda2d997a2f365b5a3df1`；审查修复
+production head 为 `4bee7ae454a9ce1dad778c1bdaf802dcd407e2c2`。最终 exact-SHA
+必须包含本 ledger，并由同一名独立 reviewer 完成 Standards/Spec 双审闭环。
 
 已完成证据：
 
 | 门禁 | 结果 |
 |---|---|
-| workflow-editor unit/component | `15 files / 88 tests passed` |
+| workflow-editor unit/component | `15 files / 99 tests passed`；其中审查补测 `23/23 passed` |
 | services unit | `8 files / 59 tests passed` |
 | 真实 OS Authoring browser suite | `6 passed`；forbidden request / WebSocket / pageerror / application error 为 `0` |
 | OS retained Catalog projection | OS candidate `ee6b23ec715fb3253686f654ab80375c32ba51fb`、integration `96f96ff42be7da881f2b6e6d81e6462e12daf1c6`、Standards/Spec `0B/0NB` |
