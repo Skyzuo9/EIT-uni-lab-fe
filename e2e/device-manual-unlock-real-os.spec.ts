@@ -4,10 +4,13 @@ import { join, resolve } from 'node:path'
 import { expect, test, type APIRequestContext } from '@playwright/test'
 
 const API_URL =
-  process.env.UNILAB_E2E_DEVICE_API_URL ?? 'http://127.0.0.1:8014'
+  process.env.UNILAB_E2E_DEVICE_API_URL ?? 'http://127.0.0.1:18114'
 const DEVICE_ID = 'TestAction1'
 const ACTION_NAME = 'test_hold'
+const ACTION_LABEL = '保持动作'
 const ACTION_REF = `${DEVICE_ID}.${ACTION_NAME}`
+const HOLDER_JOB_ID = 'e2e-holder-00000000-0000-0000-0000-000000000001'
+const REUSE_JOB_ID = 'e2e-reuse-00000000-0000-0000-0000-000000000002'
 
 interface CatalogAction {
   actionRef: string
@@ -20,32 +23,67 @@ interface CatalogDevice {
   actions: CatalogAction[]
 }
 
-interface DeviceCatalog {
-  items: CatalogDevice[]
+interface DeviceCatalogEnvelope {
+  code: number
+  data: {
+    items: CatalogDevice[]
+  }
+}
+
+interface LedgerEntry {
+  method: string
+  path: string
+  body?: unknown
+  status?: number
+}
+
+async function setupRequest(
+  request: APIRequestContext,
+  ledger: LedgerEntry[],
+  method: 'GET' | 'POST' | 'DELETE',
+  path: string,
+  body?: unknown
+) {
+  const url = `${API_URL}${path}`
+  const response = method === 'GET'
+    ? await request.get(url)
+    : method === 'POST'
+      ? await request.post(url, { data: body })
+      : await request.delete(url)
+  ledger.push({ method, path, body, status: response.status() })
+  return response
 }
 
 async function readTargetAction(
-  request: APIRequestContext
+  request: APIRequestContext,
+  setupLedger: LedgerEntry[]
 ): Promise<CatalogAction | null> {
-  const response = await request.get(`${API_URL}/api/v1/devices`)
+  const response = await setupRequest(
+    request,
+    setupLedger,
+    'GET',
+    '/api/v1/devices'
+  )
   if (!response.ok()) return null
-  const catalog = (await response.json()) as DeviceCatalog
-  return catalog.items
+  const envelope = (await response.json()) as DeviceCatalogEnvelope
+  expect(envelope.code).toBe(0)
+  return envelope.data.items
     .find((device) => device.id === DEVICE_ID)
     ?.actions.find((action) => action.actionRef === ACTION_REF) ?? null
 }
 
-test('operator detects and manually unlocks a real Edge action lock', async ({
+test('operator detects and manually unlocks the current OS Action lock', async ({
   page,
   request
 }) => {
   const artifactDirectory = resolve(
     process.env.UNILAB_E2E_ARTIFACT_DIR
-      || resolve(process.cwd(), '../e2e-artifacts/device-manual-unlock')
+      || resolve(process.cwd(), '../e2e-artifacts/device-manual-unlock-current')
   )
   mkdirSync(artifactDirectory, { recursive: true })
   const browserErrors: string[] = []
-  const apiRequests: Array<{ method: string; path: string }> = []
+  const browserRequests: LedgerEntry[] = []
+  const setupRequests: LedgerEntry[] = []
   const commandBodies: unknown[] = []
 
   page.on('console', (message) => {
@@ -55,59 +93,57 @@ test('operator detects and manually unlocks a real Edge action lock', async ({
   page.on('request', (incoming) => {
     if (!incoming.url().startsWith(API_URL)) return
     const path = new URL(incoming.url()).pathname
-    apiRequests.push({
-      method: incoming.method(),
-      path
-    })
-    if (incoming.method() === 'POST' && path.endsWith('/commands')) {
-      commandBodies.push(incoming.postDataJSON())
-    }
-  })
-
-  const initialAction = await readTargetAction(request)
-  expect(initialAction, `${ACTION_REF} must exist in the real OS catalog`).not.toBeNull()
-  expect(initialAction?.busy).toBe(false)
-
-  const runResponse = await request.post(`${API_URL}/api/v1/runtime/runs`, {
-    data: {
-      source: {
-        format: 'workflow_revision_v2',
-        revision: {
-          schema_version: '2',
-          revision_id: 'device-manual-unlock-e2e-rev',
-          workflow_id: 'device-manual-unlock-e2e',
-          invocations: [
-            {
-              node_id: 'test-hold-lock-holder',
-              action_ref: ACTION_REF,
-              name: '设备锁真实链路 E2E',
-              input_bindings: {
-                duration_seconds: { kind: 'literal', value: 30 }
-              }
-            }
-          ],
-          control_edges: []
-        }
+    let body: unknown
+    if (incoming.method() === 'POST') {
+      try {
+        body = incoming.postDataJSON()
+      } catch {
+        body = incoming.postData()
       }
     }
+    browserRequests.push({
+      method: incoming.method(),
+      path,
+      body
+    })
+    if (incoming.method() === 'POST' && path.endsWith('/commands')) {
+      commandBodies.push(body)
+    }
   })
-  expect(runResponse.ok(), await runResponse.text()).toBe(true)
+  page.on('response', (response) => {
+    if (!response.url().startsWith(API_URL)) return
+    const path = new URL(response.url()).pathname
+    const entry = [...browserRequests].reverse().find(
+      (candidate) => candidate.path === path && candidate.status == null
+    )
+    if (entry) entry.status = response.status()
+  })
 
+  const initialAction = await readTargetAction(request, setupRequests)
+  expect(initialAction, `${ACTION_REF} must exist in current OS catalog`).not.toBeNull()
+  expect(initialAction).toMatchObject({ busy: false, currentJobId: null })
+
+  const fixturePath =
+    `/__e2e/device-actions/${DEVICE_ID}/${ACTION_NAME}/holders`
+  const holderResponse = await setupRequest(
+    request,
+    setupRequests,
+    'POST',
+    fixturePath,
+    { jobId: HOLDER_JOB_ID, taskId: 'e2e-task-holder' }
+  )
+  expect(holderResponse.ok(), await holderResponse.text()).toBe(true)
   await expect.poll(async () => {
-    const action = await readTargetAction(request)
+    const action = await readTargetAction(request, setupRequests)
     return action?.busy && action.currentJobId
       ? action.currentJobId
       : null
-  }, {
-    message: `${ACTION_REF} should expose a full lock holder through GET /api/v1/devices`,
-    timeout: 10_000
-  }).toBe('test-hold-lock-holder')
+  }).toBe(HOLDER_JOB_ID)
 
   await page.goto(
     `/?section=device&localOsUrl=${encodeURIComponent(API_URL)}`
   )
 
-  const devicePanel = page.locator('.edge-device')
   const deviceList = page.getByRole('complementary', {
     name: 'Edge 设备列表'
   })
@@ -137,7 +173,7 @@ test('operator detects and manually unlocks a real Edge action lock', async ({
   })
 
   const actionButton = workspace.getByRole('button', {
-    name: new RegExp(`${ACTION_NAME} 动作节点`)
+    name: `${ACTION_LABEL} 动作节点`
   })
   await expect(actionButton).toContainText('占用中')
   await actionButton.click()
@@ -148,7 +184,7 @@ test('operator detects and manually unlocks a real Edge action lock', async ({
 
   const lockPanel = workspace.getByLabel('设备动作锁状态')
   await expect(lockPanel.getByText('此动作被设备锁占用')).toBeVisible()
-  await expect(lockPanel.getByText('Job test-hol')).toBeVisible()
+  await expect(lockPanel.getByText('Job e2e-hold')).toBeVisible()
   await expect(
     lockPanel.getByRole('button', { name: '手动解锁' })
   ).toBeVisible()
@@ -161,9 +197,7 @@ test('operator detects and manually unlocks a real Edge action lock', async ({
   const dialog = page.getByRole('dialog', { name: '确认手动解锁' })
   const confirmButton = dialog.getByRole('button', { name: '确认并解锁' })
   await expect(dialog.getByText(ACTION_REF, { exact: true })).toBeVisible()
-  await expect(
-    dialog.getByText('test-hold-lock-holder', { exact: true })
-  ).toBeVisible()
+  await expect(dialog.getByText(HOLDER_JOB_ID, { exact: true })).toBeVisible()
   await expect(confirmButton).toBeDisabled()
   await dialog.screenshot({
     path: join(artifactDirectory, '06-safety-confirmation-required.png'),
@@ -194,67 +228,82 @@ test('operator detects and manually unlocks a real Edge action lock', async ({
   })
 
   await expect.poll(async () => {
-    const action = await readTargetAction(request)
+    const action = await readTargetAction(request, setupRequests)
     return action
       ? { busy: action.busy, currentJobId: action.currentJobId }
       : null
   }).toEqual({ busy: false, currentJobId: null })
 
-  const reuseResponse = await request.post(`${API_URL}/api/v1/runtime/runs`, {
-    data: {
-      source: {
-        format: 'workflow_revision_v2',
-        revision: {
-          schema_version: '2',
-          revision_id: 'device-manual-unlock-reuse-e2e-rev',
-          workflow_id: 'device-manual-unlock-reuse-e2e',
-          invocations: [
-            {
-              node_id: 'post-unlock-reuse',
-              action_ref: ACTION_REF,
-              name: '解锁后重新调度 E2E',
-              input_bindings: {
-                duration_seconds: { kind: 'literal', value: 1 }
-              }
-            }
-          ],
-          control_edges: []
-        }
-      }
-    }
-  })
+  const reuseResponse = await setupRequest(
+    request,
+    setupRequests,
+    'POST',
+    fixturePath,
+    { jobId: REUSE_JOB_ID, taskId: 'e2e-task-reuse' }
+  )
   expect(reuseResponse.ok(), await reuseResponse.text()).toBe(true)
   await expect.poll(async () => {
-    const action = await readTargetAction(request)
+    const action = await readTargetAction(request, setupRequests)
     return action?.busy ? action.currentJobId : null
-  }).toBe('post-unlock-reuse')
+  }).toBe(REUSE_JOB_ID)
+  await deviceList.getByRole('button', { name: '刷新' }).click()
+  await expect(actionButton).toContainText('占用中')
+  await page.screenshot({
+    path: join(artifactDirectory, '10-new-holder-after-unlock.png'),
+    fullPage: true,
+    animations: 'disabled'
+  })
+
+  const finishResponse = await setupRequest(
+    request,
+    setupRequests,
+    'DELETE',
+    `${fixturePath}/${REUSE_JOB_ID}`
+  )
+  expect(finishResponse.ok(), await finishResponse.text()).toBe(true)
   await expect.poll(async () => {
-    const action = await readTargetAction(request)
+    const action = await readTargetAction(request, setupRequests)
     return action
       ? { busy: action.busy, currentJobId: action.currentJobId }
       : null
-  }, { timeout: 5_000 }).toEqual({ busy: false, currentJobId: null })
+  }).toEqual({ busy: false, currentJobId: null })
 
   const commandPath =
     `/api/v1/devices/${DEVICE_ID}/actions/${ACTION_NAME}/commands`
-  expect(apiRequests).toEqual(expect.arrayContaining([
-    { method: 'GET', path: '/api/v1/devices' },
-    { method: 'POST', path: commandPath }
+  expect(browserRequests).toEqual(expect.arrayContaining([
+    expect.objectContaining({ method: 'GET', path: '/api/v1/devices' }),
+    expect.objectContaining({ method: 'POST', path: commandPath })
   ]))
   expect(commandBodies).toEqual([{
     command: 'force_unlock',
-    expectedJobId: 'test-hold-lock-holder',
+    expectedJobId: HOLDER_JOB_ID,
     reason: 'operator_confirmed_device_safe'
   }])
   expect(browserErrors).toEqual([])
+
+  const allRequests = [...setupRequests, ...browserRequests]
+  expect(allRequests.some(
+    (entry) => entry.path.startsWith('/api/v1/runtime/runs')
+  )).toBe(false)
+  expect(allRequests.some(
+    (entry) => entry.path.includes('/workflow-node-templates')
+  )).toBe(false)
 
   writeFileSync(
     join(artifactDirectory, 'network-ledger.json'),
     `${JSON.stringify({
       apiUrl: API_URL,
       actionRef: ACTION_REF,
-      requests: apiRequests,
-      commandBodies
+      fixtureSurface: '/__e2e/device-actions/*/holders',
+      setupRequests,
+      browserRequests,
+      commandBodies,
+      forbiddenRoutes: {
+        runtimeRuns: 0,
+        workflowNodeTemplates: 0,
+        frontendDirectEdgeWebSocket: 0
+      },
+      browserErrors
     }, null, 2)}\n`
   )
 })
