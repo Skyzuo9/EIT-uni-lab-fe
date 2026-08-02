@@ -77,8 +77,16 @@ import {
 } from './WorkflowOutput'
 import { WorkflowIoSummary } from './WorkflowIoSummary'
 import { WorkflowIoEditor } from './WorkflowIoEditor'
+import { WorkflowTaskInputForm } from './WorkflowTaskInputForm'
 import { useWorkflowSessionStore } from './WorkflowSessionProvider'
 import { WorkflowTraceViewer } from './WorkflowTraceViewer'
+import {
+  buildWorkflowTaskInput,
+  createWorkflowTaskInputForm,
+  setWorkflowTaskInputField,
+  type WorkflowTaskInputFieldState,
+  type WorkflowTaskInputFormState
+} from '../utils/workflowTaskInputForm'
 import styles from './workflow.module.scss'
 
 interface PersistentWorkflowAuthoringPanelProps {
@@ -157,6 +165,11 @@ export function PersistentWorkflowAuthoringPanel({
   const [taskRunMode, setTaskRunMode] =
     useState<Exclude<WorkflowTaskRunMode, 'single_node'>>('normal')
   const [runtimeBusy, setRuntimeBusy] = useState(false)
+  const [taskInputAuthority, setTaskInputAuthority] =
+    useState<WorkflowAuthoringAggregate | null>(null)
+  const [taskInputForm, setTaskInputForm] =
+    useState<WorkflowTaskInputFormState | null>(null)
+  const [taskInputProblem, setTaskInputProblem] = useState<string | null>(null)
   const [traceViewerOpen, setTraceViewerOpen] = useState(false)
   const [outputExpanded, setOutputExpanded] = useState(true)
   const [outputTab, setOutputTab] = useState<WorkflowOutputTab>('nodes')
@@ -1154,6 +1167,85 @@ export function PersistentWorkflowAuthoringPanel({
       setError(errorMessage(connectError))
     }
   }
+
+  const openTaskInputForm = (): void => {
+    setTaskInputProblem(null)
+    runRuntime(async () => {
+      try {
+        const latest = await queue.run(
+          () => runtime.getWorkflowAuthoring(workflowUuid)
+        )
+        setTaskInputAuthority(latest)
+        setTaskInputForm(createWorkflowTaskInputForm(latest))
+        setMessage(
+          `本次运行使用 Applied revision ${latest.workflow_revision}；` +
+          '未填写 default 字段将保持省略'
+        )
+      } catch (openError) {
+        setError(errorMessage(openError))
+        throw openError
+      }
+    })
+  }
+
+  const updateTaskInput = (
+    name: string,
+    state: WorkflowTaskInputFieldState
+  ): void => {
+    if (!taskInputForm) return
+    try {
+      setTaskInputForm(setWorkflowTaskInputField(taskInputForm, name, state))
+      setTaskInputProblem(null)
+    } catch (inputError) {
+      setTaskInputProblem(errorMessage(inputError))
+    }
+  }
+
+  const submitTaskInput = (): void => {
+    if (!taskInputAuthority || !taskInputForm) return
+    let input: Record<string, unknown>
+    try {
+      input = buildWorkflowTaskInput(taskInputForm)
+      setTaskInputProblem(null)
+    } catch (inputError) {
+      setTaskInputProblem(errorMessage(inputError))
+      return
+    }
+    const submittedForm = taskInputForm
+    runRuntime(async () => {
+      try {
+        const latest = await queue.run(
+          () => runtime.getWorkflowAuthoring(workflowUuid)
+        )
+        const latestForm = createWorkflowTaskInputForm(latest)
+        if (!isSameAppliedTaskInputContract(submittedForm, latestForm)) {
+          setTaskInputAuthority(latest)
+          setTaskInputForm(latestForm)
+          setTaskInputProblem(
+            `Applied Workflow 已从 revision ${submittedForm.appliedRevision} ` +
+            `更新到 ${latestForm.appliedRevision}；表单已重投影，请重新填写确认`
+          )
+          return
+        }
+        const created = await taskRuntime.create(taskRunMode, input)
+        const snapshotRevision = workflowTaskSnapshotRevision(created)
+        setTaskInputAuthority(null)
+        setTaskInputForm(null)
+        setTaskInputProblem(null)
+        setMessage(
+          snapshotRevision !== null &&
+          snapshotRevision !== latestForm.appliedRevision
+            ? `Task 已按竞态后的 Applied revision ${snapshotRevision} 创建；` +
+              '请以 Task snapshot 与 canonical input 为准'
+            : `Task 已按 Applied revision ${latestForm.appliedRevision} 创建；` +
+              'input default 与规范化结果以 OS Task projection 为准'
+        )
+      } catch (submitError) {
+        setTaskInputProblem(errorMessage(submitError))
+        throw submitError
+      }
+    })
+  }
   const appliedIo = aggregate
     ? workflowIoMetadata(aggregate.applied_graph)
     : null
@@ -1294,18 +1386,16 @@ export function PersistentWorkflowAuthoringPanel({
               busy ||
               runtimeBusy ||
               dirty ||
-              aggregate?.state !== 'applied'
+              !aggregate
             }
             title={
               dirty
                 ? '请先保存当前可写表示'
-                : aggregate?.state !== 'applied'
-                  ? '请先应用当前工作流候选'
-                  : undefined
+                : aggregate
+                  ? `将使用 Applied revision ${aggregate.workflow_revision}`
+                  : 'Applied Workflow 尚未就绪'
             }
-            onClick={() => runRuntime(
-              () => taskRuntime.create(taskRunMode)
-            )}
+            onClick={openTaskInputForm}
           >
             {runtimeBusy ? '处理中…' : '开始运行'}
           </button>
@@ -1338,6 +1428,22 @@ export function PersistentWorkflowAuthoringPanel({
           </button>
           <button type="button" onClick={taskRuntime.clearError}>关闭</button>
         </div>
+      )}
+      {taskInputAuthority && taskInputForm && (
+        <WorkflowTaskInputForm
+          aggregate={taskInputAuthority}
+          form={taskInputForm}
+          busy={runtimeBusy}
+          problem={taskInputProblem}
+          onChange={updateTaskInput}
+          onProblem={setTaskInputProblem}
+          onSubmit={submitTaskInput}
+          onCancel={() => {
+            setTaskInputAuthority(null)
+            setTaskInputForm(null)
+            setTaskInputProblem(null)
+          }}
+        />
       )}
       {diagnostics.length > 0 && (
         <section
@@ -1920,6 +2026,27 @@ function workflowIoMetadata(
     output_contract: unilab.output_contract,
     output_bindings: unilab.output_bindings
   }
+}
+
+function isSameAppliedTaskInputContract(
+  left: WorkflowTaskInputFormState,
+  right: WorkflowTaskInputFormState
+): boolean {
+  return left.workflowUuid === right.workflowUuid &&
+    left.appliedRevision === right.appliedRevision &&
+    JSON.stringify(left.fields.map(({ descriptor }) => descriptor)) ===
+      JSON.stringify(right.fields.map(({ descriptor }) => descriptor))
+}
+
+function workflowTaskSnapshotRevision(task: WorkflowTask): number | null {
+  const workflow = task.workflow_snapshot.workflow
+  if (!workflow || typeof workflow !== 'object' || Array.isArray(workflow)) {
+    return null
+  }
+  const revision = (workflow as Record<string, unknown>).revision
+  return typeof revision === 'number' && Number.isInteger(revision)
+    ? revision
+    : null
 }
 
 function authoritativePython(

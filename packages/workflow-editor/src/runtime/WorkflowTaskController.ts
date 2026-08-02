@@ -93,16 +93,22 @@ export class WorkflowTaskController {
     await this.requestRefresh(this.snapshot.task?.uuid ?? null)
   }
 
-  async create(runMode: Exclude<WorkflowTaskRunMode, 'single_node'>): Promise<void> {
+  async create(
+    runMode: Exclude<WorkflowTaskRunMode, 'single_node'>,
+    input?: Record<string, unknown>
+  ): Promise<WorkflowTask> {
     this.install({ actionError: null })
     try {
       const created = await this.runtime.createWorkflowTask({
         workflow_uuid: this.workflowUuid,
-        run_mode: runMode
+        run_mode: runMode,
+        ...(input === undefined ? {} : { input })
       })
-      if (!this.active) return
-      this.install({ lastCommand: null })
-      await this.requestRefresh(created.uuid)
+      if (this.active) {
+        this.install({ lastCommand: null })
+        await this.requestRefresh(created.uuid)
+      }
+      return created
     } catch (error) {
       this.install({ actionError: errorMessage(error), loading: false })
       throw error

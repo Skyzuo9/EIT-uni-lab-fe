@@ -1,5 +1,6 @@
 import type {
   WorkflowRuntimePort,
+  WorkflowTask,
   WorkflowTaskCommandType,
   WorkflowTaskRunMode
 } from '@unilab/services'
@@ -13,8 +14,9 @@ export function useWorkflowTaskRuntime(
 ): {
   snapshot: ReturnType<WorkflowTaskController['getSnapshot']>
   create: (
-    runMode: Exclude<WorkflowTaskRunMode, 'single_node'>
-  ) => Promise<void>
+    runMode: Exclude<WorkflowTaskRunMode, 'single_node'>,
+    input?: Record<string, unknown>
+  ) => Promise<WorkflowTask>
   command: (type: WorkflowTaskCommandType) => Promise<void>
   refresh: () => Promise<void>
   clearError: () => void
@@ -36,7 +38,7 @@ export function useWorkflowTaskRuntime(
 
   return {
     snapshot,
-    create: (runMode) => controller.create(runMode),
+    create: (runMode, input) => controller.create(runMode, input),
     command: (type) => controller.command(type),
     refresh: () => controller.refresh(),
     clearError: () => controller.clearError()
