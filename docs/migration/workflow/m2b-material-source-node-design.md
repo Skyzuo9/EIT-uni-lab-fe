@@ -2,15 +2,17 @@
 
 日期：2026-08-02
 
-状态：**DESIGN CANDIDATE / BACKEND CONTRACT FROZEN / FE IMPLEMENTATION NOT STARTED**。
-本文同步 OS M2B 的 MaterialSource admission 合同，但不把前端实现混入 OS M2B round。
+状态：**IMPLEMENTED / NATIVE CLI + BROWSER E2E ACCEPTED**。
+本文同步 OS M2B 的 MaterialSource admission 合同；前端实现保留在独立 FE worktree/branch，
+没有把前端提交混入 OS M2B round。
 
 FE 基线：
 `integration/fe-os-migration@0bf83ea93de9aff5a10f0419a3322cff27b48595`
 
-OS 合同/行为候选：
-`migration/m2b-material-source-admission@2636f128d20db306c56ac4c661038c0e7ed61777`
-中的
+OS 验收基线：
+`migration/m2b-material-source-admission@dca2335c8cb3ddbc10117f27906a8fa2522326cd`
+（MaterialSource 行为实现截至 `2636f128d20db306c56ac4c661038c0e7ed61777`，随后提交只补充
+验收记录）中的
 `docs/developer_guide/workflow_task_runtime_migration/rounds/m2b-material-source-admission-design.md`。
 
 ## 1. Job 与用户
@@ -181,7 +183,8 @@ resolution Job `succeeded` 后，节点显示“物料已绑定”；`failed` �
 - LINQ 式右侧 Properties inspector 与左侧独立 MaterialSource palette entry；
 - Site-order 展示、UUID-order canonical persistence；
 - generate-python、Validate、Apply、reload fixed point；
-- 真实 OS browser E2E 覆盖 existing/fixed/automatic/create_new 与 static reject。
+- 真实 OS browser E2E 覆盖 existing/fixed/automatic/create_new、Candidate Site 搜索/多选、
+  `admission_blocked`/取消与 static reject。
 
 ## 9. Anti-goals
 
@@ -204,3 +207,56 @@ resolution Job `succeeded` 后，节点显示“物料已绑定”；`failed` �
    `admission_blocked → pending/running` 或 `failed/canceled`，不产生本地虚构状态。
 
 真实浏览器验收必须连接 OS v1 接口，不使用 route mock 证明端到端成功。
+
+## 11. 实现与验收记录
+
+实现落在 FE branch `migration/m2b-material-source-node`，继续以
+`integration/fe-os-migration@0bf83ea93de9aff5a10f0419a3322cff27b48595` 为 merge-base。
+公共 seam 与第 10 节一致：services adapter 读取 framework template、Material 与 Site 事实；
+workflow-editor 维护 closed selector 和 Material trace；运行控制只通过 `WorkflowRuntimePort`。
+MaterialSource 只通过权威 ResourceSlot Handle 连接 typed Action target，并在前端即时执行
+`fan-out <= 1`。Catalog fingerprint 冲突时同时刷新 Action 与 MaterialSource authority；rehydrate
+只更新 typed Action wire，原样保留 MaterialSource framework node/template/handle/edge 与 dirty buffer。
+
+真实 E2E 使用 OS 原生可执行文件
+`/home/changjunhan/.micromamba/envs/unilab/bin/unilab`，`PYTHONPATH` 指向上述 OS 验收基线，
+以 `ros + fastapi + edge_scheduler` 启动。浏览器连接生产构建，不注册 route mock，并从前端依次完成
+palette 添加/放弃、closed selector 编辑（含 Candidate Site 搜索/多选）、完整 canonical Python diff
+接受、Apply 和 Start：
+
+```bash
+pnpm build:web
+UNILAB_FE_E2E_URL=http://127.0.0.1:4173 \
+  pnpm exec playwright test \
+  e2e/workflow-material-source-native-cli-real-os.spec.ts
+```
+
+2026-08-02 最终运行结果为 `1 passed`。运行前 Inventory 含 1 个 mount Material、空 Site、无
+Reservation；运行后生成 1 个新 Material，目标 Site 记录该 Material，占用成员进入 active
+Reservation。Inventory snapshot sequence 从 1 增至 4；ledger 按同一 causation id 记录：
+
+1. `material.created`；
+2. `site.occupancy_updated`；
+3. `material_reservation.admitted`。
+
+`inventory_lots` 前后均为空，明确证明 Inventory deduction 仍是 non-goal。浏览器同时验证
+MaterialSource Job `succeeded`、节点显示“物料已绑定”、Task POST 返回 201，且没有浏览器 WebSocket、
+console error、page error 或原生 traceback。对同一已占用 Site 再次 Start 后，Task 权威状态进入
+`admission_blocked`，MaterialSource Job 保持 `pending` 且无伪造 diagnostic；前端显示“等待物料准入”，
+禁用 pause/resume/step、保留 cancel，并通过 UI 取消。取消会按 OS 语义释放既有 Reservation。
+
+随后浏览器把已创建 Material 固定到另一个 Site；M2A current-fact 校验在保存阶段以
+`material_source_conflict` 拒绝，不产生 Draft/Task 或额外 Inventory 变更。若位置事实在 Apply 后漂移，
+Task-time reject 仍由 OS M2B 权威处理，前端不虚构“等待搬入”。证据输出到相邻 worktree 的
+`e2e-artifacts/m2b-material-source-native-cli/`，包括九张设计截图、Inventory before/after/reject、
+ledger、outbox、成功/阻塞 Job 与 Task、静态拒绝记录、network ledger、CLI stdout 与原生 OS 日志。
+
+纯 MaterialSource fixture 中 resolution Job 成功后，Task 仍可保持 `pending`；这是当前 OS 对无 Action
+工作流的权威状态，不由前端补写完成态。它不影响本轮“可从前端启动并发生真实 Inventory admission”
+的验收目标。
+
+## 12. Finish verdict / DESIGN.md
+
+结论：M2B MaterialSource 前端节点已按本文设计实现，Native CLI + browser E2E 接受，可以执行。
+本轮没有产生跨功能复用的新视觉 token 或组件规则，因此根 `DESIGN.md` 不改；功能特有的 LINQ
+映射、Material identity/state 分离与响应式 Properties 规则继续由本文维护。

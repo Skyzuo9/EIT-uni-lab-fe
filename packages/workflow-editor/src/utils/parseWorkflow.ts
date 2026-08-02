@@ -27,6 +27,11 @@ export interface WorkflowNode {
   descendantNodeIds?: string[]
   collapsedByDefault?: boolean
   handles?: WorkflowHandlePort[]
+  materialSource?: {
+    mode: string
+    flowRole: string
+    mountUuid: string
+  }
 }
 
 export interface WorkflowHandlePort {

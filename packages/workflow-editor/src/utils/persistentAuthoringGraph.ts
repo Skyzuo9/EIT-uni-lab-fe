@@ -36,6 +36,8 @@ export function projectPersistentAuthoringGraph(
       node.type || template?.node_type || template?.type || 'action'
     )
     const position = nodePosition(node.pose)
+    const param = isRecord(node.param) ? node.param : {}
+    const mount = isRecord(param.mount) ? param.mount : {}
     return {
       id: String(node.uuid),
       name: String(
@@ -47,6 +49,15 @@ export function projectPersistentAuthoringGraph(
       ),
       labNodeType: type,
       handles: handlesByTemplate.get(templateUuid) ?? [],
+      ...(type === 'material_source'
+        ? {
+            materialSource: {
+              mode: String(param.mode || ''),
+              flowRole: String(param.flow_role || ''),
+              mountUuid: String(mount.uuid || '')
+            }
+          }
+        : {}),
       ...position
     }
   })

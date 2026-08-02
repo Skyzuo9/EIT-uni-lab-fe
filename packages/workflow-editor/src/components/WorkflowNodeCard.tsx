@@ -13,6 +13,7 @@ import { Handle, Position } from 'reactflow'
 import type { NodeProps } from 'reactflow'
 import type { CSSProperties } from 'react'
 import type { WorkflowHandlePort } from '../utils/parseWorkflow'
+import type { WorkflowMaterialChip } from '../utils/workflowMaterialTrace'
 import styles from './workflow.module.scss'
 
 // 自定义节点承载的数据
@@ -30,6 +31,13 @@ export interface WorkflowNodeData {
   groupExpanded?: boolean
   descendantCount?: number
   handles?: WorkflowHandlePort[]
+  traceAccent?: string
+  materialChips?: WorkflowMaterialChip[]
+  materialSource?: {
+    mode: string
+    flowRole: string
+    mountUuid: string
+  }
   onSetStart?: (nodeId: string) => void
   onToggleBreakpoint?: (nodeId: string) => void
   onToggleGroup?: (nodeId: string) => void
@@ -41,6 +49,8 @@ export default function WorkflowNodeCard({
   targetPosition = Position.Top,
   sourcePosition = Position.Bottom
 }: NodeProps<WorkflowNodeData>): React.JSX.Element {
+  const materialSource = data.kind === 'material_source'
+  const allowsDebugMarkers = workflowNodeAllowsDebugMarkers(data.kind)
   const targetHandles = data.handles?.filter(
     (handle) => handle.ioType === 'target'
   )
@@ -49,36 +59,39 @@ export default function WorkflowNodeCard({
   )
   return (
     <div
-      className={`${styles.node} wf-node min-w-[150px] max-w-[220px] cursor-pointer overflow-visible rounded-[var(--unilab-radius-md)] border border-[var(--unilab-color-border)] bg-[var(--unilab-color-surface)] transition-[border-color,box-shadow] duration-200`}
+      className={`${styles.node} wf-node ${materialSource ? 'wf-node--material-source' : ''} min-w-[150px] max-w-[220px] cursor-pointer overflow-visible rounded-[var(--unilab-radius-md)] border border-[var(--unilab-color-border)] bg-[var(--unilab-color-surface)] transition-[border-color,box-shadow] duration-200`}
       data-workflow-node-uuid={data.id}
+      data-workflow-node-kind={data.kind || 'action'}
+      style={materialSource
+        ? ({ '--wf-material-accent': data.traceAccent } as CSSProperties)
+        : undefined}
     >
       {renderHandles(targetHandles, 'target', targetPosition)}
 
       <div className="wf-node__body">
-        <div className="wf-node__markers">
-          {data.startNode && (
-            <span className="wf-node__marker wf-node__marker--start">⚑ 起始点</span>
-          )}
-          {data.breakpoint && (
-            <span className="wf-node__marker wf-node__marker--breakpoint">● 断点</span>
-          )}
-          {data.pausedBefore && (
-            <span className="wf-node__marker wf-node__marker--paused">下一步</span>
-          )}
-          {data.beforeStart && (
-            <span className="wf-node__marker wf-node__marker--excluded">不执行</span>
-          )}
-        </div>
+        {allowsDebugMarkers && (
+          <div className="wf-node__markers">
+            {data.startNode && (
+              <span className="wf-node__marker wf-node__marker--start">⚑ 起始点</span>
+            )}
+            {data.breakpoint && (
+              <span className="wf-node__marker wf-node__marker--breakpoint">● 断点</span>
+            )}
+            {data.pausedBefore && (
+              <span className="wf-node__marker wf-node__marker--paused">下一步</span>
+            )}
+            {data.beforeStart && (
+              <span className="wf-node__marker wf-node__marker--excluded">不执行</span>
+            )}
+          </div>
+        )}
+        {materialSource && (
+          <span className="wf-node__material-glyph" aria-hidden="true">▱</span>
+        )}
         <span className="wf-node__kind">
           {data.groupKind === 'subworkflow'
             ? '▣ 子工作流'
-            : data.kind === 'branch'
-              ? '◇ 分支节点'
-              : data.kind === 'join'
-                ? '◆ 汇合节点'
-                : data.kind === 'group'
-                  ? '▣ 节点组'
-                  : '操作节点'}
+            : workflowNodeKindLabel(data.kind)}
         </span>
         <span
           className="wf-node__id"
@@ -86,6 +99,28 @@ export default function WorkflowNodeCard({
         >
           {data.name || data.id}
         </span>
+        {materialSource && data.materialSource && (
+          <span className="wf-node__material-summary">
+            {flowRoleLabel(data.materialSource.flowRole)} · {' '}
+            {data.materialSource.mode === 'create_new' ? '新建物料' : '已有物料'}
+            <small title={data.materialSource.mountUuid}>
+              Mount · {shortIdentity(data.materialSource.mountUuid)}
+            </small>
+          </span>
+        )}
+        {!materialSource && Boolean(data.materialChips?.length) && (
+          <span className="wf-node__material-chips" aria-label="Material 轨道">
+            {data.materialChips?.map((chip) => (
+              <span
+                key={`${chip.handleUuid}:${chip.sourceNodeUuid}`}
+                style={{ '--wf-material-accent': chip.accent } as CSSProperties}
+                title={`${chip.label} · ${chip.sourceNodeUuid} · Handle ${chip.handleUuid}`}
+              >
+                {chip.label}<small>{chip.shortIdentity}</small>
+              </span>
+            ))}
+          </span>
+        )}
         {data.groupKind === 'subworkflow' && (
           <button
             type="button"
@@ -104,9 +139,9 @@ export default function WorkflowNodeCard({
           </button>
         )}
         <span className={`wf-node__state wf-node__state--${data.status || 'pending'}`}>
-          {stateLabel(data.status || 'pending')}
+          {workflowNodeStateLabel(data.kind, data.status || 'pending')}
         </span>
-        {(data.onSetStart || data.onToggleBreakpoint) && (
+        {allowsDebugMarkers && (data.onSetStart || data.onToggleBreakpoint) && (
           <div className="wf-node__marker-actions">
             {data.onSetStart && (
               <button
@@ -189,7 +224,36 @@ function handlePosition(
     : { top: offset }
 }
 
-function stateLabel(status: string): string {
+export function workflowNodeAllowsDebugMarkers(kind?: string): boolean {
+  return kind !== 'material_source'
+}
+
+export function workflowNodeKindLabel(kind?: string): string {
+  return kind === 'material_source'
+    ? '物料来源'
+    : kind === 'branch'
+      ? '◇ 分支节点'
+      : kind === 'join'
+        ? '◆ 汇合节点'
+        : kind === 'group'
+          ? '▣ 节点组'
+          : '操作节点'
+}
+
+export function workflowNodeStateLabel(kind: string | undefined, status: string): string {
+  if (kind === 'material_source') {
+    const materialLabels: Record<string, string> = {
+      pending: '等待物料',
+      material_waiting: '等待物料',
+      success: '物料已绑定',
+      material_bound: '物料已绑定',
+      failed: '物料解析失败',
+      material_failed: '物料解析失败',
+      cancelled: '物料解析已取消',
+      skipped: '未解析物料'
+    }
+    return materialLabels[status] || status
+  }
   const labels: Record<string, string> = {
     pending: '等待执行',
     ready: '已就绪',
@@ -201,4 +265,17 @@ function stateLabel(status: string): string {
     reconciling: '状态核对中'
   }
   return labels[status] || status
+}
+
+function flowRoleLabel(flowRole: string): string {
+  return {
+    primary_sample: '主样品',
+    aliquot_sample: '分装样品',
+    reagent: '试剂',
+    consumable: '耗材'
+  }[flowRole] || flowRole
+}
+
+function shortIdentity(value: string): string {
+  return value ? value.replace(/-/g, '').slice(-6) : '未设置'
 }

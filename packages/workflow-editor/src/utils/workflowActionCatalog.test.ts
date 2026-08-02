@@ -427,6 +427,68 @@ describe('typed Action editor projection', () => {
     })).toThrow('Action target Handle 已有 provider')
   })
 
+  it('rehydrates only typed Actions while preserving framework wire records', () => {
+    const frameworkTemplateUuid = '21000000-0000-4000-8000-000000000001'
+    const frameworkHandleUuid = '31000000-0000-4000-8000-000000000001'
+    const frameworkNodeUuid = '41000000-0000-4000-8000-000000000001'
+    const frameworkTemplate = {
+      uuid: frameworkTemplateUuid,
+      name: 'material_source',
+      type: 'material_source',
+      node_type: 'material_source',
+      meta_data: { unilab: { framework: true, extension: 'preserve-me' } }
+    }
+    const frameworkHandle = {
+      uuid: frameworkHandleUuid,
+      workflow_node_template_uuid: frameworkTemplateUuid,
+      handle_key: 'material',
+      io_type: 'source',
+      type: 'ResourceSlot',
+      meta_data: { unilab: { framework: true, extension: 'preserve-me' } }
+    }
+    const mixedGraph: WorkflowAuthoringGraph = {
+      ...graph,
+      nodes: [
+        graph.nodes[0]!,
+        {
+          uuid: frameworkNodeUuid,
+          workflow_node_template_uuid: frameworkTemplateUuid,
+          name: 'sample',
+          type: 'material_source',
+          param: { resource_template_uuid: 'plate-96' }
+        }
+      ],
+      edges: [{
+        uuid: '51000000-0000-4000-8000-000000000001',
+        source_node_uuid: frameworkNodeUuid,
+        source_handle_uuid: frameworkHandleUuid,
+        target_node_uuid: nodeUuid,
+        target_handle_uuid: materialHandleUuid,
+        meta_data: { extension: 'preserve-me' }
+      }],
+      node_templates: [
+        { uuid: templateUuid, stale: true },
+        frameworkTemplate
+      ],
+      handle_templates: [
+        { uuid: materialHandleUuid, stale: true },
+        frameworkHandle
+      ]
+    }
+
+    const rehydrated = rehydrateTypedActionGraph(catalog, mixedGraph)
+
+    expect(rehydrated.nodes).toEqual(mixedGraph.nodes)
+    expect(rehydrated.edges).toEqual(mixedGraph.edges)
+    expect(rehydrated.node_templates).toContainEqual(frameworkTemplate)
+    expect(rehydrated.handle_templates).toContainEqual(frameworkHandle)
+    expect(rehydrated.node_templates.find((item) => item.uuid === templateUuid))
+      .not.toHaveProperty('stale')
+    expect(rehydrated.handle_templates.find(
+      (item) => item.uuid === materialHandleUuid
+    )).not.toHaveProperty('stale')
+  })
+
   it('scopes edge providers by Node instance and suppresses provided diagnostics', () => {
     const twoTargets: WorkflowAuthoringGraph = {
       ...graph,

@@ -9,6 +9,10 @@ import {
   decodeWorkflowIoMetadata,
   type WorkflowIoMetadata
 } from './workflowIo'
+import {
+  loadWorkflowMaterialSourceCatalog,
+  type WorkflowMaterialSourceCatalogSnapshot
+} from './workflowMaterialSource'
 
 export type {
   WorkflowActionCatalogSnapshot,
@@ -25,6 +29,14 @@ export type {
   WorkflowOutputDescriptor,
   WorkflowValueSchema
 } from './workflowIo'
+export type {
+  WorkflowMaterialSourceCatalogSnapshot,
+  WorkflowMaterialSourceHandleTemplate,
+  WorkflowMaterialSourceMaterial,
+  WorkflowMaterialSourceNodeTemplate,
+  WorkflowMaterialSourceResourceTemplate,
+  WorkflowMaterialSourceSite
+} from './workflowMaterialSource'
 
 export type WorkflowRevision = Record<string, unknown> & {
   schema_version: '2'
@@ -272,6 +284,7 @@ export interface WorkflowAuthoringSubscriptionOptions {
 
 export type WorkflowTaskStatus =
   | 'pending'
+  | 'admission_blocked'
   | 'running'
   | 'canceling'
   | 'succeeded'
@@ -477,6 +490,8 @@ export interface WorkflowEventSubscription {
 
 export interface WorkflowRuntimePort {
   getWorkflowActionCatalog: () => Promise<WorkflowActionCatalogSnapshot>
+  getWorkflowMaterialSourceCatalog: () =>
+    Promise<WorkflowMaterialSourceCatalogSnapshot>
   listWorkflows: (query?: WorkflowListQuery) => Promise<WorkflowPage>
   getWorkflowAuthoring: (
     workflowUuid: string
@@ -577,6 +592,8 @@ export function createWorkflowRuntime(
 
   const port: WorkflowRuntimePort = {
     getWorkflowActionCatalog: () => loadWorkflowActionCatalog(http),
+    getWorkflowMaterialSourceCatalog: () =>
+      loadWorkflowMaterialSourceCatalog(http),
     listWorkflows: (query = {}) =>
       runtimeRequest(workflowListPath(query)),
     getWorkflowAuthoring: async (workflowUuid) =>
