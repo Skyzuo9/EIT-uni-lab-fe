@@ -386,6 +386,9 @@ test('Candidate Workflow I/O survives real OS apply and result-record round-trip
     "return {'sample': prepared.prepared, 'analysis_report': analyzed.report}"
   )
   expect(generated.normalized_python_source).not.toContain('workflow_output')
+  expect(generated.graph).not.toBeNull()
+  if (!generated.graph) throw new Error('Generated Applied graph is missing')
+  expect(generated.graph).toEqual(reloaded.applied_graph)
 
   const compiled = await readEnvelope<AuthoringTransform>(
     `${os.url}/api/v1/authoring/compile`,
@@ -417,7 +420,27 @@ test('Candidate Workflow I/O survives real OS apply and result-record round-trip
   )
   expect(regenerated.normalized_python_source)
     .toBe(generated.normalized_python_source)
-  expect(regenerated.graph).toEqual(generated.graph)
+  expect(regenerated.graph).not.toBeNull()
+  if (!compiled.graph || !regenerated.graph) {
+    throw new Error('Candidate round-trip graph is missing')
+  }
+  expect(regenerated.graph).toEqual(compiled.graph)
+
+  const appliedWorkflowIo = workflowIo(reloaded.applied_graph)
+  const appliedNodeBindings = allNodeInputBindings(reloaded.applied_graph)
+  const appliedGraphSemantics = graphAuthoringSemantics(reloaded.applied_graph)
+  expect(workflowIo(generated.graph)).toEqual(appliedWorkflowIo)
+  expect(allNodeInputBindings(generated.graph)).toEqual(appliedNodeBindings)
+  expect(graphAuthoringSemantics(generated.graph)).toEqual(
+    appliedGraphSemantics
+  )
+  for (const candidateGraph of [compiled.graph, regenerated.graph]) {
+    expect(workflowIo(candidateGraph)).toEqual(appliedWorkflowIo)
+    expect(allNodeInputBindings(candidateGraph)).toEqual(appliedNodeBindings)
+    expect(graphAuthoringSemantics(candidateGraph)).toEqual(
+      appliedGraphSemantics
+    )
+  }
 
   const forbidden = requests.filter(({ path }) =>
     path === '/api/run' ||
@@ -961,6 +984,79 @@ function nodeInputBindings(
   const metaData = node.meta_data as Record<string, unknown>
   const unilab = metaData.unilab as Record<string, unknown>
   return unilab.input_bindings as Record<string, unknown>
+}
+
+function allNodeInputBindings(
+  graph: AuthoringAggregate['applied_graph']
+): Record<string, unknown> {
+  return Object.fromEntries(
+    graph.nodes
+      .map((node) => {
+        const metaData = node.meta_data as Record<string, unknown> | undefined
+        const unilab = metaData?.unilab as Record<string, unknown> | undefined
+        return [String(node.uuid), unilab?.input_bindings ?? {}]
+      })
+      .sort(([left], [right]) => String(left).localeCompare(String(right)))
+  )
+}
+
+const WORKFLOW_NODE_AUTHORING_FIELDS = [
+  'uuid',
+  'workflow_node_template_uuid',
+  'parent_uuid',
+  'material_uuid',
+  'name',
+  'status',
+  'type',
+  'icon',
+  'pose',
+  'param',
+  'footer',
+  'action_name',
+  'action_type',
+  'execution_policy',
+  'disabled',
+  'minimized',
+  'script',
+  'description',
+  'meta_data'
+] as const
+
+const WORKFLOW_EDGE_AUTHORING_FIELDS = [
+  'uuid',
+  'source_node_uuid',
+  'target_node_uuid',
+  'source_handle_uuid',
+  'target_handle_uuid',
+  'description',
+  'meta_data'
+] as const
+
+function graphAuthoringSemantics(
+  graph: AuthoringAggregate['applied_graph']
+): Record<string, unknown> {
+  return {
+    nodes: graph.nodes
+      .map((node) => pickFields(node, WORKFLOW_NODE_AUTHORING_FIELDS))
+      .sort(compareUuid),
+    edges: graph.edges
+      .map((edge) => pickFields(edge, WORKFLOW_EDGE_AUTHORING_FIELDS))
+      .sort(compareUuid)
+  }
+}
+
+function pickFields(
+  value: Record<string, unknown>,
+  fields: readonly string[]
+): Record<string, unknown> {
+  return Object.fromEntries(fields.map((field) => [field, value[field]]))
+}
+
+function compareUuid(
+  left: Record<string, unknown>,
+  right: Record<string, unknown>
+): number {
+  return String(left.uuid).localeCompare(String(right.uuid))
 }
 
 function requireHandleUuid(
