@@ -709,6 +709,7 @@ function mapBackendSite(value: unknown): MaterialSite {
   const raw = recordValue(value)
   const metaData = isRecord(raw.meta_data) ? raw.meta_data : {}
   const occupiedMaterialId = optionalString(raw.occupied_material_uuid)
+  const kind = siteKind(metaData.kind) ?? 'site'
   return {
     id: requiredString(raw.uuid, 'site.uuid'),
     ownerMaterialId: requiredString(
@@ -740,7 +741,13 @@ function mapBackendSite(value: unknown): MaterialSite {
     occupiedMaterialIds: occupiedMaterialId
       ? [occupiedMaterialId]
       : [],
-    kind: siteKind(metaData.kind) ?? 'site',
+    kind,
+    shape:
+      metaData.shape === 'circle' || metaData.shape === 'rectangle'
+        ? metaData.shape
+        : kind === 'well' || kind === 'tip-spot'
+          ? 'circle'
+          : 'rectangle',
     visible: metaData.visible == null ? true : Boolean(metaData.visible),
     visual: {
       state: occupiedMaterialId ? 'occupied' : 'empty',

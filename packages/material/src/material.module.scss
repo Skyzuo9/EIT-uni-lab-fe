@@ -251,6 +251,40 @@
   font: 500 12px/1.2 var(--unilab-font-sans);
 }
 
+:where(.scope, .scope *):global(.material-tree-sidebar__row--site) {
+  color: var(--unilab-color-text-muted);
+}
+
+:where(.scope, .scope *):global(.material-tree-sidebar__site-label) {
+  min-width: 0;
+  flex: 1;
+  padding: 4px 2px;
+  overflow: hidden;
+  font: 500 12px/1.2 var(--unilab-font-sans);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:where(.scope, .scope *):global(.material-tree-sidebar__site-status) {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  margin-left: auto;
+  border: 1px solid color-mix(in srgb, currentcolor 32%, transparent);
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px color-mix(in srgb, currentcolor 10%, transparent);
+}
+
+:where(.scope, .scope *):global(.material-tree-sidebar__site-status):global(.is-occupied) {
+  color: #dc2626;
+  background: #ef4444;
+}
+
+:where(.scope, .scope *):global(.material-tree-sidebar__site-status):global(.is-empty) {
+  color: #16a34a;
+  background: #22c55e;
+}
+
 :where(.scope, .scope *):global(.material-tree-sidebar__resize-hint) {
   position: absolute;
   top: 0;
@@ -1246,9 +1280,10 @@ line:where(.scope, .scope *):global(.material-oblique-part--post) {
 }
 
 :where(.scope, .scope *):global(.material-oblique-site) {
-  fill: rgb(245 246 251 / 78%);
-  stroke: rgb(203 207 219 / 74%);
-  stroke-width: 0.8;
+  fill: rgb(147 197 253 / 20%);
+  stroke: rgb(59 130 246 / 72%);
+  stroke-width: 0.9;
+  stroke-dasharray: 3 2;
 }
 
 :where(.scope, .scope *):global(.material-oblique-site):global(.is-deck-slot) {
@@ -1268,8 +1303,8 @@ line:where(.scope, .scope *):global(.material-oblique-part--post) {
 }
 
 :where(.scope, .scope *):global(.material-oblique-site):global(.is-occupied) {
-  fill: rgb(191 219 254 / 76%);
-  stroke: rgb(96 165 250 / 84%);
+  fill: rgb(147 197 253 / 30%);
+  stroke: rgb(37 99 235 / 88%);
 }
 
 :where(.scope, .scope *):global(.material-oblique-site__label) {

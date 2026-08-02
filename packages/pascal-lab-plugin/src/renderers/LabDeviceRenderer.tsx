@@ -29,6 +29,7 @@ import {
 } from '../modelRuntime'
 import { findLinkObject } from '../mounting'
 import type { LabDeviceNode } from '../schema'
+import { SiteBoundsRenderer } from './SiteBoundsRenderer'
 
 export const MODEL_READY_EVENT = 'unilab:pascal-model-ready'
 
@@ -370,6 +371,7 @@ export default function LabDeviceRenderer({
         </group>
       )}
       {node.model.instances && <SiteInstanceRenderer node={node} />}
+      <SiteBoundsRenderer sites={node.floorplanSnapshot?.sites ?? []} />
       {(showPersistentTag || isHovered || isSelected) && (
         <ModelLabel
           node={node}

@@ -211,6 +211,7 @@ function ObliqueMaterial({
       ) : (
         <ObliqueSolidBody object={object} />
       )}
+      <ObliqueSiteBounds object={object} />
       {showTag && (
         <g
           className="material-oblique-object__tag"
@@ -268,7 +269,6 @@ function ObliqueSolidBody({
         className="material-oblique-object__top"
         points={pointsAttr(object.top)}
       />
-      <ObliqueSiteMarkers object={object} />
     </>
   )
 }
@@ -410,7 +410,7 @@ function ObliquePrimitiveNode({
         />
       )
     case 'site-markers':
-      return <ObliqueSiteMarkers object={object} />
+      return null
     default:
       return null
   }
@@ -510,11 +510,7 @@ function ObliqueOpenRack({
           object={object}
           thickness={boardThickness}
           zMm={level.zMm}
-        >
-          {level.sites.map((site) => (
-            <ObliqueSite key={site.id} site={site} />
-          ))}
-        </ShelfBoard>
+        />
       ))}
       <polygon
         className="material-oblique-part material-oblique-part--frame"
@@ -547,15 +543,6 @@ function ObliqueOpenRack({
           />
         )
       })}
-      {object.levels.flatMap((level) =>
-        level.sites.map((site) => (
-          <ObliqueSiteLabel
-            key={`label-${site.id}`}
-            site={site}
-            transform={planeTransform(object, level.zMm)}
-          />
-        ))
-      )}
     </>
   )
 }
@@ -663,29 +650,39 @@ function ObliqueSiteHoles({
   )
 }
 
-/** 位点画在顶面：兜底实心体与板式耗材共用。 */
-function ObliqueSiteMarkers({
+/** 每个 Site 按自己的局部高度绘制浅蓝包围盒，不依赖设备 shape 声明。 */
+function ObliqueSiteBounds({
   object
 }: {
   object: MaterialObliqueObject
 }): React.JSX.Element {
   return (
     <>
-      <g
-        className="material-oblique-object__plan"
-        transform={`matrix(${object.topTransform.join(' ')})`}
-      >
-        {object.sites.map((site) => (
-          <ObliqueSite key={site.id} site={site} />
-        ))}
-      </g>
       {object.sites.map((site) => (
-        <ObliqueSiteLabel
-          key={`label-${site.id}`}
-          site={site}
-          transform={object.topTransform}
-        />
+        <g
+          key={site.id}
+          className="material-oblique-object__plan"
+          transform={`matrix(${planeTransform(
+            object,
+            site.poseInAnchor.positionMm[2]
+          ).join(' ')})`}
+        >
+          <ObliqueSite site={site} />
+        </g>
       ))}
+      {object.sites.map((site) => {
+        const transform = planeTransform(
+          object,
+          site.poseInAnchor.positionMm[2]
+        )
+        return (
+          <ObliqueSiteLabel
+            key={`label-${site.id}`}
+            site={site}
+            transform={transform}
+          />
+        )
+      })}
     </>
   )
 }
@@ -1107,7 +1104,10 @@ function ObliqueSite({
           className={className}
           cx={x + width / 2}
           cy={y + depth / 2}
+          data-oblique-site-bounds
+          data-site-id={site.id}
           data-site-key={site.key}
+          data-site-occupancy={site.occupiedMaterialIds.length ? 'occupied' : 'empty'}
           r={Math.min(width, depth) / 2}
           vectorEffect="non-scaling-stroke"
         >
@@ -1116,7 +1116,10 @@ function ObliqueSite({
       ) : (
         <rect
           className={className}
+          data-oblique-site-bounds
+          data-site-id={site.id}
           data-site-key={site.key}
+          data-site-occupancy={site.occupiedMaterialIds.length ? 'occupied' : 'empty'}
           x={x}
           y={y}
           width={width}

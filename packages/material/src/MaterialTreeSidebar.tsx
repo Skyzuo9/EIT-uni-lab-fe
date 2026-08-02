@@ -11,7 +11,8 @@ import { materialScopeClassName } from './materialStyles'
 import type {
   MaterialAggregate,
   MaterialId,
-  MaterialPlacement
+  MaterialPlacement,
+  MaterialSite
 } from './types'
 
 export interface MaterialTreeSidebarProps {
@@ -20,9 +21,19 @@ export interface MaterialTreeSidebarProps {
 }
 
 export interface MaterialTreeEntry {
+  kind: 'material'
   aggregate: MaterialAggregate
-  children: readonly MaterialTreeEntry[]
+  occupyingSite?: MaterialSite
+  children: readonly MaterialTreeNode[]
 }
+
+export interface MaterialTreeSiteEntry {
+  kind: 'empty-site'
+  ownerMaterialId: MaterialId
+  site: MaterialSite
+}
+
+export type MaterialTreeNode = MaterialTreeEntry | MaterialTreeSiteEntry
 
 export function MaterialTreeSidebar({
   selectedMaterialIds = [],
@@ -152,6 +163,7 @@ function MaterialTreeRow({
       <div
         className="material-tree-sidebar__row"
         data-material-tree-id={materialId}
+        data-material-tree-site-id={entry.occupyingSite?.id}
         role="treeitem"
         aria-expanded={hasChildren ? expanded : undefined}
         aria-level={depth + 1}
@@ -181,21 +193,81 @@ function MaterialTreeRow({
         >
           {entry.aggregate.material.name}
         </button>
+        {entry.occupyingSite ? (
+          <SiteStatus site={entry.occupyingSite} occupied />
+        ) : null}
       </div>
       {expanded
-        ? entry.children.map((child) => (
-            <MaterialTreeRow
-              key={child.aggregate.material.id}
-              depth={depth + 1}
-              entry={child}
-              expandedIds={expandedIds}
-              selectedIds={selectedIds}
-              onSelect={onSelect}
-              onToggle={onToggle}
-            />
-          ))
+        ? entry.children.map((child) =>
+            child.kind === 'material' ? (
+              <MaterialTreeRow
+                key={child.aggregate.material.id}
+                depth={depth + 1}
+                entry={child}
+                expandedIds={expandedIds}
+                selectedIds={selectedIds}
+                onSelect={onSelect}
+                onToggle={onToggle}
+              />
+            ) : (
+              <MaterialTreeEmptySiteRow
+                key={child.site.id}
+                depth={depth + 1}
+                entry={child}
+              />
+            )
+          )
         : null}
     </>
+  )
+}
+
+function MaterialTreeEmptySiteRow({
+  entry,
+  depth
+}: {
+  entry: MaterialTreeSiteEntry
+  depth: number
+}): React.JSX.Element {
+  return (
+    <div
+      className="material-tree-sidebar__row material-tree-sidebar__row--site"
+      data-material-tree-site-id={entry.site.id}
+      data-site-occupancy="empty"
+      role="treeitem"
+      aria-label={`${entry.site.name}，未占用`}
+      aria-level={depth + 1}
+      style={{ '--material-tree-depth': depth } as CSSProperties}
+    >
+      <span className="material-tree-sidebar__grip" aria-hidden="true" />
+      <span className="material-tree-sidebar__toggle-spacer" />
+      <span
+        className="material-tree-sidebar__site-label"
+        title={entry.site.name}
+      >
+        {entry.site.name}
+      </span>
+      <SiteStatus site={entry.site} occupied={false} />
+    </div>
+  )
+}
+
+function SiteStatus({
+  site,
+  occupied
+}: {
+  site: MaterialSite
+  occupied: boolean
+}): React.JSX.Element {
+  const state = occupied ? 'occupied' : 'empty'
+  return (
+    <span
+      className={`material-tree-sidebar__site-status is-${state}`}
+      data-site-occupancy={state}
+      role="img"
+      aria-label={`${site.name}，${occupied ? '已占用' : '未占用'}`}
+      title={`${site.name} · ${occupied ? '已占用' : '未占用'}`}
+    />
   )
 }
 
@@ -207,18 +279,45 @@ export function buildMaterialTree(
     .filter((aggregate) => !placementParentId(aggregate.placement))
     .sort(compareAggregates)
 
-  const build = (aggregate: MaterialAggregate): MaterialTreeEntry => ({
-    aggregate,
-    children: (childrenByParentId[aggregate.material.id] ?? [])
+  const build = (
+    aggregate: MaterialAggregate,
+    occupyingSite?: MaterialSite
+  ): MaterialTreeEntry => {
+    const directChildren = (childrenByParentId[aggregate.material.id] ?? [])
       .map((materialId) => aggregatesById[materialId])
       .filter(
         (candidate): candidate is MaterialAggregate => candidate != null
       )
+    const childById = new Map(
+      directChildren.map((child) => [child.material.id, child])
+    )
+    const siteOccupantIds = new Set<MaterialId>()
+    const siteNodes = aggregate.sites.map((site): MaterialTreeNode => {
+      const occupantId = site.occupiedMaterialIds[0]
+      const occupant = occupantId ? childById.get(occupantId) : undefined
+      if (occupant) {
+        siteOccupantIds.add(occupant.material.id)
+        return build(occupant, site)
+      }
+      return {
+        kind: 'empty-site',
+        ownerMaterialId: aggregate.material.id,
+        site
+      }
+    })
+    const unboundChildren = directChildren
+      .filter((child) => !siteOccupantIds.has(child.material.id))
       .sort(compareAggregates)
-      .map(build)
-  })
+      .map((child) => build(child))
+    return {
+      kind: 'material',
+      aggregate,
+      occupyingSite,
+      children: [...siteNodes, ...unboundChildren]
+    }
+  }
 
-  return roots.map(build)
+  return roots.map((aggregate) => build(aggregate))
 }
 
 function compareAggregates(

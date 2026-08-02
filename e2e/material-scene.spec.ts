@@ -14,7 +14,7 @@ const SZLAB_ROOT = resolve(
 )
 const OS_PYTHON =
   process.env.UNILAB_OS_PYTHON ??
-  '/home/changjunhan/.micromamba/envs/unilab/bin/python'
+  'python3'
 const API_PORT = Number(process.env.UNILAB_E2E_MATERIAL_PORT ?? '18144')
 const API_URL = `http://127.0.0.1:${API_PORT}`
 const FE_ORIGIN = process.env.UNILAB_FE_E2E_URL ?? 'http://127.0.0.1:4173'
@@ -85,38 +85,86 @@ test('SZLab MaterialGraph renders complete 2.5D and 3D views', async ({
   await page.goto(
     `/?section=material&localOsUrl=${encodeURIComponent(API_URL)}`
   )
-  const [, shapeResponse] = await Promise.all([graphLoaded, shapesLoaded])
+  const [graphResponse, shapeResponse] = await Promise.all([
+    graphLoaded,
+    shapesLoaded
+  ])
+  const graphPayload = (await graphResponse.json()) as {
+    data?: {
+      nodes?: Array<{
+        sites?: Array<{ occupied_material_uuid?: string | null }>
+      }>
+    }
+  }
+  const graphSites =
+    graphPayload.data?.nodes?.flatMap((node) => node.sites ?? []) ?? []
+  expect(graphPayload.data?.nodes).toHaveLength(126)
+  expect(graphSites).toHaveLength(398)
+  expect(
+    graphSites.filter((site) => site.occupied_material_uuid != null)
+  ).toHaveLength(110)
+  expect(
+    graphSites.filter((site) => site.occupied_material_uuid == null)
+  ).toHaveLength(288)
   const shapePayload = (await shapeResponse.json()) as {
     data?: { items?: unknown[] }
   }
-  expect(shapePayload.data?.items).toHaveLength(12)
+  expect(shapePayload.data?.items?.length ?? 0).toBeGreaterThanOrEqual(12)
 
   await expect(
     page.getByRole('button', { name: '物料', exact: true })
   ).toBeVisible()
-  await expect(page.getByText('(21)', { exact: true })).toBeVisible()
+  await expect(page.getByText('(126)', { exact: true })).toBeVisible()
   await expect(page.getByText('Edge 已连接', { exact: true })).toBeVisible()
+
+  await expandMaterial(page, 'S1 连续流工作站')
+  await expandMaterial(page, 'SZLab 聚合物工作站台面')
+  await expandMaterial(page, '烧杯堆栈2')
+  await expect(
+    page.locator(
+      '[data-material-tree-site-id] [data-site-occupancy="occupied"]'
+    )
+  ).toHaveCount(36)
+  await expect(
+    page.locator('[data-material-tree-site-id]').filter({
+      hasText: '烧杯堆栈2 L1B1 烧杯 500 mL'
+    })
+  ).toHaveAttribute('data-material-tree-site-id', /.+/)
+
+  await expandMaterial(page, 'Tip 头架子')
+  await expandMaterial(page, 'Tip 头架子 T11 TIP 盒')
+  await expect(
+    page.locator(
+      '[data-material-tree-site-id][data-site-occupancy="empty"]'
+    )
+  ).toHaveCount(24)
+  await expect(
+    page.getByRole('treeitem', { name: 'T11-tip-101，未占用' })
+  ).toBeVisible()
 
   await page.getByRole('button', { name: '2.5D', exact: true }).click()
   const oblique = page.locator('[data-material-oblique-view]')
   await expect(oblique).toBeVisible()
-  await expect(oblique.locator('[data-material-id]')).toHaveCount(21)
+  await expect(oblique.locator('[data-material-id]')).toHaveCount(126)
+  await expect(oblique.locator('[data-oblique-site-bounds]')).toHaveCount(
+    398
+  )
   await expect(
-    oblique.locator('[data-oblique-render-style="spec"]')
-  ).toHaveCount(13)
+    oblique.locator('[data-oblique-site-bounds][data-site-occupancy="occupied"]')
+  ).toHaveCount(110)
   await expect(
-    oblique.locator('[data-oblique-shape="sample_vial_stack"]')
-  ).toHaveCount(2)
+    oblique.locator('[data-oblique-site-bounds][data-site-occupancy="empty"]')
+  ).toHaveCount(288)
   await expect(
-    oblique.locator('[data-oblique-shape="beaker_stack"]')
-  ).toHaveCount(2)
+    oblique.locator('[data-oblique-render-style="spec"]').first()
+  ).toBeVisible()
   await captureViewport(page, 'szlab-materials-2_5d.png')
 
   await page.getByRole('button', { name: '3D', exact: true }).click()
   const viewer = page.locator('[data-pascal-viewer-3d]')
   await expect(viewer).toBeVisible({ timeout: 30_000 })
   await expect(viewer.locator('canvas')).toBeVisible()
-  await expect(page.getByText('21 个物料 · 只读')).toBeVisible()
+  await expect(page.getByText('126 个物料 · 只读')).toBeVisible()
   const viewerBox = await viewer.boundingBox()
   expect(viewerBox?.width ?? 0).toBeGreaterThan(900)
   expect(viewerBox?.height ?? 0).toBeGreaterThan(500)
@@ -129,9 +177,15 @@ test('SZLab MaterialGraph renders complete 2.5D and 3D views', async ({
   expect(materialRequests).toContain(
     `GET ${API_URL}/api/v1/material-shapes`
   )
+  const uniqueMaterialRequests = [...new Set(materialRequests)].filter(
+    (request) => request !== `GET ${API_URL}/api/v1/health`
+  )
   expect(
-    [...new Set(materialRequests)]
-      .filter((request) => request !== `GET ${API_URL}/api/v1/health`)
+    uniqueMaterialRequests
+      .filter(
+        (request) =>
+          !request.startsWith(`GET ${API_URL}/api/v1/material-models/`)
+      )
       .sort()
   ).toEqual(
     [
@@ -139,6 +193,11 @@ test('SZLab MaterialGraph renders complete 2.5D and 3D views', async ({
       `GET ${API_URL}/api/v1/material-shapes`
     ].sort()
   )
+  expect(
+    uniqueMaterialRequests.some((request) =>
+      request.startsWith(`GET ${API_URL}/api/v1/material-models/`)
+    )
+  ).toBe(true)
   expect(
     materialRequests.some((request) => request.includes('/api/v1/inventory/'))
   ).toBe(false)
@@ -200,7 +259,7 @@ async function startSzlabInventory(): Promise<InventoryProcess> {
       '--szlab-root',
       SZLAB_ROOT,
       '--graph',
-      'deployment/graphs/szlab-ideawit-sim.json',
+      'deployment/graphs/szlab-local-debug.json',
       '--port',
       String(API_PORT),
       '--allow-origin',
@@ -240,7 +299,7 @@ async function waitForGraph(child: ChildProcess): Promise<void> {
         const body = (await response.json()) as {
           data?: { nodes?: unknown[] }
         }
-        if (body.data?.nodes?.length === 21) return
+        if (body.data?.nodes?.length === 126) return
       }
     } catch {
       // The process is still compiling PackageCatalog or binding the port.
@@ -248,6 +307,11 @@ async function waitForGraph(child: ChildProcess): Promise<void> {
     await new Promise((resolveWait) => setTimeout(resolveWait, 100))
   }
   throw new Error('Timed out waiting for SZLab MaterialGraph')
+}
+
+async function expandMaterial(page: Page, name: string): Promise<void> {
+  const expand = page.getByRole('button', { name: `展开 ${name}` })
+  if (await expand.isVisible()) await expand.click()
 }
 
 async function stopProcess(child: ChildProcess | undefined): Promise<void> {

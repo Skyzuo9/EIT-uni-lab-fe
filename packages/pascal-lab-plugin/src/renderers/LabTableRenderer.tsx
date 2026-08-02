@@ -5,6 +5,7 @@ import { useRef } from 'react'
 import type { Group } from 'three'
 
 import type { LabTableNode } from '../schema'
+import { SiteBoundsRenderer } from './SiteBoundsRenderer'
 
 const useCustomNodeEvents = useNodeEvents as unknown as (
   node: LabTableNode,
@@ -63,6 +64,7 @@ export default function LabTableRenderer({
           />
         </mesh>
       ))}
+      <SiteBoundsRenderer sites={node.floorplanSnapshot?.sites ?? []} />
       <Html position={[0, height + 0.08, 0]} center>
         <div
           className={`pascal-model-label${
