@@ -36,6 +36,39 @@ const upstreamHandleUuid = '30000000-0000-4000-8000-000000000009'
 const fingerprint = `sha256:${'a'.repeat(64)}`
 
 describe('typed Action editor projection', () => {
+  it('keeps Action creation on the Action side of an executable union', () => {
+    const executableCatalog = {
+      authorityId: catalog.authorityId,
+      authorityKind: catalog.authorityKind,
+      fingerprint: catalog.fingerprint,
+      actionTemplates: catalog.nodeTemplates,
+      workflowTemplates: [{
+        uuid: '20000000-0000-4000-8000-000000000099',
+        displayName: 'Published child must not become an Action'
+      }]
+    } as unknown as WorkflowActionCatalogSnapshot
+    const emptyGraph: WorkflowAuthoringGraph = {
+      ...graph,
+      nodes: [],
+      edges: []
+    }
+
+    const created = createTypedActionNode(executableCatalog, emptyGraph, {
+      nodeUuid: secondNodeUuid,
+      templateUuid,
+      name: 'transfer_2'
+    })
+
+    expect(created.nodes).toHaveLength(1)
+    expect(created.nodes[0]).toMatchObject({
+      uuid: secondNodeUuid,
+      workflow_node_template_uuid: templateUuid,
+      name: 'transfer_2',
+      action_name: 'transfer',
+      type: 'device'
+    })
+  })
+
   it('creates a Backend-shaped Node without materializing schema defaults', () => {
     const emptyGraph: WorkflowAuthoringGraph = {
       ...graph,
