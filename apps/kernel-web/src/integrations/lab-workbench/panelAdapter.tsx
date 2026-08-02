@@ -141,6 +141,7 @@ function WorkflowRenderer(
     <WorkflowPanel
       runtime={props.scope.services.workflow}
       workflowUuid={workflowUuidFromPanelConfig(props.config) ?? undefined}
+      traceRuntime={globalThis.window?.api?.observability}
       activeWorkflowStorageKey={`unilab.workflow.active.${
         encodeURIComponent(
           `${props.scope.services.backend.id}:${

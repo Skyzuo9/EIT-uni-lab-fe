@@ -1,5 +1,6 @@
 import type { WorkflowRuntimePort } from '@unilab/services'
 
+import type { WorkflowTracePort } from '../traceRuntime'
 import { readActiveWorkflowId } from '../utils/workflowAuthoringOperations'
 import { PersistentWorkflowAuthoringPanel } from './PersistentWorkflowAuthoringPanel'
 import styles from './workflow.module.scss'
@@ -7,6 +8,7 @@ import styles from './workflow.module.scss'
 export interface WorkflowPanelProps {
   runtime: WorkflowRuntimePort
   workflowUuid?: string
+  traceRuntime?: WorkflowTracePort
   activeWorkflowStorageKey?: string
   onUnsavedChangesChange?: (hasUnsavedChanges: boolean) => void
 }
@@ -14,6 +16,7 @@ export interface WorkflowPanelProps {
 export default function WorkflowPanel({
   runtime,
   workflowUuid: explicitWorkflowUuid,
+  traceRuntime,
   activeWorkflowStorageKey,
   onUnsavedChangesChange
 }: WorkflowPanelProps): React.JSX.Element {
@@ -26,6 +29,7 @@ export default function WorkflowPanel({
         key={workflowUuid}
         runtime={runtime}
         workflowUuid={workflowUuid}
+        traceRuntime={traceRuntime}
         onUnsavedChangesChange={onUnsavedChangesChange}
       />
     )

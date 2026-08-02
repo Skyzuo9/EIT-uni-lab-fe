@@ -22,6 +22,7 @@ import {
   useState
 } from 'react'
 
+import type { WorkflowTracePort } from '../traceRuntime'
 import {
   createWorkflowExecutionScope
 } from '../utils/canonicalWorkflow'
@@ -76,11 +77,13 @@ import {
 } from './WorkflowOutput'
 import { WorkflowIoSummary } from './WorkflowIoSummary'
 import { useWorkflowSessionStore } from './WorkflowSessionProvider'
+import { WorkflowTraceViewer } from './WorkflowTraceViewer'
 import styles from './workflow.module.scss'
 
 interface PersistentWorkflowAuthoringPanelProps {
   runtime: WorkflowRuntimePort
   workflowUuid: string
+  traceRuntime?: WorkflowTracePort
   onUnsavedChangesChange?: (hasUnsavedChanges: boolean) => void
 }
 
@@ -111,6 +114,7 @@ interface PersistentWorkflowDebugSession {
 export function PersistentWorkflowAuthoringPanel({
   runtime,
   workflowUuid,
+  traceRuntime,
   onUnsavedChangesChange
 }: PersistentWorkflowAuthoringPanelProps): React.JSX.Element {
   const sessionStore = useWorkflowSessionStore()
@@ -150,6 +154,7 @@ export function PersistentWorkflowAuthoringPanel({
   const [taskRunMode, setTaskRunMode] =
     useState<Exclude<WorkflowTaskRunMode, 'single_node'>>('normal')
   const [runtimeBusy, setRuntimeBusy] = useState(false)
+  const [traceViewerOpen, setTraceViewerOpen] = useState(false)
   const [outputExpanded, setOutputExpanded] = useState(true)
   const [outputTab, setOutputTab] = useState<WorkflowOutputTab>('nodes')
   const [selectedJobNodeUuid, setSelectedJobNodeUuid] =
@@ -1679,6 +1684,8 @@ export function PersistentWorkflowAuthoringPanel({
           dangerGroupLabel="Task 取消控制"
           commandDataAttribute="runtime"
           controls={taskControls}
+          traceAvailable={Boolean(traceRuntime)}
+          onTraceOpen={() => setTraceViewerOpen(true)}
           onCommand={(command) => runRuntime(
             () => taskRuntime.command(command)
           )}
@@ -1705,6 +1712,15 @@ export function PersistentWorkflowAuthoringPanel({
           onClearError={taskRuntime.clearError}
         />
       </section>
+
+      {traceRuntime && (
+        <WorkflowTraceViewer
+          open={traceViewerOpen}
+          currentRunId={task?.uuid ?? null}
+          runtime={traceRuntime}
+          onClose={() => setTraceViewerOpen(false)}
+        />
+      )}
 
       {pendingMode && (
         <div className="workflow-save-prompt">
