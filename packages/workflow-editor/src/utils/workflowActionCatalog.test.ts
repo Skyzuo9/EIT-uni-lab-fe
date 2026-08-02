@@ -9,6 +9,7 @@ import type {
 } from '@unilab/services'
 
 import {
+  bindTypedActionWorkflowInput,
   connectTypedActionEdge,
   createTypedActionNode,
   projectTypedActionEditor,
@@ -35,7 +36,7 @@ const upstreamHandleUuid = '30000000-0000-4000-8000-000000000009'
 const fingerprint = `sha256:${'a'.repeat(64)}`
 
 describe('typed Action editor projection', () => {
-  it('creates a Backend-shaped Node from canonical template defaults', () => {
+  it('creates a Backend-shaped Node without materializing schema defaults', () => {
     const emptyGraph: WorkflowAuthoringGraph = {
       ...graph,
       nodes: [],
@@ -54,7 +55,7 @@ describe('typed Action editor projection', () => {
       status: 'idle',
       type: 'device',
       pose: {},
-      param: { temperature: 25, mode: 'safe', note: null },
+      param: {},
       action_name: 'transfer',
       execution_policy: {},
       disabled: false,
@@ -89,6 +90,74 @@ describe('typed Action editor projection', () => {
       templateUuid: '20000000-0000-4000-8000-000000000003',
       name: 'health'
     })).toThrow(/typed|action|template/i)
+  })
+
+  it('switches atomically between workflow input, literal and edge providers', () => {
+    const withLiteral = updateTypedActionLiteral(
+      catalog,
+      graph,
+      nodeUuid,
+      requiredHandleUuid,
+      3
+    )
+    const withWorkflowInput = bindTypedActionWorkflowInput(
+      catalog,
+      withLiteral,
+      nodeUuid,
+      requiredHandleUuid,
+      'count_input'
+    )
+    expect(withWorkflowInput.nodes[0]?.param).not.toHaveProperty('count')
+    expect(withWorkflowInput.edges).toEqual([])
+    expect(
+      (withWorkflowInput.nodes[0]?.meta_data as {
+        unilab: { input_bindings: Record<string, unknown> }
+      }).unilab.input_bindings
+    ).toEqual({
+      [requiredHandleUuid]: { parameter: 'count_input' }
+    })
+    expect(projectTypedActionEditor(
+      catalog,
+      withWorkflowInput,
+      nodeUuid,
+      []
+    ).fields.find((field) => field.handleUuid === requiredHandleUuid))
+      .toEqual(expect.objectContaining({
+        providerKind: 'workflow_input',
+        workflowInput: 'count_input',
+        workflowInputOptions: ['count_input', 'sample_input']
+      }))
+
+    const cleared = updateTypedActionLiteral(
+      catalog,
+      withWorkflowInput,
+      nodeUuid,
+      requiredHandleUuid,
+      undefined
+    )
+    expect(
+      (cleared.nodes[0]?.meta_data as {
+        unilab: { input_bindings: Record<string, unknown> }
+      }).unilab.input_bindings
+    ).toEqual({})
+    expect(projectTypedActionEditor(
+      catalog,
+      cleared,
+      nodeUuid,
+      []
+    ).fields.find((field) => field.handleUuid === requiredHandleUuid))
+      .toEqual(expect.objectContaining({
+        providerKind: 'missing',
+        workflowInput: null
+      }))
+
+    expect(() => bindTypedActionWorkflowInput(
+      catalog,
+      graph,
+      nodeUuid,
+      requiredHandleUuid,
+      'missing_input'
+    )).toThrow(/Workflow input/)
   })
 
   it('preserves required/default/null/enum/object/list/ResourceSlot semantics', () => {
@@ -369,7 +438,7 @@ describe('typed Action editor projection', () => {
               meta_data: {
                 unilab: {
                   input_bindings: {
-                    [requiredHandleUuid]: { workflow_input_uuid: 'input-count' }
+                    [requiredHandleUuid]: { parameter: 'count_input' }
                   }
                 }
               }
@@ -434,6 +503,9 @@ describe('typed Action editor projection', () => {
     expect(source).toContain('runtime.getWorkflowActionCatalog')
     expect(source).toContain('createTypedActionNode')
     expect(source).toContain('connectTypedActionEdge')
+    expect(source).toContain('bindTypedActionWorkflowInput')
+    expect(source).toContain('参数来源')
+    expect(source).toContain('明确 Material reference（JSON）')
     expect(source).toContain('projectTypedActionEditor')
     expect(source).toContain('data-workflow-handle-template-uuid')
     expect(source).not.toContain('lastIndexOf')
@@ -452,7 +524,29 @@ const catalog = {
 } satisfies WorkflowActionCatalogSnapshot
 
 const graph: WorkflowAuthoringGraph = {
-  workflow: { uuid: workflowUuid, revision: 1 },
+  workflow: {
+    uuid: workflowUuid,
+    revision: 1,
+    meta_data: {
+      unilab: {
+        input_contract: {
+          version: 1,
+          parameters: [
+            {
+              name: 'count_input',
+              schema: { type: 'integer' },
+              required: true
+            },
+            {
+              name: 'sample_input',
+              schema: { $slot: 'ResourceSlot' },
+              required: true
+            }
+          ]
+        }
+      }
+    }
+  },
   nodes: [
     {
       uuid: nodeUuid,

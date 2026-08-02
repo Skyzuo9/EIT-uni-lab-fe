@@ -8,6 +8,9 @@ const nodeUuid = '20000000-0000-4000-8000-000000000001'
 const targetUuid = '30000000-0000-4000-8000-000000000001'
 const sourceUuid = '30000000-0000-4000-8000-000000000002'
 const resourceTemplateUuid = '10000000-0000-4000-8000-000000000001'
+const frameworkNodeUuid = '20000000-0000-4000-8000-000000000099'
+const frameworkResourceTemplateUuid =
+  '10000000-0000-4000-8000-000000000099'
 const fingerprint = `sha256:${'a'.repeat(64)}`
 const authority = { authority_id: 'os-local', kind: 'local' }
 
@@ -75,7 +78,81 @@ describe('Workflow Action Catalog adapter', () => {
       ]
     })
     expect(requests).toEqual([
-      '/api/v1/workflow-node-templates',
+      '/api/v1/workflow-node-templates?page=1&page_size=100',
+      `/api/v1/workflow-node-templates/${nodeUuid}`
+    ])
+  })
+
+  it('reads every page and excludes non-Action framework templates', async () => {
+    const requests: string[] = []
+    const responses = catalogResponses()
+    const first = responses[
+      '/api/v1/workflow-node-templates?page=1&page_size=100'
+    ] as Envelope
+    const typedSummary = structuredClone(
+      (first.data as { items: unknown[] }).items[0]
+    )
+    ;(first.data as Record<string, unknown>).items = [{
+      uuid: frameworkNodeUuid,
+      name: 'material_source',
+      display_name: 'Material Source',
+      type: 'framework',
+      node_type: 'material_source',
+      resource_template: {
+        uuid: frameworkResourceTemplateUuid,
+        name: 'unilabos.resources.material_source',
+        display_name: 'Material Source'
+      }
+    }]
+    ;(first.data as Record<string, unknown>).total = 2
+    responses['/api/v1/workflow-node-templates?page=2&page_size=100'] = {
+      code: 0,
+      data: {
+        authority,
+        catalog_fingerprint: fingerprint,
+        items: [typedSummary],
+        total: 2,
+        page: 2,
+        page_size: 100
+      }
+    }
+    responses[
+      `/api/v1/workflow-node-templates/${frameworkNodeUuid}`
+    ] = {
+      code: 0,
+      data: {
+        authority,
+        catalog_fingerprint: fingerprint,
+        template: {
+          uuid: frameworkNodeUuid,
+          resource_template_uuid: frameworkResourceTemplateUuid,
+          name: 'material_source',
+          display_name: 'Material Source',
+          class: null,
+          type: 'framework',
+          node_type: 'material_source',
+          schema: null,
+          goal: {},
+          goal_default: {},
+          feedback: {},
+          result: {},
+          meta_data: {}
+        },
+        handles: []
+      }
+    }
+    const runtime = createWorkflowRuntime(
+      fixtureHttp(responses, requests),
+      getDefaultBackend('local-python')
+    )
+
+    const catalog = await runtime.getWorkflowActionCatalog()
+
+    expect(catalog.nodeTemplates.map((item) => item.uuid)).toEqual([nodeUuid])
+    expect(requests).toEqual([
+      '/api/v1/workflow-node-templates?page=1&page_size=100',
+      '/api/v1/workflow-node-templates?page=2&page_size=100',
+      `/api/v1/workflow-node-templates/${frameworkNodeUuid}`,
       `/api/v1/workflow-node-templates/${nodeUuid}`
     ])
   })
@@ -84,7 +161,9 @@ describe('Workflow Action Catalog adapter', () => {
     {
       name: 'missing fingerprint',
       mutate: (responses: Record<string, unknown>) => {
-        delete ((responses['/api/v1/workflow-node-templates'] as Envelope)
+        delete ((responses[
+          '/api/v1/workflow-node-templates?page=1&page_size=100'
+        ] as Envelope)
           .data as Record<string, unknown>).catalog_fingerprint
       }
     },
@@ -101,7 +180,7 @@ describe('Workflow Action Catalog adapter', () => {
       name: 'duplicate node UUID',
       mutate: (responses: Record<string, unknown>) => {
         const envelope = responses[
-          '/api/v1/workflow-node-templates'
+          '/api/v1/workflow-node-templates?page=1&page_size=100'
         ] as Envelope
         const data = envelope.data as { items: unknown[] }
         data.items.push(structuredClone(data.items[0]))
@@ -178,7 +257,7 @@ describe('Workflow Action Catalog adapter', () => {
     )
     const secondResponses = catalogResponses()
     const listEnvelope = secondResponses[
-      '/api/v1/workflow-node-templates'
+      '/api/v1/workflow-node-templates?page=1&page_size=100'
     ] as Envelope
     const list = listEnvelope.data as Record<string, unknown>
     const detail = (secondResponses[
@@ -305,7 +384,7 @@ function catalogResponses(): Record<string, unknown> {
     }
   ]
   return {
-    '/api/v1/workflow-node-templates': {
+    '/api/v1/workflow-node-templates?page=1&page_size=100': {
       code: 0,
       data: {
         authority,
