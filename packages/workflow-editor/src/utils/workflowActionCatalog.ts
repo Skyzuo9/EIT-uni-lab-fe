@@ -3,7 +3,8 @@ import type {
   WorkflowActionHandleTemplate,
   WorkflowActionNodeTemplate,
   WorkflowAuthoringDiagnostic,
-  WorkflowAuthoringGraph
+  WorkflowAuthoringGraph,
+  WorkflowPublishedNodeTemplate
 } from '@unilab/services'
 import { v5 as uuidV5 } from 'uuid'
 
@@ -45,7 +46,7 @@ export function createTypedActionNode(
   graph: WorkflowAuthoringGraph,
   input: { nodeUuid: string; templateUuid: string; name: string }
 ): WorkflowAuthoringGraph {
-  const template = typedTemplate(catalog, input.templateUuid)
+  const template = typedActionTemplate(catalog, input.templateUuid)
   if (graph.nodes.some((node) => node.uuid === input.nodeUuid)) {
     throw new Error('Workflow Node UUID 已存在')
   }
@@ -82,6 +83,57 @@ export function createTypedActionNode(
     node_templates: appendCatalogRecords(
       graph.node_templates,
       [cloneRecord(template.wireValue ?? nodeTemplateWireValue(template))],
+      'Workflow NodeTemplate'
+    ),
+    handle_templates: appendCatalogRecords(
+      graph.handle_templates,
+      template.handles.map((handle) =>
+        cloneRecord(handle.wireValue ?? handleTemplateWireValue(handle))
+      ),
+      'Workflow HandleTemplate'
+    )
+  }
+}
+
+export function createPublishedWorkflowNode(
+  catalog: WorkflowActionCatalogSnapshot,
+  graph: WorkflowAuthoringGraph,
+  input: { nodeUuid: string; templateUuid: string; name: string }
+): WorkflowAuthoringGraph {
+  const template = publishedWorkflowTemplate(catalog, input.templateUuid)
+  if (graph.nodes.some((node) => node.uuid === input.nodeUuid)) {
+    throw new Error('Workflow Node UUID 已存在')
+  }
+  if (!input.name || graph.nodes.some((node) => node.name === input.name)) {
+    throw new Error('Workflow Node 名称无效或重复')
+  }
+  return {
+    ...graph,
+    nodes: [
+      ...graph.nodes,
+      {
+        uuid: input.nodeUuid,
+        workflow_node_template_uuid: template.uuid,
+        name: input.name,
+        status: 'idle',
+        type: 'workflow',
+        pose: {},
+        param: {},
+        execution_policy: {},
+        disabled: false,
+        minimized: false,
+        meta_data: {
+          unilab: {
+            input_bindings: {}
+          }
+        }
+      }
+    ],
+    node_templates: appendCatalogRecords(
+      graph.node_templates,
+      [cloneRecord(template.wireValue ?? publishedNodeTemplateWireValue(
+        template
+      ))],
       'Workflow NodeTemplate'
     ),
     handle_templates: appendCatalogRecords(
@@ -226,6 +278,7 @@ export function updateTypedActionLiteral(
   handleUuid: string,
   value: unknown
 ): WorkflowAuthoringGraph {
+  assertParentBoundaryNode(graph, nodeUuid)
   const node = graph.nodes.find((item) => item.uuid === nodeUuid)
   if (!node) throw new Error('Workflow Node 不存在')
   const template = typedTemplate(
@@ -279,6 +332,7 @@ export function bindTypedActionWorkflowInput(
   handleUuid: string,
   parameter: string
 ): WorkflowAuthoringGraph {
+  assertParentBoundaryNode(graph, nodeUuid)
   const handle = requireNodeHandle(
     catalog,
     graph,
@@ -329,6 +383,8 @@ export function connectTypedActionEdge(
     targetHandleUuid: string
   }
 ): WorkflowAuthoringGraph {
+  assertParentBoundaryNode(graph, input.sourceNodeUuid)
+  assertParentBoundaryNode(graph, input.targetNodeUuid)
   const edgeUuid = uuidV5(
     `authoring-edge:${input.sourceNodeUuid}:${input.sourceHandleUuid}:` +
       `${input.targetNodeUuid}:${input.targetHandleUuid}`,
@@ -444,13 +500,16 @@ export function rehydrateTypedActionGraph(
       'target'
     )
   }
-  const referencedTemplates = catalog.actionTemplates.filter((template) =>
-    referencedTemplateUuids.has(template.uuid)
-  )
+  const referencedTemplates = [
+    ...catalog.actionTemplates,
+    ...catalog.workflowTemplates
+  ].filter((template) => referencedTemplateUuids.has(template.uuid))
   return {
     ...graph,
     node_templates: referencedTemplates.map((template) =>
-      cloneRecord(template.wireValue ?? nodeTemplateWireValue(template))
+      cloneRecord(template.wireValue ?? executableNodeTemplateWireValue(
+        template
+      ))
     ),
     handle_templates: referencedTemplates.flatMap((template) =>
       template.handles.map((handle) =>
@@ -473,6 +532,46 @@ function nodeTemplateWireValue(
     schema: template.schema,
     goal: template.goal,
     goal_default: template.goalDefault
+  }
+}
+
+function executableNodeTemplateWireValue(
+  template: ExecutableNodeTemplate
+): Record<string, unknown> {
+  return 'workflowUuid' in template
+    ? publishedNodeTemplateWireValue(template)
+    : nodeTemplateWireValue(template)
+}
+
+function publishedNodeTemplateWireValue(
+  template: WorkflowPublishedNodeTemplate
+): Record<string, unknown> {
+  return {
+    uuid: template.uuid,
+    resource_template_uuid: template.resourceTemplateUuid,
+    name: template.name,
+    display_name: template.displayName,
+    class: template.workflowClass,
+    type: 'workflow',
+    node_type: 'workflow',
+    schema: template.schema,
+    goal: template.goal,
+    goal_default: template.goalDefault,
+    feedback: {},
+    result: template.result,
+    meta_data: {
+      unilab: {
+        framework_owner_only: true,
+        workflow_source: {
+          kind: template.source.kind,
+          definition_fqid: template.source.definitionFqid,
+          module: template.source.module,
+          symbol: template.source.symbol,
+          package_catalog_digest: template.source.packageCatalogDigest,
+          definition_content_hash: template.source.definitionContentHash
+        }
+      }
+    }
   }
 }
 
@@ -561,27 +660,70 @@ function workflowInputNames(graph: WorkflowAuthoringGraph): string[] {
   return names
 }
 
+type ExecutableNodeTemplate =
+  | WorkflowActionNodeTemplate
+  | WorkflowPublishedNodeTemplate
+
 function typedTemplate(
   catalog: WorkflowActionCatalogSnapshot,
   templateUuid: string
-): WorkflowActionNodeTemplate {
-  const template = catalog.actionTemplates.find((item) => item.uuid === templateUuid)
+): ExecutableNodeTemplate {
+  const action = catalog.actionTemplates.find((item) =>
+    item.uuid === templateUuid
+  )
+  if (action) {
+    const extension = recordOrNull(
+      action.schema['x-unilabos-action-contract']
+    )
+    if (extension?.version === 1) return action
+  }
+  const workflow = catalog.workflowTemplates.find((item) =>
+    item.uuid === templateUuid
+  )
+  if (workflow) {
+    const extension = recordOrNull(
+      workflow.schema['x-unilabos-workflow-contract']
+    )
+    if (extension?.version === 1) return workflow
+  }
+  throw new Error('Typed Action/Workflow template 不存在')
+}
+
+function publishedWorkflowTemplate(
+  catalog: WorkflowActionCatalogSnapshot,
+  templateUuid: string
+): WorkflowPublishedNodeTemplate {
+  const template = catalog.workflowTemplates.find((item) =>
+    item.uuid === templateUuid
+  )
   const extension = template && recordOrNull(
-    template.schema['x-unilabos-action-contract']
+    template.schema['x-unilabos-workflow-contract']
   )
   if (!template || extension?.version !== 1) {
+    throw new Error('Published Workflow template 不存在')
+  }
+  return template
+}
+
+function typedActionTemplate(
+  catalog: WorkflowActionCatalogSnapshot,
+  templateUuid: string
+): WorkflowActionNodeTemplate {
+  const template = typedTemplate(catalog, templateUuid)
+  if ('workflowUuid' in template) {
     throw new Error('Typed Action template 不存在')
   }
   return template
 }
 
 function orderedTargetHandles(
-  template: WorkflowActionNodeTemplate
+  template: ExecutableNodeTemplate
 ): WorkflowActionHandleTemplate[] {
-  const extension = recordValue(
-    template.schema['x-unilabos-action-contract']
-  )
-  const order = stringArray(extension.input_order)
+  const order = 'workflowUuid' in template
+    ? template.inputOrder
+    : stringArray(recordValue(
+      template.schema['x-unilabos-action-contract']
+    ).input_order)
   const handles = new Map(
     template.handles
       .filter((handle) =>
@@ -597,6 +739,17 @@ function orderedTargetHandles(
     if (!handle) throw new Error('Typed Action target Handle 缺失')
     return handle
   })
+}
+
+function assertParentBoundaryNode(
+  graph: WorkflowAuthoringGraph,
+  nodeUuid: string
+): void {
+  const node = graph.nodes.find((item) => item.uuid === nodeUuid)
+  if (!node) throw new Error('Workflow Node 不存在')
+  if (node.parent_uuid !== undefined && node.parent_uuid !== null) {
+    throw new Error('Composite internal/private Node 只读；请编辑 invocation boundary')
+  }
 }
 
 function requireNodeHandle(
