@@ -37,6 +37,29 @@ describe('Published Workflow Catalog in the original Authoring panel', () => {
     expect(workflowPicker).toContain('template.uuid')
   })
 
+  it('enables child selection through the Published boundary insertion seam', () => {
+    const source = readFileSync(panelPath, 'utf8')
+    const workflowPicker = pickerLabel(source, '子工作流模板')
+
+    expect(source).toContain('createPublishedWorkflowNode')
+    expect(workflowPicker).not.toMatch(/<select[\s\S]*?\sdisabled(?:\s|>)/)
+    expect(workflowPicker).toMatch(
+      /disabled=\{[\s\S]*?busy[\s\S]*?canvasMutationEnabled[\s\S]*?graph[\s\S]*?\}/
+    )
+    expect(workflowPicker).toMatch(
+      /onChange=\{[\s\S]*?addPublishedWorkflowNode\(event\.target\.value\)/
+    )
+    expect(source).toContain('globalThis.crypto.randomUUID()')
+  })
+
+  it('renders OS diagnostic code and message without frontend replacement', () => {
+    const source = readFileSync(panelPath, 'utf8')
+
+    expect(source).toContain('<code>{diagnostic.code}</code>')
+    expect(source).toContain('<span>{diagnostic.message}</span>')
+    expect(source).not.toMatch(/composite_[a-z_]+\s*:\s*['"`]/)
+  })
+
   it('does not add a component fetch, second Catalog loader, or profile branch', () => {
     const source = readFileSync(panelPath, 'utf8')
     const catalogMethods = [...source.matchAll(
