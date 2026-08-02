@@ -7,6 +7,7 @@ const panelPath = fileURLToPath(new URL(
   './PersistentWorkflowAuthoringPanel.tsx',
   import.meta.url
 ))
+const dagPath = fileURLToPath(new URL('./WorkflowDag.tsx', import.meta.url))
 
 describe('Published Workflow Catalog in the original Authoring panel', () => {
   it('renders separate Action and child Workflow pickers from one union snapshot', () => {
@@ -60,6 +61,23 @@ describe('Published Workflow Catalog in the original Authoring panel', () => {
     expect(source).not.toMatch(/composite_[a-z_]+\s*:\s*['"`]/)
   })
 
+  it('keeps Composite expansion session-only and resets it on OS graph identity changes', () => {
+    const source = readFileSync(dagPath, 'utf8')
+    const toggle = functionBody(source, 'const toggleGroup')
+
+    expect(source).toContain('projectNestedWorkflow(nodes, links, expandedGroupIds)')
+    expect(source).toMatch(
+      /groupSignature[\s\S]*?node\.compositeSignature/
+    )
+    expect(source).toMatch(
+      /useEffect\(\(\) => \{\s*setExpandedGroupIds\(new Set\(\)\)\s*\}, \[groupSignature\]\)/
+    )
+    expect(toggle).toContain('setExpandedGroupIds')
+    expect(toggle).not.toMatch(
+      /onConnect|onGraphChange|fetch|runtime\.|setNodes|setEdges/
+    )
+  })
+
   it('does not add a component fetch, second Catalog loader, or profile branch', () => {
     const source = readFileSync(panelPath, 'utf8')
     const catalogMethods = [...source.matchAll(
@@ -81,4 +99,13 @@ function pickerLabel(source: string, label: string): string {
   const value = labels.find((match) => match[0].includes(label))?.[0]
   expect(value, `${label} picker must remain in the original panel`).toBeTruthy()
   return value ?? ''
+}
+
+function functionBody(source: string, declaration: string): string {
+  const start = source.indexOf(declaration)
+  expect(start, `${declaration} must exist`).toBeGreaterThanOrEqual(0)
+  const tail = source.slice(start)
+  const end = tail.indexOf('\n  }, [])')
+  expect(end, `${declaration} must remain a local callback`).toBeGreaterThan(0)
+  return tail.slice(0, end)
 }

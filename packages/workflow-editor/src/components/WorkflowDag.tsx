@@ -97,7 +97,7 @@ export default function WorkflowDag({
   const groupSignature = useMemo(
     () => nodes
       .filter((node) => node.groupKind === 'subworkflow')
-      .map((node) => `${node.id}:${node.descendantNodeIds?.length || 0}`)
+      .map((node) => `${node.id}:${node.compositeSignature || ''}`)
       .join('|'),
     [nodes]
   )

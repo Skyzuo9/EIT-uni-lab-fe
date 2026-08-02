@@ -7,6 +7,7 @@ import {
   projectPersistentAuthoringGraph,
   updatePersistentAuthoringNodeName
 } from './persistentAuthoringGraph'
+import { projectNestedWorkflow } from './canonicalWorkflow'
 
 const graph: WorkflowAuthoringGraph = {
   workflow: { uuid: 'workflow-1', revision: 7 },
@@ -112,6 +113,109 @@ describe('persistent Authoring canvas graph edits', () => {
   )
 })
 
+describe('C1 persistent Composite hierarchy', () => {
+  it('uses OS parent_uuid and Published templates as the hierarchy authority', () => {
+    const projected = projectPersistentAuthoringGraph(compositeGraph())
+    const byId = new Map(projected.nodes.map((node) => [node.id, node]))
+
+    expect(byId.get('outer')).toEqual(expect.objectContaining({
+      groupKind: 'subworkflow',
+      collapsedByDefault: true,
+      childNodeIds: ['outer-action', 'inner'],
+      descendantNodeIds: ['outer-action', 'inner', 'inner-action'],
+      openChildWorkflowUuid: 'workflow-child-outer'
+    }))
+    expect(byId.get('inner')).toEqual(expect.objectContaining({
+      groupKind: 'subworkflow',
+      parentGroupId: 'outer',
+      childNodeIds: ['inner-action'],
+      descendantNodeIds: ['inner-action'],
+      authoringReadOnly: true,
+      openChildWorkflowUuid: 'workflow-child-inner'
+    }))
+    expect(byId.get('outer-action')).toEqual(expect.objectContaining({
+      parentGroupId: 'outer',
+      authoringReadOnly: true,
+      openChildWorkflowUuid: 'workflow-child-outer'
+    }))
+    expect(byId.get('inner-action')).toEqual(expect.objectContaining({
+      parentGroupId: 'inner',
+      authoringReadOnly: true,
+      openChildWorkflowUuid: 'workflow-child-inner'
+    }))
+    expect(byId.get('root-source')).not.toHaveProperty('parentGroupId')
+  })
+
+  it('collapses to boundaries, expands one level at a time, and never rewires external endpoints', () => {
+    const graph = compositeGraph()
+    const before = structuredClone(graph)
+    const projected = projectPersistentAuthoringGraph(graph)
+
+    const collapsed = projectNestedWorkflow(
+      projected.nodes,
+      projected.links,
+      new Set()
+    )
+    expect(collapsed.nodes.map((node) => node.id)).toEqual([
+      'root-source',
+      'outer',
+      'root-sink'
+    ])
+    expect(collapsed.links.map(edgeIdentity)).toEqual([
+      'root-source:source-boundary->outer:outer-input',
+      'outer:outer-output->root-sink:sink-boundary'
+    ])
+
+    const outerExpanded = projectNestedWorkflow(
+      projected.nodes,
+      projected.links,
+      new Set(['outer'])
+    )
+    expect(outerExpanded.nodes.map((node) => node.id)).toEqual([
+      'root-source',
+      'outer',
+      'outer-action',
+      'inner',
+      'root-sink'
+    ])
+
+    const fullyExpanded = projectNestedWorkflow(
+      projected.nodes,
+      projected.links,
+      new Set(['outer', 'inner'])
+    )
+    expect(fullyExpanded.nodes.map((node) => node.id)).toEqual([
+      'root-source',
+      'outer',
+      'outer-action',
+      'inner',
+      'inner-action',
+      'root-sink'
+    ])
+    expect(fullyExpanded.links.map(edgeIdentity)).toContain(
+      'root-source:source-boundary->outer:outer-input'
+    )
+    expect(fullyExpanded.links.map(edgeIdentity)).toContain(
+      'outer:outer-output->root-sink:sink-boundary'
+    )
+    expect(graph).toEqual(before)
+  })
+
+  it('changes the Composite projection signature when the OS graph revision changes', () => {
+    const first = projectPersistentAuthoringGraph(compositeGraph())
+    const nextGraph = compositeGraph()
+    nextGraph.workflow = { ...nextGraph.workflow, revision: 9 }
+    const second = projectPersistentAuthoringGraph(nextGraph)
+    const firstOuter = first.nodes.find((node) => node.id === 'outer')
+    const secondOuter = second.nodes.find((node) => node.id === 'outer')
+
+    expect(projectionField(firstOuter, 'compositeSignature')).toBeTruthy()
+    expect(projectionField(secondOuter, 'compositeSignature')).not.toBe(
+      projectionField(firstOuter, 'compositeSignature')
+    )
+  })
+})
+
 describe('persistent Authoring Graph file import', () => {
   it('accepts a raw graph for the current Workflow', () => {
     expect(parseWorkflowAuthoringGraphImport(
@@ -164,3 +268,130 @@ describe('persistent Authoring Graph file import', () => {
     )
   })
 })
+
+function compositeGraph(): WorkflowAuthoringGraph {
+  return {
+    workflow: { uuid: 'workflow-parent', revision: 8 },
+    nodes: [
+      node('root-source', 'source-template'),
+      node('outer', 'outer-template', undefined, 'workflow'),
+      node('outer-action', 'action-template', 'outer'),
+      node('inner', 'inner-template', 'outer', 'workflow'),
+      node('inner-action', 'action-template', 'inner'),
+      node('root-sink', 'sink-template')
+    ],
+    edges: [
+      edge(
+        'external-input',
+        'root-source',
+        'source-boundary',
+        'outer',
+        'outer-input'
+      ),
+      edge('outer-start', 'outer', 'outer-ready', 'outer-action', 'action-in'),
+      edge('outer-inner', 'outer-action', 'action-out', 'inner', 'inner-input'),
+      edge('inner-start', 'inner', 'inner-ready', 'inner-action', 'action-in'),
+      edge(
+        'external-output',
+        'outer',
+        'outer-output',
+        'root-sink',
+        'sink-boundary'
+      )
+    ],
+    node_templates: [
+      { uuid: 'source-template', type: 'action', name: 'root_source' },
+      publishedTemplate(
+        'outer-template',
+        'workflow-child-outer',
+        'sha256:outer-contract'
+      ),
+      { uuid: 'action-template', type: 'action', name: 'internal_action' },
+      publishedTemplate(
+        'inner-template',
+        'workflow-child-inner',
+        'sha256:inner-contract'
+      ),
+      { uuid: 'sink-template', type: 'action', name: 'root_sink' }
+    ],
+    handle_templates: []
+  }
+}
+
+function publishedTemplate(
+  uuid: string,
+  workflowUuid: string,
+  contractDigest: string
+): Record<string, unknown> {
+  return {
+    uuid,
+    type: 'workflow',
+    node_type: 'workflow',
+    name: `workflow:${workflowUuid}`,
+    schema: {
+      'x-unilabos-workflow-contract': {
+        version: 1,
+        compatibility_version: 1,
+        workflow_uuid: workflowUuid,
+        workflow_revision: 3,
+        applied_source_hash: 'sha256:applied-source',
+        contract_digest: contractDigest,
+        composition_allow_transparent: false,
+        input_order: ['sample'],
+        output_order: ['result']
+      }
+    }
+  }
+}
+
+function node(
+  uuid: string,
+  templateUuid: string,
+  parentUuid?: string,
+  type = 'action'
+): Record<string, unknown> {
+  return {
+    uuid,
+    workflow_node_template_uuid: templateUuid,
+    name: uuid,
+    type,
+    param: {},
+    ...(parentUuid ? { parent_uuid: parentUuid } : {})
+  }
+}
+
+function edge(
+  uuid: string,
+  sourceNodeUuid: string,
+  sourceHandleUuid: string,
+  targetNodeUuid: string,
+  targetHandleUuid: string
+): Record<string, unknown> {
+  return {
+    uuid,
+    source_node_uuid: sourceNodeUuid,
+    source_handle_uuid: sourceHandleUuid,
+    target_node_uuid: targetNodeUuid,
+    target_handle_uuid: targetHandleUuid,
+    meta_data: {}
+  }
+}
+
+function edgeIdentity(link: {
+  source: string
+  sourceHandleUuid?: string
+  target: string
+  targetHandleUuid?: string
+}): string {
+  return `${link.source}:${link.sourceHandleUuid}->` +
+    `${link.target}:${link.targetHandleUuid}`
+}
+
+function projectionField(
+  node: unknown,
+  key: string
+): unknown {
+  return node && typeof node === 'object'
+    ? (node as Record<string, unknown>)[key]
+    : undefined
+}

@@ -26,6 +26,12 @@ export interface WorkflowNode {
   childNodeIds?: string[]
   descendantNodeIds?: string[]
   collapsedByDefault?: boolean
+  // Persistent Authoring projects OS-owned Composite internals as read-only.
+  authoringReadOnly?: boolean
+  // Stable navigation target for a Composite boundary or one of its internals.
+  openChildWorkflowUuid?: string
+  // Resets session-only expansion when the authoritative OS graph changes.
+  compositeSignature?: string
   handles?: WorkflowHandlePort[]
 }
 
