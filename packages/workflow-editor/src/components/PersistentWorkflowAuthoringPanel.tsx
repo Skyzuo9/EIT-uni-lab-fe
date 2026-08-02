@@ -76,6 +76,7 @@ import {
   type WorkflowOutputTab
 } from './WorkflowOutput'
 import { WorkflowIoSummary } from './WorkflowIoSummary'
+import { WorkflowIoEditor } from './WorkflowIoEditor'
 import { useWorkflowSessionStore } from './WorkflowSessionProvider'
 import { WorkflowTraceViewer } from './WorkflowTraceViewer'
 import styles from './workflow.module.scss'
@@ -1323,6 +1324,21 @@ export function PersistentWorkflowAuthoringPanel({
       )}
 
       {appliedIo && <WorkflowIoSummary io={appliedIo} />}
+
+      {graph && (
+        <WorkflowIoEditor
+          graph={graph}
+          editable={!busy && policy.canvasMutationEnabled}
+          onGraphChange={(nextGraph) => {
+            setGraph(nextGraph)
+            setCanvasDirty(true)
+            setError(null)
+            setMessage(
+              'Candidate I/O 已修改；保存前将由 OS 生成 canonical Python'
+            )
+          }}
+        />
+      )}
 
       <main className="persistent-authoring__workbench">
         <section
