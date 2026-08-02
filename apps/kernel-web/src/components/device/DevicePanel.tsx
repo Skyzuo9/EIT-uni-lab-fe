@@ -85,12 +85,14 @@ export default function DevicePanel(): React.JSX.Element {
   const feedbackByTaskRef = useRef<Map<string, DeviceActionFeedbackState>>(
     new Map()
   )
+  const refreshByTaskRef = useRef<Map<string, Promise<void>>>(new Map())
   const canForceUnlock = services.capabilities.devices.forceUnlock
   const canRunActionTask = services.capabilities.devices.runActionTask
 
   useEffect(() => {
     runAttemptRef.current = null
     feedbackByTaskRef.current.clear()
+    refreshByTaskRef.current.clear()
     setRunOperation(null)
   }, [backend.apiUrl, backend.id])
 
@@ -295,6 +297,24 @@ export default function DevicePanel(): React.JSX.Element {
     }
   }, [refresh, services.deviceActionTasks, services.workflow])
 
+  const queueDeviceActionTaskRefresh = useCallback((
+    taskUuid: string,
+    actionRef: string
+  ): Promise<void> => {
+    const previous = refreshByTaskRef.current.get(taskUuid) ?? Promise.resolve()
+    const next = previous
+      .catch(() => undefined)
+      .then(() => refreshDeviceActionTask(taskUuid, actionRef))
+    refreshByTaskRef.current.set(taskUuid, next)
+    const removeIfCurrent = (): void => {
+      if (refreshByTaskRef.current.get(taskUuid) === next) {
+        refreshByTaskRef.current.delete(taskUuid)
+      }
+    }
+    void next.then(removeIfCurrent, removeIfCurrent)
+    return next
+  }, [refreshDeviceActionTask])
+
   const activeTaskUuid = runOperation?.state && 'taskUuid' in runOperation.state
     ? runOperation.state.taskUuid
     : null
@@ -303,7 +323,7 @@ export default function DevicePanel(): React.JSX.Element {
     const actionRef = runOperation.actionRef
     const subscription = services.workflow.subscribeWorkflowRuntime((event) => {
       if (event.data.workflow_task_uuid !== activeTaskUuid) return
-      void refreshDeviceActionTask(activeTaskUuid, actionRef).catch((error) => {
+      void queueDeviceActionTaskRefresh(activeTaskUuid, actionRef).catch((error) => {
         setRunOperation((current) => {
           if (
             !current ||
@@ -325,7 +345,12 @@ export default function DevicePanel(): React.JSX.Element {
       })
     })
     return () => subscription.dispose()
-  }, [activeTaskUuid, refreshDeviceActionTask, runOperation?.actionRef, services.workflow])
+  }, [
+    activeTaskUuid,
+    queueDeviceActionTaskRefresh,
+    runOperation?.actionRef,
+    services.workflow
+  ])
 
   const handleRunAction = useCallback(async (
     device: ManagedDevice,
@@ -386,7 +411,7 @@ export default function DevicePanel(): React.JSX.Element {
       })
       const [, taskRefresh] = await Promise.allSettled([
         refresh(),
-        refreshDeviceActionTask(view.task_uuid, action.actionRef)
+        queueDeviceActionTaskRefresh(view.task_uuid, action.actionRef)
       ])
       if (taskRefresh.status === 'rejected') {
         const error = taskRefresh.reason
@@ -440,7 +465,7 @@ export default function DevicePanel(): React.JSX.Element {
     argumentDraft,
     loadActionCatalog,
     refresh,
-    refreshDeviceActionTask,
+    queueDeviceActionTaskRefresh,
     runOperation?.state.kind,
     services.deviceActionTasks
   ])

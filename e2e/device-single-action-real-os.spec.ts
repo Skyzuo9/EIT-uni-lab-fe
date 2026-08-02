@@ -240,10 +240,12 @@ test('one device Action becomes a formal Task/Job and returns through the origin
   )
   expect(browserPosts).toHaveLength(2)
   for (const entry of browserPosts) assertNoSystemSource(entry.body)
-  expect(browserRequests.some(
+  const feedbackRequests = browserRequests.filter(
     (entry) => entry.path.includes('/workflow-node-jobs/') &&
       entry.path.endsWith('/feedback')
-  )).toBe(true)
+  )
+  expect(feedbackRequests.length).toBeGreaterThan(0)
+  expect(feedbackRequests.length).toBeLessThanOrEqual(4)
   expect(browserRequests.some(
     (entry) => entry.path.startsWith('/api/v1/runtime/runs') ||
       entry.path.startsWith('/api/v1/runtime/events')
