@@ -124,7 +124,10 @@ function decodeInputContract(value: unknown): WorkflowInputContract {
       (!descriptor.required && nullable && descriptor.default !== null) ||
       (!descriptor.required && !nullable && descriptor.default === null)
     ) invalid()
-    if (hasDefault && !isWorkflowJsonValue(descriptor.default)) invalid()
+    if (
+      hasDefault &&
+      !isWorkflowDefaultValue(schema, descriptor.default)
+    ) invalid()
     return descriptor as unknown as WorkflowInputDescriptor
   })
   return { version: 1, parameters }
@@ -206,13 +209,18 @@ function decodeValueSchema(
       ['$slot'],
       ['allowed_resource_template_uuids']
     ) || schema.$slot !== 'ResourceSlot') invalid()
-    if (schema.allowed_resource_template_uuids !== undefined && (
-      !Array.isArray(schema.allowed_resource_template_uuids) ||
-      schema.allowed_resource_template_uuids.length === 0 ||
-      schema.allowed_resource_template_uuids.some(
-        (item) => typeof item !== 'string' || item.length === 0
-      )
-    )) invalid()
+    if (schema.allowed_resource_template_uuids !== undefined) {
+      if (
+        !Array.isArray(schema.allowed_resource_template_uuids) ||
+        schema.allowed_resource_template_uuids.length === 0
+      ) invalid()
+      const identities = new Set<string>()
+      for (const item of schema.allowed_resource_template_uuids) {
+        const identity = canonicalUuid(item)
+        if (identities.has(identity)) invalid()
+        identities.add(identity)
+      }
+    }
     return schema as unknown as WorkflowValueSchema
   }
 
@@ -234,11 +242,147 @@ function decodeValueSchema(
     if (!Object.hasOwn(schema, 'items')) invalid()
     decodeValueSchema(schema.items, false, false)
   }
-  if (
-    schema.enum !== undefined &&
-    (!Array.isArray(schema.enum) || schema.enum.length === 0)
-  ) invalid()
+  validateSchemaConstraints(schema, kind)
   return schema as unknown as WorkflowValueSchema
+}
+
+function validateSchemaConstraints(
+  schema: Record<string, unknown>,
+  kind: string
+): void {
+  if (kind === 'integer' || kind === 'number') {
+    const minimum = optionalNumberBound(schema.minimum, kind)
+    const maximum = optionalNumberBound(schema.maximum, kind)
+    if (minimum !== undefined && maximum !== undefined && minimum > maximum) {
+      invalid()
+    }
+  }
+  if (kind === 'string') {
+    const minimum = optionalLengthBound(schema.minLength)
+    const maximum = optionalLengthBound(schema.maxLength)
+    if (minimum !== undefined && maximum !== undefined && minimum > maximum) {
+      invalid()
+    }
+    if (
+      schema['x-unilabos-editor-control'] !== undefined &&
+      schema['x-unilabos-editor-control'] !== 'site_selector'
+    ) invalid()
+  }
+  if (kind === 'array') {
+    const minimum = optionalLengthBound(schema.minItems)
+    const maximum = optionalLengthBound(schema.maxItems)
+    if (minimum !== undefined && maximum !== undefined && minimum > maximum) {
+      invalid()
+    }
+  }
+  if (schema.enum === undefined) return
+  if (
+    !['string', 'integer', 'number', 'boolean'].includes(kind) ||
+    !Array.isArray(schema.enum) ||
+    schema.enum.length === 0
+  ) invalid()
+  const members = new Set<unknown>()
+  for (const member of schema.enum) {
+    if (!isScalarKind(kind, member) || members.has(member)) invalid()
+    members.add(member)
+    if (!satisfiesConstraints(schema, kind, member)) invalid()
+  }
+}
+
+function optionalNumberBound(
+  value: unknown,
+  kind: 'integer' | 'number'
+): number | undefined {
+  if (value === undefined) return undefined
+  if (!isScalarKind(kind, value)) invalid()
+  return value as number
+}
+
+function optionalLengthBound(value: unknown): number | undefined {
+  if (value === undefined) return undefined
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
+    invalid()
+  }
+  return value
+}
+
+function isWorkflowDefaultValue(
+  schema: WorkflowValueSchema,
+  value: unknown
+): value is WorkflowJsonValue {
+  if (!isWorkflowJsonValue(value)) return false
+  if ('anyOf' in schema) {
+    return value === null || isWorkflowDefaultValue(schema.anyOf[0], value)
+  }
+  if ('$slot' in schema) return false
+  if (value === null) return false
+  const kind = schema.type
+  if (kind === 'object') {
+    return typeof value === 'object' && !Array.isArray(value)
+  }
+  if (kind === 'array') {
+    return Array.isArray(value) &&
+      satisfiesConstraints(schema, kind, value) &&
+      value.every((item) => isWorkflowDefaultValue(schema.items, item))
+  }
+  return isScalarKind(kind, value) &&
+    satisfiesConstraints(schema, kind, value)
+}
+
+function isScalarKind(kind: string, value: unknown): boolean {
+  if (kind === 'string') return typeof value === 'string'
+  if (kind === 'boolean') return typeof value === 'boolean'
+  if (kind === 'integer') {
+    return typeof value === 'number' &&
+      Number.isFinite(value) && Number.isInteger(value)
+  }
+  if (kind === 'number') {
+    return typeof value === 'number' && Number.isFinite(value)
+  }
+  return false
+}
+
+function satisfiesConstraints(
+  schema: Record<string, unknown>,
+  kind: string,
+  value: unknown
+): boolean {
+  if (kind === 'integer' || kind === 'number') {
+    const numeric = value as number
+    if (schema.minimum !== undefined && numeric < (schema.minimum as number)) {
+      return false
+    }
+    if (schema.maximum !== undefined && numeric > (schema.maximum as number)) {
+      return false
+    }
+  } else if (kind === 'string') {
+    const length = Array.from(value as string).length
+    if (schema.minLength !== undefined && length < (schema.minLength as number)) {
+      return false
+    }
+    if (schema.maxLength !== undefined && length > (schema.maxLength as number)) {
+      return false
+    }
+  } else if (kind === 'array') {
+    const length = (value as unknown[]).length
+    if (schema.minItems !== undefined && length < (schema.minItems as number)) {
+      return false
+    }
+    if (schema.maxItems !== undefined && length > (schema.maxItems as number)) {
+      return false
+    }
+  }
+  return schema.enum === undefined ||
+    (schema.enum as unknown[]).some((member) => Object.is(member, value))
+}
+
+function canonicalUuid(value: unknown): string {
+  if (
+    typeof value !== 'string' ||
+    value === '00000000-0000-0000-0000-000000000000' ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(value)
+  ) invalid()
+  return value
 }
 
 function exactRecord(value: unknown, keys: string[]): Record<string, unknown> {
