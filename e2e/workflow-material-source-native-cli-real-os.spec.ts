@@ -259,6 +259,10 @@ test('LINQ-inspired MaterialSource starts through native unilab and commits Inve
     name: '开始运行',
     exact: true
   }).click()
+  await panel.getByRole('button', {
+    name: '确认并创建 Task',
+    exact: true
+  }).click()
   const taskEnvelope = await (await taskCreated).json() as {
     data: { uuid: string }
   }
@@ -358,6 +362,10 @@ test('LINQ-inspired MaterialSource starts through native unilab and commits Inve
     response.request().method() === 'POST' && response.status() === 201
   )
   await startButton.click()
+  await panel.getByRole('button', {
+    name: '确认并创建 Task',
+    exact: true
+  }).click()
   const blockedTaskUuid = ((await (await blockedCreated).json()) as {
     data: { uuid: string }
   }).data.uuid
