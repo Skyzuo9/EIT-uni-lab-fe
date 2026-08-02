@@ -83,6 +83,7 @@ describe('LocalRuntimeManager command plan', () => {
       'ros',
       '--app_bridges',
       'fastapi',
+      '--edge_scheduler',
       '--port',
       '18003',
       '--disable_browser',

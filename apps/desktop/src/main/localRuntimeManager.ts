@@ -588,6 +588,7 @@ function edgeSpec(config: ResolvedRuntimeConfig): LocalRuntimeSpawnSpec {
       'ros',
       '--app_bridges',
       'fastapi',
+      '--edge_scheduler',
       '--port',
       String(LOCAL_RUNTIME_PORTS.edgeHttp),
       '--disable_browser',

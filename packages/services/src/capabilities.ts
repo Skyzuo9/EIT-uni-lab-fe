@@ -6,6 +6,7 @@ export interface ServerCapabilities {
     listActions: boolean
     subscribeStatus: boolean
     forceUnlock: boolean
+    runActionTask: boolean
   }
   material: {
     readTemplates: boolean
@@ -41,6 +42,7 @@ export const SERVER_CAPABILITY_KEYS = [
   'devices.listActions',
   'devices.subscribeStatus',
   'devices.forceUnlock',
+  'devices.runActionTask',
   'material.readTemplates',
   'material.readGraph',
   'material.create',
@@ -107,6 +109,8 @@ export function hasServerCapability(
       return capabilities.devices.subscribeStatus
     case 'devices.forceUnlock':
       return capabilities.devices.forceUnlock
+    case 'devices.runActionTask':
+      return capabilities.devices.runActionTask
     case 'material.readTemplates':
       return capabilities.material.readTemplates
     case 'material.readGraph':
@@ -169,7 +173,8 @@ function unavailableCapabilities(): ServerCapabilities {
       listOnline: false,
       listActions: false,
       subscribeStatus: false,
-      forceUnlock: false
+      forceUnlock: false,
+      runActionTask: false
     },
     material: {
       readTemplates: false,
@@ -209,6 +214,7 @@ function localPythonCapabilities(): ServerCapabilities {
   const capabilities = unavailableCapabilities()
   capabilities.devices.listActions = true
   capabilities.devices.forceUnlock = true
+  capabilities.devices.runActionTask = true
   capabilities.material.readGraph = true
   return capabilities
 }

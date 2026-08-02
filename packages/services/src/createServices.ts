@@ -12,6 +12,10 @@ import {
   type LaboratoryService
 } from './laboratory'
 import {
+  createDeviceActionTaskRuntime,
+  type DeviceActionTaskRuntimePort
+} from './deviceActionTasks'
+import {
   createRealtimeService,
   type RealtimeService
 } from './realtime'
@@ -29,6 +33,7 @@ export interface Services {
   capabilities: ServerCapabilities
   getCapabilityStatus: (capability: ServerCapability) => CapabilityStatus
   laboratory: LaboratoryService
+  deviceActionTasks: DeviceActionTaskRuntimePort
   materials: MaterialService
   realtime: RealtimeService
   workflow: WorkflowRuntimePort
@@ -53,6 +58,7 @@ export function createServices(options: CreateServicesOptions): Services {
     getCapabilityStatus: (capability) =>
       getCapabilityStatus(options.backend, capabilities, capability),
     laboratory: createLaboratoryService(http, options.backend),
+    deviceActionTasks: createDeviceActionTaskRuntime(http),
     materials: createMaterialService(
       http,
       options.backend,

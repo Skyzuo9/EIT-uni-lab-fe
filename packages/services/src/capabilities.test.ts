@@ -19,11 +19,16 @@ describe('server capability matrix', () => {
       const backend = getDefaultBackend(backendId)
       const capabilities = resolveServerCapabilities(backend)
 
+      expect(capabilities.devices.runActionTask).toBe(
+        backendId === 'local-python'
+      )
+
       for (const capability of SERVER_CAPABILITY_KEYS) {
         const expected =
           (backendId === 'local-python' &&
             (capability === 'devices.listActions' ||
               capability === 'devices.forceUnlock' ||
+              capability === 'devices.runActionTask' ||
               capability === 'material.readGraph'))
         expect(hasServerCapability(capabilities, capability)).toBe(expected)
 

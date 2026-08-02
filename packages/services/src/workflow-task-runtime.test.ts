@@ -208,7 +208,11 @@ describe('WorkflowTask runtime port', () => {
       headers: { 'Content-Type': 'text/event-stream' }
     }))
     vi.stubGlobal('fetch', fetcher)
-    const invalidations: WorkflowRuntimeChangedEvent[] = []
+    const invalidations: Array<{
+      id: string
+      event: string
+      data: Record<string, string>
+    }> = []
     const errors: Error[] = []
     const runtime = taskPort(vi.fn())
 
@@ -245,11 +249,31 @@ describe('WorkflowTask runtime port', () => {
         workflow_task_uuid: '55555555-5555-4555-8555-555555555555'
       })}`,
       '',
+      'id: 44',
+      'event: device_action_task.changed',
+      `data: ${JSON.stringify({ task_uuid: TASK_UUID })}`,
+      '',
       ''
     ].join('\n')))
 
-    await vi.waitFor(() => expect(invalidations).toHaveLength(2))
-    expect(invalidations.map((event) => event.id)).toEqual(['42', '43'])
+    await vi.waitFor(() => expect(invalidations).toHaveLength(3))
+    expect(invalidations).toEqual([
+      {
+        id: '42',
+        event: 'workflow.runtime.changed',
+        data: { workflow_task_uuid: TASK_UUID }
+      },
+      {
+        id: '43',
+        event: 'workflow.runtime.changed',
+        data: { workflow_task_uuid: '55555555-5555-4555-8555-555555555555' }
+      },
+      {
+        id: '44',
+        event: 'device_action_task.changed',
+        data: { task_uuid: TASK_UUID }
+      }
+    ])
     expect(errors).toEqual([])
 
     subscription.dispose()
@@ -274,7 +298,11 @@ describe('WorkflowTask runtime port', () => {
     const errors: Error[] = []
     const runtime = taskPort(vi.fn())
     const subscription = runtime.subscribeWorkflowRuntime(
-      (event) => invalidations.push(event),
+      (event) => {
+        if (event.event === 'workflow.runtime.changed') {
+          invalidations.push(event)
+        }
+      },
       { onError: (error) => errors.push(error) }
     )
 
