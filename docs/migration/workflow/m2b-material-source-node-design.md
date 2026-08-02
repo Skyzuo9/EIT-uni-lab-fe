@@ -9,7 +9,7 @@ FE 基线：
 `integration/fe-os-migration@0bf83ea93de9aff5a10f0419a3322cff27b48595`
 
 OS 合同/行为候选：
-`migration/m2b-material-source-admission@ed0b25cca17fd2fc6b4807b7e687df608b36fded`
+`migration/m2b-material-source-admission@32d42864a29089b9efb67c5282a1cc611d7143ee`
 中的
 `docs/developer_guide/workflow_task_runtime_migration/rounds/m2b-material-source-admission-design.md`。
 
