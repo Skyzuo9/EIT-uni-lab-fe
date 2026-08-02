@@ -428,10 +428,18 @@ async function readEnvelope<Value>(
   init?: RequestInit
 ): Promise<Value> {
   const response = await fetch(url, init)
-  const body = await response.json() as {
+  const text = await response.text()
+  let body: {
     code: number
     data?: Value
     error?: unknown
+  }
+  try {
+    body = JSON.parse(text) as typeof body
+  } catch {
+    throw new Error(
+      `${init?.method ?? 'GET'} ${url} returned ${response.status}: ${text}`
+    )
   }
   expect(response.ok, JSON.stringify(body)).toBe(true)
   expect(body.code).toBe(0)
