@@ -1,6 +1,6 @@
 # I1 Workflow I/O authoring and Task form implementation spec
 
-<!-- current-i1-fe-round:2026-08-02-resource-slot-e2e-green -->
+<!-- current-i1-fe-round:2026-08-02-resource-slot-authority-e2e-green -->
 > [!IMPORTANT]
 > 本块是本文唯一 current 实现状态；下文早期 baseline、分支名与 RED 启动记录保留为
 > provenance，但由本块 supersede。
@@ -13,9 +13,11 @@
 > ResourceSlot selector 复用 `services.materials.getGraph(scope)`，按 OS contract 的 resource-template
 > UUID allowlist 过滤；浏览器对 single/nullable/list 只接受并提交 closed `{uuid}`，不提交 template、
 > label、tree 或 index。真实 OS Material graph → selector → WorkflowTask create → canonical input/snapshot
-> browser gate 已通过，完整 Authoring suite 为 `8 passed`。400/404/409 已在公共 `ServiceError`
-> seam 冻结为可行动的 form-level alert；其中 404/409 的真实浏览器竞态仍等待 Inventory public
-> soft-delete/disposition/restart fault seam，不以 route mock、私有 SQL 或 FE 推断冒充。
+> browser gate 已通过。真实 OS 400/404/409 authority race 也已通过浏览器 Task POST 验证：测试夹具
+> 在选择器读取后改变临时独立 `inventory.db` 中同一 Material 的 durable 状态，OS resolver 分别返回
+> `invalid_input/not_found/conflict`，表单保留且 Task/Job 零写入；没有 route mock 或 FE 伪造响应。
+> 错误提示只有在 Applied form 含 ResourceSlot 且 status/code 精确成对时才给出通用可操作建议，
+> 其余错误原样保留 OS status/code/message，不猜测具体 Material 字段原因。
 >
 > 当前进入候选全门禁、exact-SHA 独立双审与 publication；在这些门完成前 I1 仍保持
 > implementation，Core #157 不提前 Accepted，C1 继续等待 I1 接受。不提前实现 O1。
@@ -29,6 +31,8 @@
 |---|---|---|
 | closed ResourceSlot codec、option port、single/nullable/list UI 与应用边界 RED | `8e84c515e54c605c7b534442a8a83cc7f7904824` | `8874ebb` |
 | 真实 OS Material graph/Task E2E 与 400/404/409 form problem RED | `5299099ba0206b2a571e3e0654c01381cd25ece1` | `0801a80` |
+| 诊断防误导与真实 OS 400/404/409 authority race RED | `ece4f926be983554e076d199f4e40dade82bf2b9` | `68a717e` |
+| 精确隔离 Chromium 预期 4xx console 行 | `c6a6ff8eb79bbff81fd3df534f54ccd26c25193e` | `154be66` |
 
 首轮测试在 production 实现前为 `114 passed / 11 failed`，失败只覆盖缺失的 option module、
 closed codec、selector/list controls 与 app composition。第二轮真实 OS fixture 已成功 compose
@@ -36,7 +40,8 @@ Workflow runtime + Inventory、挂载 `/api/v1/materials/graph` 并 Apply 独立
 旧 production 唯一 browser RED 为 selector disabled。400/404/409 mapper tests 在 mapper 缺失时为
 `1 passed / 5 failed`，没有 route mock、私有 SQL 或 production 修改。
 
-生产提交 `650c430`、`fda91c1` 与 `28bb72f403d6789ea3cdbcb5b122076d59e42d51`
+生产提交 `650c430`、`fda91c1`、`28bb72f403d6789ea3cdbcb5b122076d59e42d51`
+与 `f4f41ed20cb77f7bb236583228da87d6c7189369`
 完成以下合同：
 
 - `workflow-editor` 只依赖 `WorkflowResourceSlotOptionsPort.list()`；kernel-web 从当前
@@ -46,19 +51,17 @@ Workflow runtime + Inventory、挂载 `/api/v1/materials/graph` 并 Apply 独立
 - single、nullable 与 `list[ResourceSlot]` 都只产生 closed `{uuid}`；list 保持用户顺序和重复项，
   任何额外 template/label/tree/index 字段或非 UUID identity 均拒绝；
 - Task create 仍在提交前 rehydrate Applied contract，Candidate/default/Debugger preview 不进入 payload；
-- `400 invalid_input`、`404 not_found`、`409 conflict` 保留 OS status/code/message，并分别投影为
-  类型不兼容、Material 已不存在、Material 不可用/占用的 form-level actionable alert。
+- `400 invalid_input`、`404 not_found`、`409 conflict` 只在 ResourceSlot form context 与精确
+  status/code pair 同时成立时投影为通用 form-level actionable alert；不声称具体 Material 已删除、
+  已占用或 ResourceSlot 类型不兼容；其他 code 和无 ResourceSlot 的表单只显示原始 OS detail。
 
-当前证据：workflow-editor 为 `21 files / 128 tests passed`，根级 typecheck 通过；真实 OS
-Authoring browser suite 为 `8 passed`。ResourceSlot 用例精确验证 Material graph 中 durable
+当前证据：workflow-editor 为 `21 files / 133 tests passed`，根级 typecheck 通过；真实 OS
+Authoring browser suite 为 `11 passed`。ResourceSlot 用例精确验证 Material graph 中 durable
 Material、request 仅 `{uuid}`、OS canonical `Task.input` 补入 `resource_template_uuid`、snapshot
-revision 与 Applied 一致，并保持 WebSocket / pageerror / application error 为 `0`。
-
-404/409 真实 UI rejection 尚不能通过当前 public Material API 稳定制造：选择器只暴露 graph 中
-现存 Material，而 Inventory public seam 当前没有 soft-delete 或 disposition transition mutation。
-本轮保留真实 happy path、OS 自身 resolver/status tests 与 FE public `ServiceError` mapper tests；不以
-测试私有 SQL、路由 mock 或前端伪造 Material 状态补洞。后续 Inventory 提供 public mutation 或
-restart fault fixture 时，把 stale selection 404 与 authority/non-runnable 409 追加到 Core #157 gate。
+revision 与 Applied 一致，并保持 WebSocket / pageerror / application error 为 `0`。新增三个真实
+authority rejection 场景分别验证 HTTP 400/404/409、稳定 OS code/message、选择值与表单保留、
+Task 总数不变、forbidden request/WebSocket/pageerror/非预期 application error 为 `0`；Chromium 对
+每个预期 4xx 自动产生的一条 network console 行单独精确计数，不放宽其他 console error。
 
 ## Applied Task input form round ledger（2026-08-02）
 
@@ -373,7 +376,7 @@ FE unit/component tests 至少覆盖：
 2. required/default/null/opaque object/list 的准确网络 payload 与 canonical Task input；
 3. 错误 Handle、unknown binding、stale Catalog/revision 的 fail-closed UX；
 4. A1 后的 `AllowedResourceTemplates` round-trip；
-5. M1 后的 ResourceSlot `{uuid}` success、404 和 409；
+5. M1 后的 ResourceSlot `{uuid}` success、400、404 和 409；
 6. 全程无 forbidden request、Runtime WebSocket、pageerror、application error 或 polling。
 
 最终候选运行 `pnpm typecheck`、`pnpm test`、`pnpm build:web`、
