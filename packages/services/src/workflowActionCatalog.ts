@@ -270,8 +270,9 @@ function projectPublishedWorkflow(
     packageCatalogDigest: digestValue(rawSource.package_catalog_digest),
     definitionContentHash: digestValue(rawSource.definition_content_hash)
   }
-  const handles = rawHandles.map((handle) =>
-    projectHandle(handle, summary.uuid)
+  const handles = orderPublishedHandles(
+    rawHandles.map((handle) => projectHandle(handle, summary.uuid)),
+    contract
   )
   validatePublishedHandles(handles, contract)
   const goal = recordValue(template.goal)
@@ -302,6 +303,33 @@ function projectPublishedWorkflow(
     source,
     handles
   }, template)
+}
+
+function orderPublishedHandles(
+  handles: WorkflowActionHandleTemplate[],
+  contract: WorkflowSchemaProjection
+): WorkflowActionHandleTemplate[] {
+  const unique = (
+    handleKey: string,
+    ioType: 'source' | 'target'
+  ): WorkflowActionHandleTemplate => {
+    const matches = handles.filter((handle) =>
+      handle.handleKey === handleKey && handle.ioType === ioType
+    )
+    if (matches.length !== 1) invalidCatalog()
+    return matches[0] as WorkflowActionHandleTemplate
+  }
+  const ordered = [
+    ...contract.inputOrder.map((name) => unique(name, 'target')),
+    ...contract.outputOrder.map((name) => unique(name, 'source')),
+    unique('ready', 'target'),
+    unique('ready', 'source')
+  ]
+  if (
+    ordered.length !== handles.length ||
+    new Set(ordered.map((handle) => handle.uuid)).size !== handles.length
+  ) invalidCatalog()
+  return ordered
 }
 
 function projectHandle(
