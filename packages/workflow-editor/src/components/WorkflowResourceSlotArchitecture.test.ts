@@ -17,7 +17,7 @@ describe('Workflow ResourceSlot application boundary', () => {
     expect(authoringPanel).toMatch(/resourceSlotOptionsPort/)
     expect(authoringPanel).toMatch(/loadWorkflowResourceSlotOptions/)
     expect(authoringPanel).toMatch(
-      /workflowTaskInputProblem\s*\(\s*submitError\s*\)/
+      /workflowTaskInputProblem\s*\(\s*submitError\s*,\s*submittedForm\s*\)/
     )
   })
 

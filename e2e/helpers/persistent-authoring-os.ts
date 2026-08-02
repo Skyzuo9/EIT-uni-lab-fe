@@ -48,6 +48,9 @@ export interface PersistentAuthoringOs {
     taskUuid: string,
     idempotencyKey: string
   ) => Promise<RuntimeCommandMutationResult>
+  mutateResourceSlotMaterialAuthority: (
+    state: MaterialAuthorityRaceState
+  ) => Promise<void>
   stopProcess: () => Promise<void>
   restart: () => Promise<void>
   stop: () => Promise<void>
@@ -67,6 +70,12 @@ export interface RuntimeCommandMutationResult {
   result: Record<string, unknown>
   [key: string]: unknown
 }
+
+export type MaterialAuthorityRaceState =
+  | 'invalid_input'
+  | 'not_found'
+  | 'conflict'
+  | 'restore'
 
 export interface PersistentAuthoringOsOptions {
   faultProxy?: boolean
@@ -150,6 +159,15 @@ export async function startPersistentAuthoringOs(
       workingDirectory,
       payload
     })
+  const mutateResourceSlotMaterialAuthority = (
+    state: MaterialAuthorityRaceState
+  ): Promise<void> => runMaterialAuthorityMutation({
+    python,
+    osRepository,
+    workingDirectory,
+    materialUuid: RESOURCE_SLOT_MATERIAL_UUID,
+    state
+  })
 
   return {
     url: faultProxy?.url ?? upstreamUrl,
@@ -192,6 +210,7 @@ export async function startPersistentAuthoringOs(
       if (!result) throw new Error('Terminal command race returned no result')
       return result as RuntimeCommandMutationResult
     },
+    mutateResourceSlotMaterialAuthority,
     stopProcess: async () => {
       if (!child) return
       await stopChild(child)
@@ -488,6 +507,61 @@ finally:
     store.close()
 `
 
+const PYTHON_MATERIAL_AUTHORITY_MUTATOR = String.raw`
+import sqlite3
+import sys
+from pathlib import Path
+
+working_dir = Path(sys.argv[1])
+material_uuid = sys.argv[2]
+state = sys.argv[3]
+database_path = working_dir / "inventory.db"
+if not database_path.is_file():
+    raise RuntimeError(f"independent Material authority is missing: {database_path}")
+
+connection = sqlite3.connect(database_path, timeout=10)
+try:
+    connection.create_collation(
+        "UNICODE_CASEFOLD",
+        lambda left, right: (left.casefold() > right.casefold())
+        - (left.casefold() < right.casefold()),
+    )
+    connection.execute("PRAGMA foreign_keys = ON")
+    if state == "invalid_input":
+        connection.execute(
+            "UPDATE material SET material_kind = 'device', disposition = NULL "
+            "WHERE uuid = ?",
+            (material_uuid,),
+        )
+    elif state == "not_found":
+        connection.execute(
+            "UPDATE material SET deleted_at = '2099-01-01T00:00:00Z' "
+            "WHERE uuid = ?",
+            (material_uuid,),
+        )
+    elif state == "conflict":
+        connection.execute(
+            "UPDATE material SET material_kind = 'business', "
+            "disposition = 'quarantined' WHERE uuid = ?",
+            (material_uuid,),
+        )
+    elif state == "restore":
+        connection.execute(
+            "UPDATE material SET material_kind = 'business', "
+            "disposition = 'active', deleted_at = NULL WHERE uuid = ?",
+            (material_uuid,),
+        )
+    else:
+        raise RuntimeError(f"unknown Material authority race: {state}")
+    if connection.execute(
+        "SELECT changes()"
+    ).fetchone()[0] != 1:
+        raise RuntimeError(f"Material authority race target is missing: {material_uuid}")
+    connection.commit()
+finally:
+    connection.close()
+`
+
 async function runRuntimeMutation({
   python,
   osRepository,
@@ -534,6 +608,59 @@ async function runRuntimeMutation({
       resolveMutation(resultLine
         ? JSON.parse(resultLine.slice('UNILAB_RUNTIME_RESULT='.length)) as Record<string, unknown>
         : null)
+    })
+  })
+}
+
+async function runMaterialAuthorityMutation({
+  python,
+  osRepository,
+  workingDirectory,
+  materialUuid,
+  state
+}: {
+  python: string
+  osRepository: string
+  workingDirectory: string
+  materialUuid: string
+  state: MaterialAuthorityRaceState
+}): Promise<void> {
+  await new Promise<void>((resolveMutation, rejectMutation) => {
+    const mutation = spawn(
+      python,
+      [
+        '-c',
+        PYTHON_MATERIAL_AUTHORITY_MUTATOR,
+        workingDirectory,
+        materialUuid,
+        state
+      ],
+      {
+        cwd: osRepository,
+        env: {
+          ...process.env,
+          PYTHONPATH: osRepository,
+          PYTHONUNBUFFERED: '1'
+        },
+        stdio: ['ignore', 'pipe', 'pipe']
+      }
+    )
+    let output = ''
+    mutation.stdout?.on('data', (chunk) => {
+      output += chunk.toString()
+    })
+    mutation.stderr?.on('data', (chunk) => {
+      output += chunk.toString()
+    })
+    mutation.once('error', rejectMutation)
+    mutation.once('exit', (code) => {
+      if (code === 0) {
+        resolveMutation()
+        return
+      }
+      rejectMutation(new Error(
+        `Material authority race fixture exited with ${code}\n${output}`
+      ))
     })
   })
 }
