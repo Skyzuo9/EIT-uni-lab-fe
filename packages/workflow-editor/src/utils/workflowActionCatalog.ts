@@ -20,6 +20,9 @@ export interface TypedActionFieldProjection {
   valueState: 'missing' | 'null' | 'value'
   value: unknown
   enumValues: unknown[] | null
+  providerKind: 'missing' | 'literal' | 'workflow_input' | 'upstream_output'
+  workflowInput: string | null
+  workflowInputOptions: string[]
 }
 
 export interface TypedActionFieldDiagnostic {
@@ -64,7 +67,7 @@ export function createTypedActionNode(
         status: 'idle',
         type: nodeType,
         pose: {},
-        param: cloneRecord(template.goalDefault),
+        param: {},
         action_name: template.name,
         execution_policy: {},
         disabled: false,
@@ -99,9 +102,7 @@ export function projectTypedActionEditor(
   const metaData = recordOrNull(node.meta_data) ?? {}
   const unilab = recordOrNull(metaData.unilab) ?? {}
   const inputBindings = recordOrNull(unilab.input_bindings) ?? {}
-  for (const handleUuid of Object.keys(inputBindings)) {
-    providedHandleUuids.add(handleUuid)
-  }
+  const workflowInputOptions = workflowInputNames(graph)
   const fields = targetHandles.map((handle) => {
     const dataKey = requiredString(handle.dataKey)
     const hasValue = Object.prototype.hasOwnProperty.call(param, dataKey)
@@ -110,6 +111,32 @@ export function projectTypedActionEditor(
       handle.valueSchema,
       'default'
     )
+    const edgeProvided = graph.edges.some((edge) =>
+      edge.target_node_uuid === nodeUuid &&
+      edge.target_handle_uuid === handle.uuid
+    )
+    const rawBinding = inputBindings[handle.uuid]
+    const binding = rawBinding === undefined ? null : recordValue(rawBinding)
+    const workflowInput = binding === null
+      ? null
+      : requiredString(binding.parameter)
+    if (binding && (
+      Object.keys(binding).some((key) => key !== 'parameter') ||
+      !workflowInputOptions.includes(workflowInput as string)
+    )) {
+      throw new Error('Workflow input binding 不符合当前合同')
+    }
+    const providerCount = Number(hasValue) + Number(edgeProvided) +
+      Number(workflowInput !== null)
+    if (providerCount > 1) throw new Error('Action target Handle 有多个 provider')
+    const providerKind = hasValue
+      ? 'literal'
+      : workflowInput !== null
+        ? 'workflow_input'
+        : edgeProvided
+          ? 'upstream_output'
+          : 'missing'
+    if (providerKind !== 'missing') providedHandleUuids.add(handle.uuid)
     return {
       handleUuid: handle.uuid,
       dataKey,
@@ -122,7 +149,10 @@ export function projectTypedActionEditor(
       valueSchema: handle.valueSchema,
       valueState: !hasValue ? 'missing' : value === null ? 'null' : 'value',
       value,
-      enumValues: enumValues(handle.valueSchema)
+      enumValues: enumValues(handle.valueSchema),
+      providerKind,
+      workflowInput,
+      workflowInputOptions
     } satisfies TypedActionFieldProjection
   })
   const diagnostics: TypedActionFieldDiagnostic[] = fields
@@ -175,15 +205,7 @@ export function updateTypedActionLiteral(
   }
   const dataKey = requiredString(handle.dataKey)
   if (value === undefined) {
-    return {
-      ...graph,
-      nodes: graph.nodes.map((item) => {
-        if (item.uuid !== nodeUuid) return item
-        const param = { ...recordValue(item.param) }
-        delete param[dataKey]
-        return { ...item, param }
-      })
-    }
+    return clearTypedActionProvider(graph, nodeUuid, handleUuid, dataKey)
   }
   if (!acceptsValue(handle.valueSchema, value)) {
     throw new Error(`${handle.displayName}的值不符合 typed Action schema`)
@@ -214,6 +236,53 @@ export function updateTypedActionLiteral(
       edge.target_node_uuid === nodeUuid &&
       edge.target_handle_uuid === handleUuid
     ))
+  }
+}
+
+export function bindTypedActionWorkflowInput(
+  catalog: WorkflowActionCatalogSnapshot,
+  graph: WorkflowAuthoringGraph,
+  nodeUuid: string,
+  handleUuid: string,
+  parameter: string
+): WorkflowAuthoringGraph {
+  const handle = requireNodeHandle(
+    catalog,
+    graph,
+    nodeUuid,
+    handleUuid,
+    'target'
+  )
+  if (!workflowInputNames(graph).includes(parameter)) {
+    throw new Error('Workflow input 不存在')
+  }
+  const dataKey = requiredString(handle.dataKey)
+  const cleared = clearTypedActionProvider(
+    graph,
+    nodeUuid,
+    handleUuid,
+    dataKey
+  )
+  return {
+    ...cleared,
+    nodes: cleared.nodes.map((node) => {
+      if (node.uuid !== nodeUuid) return node
+      const metaData = recordOrNull(node.meta_data) ?? {}
+      const unilab = recordOrNull(metaData.unilab) ?? {}
+      return {
+        ...node,
+        meta_data: {
+          ...metaData,
+          unilab: {
+            ...unilab,
+            input_bindings: {
+              ...(recordOrNull(unilab.input_bindings) ?? {}),
+              [handleUuid]: { parameter }
+            }
+          }
+        }
+      }
+    })
   }
 }
 
@@ -402,6 +471,61 @@ function handleTemplateWireValue(
 
 function cloneRecord(value: Record<string, unknown>): Record<string, unknown> {
   return structuredClone(value)
+}
+
+function clearTypedActionProvider(
+  graph: WorkflowAuthoringGraph,
+  nodeUuid: string,
+  handleUuid: string,
+  dataKey: string
+): WorkflowAuthoringGraph {
+  return {
+    ...graph,
+    nodes: graph.nodes.map((node) => {
+      if (node.uuid !== nodeUuid) return node
+      const param = { ...recordValue(node.param) }
+      delete param[dataKey]
+      const metaData = recordOrNull(node.meta_data) ?? {}
+      const unilab = recordOrNull(metaData.unilab) ?? {}
+      const inputBindings = {
+        ...(recordOrNull(unilab.input_bindings) ?? {})
+      }
+      delete inputBindings[handleUuid]
+      return {
+        ...node,
+        param,
+        meta_data: {
+          ...metaData,
+          unilab: {
+            ...unilab,
+            input_bindings: inputBindings
+          }
+        }
+      }
+    }),
+    edges: graph.edges.filter((edge) => !(
+      edge.target_node_uuid === nodeUuid &&
+      edge.target_handle_uuid === handleUuid
+    ))
+  }
+}
+
+function workflowInputNames(graph: WorkflowAuthoringGraph): string[] {
+  const workflow = recordValue(graph.workflow)
+  const metaData = recordOrNull(workflow.meta_data) ?? {}
+  const unilab = recordOrNull(metaData.unilab) ?? {}
+  const contract = recordOrNull(unilab.input_contract)
+  if (!contract) return []
+  if (contract.version !== 1 || !Array.isArray(contract.parameters)) {
+    throw new Error('Workflow input contract 不符合当前合同')
+  }
+  const names = contract.parameters.map((value) =>
+    requiredString(recordValue(value).name)
+  )
+  if (new Set(names).size !== names.length) {
+    throw new Error('Workflow input contract 存在重复参数')
+  }
+  return names
 }
 
 function typedTemplate(

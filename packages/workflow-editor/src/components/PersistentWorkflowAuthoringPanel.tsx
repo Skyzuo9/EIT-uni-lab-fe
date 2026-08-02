@@ -37,6 +37,7 @@ import {
   updatePersistentAuthoringNodeName
 } from '../utils/persistentAuthoringGraph'
 import {
+  bindTypedActionWorkflowInput,
   createTypedActionNode,
   connectTypedActionEdge,
   projectTypedActionEditor,
@@ -1081,6 +1082,27 @@ export function PersistentWorkflowAuthoringPanel({
     }
   }
 
+  const bindTypedFieldToWorkflowInput = (
+    handleUuid: string,
+    parameter: string
+  ): void => {
+    if (!actionCatalog || !graph || !selectedNodeUuid) return
+    try {
+      const next = bindTypedActionWorkflowInput(
+        actionCatalog,
+        graph,
+        selectedNodeUuid,
+        handleUuid,
+        parameter
+      )
+      setGraph(next)
+      setCanvasDirty(true)
+      setMessage('Action 参数已绑定 Workflow input；保存前将生成完整 Python')
+    } catch (bindingError) {
+      setError(errorMessage(bindingError))
+    }
+  }
+
   const connectTypedHandles = (connection: {
     sourceNodeUuid: string
     sourceHandleUuid: string
@@ -1407,12 +1429,71 @@ export function PersistentWorkflowAuthoringPanel({
                               }
                             >
                               <label>
+                                参数来源
+                                <select
+                                  aria-label={`${field.displayName} 参数来源`}
+                                  value={field.providerKind === 'workflow_input'
+                                    ? `workflow:${field.workflowInput}`
+                                    : field.providerKind}
+                                  disabled={
+                                    busy || !policy.canvasMutationEnabled
+                                  }
+                                  onChange={(event) => {
+                                    const provider = event.target.value
+                                    if (provider.startsWith('workflow:')) {
+                                      bindTypedFieldToWorkflowInput(
+                                        field.handleUuid,
+                                        provider.slice('workflow:'.length)
+                                      )
+                                    } else if (
+                                      provider === 'literal' ||
+                                      provider === 'missing'
+                                    ) {
+                                      updateTypedField(
+                                        field.handleUuid,
+                                        undefined
+                                      )
+                                    }
+                                  }}
+                                >
+                                  <option value="missing">未提供</option>
+                                  <option value="literal">
+                                    字面量 / 明确引用
+                                  </option>
+                                  {field.workflowInputOptions.map((name) => (
+                                    <option key={name} value={`workflow:${name}`}>
+                                      Workflow input · {name}
+                                    </option>
+                                  ))}
+                                  <option
+                                    value="upstream_output"
+                                    disabled={field.providerKind !==
+                                      'upstream_output'}
+                                  >
+                                    上游 output · 通过 Handle 连线
+                                  </option>
+                                </select>
+                              </label>
+                              <label>
                                 {field.displayName}
                                 {field.editorControl === 'material_port' ? (
-                                  <output>
-                                    由真实 target Handle 的 Material binding 提供；
-                                    A1 不把 ResourceSlot 伪造为字符串 literal
-                                  </output>
+                                  <input
+                                    key={`${field.handleUuid}:${typedFieldInputValue(field)}`}
+                                    aria-label={
+                                      `${field.displayName} 明确 Material reference（JSON）`
+                                    }
+                                    defaultValue={typedFieldInputValue(field)}
+                                    placeholder="明确 Material reference（JSON）"
+                                    disabled={
+                                      busy || !policy.canvasMutationEnabled ||
+                                      field.providerKind === 'workflow_input' ||
+                                      field.providerKind === 'upstream_output'
+                                    }
+                                    onBlur={(event) => updateTypedFieldFromRaw(
+                                      field,
+                                      event.target.value
+                                    )}
+                                  />
                                 ) : field.enumValues ? (
                                   <select
                                     value={typedFieldInputValue(field)}
@@ -1814,7 +1895,16 @@ function parseTypedFieldValue(
   if (field.enumValues) return raw === '' ? undefined : JSON.parse(raw)
   const base = typedNonNullSchema(field.valueSchema)
   if (base.$slot === 'ResourceSlot') {
-    throw new Error(`${field.displayName}必须通过 Material binding 提供`)
+    if (raw.trim() === '') return undefined
+    try {
+      const value: unknown = JSON.parse(raw)
+      if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        throw new Error('not an object')
+      }
+      return value
+    } catch {
+      throw new Error(`${field.displayName}必须是明确 Material reference JSON`)
+    }
   }
   if (base.type === 'string') return raw
   if (base.type === 'number' || base.type === 'integer') {

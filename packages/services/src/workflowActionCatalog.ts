@@ -48,12 +48,39 @@ export interface WorkflowActionCatalogSnapshot {
 export async function loadWorkflowActionCatalog(
   http: HttpClient
 ): Promise<WorkflowActionCatalogSnapshot> {
-  const list = catalogEnvelope(
-    await http.request<unknown>('/api/v1/workflow-node-templates')
-  )
-  const authority = authorityValue(list.authority)
-  const fingerprint = fingerprintValue(list.catalog_fingerprint)
-  const summaries = recordArray(list.items)
+  const summaries: Record<string, unknown>[] = []
+  let authority: ReturnType<typeof authorityValue> | null = null
+  let fingerprint: string | null = null
+  let total: number | null = null
+  let page = 1
+  do {
+    const list = catalogEnvelope(await http.request<unknown>(
+      `/api/v1/workflow-node-templates?page=${page}&page_size=100`
+    ))
+    const pageAuthority = authorityValue(list.authority)
+    const pageFingerprint = fingerprintValue(list.catalog_fingerprint)
+    const pageTotal = nonNegativeInteger(list.total)
+    if (
+      positiveInteger(list.page) !== page ||
+      positiveInteger(list.page_size) > 100 ||
+      (authority && !sameAuthority(authority, pageAuthority)) ||
+      (fingerprint && fingerprint !== pageFingerprint) ||
+      (total !== null && total !== pageTotal)
+    ) {
+      invalidCatalog()
+    }
+    authority ??= pageAuthority
+    fingerprint ??= pageFingerprint
+    total ??= pageTotal
+    const items = recordArray(list.items)
+    if (summaries.length + items.length > total) invalidCatalog()
+    summaries.push(...items)
+    if (summaries.length < total && items.length === 0) invalidCatalog()
+    page += 1
+  } while (summaries.length < (total ?? 0))
+  if (!authority || !fingerprint || summaries.length !== total) {
+    invalidCatalog()
+  }
   const nodeUuids = new Set<string>()
   const summaryValues = summaries.map((summary) => {
     const uuid = uuidValue(summary.uuid)
@@ -69,7 +96,9 @@ export async function loadWorkflowActionCatalog(
     }
   })
 
-  const details = await Promise.all(summaryValues.map(async (summary) => {
+  const projected = await Promise.all(summaryValues.map(async (
+    summary
+  ): Promise<WorkflowActionNodeTemplate | null> => {
     const data = catalogEnvelope(await http.request<unknown>(
       `/api/v1/workflow-node-templates/${encodeURIComponent(summary.uuid)}`
     ))
@@ -91,8 +120,8 @@ export async function loadWorkflowActionCatalog(
     ) {
       invalidCatalog()
     }
-    const schema = recordValue(template.schema)
-    assertTypedActionSchema(schema)
+    const schema = typedActionSchema(template.schema)
+    if (!schema) return null
     return attachWireValue({
       uuid,
       resourceTemplateUuid,
@@ -108,6 +137,9 @@ export async function loadWorkflowActionCatalog(
       )
     }, template)
   }))
+  const details = projected.filter(
+    (value): value is WorkflowActionNodeTemplate => value !== null
+  )
 
   const handleUuids = new Set<string>()
   for (const detail of details) {
@@ -177,7 +209,13 @@ function attachWireValue<T extends object>(
   return value as T & { wireValue: Record<string, unknown> }
 }
 
-function assertTypedActionSchema(schema: Record<string, unknown>): void {
+function typedActionSchema(raw: unknown): Record<string, unknown> | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const schema = raw as Record<string, unknown>
+  if (!Object.prototype.hasOwnProperty.call(
+    schema,
+    'x-unilabos-action-contract'
+  )) return null
   const extension = recordValue(schema['x-unilabos-action-contract'])
   if (extension.version !== 1) invalidCatalog()
   const inputOrder = stringArray(extension.input_order)
@@ -188,6 +226,7 @@ function assertTypedActionSchema(schema: Record<string, unknown>): void {
   ) {
     invalidCatalog()
   }
+  return schema
 }
 
 function catalogEnvelope(raw: unknown): Record<string, unknown> {
@@ -276,6 +315,19 @@ function nullableString(raw: unknown): string | null {
 function booleanValue(raw: unknown): boolean {
   if (typeof raw !== 'boolean') invalidCatalog()
   return raw
+}
+
+function nonNegativeInteger(raw: unknown): number {
+  if (typeof raw !== 'number' || !Number.isInteger(raw) || raw < 0) {
+    invalidCatalog()
+  }
+  return raw
+}
+
+function positiveInteger(raw: unknown): number {
+  const value = nonNegativeInteger(raw)
+  if (value === 0) invalidCatalog()
+  return value
 }
 
 function structuralRoleValue(raw: unknown): 'ready' | null {
