@@ -85,6 +85,7 @@ interface PersistentWorkflowAuthoringPanelProps {
   workflowUuid: string
   traceRuntime?: WorkflowTracePort
   onUnsavedChangesChange?: (hasUnsavedChanges: boolean) => void
+  onChooseWorkflow?: () => void
 }
 
 interface FullSourceDiff {
@@ -115,7 +116,8 @@ export function PersistentWorkflowAuthoringPanel({
   runtime,
   workflowUuid,
   traceRuntime,
-  onUnsavedChangesChange
+  onUnsavedChangesChange,
+  onChooseWorkflow
 }: PersistentWorkflowAuthoringPanelProps): React.JSX.Element {
   const sessionStore = useWorkflowSessionStore()
   const debugSessionKey = `unilab.workflow.debug.${workflowUuid}.v1`
@@ -1182,6 +1184,17 @@ export function PersistentWorkflowAuthoringPanel({
         </div>
 
         <div className="workflow__toolbar-actions">
+          {onChooseWorkflow && (
+            <button
+              type="button"
+              className="workflow__upload"
+              disabled={busy || dirty}
+              title={dirty ? '请先保存当前可写表示' : undefined}
+              onClick={onChooseWorkflow}
+            >
+              工作流列表
+            </button>
+          )}
           <input
             ref={fileUpload.inputRef}
             className="workflow__file-input"

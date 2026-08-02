@@ -58,6 +58,28 @@ export interface WorkflowDocument {
   }
 }
 
+export interface WorkflowListQuery {
+  page?: number
+  page_size?: number
+}
+
+export interface WorkflowSummary {
+  uuid: string
+  create_time: string
+  update_time: string
+  meta_data: Record<string, unknown>
+  name: string
+  tags: string[]
+  revision: number
+}
+
+export interface WorkflowPage {
+  items: WorkflowSummary[]
+  total: number
+  page: number
+  page_size: number
+}
+
 export interface WorkflowValidationIssue {
   code: string
   message: string
@@ -450,6 +472,7 @@ export interface WorkflowEventSubscription {
 
 export interface WorkflowRuntimePort {
   getWorkflowActionCatalog: () => Promise<WorkflowActionCatalogSnapshot>
+  listWorkflows: (query?: WorkflowListQuery) => Promise<WorkflowPage>
   getWorkflowAuthoring: (
     workflowUuid: string
   ) => Promise<WorkflowAuthoringAggregate>
@@ -546,6 +569,8 @@ export function createWorkflowRuntime(
 
   const port: WorkflowRuntimePort = {
     getWorkflowActionCatalog: () => loadWorkflowActionCatalog(http),
+    listWorkflows: (query = {}) =>
+      runtimeRequest(workflowListPath(query)),
     getWorkflowAuthoring: async (workflowUuid) =>
       decodeWorkflowAuthoringAggregate(await authoringRequest(
         `/api/v1/workflows/${encodeURIComponent(workflowUuid)}/authoring`
@@ -947,6 +972,16 @@ function workflowTaskListPath(query: WorkflowTaskListQuery): string {
   }
   const suffix = search.toString()
   return `/api/v1/workflow-tasks${suffix ? `?${suffix}` : ''}`
+}
+
+function workflowListPath(query: WorkflowListQuery): string {
+  const search = new URLSearchParams()
+  if (query.page !== undefined) search.set('page', String(query.page))
+  if (query.page_size !== undefined) {
+    search.set('page_size', String(query.page_size))
+  }
+  const suffix = search.toString()
+  return `/api/v1/workflows${suffix ? `?${suffix}` : ''}`
 }
 
 function workflowNodeJobFeedbackPath(
