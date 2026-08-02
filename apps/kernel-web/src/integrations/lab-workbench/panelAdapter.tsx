@@ -17,7 +17,10 @@ import {
   MaterialWorkbench
 } from '@unilab/material'
 import { useServices, type Services } from '@unilab/services'
-import { WorkflowPanel } from '@unilab/workflow-editor'
+import {
+  WorkflowPanel,
+  type WorkflowResourceSlotOptionsPort
+} from '@unilab/workflow-editor'
 import { useStore } from 'zustand'
 import {
   useLabInteractionStore
@@ -137,9 +140,29 @@ function MaterialRenderer(
 function WorkflowRenderer(
   props: PanelRendererProps<LabPanelScope>
 ): React.JSX.Element {
+  const materialRuntime = useMaterialRuntime()
+  const resourceSlotOptionsPort = useMemo<WorkflowResourceSlotOptionsPort>(
+    () => ({
+      list: async () => {
+        if (!materialRuntime.scope) {
+          throw new Error('请先选择实验室，再选择 Material ResourceSlot')
+        }
+        const aggregates = await props.scope.services.materials.getGraph(
+          materialRuntime.scope
+        )
+        return aggregates.map(({ material }) => ({
+          materialUuid: material.id,
+          resourceTemplateUuid: material.sourceTemplateId,
+          displayLabel: `${material.name} · ${material.id}`
+        }))
+      }
+    }),
+    [materialRuntime.scope, props.scope.services.materials]
+  )
   return (
     <WorkflowPanel
       runtime={props.scope.services.workflow}
+      resourceSlotOptionsPort={resourceSlotOptionsPort}
       workflowUuid={workflowUuidFromPanelConfig(props.config) ?? undefined}
       traceRuntime={globalThis.window?.api?.observability}
       activeWorkflowStorageKey={`unilab.workflow.active.${

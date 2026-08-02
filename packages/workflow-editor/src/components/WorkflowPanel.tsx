@@ -6,6 +6,9 @@ import type {
 } from '@unilab/services'
 
 import type { WorkflowTracePort } from '../traceRuntime'
+import type {
+  WorkflowResourceSlotOptionsPort
+} from '../utils/workflowResourceSlotOptions'
 import {
   persistActiveWorkflowId,
   readActiveWorkflowId
@@ -17,6 +20,7 @@ export interface WorkflowPanelProps {
   runtime: WorkflowRuntimePort
   workflowUuid?: string
   traceRuntime?: WorkflowTracePort
+  resourceSlotOptionsPort?: WorkflowResourceSlotOptionsPort
   activeWorkflowStorageKey?: string
   onUnsavedChangesChange?: (hasUnsavedChanges: boolean) => void
 }
@@ -25,6 +29,7 @@ export default function WorkflowPanel({
   runtime,
   workflowUuid: explicitWorkflowUuid,
   traceRuntime,
+  resourceSlotOptionsPort,
   activeWorkflowStorageKey,
   onUnsavedChangesChange
 }: WorkflowPanelProps): React.JSX.Element {
@@ -44,6 +49,7 @@ export default function WorkflowPanel({
         runtime={runtime}
         workflowUuid={workflowUuid}
         traceRuntime={traceRuntime}
+        resourceSlotOptionsPort={resourceSlotOptionsPort}
         onUnsavedChangesChange={onUnsavedChangesChange}
         onChooseWorkflow={explicitWorkflowUuid
           ? undefined

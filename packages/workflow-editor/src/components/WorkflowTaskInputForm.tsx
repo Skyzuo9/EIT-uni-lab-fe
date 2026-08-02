@@ -12,12 +12,18 @@ import {
   type WorkflowTaskInputFieldState,
   type WorkflowTaskInputFormState
 } from '../utils/workflowTaskInputForm'
+import {
+  filterWorkflowResourceSlotOptions,
+  type WorkflowResourceSlotOption,
+  type WorkflowResourceSlotOptionsState
+} from '../utils/workflowResourceSlotOptions'
 
 interface WorkflowTaskInputFormProps {
   aggregate: WorkflowAuthoringAggregate
   form?: WorkflowTaskInputFormState
   busy?: boolean
   problem?: string | null
+  resourceSlotOptions?: WorkflowResourceSlotOptionsState
   onChange: (name: string, state: WorkflowTaskInputFieldState) => void
   onSubmit?: () => void
   onCancel?: () => void
@@ -29,6 +35,7 @@ export function WorkflowTaskInputForm({
   form = createWorkflowTaskInputForm(aggregate),
   busy = false,
   problem = null,
+  resourceSlotOptions,
   onChange,
   onSubmit,
   onCancel,
@@ -69,6 +76,15 @@ export function WorkflowTaskInputForm({
         <ol>
           {form.fields.map(({ descriptor, state }) => {
             const resourceSlot = containsResourceSlotInput(descriptor.schema)
+            const compatibleResourceSlotOptions = resourceSlot
+              ? compatibleOptions(descriptor.schema, resourceSlotOptions)
+              : []
+            const resourceSlotProblem = resourceSlot
+              ? resourceSlotAvailabilityMessage(
+                  resourceSlotOptions,
+                  compatibleResourceSlotOptions
+                )
+              : null
             return (
               <li
                 key={descriptor.name}
@@ -90,10 +106,14 @@ export function WorkflowTaskInputForm({
                   <select
                     aria-label={`${descriptor.name} 输入状态`}
                     value={state.kind}
-                    disabled={busy || resourceSlot}
+                    disabled={busy}
                     onChange={(event) => update(
                       descriptor,
-                      stateForKind(descriptor.schema, event.target.value)
+                      stateForKind(
+                        descriptor.schema,
+                        event.target.value,
+                        compatibleResourceSlotOptions
+                      )
                     )}
                   >
                     <option value="untouched">省略 (untouched)</option>
@@ -105,21 +125,24 @@ export function WorkflowTaskInputForm({
                     >
                       显式空值 (explicit null)
                     </option>
-                    <option value="value">明确值 (value)</option>
+                    <option
+                      value="value"
+                      disabled={Boolean(resourceSlotProblem)}
+                    >
+                      明确值 (value)
+                    </option>
                   </select>
                 </label>
                 {resourceSlot ? (
-                  <div>
-                    <label>
-                      ResourceSlot
-                      <input
-                        aria-label={`${descriptor.name} ResourceSlot`}
-                        disabled
-                        placeholder="ResourceSlot selector 暂不支持"
-                      />
-                    </label>
-                    <span>ResourceSlot selector 本轮尚不可用</span>
-                  </div>
+                  WorkflowResourceSlotControl({
+                    name: descriptor.name,
+                    schema: descriptor.schema,
+                    state,
+                    options: compatibleResourceSlotOptions,
+                    problem: resourceSlotProblem,
+                    disabled: busy || state.kind === 'explicit_null',
+                    onChange: (next) => update(descriptor, next)
+                  })
                 ) : state.kind === 'value' ? (
                   <WorkflowValueControl
                     key={`${form.appliedRevision}:${state.kind}`}
@@ -160,6 +183,139 @@ export function WorkflowTaskInputForm({
         </footer>
       )}
     </section>
+  )
+}
+
+function WorkflowResourceSlotControl({
+  name,
+  schema,
+  state,
+  options,
+  problem,
+  disabled,
+  onChange
+}: {
+  name: string
+  schema: WorkflowValueSchema
+  state: WorkflowTaskInputFieldState
+  options: readonly WorkflowResourceSlotOption[]
+  problem: string | null
+  disabled: boolean
+  onChange: (state: WorkflowTaskInputFieldState) => boolean
+}): React.JSX.Element {
+  const base = nonNullSchema(schema)
+  const unavailable = disabled || problem !== null
+  if ('$slot' in base) {
+    const value = state.kind === 'value'
+      ? resourceSlotUuid(state.value)
+      : ''
+    return (
+      <div>
+        <label>
+          ResourceSlot
+          <select
+            aria-label={`${name} ResourceSlot`}
+            value={value}
+            disabled={unavailable}
+            onChange={(event) => onChange(
+              event.target.value === ''
+                ? { kind: 'untouched' }
+                : {
+                    kind: 'value',
+                    value: { uuid: event.target.value }
+                  }
+            )}
+          >
+            <option value="">请选择 Material</option>
+            {options.map((option) => (
+              <option
+                key={option.materialUuid}
+                value={option.materialUuid}
+              >
+                {option.displayLabel}
+              </option>
+            ))}
+          </select>
+        </label>
+        {problem && <span role="status">{problem}</span>}
+      </div>
+    )
+  }
+
+  const values = state.kind === 'value' && Array.isArray(state.value)
+    ? state.value.map(resourceSlotUuid)
+    : []
+  const updateValues = (next: readonly string[]): boolean => onChange({
+    kind: 'value',
+    value: next.map((uuid) => ({ uuid }))
+  })
+  return (
+    <div>
+      {values.map((value, index) => (
+        <div key={`${index}:${value}`}>
+          <label>
+            ResourceSlot {index + 1}
+            <select
+              aria-label={`${name} ResourceSlot ${index + 1}`}
+              value={value}
+              disabled={unavailable}
+              onChange={(event) => {
+                const next = [...values]
+                next[index] = event.target.value
+                updateValues(next)
+              }}
+            >
+              {options.map((option) => (
+                <option
+                  key={option.materialUuid}
+                  value={option.materialUuid}
+                >
+                  {option.displayLabel}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            aria-label={`${name} 上移 ${index + 1}`}
+            disabled={unavailable || index === 0}
+            onClick={() => {
+              const next = [...values]
+              const previous = next[index - 1]
+              const current = next[index]
+              if (previous === undefined || current === undefined) return
+              next[index - 1] = current
+              next[index] = previous
+              updateValues(next)
+            }}
+          >
+            上移
+          </button>
+          <button
+            type="button"
+            aria-label={`${name} 删除 ${index + 1}`}
+            disabled={unavailable}
+            onClick={() => updateValues(values.filter((_, itemIndex) =>
+              itemIndex !== index
+            ))}
+          >
+            删除
+          </button>
+        </div>
+      ))}
+      <button
+        type="button"
+        aria-label={`${name} 添加 ResourceSlot`}
+        disabled={unavailable || options.length === 0}
+        onClick={() => {
+          const first = options[0]
+          if (first) updateValues([...values, first.materialUuid])
+        }}
+      >
+        添加 ResourceSlot
+      </button>
+      {problem && <span role="status">{problem}</span>}
+    </div>
   )
 }
 
@@ -284,21 +440,27 @@ function WorkflowValueControl({
 
 function stateForKind(
   schema: WorkflowValueSchema,
-  kind: string
+  kind: string,
+  resourceSlotOptions: readonly WorkflowResourceSlotOption[] = []
 ): WorkflowTaskInputFieldState {
   if (kind === 'untouched') return { kind: 'untouched' }
   if (kind === 'explicit_null') return { kind: 'explicit_null' }
   if (kind === 'value') return {
     kind: 'value',
-    value: emptyValue(schema)
+    value: emptyValue(schema, resourceSlotOptions)
   }
   throw new Error(`未知 Workflow input 状态：${kind}`)
 }
 
-function emptyValue(schema: WorkflowValueSchema): WorkflowJsonValue {
-  const base = 'anyOf' in schema ? schema.anyOf[0] : schema
+function emptyValue(
+  schema: WorkflowValueSchema,
+  resourceSlotOptions: readonly WorkflowResourceSlotOption[] = []
+): WorkflowJsonValue {
+  const base = nonNullSchema(schema)
   if ('$slot' in base) {
-    throw new Error('ResourceSlot selector 本轮尚不可用')
+    const first = resourceSlotOptions[0]
+    if (!first) throw new Error('没有兼容的 Material ResourceSlot 可选择')
+    return { uuid: first.materialUuid }
   }
   switch (base.type) {
     case 'string': return base.enum?.[0] ?? ''
@@ -311,6 +473,50 @@ function emptyValue(schema: WorkflowValueSchema): WorkflowJsonValue {
     case 'object': return {}
     case 'array': return []
   }
+}
+
+function nonNullSchema(
+  schema: WorkflowValueSchema
+): Exclude<WorkflowValueSchema, { anyOf: unknown }> {
+  return 'anyOf' in schema ? schema.anyOf[0] : schema
+}
+
+function compatibleOptions(
+  schema: WorkflowValueSchema,
+  state?: WorkflowResourceSlotOptionsState
+): readonly WorkflowResourceSlotOption[] {
+  if (!state || state.kind !== 'ready') return []
+  const base = nonNullSchema(schema)
+  const slot = '$slot' in base
+    ? base
+    : base.type === 'array' && '$slot' in base.items
+      ? base.items
+      : null
+  return filterWorkflowResourceSlotOptions(
+    state.options,
+    slot?.allowed_resource_template_uuids
+  )
+}
+
+function resourceSlotAvailabilityMessage(
+  state: WorkflowResourceSlotOptionsState | undefined,
+  compatible: readonly WorkflowResourceSlotOption[]
+): string | null {
+  if (!state) return 'Material ResourceSlot 选项端口未注入，当前尚不可用'
+  if (state.kind !== 'ready') return state.message
+  return compatible.length === 0
+    ? '没有与 Workflow input 类型兼容的 Material，请先创建或修正模板'
+    : null
+}
+
+function resourceSlotUuid(value: unknown): string {
+  if (
+    value &&
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    typeof (value as Record<string, unknown>).uuid === 'string'
+  ) return (value as Record<string, string>).uuid ?? ''
+  return ''
 }
 
 function boundedZero(minimum?: number, maximum?: number): number {
