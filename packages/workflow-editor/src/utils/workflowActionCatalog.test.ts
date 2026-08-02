@@ -35,9 +35,92 @@ const siteHandleUuid = '30000000-0000-4000-8000-000000000008'
 const upstreamHandleUuid = '30000000-0000-4000-8000-000000000009'
 const readyTargetHandleUuid = '30000000-0000-4000-8000-000000000010'
 const readySourceHandleUuid = '30000000-0000-4000-8000-000000000011'
+const publishedWorkflowTemplateUuid =
+  '20000000-0000-4000-8000-000000000010'
+const publishedWorkflowUuid = '60000000-0000-4000-8000-000000000010'
+const publishedInvocationUuid = '40000000-0000-4000-8000-000000000010'
+const publishedInputHandleUuid = '30000000-0000-4000-8000-000000000020'
+const publishedOutputHandleUuid = '30000000-0000-4000-8000-000000000021'
+const publishedReadyTargetUuid = '30000000-0000-4000-8000-000000000022'
+const publishedReadySourceUuid = '30000000-0000-4000-8000-000000000023'
 const fingerprint = `sha256:${'a'.repeat(64)}`
 
 describe('typed Action editor projection', () => {
+  it('adds one Action without rewriting a mixed Published/control graph', () => {
+    const mixedCatalog = {
+      ...catalog,
+      actionTemplates: [actionTemplate()],
+      workflowTemplates: [publishedWorkflowTemplate()]
+    } satisfies WorkflowActionCatalogSnapshot
+    const mixedGraph = mixedAuthoringGraph()
+    const before = structuredClone(mixedGraph)
+
+    const created = createTypedActionNode(mixedCatalog, mixedGraph, {
+      nodeUuid: secondNodeUuid,
+      templateUuid,
+      name: 'transfer_2'
+    })
+
+    expect(mixedGraph).toEqual(before)
+    expect(created.workflow).toEqual(before.workflow)
+    expect(created.edges).toEqual(before.edges)
+    expect(created.nodes.slice(0, before.nodes.length)).toEqual(before.nodes)
+    expect(created.node_templates.slice(0, before.node_templates.length))
+      .toEqual(before.node_templates)
+    expect(created.handle_templates.slice(0, before.handle_templates.length))
+      .toEqual(before.handle_templates)
+
+    expect(created.nodes.at(-1)).toMatchObject({
+      uuid: secondNodeUuid,
+      workflow_node_template_uuid: templateUuid,
+      name: 'transfer_2',
+      action_name: 'transfer',
+      type: 'device'
+    })
+    expect(created.node_templates.slice(before.node_templates.length))
+      .toEqual([expect.objectContaining({
+        uuid: templateUuid,
+        name: 'transfer',
+        type: 'UniLabJsonCommand'
+      })])
+    const addedHandles = created.handle_templates.slice(
+      before.handle_templates.length
+    )
+    expect(addedHandles.map((handle) => handle.uuid)).toEqual(
+      actionTemplate().handles.map((handle) => handle.uuid)
+    )
+    expect(addedHandles).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        uuid: readyTargetHandleUuid,
+        io_type: 'target',
+        type: 'boolean',
+        data_source: 'dependency',
+        meta_data: {
+          unilab: expect.objectContaining({
+            structural_role: 'ready',
+            implicit_passthrough: false
+          })
+        }
+      }),
+      expect.objectContaining({
+        uuid: readySourceHandleUuid,
+        io_type: 'source',
+        type: 'boolean',
+        data_source: 'dependency',
+        meta_data: {
+          unilab: expect.objectContaining({
+            structural_role: 'ready',
+            implicit_passthrough: false
+          })
+        }
+      })
+    ]))
+    const nodeTemplateUuids = created.node_templates.map((item) => item.uuid)
+    const handleTemplateUuids = created.handle_templates.map((item) => item.uuid)
+    expect(new Set(nodeTemplateUuids).size).toBe(nodeTemplateUuids.length)
+    expect(new Set(handleTemplateUuids).size).toBe(handleTemplateUuids.length)
+  })
+
   it('keeps Action creation on the Action side of an executable union', () => {
     const executableCatalog = {
       authorityId: catalog.authorityId,
@@ -622,6 +705,356 @@ const graph: WorkflowAuthoringGraph = {
   handle_templates: []
 }
 
+function mixedAuthoringGraph(): WorkflowAuthoringGraph {
+  const framework = [
+    frameworkFixture('control', 11),
+    frameworkFixture('group', 12),
+    frameworkFixture('branch', 13),
+    frameworkFixture('join', 14)
+  ]
+  const published = publishedWorkflowTemplate()
+  return {
+    workflow: {
+      uuid: workflowUuid,
+      revision: 7,
+      meta_data: {
+        unilab: {
+          fixture_sentinel: 'preserve-mixed-workflow'
+        }
+      }
+    },
+    nodes: [
+      {
+        uuid: publishedInvocationUuid,
+        workflow_node_template_uuid: publishedWorkflowTemplateUuid,
+        name: 'prepare_child',
+        type: 'workflow',
+        param: { sample: 'S-17' },
+        meta_data: {
+          unilab: {
+            composite: {
+              version: 1,
+              child_workflow_uuid: publishedWorkflowUuid,
+              fixture_sentinel: 'published-invocation'
+            }
+          }
+        }
+      },
+      ...framework.map((item) => ({
+        uuid: item.nodeUuid,
+        workflow_node_template_uuid: item.templateUuid,
+        name: `${item.kind}_node`,
+        type: item.kind,
+        param: {},
+        meta_data: { fixture_sentinel: `${item.kind}-node` }
+      }))
+    ],
+    edges: [
+      {
+        uuid: '50000000-0000-4000-8000-000000000010',
+        source_node_uuid: framework[2]!.nodeUuid,
+        source_handle_uuid: framework[2]!.sourceHandleUuid,
+        target_node_uuid: publishedInvocationUuid,
+        target_handle_uuid: publishedReadyTargetUuid,
+        meta_data: { fixture_sentinel: 'branch-to-child' }
+      },
+      {
+        uuid: '50000000-0000-4000-8000-000000000011',
+        source_node_uuid: publishedInvocationUuid,
+        source_handle_uuid: publishedReadySourceUuid,
+        target_node_uuid: framework[3]!.nodeUuid,
+        target_handle_uuid: framework[3]!.targetHandleUuid,
+        meta_data: { fixture_sentinel: 'child-to-join' }
+      }
+    ],
+    node_templates: [
+      publishedWorkflowWireValue(),
+      ...framework.map((item) => item.nodeTemplate)
+    ],
+    handle_templates: [
+      ...published.handles.map((handle) => handleWireValue(handle)),
+      ...framework.flatMap((item) => item.handles)
+    ]
+  }
+}
+
+function publishedWorkflowTemplate(): WorkflowActionCatalogSnapshot[
+  'workflowTemplates'
+][number] {
+  const inputSchema = { type: 'string' }
+  const outputSchema = { type: 'string' }
+  return {
+    uuid: publishedWorkflowTemplateUuid,
+    resourceTemplateUuid: '10000000-0000-4000-8000-000000000099',
+    name: `workflow:${publishedWorkflowUuid}`,
+    displayName: 'Prepare child',
+    workflowClass: 'c1_published_lab.workflows.child:prepare_child',
+    workflowUuid: publishedWorkflowUuid,
+    workflowRevision: 7,
+    appliedSourceHash: `sha256:${'b'.repeat(64)}`,
+    contractDigest: `sha256:${'c'.repeat(64)}`,
+    compositionAllowTransparent: false,
+    inputOrder: ['sample'],
+    outputOrder: ['prepared_sample'],
+    schema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        goal: {
+          type: 'object',
+          additionalProperties: false,
+          properties: { sample: inputSchema },
+          required: ['sample']
+        },
+        result: {
+          type: 'object',
+          additionalProperties: false,
+          properties: { prepared_sample: outputSchema },
+          required: ['prepared_sample']
+        }
+      },
+      required: ['goal', 'result'],
+      'x-unilabos-workflow-contract': {
+        version: 1,
+        compatibility_version: 1,
+        workflow_uuid: publishedWorkflowUuid,
+        workflow_revision: 7,
+        applied_source_hash: `sha256:${'b'.repeat(64)}`,
+        contract_digest: `sha256:${'c'.repeat(64)}`,
+        composition_allow_transparent: false,
+        input_order: ['sample'],
+        output_order: ['prepared_sample']
+      }
+    },
+    goal: { sample: 'sample' },
+    goalDefault: {},
+    result: { prepared_sample: 'prepared_sample' },
+    source: {
+      kind: 'package',
+      definitionFqid: 'c1_published_lab.workflows.prepare_child',
+      module: 'c1_published_lab.workflows.child',
+      symbol: 'prepare_child',
+      packageCatalogDigest: `sha256:${'d'.repeat(64)}`,
+      definitionContentHash: `sha256:${'e'.repeat(64)}`
+    },
+    handles: [
+      publishedHandle(
+        publishedInputHandleUuid,
+        'sample',
+        'target',
+        'goal',
+        inputSchema,
+        true
+      ),
+      publishedHandle(
+        publishedOutputHandleUuid,
+        'prepared_sample',
+        'source',
+        'result',
+        outputSchema,
+        false
+      ),
+      publishedReadyHandle(publishedReadyTargetUuid, 'target'),
+      publishedReadyHandle(publishedReadySourceUuid, 'source')
+    ]
+  }
+}
+
+function publishedWorkflowWireValue(): Record<string, unknown> {
+  const template = publishedWorkflowTemplate()
+  return {
+    uuid: template.uuid,
+    resource_template_uuid: template.resourceTemplateUuid,
+    name: template.name,
+    display_name: template.displayName,
+    class: template.workflowClass,
+    type: 'workflow',
+    node_type: 'workflow',
+    schema: template.schema,
+    goal: template.goal,
+    goal_default: template.goalDefault,
+    feedback: {},
+    result: template.result,
+    meta_data: {
+      unilab: {
+        framework_owner_only: true,
+        workflow_source: {
+          kind: template.source.kind,
+          definition_fqid: template.source.definitionFqid,
+          module: template.source.module,
+          symbol: template.source.symbol,
+          package_catalog_digest: template.source.packageCatalogDigest,
+          definition_content_hash: template.source.definitionContentHash
+        },
+        fixture_sentinel: 'published-template'
+      }
+    }
+  }
+}
+
+function publishedHandle(
+  uuid: string,
+  key: string,
+  ioType: 'source' | 'target',
+  dataSource: 'goal' | 'result',
+  valueSchema: Record<string, unknown>,
+  required: boolean
+): WorkflowActionCatalogSnapshot['workflowTemplates'][number]['handles'][number] {
+  return {
+    uuid,
+    workflowNodeTemplateUuid: publishedWorkflowTemplateUuid,
+    handleKey: key,
+    ioType,
+    displayName: key,
+    valueType: 'string',
+    required,
+    dataSource,
+    dataKey: key,
+    valueSchema,
+    editorControl: 'variable_selector',
+    allowedResourceTemplateUuids: null,
+    implicitPassthrough: false,
+    structuralRole: null
+  }
+}
+
+function publishedReadyHandle(
+  uuid: string,
+  ioType: 'source' | 'target'
+): WorkflowActionCatalogSnapshot['workflowTemplates'][number]['handles'][number] {
+  return {
+    uuid,
+    workflowNodeTemplateUuid: publishedWorkflowTemplateUuid,
+    handleKey: 'ready',
+    ioType,
+    displayName: 'Ready',
+    valueType: 'boolean',
+    required: false,
+    dataSource: 'dependency',
+    dataKey: 'ready',
+    valueSchema: { type: 'boolean' },
+    editorControl: 'variable_selector',
+    allowedResourceTemplateUuids: null,
+    implicitPassthrough: false,
+    structuralRole: 'ready'
+  }
+}
+
+function frameworkFixture(kind: string, suffix: number): {
+  kind: string
+  templateUuid: string
+  nodeUuid: string
+  targetHandleUuid: string
+  sourceHandleUuid: string
+  nodeTemplate: Record<string, unknown>
+  handles: Record<string, unknown>[]
+} {
+  const digits = String(suffix).padStart(12, '0')
+  const templateUuid = `21000000-0000-4000-8000-${digits}`
+  const nodeUuid = `41000000-0000-4000-8000-${digits}`
+  const targetHandleUuid = `31000000-0000-4000-8000-${digits}`
+  const sourceHandleUuid = `32000000-0000-4000-8000-${digits}`
+  return {
+    kind,
+    templateUuid,
+    nodeUuid,
+    targetHandleUuid,
+    sourceHandleUuid,
+    nodeTemplate: {
+      uuid: templateUuid,
+      resource_template_uuid: '10000000-0000-4000-8000-000000000099',
+      name: kind,
+      display_name: kind,
+      class: `unilabos.workflow.authoring:${kind}`,
+      type: kind,
+      node_type: kind,
+      schema: null,
+      goal: {},
+      goal_default: {},
+      feedback: {},
+      result: {},
+      meta_data: {
+        unilab: {
+          framework_owner_only: true,
+          fixture_sentinel: `${kind}-template`
+        }
+      }
+    },
+    handles: [
+      frameworkReadyWire(
+        targetHandleUuid,
+        templateUuid,
+        'target',
+        `${kind}-ready-target`
+      ),
+      frameworkReadyWire(
+        sourceHandleUuid,
+        templateUuid,
+        'source',
+        `${kind}-ready-source`
+      )
+    ]
+  }
+}
+
+function frameworkReadyWire(
+  uuid: string,
+  templateUuid: string,
+  ioType: 'source' | 'target',
+  sentinel: string
+): Record<string, unknown> {
+  return {
+    uuid,
+    workflow_node_template_uuid: templateUuid,
+    handle_key: 'ready',
+    io_type: ioType,
+    display_name: 'Ready',
+    type: 'boolean',
+    required: false,
+    data_source: 'dependency',
+    data_key: 'ready',
+    meta_data: {
+      unilab: {
+        value_schema: { type: 'boolean' },
+        editor_control: 'variable_selector',
+        allowed_resource_template_uuids: null,
+        implicit_passthrough: false,
+        structural_role: 'ready',
+        fixture_sentinel: sentinel
+      }
+    }
+  }
+}
+
+function handleWireValue(
+  handle: WorkflowActionCatalogSnapshot['workflowTemplates'][number][
+    'handles'
+  ][number]
+): Record<string, unknown> {
+  return {
+    uuid: handle.uuid,
+    workflow_node_template_uuid: handle.workflowNodeTemplateUuid,
+    handle_key: handle.handleKey,
+    io_type: handle.ioType,
+    display_name: handle.displayName,
+    type: handle.valueType,
+    required: handle.required,
+    data_source: handle.dataSource,
+    data_key: handle.dataKey,
+    meta_data: {
+      unilab: {
+        value_schema: handle.valueSchema,
+        editor_control: handle.editorControl,
+        allowed_resource_template_uuids:
+          handle.allowedResourceTemplateUuids,
+        implicit_passthrough: handle.implicitPassthrough,
+        structural_role: handle.structuralRole,
+        fixture_sentinel: `published-${handle.handleKey}-${handle.ioType}`
+      }
+    }
+  }
+}
+
 function actionTemplate(): WorkflowActionCatalogSnapshot['actionTemplates'][number] {
   return {
     uuid: templateUuid,
@@ -693,12 +1126,12 @@ function readyHandle(
     displayName: 'Ready',
     valueType: 'boolean',
     required: false,
-    dataSource: ioType === 'source' ? 'result' : 'goal',
+    dataSource: 'dependency',
     dataKey: 'ready',
     valueSchema: { type: 'boolean' },
     editorControl: 'variable_selector',
     allowedResourceTemplateUuids: null,
-    implicitPassthrough: true,
+    implicitPassthrough: false,
     structuralRole: 'ready'
   }
 }
