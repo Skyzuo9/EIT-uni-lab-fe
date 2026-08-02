@@ -130,6 +130,10 @@ test('SZLab MaterialGraph renders complete 2.5D and 3D views', async ({
       hasText: '烧杯堆栈2 L1B1 烧杯 500 mL'
     })
   ).toHaveAttribute('data-material-tree-site-id', /.+/)
+  await captureMaterialTree(page, 'szlab-material-tree-occupied.png')
+  await page
+    .getByRole('button', { name: '收起 烧杯堆栈2' })
+    .click()
 
   await expandMaterial(page, 'Tip 头架子')
   await expandMaterial(page, 'Tip 头架子 T11 TIP 盒')
@@ -141,6 +145,10 @@ test('SZLab MaterialGraph renders complete 2.5D and 3D views', async ({
   await expect(
     page.getByRole('treeitem', { name: 'T11-tip-101，未占用' })
   ).toBeVisible()
+  await page
+    .getByRole('treeitem', { name: 'T11-tip-101，未占用' })
+    .evaluate((element) => element.scrollIntoView({ block: 'center' }))
+  await captureMaterialTree(page, 'szlab-material-tree-empty.png')
 
   await page.getByRole('button', { name: '2.5D', exact: true }).click()
   const oblique = page.locator('[data-material-oblique-view]')
@@ -235,6 +243,16 @@ async function installMaterialOnlyLayout(page: Page): Promise<void> {
 
 async function captureViewport(page: Page, fileName: string): Promise<void> {
   await page.locator('.lab-unified-viewport').screenshot({
+    path: resolve(ARTIFACT_ROOT, fileName),
+    animations: 'disabled'
+  })
+}
+
+async function captureMaterialTree(
+  page: Page,
+  fileName: string
+): Promise<void> {
+  await page.locator('.material-tree-sidebar').screenshot({
     path: resolve(ARTIFACT_ROOT, fileName),
     animations: 'disabled'
   })
