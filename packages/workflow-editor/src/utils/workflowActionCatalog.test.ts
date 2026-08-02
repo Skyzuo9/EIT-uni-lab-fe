@@ -684,7 +684,7 @@ function sourceTemplate(): WorkflowActionCatalogSnapshot['actionTemplates'][numb
 function readyHandle(
   uuid: string,
   ioType: 'source' | 'target'
-): WorkflowActionCatalogSnapshot['nodeTemplates'][number]['handles'][number] {
+): WorkflowActionCatalogSnapshot['actionTemplates'][number]['handles'][number] {
   return {
     uuid,
     workflowNodeTemplateUuid: templateUuid,
