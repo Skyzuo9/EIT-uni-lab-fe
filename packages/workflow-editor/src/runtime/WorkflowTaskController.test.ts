@@ -444,6 +444,49 @@ describe('WorkflowTaskController', () => {
     expect(controller.getSnapshot().task?.run_mode).toBe('step')
   })
 
+  it('submits the exact validated input without debugger or revision-private fields', async () => {
+    const task = { ...workflowTask(), run_mode: 'step' as const }
+    const runtime = runtimePort({
+      subscribeWorkflowRuntime: vi.fn(() => ({ dispose: vi.fn() })),
+      listWorkflowTasks: vi.fn(async () => ({
+        items: [], total: 0, page: 1, page_size: 1
+      })),
+      createWorkflowTask: vi.fn(async () => task),
+      getWorkflowTask: vi.fn(async () => task),
+      listWorkflowTaskJobs: vi.fn(async () => [workflowJob()])
+    })
+    const controller = new WorkflowTaskController(runtime, task.workflow_uuid)
+    await controller.start()
+    const createWithInput = controller.create.bind(controller) as unknown as (
+      runMode: 'normal' | 'step',
+      input: Record<string, unknown>
+    ) => Promise<void>
+
+    await createWithInput('step', {
+      count: 0,
+      enabled: false,
+      label: '',
+      note: null,
+      tags: [],
+      config: {}
+    })
+
+    expect(runtime.createWorkflowTask).toHaveBeenCalledWith({
+      workflow_uuid: task.workflow_uuid,
+      run_mode: 'step',
+      input: {
+        count: 0,
+        enabled: false,
+        label: '',
+        note: null,
+        tags: [],
+        config: {}
+      }
+    })
+    expect(Object.keys(vi.mocked(runtime.createWorkflowTask).mock.calls[0][0]))
+      .toEqual(['workflow_uuid', 'run_mode', 'input'])
+  })
+
   it('disposes the global subscription and ignores late REST completion', async () => {
     const task = workflowTask()
     const dispose = vi.fn()
