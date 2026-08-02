@@ -1248,7 +1248,9 @@ export function PersistentWorkflowAuthoringPanel({
         setTaskInputProblem(null)
         setMessage(result.message)
       } catch (submitError) {
-        setTaskInputProblem(workflowTaskInputProblem(submitError))
+        setTaskInputProblem(
+          workflowTaskInputProblem(submitError, submittedForm)
+        )
         throw submitError
       }
     })
