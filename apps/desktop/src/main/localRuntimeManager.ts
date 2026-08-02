@@ -22,7 +22,6 @@ export interface LocalRuntimeSpawnSpec {
 
 export interface LocalRuntimeLaunchPlan {
   runtimeDirectory: string
-  bridge: LocalRuntimeSpawnSpec
   edge: LocalRuntimeSpawnSpec
 }
 
@@ -36,14 +35,9 @@ interface ResolvedRuntimeConfig {
   osProjectPath: string
   szlabProjectPath: string
   environmentPath: string
-  pythonExecutable: string
   unilabExecutable: string
-  bridgeEntrypoint: string
   localConfigPath: string
   runtimeDirectory: string
-  profilePath: string
-  devicesPath: string
-  studioPythonPath: string
 }
 
 interface ResolvedSimulatorConfig {
@@ -63,20 +57,18 @@ type ActiveOperation = 'simulator' | 'edge' | 'all'
 
 export const LOCAL_RUNTIME_PORTS = {
   simulator: 18_765,
-  bridgeApi: 8_014,
-  edgeHttp: 18_003,
-  schedule: 8_892
+  edgeHttp: 18_003
 } as const
 
 const HOST = '127.0.0.1'
-const BRIDGE_HEALTH_URL = `http://${HOST}:${LOCAL_RUNTIME_PORTS.bridgeApi}/health`
-const ACTION_CATALOG_URL =
-  `http://${HOST}:${LOCAL_RUNTIME_PORTS.bridgeApi}/api/runtime/local/actions`
+const OS_HEALTH_URL =
+  `http://${HOST}:${LOCAL_RUNTIME_PORTS.edgeHttp}/api/v1/health`
+const WORKFLOW_TEMPLATE_CATALOG_URL =
+  `http://${HOST}:${LOCAL_RUNTIME_PORTS.edgeHttp}/api/v1/workflow-node-templates`
 const PROCESS_READY_TIMEOUT_MS = 90_000
 const LOCAL_RUNTIME_LOG_READ_LIMIT_BYTES = 128 * 1024
 const LOCAL_RUNTIME_LOG_KINDS: readonly LocalRuntimeProcessKind[] = [
   'simulator',
-  'bridge',
   'edge'
 ]
 
@@ -85,7 +77,6 @@ export class LocalRuntimeManager {
     ...IDLE_LOCAL_RUNTIME_SNAPSHOT
   }
   private edgeProcess: ChildProcessWithoutNullStreams | null = null
-  private bridgeProcess: ChildProcessWithoutNullStreams | null = null
   private simulatorProcess: ChildProcessWithoutNullStreams | null = null
   private stopping = false
   private activeOperation: ActiveOperation | null = null
@@ -111,7 +102,7 @@ export class LocalRuntimeManager {
       this.activeOperation = null
       throw new Error('PLC-Sim 已在运行')
     }
-    if (this.bridgeProcess || this.edgeProcess) {
+    if (this.edgeProcess) {
       this.activeOperation = null
       throw new Error('请先停止 SZLab Edge，再启动 PLC-Sim')
     }
@@ -155,7 +146,7 @@ export class LocalRuntimeManager {
     config: LocalRuntimeLaunchConfig
   ): Promise<LocalRuntimeSnapshot> {
     this.beginOperation('edge')
-    if (this.bridgeProcess || this.edgeProcess) {
+    if (this.edgeProcess) {
       this.activeOperation = null
       throw new Error('SZLab Edge 已在运行')
     }
@@ -165,44 +156,33 @@ export class LocalRuntimeManager {
     try {
       const plan = await resolveLocalRuntimeLaunchPlan(config)
       await requireAvailablePorts([
-        { port: LOCAL_RUNTIME_PORTS.bridgeApi, label: 'SZLab Edge API' },
-        { port: LOCAL_RUNTIME_PORTS.edgeHttp, label: 'SZLab Edge HTTP' },
-        { port: LOCAL_RUNTIME_PORTS.schedule, label: 'Schedule WebSocket' }
+        { port: LOCAL_RUNTIME_PORTS.edgeHttp, label: 'SZLab Edge HTTP' }
       ])
       await mkdir(this.logsDirectory, { recursive: true })
       await mkdir(plan.runtimeDirectory, { recursive: true })
 
-      this.publishState(
-        'starting_bridge',
-        '正在启动 SZLab Edge…'
-      )
-      this.bridgeProcess = this.spawnManaged(
-        'bridge',
-        plan.bridge
-      )
-      this.publishState('waiting_bridge', 'SZLab Edge 正在初始化本地服务…')
+      this.publishState('starting_edge', '正在通过 unilab CLI 启动 ROS Edge…')
+      this.edgeProcess = this.spawnManaged('edge', plan.edge)
+      this.publishState('waiting_edge', 'SZLab Edge 正在初始化 HostNode…')
       await waitForHttp(
-        BRIDGE_HEALTH_URL,
+        OS_HEALTH_URL,
         managedChildren([
           ['simulator', this.simulatorProcess],
-          ['bridge', this.bridgeProcess]
+          ['edge', this.edgeProcess]
         ]),
         PROCESS_READY_TIMEOUT_MS,
         (payload) => isRecord(payload) && payload['status'] === 'ok'
       )
 
-      this.publishState('starting_edge', 'SZLab Edge 本地服务已就绪，正在加载设备…')
-      this.edgeProcess = this.spawnManaged('edge', plan.edge)
-      this.publishState('waiting_edge', 'SZLab Edge 已启动，正在等待设备动作目录…')
+      this.publishState('waiting_edge', 'HostNode 已启动，正在等待工作流模板目录…')
       await waitForHttp(
-        ACTION_CATALOG_URL,
+        WORKFLOW_TEMPLATE_CATALOG_URL,
         managedChildren([
           ['simulator', this.simulatorProcess],
-          ['bridge', this.bridgeProcess],
           ['edge', this.edgeProcess]
         ]),
         PROCESS_READY_TIMEOUT_MS,
-        (payload) => isRecord(payload) && payload['available'] === true
+        () => true
       )
 
       this.publishState(
@@ -226,7 +206,7 @@ export class LocalRuntimeManager {
 
   async stopSimulator(): Promise<LocalRuntimeSnapshot> {
     this.beginOperation('simulator')
-    if (this.bridgeProcess || this.edgeProcess) {
+    if (this.edgeProcess) {
       this.activeOperation = null
       throw new Error('请先停止 SZLab Edge，再停止 PLC-Sim')
     }
@@ -250,7 +230,7 @@ export class LocalRuntimeManager {
 
   async stopEdge(): Promise<LocalRuntimeSnapshot> {
     this.beginOperation('edge')
-    if (!this.bridgeProcess && !this.edgeProcess) {
+    if (!this.edgeProcess) {
       this.activeOperation = null
       return this.getSnapshot()
     }
@@ -338,9 +318,6 @@ export class LocalRuntimeManager {
     if (kind === 'simulator' && this.simulatorProcess === child) {
       this.simulatorProcess = null
     }
-    if (kind === 'bridge' && this.bridgeProcess === child) {
-      this.bridgeProcess = null
-    }
     if (kind === 'edge' && this.edgeProcess === child) {
       this.edgeProcess = null
     }
@@ -371,9 +348,8 @@ export class LocalRuntimeManager {
   }
 
   private async stopEdgeProcesses(): Promise<void> {
-    const processes = [this.edgeProcess, this.bridgeProcess]
+    const processes = [this.edgeProcess]
     this.edgeProcess = null
-    this.bridgeProcess = null
     for (const child of processes) {
       if (child) await stopProcessTree(child)
     }
@@ -393,7 +369,7 @@ export class LocalRuntimeManager {
       phase: 'failed',
       message,
       simulatorRunning: Boolean(this.simulatorProcess),
-      bridgeRunning: Boolean(this.bridgeProcess),
+      bridgeRunning: false,
       edgeRunning: Boolean(this.edgeProcess),
       failedProcess,
       error
@@ -408,7 +384,7 @@ export class LocalRuntimeManager {
       phase,
       message,
       simulatorRunning: Boolean(this.simulatorProcess),
-      bridgeRunning: Boolean(this.bridgeProcess),
+      bridgeRunning: false,
       edgeRunning: Boolean(this.edgeProcess)
     })
   }
@@ -482,7 +458,6 @@ export async function resolveLocalRuntimeLaunchPlan(
   const resolvedConfig = await resolveRuntimeConfig(config, platform)
   return {
     runtimeDirectory: resolvedConfig.runtimeDirectory,
-    bridge: bridgeSpec(resolvedConfig),
     edge: edgeSpec(resolvedConfig)
   }
 }
@@ -521,15 +496,9 @@ async function resolveRuntimeConfig(
   await requireDirectory(szlabProjectPath, 'Uni-Lab-SZLab 项目根目录不存在')
   await requireDirectory(environmentPath, 'unilab Conda 环境目录不存在')
 
-  const { pythonExecutable, unilabExecutable } = runtimeExecutablePaths(
+  const { unilabExecutable } = runtimeExecutablePaths(
     environmentPath,
     platform
-  )
-  await requireExecutable(
-    pythonExecutable,
-    platform === 'win32'
-      ? '所选 Conda 环境缺少 python.exe'
-      : '所选 Conda 环境缺少 bin/python'
   )
   await requireExecutable(
     unilabExecutable,
@@ -538,44 +507,12 @@ async function resolveRuntimeConfig(
       : '所选 Conda 环境缺少 bin/unilab'
   )
 
-  const bridgeEntrypoint = join(
-    szlabProjectPath,
-    'deployment',
-    'local_bridge_entrypoint.py'
-  )
   const localConfigPath = join(
     szlabProjectPath,
     'deployment',
     'local_config.py'
   )
-  await requireFile(bridgeEntrypoint, 'Uni-Lab-SZLab 缺少 Edge 本地服务入口')
   await requireFile(localConfigPath, 'Uni-Lab-SZLab 缺少本地配置')
-
-  const profilePath = await requireFirstFile(
-    [
-      join(szlabProjectPath, 'packages', 'szlab_poly_studio', 'package.yaml'),
-      join(
-        szlabProjectPath,
-        'szlab_poly_studio',
-        'profiles',
-        'default',
-        'package.yaml'
-      )
-    ],
-    'Uni-Lab-SZLab 缺少 szlab_poly_studio Profile'
-  )
-  const devicesPath = await requireFirstDirectory(
-    [
-      join(
-        szlabProjectPath,
-        'packages',
-        'szlab_poly_studio',
-        'szlab_poly_studio'
-      ),
-      join(szlabProjectPath, 'szlab_poly_studio')
-    ],
-    'Uni-Lab-SZLab 缺少 szlab_poly_studio 设备包'
-  )
 
   return {
     platform,
@@ -583,14 +520,9 @@ async function resolveRuntimeConfig(
     osProjectPath,
     szlabProjectPath,
     environmentPath,
-    pythonExecutable,
     unilabExecutable,
-    bridgeEntrypoint,
     localConfigPath,
     runtimeDirectory: join(szlabProjectPath, 'runtime', 'ideawit-e2e'),
-    profilePath,
-    devicesPath,
-    studioPythonPath: dirname(devicesPath)
   }
 }
 
@@ -640,53 +572,27 @@ function simulatorSpec(config: ResolvedSimulatorConfig): LocalRuntimeSpawnSpec {
   }
 }
 
-function bridgeSpec(config: ResolvedRuntimeConfig): LocalRuntimeSpawnSpec {
-  return {
-    command: config.pythonExecutable,
-    args: [
-      config.bridgeEntrypoint,
-      '--host',
-      HOST,
-      '--schedule-port',
-      String(LOCAL_RUNTIME_PORTS.schedule),
-      '--api-port',
-      String(LOCAL_RUNTIME_PORTS.bridgeApi),
-      '--execution-http-url',
-      `http://${HOST}:${LOCAL_RUNTIME_PORTS.edgeHttp}`,
-      '--journal-path',
-      join('runtime', 'ideawit-e2e', 'quick-debug.sqlite3'),
-      '--profile',
-      config.profilePath
-    ],
-    cwd: config.szlabProjectPath,
-    env: runtimeEnvironment(config)
-  }
-}
-
 function edgeSpec(config: ResolvedRuntimeConfig): LocalRuntimeSpawnSpec {
   return {
     command: config.unilabExecutable,
     args: [
+      '--workspace',
+      config.szlabProjectPath,
       '--graph',
       config.graphPath,
       '--config',
       config.localConfigPath,
       '--working_dir',
       config.runtimeDirectory,
-      '--devices',
-      config.devicesPath,
-      '--external_devices_only',
       '--backend',
       'ros',
       '--app_bridges',
-      'websocket',
       'fastapi',
       '--port',
       String(LOCAL_RUNTIME_PORTS.edgeHttp),
-      '--schedule_addr',
-      `ws://${HOST}:${LOCAL_RUNTIME_PORTS.schedule}/api/v1/ws/schedule`,
       '--disable_browser',
-      '--skip_env_check'
+      '--skip_env_check',
+      '--test_mode'
     ],
     cwd: config.szlabProjectPath,
     env: {
@@ -730,7 +636,7 @@ function runtimeEnvironment(
     ...environment,
     PYTHONPATH: mergePathList([
       config.osProjectPath,
-      config.studioPythonPath,
+      config.szlabProjectPath,
       environmentValue(environment, 'PYTHONPATH')
     ], config.platform === 'win32' ? ';' : ':'),
     PYTHONUNBUFFERED: '1'
