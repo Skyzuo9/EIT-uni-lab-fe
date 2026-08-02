@@ -81,9 +81,9 @@ import { WorkflowTaskInputForm } from './WorkflowTaskInputForm'
 import { useWorkflowSessionStore } from './WorkflowSessionProvider'
 import { WorkflowTraceViewer } from './WorkflowTraceViewer'
 import {
-  buildWorkflowTaskInput,
   createWorkflowTaskInputForm,
   setWorkflowTaskInputField,
+  submitWorkflowTaskInput,
   type WorkflowTaskInputFieldState,
   type WorkflowTaskInputFormState
 } from '../utils/workflowTaskInputForm'
@@ -1193,53 +1193,40 @@ export function PersistentWorkflowAuthoringPanel({
     state: WorkflowTaskInputFieldState
   ): void => {
     if (!taskInputForm) return
-    try {
-      setTaskInputForm(setWorkflowTaskInputField(taskInputForm, name, state))
-      setTaskInputProblem(null)
-    } catch (inputError) {
-      setTaskInputProblem(errorMessage(inputError))
-    }
+    const next = setWorkflowTaskInputField(taskInputForm, name, state)
+    setTaskInputForm(next)
+    setTaskInputProblem(null)
   }
 
   const submitTaskInput = (): void => {
     if (!taskInputAuthority || !taskInputForm) return
-    let input: Record<string, unknown>
-    try {
-      input = buildWorkflowTaskInput(taskInputForm)
-      setTaskInputProblem(null)
-    } catch (inputError) {
-      setTaskInputProblem(errorMessage(inputError))
-      return
-    }
     const submittedForm = taskInputForm
     runRuntime(async () => {
       try {
-        const latest = await queue.run(
-          () => runtime.getWorkflowAuthoring(workflowUuid)
-        )
-        const latestForm = createWorkflowTaskInputForm(latest)
-        if (!isSameAppliedTaskInputContract(submittedForm, latestForm)) {
-          setTaskInputAuthority(latest)
-          setTaskInputForm(latestForm)
-          setTaskInputProblem(
-            `Applied Workflow 已从 revision ${submittedForm.appliedRevision} ` +
-            `更新到 ${latestForm.appliedRevision}；表单已重投影，请重新填写确认`
-          )
+        const result = await submitWorkflowTaskInput({
+          form: submittedForm,
+          readApplied: () => queue.run(
+            () => runtime.getWorkflowAuthoring(workflowUuid)
+          ),
+          createTask: (input) => taskRuntime.create(taskRunMode, input)
+        })
+        if (result.kind === 'reproject_before_create') {
+          setTaskInputAuthority(result.authority)
+          setTaskInputForm(result.form)
+          setTaskInputProblem(result.message)
           return
         }
-        const created = await taskRuntime.create(taskRunMode, input)
-        const snapshotRevision = workflowTaskSnapshotRevision(created)
+        if (result.kind === 'reproject_after_create') {
+          setTaskInputAuthority(result.authority)
+          setTaskInputForm(result.form)
+          setTaskInputProblem(result.message)
+          setMessage(result.message)
+          return
+        }
         setTaskInputAuthority(null)
         setTaskInputForm(null)
         setTaskInputProblem(null)
-        setMessage(
-          snapshotRevision !== null &&
-          snapshotRevision !== latestForm.appliedRevision
-            ? `Task 已按竞态后的 Applied revision ${snapshotRevision} 创建；` +
-              '请以 Task snapshot 与 canonical input 为准'
-            : `Task 已按 Applied revision ${latestForm.appliedRevision} 创建；` +
-              'input default 与规范化结果以 OS Task projection 为准'
-        )
+        setMessage(result.message)
       } catch (submitError) {
         setTaskInputProblem(errorMessage(submitError))
         throw submitError
@@ -2026,27 +2013,6 @@ function workflowIoMetadata(
     output_contract: unilab.output_contract,
     output_bindings: unilab.output_bindings
   }
-}
-
-function isSameAppliedTaskInputContract(
-  left: WorkflowTaskInputFormState,
-  right: WorkflowTaskInputFormState
-): boolean {
-  return left.workflowUuid === right.workflowUuid &&
-    left.appliedRevision === right.appliedRevision &&
-    JSON.stringify(left.fields.map(({ descriptor }) => descriptor)) ===
-      JSON.stringify(right.fields.map(({ descriptor }) => descriptor))
-}
-
-function workflowTaskSnapshotRevision(task: WorkflowTask): number | null {
-  const workflow = task.workflow_snapshot.workflow
-  if (!workflow || typeof workflow !== 'object' || Array.isArray(workflow)) {
-    return null
-  }
-  const revision = (workflow as Record<string, unknown>).revision
-  return typeof revision === 'number' && Number.isInteger(revision)
-    ? revision
-    : null
 }
 
 function authoritativePython(

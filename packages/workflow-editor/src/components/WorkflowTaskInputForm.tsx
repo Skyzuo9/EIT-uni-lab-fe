@@ -37,12 +37,13 @@ export function WorkflowTaskInputForm({
   const update = (
     descriptor: WorkflowInputDescriptor,
     state: WorkflowTaskInputFieldState
-  ): void => {
+  ): boolean => {
     try {
       onChange(descriptor.name, state)
-      onProblem?.(null)
+      return true
     } catch (error) {
       onProblem?.(errorMessage(error))
+      return false
     }
   }
   return (
@@ -174,7 +175,7 @@ function WorkflowValueControl({
   schema: WorkflowValueSchema
   value: WorkflowJsonValue
   disabled: boolean
-  onChange: (value: WorkflowJsonValue) => void
+  onChange: (value: WorkflowJsonValue) => boolean
   onProblem?: (message: string | null) => void
 }): React.JSX.Element {
   const base = 'anyOf' in schema ? schema.anyOf[0] : schema
@@ -271,8 +272,7 @@ function WorkflowValueControl({
                 Array.isArray(parsed)
               )
             ) throw new Error(`${name} 必须是 JSON object`)
-            onChange(parsed as WorkflowJsonValue)
-            onProblem?.(null)
+            if (onChange(parsed as WorkflowJsonValue)) onProblem?.(null)
           } catch (error) {
             onProblem?.(errorMessage(error))
           }

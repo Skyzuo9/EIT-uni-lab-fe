@@ -25,7 +25,7 @@
 | 行为 | tests-only 原始提交 | 实现分支提交 |
 |---|---|---|
 | Applied-only form projection、三态 codec 与 Task payload RED | `fa530496478b17653d30a0e04b8afa1b167bfec2` | `f7df68eccc874e00bf9526bdb55a8269c6a093d1` |
-| 真实 OS scalar input/default browser RED | `21899bcea70b715d11badcff360fa374215cd6c5` | `6cc9b676fe91cf0aa91925661db2fb30ce3df4b8` |
+| 真实 OS scalar input/default browser RED | `21899bcea70b715d11badcff360fa374215cd6c5` | `6cc9b675c3c0ad5cebb536d6afe01f832a276326` |
 
 首轮测试在 production 实现前为 `7 failed / 12 passed`；第二轮真实 OS 夹具已成功 compile、Apply，
 并在旧 production 点击 Run 后因不存在输入表单而得到预期 RED。生产提交
@@ -40,7 +40,15 @@
   下一 round 由应用装配层注入 Material readonly projection；
 - 起点、断点、target node、FE revision hint 均不进入普通 WorkflowTask payload。
 
-当前证据：focused form/unit 为 `19/19 passed`，workflow-editor 为 `17 files / 106 tests passed`，
+首次候选 `2f72e7dd497a8973dd2b7fb0fd4b345088b06570` 的独立双审为 Standards
+`0B/0NB`、Spec `3B/0NB`。同一 test-author 以原始 tests-only
+`3dae7c5e5ec453fc21fb2268b49af2d370b527fa`（实现分支 cherry-pick
+`8b88039b8f33199ed21bea80c1f40f7e520a3e8d`）冻结审查补测，在首次候选上得到
+`7 passed / 4 failed`：受约束值被过早拒绝、缺少 pre/post-create revision race seam、panel
+未委托该 seam。生产修复将编辑中间态的结构校验与最终 build 的完整约束校验分离，并把
+pre-create no-POST 与 post-create authority rehydrate/reproject 收敛到同一个可测提交 seam。
+
+当前证据：workflow-editor 为 `17 files / 111 tests passed`，
 services 为 `10 files / 68 tests passed`，根级 typecheck 与 runtime static contract 通过；真实 OS
 Authoring browser suite 为 `7 passed`，其中 scalar 用例精确验证 request omission、OS canonical
 default、snapshot revision，并保持 forbidden request / WebSocket / pageerror / application error 为
