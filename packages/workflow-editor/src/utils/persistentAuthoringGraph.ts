@@ -92,6 +92,13 @@ export function updatePersistentAuthoringNodeName(
   if (!graph.nodes.some((node) => node.uuid === nodeUuid)) {
     throw new Error('节点不存在或已被删除')
   }
+  if (graph.nodes.some((node) =>
+    node.uuid === nodeUuid &&
+    node.parent_uuid !== undefined &&
+    node.parent_uuid !== null
+  )) {
+    throw new Error('Composite internal/private Node 只读；请编辑 invocation boundary')
+  }
   return {
     ...graph,
     nodes: graph.nodes.map((node) => {

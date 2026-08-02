@@ -40,6 +40,7 @@ import {
 } from '../utils/persistentAuthoringGraph'
 import {
   bindTypedActionWorkflowInput,
+  createPublishedWorkflowNode,
   createTypedActionNode,
   connectTypedActionEdge,
   projectTypedActionEditor,
@@ -1082,6 +1083,11 @@ export function PersistentWorkflowAuthoringPanel({
     }
   }, [actionCatalog, diagnostics, graph, selectedNodeUuid])
   const selectedActionEditor = selectedActionProjection.editor
+  const selectedNodeIsInternal = graph?.nodes.some((node) =>
+    node.uuid === selectedNodeUuid &&
+    node.parent_uuid !== undefined &&
+    node.parent_uuid !== null
+  ) ?? false
 
   const addTypedActionNode = (templateUuid: string): void => {
     if (!actionCatalog || !graph) return
@@ -1105,6 +1111,36 @@ export function PersistentWorkflowAuthoringPanel({
       setGraph(next)
       setCanvasDirty(true)
       setMessage('已从真实 Action template 创建节点；保存前将生成完整 Python')
+    } catch (createError) {
+      setError(errorMessage(createError))
+    }
+  }
+
+  const addPublishedWorkflowNode = (templateUuid: string): void => {
+    if (!actionCatalog || !graph) return
+    const template = actionCatalog.workflowTemplates.find(
+      (item) => item.uuid === templateUuid
+    )
+    if (!template) return
+    const stem = template.source.symbol.replace(/[^A-Za-z0-9_]/g, '_') ||
+      'workflow'
+    let name = stem
+    let suffix = 2
+    while (graph.nodes.some((item) => item.name === name)) {
+      name = `${stem}_${suffix}`
+      suffix += 1
+    }
+    try {
+      const next = createPublishedWorkflowNode(actionCatalog, graph, {
+        nodeUuid: globalThis.crypto.randomUUID(),
+        templateUuid,
+        name
+      })
+      setGraph(next)
+      setCanvasDirty(true)
+      setMessage(
+        '已插入 Published Workflow boundary；内部展开与 mapping 由 OS 生成'
+      )
     } catch (createError) {
       setError(errorMessage(createError))
     }
@@ -1541,8 +1577,12 @@ export function PersistentWorkflowAuthoringPanel({
                 <select
                   aria-label="子工作流模板"
                   value=""
-                  disabled
-                  title="子工作流 boundary insertion 将在 C1 R2 开放"
+                  disabled={busy || !policy.canvasMutationEnabled || !graph}
+                  onChange={(event) => {
+                    if (event.target.value) {
+                      addPublishedWorkflowNode(event.target.value)
+                    }
+                  }}
                 >
                   <option value="">选择已发布子工作流…</option>
                   {actionCatalog.workflowTemplates.map((template) => (
@@ -1601,7 +1641,8 @@ export function PersistentWorkflowAuthoringPanel({
                         <input
                           value={selectedNodeName}
                           disabled={
-                            busy || !policy.canvasMutationEnabled
+                            busy || !policy.canvasMutationEnabled ||
+                            selectedNodeIsInternal
                           }
                           aria-describedby="persistent-node-name-help"
                           onChange={(event) => {

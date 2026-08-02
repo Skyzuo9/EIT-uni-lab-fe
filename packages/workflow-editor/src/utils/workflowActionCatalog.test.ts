@@ -18,6 +18,17 @@ import {
 } from './workflowActionCatalog'
 import { catalogConflictDecision } from './persistentAuthoringSession'
 
+interface PublishedBoundaryModule {
+  createPublishedWorkflowNode(
+    catalog: WorkflowActionCatalogSnapshot,
+    graph: WorkflowAuthoringGraph,
+    input: { nodeUuid: string; templateUuid: string; name: string }
+  ): WorkflowAuthoringGraph
+}
+
+const boundaryModule = await import('./workflowActionCatalog') as unknown as
+  Partial<PublishedBoundaryModule>
+
 const templateUuid = '20000000-0000-4000-8000-000000000001'
 const sourceTemplateUuid = '20000000-0000-4000-8000-000000000002'
 const nodeUuid = '40000000-0000-4000-8000-000000000001'
@@ -43,9 +54,235 @@ const publishedInputHandleUuid = '30000000-0000-4000-8000-000000000020'
 const publishedOutputHandleUuid = '30000000-0000-4000-8000-000000000021'
 const publishedReadyTargetUuid = '30000000-0000-4000-8000-000000000022'
 const publishedReadySourceUuid = '30000000-0000-4000-8000-000000000023'
+const internalTargetNodeUuid = '40000000-0000-4000-8000-000000000020'
+const internalSourceNodeUuid = '40000000-0000-4000-8000-000000000021'
 const fingerprint = `sha256:${'a'.repeat(64)}`
 
 describe('typed Action editor projection', () => {
+  it('inserts one Published child invocation with only parent-owned state', () => {
+    expect(boundaryModule.createPublishedWorkflowNode).toBeTypeOf('function')
+    const catalogWithChild = publishedBoundaryCatalog()
+    const initial: WorkflowAuthoringGraph = {
+      ...graph,
+      nodes: [],
+      edges: [],
+      node_templates: [],
+      handle_templates: []
+    }
+    const before = structuredClone(initial)
+
+    const created = boundaryModule.createPublishedWorkflowNode!(
+      catalogWithChild,
+      initial,
+      {
+        nodeUuid: publishedInvocationUuid,
+        templateUuid: publishedWorkflowTemplateUuid,
+        name: 'prepare_child'
+      }
+    )
+
+    expect(initial).toEqual(before)
+    expect(created.nodes).toEqual([{
+      uuid: publishedInvocationUuid,
+      workflow_node_template_uuid: publishedWorkflowTemplateUuid,
+      name: 'prepare_child',
+      status: 'idle',
+      type: 'workflow',
+      pose: {},
+      param: {},
+      execution_policy: {},
+      disabled: false,
+      minimized: false,
+      meta_data: { unilab: { input_bindings: {} } }
+    }])
+    expect(created.nodes[0]?.meta_data).not.toHaveProperty(
+      'unilab.composite'
+    )
+    expect(created.node_templates).toEqual([
+      expect.objectContaining({
+        uuid: publishedWorkflowTemplateUuid,
+        name: `workflow:${publishedWorkflowUuid}`,
+        type: 'workflow',
+        node_type: 'workflow'
+      })
+    ])
+    expect(created.handle_templates.map((item) => item.uuid)).toEqual([
+      publishedInputHandleUuid,
+      publishedOutputHandleUuid,
+      publishedReadyTargetUuid,
+      publishedReadySourceUuid
+    ])
+    expect(created.handle_templates).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        uuid: publishedInputHandleUuid,
+        workflow_node_template_uuid: publishedWorkflowTemplateUuid,
+        io_type: 'target',
+        data_source: 'goal'
+      }),
+      expect.objectContaining({
+        uuid: publishedOutputHandleUuid,
+        workflow_node_template_uuid: publishedWorkflowTemplateUuid,
+        io_type: 'source',
+        data_source: 'result'
+      }),
+      expect.objectContaining({
+        uuid: publishedReadyTargetUuid,
+        io_type: 'target',
+        data_source: 'dependency'
+      }),
+      expect.objectContaining({
+        uuid: publishedReadySourceUuid,
+        io_type: 'source',
+        data_source: 'dependency'
+      })
+    ]))
+    expect(created.edges).toEqual([])
+  })
+
+  it('reuses the typed ResourceSlot editor and preserves OS diagnostics', () => {
+    const catalogWithChild = publishedBoundaryCatalog()
+    const boundary = publishedBoundaryGraph()
+    const diagnostic = {
+      severity: 'error' as const,
+      code: 'composite_resource_constraint_empty',
+      message: 'ResourceSlot allowlist intersection is empty',
+      node_id: publishedInvocationUuid,
+      path: '/nodes/prepare_child/param/sample',
+      workflow_handle_template_uuid: publishedInputHandleUuid
+    }
+
+    const projected = projectTypedActionEditor(
+      catalogWithChild,
+      boundary,
+      publishedInvocationUuid,
+      [diagnostic]
+    )
+
+    expect(projected.templateUuid).toBe(publishedWorkflowTemplateUuid)
+    expect(projected.fields).toEqual([expect.objectContaining({
+      handleUuid: publishedInputHandleUuid,
+      dataKey: 'sample',
+      displayName: 'sample',
+      required: true,
+      editorControl: 'material_port',
+      valueSchema: resourceSlotValueSchema(),
+      providerKind: 'missing'
+    })])
+    expect(projected.diagnostics).toContainEqual({
+      handleUuid: publishedInputHandleUuid,
+      fieldPath: diagnostic.path,
+      severity: diagnostic.severity,
+      code: diagnostic.code,
+      message: diagnostic.message
+    })
+  })
+
+  it('switches Published boundary providers without creating private mappings', () => {
+    const catalogWithChild = publishedBoundaryCatalog()
+    const boundary = publishedBoundaryGraph()
+    const literal = updateTypedActionLiteral(
+      catalogWithChild,
+      boundary,
+      publishedInvocationUuid,
+      publishedInputHandleUuid,
+      { uuid: '70000000-0000-4000-8000-000000000001' }
+    )
+    expect(literal.nodes.find((node) =>
+      node.uuid === publishedInvocationUuid
+    )?.param).toEqual({
+      sample: { uuid: '70000000-0000-4000-8000-000000000001' }
+    })
+
+    const bound = bindTypedActionWorkflowInput(
+      catalogWithChild,
+      literal,
+      publishedInvocationUuid,
+      publishedInputHandleUuid,
+      'sample_input'
+    )
+    const boundInvocation = bound.nodes.find((node) =>
+      node.uuid === publishedInvocationUuid
+    )!
+    expect(boundInvocation.param).toEqual({})
+    expect(boundInvocation.meta_data).toEqual({
+      unilab: {
+        input_bindings: {
+          [publishedInputHandleUuid]: { parameter: 'sample_input' }
+        }
+      }
+    })
+    expect(boundInvocation.meta_data).not.toHaveProperty('unilab.composite')
+
+    const connected = connectTypedActionEdge(catalogWithChild, bound, {
+      sourceNodeUuid,
+      sourceHandleUuid: upstreamHandleUuid,
+      targetNodeUuid: publishedInvocationUuid,
+      targetHandleUuid: publishedInputHandleUuid
+    })
+    expect(connected.edges).toEqual([expect.objectContaining({
+      source_node_uuid: sourceNodeUuid,
+      source_handle_uuid: upstreamHandleUuid,
+      target_node_uuid: publishedInvocationUuid,
+      target_handle_uuid: publishedInputHandleUuid
+    })])
+    const connectedInvocation = connected.nodes.find((node) =>
+      node.uuid === publishedInvocationUuid
+    )!
+    expect(connectedInvocation.param).toEqual({})
+    expect(connectedInvocation.meta_data).toEqual({
+      unilab: { input_bindings: {} }
+    })
+
+    const outputConnected = connectTypedActionEdge(
+      catalogWithChild,
+      publishedBoundaryGraph(),
+      {
+        sourceNodeUuid: publishedInvocationUuid,
+        sourceHandleUuid: publishedOutputHandleUuid,
+        targetNodeUuid: nodeUuid,
+        targetHandleUuid: materialHandleUuid
+      }
+    )
+    expect(outputConnected.edges).toEqual([expect.objectContaining({
+      source_node_uuid: publishedInvocationUuid,
+      source_handle_uuid: publishedOutputHandleUuid,
+      target_node_uuid: nodeUuid,
+      target_handle_uuid: materialHandleUuid
+    })])
+  })
+
+  it('denies parent writes and external Edges through expanded private Handles', () => {
+    const catalogWithChild = publishedBoundaryCatalog()
+    const boundary = publishedBoundaryGraph(true)
+
+    expect(() => updateTypedActionLiteral(
+      catalogWithChild,
+      boundary,
+      internalTargetNodeUuid,
+      materialHandleUuid,
+      { uuid: '70000000-0000-4000-8000-000000000001' }
+    )).toThrow(/internal|private|boundary|只读/i)
+    expect(() => bindTypedActionWorkflowInput(
+      catalogWithChild,
+      boundary,
+      internalTargetNodeUuid,
+      materialHandleUuid,
+      'sample_input'
+    )).toThrow(/internal|private|boundary|只读/i)
+    expect(() => connectTypedActionEdge(catalogWithChild, boundary, {
+      sourceNodeUuid,
+      sourceHandleUuid: upstreamHandleUuid,
+      targetNodeUuid: internalTargetNodeUuid,
+      targetHandleUuid: materialHandleUuid
+    })).toThrow(/internal|private|boundary|只读/i)
+    expect(() => connectTypedActionEdge(catalogWithChild, boundary, {
+      sourceNodeUuid: internalSourceNodeUuid,
+      sourceHandleUuid: upstreamHandleUuid,
+      targetNodeUuid: publishedInvocationUuid,
+      targetHandleUuid: publishedInputHandleUuid
+    })).toThrow(/internal|private|boundary|只读/i)
+  })
+
   it('adds one Action without rewriting a mixed Published/control graph', () => {
     const mixedCatalog = {
       ...catalog,
@@ -857,6 +1094,117 @@ function publishedWorkflowTemplate(): WorkflowActionCatalogSnapshot[
       publishedReadyHandle(publishedReadyTargetUuid, 'target'),
       publishedReadyHandle(publishedReadySourceUuid, 'source')
     ]
+  }
+}
+
+function publishedBoundaryCatalog(): WorkflowActionCatalogSnapshot {
+  return {
+    ...catalog,
+    actionTemplates: [actionTemplate(), sourceTemplate()],
+    workflowTemplates: [publishedBoundaryTemplate()]
+  }
+}
+
+function publishedBoundaryTemplate(): WorkflowActionCatalogSnapshot[
+  'workflowTemplates'
+][number] {
+  const base = publishedWorkflowTemplate()
+  const input = base.handles.find((handle) =>
+    handle.uuid === publishedInputHandleUuid
+  )!
+  const output = base.handles.find((handle) =>
+    handle.uuid === publishedOutputHandleUuid
+  )!
+  const schema = resourceSlotValueSchema()
+  return {
+    ...base,
+    schema: {
+      ...base.schema,
+      properties: {
+        goal: {
+          type: 'object',
+          additionalProperties: false,
+          properties: { sample: schema },
+          required: ['sample']
+        },
+        result: {
+          type: 'object',
+          additionalProperties: false,
+          properties: { prepared_sample: schema },
+          required: ['prepared_sample']
+        }
+      }
+    },
+    handles: base.handles.map((handle) => {
+      if (handle.uuid !== input.uuid && handle.uuid !== output.uuid) {
+        return handle
+      }
+      return {
+        ...handle,
+        valueType: 'ResourceSlot',
+        valueSchema: schema,
+        editorControl: 'material_port' as const,
+        allowedResourceTemplateUuids: [
+          '10000000-0000-4000-8000-000000000001'
+        ]
+      }
+    })
+  }
+}
+
+function resourceSlotValueSchema(): Record<string, unknown> {
+  return {
+    $slot: 'ResourceSlot',
+    allowed_resource_template_uuids: [
+      '10000000-0000-4000-8000-000000000001'
+    ]
+  }
+}
+
+function publishedBoundaryGraph(
+  includeExpandedPrivateNodes = false
+): WorkflowAuthoringGraph {
+  const actionTarget = structuredClone(graph.nodes[0]!)
+  const actionSource = structuredClone(graph.nodes[1]!)
+  const nodes: Array<Record<string, unknown>> = [
+    actionTarget,
+    actionSource,
+    {
+      uuid: publishedInvocationUuid,
+      workflow_node_template_uuid: publishedWorkflowTemplateUuid,
+      name: 'prepare_child',
+      status: 'idle',
+      type: 'workflow',
+      pose: {},
+      param: {},
+      execution_policy: {},
+      disabled: false,
+      minimized: false,
+      meta_data: { unilab: { input_bindings: {} } }
+    }
+  ]
+  if (includeExpandedPrivateNodes) {
+    nodes.push(
+      {
+        ...structuredClone(actionTarget),
+        uuid: internalTargetNodeUuid,
+        parent_uuid: publishedInvocationUuid,
+        name: 'private_target'
+      },
+      {
+        ...structuredClone(actionSource),
+        uuid: internalSourceNodeUuid,
+        parent_uuid: publishedInvocationUuid,
+        name: 'private_source'
+      }
+    )
+  }
+  return {
+    ...graph,
+    nodes,
+    edges: [],
+    node_templates: [],
+    handle_templates: []
   }
 }
 
