@@ -1,9 +1,9 @@
 # D1A-S1 设备页单 Action Task：前端实施规格
 
-状态：Implementation baseline  
-上游协议：`Uni-Lab-OS/Uni-Lab-Core#162`  
-FE delivery：`Uni-Lab-OS/uni-lab-fe#19`  
-Integration gate：`Uni-Lab-OS/Uni-Lab-Core#163`  
+状态：Implementation baseline
+上游协议：`Uni-Lab-OS/Uni-Lab-Core#162`
+FE delivery：`Uni-Lab-OS/uni-lab-fe#19`
+Integration gate：`Uni-Lab-OS/Uni-Lab-Core#163`
 实施基线：`6b0733f3c8d6e02c663c1728e0d2fa4e81a561fa`
 
 ## 1. Outcome 与复用边界
