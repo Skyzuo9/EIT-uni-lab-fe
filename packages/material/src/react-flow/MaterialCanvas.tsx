@@ -70,7 +70,7 @@ export function MaterialCanvas({
 
   useEffect(() => {
     if (!readStatus.available || loadState !== 'idle') return
-    void store.getState().loadGraph()
+    void store.getState().loadGraph().catch(() => undefined)
   }, [loadState, readStatus.available, store])
 
   const nodes = useMemo(

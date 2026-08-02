@@ -18,6 +18,7 @@ import {
 } from 'react'
 
 import { useWorkbench } from '../../context/WorkbenchContext'
+import { recoverMaterialGraph } from './materialGraphRecovery'
 import { resolveMaterialScope } from './materialScope'
 
 interface MaterialRuntimeContextValue {
@@ -38,6 +39,7 @@ export function MaterialRuntimeProvider({
   const {
     backend,
     backendEnabled,
+    connection,
     laboratoryId
   } = useWorkbench()
   const scope = useMemo(
@@ -73,6 +75,13 @@ export function MaterialRuntimeProvider({
   useEffect(() => {
     return () => store?.getState().reset()
   }, [store])
+
+  useEffect(() => {
+    void recoverMaterialGraph(
+      store,
+      backendEnabled && connection === 'connected'
+    )
+  }, [backendEnabled, connection, store])
 
   const value = useMemo<MaterialRuntimeContextValue>(
     () => ({ store, scope, getStatus }),
