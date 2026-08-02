@@ -14,32 +14,35 @@ describe('laboratory service', () => {
     const http = fixtureHttp(
       {
         '/api/v1/devices': {
-          schemaVersion: 'device-catalog/v1',
-          source: 'edge',
-          generatedAt: 123,
-          items: [
-            {
-              id: 'pump-1',
-              deviceKey: '/cell/pump-1',
-              namespace: '/cell',
-              name: '蠕动泵',
-              online: false,
-              actions: [
-                {
-                  id: 'aspirate',
-                  actionRef: 'pump-1.aspirate',
-                  name: '吸液',
-                  typeName: 'unilabos_msgs.action.Pump',
-                  inputSchema: {
-                    volume: { type: 'number', default: 10 }
-                  },
-                  outputSchema: {},
-                  busy: true,
-                  currentJobId: 'job-aspirate'
-                }
-              ]
-            }
-          ]
+          code: 0,
+          data: {
+            schemaVersion: 'device-catalog/v1',
+            source: 'edge',
+            generatedAt: 123,
+            items: [
+              {
+                id: 'pump-1',
+                deviceKey: '/cell/pump-1',
+                namespace: '/cell',
+                name: '蠕动泵',
+                online: false,
+                actions: [
+                  {
+                    id: 'aspirate',
+                    actionRef: 'pump-1.aspirate',
+                    name: '吸液',
+                    typeName: 'unilabos_msgs.action.Pump',
+                    inputSchema: {
+                      volume: { type: 'number', default: 10 }
+                    },
+                    outputSchema: {},
+                    busy: true,
+                    currentJobId: 'job-aspirate'
+                  }
+                ]
+              }
+            ]
+          }
         }
       },
       requests
@@ -79,42 +82,45 @@ describe('laboratory service', () => {
   it('projects Action devices and schemas from the unified device catalog', async () => {
     const http = fixtureHttp({
       '/api/v1/devices': {
-        schemaVersion: 'device-catalog/v1',
-        source: 'edge',
-        generatedAt: 123,
-        items: [
-          {
-            id: 'pump-1',
-            deviceKey: '/cell/pump-1',
-            namespace: '/cell',
-            name: '蠕动泵',
-            online: true,
-            actions: [
-              {
-                id: 'aspirate',
-                actionRef: 'pump-1.aspirate',
-                name: '吸液',
-                typeName: 'unilabos_msgs.action.Pump',
-                inputSchema: {
-                  volume: { type: 'number', default: 10 }
+        code: 0,
+        data: {
+          schemaVersion: 'device-catalog/v1',
+          source: 'edge',
+          generatedAt: 123,
+          items: [
+            {
+              id: 'pump-1',
+              deviceKey: '/cell/pump-1',
+              namespace: '/cell',
+              name: '蠕动泵',
+              online: true,
+              actions: [
+                {
+                  id: 'aspirate',
+                  actionRef: 'pump-1.aspirate',
+                  name: '吸液',
+                  typeName: 'unilabos_msgs.action.Pump',
+                  inputSchema: {
+                    volume: { type: 'number', default: 10 }
+                  },
+                  outputSchema: {},
+                  busy: true
                 },
-                outputSchema: {},
-                busy: true
-              },
-              {
-                id: 'dispense',
-                actionRef: 'pump-1.dispense',
-                name: '排液',
-                typeName: 'unilabos_msgs.action.Pump',
-                inputSchema: {
-                  volume: { type: 'number', default: 2 }
-                },
-                outputSchema: {},
-                busy: false
-              }
-            ]
-          }
-        ]
+                {
+                  id: 'dispense',
+                  actionRef: 'pump-1.dispense',
+                  name: '排液',
+                  typeName: 'unilabos_msgs.action.Pump',
+                  inputSchema: {
+                    volume: { type: 'number', default: 2 }
+                  },
+                  outputSchema: {},
+                  busy: false
+                }
+              ]
+            }
+          ]
+        }
       }
     })
     const service = createLaboratoryService(
@@ -201,11 +207,14 @@ describe('laboratory service', () => {
       fixtureHttp(
         {
           '/api/v1/devices/robot%201/actions/move%2Fsafe/commands': {
-            status: 'released',
-            deviceId: 'robot 1',
-            actionName: 'move/safe',
-            releasedJobIds: ['job-active', 'job-queued'],
-            cancelRequestedJobIds: ['job-active']
+            code: 0,
+            data: {
+              status: 'unlocked',
+              deviceId: 'robot 1',
+              actionName: 'move/safe',
+              releasedJobIds: ['job-active', 'job-queued'],
+              cancelRequestedJobIds: ['job-active']
+            }
           }
         },
         requests
@@ -220,7 +229,7 @@ describe('laboratory service', () => {
         expectedJobId: 'job-active'
       })
     ).resolves.toEqual({
-      status: 'released',
+      status: 'unlocked',
       deviceId: 'robot 1',
       actionName: 'move/safe',
       releasedJobIds: ['job-active', 'job-queued'],

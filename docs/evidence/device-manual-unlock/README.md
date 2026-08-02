@@ -1,21 +1,26 @@
-# Device Action manual unlock E2E evidence
+# Device Action 手动解锁 E2E 证据
 
-This evidence set was captured by
-`e2e/device-manual-unlock-real-os.spec.ts` against a real local Uni-Lab OS
-runtime.
+本证据集由 `e2e/device-manual-unlock-real-os.spec.ts` 通过独占的前端预览服务
+与真实 Uni-Lab-OS FastAPI composition 生成。对应 OS 代码提交为
+`da64ca2adeb9a0d7e5f89d75d52f45929ff68a7d`。
 
-The sequence covers:
+最终复跑目录为
+`e2e-artifacts/device-manual-unlock-current-20260802-run6`，结果为 1/1
+通过，固化 10 张截图；浏览器错误为 0。
 
-1. detecting a busy Action from `GET /api/v1/devices`;
-2. exposing the holder and manual-unlock affordance in the existing device UI;
-3. requiring explicit physical-safety confirmation;
-4. sending the CAS-protected `force_unlock` command;
-5. refetching the authoritative catalog until the Action is free; and
-6. scheduling the same Action again to verify post-unlock reuse.
+测试全程复用现有仪器设备页、Action 卡片、锁状态面板和二次确认框，只替换
+服务适配及后端接口。顺序覆盖：
 
-`network-ledger.json` records the browser-visible health, catalog, and command
-requests. The command body contains the holder returned by the catalog and is
-asserted verbatim by the E2E test.
+1. 通过 `GET /api/v1/devices` 检出被占用 Action；
+2. 在原有设备 UI 展示完整 holder 和手动解锁入口；
+3. 强制操作员确认物理安全；
+4. 发送带 holder CAS 的 `force_unlock` 命令；
+5. 重新拉取权威目录，确认 Action 已空闲；
+6. 再次建立新 holder，确认解锁后可重新占用且迟到状态不会覆盖新 holder。
 
-These screenshots demonstrate logical lock recovery. They do not prove that a
-physical device has stopped; the operator confirmation remains mandatory.
+`network-ledger.json` 同时记录 E2E fixture 的 holder 建立/结束请求和浏览器发出的
+health、目录、命令请求。账本断言产品链路没有调用 `/api/v1/runtime/runs*`、
+workflow node template 或前端直连 Edge WebSocket。
+
+这些截图证明逻辑锁恢复与重新占用；不证明物理设备已经停止，因此操作员安全确认
+仍是强制步骤。

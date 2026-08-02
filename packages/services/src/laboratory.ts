@@ -41,7 +41,7 @@ export interface DeviceAction {
 }
 
 export interface DeviceActionUnlockResult {
-  status: 'released' | 'already_unlocked'
+  status: 'unlocked' | 'already_unlocked'
   deviceId: string
   actionName: string
   releasedJobIds: string[]
@@ -172,7 +172,8 @@ export function createLaboratoryService(
       actionName: string
       expectedJobId: string
     }): Promise<DeviceActionUnlockResult> {
-      const response = await http.request<Record<string, unknown>>(
+      const response = await requestData<Record<string, unknown>>(
+        http,
         `/api/v1/devices/${encodeURIComponent(input.deviceId)}`
           + `/actions/${encodeURIComponent(input.actionName)}/commands`,
         {
@@ -186,7 +187,7 @@ export function createLaboratoryService(
         }
       )
       const status = str(response.status)
-      if (status !== 'released' && status !== 'already_unlocked') {
+      if (status !== 'unlocked' && status !== 'already_unlocked') {
         throw new ServiceError({
           code: 'INVALID_DEVICE_UNLOCK_RESPONSE',
           message: '设备解锁响应状态无效',
@@ -266,7 +267,10 @@ function mapResource(raw: Record<string, unknown>): ResourceNode {
 async function getRuntimeDevices(
   http: HttpClient
 ): Promise<RuntimeDeviceCatalogItem[]> {
-  const raw = await http.request<Record<string, unknown>>('/api/v1/devices')
+  const raw = await requestData<Record<string, unknown>>(
+    http,
+    '/api/v1/devices'
+  )
   const items = Array.isArray(raw.items) ? raw.items : []
   return items.flatMap((value) => {
     const item = asRecord(value)
