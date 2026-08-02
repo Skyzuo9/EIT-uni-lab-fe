@@ -1,6 +1,7 @@
 export * from './backends'
 export * from './capabilities'
 export * from './createServices'
+export * from './deviceActionTasks'
 export * from './errors'
 export * from './http'
 export * from './laboratory'

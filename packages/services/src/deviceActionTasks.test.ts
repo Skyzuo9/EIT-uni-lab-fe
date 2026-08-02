@@ -118,7 +118,8 @@ function taskView(): Record<string, unknown> {
     authority_id: 'os-local',
     template_catalog_fingerprint: FINGERPRINT,
     workflow_node_template_uuid: TEMPLATE_UUID,
-    action: { name: 'move', display_name: '移动' },
+    name: 'move',
+    display_name: '移动',
     device_id: 'robot-1',
     status: 'pending',
     control_status: 'active',
@@ -126,9 +127,12 @@ function taskView(): Record<string, unknown> {
     input: { duration_seconds: 5 },
     output: {},
     error_info: [],
-    job: { status: 'pending', feedback_sequence: 0 },
+    job_status: 'pending',
+    feedback_cursor: 0,
     create_time: '2026-08-02T00:00:00Z',
-    update_time: '2026-08-02T00:00:00Z'
+    update_time: '2026-08-02T00:00:00Z',
+    started_at: null,
+    finished_at: null
   }
 }
 

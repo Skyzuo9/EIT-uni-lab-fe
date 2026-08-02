@@ -6,16 +6,28 @@ import {
   useState
 } from 'react'
 import {
+  ServiceError,
   type DeviceAction,
   type DeviceActionInputSchema,
+  type DeviceActionTaskView,
+  type WorkflowActionCatalogSnapshot,
+  type WorkflowActionNodeTemplate,
+  type WorkflowNodeJobFeedback,
   useServices
 } from '@unilab/services'
 
 import { useWorkbench } from '../../context/WorkbenchContext'
 import type { ManagedDevice } from '../../data/deviceCatalog'
 import { useDevices } from '../../hooks/useDevices'
+import {
+  matchDeviceActionTemplate,
+  serializeDeviceActionInput,
+  supportsD1AS1,
+  type DeviceActionArgumentDraft
+} from './deviceActionRun'
+import styles from './DevicePanel.module.scss'
 
-type ArgumentDraft = Record<string, string | boolean>
+type ArgumentDraft = DeviceActionArgumentDraft
 
 interface UnlockIntent {
   deviceId: string
@@ -30,6 +42,21 @@ interface UnlockOperation {
   actionRef: string
   state: 'pending' | 'success' | 'error'
   message: string
+}
+
+interface DeviceActionRunOperation {
+  actionRef: string
+  state: DeviceActionRunState
+}
+
+interface DeviceActionRunAttempt {
+  signature: string
+  idempotencyKey: string
+}
+
+interface DeviceActionFeedbackState {
+  cursor: number
+  items: WorkflowNodeJobFeedback[]
 }
 
 export default function DevicePanel(): React.JSX.Element {
@@ -48,7 +75,24 @@ export default function DevicePanel(): React.JSX.Element {
   const [unlockIntent, setUnlockIntent] = useState<UnlockIntent | null>(null)
   const [unlockOperation, setUnlockOperation] =
     useState<UnlockOperation | null>(null)
+  const [actionCatalog, setActionCatalog] =
+    useState<WorkflowActionCatalogSnapshot | null>(null)
+  const [actionCatalogLoading, setActionCatalogLoading] = useState(false)
+  const [actionCatalogError, setActionCatalogError] = useState<string | null>(null)
+  const [runOperation, setRunOperation] =
+    useState<DeviceActionRunOperation | null>(null)
+  const runAttemptRef = useRef<DeviceActionRunAttempt | null>(null)
+  const feedbackByTaskRef = useRef<Map<string, DeviceActionFeedbackState>>(
+    new Map()
+  )
   const canForceUnlock = services.capabilities.devices.forceUnlock
+  const canRunActionTask = services.capabilities.devices.runActionTask
+
+  useEffect(() => {
+    runAttemptRef.current = null
+    feedbackByTaskRef.current.clear()
+    setRunOperation(null)
+  }, [backend.apiUrl, backend.id])
 
   const selectedDevice = useMemo(
     () =>
@@ -85,6 +129,39 @@ export default function DevicePanel(): React.JSX.Element {
       selectedDevice
     ]
   )
+  const selectedActionTemplate = useMemo(
+    () =>
+      actionCatalog && selectedAction
+        ? matchDeviceActionTemplate(actionCatalog, selectedAction)
+        : null,
+    [actionCatalog, selectedAction]
+  )
+
+  const loadActionCatalog = useCallback(async () => {
+    if (!canRunActionTask || connection !== 'connected') return
+    setActionCatalogLoading(true)
+    setActionCatalogError(null)
+    try {
+      setActionCatalog(await services.workflow.getWorkflowActionCatalog())
+    } catch (error) {
+      setActionCatalog(null)
+      setActionCatalogError(
+        error instanceof Error ? error.message : 'Action 合同目录不可用'
+      )
+    } finally {
+      setActionCatalogLoading(false)
+    }
+  }, [canRunActionTask, connection, services.workflow])
+
+  useEffect(() => {
+    if (!canRunActionTask || connection !== 'connected') {
+      setActionCatalog(null)
+      setActionCatalogError(null)
+      setActionCatalogLoading(false)
+      return
+    }
+    void loadActionCatalog()
+  }, [backend.apiUrl, backend.id, canRunActionTask, connection, loadActionCatalog])
   useEffect(() => {
     if (!devices.length) {
       setSelectedDeviceId(null)
@@ -177,6 +254,228 @@ export default function DevicePanel(): React.JSX.Element {
     }
   }, [refresh, services.laboratory, unlockIntent])
 
+  const refreshDeviceActionTask = useCallback(async (
+    taskUuid: string,
+    actionRef: string
+  ) => {
+    const view = await services.deviceActionTasks.getDeviceActionTask(taskUuid)
+    const previous = feedbackByTaskRef.current.get(taskUuid) ?? {
+      cursor: 0,
+      items: []
+    }
+    let cursor = previous.cursor
+    const feedback = [...previous.items]
+    while (cursor < view.feedback_cursor) {
+      const page = await services.workflow.listWorkflowNodeJobFeedback(
+        view.job_uuid,
+        { after_sequence: cursor, limit: 100 }
+      )
+      feedback.push(...page.items.filter((item) => item.sequence > cursor))
+      if (page.next_cursor <= cursor) break
+      cursor = page.next_cursor
+      if (!page.has_more) break
+    }
+    feedbackByTaskRef.current.set(taskUuid, { cursor, items: feedback })
+    setRunOperation((current) => {
+      if (
+        !current ||
+        current.actionRef !== actionRef ||
+        !('taskUuid' in current.state) ||
+        current.state.taskUuid !== taskUuid
+      ) {
+        return current
+      }
+      return {
+        actionRef,
+        state: projectDeviceActionTask(view, feedback)
+      }
+    })
+    if (isTerminalDeviceActionTask(view.status)) {
+      await refresh()
+    }
+  }, [refresh, services.deviceActionTasks, services.workflow])
+
+  const activeTaskUuid = runOperation?.state && 'taskUuid' in runOperation.state
+    ? runOperation.state.taskUuid
+    : null
+  useEffect(() => {
+    if (!activeTaskUuid || !runOperation) return
+    const actionRef = runOperation.actionRef
+    const subscription = services.workflow.subscribeWorkflowRuntime((event) => {
+      if (event.data.workflow_task_uuid !== activeTaskUuid) return
+      void refreshDeviceActionTask(activeTaskUuid, actionRef).catch((error) => {
+        setRunOperation((current) => {
+          if (
+            !current ||
+            !('taskUuid' in current.state) ||
+            current.state.taskUuid !== activeTaskUuid
+          ) {
+            return current
+          }
+          return {
+            ...current,
+            state: {
+              ...current.state,
+              message: error instanceof Error
+                ? `任务状态补读失败：${error.message}`
+                : '任务状态补读失败'
+            }
+          }
+        })
+      })
+    })
+    return () => subscription.dispose()
+  }, [activeTaskUuid, refreshDeviceActionTask, runOperation?.actionRef, services.workflow])
+
+  const handleRunAction = useCallback(async (
+    device: ManagedDevice,
+    action: DeviceAction,
+    template: WorkflowActionNodeTemplate
+  ) => {
+    if (
+      !actionCatalog ||
+      runOperation?.state.kind === 'submitting' ||
+      runOperation?.state.kind === 'accepted' ||
+      runOperation?.state.kind === 'running'
+    ) return
+    let input: Record<string, unknown>
+    try {
+      input = serializeDeviceActionInput(action, argumentDraft)
+    } catch (error) {
+      setRunOperation({
+        actionRef: action.actionRef,
+        state: {
+          kind: 'error',
+          message: error instanceof Error ? error.message : 'Action 参数不合法',
+          retryable: false
+        }
+      })
+      return
+    }
+    const signature = JSON.stringify({
+      authorityId: actionCatalog.authorityId,
+      fingerprint: actionCatalog.fingerprint,
+      templateUuid: template.uuid,
+      deviceId: device.id,
+      input
+    })
+    const previous = runAttemptRef.current
+    const idempotencyKey = previous?.signature === signature
+      ? previous.idempotencyKey
+      : globalThis.crypto.randomUUID()
+    runAttemptRef.current = { signature, idempotencyKey }
+    setRunOperation({
+      actionRef: action.actionRef,
+      state: { kind: 'submitting', message: '正在创建正式任务…' }
+    })
+    try {
+      const view = await services.deviceActionTasks.createDeviceActionTask({
+        authority_id: actionCatalog.authorityId,
+        template_catalog_fingerprint: actionCatalog.fingerprint,
+        workflow_node_template_uuid: template.uuid,
+        device_id: device.id,
+        input,
+        idempotency_key: idempotencyKey,
+        description: '设备页单动作运行'
+      })
+      runAttemptRef.current = null
+      feedbackByTaskRef.current.set(view.task_uuid, { cursor: 0, items: [] })
+      setRunOperation({
+        actionRef: action.actionRef,
+        state: projectDeviceActionTask(view, [])
+      })
+      const [, taskRefresh] = await Promise.allSettled([
+        refresh(),
+        refreshDeviceActionTask(view.task_uuid, action.actionRef)
+      ])
+      if (taskRefresh.status === 'rejected') {
+        const error = taskRefresh.reason
+        setRunOperation((current) => {
+          if (
+            !current ||
+            !('taskUuid' in current.state) ||
+            current.state.taskUuid !== view.task_uuid
+          ) {
+            return current
+          }
+          return {
+            ...current,
+            state: {
+              ...current.state,
+              message: error instanceof Error
+                ? `任务已接受，状态补读失败：${error.message}`
+                : '任务已接受，状态补读失败'
+            }
+          }
+        })
+      }
+    } catch (error) {
+      if (
+        error instanceof ServiceError &&
+        error.code === 'template_catalog_conflict'
+      ) {
+        runAttemptRef.current = null
+        await Promise.all([loadActionCatalog(), refresh()])
+        setRunOperation({
+          actionRef: action.actionRef,
+          state: {
+            kind: 'error',
+            message: 'Action 合同目录已更新，请复核参数后重新运行',
+            retryable: false
+          }
+        })
+        return
+      }
+      setRunOperation({
+        actionRef: action.actionRef,
+        state: {
+          kind: 'error',
+          message: error instanceof Error ? error.message : '任务创建失败',
+          retryable: error instanceof ServiceError && error.retryable
+        }
+      })
+    }
+  }, [
+    actionCatalog,
+    argumentDraft,
+    loadActionCatalog,
+    refresh,
+    refreshDeviceActionTask,
+    runOperation?.state.kind,
+    services.deviceActionTasks
+  ])
+
+  const handleCancelActionTask = useCallback(async (taskUuid: string) => {
+    try {
+      await services.workflow.commandWorkflowTask(taskUuid, {
+        type: 'cancel',
+        idempotency_key: globalThis.crypto.randomUUID(),
+        description: '设备页取消单动作任务'
+      })
+      setRunOperation((current) => current && 'taskUuid' in current.state
+        ? {
+            ...current,
+            state: {
+              ...current.state,
+              message: '取消命令已接受，等待 OS 确认生效'
+            }
+          }
+        : current)
+    } catch (error) {
+      setRunOperation((current) => current && 'taskUuid' in current.state
+        ? {
+            ...current,
+            state: {
+              ...current.state,
+              message: error instanceof Error
+                ? `取消任务失败：${error.message}`
+                : '取消任务失败，请重试'
+            }
+          }
+        : current)
+    }
+  }, [services.workflow])
+
   return (
     <>
       <section
@@ -254,6 +553,31 @@ export default function DevicePanel(): React.JSX.Element {
             argumentDraft={argumentDraft}
             onSelectAction={setSelectedActionRef}
             onArgumentChange={handleArgumentChange}
+            actionTemplate={selectedActionTemplate}
+            actionCatalogLoading={actionCatalogLoading}
+            actionCatalogError={actionCatalogError}
+            canRunActionTask={canRunActionTask}
+            connection={connection}
+            runState={
+              runOperation?.actionRef === selectedAction?.actionRef
+                ? runOperation.state
+                : null
+            }
+            activeRunActionRef={
+              runOperation && (
+                runOperation.state.kind === 'submitting' ||
+                runOperation.state.kind === 'accepted' ||
+                runOperation.state.kind === 'running'
+              )
+                ? runOperation.actionRef
+                : null
+            }
+            onRunAction={(action, template) => {
+              void handleRunAction(selectedDevice, action, template)
+            }}
+            onCancelActionTask={(taskUuid) => {
+              void handleCancelActionTask(taskUuid)
+            }}
             canForceUnlock={canForceUnlock}
             unlockOperation={unlockOperation}
             onRequestUnlock={handleRequestUnlock}
@@ -375,6 +699,15 @@ function DeviceWorkspace({
   argumentDraft,
   onSelectAction,
   onArgumentChange,
+  actionTemplate,
+  actionCatalogLoading,
+  actionCatalogError,
+  canRunActionTask,
+  connection,
+  runState,
+  activeRunActionRef,
+  onRunAction,
+  onCancelActionTask,
   canForceUnlock,
   unlockOperation,
   onRequestUnlock
@@ -385,6 +718,18 @@ function DeviceWorkspace({
   argumentDraft: ArgumentDraft
   onSelectAction: (actionRef: string) => void
   onArgumentChange: (name: string, value: string | boolean) => void
+  actionTemplate: WorkflowActionNodeTemplate | null
+  actionCatalogLoading: boolean
+  actionCatalogError: string | null
+  canRunActionTask: boolean
+  connection: 'disconnected' | 'connecting' | 'connected' | 'error'
+  runState: DeviceActionRunState | null
+  activeRunActionRef: string | null
+  onRunAction: (
+    action: DeviceAction,
+    template: WorkflowActionNodeTemplate
+  ) => void
+  onCancelActionTask: (taskUuid: string) => void
   canForceUnlock: boolean
   unlockOperation: UnlockOperation | null
   onRequestUnlock: (device: ManagedDevice, action: DeviceAction) => void
@@ -459,6 +804,10 @@ function DeviceWorkspace({
                   aria-pressed={action.actionRef === selectedActionRef}
                   aria-label={`${action.displayName} 动作节点`}
                   title={action.displayName}
+                  disabled={
+                    activeRunActionRef !== null &&
+                    action.actionRef !== activeRunActionRef
+                  }
                   onClick={() => onSelectAction(action.actionRef)}
                 >
                   <span className="edge-device__node-index">
@@ -508,10 +857,28 @@ function DeviceWorkspace({
               <ActionParameterForm
                 action={selectedAction}
                 draft={argumentDraft}
-                disabled={false}
+                disabled={
+                  runState?.kind === 'submitting' ||
+                  runState?.kind === 'accepted' ||
+                  runState?.kind === 'running'
+                }
                 onChange={onArgumentChange}
               />
-              <DeviceActionAvailability />
+              <DeviceActionAvailability
+                state={runState ?? deviceActionReadiness({
+                  action: selectedAction,
+                  device,
+                  template: actionTemplate,
+                  canRunActionTask,
+                  connection,
+                  catalogLoading: actionCatalogLoading,
+                  catalogError: actionCatalogError
+                })}
+                onRun={() => {
+                  if (actionTemplate) onRunAction(selectedAction, actionTemplate)
+                }}
+                onCancel={onCancelActionTask}
+              />
             </>
           ) : (
             <div className="edge-device__no-actions">
@@ -524,21 +891,276 @@ function DeviceWorkspace({
   )
 }
 
-export function DeviceActionAvailability(): React.JSX.Element {
-  return (
-    <div className="edge-device__debug-actions" role="note">
-      <button
-        type="button"
-        className="edge-device__run-button"
-        disabled
-      >
-        请在工作流中运行
-      </button>
-      <span>
-        单节点临时执行接口已退役；请将动作加入并应用工作流，再由 WorkflowTask 执行。
-      </span>
-    </div>
+function deviceActionReadiness({
+  action,
+  device,
+  template,
+  canRunActionTask,
+  connection,
+  catalogLoading,
+  catalogError
+}: {
+  action: DeviceAction
+  device: ManagedDevice
+  template: WorkflowActionNodeTemplate | null
+  canRunActionTask: boolean
+  connection: 'disconnected' | 'connecting' | 'connected' | 'error'
+  catalogLoading: boolean
+  catalogError: string | null
+}): DeviceActionRunState {
+  if (!canRunActionTask) {
+    return {
+      kind: 'unavailable',
+      message: '当前服务尚未启用正式单 Action Task，请在工作流中运行'
+    }
+  }
+  if (connection !== 'connected' || !device.online) {
+    return {
+      kind: 'unavailable',
+      message: '设备或 Edge 当前离线，恢复连接后才能运行'
+    }
+  }
+  if (catalogLoading) {
+    return { kind: 'unavailable', message: '正在读取 A1 Action 合同目录…' }
+  }
+  if (catalogError) {
+    return { kind: 'unavailable', message: `Action 合同目录不可用：${catalogError}` }
+  }
+  if (!template) {
+    return {
+      kind: 'unavailable',
+      message: 'live Action 无法唯一匹配 A1 template，请在工作流中运行'
+    }
+  }
+  if (!supportsD1AS1(template)) {
+    return {
+      kind: 'unavailable',
+      message: '该动作包含物料或 Site 语义，请在工作流中运行'
+    }
+  }
+  return {
+    kind: 'ready',
+    message: action.isBusy
+      ? '当前动作被占用；提交后由 OS durable admission 排队'
+      : '参数将提交为正式 WorkflowTask / WorkflowNodeJob'
+  }
+}
+
+function projectDeviceActionTask(
+  view: DeviceActionTaskView,
+  feedback: WorkflowNodeJobFeedback[]
+): DeviceActionRunState {
+  const projection = {
+    taskUuid: view.task_uuid,
+    output: view.output,
+    feedback,
+    error: view.error_info
+  }
+  if (view.status === 'succeeded') {
+    return { kind: 'succeeded', message: '动作执行完成', ...projection }
+  }
+  if (view.status === 'failed' || view.status === 'timeout') {
+    return {
+      kind: 'failed',
+      message: view.status === 'timeout' ? '动作执行超时' : '动作执行失败',
+      ...projection
+    }
+  }
+  if (view.status === 'canceled') {
+    return { kind: 'canceled', message: '动作任务已取消', ...projection }
+  }
+  if (view.status === 'running' || view.status === 'canceling') {
+    return {
+      kind: 'running',
+      message: view.status === 'canceling'
+        ? '取消正在生效，等待设备终态'
+        : `设备正在执行 · Job ${view.job_status}`,
+      ...projection
+    }
+  }
+  return {
+    kind: 'accepted',
+    message: '任务已接受，正在等待设备',
+    ...projection
+  }
+}
+
+function isTerminalDeviceActionTask(status: string): boolean {
+  return ['succeeded', 'failed', 'canceled', 'timeout'].includes(status)
+}
+
+export type DeviceActionRunState =
+  | {
+      kind: 'ready' | 'unavailable' | 'submitting'
+      message: string
+    }
+  | {
+      kind: 'error'
+      message: string
+      retryable: boolean
+    }
+  | {
+      kind: 'accepted' | 'running' | 'succeeded' | 'failed' | 'canceled'
+      message: string
+      taskUuid: string
+      output?: Record<string, unknown>
+      feedback?: WorkflowNodeJobFeedback[]
+      error?: unknown[]
+    }
+
+export function DeviceActionAvailability({
+  state,
+  onRun,
+  onCancel
+}: {
+  state: DeviceActionRunState
+  onRun: () => void
+  onCancel?: (taskUuid: string) => void
+}): React.JSX.Element {
+  const [copied, setCopied] = useState(false)
+  const ready = state.kind === 'ready' || (
+    state.kind === 'error' && state.retryable
   )
+  const terminal = state.kind === 'succeeded' ||
+    state.kind === 'failed' ||
+    state.kind === 'canceled'
+  const runnable = ready || terminal
+  const log = deviceActionExecutionLog(state)
+  useEffect(() => {
+    setCopied(false)
+  }, [log])
+  return (
+    <>
+      <div
+        className={`edge-device__debug-actions is-${state.kind}`}
+        role={state.kind === 'failed' ? 'alert' : 'status'}
+      >
+        <button
+          type="button"
+          className="edge-device__run-button"
+          disabled={!runnable}
+          onClick={onRun}
+        >
+          {state.kind === 'unavailable'
+            ? '请在工作流中运行'
+            : state.kind === 'submitting'
+              ? '正在创建正式任务…'
+              : state.kind === 'error' && state.retryable
+                ? '重试同一请求'
+                : terminal
+                  ? '再次运行'
+                  : '运行此动作'}
+        </button>
+        {'taskUuid' in state &&
+        (state.kind === 'accepted' || state.kind === 'running') &&
+        onCancel ? (
+          <button
+            type="button"
+            className="edge-device__cancel-button"
+            onClick={() => onCancel(state.taskUuid)}
+          >
+            取消任务
+          </button>
+        ) : null}
+        <span>{state.message}</span>
+      </div>
+      {'taskUuid' in state ? (
+        <div className="edge-device__execution" aria-live="polite">
+          <div className="edge-device__execution-head">
+            <span className={`edge-device__execution-state ${
+              deviceActionExecutionPresentation(state.kind).tone
+            }`}>
+              <span aria-hidden="true" />
+              {deviceActionExecutionPresentation(state.kind).label}
+            </span>
+            <span className={styles.executionTools}>
+              <code title={state.taskUuid}>
+                Task {shortIdentifier(state.taskUuid)}
+              </code>
+              {log ? (
+                <button
+                  type="button"
+                  className={styles.copyButton}
+                  data-copied={copied}
+                  onClick={() => {
+                    void navigator.clipboard.writeText(log).then(() => {
+                      setCopied(true)
+                    })
+                  }}
+                >
+                  {copied ? '已复制' : '复制'}
+                </button>
+              ) : null}
+            </span>
+          </div>
+          {log ? (
+            <pre aria-label="Action 运行日志">{log}</pre>
+          ) : (
+            <p>{deviceActionExecutionPresentation(state.kind).description}</p>
+          )}
+        </div>
+      ) : null}
+    </>
+  )
+}
+
+function deviceActionExecutionLog(state: DeviceActionRunState): string {
+  if (!('taskUuid' in state)) return ''
+  const projection: Record<string, unknown> = {}
+  if (state.feedback?.length) {
+    projection.events = state.feedback.map((item) => ({
+      sequence: item.sequence,
+      type: item.feedback_type,
+      data: item.data,
+      observed_at: item.observed_at
+    }))
+  }
+  if (state.output && Object.keys(state.output).length > 0) {
+    projection.result = state.output
+  }
+  if (state.error?.length) projection.error = state.error
+  return Object.keys(projection).length > 0
+    ? JSON.stringify(projection, null, 2)
+    : ''
+}
+
+function deviceActionExecutionPresentation(kind: DeviceActionRunState['kind']): {
+  label: string
+  description: string
+  tone: string
+} {
+  switch (kind) {
+    case 'succeeded':
+      return {
+        label: '执行成功',
+        description: '动作已由 OS 确认为成功。',
+        tone: 'is-success'
+      }
+    case 'failed':
+      return {
+        label: '执行失败',
+        description: 'OS 报告动作执行失败，请检查设备日志。',
+        tone: 'is-danger'
+      }
+    case 'canceled':
+      return {
+        label: '已停止',
+        description: 'OS 已确认动作停止。',
+        tone: 'is-muted'
+      }
+    case 'running':
+      return {
+        label: '执行中',
+        description: '动作已进入设备执行队列。',
+        tone: 'is-running'
+      }
+    default:
+      return {
+        label: '等待执行',
+        description: 'OS 已接受任务，等待动作调度。',
+        tone: 'is-pending'
+      }
+  }
 }
 
 export function DeviceLockControl({

@@ -72,6 +72,38 @@ describe('device action Runtime availability', () => {
     expect(accepted).not.toContain('动作执行完成')
     expect(succeeded).toContain('动作执行完成')
     expect(succeeded).toContain('&quot;position&quot;: &quot;safe&quot;')
+    expect(succeeded).not.toContain('disabled')
+  })
+
+  it('reuses the original execution panel to present feedback as an event stream', () => {
+    const markup = renderToStaticMarkup(
+      <DeviceActionAvailability
+        state={{
+          kind: 'running',
+          message: '设备正在执行',
+          taskUuid: '10000000-0000-4000-8000-000000000001',
+          feedback: [{
+            uuid: '10000000-0000-4000-8000-000000000010',
+            create_time: '2026-08-02T00:00:01Z',
+            update_time: '2026-08-02T00:00:01Z',
+            meta_data: {},
+            workflow_node_job_uuid: '10000000-0000-4000-8000-000000000002',
+            sequence: 1,
+            feedback_type: 'progress',
+            data: { progress: 0.5 },
+            observed_at: '2026-08-02T00:00:01Z',
+            received_at: '2026-08-02T00:00:01Z',
+            idempotency_key: 'feedback-1'
+          }]
+        }}
+        onRun={() => {}}
+      />
+    )
+
+    expect(markup).toContain('edge-device__execution')
+    expect(markup).toContain('Action 运行日志')
+    expect(markup).toContain('&quot;events&quot;')
+    expect(markup).toContain('&quot;progress&quot;: 0.5')
   })
 })
 
