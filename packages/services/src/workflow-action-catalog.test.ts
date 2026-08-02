@@ -392,6 +392,218 @@ describe('Workflow Action Catalog adapter', () => {
     })
   })
 
+  it.each([
+    {
+      name: 'workflow discriminator on an Action-shaped template',
+      mutate: (responses: Record<string, unknown>) => {
+        workflowSummary(responses).type = 'UniLabJsonCommand'
+        workflowSummary(responses).node_type = 'device'
+        workflowDetail(responses).type = 'UniLabJsonCommand'
+        workflowDetail(responses).node_type = 'device'
+      }
+    },
+    {
+      name: 'workflow node_type',
+      mutate: (responses: Record<string, unknown>) => {
+        workflowSummary(responses).node_type = 'device'
+        workflowDetail(responses).node_type = 'device'
+      }
+    },
+    {
+      name: 'framework renderer owner flag',
+      mutate: (responses: Record<string, unknown>) => {
+        workflowUnilab(responses).framework_owner_only = false
+      }
+    },
+    {
+      name: 'workflow contract version',
+      mutate: (responses: Record<string, unknown>) => {
+        workflowExtension(responses).version = 2
+      }
+    },
+    {
+      name: 'workflow compatibility version',
+      mutate: (responses: Record<string, unknown>) => {
+        workflowExtension(responses).compatibility_version = 2
+      }
+    },
+    {
+      name: 'workflow contract extension field',
+      mutate: (responses: Record<string, unknown>) => {
+        workflowExtension(responses).frontend_compatibility_guess = true
+      }
+    },
+    {
+      name: 'workflow revision',
+      mutate: (responses: Record<string, unknown>) => {
+        workflowExtension(responses).workflow_revision = 0
+      }
+    },
+    {
+      name: 'workflow UUID identity',
+      mutate: (responses: Record<string, unknown>) => {
+        workflowExtension(responses).workflow_uuid =
+          '40000000-0000-4000-8000-000000000099'
+      }
+    },
+    {
+      name: 'Applied source hash',
+      mutate: (responses: Record<string, unknown>) => {
+        workflowExtension(responses).applied_source_hash = 'source-hash'
+      }
+    },
+    {
+      name: 'contract digest',
+      mutate: (responses: Record<string, unknown>) => {
+        workflowExtension(responses).contract_digest =
+          `sha256:${'A'.repeat(64)}`
+      }
+    },
+    {
+      name: 'duplicate input order',
+      mutate: (responses: Record<string, unknown>) => {
+        workflowExtension(responses).input_order = ['sample', 'sample']
+      }
+    },
+    {
+      name: 'input order/schema correspondence',
+      mutate: (responses: Record<string, unknown>) => {
+        workflowExtension(responses).input_order = ['missing']
+      }
+    },
+    {
+      name: 'output order/schema correspondence',
+      mutate: (responses: Record<string, unknown>) => {
+        workflowExtension(responses).output_order = []
+      }
+    },
+    {
+      name: 'closed workflow schema',
+      mutate: (responses: Record<string, unknown>) => {
+        workflowSchemaValue(responses).frontend_derived = true
+      }
+    },
+    {
+      name: 'missing Package provenance field',
+      mutate: (responses: Record<string, unknown>) => {
+        delete workflowSource(responses).definition_fqid
+      }
+    },
+    {
+      name: 'extra Package provenance field',
+      mutate: (responses: Record<string, unknown>) => {
+        workflowSource(responses).device_name = 'host_node'
+      }
+    },
+    {
+      name: 'Package provenance kind',
+      mutate: (responses: Record<string, unknown>) => {
+        workflowSource(responses).kind = 'registry'
+      }
+    },
+    {
+      name: 'absolute Package module',
+      mutate: (responses: Record<string, unknown>) => {
+        workflowSource(responses).module = '.workflows.child'
+      }
+    },
+    {
+      name: 'Package class/source correspondence',
+      mutate: (responses: Record<string, unknown>) => {
+        workflowDetail(responses).class =
+          'c1_published_lab.workflows.other:prepare_sample'
+      }
+    },
+    {
+      name: 'workflow Handle parent',
+      mutate: (responses: Record<string, unknown>) => {
+        workflowHandles(responses)[0]!.workflow_node_template_uuid = nodeUuid
+      }
+    },
+    {
+      name: 'input Handle direction',
+      mutate: (responses: Record<string, unknown>) => {
+        workflowHandles(responses)[0]!.io_type = 'source'
+      }
+    },
+    {
+      name: 'input Handle data source',
+      mutate: (responses: Record<string, unknown>) => {
+        workflowHandles(responses)[0]!.data_source = 'result'
+      }
+    },
+    {
+      name: 'input Handle data key',
+      mutate: (responses: Record<string, unknown>) => {
+        workflowHandles(responses)[0]!.data_key = 'guessed_sample'
+      }
+    },
+    {
+      name: 'input Handle value schema',
+      mutate: (responses: Record<string, unknown>) => {
+        workflowHandleUnilab(responses, 0).value_schema = { type: 'string' }
+      }
+    },
+    {
+      name: 'ResourceSlot allowlist correspondence',
+      mutate: (responses: Record<string, unknown>) => {
+        workflowHandleUnilab(responses, 0)
+          .allowed_resource_template_uuids = [hostResourceTemplateUuid]
+      }
+    },
+    {
+      name: 'missing structural ready Handle',
+      mutate: (responses: Record<string, unknown>) => {
+        workflowHandles(responses).pop()
+      }
+    },
+    {
+      name: 'ready Handle structural role',
+      mutate: (responses: Record<string, unknown>) => {
+        delete workflowHandleUnilab(responses, 2).structural_role
+      }
+    },
+    {
+      name: 'ready Handle data source',
+      mutate: (responses: Record<string, unknown>) => {
+        workflowHandles(responses)[2]!.data_source = 'goal'
+      }
+    },
+    {
+      name: 'Published Handle order',
+      mutate: (responses: Record<string, unknown>) => {
+        const handles = workflowHandles(responses)
+        ;[handles[0], handles[1]] = [handles[1]!, handles[0]!]
+      }
+    },
+    {
+      name: 'global Action/Workflow Handle UUID',
+      mutate: (responses: Record<string, unknown>) => {
+        workflowHandles(responses)[0]!.uuid = targetUuid
+      }
+    },
+    {
+      name: 'output Handle required flag',
+      mutate: (responses: Record<string, unknown>) => {
+        workflowHandles(responses)[1]!.required = true
+      }
+    }
+  ])('fails closed for malformed Published Workflow $name', async ({
+    mutate
+  }) => {
+    const responses = executableCatalogResponses()
+    mutate(responses)
+    const runtime = createWorkflowRuntime(
+      fixtureHttp(responses),
+      getDefaultBackend('local-python')
+    )
+
+    await expect(runtime.getWorkflowActionCatalog()).rejects.toMatchObject({
+      code: 'INVALID_API_RESPONSE',
+      retryable: false
+    })
+  })
+
   it('does not retain a catalog from another authority or fingerprint', async () => {
     const first = createWorkflowRuntime(
       fixtureHttp(catalogResponses()),
@@ -463,6 +675,66 @@ function detailDataFor(
     template: Record<string, unknown>
     handles: RawHandle[]
   }
+}
+
+function workflowSummary(
+  responses: Record<string, unknown>
+): Record<string, unknown> {
+  const list = (responses[
+    '/api/v1/workflow-node-templates?page=1&page_size=100'
+  ] as Envelope).data as { items: Array<Record<string, unknown>> }
+  const value = list.items.find((item) => item.uuid === workflowNodeUuid)
+  if (!value) throw new Error('Published Workflow summary fixture missing')
+  return value
+}
+
+function workflowDetail(
+  responses: Record<string, unknown>
+): Record<string, unknown> {
+  return detailDataFor(responses, workflowNodeUuid).template
+}
+
+function workflowSchemaValue(
+  responses: Record<string, unknown>
+): Record<string, unknown> {
+  return workflowDetail(responses).schema as Record<string, unknown>
+}
+
+function workflowExtension(
+  responses: Record<string, unknown>
+): Record<string, unknown> {
+  return workflowSchemaValue(responses)[
+    'x-unilabos-workflow-contract'
+  ] as Record<string, unknown>
+}
+
+function workflowUnilab(
+  responses: Record<string, unknown>
+): Record<string, unknown> {
+  return (workflowDetail(responses).meta_data as Record<string, unknown>)
+    .unilab as Record<string, unknown>
+}
+
+function workflowSource(
+  responses: Record<string, unknown>
+): Record<string, unknown> {
+  return workflowUnilab(responses).workflow_source as Record<string, unknown>
+}
+
+function workflowHandles(
+  responses: Record<string, unknown>
+): RawHandle[] {
+  return detailDataFor(responses, workflowNodeUuid).handles
+}
+
+function workflowHandleUnilab(
+  responses: Record<string, unknown>,
+  index: number
+): Record<string, unknown> {
+  const handle = workflowHandles(responses)[index]
+  if (!handle) throw new Error(`Published Workflow Handle ${index} missing`)
+  return (handle.meta_data as Record<string, unknown>)
+    .unilab as Record<string, unknown>
 }
 
 function actionSchema(): Record<string, unknown> {
