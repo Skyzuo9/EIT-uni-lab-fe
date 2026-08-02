@@ -260,6 +260,31 @@ describe('oblique material projection', () => {
     expect(scene.objects[0]?.levels).toHaveLength(0)
   })
 
+  it('draws empty declared racks without inventing durable Sites', () => {
+    const scene = buildMaterialObliqueScene(
+      [
+        aggregate('empty-rack', [0, 0, 0], {
+          kind: 'sample_vial_stack',
+          dimensionsMm: [790, 560, 200],
+          sites: []
+        })
+      ],
+      library([
+        {
+          id: 'sample_vial_stack',
+          applies_to: [{ category: 'sample_vial_stack' }],
+          parts: [
+            { type: 'sites', style: 'board', generator: 'open-rack' }
+          ]
+        }
+      ])
+    )
+
+    expect(scene.objects[0]?.renderStyle).toBe('spec')
+    expect(scene.objects[0]?.levels).toHaveLength(3)
+    expect(scene.objects[0]?.levels.every((level) => level.sites.length === 0)).toBe(true)
+  })
+
   it('reads stack shelves from authoritative sites when the generator asks for them', () => {
     const shapes = library([
       {

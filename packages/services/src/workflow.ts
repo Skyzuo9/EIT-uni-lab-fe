@@ -5,6 +5,10 @@ import {
   loadWorkflowActionCatalog,
   type WorkflowActionCatalogSnapshot
 } from './workflowActionCatalog'
+import {
+  decodeWorkflowIoMetadata,
+  type WorkflowIoMetadata
+} from './workflowIo'
 
 export type {
   WorkflowActionCatalogSnapshot,
@@ -12,6 +16,15 @@ export type {
   WorkflowActionHandleTemplate,
   WorkflowActionNodeTemplate
 } from './workflowActionCatalog'
+export type {
+  WorkflowInputContract,
+  WorkflowInputDescriptor,
+  WorkflowIoMetadata,
+  WorkflowOutputBinding,
+  WorkflowOutputContract,
+  WorkflowOutputDescriptor,
+  WorkflowValueSchema
+} from './workflowIo'
 
 export type WorkflowRevision = Record<string, unknown> & {
   schema_version: '2'
@@ -116,7 +129,11 @@ export interface WorkflowAuthoringSourceMapEntry {
 }
 
 export interface WorkflowAuthoringGraph {
-  workflow: Record<string, unknown>
+  workflow: Record<string, unknown> & {
+    meta_data?: Record<string, unknown> & {
+      unilab?: Record<string, unknown> & Partial<WorkflowIoMetadata>
+    }
+  }
   nodes: Array<Record<string, unknown>>
   edges: Array<Record<string, unknown>>
   node_templates: Array<Record<string, unknown>>
@@ -517,10 +534,10 @@ export function createWorkflowRuntime(
 
   const port: WorkflowRuntimePort = {
     getWorkflowActionCatalog: () => loadWorkflowActionCatalog(http),
-    getWorkflowAuthoring: (workflowUuid) =>
-      authoringRequest(
+    getWorkflowAuthoring: async (workflowUuid) =>
+      decodeWorkflowAuthoringAggregate(await authoringRequest(
         `/api/v1/workflows/${encodeURIComponent(workflowUuid)}/authoring`
-      ),
+      )),
     saveWorkflowAuthoringDraft: (workflowUuid, body) =>
       authoringRequest(
         `/api/v1/workflows/${encodeURIComponent(workflowUuid)}/authoring/draft`,
@@ -822,6 +839,38 @@ function strictAuthoringData<Value>(raw: unknown): Value {
     throw invalidAuthoringResponse()
   }
   return envelope.data as Value
+}
+
+function decodeWorkflowAuthoringAggregate(
+  value: unknown
+): WorkflowAuthoringAggregate {
+  try {
+    const aggregate = authoringRecord(value)
+    decodeWorkflowAuthoringGraph(aggregate.applied_graph)
+    return aggregate as unknown as WorkflowAuthoringAggregate
+  } catch (error) {
+    if (error instanceof ServiceError) throw error
+    throw invalidAuthoringResponse()
+  }
+}
+
+function decodeWorkflowAuthoringGraph(value: unknown): void {
+  const graph = authoringRecord(value)
+  const workflow = authoringRecord(graph.workflow)
+  if (workflow.meta_data === undefined) return
+  const metaData = authoringRecord(workflow.meta_data)
+  if (metaData.unilab === undefined) return
+  const unilab = authoringRecord(metaData.unilab)
+  const ioKeys = ['input_contract', 'output_contract', 'output_bindings']
+  if (!ioKeys.some((key) => Object.hasOwn(unilab, key))) return
+  decodeWorkflowIoMetadata(unilab)
+}
+
+function authoringRecord(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw invalidAuthoringResponse()
+  }
+  return value as Record<string, unknown>
 }
 
 function strictRuntimeData<Value>(raw: unknown): Value {

@@ -29,10 +29,7 @@ describe('server capability matrix', () => {
             (capability === 'devices.listActions' ||
               capability === 'devices.forceUnlock' ||
               capability === 'devices.runActionTask' ||
-              capability === 'material.readTemplates' ||
-              capability === 'material.readGraph' ||
-              capability === 'material.create' ||
-              capability === 'edge.undoCreate'))
+              capability === 'material.readGraph'))
         expect(hasServerCapability(capabilities, capability)).toBe(expected)
 
         const status = getCapabilityStatus(

@@ -215,10 +215,7 @@ function localPythonCapabilities(): ServerCapabilities {
   capabilities.devices.listActions = true
   capabilities.devices.forceUnlock = true
   capabilities.devices.runActionTask = true
-  capabilities.material.readTemplates = true
   capabilities.material.readGraph = true
-  capabilities.material.create = true
-  capabilities.edge.undoCreate = true
   return capabilities
 }
 

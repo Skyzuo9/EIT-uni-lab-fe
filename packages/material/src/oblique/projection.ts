@@ -166,8 +166,8 @@ function materialToObliqueObject(
     (site) =>
       site.visible !== false && !isDecorativeDeckRail(aggregate, site)
   )
-  const levels = buildSlotLevels(sites)
-  const resolved = resolveShape(shapes, visual.kind, levels, {
+  const declaredLevels = buildSlotLevels(sites)
+  const resolved = resolveShape(shapes, visual.kind, declaredLevels, {
     widthMm,
     depthMm,
     heightMm
@@ -182,6 +182,14 @@ function materialToObliqueObject(
     resolved?.primitives.some(
       (primitive) => primitive.kind === 'stack-shelves'
     ) ?? false
+  const levels =
+    usesLevels &&
+    declaredLevels.length === 0 &&
+    resolved?.primitives.some(
+      (primitive) => primitive.kind === 'open-rack'
+    )
+      ? buildInferredRackLevels(heightMm)
+      : declaredLevels
   const yawRad = (pose.rotationDegXYZ[2] * Math.PI) / 180
   const cosine = Math.cos(yawRad)
   const sine = Math.sin(yawRad)
@@ -258,7 +266,7 @@ function resolveShape(
   const needsRack = primitives.some(
     (primitive) => primitive.kind === 'open-rack'
   )
-  if (needsRack && levels.length < 2) return undefined
+  if (needsRack && levels.length === 1) return undefined
 
   return {
     spec,
@@ -299,6 +307,24 @@ function buildSlotLevels(
       zMm,
       sites: levelSites
     }))
+}
+
+/**
+ * Package shape 已声明为 open-rack、但 Backend 尚无权威 Site 时，只补空层板
+ * 作为视觉结构；不会制造 Site identity、容量或占用状态。
+ */
+function buildInferredRackLevels(
+  heightMm: number
+): MaterialObliqueLevel[] {
+  const count = Math.round(clamp(heightMm / 180, 2, 4))
+  const lower = heightMm * 0.12
+  const upper = heightMm * 0.82
+  const step = count > 1 ? (upper - lower) / (count - 1) : 0
+  return Array.from({ length: count }, (_, index) => ({
+    key: `inferred-level-${index + 1}`,
+    zMm: lower + step * index,
+    sites: []
+  }))
 }
 
 function buildStackShelves(
