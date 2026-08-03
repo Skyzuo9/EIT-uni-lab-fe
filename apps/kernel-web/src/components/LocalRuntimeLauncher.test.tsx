@@ -195,6 +195,10 @@ describe('LocalRuntimeLauncher', () => {
               '\u001b[32m2026-08-03 16:04:05.123 | INFO | unilabos.app - Edge ready\u001b[0m',
               '\u001b]0;forged title\u0007',
               '\u001bPforged device control\u001b\\',
+              '\u001bc\u001b7\u001b8\u001b=\u001b>single escape controls',
+              '\u009dforged c1 title\u009c',
+              '\u0090forged c1 device control\u009c',
+              '\u009b31mc1 colored tail\u009b0m',
               '\u001b[37m26-08-03 [17:25:23,512]\u001b[0m \u001b[1;33m[WARNING]\u001b[0m \u001b[33mdevice retry\u001b[0m [run:42] [unilabos.runtime]',
               '[launcher] 2026-08-03T08:04:06.000Z starting',
               'plain diagnostic tail'
@@ -213,8 +217,13 @@ describe('LocalRuntimeLauncher', () => {
     )
 
     expect(markup).not.toContain('\u001b')
+    expect(markup).not.toMatch(/[\u0080-\u009f]/)
     expect(markup).not.toContain('forged title')
     expect(markup).not.toContain('forged device control')
+    expect(markup).not.toContain('forged c1 title')
+    expect(markup).not.toContain('forged c1 device control')
+    expect(markup).toContain('single escape controls')
+    expect(markup).toContain('c1 colored tail')
     expect(markup).toContain('aria-label="格式化运行日志"')
     expect(markup).toContain('data-level="info"')
     expect(markup).toContain('16:04:05.123')

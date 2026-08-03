@@ -44,11 +44,16 @@ export default function ConnectionBar(): React.JSX.Element {
       ? `${targetName} 已连接`
       : showDisconnected
         ? `${targetName} 未连接`
-        : null
+        : !backendEnabled
+            ? `${targetName} 未连接`
+            : null
 
   const handleApply = (): void => {
     const trimmed = draftUrl.trim()
     if (!trimmed) return
+    // Applying an address is an explicit request to connect to an externally
+    // managed backend, even when the Electron local launcher is still idle.
+    setBackendEnabled(true)
     if (trimmed !== backend.apiUrl) {
       updateBackend({ apiUrl: trimmed })
       return
@@ -110,7 +115,10 @@ export default function ConnectionBar(): React.JSX.Element {
         className={styles.field}
         aria-label="切换服务配置"
         value={backend.id}
-        onChange={(event) => selectBackend(event.target.value)}
+        onChange={(event) => {
+          setBackendEnabled(true)
+          selectBackend(event.target.value)
+        }}
       >
         {availableBackends.map((candidate) => (
           <option key={candidate.id} value={candidate.id}>
@@ -129,18 +137,20 @@ export default function ConnectionBar(): React.JSX.Element {
         onKeyDown={(event) => {
           if (event.key === 'Enter') {
             event.preventDefault()
-            if (hasDraftChange || showRecovery) handleApply()
+            if (hasDraftChange || showRecovery || !backendEnabled) {
+              handleApply()
+            }
           }
         }}
       />
-      {hasDraftChange || showRecovery ? (
+      {hasDraftChange || showRecovery || !backendEnabled ? (
         <button
           type="button"
           className={styles.action}
           disabled={!trimmedDraftUrl}
           onClick={handleApply}
         >
-          {hasDraftChange ? '应用' : '重试'}
+          {hasDraftChange ? '应用' : backendEnabled ? '重试' : '连接'}
         </button>
       ) : null}
       <LocalRuntimeLauncher

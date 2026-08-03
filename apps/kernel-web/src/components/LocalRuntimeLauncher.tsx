@@ -172,6 +172,7 @@ export default function LocalRuntimeLauncher({
   const [simulatorSubmitted, setSimulatorSubmitted] = useState(false)
   const [edgeSubmitted, setEdgeSubmitted] = useState(false)
   const [dialogLogsOpen, setDialogLogsOpen] = useState(false)
+  const readyNotificationSentRef = useRef(false)
 
   useEffect(() => {
     if (!runtimeApi) return
@@ -189,6 +190,17 @@ export default function LocalRuntimeLauncher({
       unsubscribe()
     }
   }, [runtimeApi])
+
+  useEffect(() => {
+    const edgeReady = snapshot.phase === 'ready' && snapshot.edgeRunning
+    if (!edgeReady) {
+      readyNotificationSentRef.current = false
+      return
+    }
+    if (readyNotificationSentRef.current) return
+    readyNotificationSentRef.current = true
+    onReady?.()
+  }, [onReady, snapshot.edgeRunning, snapshot.phase])
 
   useEffect(() => {
     if (!runtimeApi || config.environmentPath.trim()) return
@@ -272,7 +284,6 @@ export default function LocalRuntimeLauncher({
     if (!edgeValidation.valid) return
     try {
       setSnapshot(await runtimeApi.startEdge(config))
-      onReady?.()
     } catch (error) {
       setLocalError(errorMessage(error))
     }
@@ -781,23 +792,25 @@ interface FormattedLocalRuntimeLogRow {
 }
 
 const ANSI_CSI_PATTERN = new RegExp(
-  `${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`,
+  `(?:${String.fromCharCode(27)}\\[|${String.fromCharCode(155)})[0-?]*[ -/]*[@-~]`,
   'g'
 )
 const ANSI_STRING_PATTERN = new RegExp(
-  `${String.fromCharCode(27)}(?:\\][\\s\\S]*?(?:${String.fromCharCode(7)}|${String.fromCharCode(27)}\\\\)|[PX^_][\\s\\S]*?${String.fromCharCode(27)}\\\\)`,
+  `(?:${String.fromCharCode(27)}\\]|${String.fromCharCode(157)})[\\s\\S]*?(?:${String.fromCharCode(7)}|${String.fromCharCode(27)}\\\\|${String.fromCharCode(156)})|(?:${String.fromCharCode(27)}[PX^_]|[${String.fromCharCode(144)}${String.fromCharCode(152)}${String.fromCharCode(158)}${String.fromCharCode(159)}])[\\s\\S]*?(?:${String.fromCharCode(27)}\\\\|${String.fromCharCode(156)})`,
   'g'
 )
 const ANSI_SINGLE_ESCAPE_PATTERN = new RegExp(
-  `${String.fromCharCode(27)}[@-_]`,
+  `${String.fromCharCode(27)}[ -/]*[0-~]`,
   'g'
 )
+const ANSI_C1_PATTERN = /[\u0080-\u009f]/g
 
 function formatLocalRuntimeLog(content: string): FormattedLocalRuntimeLogRow[] {
   return content
     .replace(ANSI_STRING_PATTERN, '')
     .replace(ANSI_CSI_PATTERN, '')
     .replace(ANSI_SINGLE_ESCAPE_PATTERN, '')
+    .replace(ANSI_C1_PATTERN, '')
     .split(/\r?\n/)
     .filter((line) => line.length > 0)
     .map(formatLocalRuntimeLogLine)

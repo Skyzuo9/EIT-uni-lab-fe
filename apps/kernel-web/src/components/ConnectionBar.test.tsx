@@ -42,7 +42,8 @@ describe('ConnectionBar', () => {
         }
       ],
       selectBackend: vi.fn(),
-      updateBackend: vi.fn()
+      updateBackend: vi.fn(),
+      setBackendEnabled: vi.fn()
     })
   })
 
@@ -51,5 +52,18 @@ describe('ConnectionBar', () => {
 
     expect(markup).toContain('Edge 已连接')
     expect(markup).toContain('data-connection-state="connected"')
+  })
+
+  it('offers an explicit connection path while the managed Edge is idle', () => {
+    useWorkbench.mockReturnValue({
+      ...useWorkbench(),
+      backendEnabled: false,
+      connection: 'disconnected'
+    })
+
+    const markup = renderToStaticMarkup(<ConnectionBar />)
+
+    expect(markup).toContain('Edge 未连接')
+    expect(markup).toContain('>连接</button>')
   })
 })

@@ -91,7 +91,16 @@ test('starts a real Edge from the desktop local debugger', async () => {
     await expect(runtimeDialog.getByText('运行中', { exact: true }))
       .toHaveCount(1)
     await capture(page, '04-edge-ready.png')
-    browserErrors.length = 0
+
+    await page.reload()
+    await expect(connectionBar).toContainText('Edge 已连接', {
+      timeout: 30_000
+    })
+    await capture(page, '04a-edge-ready-after-reload.png')
+    await connectionBar.getByRole('button', {
+      name: '启动本地环境'
+    }).click()
+    await expect(runtimeDialog).toBeVisible()
 
     const deviceCatalog = await fetchDeviceCatalog()
     expect(deviceCatalog.data.items.length).toBeGreaterThan(0)
@@ -143,7 +152,6 @@ test('starts a real Edge from the desktop local debugger', async () => {
       '领域侧 Edge 已就绪',
       { timeout: 120_000 }
     )
-    browserErrors.length = 0
     expect((await fetchDeviceCatalog()).data.items.length).toBeGreaterThan(0)
     await capture(page, '09-edge-restarted.png')
     expect(browserErrors).toEqual([])

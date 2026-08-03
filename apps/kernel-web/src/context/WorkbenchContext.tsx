@@ -150,10 +150,27 @@ function initialBackendEnabled(): boolean {
   if (
     typeof globalThis.window !== 'undefined'
     && globalThis.window.api?.runtime
+    && !hasExplicitBackendOverride()
   ) {
     return false
   }
   return DEFAULT_BACKEND_ENABLED
+}
+
+function hasExplicitBackendOverride(): boolean {
+  if (typeof globalThis.location === 'undefined') return false
+  const override = new URLSearchParams(globalThis.location.search)
+    .get('localOsUrl')
+  if (!override) return false
+  try {
+    const url = new URL(override)
+    return (
+      ['http:', 'https:'].includes(url.protocol)
+      && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)
+    )
+  } catch {
+    return false
+  }
 }
 
 function initialSection(): WorkbenchSection {
