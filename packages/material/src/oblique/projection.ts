@@ -29,6 +29,10 @@ export type ObliqueWorldPoint = readonly [number, number, number]
  * （`solid`）。具体长什么样由设备包的 shape manifest 决定。
  */
 export type MaterialObliqueRenderStyle = 'solid' | 'spec'
+export type MaterialObliqueFidelity =
+  | 'declared'
+  | 'envelope'
+  | 'inferred'
 
 /** 命中的外形声明与它展开出的本地 mm 图元。 */
 export interface MaterialObliqueShape {
@@ -64,6 +68,7 @@ export interface MaterialObliqueObject {
   depthMm: number
   heightMm: number
   renderStyle: MaterialObliqueRenderStyle
+  fidelity: MaterialObliqueFidelity
   worldCorners: readonly ObliqueWorldPoint[]
   base: readonly ObliquePoint[]
   top: readonly ObliquePoint[]
@@ -79,6 +84,12 @@ export interface MaterialObliqueObject {
 
 export interface MaterialObliqueScene {
   objects: readonly MaterialObliqueObject[]
+  diagnostics: {
+    declaredShapeCount: number
+    envelopeApproximationCount: number
+    inferredStructureCount: number
+    invalidObjectCount: number
+  }
   bounds: {
     minX: number
     minY: number
@@ -107,9 +118,17 @@ export function buildMaterialObliqueScene(
   const aggregatesById = Object.fromEntries(
     aggregates.map((aggregate) => [aggregate.material.id, aggregate])
   )
-  const objects = aggregates
-    .map((aggregate) =>
-      materialToObliqueObject(aggregate, aggregatesById, shapes)
+  const projected = aggregates.map((aggregate) => {
+    try {
+      return materialToObliqueObject(aggregate, aggregatesById, shapes)
+    } catch {
+      return undefined
+    }
+  })
+  const objects = projected
+    .filter(
+      (object): object is MaterialObliqueObject =>
+        object !== undefined && isDrawableObject(object)
     )
     .sort(
       (left, right) =>
@@ -125,6 +144,10 @@ export function buildMaterialObliqueScene(
   if (points.length === 0) {
     return {
       objects,
+      diagnostics: sceneDiagnostics(
+        objects,
+        projected.length - objects.length
+      ),
       bounds: { minX: -500, minY: -350, width: 1000, height: 700 }
     }
   }
@@ -141,6 +164,10 @@ export function buildMaterialObliqueScene(
 
   return {
     objects,
+    diagnostics: sceneDiagnostics(
+      objects,
+      projected.length - objects.length
+    ),
     bounds: {
       minX: minX - padding,
       minY: minY - padding,
@@ -211,6 +238,12 @@ function materialToObliqueObject(
   const top = worldCorners.map(
     ([x, y, z]) => projectObliquePoint([x, y, z + heightMm])
   )
+  const shelves = usesShelves
+    ? buildStackShelves(aggregate, heightMm)
+    : []
+  const inferredStructure = shelves.some((shelf) =>
+    shelf.key.startsWith('inferred-shelf-')
+  )
 
   return {
     materialId: aggregate.material.id,
@@ -223,12 +256,17 @@ function materialToObliqueObject(
     depthMm,
     heightMm,
     renderStyle,
+    fidelity: inferredStructure
+      ? 'inferred'
+      : resolved
+        ? 'declared'
+        : 'envelope',
     worldCorners,
     base,
     top,
     topTransform: topPlaneTransform(pose, heightMm),
     sites,
-    shelves: usesShelves ? buildStackShelves(aggregate, heightMm) : [],
+    shelves,
     levels: usesLevels ? levels : [],
     shape: resolved?.shape,
     // 台面承载所有设备，必须先画，否则它半透明的顶面会盖住工站后半区。
@@ -240,6 +278,36 @@ function materialToObliqueObject(
         ? Math.max(...worldCorners.map((point) => point[1]))
         : worldCorners.reduce((total, point) => total + point[1], 0) /
           worldCorners.length
+  }
+}
+
+function isDrawableObject(object: MaterialObliqueObject): boolean {
+  return [
+    object.widthMm,
+    object.depthMm,
+    object.heightMm,
+    ...object.pose.positionMm,
+    ...object.pose.rotationDegXYZ,
+    ...object.base.flat(),
+    ...object.top.flat()
+  ].every(Number.isFinite)
+}
+
+function sceneDiagnostics(
+  objects: readonly MaterialObliqueObject[],
+  invalidObjectCount: number
+): MaterialObliqueScene['diagnostics'] {
+  return {
+    declaredShapeCount: objects.filter(
+      (object) => object.fidelity === 'declared'
+    ).length,
+    envelopeApproximationCount: objects.filter(
+      (object) => object.fidelity === 'envelope'
+    ).length,
+    inferredStructureCount: objects.filter(
+      (object) => object.fidelity === 'inferred'
+    ).length,
+    invalidObjectCount
   }
 }
 
