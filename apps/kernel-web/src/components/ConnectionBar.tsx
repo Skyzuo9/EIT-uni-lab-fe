@@ -10,6 +10,7 @@ import LocalRuntimeLauncher, {
 } from './LocalRuntimeLauncher'
 
 const LOCAL_RUNTIME_EDGE_API_URL = 'http://127.0.0.1:18003'
+const LOCAL_RUNTIME_DISCONNECT_GRACE_MS = 250
 
 export default function ConnectionBar(): React.JSX.Element {
   const {
@@ -18,9 +19,10 @@ export default function ConnectionBar(): React.JSX.Element {
     connection,
     availableBackends,
     selectBackend,
-    updateBackend
+    updateBackend,
+    setBackendEnabled
   } = useWorkbench()
-  const { reconnect } = useBackendConnection()
+  const { disconnect, reconnect } = useBackendConnection()
   const [draftUrl, setDraftUrl] = useState(backend.apiUrl)
 
   useEffect(() => {
@@ -55,6 +57,7 @@ export default function ConnectionBar(): React.JSX.Element {
   }
 
   const handleRuntimeReady = (): void => {
+    setBackendEnabled(true)
     if (backend.id !== 'local-python') {
       selectBackend('local-python')
       return
@@ -64,6 +67,22 @@ export default function ConnectionBar(): React.JSX.Element {
       return
     }
     void reconnect()
+  }
+
+  const handleRuntimeStopping = async (): Promise<void> => {
+    if (
+      backend.id === 'local-python'
+      && backend.apiUrl === LOCAL_RUNTIME_EDGE_API_URL
+    ) {
+      disconnect()
+      setBackendEnabled(false)
+      // Let React tear down health/device polling and allow any request already
+      // in flight to settle while Edge is still available. Closing the local
+      // port before this drain produces user-visible ERR_CONNECTION_REFUSED.
+      await new Promise<void>((resolve) => {
+        globalThis.setTimeout(resolve, LOCAL_RUNTIME_DISCONNECT_GRACE_MS)
+      })
+    }
   }
 
   return (
@@ -124,7 +143,10 @@ export default function ConnectionBar(): React.JSX.Element {
           {hasDraftChange ? '应用' : '重试'}
         </button>
       ) : null}
-      <LocalRuntimeLauncher onReady={handleRuntimeReady} />
+      <LocalRuntimeLauncher
+        onReady={handleRuntimeReady}
+        onStopping={handleRuntimeStopping}
+      />
     </div>
   )
 }

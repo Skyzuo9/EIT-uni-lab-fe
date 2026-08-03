@@ -1,7 +1,8 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { reconnect, useWorkbench } = vi.hoisted(() => ({
+const { disconnect, reconnect, useWorkbench } = vi.hoisted(() => ({
+  disconnect: vi.fn(),
   reconnect: vi.fn(),
   useWorkbench: vi.fn()
 }))
@@ -14,6 +15,7 @@ vi.mock('../hooks/useBackendConnection', () => ({
   useBackendConnection: () => ({
     client: null,
     isOnline: true,
+    disconnect,
     reconnect
   })
 }))

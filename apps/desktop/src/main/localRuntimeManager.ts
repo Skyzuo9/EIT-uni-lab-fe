@@ -180,16 +180,18 @@ export class LocalRuntimeManager {
         (payload) => isRecord(payload) && payload['status'] === 'ok'
       )
 
-      this.publishState('waiting_edge', 'HostNode 已启动，正在等待工作流模板目录…')
-      await waitForHttp(
-        WORKFLOW_TEMPLATE_CATALOG_URL,
-        managedChildren([
-          ['simulator', this.simulatorProcess],
-          ['edge', this.edgeProcess]
-        ]),
-        PROCESS_READY_TIMEOUT_MS,
-        () => true
-      )
+      if (plan.deviceCatalogRequirement === 'domain_actions') {
+        this.publishState('waiting_edge', 'HostNode 已启动，正在等待工作流模板目录…')
+        await waitForHttp(
+          WORKFLOW_TEMPLATE_CATALOG_URL,
+          managedChildren([
+            ['simulator', this.simulatorProcess],
+            ['edge', this.edgeProcess]
+          ]),
+          PROCESS_READY_TIMEOUT_MS,
+          () => true
+        )
+      }
 
       this.publishState(
         'waiting_edge',

@@ -40,6 +40,7 @@ const IDLE_SNAPSHOT: LocalRuntimeSnapshot = {
 interface LocalRuntimeLauncherProps {
   runtimeApi?: DesktopRuntimeApi
   onReady?: () => void
+  onStopping?: () => void | Promise<void>
 }
 
 interface LocalRuntimeLogLauncherProps {
@@ -161,7 +162,8 @@ export function LocalRuntimeLogLauncher({
 
 export default function LocalRuntimeLauncher({
   runtimeApi = desktopRuntimeApi(),
-  onReady
+  onReady,
+  onStopping
 }: LocalRuntimeLauncherProps): React.JSX.Element | null {
   const [open, setOpen] = useState(false)
   const [config, setConfig] = useState(readStoredConfig)
@@ -279,8 +281,10 @@ export default function LocalRuntimeLauncher({
   const stopEdge = async (): Promise<void> => {
     setLocalError(null)
     try {
+      await onStopping?.()
       setSnapshot(await runtimeApi.stopEdge())
     } catch (error) {
+      onReady?.()
       setLocalError(errorMessage(error))
     }
   }
@@ -776,14 +780,24 @@ interface FormattedLocalRuntimeLogRow {
   message: string
 }
 
-const ANSI_ESCAPE_PATTERN = new RegExp(
+const ANSI_CSI_PATTERN = new RegExp(
   `${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`,
+  'g'
+)
+const ANSI_STRING_PATTERN = new RegExp(
+  `${String.fromCharCode(27)}(?:\\][\\s\\S]*?(?:${String.fromCharCode(7)}|${String.fromCharCode(27)}\\\\)|[PX^_][\\s\\S]*?${String.fromCharCode(27)}\\\\)`,
+  'g'
+)
+const ANSI_SINGLE_ESCAPE_PATTERN = new RegExp(
+  `${String.fromCharCode(27)}[@-_]`,
   'g'
 )
 
 function formatLocalRuntimeLog(content: string): FormattedLocalRuntimeLogRow[] {
   return content
-    .replace(ANSI_ESCAPE_PATTERN, '')
+    .replace(ANSI_STRING_PATTERN, '')
+    .replace(ANSI_CSI_PATTERN, '')
+    .replace(ANSI_SINGLE_ESCAPE_PATTERN, '')
     .split(/\r?\n/)
     .filter((line) => line.length > 0)
     .map(formatLocalRuntimeLogLine)

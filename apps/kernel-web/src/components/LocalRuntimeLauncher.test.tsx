@@ -193,6 +193,8 @@ describe('LocalRuntimeLauncher', () => {
             kind: 'edge',
             content: [
               '\u001b[32m2026-08-03 16:04:05.123 | INFO | unilabos.app - Edge ready\u001b[0m',
+              '\u001b]0;forged title\u0007',
+              '\u001bPforged device control\u001b\\',
               '\u001b[37m26-08-03 [17:25:23,512]\u001b[0m \u001b[1;33m[WARNING]\u001b[0m \u001b[33mdevice retry\u001b[0m [run:42] [unilabos.runtime]',
               '[launcher] 2026-08-03T08:04:06.000Z starting',
               'plain diagnostic tail'
@@ -211,6 +213,8 @@ describe('LocalRuntimeLauncher', () => {
     )
 
     expect(markup).not.toContain('\u001b')
+    expect(markup).not.toContain('forged title')
+    expect(markup).not.toContain('forged device control')
     expect(markup).toContain('aria-label="格式化运行日志"')
     expect(markup).toContain('data-level="info"')
     expect(markup).toContain('16:04:05.123')

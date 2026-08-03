@@ -136,6 +136,7 @@ test('starts a real Edge from the desktop local debugger', async () => {
       { timeout: 30_000 }
     )
     await capture(page, '08-edge-stopped.png')
+    expect(browserErrors).toEqual([])
 
     await runtimeDialog.getByRole('button', { name: '启动 Edge' }).click()
     await expect(runtimeDialog.getByRole('status')).toContainText(
@@ -153,6 +154,7 @@ test('starts a real Edge from the desktop local debugger', async () => {
       { timeout: 30_000 }
     )
     await capture(page, '10-edge-restopped.png')
+    expect(browserErrors).toEqual([])
   } finally {
     await electronApp.close()
   }
@@ -182,7 +184,11 @@ test('starts a real Edge without a domain device package', async () => {
     const page = await electronApp.firstWindow()
     const browserErrors: string[] = []
     page.on('console', (message) => {
-      if (message.type() === 'error') browserErrors.push(message.text())
+      if (message.type() !== 'error') return
+      const location = message.location()
+      browserErrors.push(
+        [message.text(), location.url].filter(Boolean).join(' @ ')
+      )
     })
     page.on('pageerror', (error) => browserErrors.push(error.message))
     await page.evaluate((config) => {
@@ -240,11 +246,7 @@ test('starts a real Edge without a domain device package', async () => {
       { timeout: 30_000 }
     )
     await capture(page, '15-os-only-stopped.png')
-    // Connection polling can observe the intentional port closure once Edge
-    // is stopped; page/runtime errors must still remain absent.
-    expect(browserErrors.filter(
-      (message) => !message.includes('net::ERR_CONNECTION_REFUSED')
-    )).toEqual([])
+    expect(browserErrors).toEqual([])
   } finally {
     await electronApp.close()
   }
