@@ -98,7 +98,7 @@ test('starts a real Edge from the desktop local debugger', async () => {
     })
     await capture(page, '04a-edge-ready-after-reload.png')
     await connectionBar.getByRole('button', {
-      name: '启动本地环境'
+      name: /启动本地环境|本地调试已启动/
     }).click()
     await expect(runtimeDialog).toBeVisible()
 
