@@ -6,6 +6,11 @@ directories:
 files:
   - out/**
   - '!**/*.map'
+npmRebuild: false
+electronLanguages:
+  - zh-CN
+  - en-US
+afterPack: scripts/after-pack.mjs
 mac:
   category: public.app-category.developer-tools
   icon: build/icon.icns
