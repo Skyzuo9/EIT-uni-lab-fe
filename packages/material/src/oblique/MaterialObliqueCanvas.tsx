@@ -755,15 +755,15 @@ function ObliqueMaterial({
       <title>
         {`${object.name} · ${object.widthMm}×${object.depthMm}×${object.heightMm} mm`}
       </title>
-      {object.shape ? (
+      {!object.logicalMount && object.shape ? (
         <ObliqueSpecBody
           object={object}
           shape={object.shape}
           showSites={showSites}
         />
-      ) : (
+      ) : !object.logicalMount ? (
         <ObliqueSolidBody object={object} />
-      )}
+      ) : null}
       {showSites ? <ObliqueSiteBounds object={object} /> : null}
       <g
         className="material-oblique-object__tag"
@@ -1228,7 +1228,7 @@ function ObliqueSiteBounds({
 }): React.JSX.Element {
   return (
     <>
-      {object.sites.map((site) => (
+      {object.siteBounds.map((site) => (
         <g
           key={site.id}
           className="material-oblique-object__plan"
@@ -1240,7 +1240,7 @@ function ObliqueSiteBounds({
           <ObliqueSite site={site} />
         </g>
       ))}
-      {object.sites.map((site) => {
+      {object.siteBounds.map((site) => {
         const transform = planeTransform(
           object,
           site.poseInAnchor.positionMm[2]

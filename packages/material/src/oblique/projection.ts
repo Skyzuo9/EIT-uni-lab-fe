@@ -6,7 +6,10 @@ import type {
 } from '../types'
 import { resolveMaterialWorldPose } from '../react-flow/projection'
 import { readMaterial2DVisual } from '../react-flow/visual'
-import { isDecorativeDeckRail } from '../sitePresentation'
+import {
+  isDecorativeDeckRail,
+  shouldRenderSiteBounds
+} from '../sitePresentation'
 import {
   resolveShapePrimitives,
   resolveShapeSpec,
@@ -73,11 +76,13 @@ export interface MaterialObliqueObject {
   base: readonly ObliquePoint[]
   top: readonly ObliquePoint[]
   topTransform: readonly [number, number, number, number, number, number]
+  logicalMount: boolean
   sites: readonly MaterialSite[]
+  siteBounds: readonly MaterialSite[]
   shelves: readonly MaterialObliqueShelf[]
   levels: readonly MaterialObliqueLevel[]
   shape?: MaterialObliqueShape
-  /** 0 = 地面层（台面），1 = 台面上的设备与物料。层内再按深度排。 */
+  /** 0 = 地面，1 = 实体设备与物料，2 = 逻辑挂载点覆盖层。 */
   sortLayer: number
   sortDepth: number
 }
@@ -193,6 +198,12 @@ function materialToObliqueObject(
     (site) =>
       site.visible !== false && !isDecorativeDeckRail(aggregate, site)
   )
+  const siteBounds = aggregate.sites.filter((site) =>
+    shouldRenderSiteBounds(aggregate, site)
+  )
+  const config = recordValue(aggregate.material.config)
+  const logicalMount =
+    config.logical_mount === true || config.logicalMount === true
   const declaredLevels = buildSlotLevels(sites)
   const resolved = resolveShape(shapes, visual.kind, declaredLevels, {
     widthMm,
@@ -265,12 +276,14 @@ function materialToObliqueObject(
     base,
     top,
     topTransform: topPlaneTransform(pose, heightMm),
+    logicalMount,
     sites,
+    siteBounds,
     shelves,
     levels: usesLevels ? levels : [],
     shape: resolved?.shape,
     // 台面承载所有设备，必须先画，否则它半透明的顶面会盖住工站后半区。
-    sortLayer: isGroundKind(visual.kind) ? 0 : 1,
+    sortLayer: isGroundKind(visual.kind) ? 0 : logicalMount ? 2 : 1,
     // An open rack is painted before whatever stands inside it, so it sorts on
     // its rear edge instead of its centre.
     sortDepth:
@@ -351,6 +364,12 @@ function resolveShape(
 function isGroundKind(kind: string): boolean {
   const normalized = kind.replaceAll('_', '-').toLowerCase()
   return normalized.includes('deck') || normalized.includes('bench')
+}
+
+function recordValue(value: unknown): Record<string, unknown> {
+  return value != null && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {}
 }
 
 /** Sites are grouped per shelf board by their local Z, lowest board first. */

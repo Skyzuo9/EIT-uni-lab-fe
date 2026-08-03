@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 
+import type { MaterialAggregate, MaterialSite } from '../types'
 import { materialAggregate } from '../testFixtures'
 import { MaterialObliqueCanvas } from './MaterialObliqueCanvas'
 import { parseShapeLibrary } from './shapeSpec'
@@ -83,4 +84,95 @@ describe('MaterialObliqueCanvas', () => {
     expect(markup).toContain('aria-label="适应全部物料"')
     expect(markup).not.toContain('role="status"')
   })
+
+  it('renders a logical mount as site overlays without an independent body', () => {
+    const warehouse = aggregate('s04-warehouse', {
+      logicalMount: true,
+      sites: [site('S041')]
+    })
+
+    const markup = renderToStaticMarkup(
+      <MaterialObliqueCanvas aggregates={[warehouse]} />
+    )
+
+    expect(markup).toContain('data-material-id="s04-warehouse"')
+    expect(markup).toContain('data-site-key="S041"')
+    expect(markup).not.toContain('material-oblique-object__front')
+    expect(markup).not.toContain('material-oblique-object__side')
+    expect(markup).not.toContain('material-oblique-object__top')
+  })
+
+  it('paints a logical mount after its overlapping physical parent', () => {
+    const logicalWarehouse = aggregate('a-logical-warehouse', {
+      logicalMount: true,
+      sites: [site('S041')]
+    })
+    const physicalParent = aggregate('z-physical-parent')
+
+    const markup = renderToStaticMarkup(
+      <MaterialObliqueCanvas
+        aggregates={[logicalWarehouse, physicalParent]}
+      />
+    )
+
+    expect(markup.indexOf('data-material-id="z-physical-parent"')).toBeLessThan(
+      markup.indexOf('data-material-id="a-logical-warehouse"')
+    )
+  })
+
+  it('does not render tip spots as generic site-bound overlays', () => {
+    const tipBox = aggregate('tip-box', {
+      sites: [site('TIP01', 'tip-spot'), site('CARRIER01')]
+    })
+
+    const markup = renderToStaticMarkup(
+      <MaterialObliqueCanvas aggregates={[tipBox]} />
+    )
+
+    expect(markup).toContain('data-site-key="CARRIER01"')
+    expect(markup).not.toContain('data-site-key="TIP01"')
+  })
 })
+
+function aggregate(
+  id: string,
+  options: {
+    logicalMount?: boolean
+    sites?: readonly MaterialSite[]
+  } = {}
+): MaterialAggregate {
+  return materialAggregate(id, {
+    sites: options.sites,
+    config: {
+      logical_mount: options.logicalMount ?? false,
+      rendering: {
+        kind: 'process-warehouse',
+        dimensionsMm: [710, 780, 359]
+      }
+    }
+  })
+}
+
+function site(
+  key: string,
+  kind: NonNullable<MaterialSite['kind']> = 'site'
+): MaterialSite {
+  return {
+    id: `site-${key}`,
+    ownerMaterialId: 's04-warehouse',
+    key,
+    name: key,
+    anchor: { kind: 'root' },
+    poseInAnchor: {
+      positionMm: [92.1, 89.4, 150],
+      rotationDegXYZ: [0, 0, 0]
+    },
+    sizeMm: [86, 86, 120],
+    capacity: 1,
+    allowedTemplateIds: [],
+    occupiedMaterialIds: [],
+    kind,
+    shape: 'rectangle',
+    visible: true
+  }
+}
