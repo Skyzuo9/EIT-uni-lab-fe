@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useId,
+  useMemo,
   useRef,
   useState,
   type ReactNode
@@ -530,9 +531,9 @@ export function LocalRuntimeDialog({
               />
               <PathField
                 id="runtime-szlab-path"
-                label="领域项目根目录（以 Uni-Lab-SZLab 为例）"
+                label="领域项目根目录（可选，以 Uni-Lab-SZLab 为例）"
                 value={config.szlabProjectPath}
-                placeholder="选择领域项目根目录"
+                placeholder="可留空，或选择领域项目根目录"
                 buttonLabel="选择目录"
                 disabled={edgeDisabled}
                 invalid={edgeSubmitted
@@ -547,6 +548,9 @@ export function LocalRuntimeDialog({
                 })}
                 onChoose={() => onChoosePath('szlab')}
               />
+              <p className={styles.fieldHint}>
+                留空时仅加载 Uni-Lab-OS 内置设备能力；填写后同时加载该领域设备包。
+              </p>
               <PathField
                 id="runtime-graph-path"
                 label="领域设备图 JSON（以 sz_lab 为例）"
@@ -617,13 +621,17 @@ export function LocalRuntimeLogDrawer({
   onRefresh,
   onClose
 }: LocalRuntimeLogDrawerProps): React.JSX.Element {
-  const outputRef = useRef<HTMLPreElement>(null)
+  const outputRef = useRef<HTMLOListElement>(null)
   const idSuffix = instanceId ? `-${instanceId}` : ''
   const drawerId = `local-runtime-log-drawer${idSuffix}`
   const titleId = `local-runtime-log-title${idSuffix}`
   const outputId = `local-runtime-log-output${idSuffix}`
   const activeEntry = snapshot?.entries.find(
     (entry) => entry.kind === activeKind
+  )
+  const formattedRows = useMemo(
+    () => formatLocalRuntimeLog(activeEntry?.content ?? ''),
+    [activeEntry?.content]
   )
 
   useEffect(() => {
@@ -720,9 +728,22 @@ export function LocalRuntimeLogDrawer({
                   日志较长，当前展示最新 128 KB。
                 </p>
               ) : null}
-              <pre ref={outputRef} className={styles.logOutput}>
-                {activeEntry.content}
-              </pre>
+              <ol
+                ref={outputRef}
+                className={styles.logOutput}
+                aria-label="格式化运行日志"
+              >
+                {formattedRows.map((row, index) => (
+                  <li key={`${index}-${row.message}`} data-level={row.level}>
+                    <span className={styles.logRowMeta}>
+                      {row.time ? <time>{row.time}</time> : <span>—</span>}
+                      <span className={styles.logLevel}>{logLevelLabel(row.level)}</span>
+                      {row.source ? <code>{row.source}</code> : null}
+                    </span>
+                    <span className={styles.logMessage}>{row.message || '—'}</span>
+                  </li>
+                ))}
+              </ol>
             </>
           ) : (
             <div className={styles.logEmpty} role="status">
@@ -736,6 +757,130 @@ export function LocalRuntimeLogDrawer({
       </aside>
     </div>
   )
+}
+
+type LocalRuntimeLogLevel =
+  | 'trace'
+  | 'debug'
+  | 'info'
+  | 'warning'
+  | 'error'
+  | 'critical'
+  | 'system'
+  | 'plain'
+
+interface FormattedLocalRuntimeLogRow {
+  time: string
+  level: LocalRuntimeLogLevel
+  source: string
+  message: string
+}
+
+const ANSI_ESCAPE_PATTERN = new RegExp(
+  `${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`,
+  'g'
+)
+
+function formatLocalRuntimeLog(content: string): FormattedLocalRuntimeLogRow[] {
+  return content
+    .replace(ANSI_ESCAPE_PATTERN, '')
+    .split(/\r?\n/)
+    .filter((line) => line.length > 0)
+    .map(formatLocalRuntimeLogLine)
+}
+
+function formatLocalRuntimeLogLine(
+  line: string
+): FormattedLocalRuntimeLogRow {
+  const launcher = line.match(/^\[launcher\]\s+(\S+)\s*(.*)$/)
+  if (launcher) {
+    return {
+      time: compactLogTime(launcher[1] ?? ''),
+      level: 'system',
+      source: 'launcher',
+      message: launcher[2] ?? ''
+    }
+  }
+
+  const loguru = line.match(
+    /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2}(?:\.\d+)?)\s*\|\s*([A-Z]+)\s*\|\s*(?:(.*?)\s+-\s+)?(.*)$/
+  )
+  if (loguru) {
+    return {
+      time: loguru[2] ?? '',
+      level: normalizeLogLevel(loguru[3]),
+      source: (loguru[4] ?? '').trim(),
+      message: loguru[5] ?? ''
+    }
+  }
+
+  const unilab = line.match(
+    /^(?:\d{2}|\d{4})-\d{2}-\d{2}\s+\[([\d:,\.]+)\]\s+\[([A-Z]+)\]\s+(.*?)(?:\s+\[[^\]]+\]\s+\[([^\]]+)\])?$/
+  )
+  if (unilab) {
+    return {
+      time: unilab[1] ?? '',
+      level: normalizeLogLevel(unilab[2]),
+      source: unilab[4] ?? 'unilabos',
+      message: unilab[3] ?? ''
+    }
+  }
+
+  const ros = line.match(
+    /^\[([A-Z]+)\]\s+\[([^\]]+)\](?:\s+\[([^\]]+)\])?:\s*(.*)$/
+  )
+  if (ros) {
+    return {
+      time: ros[2] ?? '',
+      level: normalizeLogLevel(ros[1]),
+      source: ros[3] ?? 'ROS',
+      message: ros[4] ?? ''
+    }
+  }
+
+  const status = line.match(/^\[([A-Z]+)\]\s+(.*)$/)
+  if (status) {
+    return {
+      time: '',
+      level: normalizeLogLevel(status[1]),
+      source: 'unilabos',
+      message: status[2] ?? ''
+    }
+  }
+
+  return { time: '', level: 'plain', source: '', message: line }
+}
+
+function compactLogTime(value: string): string {
+  const match = value.match(/T(\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?)/)
+  return match?.[1] ?? value
+}
+
+function normalizeLogLevel(value: string | undefined): LocalRuntimeLogLevel {
+  switch ((value ?? '').toLowerCase()) {
+    case 'trace':
+      return 'trace'
+    case 'debug':
+      return 'debug'
+    case 'warn':
+    case 'warning':
+      return 'warning'
+    case 'error':
+      return 'error'
+    case 'fatal':
+    case 'critical':
+      return 'critical'
+    default:
+      return 'info'
+  }
+}
+
+function logLevelLabel(level: LocalRuntimeLogLevel): string {
+  if (level === 'warning') return 'WARN'
+  if (level === 'critical') return 'FATAL'
+  if (level === 'system') return 'SYSTEM'
+  if (level === 'plain') return 'LOG'
+  return level.toUpperCase()
 }
 
 function PathField({
@@ -922,9 +1067,6 @@ export function validateEdgeConfig(
   if (!config.graphPath.trim()) errors.graphPath = '请选择设备图 JSON'
   if (!config.osProjectPath.trim()) {
     errors.osProjectPath = '请选择 Uni-Lab-OS 项目根目录'
-  }
-  if (!config.szlabProjectPath.trim()) {
-    errors.szlabProjectPath = '请选择领域项目根目录'
   }
   if (!config.environmentPath.trim()) {
     errors.environmentPath = '请选择 unilab Conda 环境目录'

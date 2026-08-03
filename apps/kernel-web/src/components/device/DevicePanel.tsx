@@ -587,7 +587,8 @@ export default function DevicePanel(): React.JSX.Element {
             canRunActionTask={canRunActionTask}
             connection={connection}
             runState={
-              runOperation?.actionRef === selectedAction?.actionRef
+              runOperation !== null && selectedAction !== null &&
+              runOperation.actionRef === selectedAction.actionRef
                 ? runOperation.state
                 : null
             }
