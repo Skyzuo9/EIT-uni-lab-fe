@@ -78,6 +78,7 @@ export class LocalRuntimeManager {
   }
   private edgeProcess: ChildProcessWithoutNullStreams | null = null
   private simulatorProcess: ChildProcessWithoutNullStreams | null = null
+  private readonly expectedExits = new WeakSet<ChildProcessWithoutNullStreams>()
   private stopping = false
   private activeOperation: ActiveOperation | null = null
 
@@ -104,7 +105,7 @@ export class LocalRuntimeManager {
     }
     if (this.edgeProcess) {
       this.activeOperation = null
-      throw new Error('请先停止 SZLab Edge，再启动 PLC-Sim')
+      throw new Error('请先停止领域侧 Edge，再启动 PLC-Sim')
     }
 
     this.publishState('validating_simulator', '正在检查 PLC-Sim 与 Conda 环境…')
@@ -127,7 +128,7 @@ export class LocalRuntimeManager {
       )
       this.publishState(
         'simulator_ready',
-        'PLC-Sim 已就绪；请上传 PLC 变量表后再启动 SZLab Edge'
+        'PLC-Sim 已就绪；请上传 PLC 变量表后再启动领域侧 Edge'
       )
       return this.getSnapshot()
     } catch (error) {
@@ -148,7 +149,7 @@ export class LocalRuntimeManager {
     this.beginOperation('edge')
     if (this.edgeProcess) {
       this.activeOperation = null
-      throw new Error('SZLab Edge 已在运行')
+      throw new Error('领域侧 Edge 已在运行')
     }
 
     this.publishState('validating_edge', '正在检查 Edge 项目、Conda 环境与固定端口…')
@@ -156,14 +157,14 @@ export class LocalRuntimeManager {
     try {
       const plan = await resolveLocalRuntimeLaunchPlan(config)
       await requireAvailablePorts([
-        { port: LOCAL_RUNTIME_PORTS.edgeHttp, label: 'SZLab Edge HTTP' }
+        { port: LOCAL_RUNTIME_PORTS.edgeHttp, label: '领域侧 Edge HTTP' }
       ])
       await mkdir(this.logsDirectory, { recursive: true })
       await mkdir(plan.runtimeDirectory, { recursive: true })
 
       this.publishState('starting_edge', '正在通过 unilab CLI 启动 ROS Edge…')
       this.edgeProcess = this.spawnManaged('edge', plan.edge)
-      this.publishState('waiting_edge', 'SZLab Edge 正在初始化 HostNode…')
+      this.publishState('waiting_edge', '领域侧 Edge 正在初始化 HostNode…')
       await waitForHttp(
         OS_HEALTH_URL,
         managedChildren([
@@ -188,8 +189,8 @@ export class LocalRuntimeManager {
       this.publishState(
         'ready',
         this.simulatorProcess
-          ? 'PLC-Sim 与 SZLab Edge 已就绪'
-          : 'SZLab Edge 已就绪'
+          ? 'PLC-Sim 与领域侧 Edge 已就绪'
+          : '领域侧 Edge 已就绪'
       )
       return this.getSnapshot()
     } catch (error) {
@@ -197,7 +198,7 @@ export class LocalRuntimeManager {
       this.stopping = true
       await this.stopEdgeProcesses()
       this.stopping = false
-      this.publishFailure('SZLab Edge 启动失败', 'edge', message)
+      this.publishFailure('领域侧 Edge 启动失败', 'edge', message)
       throw new Error(message)
     } finally {
       this.activeOperation = null
@@ -208,7 +209,7 @@ export class LocalRuntimeManager {
     this.beginOperation('simulator')
     if (this.edgeProcess) {
       this.activeOperation = null
-      throw new Error('请先停止 SZLab Edge，再停止 PLC-Sim')
+      throw new Error('请先停止领域侧 Edge，再停止 PLC-Sim')
     }
     if (!this.simulatorProcess) {
       this.activeOperation = null
@@ -236,14 +237,14 @@ export class LocalRuntimeManager {
     }
 
     this.stopping = true
-    this.publishState('stopping_edge', '正在停止 SZLab Edge…')
+    this.publishState('stopping_edge', '正在停止领域侧 Edge…')
     try {
       await this.stopEdgeProcesses()
       this.stopping = false
       if (this.simulatorProcess) {
         this.publishState(
           'simulator_ready',
-          'PLC-Sim 仍在运行；上传变量表后可再次启动 SZLab Edge'
+          'PLC-Sim 仍在运行；上传变量表后可再次启动领域侧 Edge'
         )
       } else {
         this.publish({ ...IDLE_LOCAL_RUNTIME_SNAPSHOT })
@@ -296,12 +297,14 @@ export class LocalRuntimeManager {
       logStream.write(`\n[launcher] ${error.message}\n`)
     })
     child.once('close', (code, signal) => {
+      const expectedExit = this.expectedExits.delete(child)
       logStream.end(
         `\n[launcher] process exited code=${String(code)} signal=${String(signal)}\n`
       )
       this.clearProcess(kind, child)
       if (
-        !this.stopping
+        !expectedExit
+        && !this.stopping
         && !this.activeOperation
         && this.snapshot.phase !== 'failed'
       ) {
@@ -344,14 +347,20 @@ export class LocalRuntimeManager {
   private async stopSimulatorProcess(): Promise<void> {
     const child = this.simulatorProcess
     this.simulatorProcess = null
-    if (child) await stopProcessTree(child)
+    if (child) {
+      this.expectedExits.add(child)
+      await stopProcessTree(child)
+    }
   }
 
   private async stopEdgeProcesses(): Promise<void> {
     const processes = [this.edgeProcess]
     this.edgeProcess = null
     for (const child of processes) {
-      if (child) await stopProcessTree(child)
+      if (child) {
+        this.expectedExits.add(child)
+        await stopProcessTree(child)
+      }
     }
   }
 
@@ -481,7 +490,7 @@ async function resolveRuntimeConfig(
   )
   const szlabProjectPath = normalizeRequiredPath(
     config.szlabProjectPath,
-    '请选择 Uni-Lab-SZLab 项目根目录'
+    '请选择领域项目根目录（以 Uni-Lab-SZLab 为例）'
   )
   const environmentPath = normalizeRequiredPath(
     config.environmentPath,
@@ -493,7 +502,7 @@ async function resolveRuntimeConfig(
   }
   await requireFile(graphPath, '设备图 JSON 不存在')
   await requireDirectory(osProjectPath, 'Uni-Lab-OS 项目根目录不存在')
-  await requireDirectory(szlabProjectPath, 'Uni-Lab-SZLab 项目根目录不存在')
+  await requireDirectory(szlabProjectPath, '领域项目根目录不存在')
   await requireDirectory(environmentPath, 'unilab Conda 环境目录不存在')
 
   const { unilabExecutable } = runtimeExecutablePaths(
@@ -512,7 +521,7 @@ async function resolveRuntimeConfig(
     'deployment',
     'local_config.py'
   )
-  await requireFile(localConfigPath, 'Uni-Lab-SZLab 缺少本地配置')
+  await requireFile(localConfigPath, '领域项目缺少 deployment/local_config.py')
 
   return {
     platform,
@@ -945,7 +954,7 @@ function normalizeRequiredPath(value: string, message: string): string {
 
 function processLabel(kind: LocalRuntimeProcessKind): string {
   if (kind === 'simulator') return 'OPC UA'
-  return 'SZLab Edge'
+  return '领域侧 Edge'
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
