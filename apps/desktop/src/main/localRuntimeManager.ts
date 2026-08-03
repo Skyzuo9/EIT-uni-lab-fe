@@ -65,6 +65,8 @@ const OS_HEALTH_URL =
   `http://${HOST}:${LOCAL_RUNTIME_PORTS.edgeHttp}/api/v1/health`
 const WORKFLOW_TEMPLATE_CATALOG_URL =
   `http://${HOST}:${LOCAL_RUNTIME_PORTS.edgeHttp}/api/v1/workflow-node-templates`
+const DEVICE_CATALOG_URL =
+  `http://${HOST}:${LOCAL_RUNTIME_PORTS.edgeHttp}/api/v1/devices`
 const PROCESS_READY_TIMEOUT_MS = 90_000
 const LOCAL_RUNTIME_LOG_READ_LIMIT_BYTES = 128 * 1024
 const LOCAL_RUNTIME_LOG_KINDS: readonly LocalRuntimeProcessKind[] = [
@@ -184,6 +186,17 @@ export class LocalRuntimeManager {
         ]),
         PROCESS_READY_TIMEOUT_MS,
         () => true
+      )
+
+      this.publishState('waiting_edge', '工作流目录已就绪，正在等待设备运行时…')
+      await waitForHttp(
+        DEVICE_CATALOG_URL,
+        managedChildren([
+          ['simulator', this.simulatorProcess],
+          ['edge', this.edgeProcess]
+        ]),
+        PROCESS_READY_TIMEOUT_MS,
+        isDeviceCatalogReady
       )
 
       this.publishState(
@@ -959,6 +972,14 @@ function processLabel(kind: LocalRuntimeProcessKind): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object'
+}
+
+function isDeviceCatalogReady(payload: unknown): boolean {
+  if (!isRecord(payload) || payload['code'] !== 0) return false
+  const data = payload['data']
+  return isRecord(data)
+    && data['schemaVersion'] === 'device-catalog/v1'
+    && Array.isArray(data['items'])
 }
 
 function delay(milliseconds: number): Promise<void> {
