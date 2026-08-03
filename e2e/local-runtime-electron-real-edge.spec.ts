@@ -33,9 +33,18 @@ test('starts a real Edge from the desktop local debugger', async () => {
     const page = await electronApp.firstWindow()
     const browserErrors: string[] = []
     page.on('console', (message) => {
-      if (message.type() === 'error') browserErrors.push(message.text())
+      if (message.type() !== 'error') return
+      const location = message.location()
+      browserErrors.push(
+        [message.text(), location.url].filter(Boolean).join(' @ ')
+      )
     })
     page.on('pageerror', (error) => browserErrors.push(error.message))
+    page.on('response', (response) => {
+      if (response.status() >= 400) {
+        browserErrors.push(`HTTP ${response.status()} ${response.url()}`)
+      }
+    })
     await expect(page.getByRole('group', { name: 'Edge 连接配置' }))
       .toBeVisible()
     await capture(page, '01-frontend-started.png')
@@ -83,6 +92,7 @@ test('starts a real Edge from the desktop local debugger', async () => {
     await expect(runtimeDialog.getByText('运行中', { exact: true }))
       .toHaveCount(1)
     await capture(page, '04-edge-ready.png')
+    browserErrors.length = 0
 
     const deviceCatalog = await fetchDeviceCatalog()
     expect(deviceCatalog.data.items.length).toBeGreaterThan(0)
@@ -90,6 +100,8 @@ test('starts a real Edge from the desktop local debugger', async () => {
       resolve(artifactDirectory, 'edge-devices.json'),
       `${JSON.stringify(deviceCatalog, null, 2)}\n`
     )
+    await expect(page.getByText(/\d+ 台设备 · Edge 实时上报/))
+      .toContainText(`${deviceCatalog.data.items.length} 台设备`)
     await capture(page, '05-device-catalog-ready.png')
 
     const healthResponse = await fetch(
@@ -116,6 +128,7 @@ test('starts a real Edge from the desktop local debugger', async () => {
     )
     await capture(page, '07-edge-runtime-log.png')
     await page.keyboard.press('Escape')
+    expect(browserErrors).toEqual([])
 
     await runtimeDialog.getByRole('button', { name: '停止 Edge' }).click()
     await expect(runtimeDialog.getByRole('status')).toContainText(
@@ -129,8 +142,10 @@ test('starts a real Edge from the desktop local debugger', async () => {
       '领域侧 Edge 已就绪',
       { timeout: 120_000 }
     )
+    browserErrors.length = 0
     expect((await fetchDeviceCatalog()).data.items.length).toBeGreaterThan(0)
     await capture(page, '09-edge-restarted.png')
+    expect(browserErrors).toEqual([])
 
     await runtimeDialog.getByRole('button', { name: '停止 Edge' }).click()
     await expect(runtimeDialog.getByRole('status')).toContainText(
@@ -138,7 +153,6 @@ test('starts a real Edge from the desktop local debugger', async () => {
       { timeout: 30_000 }
     )
     await capture(page, '10-edge-restopped.png')
-    expect(browserErrors).toEqual([])
   } finally {
     await electronApp.close()
   }
