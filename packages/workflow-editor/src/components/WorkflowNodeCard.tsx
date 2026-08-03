@@ -104,17 +104,17 @@ export default function WorkflowNodeCard({
             {flowRoleLabel(data.materialSource.flowRole)} · {' '}
             {data.materialSource.mode === 'create_new' ? '新建物料' : '已有物料'}
             <small title={data.materialSource.mountUuid}>
-              Mount · {shortIdentity(data.materialSource.mountUuid)}
+              挂载点 · {shortIdentity(data.materialSource.mountUuid)}
             </small>
           </span>
         )}
         {!materialSource && Boolean(data.materialChips?.length) && (
-          <span className="wf-node__material-chips" aria-label="Material 轨道">
+          <span className="wf-node__material-chips" aria-label="物料轨道">
             {data.materialChips?.map((chip) => (
               <span
                 key={`${chip.handleUuid}:${chip.sourceNodeUuid}`}
                 style={{ '--wf-material-accent': chip.accent } as CSSProperties}
-                title={`${chip.label} · ${chip.sourceNodeUuid} · Handle ${chip.handleUuid}`}
+                title={`${chip.label} · ${chip.sourceNodeUuid} · 端口 ${chip.handleUuid}`}
               >
                 {chip.label}<small>{chip.shortIdentity}</small>
               </span>

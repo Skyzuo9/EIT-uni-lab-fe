@@ -85,63 +85,94 @@ export function WorkflowIoEditor({
   return (
     <section
       className="persistent-authoring__io-editor"
-      aria-label="Workflow I/O 编辑器"
+      aria-label="工作流入参与出参编辑器"
     >
       <header>
         <div>
-          <strong>Candidate Workflow I/O</strong>
-          <span>保存时由 OS 生成 canonical Python，并在 Apply 前验证。</span>
+          <strong>当前编辑内容</strong>
+          <span>保存草稿时由 OS 生成规范 Python，应用前会自动校验。</span>
         </div>
         {!editable && <span>当前模式只读</span>}
       </header>
       {problem && <p role="alert">{problem}</p>}
 
       <div className="persistent-authoring__io-editor-grid">
-        <ContractEditor title="Workflow Inputs">
+        <IoGroup title="工作流入参">
           <ol>
             {io.inputs.map((descriptor, index) => (
               <li
                 key={descriptor.name}
                 data-workflow-input-name={descriptor.name}
               >
-                <div className="persistent-authoring__io-editor-row-heading">
-                  <code>{descriptor.name}</code>
-                  <span>
+                <details>
+                  <summary className="persistent-authoring__io-editor-row-heading">
+                    <span className="persistent-authoring__io-editor-identity">
+                      <span aria-hidden="true">◇</span>
+                      <code>{descriptor.name}</code>
+                    </span>
+                    <span className="persistent-authoring__io-editor-type">
+                      {schemaSummary(descriptor.schema)}
+                    </span>
+                    <span className="persistent-authoring__io-editor-status">
+                      {descriptor.required
+                        ? '必填'
+                        : Object.hasOwn(descriptor, 'default')
+                          ? '有默认值'
+                          : '选填'}
+                    </span>
+                  <span className="persistent-authoring__io-editor-row-actions">
                     <button
                       type="button"
                       disabled={!editable || index === 0}
-                      onClick={() => mutate(() => moveWorkflowInput(
-                        graph,
-                        descriptor.name,
-                        'up'
-                      ))}
+                      onClick={(event) => {
+                        event.preventDefault()
+                        event.stopPropagation()
+                        mutate(() => moveWorkflowInput(
+                          graph,
+                          descriptor.name,
+                          'up'
+                        ))
+                      }}
                     >
                       上移
                     </button>
                     <button
                       type="button"
                       disabled={!editable || index === io.inputs.length - 1}
-                      onClick={() => mutate(() => moveWorkflowInput(
-                        graph,
-                        descriptor.name,
-                        'down'
-                      ))}
+                      onClick={(event) => {
+                        event.preventDefault()
+                        event.stopPropagation()
+                        mutate(() => moveWorkflowInput(
+                          graph,
+                          descriptor.name,
+                          'down'
+                        ))
+                      }}
                     >
                       下移
                     </button>
                     <button
                       type="button"
                       disabled={!editable}
-                      onClick={() => mutate(() =>
-                        removeWorkflowInput(graph, descriptor.name)
-                      )}
+                      onClick={(event) => {
+                        event.preventDefault()
+                        event.stopPropagation()
+                        mutate(() => removeWorkflowInput(
+                          graph,
+                          descriptor.name
+                        ))
+                      }}
                     >
                       删除
                     </button>
+                    <span className="persistent-authoring__io-editor-expand">
+                      详情
+                    </span>
                   </span>
-                </div>
+                  </summary>
+                  <div className="persistent-authoring__io-editor-fields">
                 <label>
-                  Name
+                  变量名
                   <input
                     aria-label="输入名称"
                     defaultValue={descriptor.name}
@@ -157,7 +188,7 @@ export function WorkflowIoEditor({
                   />
                 </label>
                 <SchemaControl
-                  label={`${descriptor.name} input`}
+                  label={`${descriptor.name} 入参`}
                   schema={descriptor.schema}
                   disabled={!editable}
                   onProblem={setProblem}
@@ -181,7 +212,7 @@ export function WorkflowIoEditor({
                       required: event.target.checked
                     })}
                   />
-                  Required
+                  必填
                 </label>
                 <label className="persistent-authoring__io-check">
                   <input
@@ -200,18 +231,18 @@ export function WorkflowIoEditor({
                           : descriptor.required
                     })}
                   />
-                  Nullable
+                  允许为空
                 </label>
                 <label>
-                  Default JSON
+                  默认值（JSON）
                   <input
                     key={`${descriptor.name}:${jsonValue(descriptor.default)}`}
                     defaultValue={'default' in descriptor
                       ? jsonValue(descriptor.default)
                       : ''}
                     placeholder={descriptor.required
-                      ? 'required input has no default'
-                      : 'JSON value'}
+                      ? '必填参数不使用默认值'
+                      : '请输入 JSON 值'}
                     disabled={
                       !editable || descriptor.required ||
                       containsResourceSlot(descriptor.schema)
@@ -238,9 +269,9 @@ export function WorkflowIoEditor({
                   onChange={(next) => updateInput(descriptor.name, next)}
                 />
                 <label>
-                  Bind to target Handle
+                  绑定到节点入参
                   <select
-                    aria-label="Action input 绑定"
+                    aria-label="节点入参绑定"
                     value=""
                     disabled={!editable || options.inputTargets.length === 0}
                     onChange={(event) => {
@@ -255,7 +286,7 @@ export function WorkflowIoEditor({
                       }))
                     }}
                   >
-                    <option value="">选择 Node target Handle…</option>
+                    <option value="">选择节点入参…</option>
                     {options.inputTargets.map((target) => (
                       <option
                         key={`${target.workflowNodeUuid}:${target.targetHandleUuid}`}
@@ -282,11 +313,14 @@ export function WorkflowIoEditor({
                     unbindWorkflowInput(graph, nodeUuid, handleUuid)
                   )}
                 />
+                  </div>
+                </details>
               </li>
             ))}
           </ol>
           <button
             type="button"
+            className="persistent-authoring__io-editor-add"
             disabled={!editable}
             onClick={() => mutate(() => addWorkflowInput(graph, {
               name: uniqueName(io.inputs.map(({ name }) => name), 'input'),
@@ -294,11 +328,11 @@ export function WorkflowIoEditor({
               required: true
             }))}
           >
-            Add Input
+            添加入参
           </button>
-        </ContractEditor>
+        </IoGroup>
 
-        <ContractEditor title="Workflow Outputs">
+        <IoGroup title="工作流出参">
           <ol>
             {io.outputs.map((descriptor, index) => {
               const readonly = descriptor.implicit || !editable
@@ -309,50 +343,77 @@ export function WorkflowIoEditor({
                   data-workflow-output-name={descriptor.name}
                   aria-readonly={descriptor.implicit ? 'true' : undefined}
                 >
-                  <div className="persistent-authoring__io-editor-row-heading">
-                    <code>{descriptor.name}</code>
-                    {descriptor.implicit ? (
-                      <span>implicit · OS-managed</span>
-                    ) : (
-                      <span>
-                        <button
-                          type="button"
-                          disabled={!editable || index === 0}
-                          onClick={() => mutate(() => moveWorkflowOutput(
-                            graph,
-                            descriptor.name,
-                            'up'
-                          ))}
-                        >
-                          上移
-                        </button>
-                        <button
-                          type="button"
-                          disabled={
-                            !editable || index === io.outputs.length - 1
-                          }
-                          onClick={() => mutate(() => moveWorkflowOutput(
-                            graph,
-                            descriptor.name,
-                            'down'
-                          ))}
-                        >
-                          下移
-                        </button>
-                        <button
-                          type="button"
-                          disabled={!editable}
-                          onClick={() => mutate(() =>
-                            removeWorkflowOutput(graph, descriptor.name)
-                          )}
-                        >
-                          删除
-                        </button>
+                  <details>
+                    <summary className="persistent-authoring__io-editor-row-heading">
+                      <span className="persistent-authoring__io-editor-identity">
+                        <span aria-hidden="true">◇</span>
+                        <code>{descriptor.name}</code>
                       </span>
-                    )}
-                  </div>
+                      <span className="persistent-authoring__io-editor-type">
+                        {schemaSummary(descriptor.schema)}
+                      </span>
+                      <span className="persistent-authoring__io-editor-status">
+                        {descriptor.implicit ? '系统生成 · OS 管理' : '已配置'}
+                      </span>
+                      <span className="persistent-authoring__io-editor-row-actions">
+                        {!descriptor.implicit && (
+                          <>
+                            <button
+                              type="button"
+                              disabled={!editable || index === 0}
+                              onClick={(event) => {
+                                event.preventDefault()
+                                event.stopPropagation()
+                                mutate(() => moveWorkflowOutput(
+                                  graph,
+                                  descriptor.name,
+                                  'up'
+                                ))
+                              }}
+                            >
+                              上移
+                            </button>
+                            <button
+                              type="button"
+                              disabled={
+                                !editable || index === io.outputs.length - 1
+                              }
+                              onClick={(event) => {
+                                event.preventDefault()
+                                event.stopPropagation()
+                                mutate(() => moveWorkflowOutput(
+                                  graph,
+                                  descriptor.name,
+                                  'down'
+                                ))
+                              }}
+                            >
+                              下移
+                            </button>
+                            <button
+                              type="button"
+                              disabled={!editable}
+                              onClick={(event) => {
+                                event.preventDefault()
+                                event.stopPropagation()
+                                mutate(() => removeWorkflowOutput(
+                                  graph,
+                                  descriptor.name
+                                ))
+                              }}
+                            >
+                              删除
+                            </button>
+                          </>
+                        )}
+                        <span className="persistent-authoring__io-editor-expand">
+                          详情
+                        </span>
+                      </span>
+                    </summary>
+                    <div className="persistent-authoring__io-editor-fields">
                   <label>
-                    Name
+                    变量名
                     <input
                       aria-label="输出名称"
                       defaultValue={descriptor.name}
@@ -368,7 +429,7 @@ export function WorkflowIoEditor({
                     />
                   </label>
                   <SchemaControl
-                    label={`${descriptor.name} output`}
+                    label={`${descriptor.name} 出参`}
                     schema={descriptor.schema}
                     disabled={readonly}
                     onProblem={setProblem}
@@ -389,7 +450,7 @@ export function WorkflowIoEditor({
                           : nonNullSchema(descriptor.schema)
                       })}
                     />
-                    Nullable
+                    允许为空
                   </label>
                   <DescriptorTextFields
                     descriptor={descriptor}
@@ -397,9 +458,9 @@ export function WorkflowIoEditor({
                     onChange={(next) => updateOutput(descriptor.name, next)}
                   />
                   <label>
-                    Producer
+                    数据来源
                     <select
-                      aria-label="Workflow output 绑定"
+                      aria-label="工作流出参绑定"
                       value={bindingValue(binding)}
                       disabled={readonly}
                       onChange={(event) => {
@@ -428,7 +489,7 @@ export function WorkflowIoEditor({
                         ))
                       }}
                     >
-                      <option value="">选择唯一 producer…</option>
+                      <option value="">选择数据来源…</option>
                       {options.outputSources.map((source) => (
                         <option
                           key={sourceValue(source)}
@@ -443,7 +504,7 @@ export function WorkflowIoEditor({
                           }
                         >
                           {source.kind === 'workflow_input'
-                            ? `Workflow input · ${source.parameter}`
+                            ? `工作流入参 · ${source.parameter}`
                             : handleLabel(
                                 graph,
                                 source.workflowNodeUuid,
@@ -453,12 +514,15 @@ export function WorkflowIoEditor({
                       ))}
                     </select>
                   </label>
+                    </div>
+                  </details>
                 </li>
               )
             })}
           </ol>
           <button
             type="button"
+            className="persistent-authoring__io-editor-add"
             disabled={!editable}
             onClick={() => mutate(() => addWorkflowOutput(graph, {
               name: uniqueName(io.outputs.map(({ name }) => name), 'output'),
@@ -466,15 +530,15 @@ export function WorkflowIoEditor({
               implicit: false
             }))}
           >
-            Add Output
+            添加出参
           </button>
-        </ContractEditor>
+        </IoGroup>
       </div>
     </section>
   )
 }
 
-function ContractEditor({
+function IoGroup({
   title,
   children
 }: {
@@ -520,7 +584,7 @@ function SchemaControl({
       {isArraySchema(base) ? (
         <>
           <SchemaTypeSelect
-            label={`${label} items`}
+            label={`${label} 项目`}
             mode={schemaMode(base.items)}
             allowArray={false}
             disabled={disabled}
@@ -530,15 +594,15 @@ function SchemaControl({
             }))}
           />
           <SchemaConstraintFields
-            label={`${label} items`}
+            label={`${label} 项目`}
             schema={base.items as ArrayItemSchema}
             disabled={disabled}
             onChange={(items) => apply(() => ({ ...base, items }))}
             onProblem={onProblem}
           />
           <OptionalNumberField
-            label="Min items"
-            ariaLabel={`${label} min items`}
+            label="最少项目数"
+            ariaLabel={`${label} 最少项目数`}
             value={base.minItems}
             integer
             nonNegative
@@ -550,8 +614,8 @@ function SchemaControl({
             ))}
           />
           <OptionalNumberField
-            label="Max items"
-            ariaLabel={`${label} max items`}
+            label="最多项目数"
+            ariaLabel={`${label} 最多项目数`}
             value={base.maxItems}
             integer
             nonNegative
@@ -591,20 +655,20 @@ function SchemaTypeSelect({
 }): React.JSX.Element {
   return (
     <label>
-      Type
+      数据类型
       <select
-        aria-label={`${label} type`}
+        aria-label={`${label} 数据类型`}
         value={mode}
         disabled={disabled}
         onChange={(event) => onChange(event.target.value as SchemaMode)}
       >
-        <option value="string">string</option>
-        <option value="integer">integer</option>
-        <option value="number">number</option>
-        <option value="boolean">boolean</option>
-        <option value="object">object (opaque JSON)</option>
-        {allowArray && <option value="array">list</option>}
-        <option value="resource_slot">ResourceSlot</option>
+        <option value="string">文本</option>
+        <option value="integer">整数</option>
+        <option value="number">数值</option>
+        <option value="boolean">布尔值</option>
+        <option value="object">对象（JSON）</option>
+        {allowArray && <option value="array">列表</option>}
+        <option value="resource_slot">资源位</option>
       </select>
     </label>
   )
@@ -636,7 +700,7 @@ function SchemaConstraintFields({
       }
       const parsed = JSON.parse(trimmed) as unknown
       if (!Array.isArray(parsed) || parsed.length === 0) {
-        throw new Error(`${field} 必须是非空 JSON array`)
+        throw new Error('该字段必须是非空 JSON 数组')
       }
       onChange(withSchemaField(schema, field, parsed))
       onProblem(null)
@@ -648,9 +712,9 @@ function SchemaConstraintFields({
   if ('$slot' in schema) {
     return (
       <label>
-        Allowed ResourceTemplate UUIDs JSON
+        允许的资源模板 UUID（JSON）
         <input
-          aria-label={`${label} allowed resource template UUIDs`}
+          aria-label={`${label} 允许的资源模板 UUID`}
           defaultValue={jsonValue(schema.allowed_resource_template_uuids)}
           placeholder='["resource-template-uuid"]'
           disabled={disabled}
@@ -666,11 +730,11 @@ function SchemaConstraintFields({
 
   const enumField = (
     <label>
-      Enum JSON
+      可选值（JSON）
       <input
-        aria-label={`${label} enum JSON`}
+        aria-label={`${label} 可选值 JSON`}
         defaultValue={jsonValue(schema.enum)}
-        placeholder="[value, ...]"
+        placeholder='["选项一", "选项二"]'
         disabled={disabled}
         onBlur={(event) => applyJsonArray(event.target.value, 'enum')}
       />
@@ -682,8 +746,8 @@ function SchemaConstraintFields({
       <>
         {enumField}
         <OptionalNumberField
-          label="Minimum"
-          ariaLabel={`${label} minimum`}
+          label="最小值"
+          ariaLabel={`${label} 最小值`}
           value={schema.minimum}
           integer={schema.type === 'integer'}
           disabled={disabled}
@@ -694,8 +758,8 @@ function SchemaConstraintFields({
           ))}
         />
         <OptionalNumberField
-          label="Maximum"
-          ariaLabel={`${label} maximum`}
+          label="最大值"
+          ariaLabel={`${label} 最大值`}
           value={schema.maximum}
           integer={schema.type === 'integer'}
           disabled={disabled}
@@ -713,8 +777,8 @@ function SchemaConstraintFields({
     <>
       {enumField}
       <OptionalNumberField
-        label="Min length"
-        ariaLabel={`${label} min length`}
+        label="最短长度"
+        ariaLabel={`${label} 最短长度`}
         value={stringSchema.minLength}
         integer
         nonNegative
@@ -726,8 +790,8 @@ function SchemaConstraintFields({
         ))}
       />
       <OptionalNumberField
-        label="Max length"
-        ariaLabel={`${label} max length`}
+        label="最长长度"
+        ariaLabel={`${label} 最长长度`}
         value={stringSchema.maxLength}
         integer
         nonNegative
@@ -739,9 +803,9 @@ function SchemaConstraintFields({
         ))}
       />
       <label>
-        Editor control
+        输入控件
         <select
-          aria-label={`${label} editor control`}
+          aria-label={`${label} 输入控件`}
           value={stringSchema['x-unilabos-editor-control'] ?? ''}
           disabled={disabled}
           onChange={(event) => onChange(withSchemaField(
@@ -750,8 +814,8 @@ function SchemaConstraintFields({
             event.target.value || undefined
           ))}
         >
-          <option value="">default</option>
-          <option value="site_selector">Site selector</option>
+          <option value="">默认</option>
+          <option value="site_selector">位置选择器</option>
         </select>
       </label>
     </>
@@ -809,7 +873,7 @@ function DescriptorTextFields<T extends {
   return (
     <>
       <label>
-        Title
+        显示名称
         <input
           defaultValue={descriptor.title ?? ''}
           disabled={disabled}
@@ -821,7 +885,7 @@ function DescriptorTextFields<T extends {
         />
       </label>
       <label>
-        Description
+        说明
         <input
           defaultValue={descriptor.description ?? ''}
           disabled={disabled}
@@ -860,8 +924,8 @@ function BindingList({
   })
   if (bindings.length === 0) return null
   return (
-    <div>
-      <small>Bound:</small>
+    <div className="persistent-authoring__io-bindings">
+      <small>已绑定到：</small>
       {bindings.map(({ nodeUuid, handleUuid }) => (
         <span key={`${nodeUuid}:${handleUuid}`}>
           {handleLabel(graph, nodeUuid, handleUuid)}
@@ -917,7 +981,7 @@ function normalizeInputDescriptor(
     return { ...descriptor, default: null }
   }
   if (containsResourceSlot(descriptor.schema)) {
-    throw new Error('optional ResourceSlot input 必须先设为 Nullable')
+    throw new Error('资源位入参设为选填前，需要先开启“允许为空”')
   }
   if ('default' in descriptor && descriptor.default !== null) return descriptor
   return { ...descriptor, default: defaultValue(descriptor.schema) }
@@ -937,7 +1001,7 @@ function defaultValue(schema: WorkflowValueSchema): WorkflowJsonValue {
     '$slot' in base ||
     (base.type === 'array' && containsResourceSlot(base.items))
   ) {
-    throw new Error('ResourceSlot input 不允许浏览器生成 default')
+    throw new Error('资源位入参不能由前端生成默认值')
   }
   switch (base.type) {
     case 'string': return ''
@@ -947,13 +1011,23 @@ function defaultValue(schema: WorkflowValueSchema): WorkflowJsonValue {
     case 'object': return {}
     case 'array': return []
   }
-  throw new Error('Workflow input schema 不支持浏览器 default')
+  throw new Error('当前工作流入参类型不支持由前端生成默认值')
 }
 
 function schemaMode(schema: WorkflowValueSchema): SchemaMode {
   const base = nonNullSchema(schema)
   if ('$slot' in base) return 'resource_slot'
   return base.type
+}
+
+function schemaSummary(schema: WorkflowValueSchema): string {
+  const base = nonNullSchema(schema)
+  const type = '$slot' in base
+    ? '资源位'
+    : base.type === 'array'
+      ? `列表<${schemaSummary(base.items)}>`
+      : schemaTypeLabel(base.type)
+  return isNullable(schema) ? `${type} · 允许为空` : type
 }
 
 function schemaForMode(mode: SchemaMode): NonNullableSchema {
@@ -963,8 +1037,21 @@ function schemaForMode(mode: SchemaMode): NonNullableSchema {
 }
 
 function schemaForItemMode(mode: SchemaMode): ArrayItemSchema {
-  if (mode === 'array') throw new Error('Workflow v1 不支持 nested list schema')
+  if (mode === 'array') throw new Error('当前版本不支持嵌套列表类型')
   return schemaForMode(mode) as ArrayItemSchema
+}
+
+function schemaTypeLabel(type: string): string {
+  const labels: Record<string, string> = {
+    string: '文本',
+    integer: '整数',
+    number: '数值',
+    boolean: '布尔值',
+    object: '对象',
+    array: '列表',
+    null: '空值'
+  }
+  return labels[type] ?? type
 }
 
 function nullableSchema(schema: WorkflowValueSchema): WorkflowValueSchema {

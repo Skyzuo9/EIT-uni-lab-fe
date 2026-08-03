@@ -171,7 +171,7 @@ test('original Runtime UI incrementally restores feedback and coherent state thr
     idempotency_key: 'ui1c-feedback-3'
   }])
   const runtimeProblem = panel.getByRole('alert').filter({
-    hasText: 'Runtime 状态读取失败'
+    hasText: '运行状态读取失败'
   })
   await expect(runtimeProblem).toBeVisible()
   await expect(runtimeProblem).toContainText('上一次一致状态已保留')
@@ -212,7 +212,7 @@ test('original Runtime UI incrementally restores feedback and coherent state thr
     timeout: 15_000
   })
   await expect(panel.getByRole('alert').filter({
-    hasText: 'Runtime 状态读取失败'
+    hasText: '运行状态读取失败'
   })).toContainText('Runtime 实时同步中断')
   await page.screenshot({
     path: join(artifactDirectory, '05-sse-reconnecting.png'),
@@ -224,7 +224,7 @@ test('original Runtime UI incrementally restores feedback and coherent state thr
     timeout: 20_000
   })
   await expect(panel.getByRole('alert').filter({
-    hasText: 'Authoring 操作失败'
+    hasText: '工作流编辑操作失败'
   })).toBeHidden()
   await page.screenshot({
     path: join(artifactDirectory, '06-sse-reconnected.png'),

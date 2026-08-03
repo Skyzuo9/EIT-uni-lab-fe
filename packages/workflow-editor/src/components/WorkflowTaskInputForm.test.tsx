@@ -42,8 +42,8 @@ describe('WorkflowTaskInputForm Applied projection', () => {
     ))
     const text = visibleText(markup)
 
-    expect(text).toMatch(/sample[\s\S]*(ResourceSlot|资源槽)/i)
-    expect(text).toMatch(/暂不支持|尚不可用|后续.*selector|unavailable/i)
+    expect(text).toMatch(/sample[\s\S]*(ResourceSlot|资源槽|资源位)/i)
+    expect(text).toMatch(/暂不支持|尚不可用|不可用|后续.*selector|unavailable/i)
     expect(markup).toMatch(/disabled=""|aria-disabled="true"/i)
   })
 

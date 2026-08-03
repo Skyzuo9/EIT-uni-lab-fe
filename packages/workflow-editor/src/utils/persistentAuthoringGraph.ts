@@ -198,7 +198,7 @@ export function updatePersistentAuthoringNodeName(
     node.parent_uuid !== undefined &&
     node.parent_uuid !== null
   )) {
-    throw new Error('Composite internal/private Node 只读；请编辑 invocation boundary')
+    throw new Error('复合工作流的内部私有节点只读；请编辑调用边界')
   }
   return {
     ...graph,
@@ -234,7 +234,7 @@ export function parseWorkflowAuthoringGraphImport(
   }
   const importedWorkflowUuid = String(graph.workflow.uuid || '')
   if (!importedWorkflowUuid) {
-    throw new Error('导入的 Authoring Graph 缺少 workflow.uuid')
+    throw new Error('导入的工作流编辑数据缺少 workflow.uuid')
   }
   if (importedWorkflowUuid !== workflowUuid) {
     throw new Error(

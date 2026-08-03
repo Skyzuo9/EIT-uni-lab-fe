@@ -56,22 +56,22 @@ export function WorkflowTaskInputForm({
   return (
     <section
       className="workflow-task-input-form"
-      aria-label="Workflow Task 输入表单"
+      aria-label="工作流运行输入表单"
     >
       <header>
         <div>
-          <strong>Workflow Task 输入</strong>
-          <span>使用 Applied revision {form.appliedRevision}</span>
+          <strong>本次运行输入</strong>
+          <span>使用已应用版本 {form.appliedRevision}</span>
         </div>
         <p>
-          未填写字段保持省略，由 OS 应用并冻结 default；Candidate 不参与本次运行。
+          未填写字段保持省略，由 OS 使用并固定默认值；编辑中的修改不参与本次运行。
         </p>
       </header>
 
       {problem && <p className="workflow-runtime__problem" role="alert">{problem}</p>}
 
       {form.fields.length === 0 ? (
-        <p>当前 Applied Workflow 没有外部输入。</p>
+        <p>当前已应用的工作流没有外部输入。</p>
       ) : (
         <ol>
           {form.fields.map(({ descriptor, state }) => {
@@ -98,7 +98,7 @@ export function WorkflowTaskInputForm({
                 {descriptor.description && <p>{descriptor.description}</p>}
                 {Object.hasOwn(descriptor, 'default') && (
                   <p>
-                    默认 default：<code>{jsonText(descriptor.default)}</code>
+                    默认值：<code>{jsonText(descriptor.default)}</code>
                   </p>
                 )}
                 <label>
@@ -116,20 +116,20 @@ export function WorkflowTaskInputForm({
                       )
                     )}
                   >
-                    <option value="untouched">省略 (untouched)</option>
+                    <option value="untouched">省略</option>
                     <option
                       value="explicit_null"
                       disabled={!isNullableWorkflowInputSchema(
                         descriptor.schema
                       )}
                     >
-                      显式空值 (explicit null)
+                      显式空值（null）
                     </option>
                     <option
                       value="value"
                       disabled={Boolean(resourceSlotProblem)}
                     >
-                      明确值 (value)
+                      明确值
                     </option>
                   </select>
                 </label>
@@ -177,7 +177,7 @@ export function WorkflowTaskInputForm({
               disabled={busy}
               onClick={onSubmit}
             >
-              {busy ? '创建中…' : '确认并创建 Task'}
+              {busy ? '创建中…' : '确认并创建任务'}
             </button>
           )}
         </footer>
@@ -212,9 +212,9 @@ function renderWorkflowResourceSlotControl({
     return (
       <div>
         <label>
-          ResourceSlot
+          资源位
           <select
-            aria-label={`${name} ResourceSlot`}
+            aria-label={`${name} 资源位`}
             value={value}
             disabled={unavailable}
             onChange={(event) => onChange(
@@ -226,7 +226,7 @@ function renderWorkflowResourceSlotControl({
                   }
             )}
           >
-            <option value="">请选择 Material</option>
+            <option value="">请选择物料</option>
             {options.map((option) => (
               <option
                 key={option.materialUuid}
@@ -254,9 +254,9 @@ function renderWorkflowResourceSlotControl({
       {values.map((value, index) => (
         <div key={`${index}:${value}`}>
           <label>
-            ResourceSlot {index + 1}
+            资源位 {index + 1}
             <select
-              aria-label={`${name} ResourceSlot ${index + 1}`}
+              aria-label={`${name} 资源位 ${index + 1}`}
               value={value}
               disabled={unavailable}
               onChange={(event) => {
@@ -305,14 +305,14 @@ function renderWorkflowResourceSlotControl({
       ))}
       <button
         type="button"
-        aria-label={`${name} 添加 ResourceSlot`}
+        aria-label={`${name} 添加资源位`}
         disabled={unavailable || options.length === 0}
         onClick={() => {
           const first = options[0]
           if (first) updateValues([...values, first.materialUuid])
         }}
       >
-        添加 ResourceSlot
+        添加资源位
       </button>
       {problem && <span role="status">{problem}</span>}
     </div>
@@ -336,7 +336,7 @@ function WorkflowValueControl({
 }): React.JSX.Element {
   const base = 'anyOf' in schema ? schema.anyOf[0] : schema
   if ('$slot' in base) {
-    return <input disabled aria-label={`${name} ResourceSlot`} />
+    return <input disabled aria-label={`${name} 资源位`} />
   }
   if (base.type === 'string') {
     if (base.enum) {
@@ -401,15 +401,15 @@ function WorkflowValueControl({
           disabled={disabled}
           onChange={(event) => onChange(event.target.value === 'true')}
         >
-          <option value="false">false</option>
-          <option value="true">true</option>
+          <option value="false">否</option>
+          <option value="true">是</option>
         </select>
       </label>
     )
   }
   return (
     <label>
-      明确值 JSON
+      明确值（JSON）
       <textarea
         aria-label={`${name} 明确值 JSON`}
         defaultValue={jsonText(value)}
@@ -418,7 +418,7 @@ function WorkflowValueControl({
           try {
             const parsed = JSON.parse(event.target.value) as unknown
             if (base.type === 'array' && !Array.isArray(parsed)) {
-              throw new Error(`${name} 必须是 JSON array`)
+              throw new Error(`${name} 必须是 JSON 数组`)
             }
             if (
               base.type === 'object' &&
@@ -427,7 +427,7 @@ function WorkflowValueControl({
                 typeof parsed !== 'object' ||
                 Array.isArray(parsed)
               )
-            ) throw new Error(`${name} 必须是 JSON object`)
+            ) throw new Error(`${name} 必须是 JSON 对象`)
             if (onChange(parsed as WorkflowJsonValue)) onProblem?.(null)
           } catch (error) {
             onProblem?.(errorMessage(error))
@@ -449,7 +449,7 @@ function stateForKind(
     kind: 'value',
     value: emptyValue(schema, resourceSlotOptions)
   }
-  throw new Error(`未知 Workflow input 状态：${kind}`)
+  throw new Error(`未知工作流入参状态：${kind}`)
 }
 
 function emptyValue(
@@ -459,7 +459,7 @@ function emptyValue(
   const base = nonNullSchema(schema)
   if ('$slot' in base) {
     const first = resourceSlotOptions[0]
-    if (!first) throw new Error('没有兼容的 Material ResourceSlot 可选择')
+    if (!first) throw new Error('没有兼容的物料资源位可选择')
     return { uuid: first.materialUuid }
   }
   switch (base.type) {
@@ -502,10 +502,10 @@ function resourceSlotAvailabilityMessage(
   state: WorkflowResourceSlotOptionsState | undefined,
   compatible: readonly WorkflowResourceSlotOption[]
 ): string | null {
-  if (!state) return 'Material ResourceSlot 选项端口未注入，当前尚不可用'
+  if (!state) return '物料资源位选项尚未加载，当前不可用'
   if (state.kind !== 'ready') return state.message
   return compatible.length === 0
-    ? '没有与 Workflow input 类型兼容的 Material，请先创建或修正模板'
+    ? '没有与工作流入参类型兼容的物料，请先创建或修正模板'
     : null
 }
 
@@ -527,12 +527,19 @@ function boundedZero(minimum?: number, maximum?: number): number {
 
 function schemaLabel(schema: WorkflowValueSchema): string {
   const base = 'anyOf' in schema ? schema.anyOf[0] : schema
-  const nullable = 'anyOf' in schema ? ' | null' : ''
-  if ('$slot' in base) return `ResourceSlot${nullable}`
+  const nullable = 'anyOf' in schema ? ' · 可空' : ''
+  if ('$slot' in base) return `资源位${nullable}`
   if (base.type === 'array') {
-    return `list[${schemaLabel(base.items)}]${nullable}`
+    return `列表<${schemaLabel(base.items)}>${nullable}`
   }
-  return `${base.type}${nullable}`
+  const labels: Record<string, string> = {
+    string: '文本',
+    integer: '整数',
+    number: '数值',
+    boolean: '布尔值',
+    object: '对象'
+  }
+  return `${labels[base.type] ?? base.type}${nullable}`
 }
 
 function jsonText(value: unknown): string {
