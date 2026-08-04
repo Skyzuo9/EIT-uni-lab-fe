@@ -13,7 +13,14 @@ import { useWorkbench } from '../../context/WorkbenchContext'
 import { useLabInteraction } from './LabInteractionProvider'
 import { useMaterialRuntime } from './MaterialRuntimeProvider'
 import type { LabViewMode } from './UnifiedLabViewport'
+import { supportsWebGl } from './webGlCapability'
 
+/**
+ * 将物料（Material）图投影到 Pascal 三维场景（3D Scene）工作台。
+ *
+ * `showSites` 控制库位（Site）图层是否可见，`viewMode` 指定统一实验室视图模式；
+ * 返回包含能力降级、模型资源解析、选择同步和移动提交能力的 React 视图。
+ */
 export function SceneWorkbench({
   showSites = true,
   viewMode = '3d'
@@ -128,13 +135,5 @@ export function SceneWorkbench({
         selectSceneObjects(sceneObjectIds)
       }}
     />
-  )
-}
-
-function supportsWebGl(): boolean {
-  if (typeof document === 'undefined') return true
-  const canvas = document.createElement('canvas')
-  return Boolean(
-    canvas.getContext('webgl2') || canvas.getContext('webgl')
   )
 }
