@@ -246,6 +246,13 @@ export interface WorkflowMaterialPortCard {
   sourceHandle?: WorkflowHandlePort
 }
 
+/**
+ * 将节点的 ResourceSlot Handle 投影为物料标签。
+ *
+ * @param handles 节点的输入、输出 Handle。
+ * @param materialHandleAccents 按 Handle UUID 索引的物料流颜色。
+ * @returns 按逻辑字段合并后的物料标签；同字段输入、输出只占一项。
+ */
 export function workflowMaterialPortCards(
   handles: readonly WorkflowHandlePort[],
   materialHandleAccents: Record<string, string> | undefined
@@ -258,11 +265,13 @@ export function workflowMaterialPortCards(
     const slot = handle.ioType === 'target' ? 'targetHandle' : 'sourceHandle'
     const existing = cards.find((card) =>
       card.variableName === variableName &&
-      card.accent === accent &&
       card[slot] === undefined
     )
     if (existing) {
       existing[slot] = handle
+      // 同字段输入与输出是同一个 ResourceSlot；输入侧颜色代表进入节点的
+      // 既有物料身份，因此在目录数据暂时不一致时仍以输入侧为准。
+      if (handle.ioType === 'target') existing.accent = accent
       existing.label = preferredMaterialPortLabel(existing, handle)
       existing.description = mergeDescriptions(
         existing.description,

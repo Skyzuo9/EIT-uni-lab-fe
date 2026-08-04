@@ -23,6 +23,7 @@ import {
   updateWorkflowInput,
   updateWorkflowOutput
 } from '../utils/workflowIoAuthoring'
+import { WorkflowButton } from './WorkflowButton'
 
 interface WorkflowIoEditorProps {
   graph: WorkflowAuthoringGraph
@@ -173,9 +174,12 @@ export function WorkflowIoEditor({
                           : '选填'}
                     </span>
                   <span className="persistent-authoring__io-editor-row-actions">
-                    <button
+                    <WorkflowButton
                       type="button"
                       disabled={!editable || index === 0}
+                      disabledReason={!editable
+                        ? '当前模式只允许查看工作流输入'
+                        : '该输入已经位于第一项'}
                       onClick={(event) => {
                         event.preventDefault()
                         event.stopPropagation()
@@ -187,10 +191,13 @@ export function WorkflowIoEditor({
                       }}
                     >
                       上移
-                    </button>
-                    <button
+                    </WorkflowButton>
+                    <WorkflowButton
                       type="button"
                       disabled={!editable || index === io.inputs.length - 1}
+                      disabledReason={!editable
+                        ? '当前模式只允许查看工作流输入'
+                        : '该输入已经位于最后一项'}
                       onClick={(event) => {
                         event.preventDefault()
                         event.stopPropagation()
@@ -202,10 +209,11 @@ export function WorkflowIoEditor({
                       }}
                     >
                       下移
-                    </button>
-                    <button
+                    </WorkflowButton>
+                    <WorkflowButton
                       type="button"
                       disabled={!editable}
+                      disabledReason="当前模式只允许查看工作流输入"
                       onClick={(event) => {
                         event.preventDefault()
                         event.stopPropagation()
@@ -216,7 +224,7 @@ export function WorkflowIoEditor({
                       }}
                     >
                       删除
-                    </button>
+                    </WorkflowButton>
                     <span className="persistent-authoring__io-editor-expand">
                       详情
                     </span>
@@ -370,10 +378,11 @@ export function WorkflowIoEditor({
               </li>
             ))}
           </ol>
-          <button
+          <WorkflowButton
             type="button"
             className="persistent-authoring__io-editor-add"
             disabled={!editable}
+            disabledReason="当前模式只允许查看工作流输入"
             onClick={() => mutate(() => addWorkflowInput(graph, {
               name: uniqueName(io.inputs.map(({ name }) => name), 'input'),
               schema: { type: 'string' },
@@ -381,7 +390,7 @@ export function WorkflowIoEditor({
             }))}
           >
             添加输入参数
-          </button>
+          </WorkflowButton>
         </IoGroup>
 
         <IoGroup
@@ -419,9 +428,12 @@ export function WorkflowIoEditor({
                       <span className="persistent-authoring__io-editor-row-actions">
                         {!descriptor.implicit && (
                           <>
-                            <button
+                            <WorkflowButton
                               type="button"
                               disabled={!editable || index === 0}
+                              disabledReason={!editable
+                                ? '当前模式只允许查看工作流输出'
+                                : '该输出已经位于第一项'}
                               onClick={(event) => {
                                 event.preventDefault()
                                 event.stopPropagation()
@@ -433,12 +445,15 @@ export function WorkflowIoEditor({
                               }}
                             >
                               上移
-                            </button>
-                            <button
+                            </WorkflowButton>
+                            <WorkflowButton
                               type="button"
                               disabled={
                                 !editable || index === io.outputs.length - 1
                               }
+                              disabledReason={!editable
+                                ? '当前模式只允许查看工作流输出'
+                                : '该输出已经位于最后一项'}
                               onClick={(event) => {
                                 event.preventDefault()
                                 event.stopPropagation()
@@ -450,10 +465,11 @@ export function WorkflowIoEditor({
                               }}
                             >
                               下移
-                            </button>
-                            <button
+                            </WorkflowButton>
+                            <WorkflowButton
                               type="button"
                               disabled={!editable}
+                              disabledReason="当前模式只允许查看工作流输出"
                               onClick={(event) => {
                                 event.preventDefault()
                                 event.stopPropagation()
@@ -464,7 +480,7 @@ export function WorkflowIoEditor({
                               }}
                             >
                               删除
-                            </button>
+                            </WorkflowButton>
                           </>
                         )}
                         <span className="persistent-authoring__io-editor-expand">
@@ -581,10 +597,11 @@ export function WorkflowIoEditor({
               )
             })}
           </ol>
-          <button
+          <WorkflowButton
             type="button"
             className="persistent-authoring__io-editor-add"
             disabled={!editable}
+            disabledReason="当前模式只允许查看工作流输出"
             onClick={() => mutate(() => addWorkflowOutput(graph, {
               name: uniqueName(io.outputs.map(({ name }) => name), 'output'),
               schema: { type: 'object' },
@@ -592,7 +609,7 @@ export function WorkflowIoEditor({
             }))}
           >
             添加输出参数
-          </button>
+          </WorkflowButton>
         </IoGroup>
       </div>
     </section>
@@ -1004,15 +1021,16 @@ function BindingList({
       {bindings.map(({ nodeUuid, handleUuid }) => (
         <span key={`${nodeUuid}:${handleUuid}`}>
           {handleLabel(graph, nodeUuid, handleUuid)}
-          <button
+          <WorkflowButton
             type="button"
             data-workflow-node-uuid={nodeUuid}
             data-workflow-handle-template-uuid={handleUuid}
             disabled={!editable}
+            disabledReason="当前模式只允许查看工作流输入绑定"
             onClick={() => onUnbind(nodeUuid, handleUuid)}
           >
             解除绑定
-          </button>
+          </WorkflowButton>
         </span>
       ))}
     </div>

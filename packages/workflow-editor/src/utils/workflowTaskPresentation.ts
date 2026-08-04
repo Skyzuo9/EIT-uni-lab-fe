@@ -12,6 +12,13 @@ const TERMINAL_TASK_STATUSES = new Set<WorkflowTask['status']>([
   'timeout'
 ])
 
+/**
+ * 将权威工作流任务状态投影为可执行的运行控制按钮。
+ *
+ * @param task OS 返回的工作流任务；尚未创建时为 null。
+ * @param busy 前端是否正在提交或补读上一条命令。
+ * @returns 各运行命令的可用状态、提示与不可用原因。
+ */
 export function workflowTaskControls(
   task: WorkflowTask | null,
   busy: boolean
@@ -26,7 +33,8 @@ export function workflowTaskControls(
       message: 'OS 已接受暂停请求，正在补读任务状态',
       glyph: 'Ⅱ',
       disabled: busy || terminal || admissionBlocked ||
-        task.control_status !== 'active'
+        task.control_status !== 'active',
+      disabledReason: workflowTaskCommandDisabledReason(task, busy, 'pause')
     },
     {
       command: 'resume',
@@ -36,7 +44,8 @@ export function workflowTaskControls(
       glyph: '▶',
       primary: true,
       disabled: busy || terminal || admissionBlocked ||
-        task.control_status !== 'paused'
+        task.control_status !== 'paused',
+      disabledReason: workflowTaskCommandDisabledReason(task, busy, 'resume')
     },
     {
       command: 'step',
@@ -45,7 +54,8 @@ export function workflowTaskControls(
       message: 'OS 已接受单步请求，正在补读节点任务与工作流任务状态',
       glyph: '→',
       disabled: busy || terminal || admissionBlocked ||
-        task.run_mode !== 'step' || task.control_status !== 'paused'
+        task.run_mode !== 'step' || task.control_status !== 'paused',
+      disabledReason: workflowTaskCommandDisabledReason(task, busy, 'step')
     },
     {
       command: 'cancel',
@@ -54,9 +64,40 @@ export function workflowTaskControls(
       message: 'OS 已接受取消请求，正在补读工作流任务与节点任务状态',
       glyph: '■',
       danger: true,
-      disabled: busy || terminal
+      disabled: busy || terminal,
+      disabledReason: workflowTaskCommandDisabledReason(task, busy, 'cancel')
     }
   ]
+}
+
+/**
+ * 解释运行控制命令在当前任务状态下为何不可提交。
+ *
+ * @param task OS 返回的工作流任务；尚未创建时为 null。
+ * @param busy 是否正在处理上一条命令。
+ * @param command 待解释的工作流任务命令。
+ * @returns 面向操作者的具体不可点击原因。
+ */
+function workflowTaskCommandDisabledReason(
+  task: WorkflowTask | null,
+  busy: boolean,
+  command: WorkflowTaskCommandType
+): string {
+  if (busy) return '正在处理上一条运行控制命令，请等待 OS 回读状态'
+  if (!task) return '尚未创建工作流任务'
+  if (TERMINAL_TASK_STATUSES.has(task.status)) {
+    return '工作流任务已经结束，不能再提交运行控制命令'
+  }
+  if (task.status === 'admission_blocked') {
+    return '任务正在等待物料准入，当前不能提交运行控制命令'
+  }
+  if (command === 'pause') return '只有正在执行的任务可以暂停'
+  if (command === 'resume') return '只有已经暂停的任务可以继续'
+  if (command === 'step' && task.run_mode !== 'step') {
+    return '当前任务不是单步模式'
+  }
+  if (command === 'step') return '只有已经暂停的单步任务可以执行下一步'
+  return '当前任务状态不允许取消'
 }
 
 export function workflowTaskVisualStatus(task: WorkflowTask | null): string {

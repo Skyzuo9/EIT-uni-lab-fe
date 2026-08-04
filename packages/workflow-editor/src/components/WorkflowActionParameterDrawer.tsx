@@ -9,6 +9,7 @@ import type {
   TypedActionEditorProjection,
   TypedActionFieldProjection
 } from '../utils/workflowActionCatalog'
+import { WorkflowButton } from './WorkflowButton'
 
 interface WorkflowActionParameterDrawerProps {
   open: boolean
@@ -202,21 +203,23 @@ export function WorkflowActionParameterDrawer({
                       </div>
 
                       <div className="persistent-authoring__parameter-actions">
-                        <button
+                        <WorkflowButton
                           type="button"
                           disabled={!editable}
+                          disabledReason="当前模式只允许查看节点参数"
                           onClick={() => onClear(field.handleUuid)}
                         >
                           清除值
-                        </button>
+                        </WorkflowButton>
                         {field.nullable && (
-                          <button
+                          <WorkflowButton
                             type="button"
                             disabled={!editable}
+                            disabledReason="当前模式只允许查看节点参数"
                             onClick={() => onNull(field.handleUuid)}
                           >
                             传入空值
-                          </button>
+                          </WorkflowButton>
                         )}
                       </div>
 

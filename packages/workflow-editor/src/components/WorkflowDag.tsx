@@ -25,6 +25,7 @@ import type {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useWorkflowDag } from '../hooks/useWorkflowDag'
 import WorkflowNodeCard from './WorkflowNodeCard'
+import { WorkflowButton } from './WorkflowButton'
 import type { WorkflowNodeData } from './WorkflowNodeCard'
 import type { WorkflowLink, WorkflowNode } from '../utils/parseWorkflow'
 import { projectNestedWorkflow } from '../utils/canonicalWorkflow'
@@ -366,10 +367,13 @@ export default function WorkflowDag({
         />
         <Controls showInteractive={false} />
         <Panel position="top-right">
-          <button
+          <WorkflowButton
             type="button"
             className="workflow-runtime__beautify"
             disabled={!canBeautify || isBeautifying}
+            disabledReason={isBeautifying
+              ? '正在美化工作流布局，请稍候'
+              : '请先完成当前 Python 编译'}
             aria-label="美化工作流布局"
             title={
               canBeautify
@@ -394,7 +398,7 @@ export default function WorkflowDag({
               />
             </svg>
             <span>{isBeautifying ? '正在美化' : '美化布局'}</span>
-          </button>
+          </WorkflowButton>
         </Panel>
         <MiniMap
           pannable

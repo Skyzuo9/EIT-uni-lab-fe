@@ -48,6 +48,7 @@ test.afterAll(async () => {
   await os?.stop()
 })
 
+/** 验证真实 OS/SZLab 图中的物料身份、端口颜色与禁用原因提示。 */
 test('SZLab S07 powder dosing projects the complete material flow', async ({
   page
 }) => {
@@ -203,15 +204,71 @@ test('SZLab S07 powder dosing projects the complete material flow', async ({
   const materialHandles = panel.locator(
     '[data-workflow-handle-kind="material"]'
   )
+  const materialPorts = panel.locator(
+    '[data-workflow-material-port-variable]'
+  )
   const structuralHandles = panel.locator(
     '[data-workflow-handle-kind="structural"]'
   )
   await expect(nodes).toHaveCount(12)
   await expect(materialSources).toHaveCount(2)
   await expect(materialEdges).toHaveCount(9)
-  await expect(materialHandles).toHaveCount(18)
+  await expect(materialHandles).toHaveCount(20)
   await expect(panel.locator('.wf-node__port-summary')).toHaveCount(0)
   await expect(panel.locator('.wf-node__state--pending')).toHaveCount(0)
+
+  // 同一节点内，同字段只允许存在一个物料标签。
+  const materialIdentityEvidence = await nodes.evaluateAll((nodeElements) =>
+    nodeElements.map((node) => {
+      const ports = Array.from(node.querySelectorAll<HTMLElement>(
+        '[data-workflow-material-port-variable]'
+      ))
+      const variables = ports.map((port) =>
+        port.dataset.workflowMaterialPortVariable ?? ''
+      )
+      return {
+        nodeUuid: node.dataset.workflowNodeUuid,
+        variables,
+        uniqueVariables: new Set(variables).size
+      }
+    })
+  )
+  expect(materialIdentityEvidence.every((node) =>
+    node.variables.length === node.uniqueVariables
+  )).toBe(true)
+
+  // 同字段输入、输出共享一个标签，并沿用完全相同的物料色。
+  const sameFieldIdentityEvidence = await materialPorts.evaluateAll((ports) =>
+    ports.flatMap((port) => {
+      const target = port.querySelector<HTMLElement>(
+        '[data-workflow-handle-io="target"]'
+      )
+      const source = port.querySelector<HTMLElement>(
+        '[data-workflow-handle-io="source"]'
+      )
+      if (!target || !source) return []
+      return [{
+        nodeUuid: port.closest<HTMLElement>(
+          '[data-workflow-node-uuid]'
+        )?.dataset.workflowNodeUuid,
+        variableName: port.getAttribute(
+          'data-workflow-material-port-variable'
+        ),
+        tagCount: port.parentElement?.querySelectorAll(
+          `[data-workflow-material-port-variable="${
+            port.getAttribute('data-workflow-material-port-variable')
+          }"]`
+        ).length ?? 0,
+        targetColor: getComputedStyle(target).borderColor,
+        sourceColor: getComputedStyle(source).borderColor
+      }]
+    })
+  )
+  expect(sameFieldIdentityEvidence.length).toBeGreaterThan(0)
+  expect(sameFieldIdentityEvidence.every((identity) =>
+    identity.tagCount === 1 &&
+    identity.targetColor === identity.sourceColor
+  ), JSON.stringify(sameFieldIdentityEvidence, null, 2)).toBe(true)
 
   const joinNode = workflowNode(panel, DOSING_JOIN_UUID)
   const joinInputs = joinNode.locator(
@@ -316,6 +373,29 @@ test('SZLab S07 powder dosing projects the complete material flow', async ({
     animations: 'disabled'
   })
 
+  const disabledButtons = panel.locator('button:disabled')
+  expect(await disabledButtons.count()).toBeGreaterThan(0)
+  const disabledReasonEvidence = await disabledButtons.evaluateAll((buttons) =>
+    buttons.map((button) => ({
+      label: button.textContent?.replace(/\s+/g, ' ').trim() ?? '',
+      reason: button.getAttribute('data-disabled-reason'),
+      title: button.getAttribute('title'),
+      ariaDescription: button.getAttribute('aria-description')
+    }))
+  )
+  expect(disabledReasonEvidence.every((button) =>
+    Boolean(button.reason) &&
+    button.reason === button.title &&
+    button.reason === button.ariaDescription
+  ), JSON.stringify(disabledReasonEvidence, null, 2)).toBe(true)
+  const pauseButton = panel.getByRole('button', { name: '暂停', exact: true })
+  await expect(pauseButton).toBeDisabled()
+  await pauseButton.hover({ force: true })
+  await expect(page.getByRole('tooltip', {
+    name: '尚未创建工作流任务'
+  })).toBeVisible()
+  await capture(page, artifactDirectory, '09-disabled-reason-tooltip.png')
+
   expect(workflowRequests).toContain(
     `GET /api/v1/workflows/${S07_WORKFLOW_UUID}/authoring`
   )
@@ -329,10 +409,13 @@ test('SZLab S07 powder dosing projects the complete material flow', async ({
       sourceRevision: os.szlabRevision,
       graph: { nodes: graph.nodes.length, edges: graph.edges.length },
       alignmentEvidence,
+      materialIdentityEvidence,
+      sameFieldIdentityEvidence,
       structuralEvidence,
       motionEvidence,
       toolbarLayoutEvidence,
       outputTabGeometryEvidence,
+      disabledReasonEvidence,
       workflowRequests,
       failedRequests,
       responseTimings,
@@ -346,7 +429,8 @@ test('SZLab S07 powder dosing projects the complete material flow', async ({
         '05-dual-material-dosing-join.png',
         '06-medium-workbench.png',
         '07-run-toolbar-cluster.png',
-        '08-run-output-tabs.png'
+        '08-run-output-tabs.png',
+        '09-disabled-reason-tooltip.png'
       ]
     }, null, 2)}\n`
   )
