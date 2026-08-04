@@ -874,26 +874,36 @@
   list-style: none;
   tab-size: 2;
 
-  li {
-    display: grid;
-    grid-template-columns: minmax(156px, auto) minmax(0, 1fr);
-    gap: 12px;
-    padding: 3px 4px;
-    border-radius: 3px;
+}
 
-    &:hover {
-      background: var(--unilab-color-surface-subtle);
-    }
+.logVirtualSpace {
+  position: relative;
+  min-width: 0;
+}
 
-    &[data-level='warning'] {
-      color: var(--unilab-color-warning);
-    }
+.logRow {
+  position: absolute;
+  inset: 0 0 auto;
+  display: grid;
+  grid-template-columns: minmax(156px, auto) minmax(0, 1fr);
+  gap: 12px;
+  height: 28px;
+  padding: 3px 4px;
+  overflow: hidden;
+  border-radius: 3px;
 
-    &[data-level='error'],
-    &[data-level='critical'] {
-      color: var(--unilab-color-danger);
-      background: var(--unilab-color-danger-soft);
-    }
+  &:hover {
+    background: var(--unilab-color-surface-subtle);
+  }
+
+  &[data-level='warning'] {
+    color: var(--unilab-color-warning);
+  }
+
+  &[data-level='error'],
+  &[data-level='critical'] {
+    color: var(--unilab-color-danger);
+    background: var(--unilab-color-danger-soft);
   }
 }
 
@@ -925,8 +935,9 @@
 
 .logMessage {
   min-width: 0;
-  overflow-wrap: anywhere;
-  white-space: pre-wrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .logEmpty {
@@ -1058,7 +1069,25 @@
   }
 
   .logDrawerHeader {
-    padding-inline: 16px;
+    position: relative;
+    flex-direction: column;
+    align-items: stretch;
+    padding-inline: 16px 48px;
+  }
+
+  .logDrawerActions {
+    width: 100%;
+    flex-wrap: wrap;
+
+    .secondaryButton {
+      flex: 1 1 112px;
+    }
+
+    .closeButton {
+      position: absolute;
+      top: 14px;
+      right: 12px;
+    }
   }
 
   .logTabs {

@@ -1,8 +1,12 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type {
   LocalRuntimeLaunchConfig,
+  LocalRuntimeLogBatch,
+  LocalRuntimeLogQuery,
   LocalRuntimeLogsSnapshot,
+  LocalRuntimeOpenLogResult,
   LocalRuntimePathKind,
+  LocalRuntimeProcessKind,
   LocalRuntimeSnapshot
 } from '../shared/localRuntime'
 import type {
@@ -86,6 +90,12 @@ const api = {
       ipcRenderer.invoke('runtime:stopEdge'),
     readLogs: (): Promise<LocalRuntimeLogsSnapshot> =>
       ipcRenderer.invoke('runtime:readLogs'),
+    readLog: (query: LocalRuntimeLogQuery): Promise<LocalRuntimeLogBatch> =>
+      ipcRenderer.invoke('runtime:readLog', query),
+    openLogFile: (
+      kind: LocalRuntimeProcessKind
+    ): Promise<LocalRuntimeOpenLogResult> =>
+      ipcRenderer.invoke('runtime:openLogFile', kind),
     onSnapshot: (
       listener: (snapshot: LocalRuntimeSnapshot) => void
     ): (() => void) => {

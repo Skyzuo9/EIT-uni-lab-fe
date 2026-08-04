@@ -1,4 +1,13 @@
-import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { once } from 'node:events'
+import {
+  appendFile,
+  chmod,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  writeFile
+} from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, delimiter, dirname, join } from 'node:path'
 
@@ -6,9 +15,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { LocalRuntimeLaunchConfig } from '../shared/localRuntime'
 import {
+  readLocalRuntimeLog,
   readLocalRuntimeLogs,
   resolveLocalRuntimeLaunchPlan,
-  resolveLocalSimulatorLaunchPlan
+  resolveLocalSimulatorLaunchPlan,
+  RotatingLogWriter
 } from './localRuntimeManager'
 
 const temporaryDirectories: string[] = []
@@ -48,6 +59,44 @@ describe('LocalRuntimeManager command plan', () => {
         truncated: false
       }
     ])
+  })
+
+  it('returns only bytes appended after the local runtime log cursor', async () => {
+    const logsDirectory = await mkdtemp(join(tmpdir(), 'unilab-runtime-logs-'))
+    temporaryDirectories.push(logsDirectory)
+    await writeFile(join(logsDirectory, 'edge.log'), 'first\nsecond\n')
+
+    const initial = await readLocalRuntimeLog(logsDirectory, {
+      kind: 'edge',
+      cursor: null
+    })
+    await appendFile(join(logsDirectory, 'edge.log'), 'third\n')
+    const appended = await readLocalRuntimeLog(logsDirectory, {
+      kind: 'edge',
+      cursor: initial.cursor
+    })
+
+    expect(initial.reset).toBe(true)
+    expect(initial.content).toBe('first\nsecond\n')
+    expect(appended.reset).toBe(false)
+    expect(appended.content).toBe('third\n')
+    expect(appended.cursor?.offset).toBeGreaterThan(initial.cursor?.offset ?? 0)
+  })
+
+  it('rotates launcher diagnostics while the child process is still running', async () => {
+    const logsDirectory = await mkdtemp(join(tmpdir(), 'unilab-runtime-logs-'))
+    temporaryDirectories.push(logsDirectory)
+    const logPath = join(logsDirectory, 'edge.log')
+    const writer = new RotatingLogWriter(logPath, 12, 2)
+
+    writer.write('12345678')
+    writer.write('abcdefgh')
+    writer.end('tail!')
+    await once(writer, 'finish')
+
+    expect(await readFile(logPath, 'utf8')).toBe('tail!')
+    expect(await readFile(`${logPath}.1`, 'utf8')).toBe('abcdefgh')
+    expect(await readFile(`${logPath}.2`, 'utf8')).toBe('12345678')
   })
 
   it('launches the selected workspace through the public ROS unilab CLI', async () => {

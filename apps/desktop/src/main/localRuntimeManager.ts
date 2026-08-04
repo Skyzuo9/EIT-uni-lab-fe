@@ -1,13 +1,23 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
-import { constants as fsConstants, createWriteStream } from 'node:fs'
-import { access, mkdir, open, stat } from 'node:fs/promises'
+import { constants as fsConstants, statSync } from 'node:fs'
+import {
+  access,
+  mkdir,
+  open,
+  rename,
+  rm,
+  stat
+} from 'node:fs/promises'
 import { createConnection } from 'node:net'
 import { basename, delimiter, dirname, join, normalize, resolve } from 'node:path'
+import { Writable } from 'node:stream'
 
 import {
   IDLE_LOCAL_RUNTIME_SNAPSHOT,
   type LocalRuntimeLaunchConfig,
+  type LocalRuntimeLogBatch,
   type LocalRuntimeLogEntry,
+  type LocalRuntimeLogQuery,
   type LocalRuntimeLogsSnapshot,
   type LocalRuntimeProcessKind,
   type LocalRuntimeSnapshot
@@ -71,10 +81,83 @@ const DEVICE_CATALOG_URL =
   `http://${HOST}:${LOCAL_RUNTIME_PORTS.edgeHttp}/api/v1/devices`
 const PROCESS_READY_TIMEOUT_MS = 90_000
 const LOCAL_RUNTIME_LOG_READ_LIMIT_BYTES = 128 * 1024
+const LOCAL_RUNTIME_LOG_BATCH_LIMIT_BYTES = 64 * 1024
+const LOCAL_RUNTIME_LOG_MAX_BYTES = 10 * 1024 * 1024
+const LOCAL_RUNTIME_LOG_BACKUP_COUNT = 5
 const LOCAL_RUNTIME_LOG_KINDS: readonly LocalRuntimeProcessKind[] = [
   'simulator',
   'edge'
 ]
+
+export class RotatingLogWriter extends Writable {
+  private handle: Awaited<ReturnType<typeof open>> | null = null
+  private byteLength: number
+
+  /**
+   * 创建运行时诊断日志写入器；超过容量时保留固定数量的历史分片。
+   */
+  constructor(
+    private readonly logPath: string,
+    private readonly maxBytes: number,
+    private readonly backupCount: number
+  ) {
+    super()
+    this.byteLength = statSync(logPath, { throwIfNoEntry: false })?.size ?? 0
+  }
+
+  /** 将一个子进程输出块写入当前分片，并在写入前执行容量轮转。 */
+  override _write(
+    chunk: Buffer | string,
+    encoding: BufferEncoding,
+    callback: (error?: Error | null) => void
+  ): void {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, encoding)
+    void this.writeChunk(buffer).then(
+      () => callback(),
+      (error: unknown) => callback(asError(error))
+    )
+  }
+
+  /** 在流结束时关闭底层文件句柄，保证轮转文件可安全移动。 */
+  override _final(callback: (error?: Error | null) => void): void {
+    void this.closeHandle().then(
+      () => callback(),
+      (error: unknown) => callback(asError(error))
+    )
+  }
+
+  /** 写入单个有序块；Writable 会串行调用该方法。 */
+  private async writeChunk(buffer: Buffer): Promise<void> {
+    if (this.byteLength > 0 && this.byteLength + buffer.byteLength > this.maxBytes) {
+      await this.rotate()
+    }
+    this.handle ??= await open(this.logPath, 'a')
+    await this.handle.write(buffer)
+    this.byteLength += buffer.byteLength
+  }
+
+  /** 关闭当前文件并把历史分片按 `.1` 到 `.N` 后移。 */
+  private async rotate(): Promise<void> {
+    await this.closeHandle()
+    const retainedBackups = Math.max(1, this.backupCount)
+    await rm(`${this.logPath}.${retainedBackups}`, { force: true })
+    for (let index = retainedBackups - 1; index >= 1; index -= 1) {
+      await renameIfPresent(
+        `${this.logPath}.${index}`,
+        `${this.logPath}.${index + 1}`
+      )
+    }
+    await renameIfPresent(this.logPath, `${this.logPath}.1`)
+    this.byteLength = 0
+  }
+
+  /** 关闭已打开的文件句柄；重复调用保持幂等。 */
+  private async closeHandle(): Promise<void> {
+    const activeHandle = this.handle
+    this.handle = null
+    await activeHandle?.close()
+  }
+}
 
 export class LocalRuntimeManager {
   private snapshot: LocalRuntimeSnapshot = {
@@ -97,6 +180,16 @@ export class LocalRuntimeManager {
 
   readLogs(): Promise<LocalRuntimeLogsSnapshot> {
     return readLocalRuntimeLogs(this.logsDirectory)
+  }
+
+  /** 按游标读取一个日志来源新增的有界内容。 */
+  readLog(query: LocalRuntimeLogQuery): Promise<LocalRuntimeLogBatch> {
+    return readLocalRuntimeLog(this.logsDirectory, query)
+  }
+
+  /** 返回固定日志来源的主进程解析路径，不接受渲染器传入任意路径。 */
+  getLogPath(kind: LocalRuntimeProcessKind): string {
+    return resolveLocalRuntimeLogPath(this.logsDirectory, kind)
   }
 
   async startSimulator(
@@ -312,9 +405,16 @@ export class LocalRuntimeManager {
       shell: false,
       windowsHide: true
     })
-    const logStream = createWriteStream(
-      join(this.logsDirectory, `${kind}.log`),
-      { flags: 'a' }
+    const logStream = new RotatingLogWriter(
+      resolveLocalRuntimeLogPath(this.logsDirectory, kind),
+      positiveEnvironmentInteger(
+        'UNILAB_DESKTOP_LOG_MAX_BYTES',
+        LOCAL_RUNTIME_LOG_MAX_BYTES
+      ),
+      positiveEnvironmentInteger(
+        'UNILAB_DESKTOP_LOG_BACKUP_COUNT',
+        LOCAL_RUNTIME_LOG_BACKUP_COUNT
+      )
     )
     logStream.write(`\n[launcher] ${new Date().toISOString()} starting\n`)
     child.stdout.pipe(logStream, { end: false })
@@ -443,6 +543,85 @@ export async function readLocalRuntimeLogs(
     ))
   )
   return { readAt: Date.now(), entries }
+}
+
+/**
+ * 按文件身份与字节偏移读取一个来源；轮转、截断或首次读取会返回重置批次。
+ */
+export async function readLocalRuntimeLog(
+  logsDirectory: string,
+  query: LocalRuntimeLogQuery,
+  maxBytes = LOCAL_RUNTIME_LOG_BATCH_LIMIT_BYTES
+): Promise<LocalRuntimeLogBatch> {
+  await mkdir(logsDirectory, { recursive: true })
+  const logPath = resolveLocalRuntimeLogPath(logsDirectory, query.kind)
+  let handle: Awaited<ReturnType<typeof open>> | null = null
+  try {
+    handle = await open(logPath, 'r')
+    const file = await handle.stat()
+    const fileId = `${file.dev}:${file.ino}:${file.birthtimeMs}`
+    const safeLimit = Math.max(1, maxBytes)
+    const cursorMatches = query.cursor?.fileId === fileId
+      && Number.isSafeInteger(query.cursor.offset)
+      && query.cursor.offset >= 0
+      && query.cursor.offset <= file.size
+    let reset = !cursorMatches
+    let start = cursorMatches ? query.cursor?.offset ?? 0 : 0
+    if (file.size - start > safeLimit) {
+      start = file.size - safeLimit
+      reset = true
+    }
+    const byteLength = Math.max(0, file.size - start)
+    const buffer = Buffer.alloc(byteLength)
+    const { bytesRead } = byteLength > 0
+      ? await handle.read(buffer, 0, byteLength, start)
+      : { bytesRead: 0 }
+    let contentStart = 0
+    if (start > 0) {
+      while (contentStart < bytesRead && (buffer[contentStart] & 0xc0) === 0x80) {
+        contentStart += 1
+      }
+      if (reset) {
+        const firstNewline = buffer.indexOf(0x0a, contentStart)
+        contentStart = firstNewline >= 0 ? firstNewline + 1 : bytesRead
+      }
+    }
+    return {
+      kind: query.kind,
+      content: buffer.subarray(contentStart, bytesRead).toString('utf8'),
+      available: true,
+      truncated: start > 0,
+      readAt: Date.now(),
+      cursor: { fileId, offset: file.size },
+      reset
+    }
+  } catch (error) {
+    if (isNodeError(error) && error.code === 'ENOENT') {
+      return {
+        kind: query.kind,
+        content: '',
+        available: false,
+        truncated: false,
+        readAt: Date.now(),
+        cursor: null,
+        reset: true
+      }
+    }
+    throw error
+  } finally {
+    await handle?.close()
+  }
+}
+
+/** 解析受支持的日志来源，拒绝历史 Bridge 或任意文件路径。 */
+export function resolveLocalRuntimeLogPath(
+  logsDirectory: string,
+  kind: LocalRuntimeProcessKind
+): string {
+  if (!LOCAL_RUNTIME_LOG_KINDS.includes(kind)) {
+    throw new Error('不支持的本地运行日志来源')
+  }
+  return join(logsDirectory, `${kind}.log`)
 }
 
 async function readLocalRuntimeLogEntry(
@@ -892,6 +1071,26 @@ function requireLivingProcess(
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && 'code' in error
+}
+
+/** 将未知异常规范化成 Error，供 Node 流回调传递。 */
+function asError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error))
+}
+
+/** 读取正整数环境参数，非法值回退到稳定默认值。 */
+function positiveEnvironmentInteger(name: string, fallback: number): number {
+  const parsed = Number.parseInt(process.env[name] ?? '', 10)
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback
+}
+
+/** 文件不存在时保持幂等，其余移动错误继续上抛。 */
+async function renameIfPresent(source: string, target: string): Promise<void> {
+  try {
+    await rename(source, target)
+  } catch (error) {
+    if (!isNodeError(error) || error.code !== 'ENOENT') throw error
+  }
 }
 
 async function stopProcessTree(

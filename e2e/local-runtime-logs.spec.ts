@@ -91,6 +91,11 @@ test('keeps the original log entry in the local runtime dialog', async ({
   await expect(logDrawer.getByRole('tab', { name: /Edge 运行时/ }))
     .toHaveAttribute('aria-selected', 'true')
   await expect(logDrawer.getByText('latest edge output')).toBeVisible()
+  const openLogFileButton = logDrawer.getByRole('button', {
+    name: '打开日志文件'
+  })
+  await expect(openLogFileButton).toBeEnabled()
+  await openLogFileButton.click()
   await expect(logDrawer).not.toContainText('Bridge')
 
   await page.keyboard.press('Escape')
@@ -107,6 +112,7 @@ test('用户拖动滚动条与自动刷新重叠时保持阅读位置', async ({
   })
   await connectionBar.getByRole('button', { name: '查看日志' }).click()
 
+  const logDrawer = page.getByRole('dialog', { name: '本地运行日志' })
   const logOutput = page.getByRole('list', { name: '格式化运行日志' })
   await expect.poll(
     () => logOutput.evaluate((element) => (
@@ -118,9 +124,10 @@ test('用户拖动滚动条与自动刷新重叠时保持阅读位置', async ({
       element.scrollHeight - element.clientHeight - element.scrollTop
     ))
   ).toBeLessThanOrEqual(4)
+  await page.waitForTimeout(250)
   await capture(page, '01-log-tail-following.png')
 
-  const rowsBeforeRefresh = await logOutput.locator('li').count()
+  const rowsBeforePause = await logRowSetSize(logOutput)
   await logOutput.dispatchEvent('pointerdown', {
     pointerType: 'mouse',
     button: 0,
@@ -131,13 +138,13 @@ test('用户拖动滚动条与自动刷新重叠时保持阅读位置', async ({
   ))
   await capture(page, '02-user-scroll-started.png')
 
-  await expect.poll(
-    () => logOutput.locator('li').count(),
-    { timeout: 5_000 }
-  ).toBeGreaterThan(rowsBeforeRefresh)
+  await expect(page.getByText('已暂停自动刷新，便于保持当前阅读位置。'))
+    .toBeVisible()
+  await page.waitForTimeout(2_200)
+  expect(await logRowSetSize(logOutput)).toBe(rowsBeforePause)
   expect(await logOutput.evaluate((element) => element.scrollTop))
     .toBe(scrollTopBeforeRefresh)
-  await capture(page, '03-refresh-preserved-pointer-position.png')
+  await capture(page, '03-auto-refresh-paused.png')
 
   const scrollTopWhileReading = await logOutput.evaluate((element) => {
     element.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }))
@@ -145,22 +152,23 @@ test('用户拖动滚动条与自动刷新重叠时保持阅读位置', async ({
     element.dispatchEvent(new Event('scroll', { bubbles: true }))
     return element.scrollTop
   })
-  const rowsBeforeReadingRefresh = await logOutput.locator('li').count()
+  const rowsBeforeManualRefresh = await logRowSetSize(logOutput)
+  await logDrawer.getByRole('button', { name: '刷新' }).click()
   await expect.poll(
-    () => logOutput.locator('li').count(),
+    () => logRowSetSize(logOutput),
     { timeout: 5_000 }
-  ).toBeGreaterThan(rowsBeforeReadingRefresh)
+  ).toBeGreaterThan(rowsBeforeManualRefresh)
   expect(await logOutput.evaluate((element) => element.scrollTop))
     .toBe(scrollTopWhileReading)
-  await capture(page, '04-refresh-preserved-reading-position.png')
+  await capture(page, '04-manual-refresh-preserved-reading-position.png')
 
   await logOutput.evaluate((element) => {
     element.scrollTop = element.scrollHeight
     element.dispatchEvent(new Event('scroll', { bubbles: true }))
   })
-  const rowsBeforeFollowResumed = await logOutput.locator('li').count()
+  const rowsBeforeFollowResumed = await logRowSetSize(logOutput)
   await expect.poll(
-    () => logOutput.locator('li').count(),
+    () => logRowSetSize(logOutput),
     { timeout: 5_000 }
   ).toBeGreaterThan(rowsBeforeFollowResumed)
   await expect.poll(
@@ -193,6 +201,22 @@ test('keeps the log drawer usable on a narrow viewport', async ({ page }) => {
   await expect(logDrawer.getByRole('tab', { name: /PLC-Sim/ })).toBeVisible()
   await expect(logDrawer.getByRole('tab', { name: /Edge 运行时/ })).toBeVisible()
   await expect(logDrawer).toHaveCSS('width', '390px')
+  await page.waitForTimeout(250)
+  await capture(page, '06-log-drawer-narrow.png')
+})
+
+test('大日志只挂载可视行并把内存窗口限制在两千行', async ({ page }) => {
+  await page.goto('/?largeLogs=1')
+  const connectionBar = page.getByRole('group', {
+    name: 'Edge 连接配置'
+  })
+  await connectionBar.getByRole('button', { name: '查看日志' }).click()
+
+  const logOutput = page.getByRole('list', { name: '格式化运行日志' })
+  await expect.poll(() => logRowSetSize(logOutput)).toBe(2_000)
+  expect(await logOutput.getByRole('listitem').count()).toBeLessThan(80)
+  await page.waitForTimeout(250)
+  await capture(page, '07-large-log-windowed.png')
 })
 
 test('Edge 缺少 Phoenix 依赖时在启动界面给出非阻塞修复提示', async ({
@@ -230,13 +254,13 @@ test('Edge 缺少 Phoenix 依赖时在启动界面给出非阻塞修复提示', 
 
   await runtimeDialog.getByRole('button', { name: '查看日志' }).click()
   const logDrawer = page.getByRole('dialog', { name: '本地运行日志' })
-  await expect(logDrawer).toContainText('未安装 Arize Phoenix')
-  await expect(logDrawer).toContainText('/api/v1/observability/otlp/v1/traces')
   await logDrawer.getByRole('list', { name: '格式化运行日志' })
     .evaluate((element) => {
       element.scrollTop = 0
       element.dispatchEvent(new Event('scroll', { bubbles: true }))
     })
+  await expect(logDrawer).toContainText('未安装 Arize Phoenix')
+  await expect(logDrawer).toContainText('/api/v1/observability/otlp/v1/traces')
   await capture(page, '04-phoenix-source-logs.png')
 
   await page.keyboard.press('Escape')
@@ -252,6 +276,9 @@ async function installRuntimeApi(page: Page): Promise<void> {
     let logReadCount = 0
     const hasPhoenixMissing = (): boolean => (
       new URLSearchParams(window.location.search).has('phoenixMissing')
+    )
+    const hasLargeLogs = (): boolean => (
+      new URLSearchParams(window.location.search).has('largeLogs')
     )
     const idleSnapshot = {
       phase: 'idle' as const,
@@ -315,6 +342,41 @@ async function installRuntimeApi(page: Page): Promise<void> {
           ]
         }
       },
+      readLog: async (query: {
+        kind: 'simulator' | 'bridge' | 'edge'
+        cursor: { fileId: string; offset: number } | null
+      }) => {
+        logReadCount += 1
+        const initial = query.cursor === null
+        const lineCount = initial ? (hasLargeLogs() ? 2_600 : 84) : 4
+        const start = initial ? 0 : query.cursor?.offset ?? 0
+        const lines = Array.from(
+          { length: lineCount },
+          (_, index) => (
+            `26-08-04 [12:00:${String(start + index).padStart(2, '0')}] `
+            + `[INFO] ${query.kind} line ${start + index}`
+          )
+        )
+        if (initial && query.kind === 'edge' && hasPhoenixMissing()) {
+          lines.unshift(
+            '[launcher] 2026-08-04T03:12:00.000Z starting',
+            '26-08-04 [11:12:02,100] [ERROR] Phoenix trace 日志服务启动失败：未安装 Arize Phoenix',
+            'POST /api/v1/observability/otlp/v1/traces HTTP/1.1 503 Service Unavailable'
+          )
+        }
+        if (query.kind === 'edge') lines.push('latest edge output')
+        const offset = start + lineCount
+        return {
+          kind: query.kind,
+          content: `${lines.join('\n')}\n`,
+          available: true,
+          truncated: false,
+          readAt: Date.now(),
+          cursor: { fileId: `e2e-${query.kind}`, offset },
+          reset: initial
+        }
+      },
+      openLogFile: async () => ({ opened: true }),
       onSnapshot: () => () => undefined
     }
     Object.defineProperty(window, 'api', {
@@ -322,6 +384,13 @@ async function installRuntimeApi(page: Page): Promise<void> {
       value: { runtime: runtimeApi }
     })
   })
+}
+
+/** 返回窗口化列表声明的逻辑总行数，而不是当前挂载的 DOM 行数。 */
+async function logRowSetSize(logOutput: Locator): Promise<number> {
+  const value = await logOutput.getByRole('listitem').first()
+    .getAttribute('aria-setsize')
+  return Number(value ?? 0)
 }
 
 async function capture(page: Page, name: string): Promise<void> {

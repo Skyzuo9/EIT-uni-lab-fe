@@ -224,6 +224,7 @@ describe('LocalRuntimeLauncher', () => {
         error={null}
         onSelect={vi.fn()}
         onRefresh={vi.fn()}
+        onOpenFile={vi.fn()}
         onClose={vi.fn()}
       />
     )
@@ -232,7 +233,9 @@ describe('LocalRuntimeLauncher', () => {
     expect(markup).toContain('PLC-Sim')
     expect(markup).toContain('Edge 运行时')
     expect(markup).toContain('latest edge output')
-    expect(markup).toContain('当前展示最新 128 KB')
+    expect(markup).toContain('界面保留最近 2,000 行')
+    expect(markup).toContain('打开日志文件')
+    expect(markup).toContain('轮转历史保留在同一目录')
     expect(markup).not.toContain('Edge 服务')
     expect(markup).not.toContain('>Bridge<')
   })

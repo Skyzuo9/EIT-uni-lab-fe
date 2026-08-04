@@ -8,7 +8,7 @@ import {
 } from 'electron'
 import { basename, join } from 'path'
 import { appendFileSync } from 'node:fs'
-import { readFile, writeFile } from 'node:fs/promises'
+import { access, readFile, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { readSession, clearSession, runOAuthLogin } from './authManager'
@@ -20,6 +20,7 @@ import {
 } from './observability'
 import type {
   LocalRuntimeLaunchConfig,
+  LocalRuntimeLogQuery,
   LocalRuntimePathKind
 } from '../shared/localRuntime'
 
@@ -328,6 +329,28 @@ app.whenReady().then(() => {
       () => requireRuntimeManager().readLogs()
     )
   })
+  ipcMain.handle('runtime:readLog', async (event, payload: unknown) => {
+    assertMainWindowSender(event)
+    return electronObservability.run(
+      'electron.runtime.read_log',
+      {},
+      () => requireRuntimeManager().readLog(parseRuntimeLogQuery(payload))
+    )
+  })
+  ipcMain.handle('runtime:openLogFile', async (event, payload: unknown) => {
+    assertMainWindowSender(event)
+    const kind = parseRuntimeLogKind(payload)
+    const logPath = requireRuntimeManager().getLogPath(kind)
+    try {
+      await accessLogFile(logPath)
+    } catch {
+      return { opened: false, error: '日志文件尚未生成' }
+    }
+    const openError = await shell.openPath(logPath)
+    return openError
+      ? { opened: false, error: openError }
+      : { opened: true }
+  })
 
   ipcMain.handle('observability:getStatus', (event) => {
     assertMainWindowSender(event)
@@ -551,4 +574,43 @@ function parseRuntimeConfig(value: unknown): LocalRuntimeLaunchConfig {
     environmentPath: candidate.environmentPath,
     simulatorProjectPath: candidate.simulatorProjectPath
   }
+}
+
+/** 校验渲染器日志来源，只接受主进程固定映射的来源枚举。 */
+function parseRuntimeLogKind(value: unknown): 'simulator' | 'edge' {
+  if (value !== 'simulator' && value !== 'edge') {
+    throw new Error('不支持的本地运行日志来源')
+  }
+  return value
+}
+
+/** 校验有界增量读取游标，防止无效偏移进入主进程文件操作。 */
+function parseRuntimeLogQuery(value: unknown): LocalRuntimeLogQuery {
+  if (!value || typeof value !== 'object') {
+    throw new Error('本地运行日志读取参数无效')
+  }
+  const candidate = value as Record<string, unknown>
+  const kind = parseRuntimeLogKind(candidate.kind)
+  if (candidate.cursor === null) return { kind, cursor: null }
+  if (!candidate.cursor || typeof candidate.cursor !== 'object') {
+    throw new Error('本地运行日志游标无效')
+  }
+  const cursor = candidate.cursor as Record<string, unknown>
+  if (
+    typeof cursor.fileId !== 'string'
+    || !cursor.fileId
+    || !Number.isSafeInteger(cursor.offset)
+    || Number(cursor.offset) < 0
+  ) {
+    throw new Error('本地运行日志游标无效')
+  }
+  return {
+    kind,
+    cursor: { fileId: cursor.fileId, offset: Number(cursor.offset) }
+  }
+}
+
+/** 检查日志文件是否存在且可读，失败由调用者转换为用户提示。 */
+async function accessLogFile(logPath: string): Promise<void> {
+  await access(logPath)
 }

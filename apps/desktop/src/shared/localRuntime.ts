@@ -27,6 +27,27 @@ export interface LocalRuntimeLogsSnapshot {
   entries: LocalRuntimeLogEntry[]
 }
 
+export interface LocalRuntimeLogCursor {
+  fileId: string
+  offset: number
+}
+
+export interface LocalRuntimeLogQuery {
+  kind: LocalRuntimeProcessKind
+  cursor: LocalRuntimeLogCursor | null
+}
+
+export interface LocalRuntimeLogBatch extends LocalRuntimeLogEntry {
+  readAt: number
+  cursor: LocalRuntimeLogCursor | null
+  reset: boolean
+}
+
+export interface LocalRuntimeOpenLogResult {
+  opened: boolean
+  error?: string
+}
+
 export type LocalRuntimePhase =
   | 'idle'
   | 'validating_simulator'

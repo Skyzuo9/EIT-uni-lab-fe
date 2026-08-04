@@ -12,6 +12,8 @@ import { createPortal } from 'react-dom'
 import type {
   DesktopRuntimeApi,
   LocalRuntimeLaunchConfig,
+  LocalRuntimeLogBatch,
+  LocalRuntimeLogCursor,
   LocalRuntimeLogsSnapshot,
   LocalRuntimePathKind,
   LocalRuntimeProcessKind,
@@ -38,6 +40,39 @@ const IDLE_SNAPSHOT: LocalRuntimeSnapshot = {
 }
 const OBSERVABILITY_LOG_CHECK_INTERVAL_MS = 2_000
 const OBSERVABILITY_LOG_CHECK_LIMIT = 15
+const LOCAL_RUNTIME_LOG_MAX_LINES = 2_000
+
+/** 合并一个游标批次，并把每个来源的内存内容限制在最近固定行数。 */
+function mergeLocalRuntimeLogBatch(
+  current: LocalRuntimeLogsSnapshot | null,
+  batch: LocalRuntimeLogBatch
+): LocalRuntimeLogsSnapshot {
+  const previous = current?.entries.find((entry) => entry.kind === batch.kind)
+  const combined = batch.reset
+    ? batch.content
+    : `${previous?.content ?? ''}${batch.content}`
+  const lines = combined.split(/\r?\n/)
+  const hasTrailingNewline = /\r?\n$/.test(combined)
+  if (hasTrailingNewline) lines.pop()
+  const dropped = lines.length > LOCAL_RUNTIME_LOG_MAX_LINES
+  const retainedLines = dropped
+    ? lines.slice(-LOCAL_RUNTIME_LOG_MAX_LINES)
+    : lines
+  const content = retainedLines.join('\n') + (hasTrailingNewline ? '\n' : '')
+  const nextEntry = {
+    kind: batch.kind,
+    content,
+    available: batch.available,
+    truncated: batch.truncated || dropped || (!batch.reset && Boolean(previous?.truncated))
+  }
+  const entries = [
+    ...(current?.entries.filter((entry) => entry.kind !== batch.kind) ?? []),
+    nextEntry
+  ].sort((left, right) => (
+    Number(left.kind !== 'simulator') - Number(right.kind !== 'simulator')
+  ))
+  return { readAt: batch.readAt, entries }
+}
 
 interface LocalRuntimeLauncherProps {
   runtimeApi?: DesktopRuntimeApi
@@ -65,30 +100,47 @@ export function LocalRuntimeLogLauncher({
     useState<LocalRuntimeProcessKind>('edge')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [following, setFollowing] = useState(true)
   const readSequenceRef = useRef(0)
-  const selectInitialLogRef = useRef(true)
+  const snapshotRef = useRef<LocalRuntimeLogsSnapshot | null>(null)
+  const cursorRef = useRef<Partial<Record<
+    LocalRuntimeProcessKind,
+    LocalRuntimeLogCursor | null
+  >>>({})
+
+  useEffect(() => {
+    snapshotRef.current = snapshot
+  }, [snapshot])
 
   const closeLogs = useCallback((): void => {
     setOpen(false)
     onOpenChange?.(false)
   }, [onOpenChange])
 
-  const refresh = useCallback(async (): Promise<void> => {
+  const refresh = useCallback(async (
+    kind: LocalRuntimeProcessKind = activeKind
+  ): Promise<void> => {
     if (!runtimeApi) return
     const requestSequence = ++readSequenceRef.current
     setLoading(true)
     setError(null)
     try {
-      const nextSnapshot = await runtimeApi.readLogs()
-      if (requestSequence !== readSequenceRef.current) return
-      setSnapshot(nextSnapshot)
-      if (selectInitialLogRef.current) {
-        const preferredEntry = nextSnapshot.entries.find(
-          (entry) => entry.kind === 'edge' && entry.available
-        ) ?? nextSnapshot.entries.find((entry) => entry.available)
-        if (preferredEntry) setActiveKind(preferredEntry.kind)
-        selectInitialLogRef.current = false
+      let nextSnapshot: LocalRuntimeLogsSnapshot
+      let nextCursor: LocalRuntimeLogCursor | null | undefined
+      if (runtimeApi.readLog) {
+        const batch = await runtimeApi.readLog({
+          kind,
+          cursor: cursorRef.current[kind] ?? null
+        })
+        nextSnapshot = mergeLocalRuntimeLogBatch(snapshotRef.current, batch)
+        nextCursor = batch.cursor
+      } else {
+        nextSnapshot = await runtimeApi.readLogs()
       }
+      if (requestSequence !== readSequenceRef.current) return
+      if (nextCursor !== undefined) cursorRef.current[kind] = nextCursor
+      snapshotRef.current = nextSnapshot
+      setSnapshot(nextSnapshot)
     } catch (readError) {
       if (requestSequence === readSequenceRef.current) {
         setError(errorMessage(readError))
@@ -98,19 +150,23 @@ export function LocalRuntimeLogLauncher({
         setLoading(false)
       }
     }
-  }, [runtimeApi])
+  }, [activeKind, runtimeApi])
 
   useEffect(() => {
-    if (!open) return
-    void refresh()
+    if (!open || !following) return
+    if (typeof document === 'undefined' || document.visibilityState === 'visible') {
+      void refresh(activeKind)
+    }
     const refreshTimer = globalThis.setInterval(() => {
-      void refresh()
+      if (typeof document === 'undefined' || document.visibilityState === 'visible') {
+        void refresh(activeKind)
+      }
     }, 2_000)
     return () => {
       globalThis.clearInterval(refreshTimer)
       readSequenceRef.current += 1
     }
-  }, [open, refresh])
+  }, [activeKind, following, open, refresh])
 
   useEffect(() => {
     if (!open || typeof document === 'undefined') return
@@ -124,7 +180,10 @@ export function LocalRuntimeLogLauncher({
   if (!runtimeApi) return null
 
   const openLogs = (): void => {
-    selectInitialLogRef.current = true
+    cursorRef.current = {}
+    snapshotRef.current = null
+    setSnapshot(null)
+    setFollowing(true)
     setError(null)
     setOpen(true)
     onOpenChange?.(true)
@@ -151,8 +210,22 @@ export function LocalRuntimeLogLauncher({
               activeKind={activeKind}
               loading={loading}
               error={error}
-              onSelect={setActiveKind}
+              following={following}
+              onFollowChange={setFollowing}
+              onSelect={(kind) => {
+                setActiveKind(kind)
+                setFollowing(true)
+              }}
               onRefresh={() => void refresh()}
+              onOpenFile={() => {
+                if (!runtimeApi.openLogFile) return
+                setError(null)
+                void runtimeApi.openLogFile(activeKind).then((result) => {
+                  if (!result.opened) setError(result.error ?? '无法打开日志文件')
+                }).catch((openError: unknown) => {
+                  setError(errorMessage(openError))
+                })
+              }}
               onClose={closeLogs}
             />,
             document.body
@@ -728,8 +801,11 @@ interface LocalRuntimeLogDrawerProps {
   activeKind: LocalRuntimeProcessKind
   loading: boolean
   error: string | null
+  following?: boolean
+  onFollowChange?: (following: boolean) => void
   onSelect: (kind: LocalRuntimeProcessKind) => void
   onRefresh: () => void
+  onOpenFile?: () => void
   onClose: () => void
 }
 
@@ -742,6 +818,8 @@ const LOG_TABS: Array<{
 ]
 
 const LOG_BOTTOM_TOLERANCE_PX = 4
+const LOG_ROW_HEIGHT_PX = 28
+const LOG_ROW_OVERSCAN = 8
 
 export function LocalRuntimeLogDrawer({
   instanceId,
@@ -749,13 +827,17 @@ export function LocalRuntimeLogDrawer({
   activeKind,
   loading,
   error,
+  following = true,
+  onFollowChange = () => undefined,
   onSelect,
   onRefresh,
+  onOpenFile,
   onClose
 }: LocalRuntimeLogDrawerProps): React.JSX.Element {
-  const outputRef = useRef<HTMLOListElement>(null)
-  const followLogTailRef = useRef(true)
+  const outputRef = useRef<HTMLDivElement>(null)
   const activeLogKindRef = useRef(activeKind)
+  const [scrollTop, setScrollTop] = useState(0)
+  const [viewportHeight, setViewportHeight] = useState(480)
   const idSuffix = instanceId ? `-${instanceId}` : ''
   const drawerId = `local-runtime-log-drawer${idSuffix}`
   const titleId = `local-runtime-log-title${idSuffix}`
@@ -767,17 +849,38 @@ export function LocalRuntimeLogDrawer({
     () => formatLocalRuntimeLog(activeEntry?.content ?? ''),
     [activeEntry?.content]
   )
+  const visibleStart = Math.max(
+    0,
+    Math.floor(scrollTop / LOG_ROW_HEIGHT_PX) - LOG_ROW_OVERSCAN
+  )
+  const visibleEnd = Math.min(
+    formattedRows.length,
+    Math.ceil((scrollTop + viewportHeight) / LOG_ROW_HEIGHT_PX)
+      + LOG_ROW_OVERSCAN
+  )
+  const visibleRows = formattedRows.slice(visibleStart, visibleEnd)
+
+  useEffect(() => {
+    const output = outputRef.current
+    if (!output || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry) setViewportHeight(entry.contentRect.height)
+    })
+    observer.observe(output)
+    return () => observer.disconnect()
+  }, [])
 
   useEffect(() => {
     const activeKindChanged = activeLogKindRef.current !== activeKind
     activeLogKindRef.current = activeKind
-    if (activeKindChanged) followLogTailRef.current = true
+    if (activeKindChanged) onFollowChange(true)
 
     const output = outputRef.current
-    if (output && followLogTailRef.current) {
+    if (output && following) {
       output.scrollTop = output.scrollHeight
+      setScrollTop(output.scrollTop)
     }
-  }, [activeEntry?.content, activeKind])
+  }, [activeEntry?.content, activeKind, following, onFollowChange])
 
   return (
     <div className={styles.logDrawerLayer}>
@@ -797,9 +900,33 @@ export function LocalRuntimeLogDrawer({
         <header className={styles.logDrawerHeader}>
           <div>
             <h3 id={titleId}>本地运行日志</h3>
-            <p>直接展示最新输出，每 2 秒自动刷新。</p>
+            <p>
+              {following
+                ? '显示当前来源的最新输出，每 2 秒增量刷新。'
+                : '已暂停自动刷新，便于保持当前阅读位置。'}
+            </p>
           </div>
           <div className={styles.logDrawerActions}>
+            {onOpenFile ? (
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                disabled={!activeEntry?.available}
+                title="使用系统默认应用打开当前日志文件"
+                onClick={onOpenFile}
+              >
+                打开日志文件
+              </button>
+            ) : null}
+            {!following ? (
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={() => onFollowChange(true)}
+              >
+                继续跟随
+              </button>
+            ) : null}
             <button
               type="button"
               className={styles.secondaryButton}
@@ -854,7 +981,7 @@ export function LocalRuntimeLogDrawer({
         >
           {error ? (
             <p className={styles.logError} role="alert">
-              日志读取失败：{error}
+              日志操作失败：{error}
             </p>
           ) : null}
           {loading && !snapshot ? (
@@ -865,38 +992,59 @@ export function LocalRuntimeLogDrawer({
             <>
               {activeEntry.truncated ? (
                 <p className={styles.logNotice}>
-                  日志较长，当前展示最新 128 KB。
+                  界面保留最近 {LOCAL_RUNTIME_LOG_MAX_LINES.toLocaleString()} 行；
+                  当前文件可通过“打开日志文件”查看，轮转历史保留在同一目录。
                 </p>
               ) : null}
-              <ol
+              <div
                 ref={outputRef}
                 className={styles.logOutput}
+                role="list"
                 aria-label="格式化运行日志"
                 onPointerDown={() => {
-                  followLogTailRef.current = false
+                  onFollowChange(false)
                 }}
                 onWheel={(event) => {
-                  if (event.deltaY < 0) followLogTailRef.current = false
+                  if (event.deltaY < 0) onFollowChange(false)
                 }}
                 onScroll={(event) => {
                   const output = event.currentTarget
-                  followLogTailRef.current = (
+                  setScrollTop(output.scrollTop)
+                  onFollowChange(
                     output.scrollHeight - output.clientHeight - output.scrollTop
                     <= LOG_BOTTOM_TOLERANCE_PX
                   )
                 }}
               >
-                {formattedRows.map((row, index) => (
-                  <li key={`${index}-${row.message}`} data-level={row.level}>
-                    <span className={styles.logRowMeta}>
-                      {row.time ? <time>{row.time}</time> : <span>—</span>}
-                      <span className={styles.logLevel}>{logLevelLabel(row.level)}</span>
-                      {row.source ? <code>{row.source}</code> : null}
-                    </span>
-                    <span className={styles.logMessage}>{row.message || '—'}</span>
-                  </li>
-                ))}
-              </ol>
+                <div
+                  className={styles.logVirtualSpace}
+                  style={{ height: formattedRows.length * LOG_ROW_HEIGHT_PX }}
+                >
+                  {visibleRows.map((row, visibleIndex) => {
+                    const rowIndex = visibleStart + visibleIndex
+                    return (
+                      <div
+                        key={`${rowIndex}-${row.message}`}
+                        className={styles.logRow}
+                        role="listitem"
+                        aria-posinset={rowIndex + 1}
+                        aria-setsize={formattedRows.length}
+                        data-level={row.level}
+                        style={{ transform: `translateY(${rowIndex * LOG_ROW_HEIGHT_PX}px)` }}
+                      >
+                        <span className={styles.logRowMeta}>
+                          {row.time ? <time>{row.time}</time> : <span>—</span>}
+                          <span className={styles.logLevel}>{logLevelLabel(row.level)}</span>
+                          {row.source ? <code>{row.source}</code> : null}
+                        </span>
+                        <span className={styles.logMessage} title={row.message}>
+                          {row.message || '—'}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
             </>
           ) : (
             <div className={styles.logEmpty} role="status">

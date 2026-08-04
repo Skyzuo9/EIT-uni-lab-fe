@@ -48,6 +48,27 @@ export interface LocalRuntimeLogsSnapshot {
   entries: LocalRuntimeLogEntry[]
 }
 
+export interface LocalRuntimeLogCursor {
+  fileId: string
+  offset: number
+}
+
+export interface LocalRuntimeLogQuery {
+  kind: LocalRuntimeProcessKind
+  cursor: LocalRuntimeLogCursor | null
+}
+
+export interface LocalRuntimeLogBatch extends LocalRuntimeLogEntry {
+  readAt: number
+  cursor: LocalRuntimeLogCursor | null
+  reset: boolean
+}
+
+export interface LocalRuntimeOpenLogResult {
+  opened: boolean
+  error?: string
+}
+
 export type LocalRuntimePhase =
   | 'idle'
   | 'validating_simulator'
@@ -85,6 +106,10 @@ export interface DesktopRuntimeApi {
   startEdge: (config: LocalRuntimeLaunchConfig) => Promise<LocalRuntimeSnapshot>
   stopEdge: () => Promise<LocalRuntimeSnapshot>
   readLogs: () => Promise<LocalRuntimeLogsSnapshot>
+  readLog?: (query: LocalRuntimeLogQuery) => Promise<LocalRuntimeLogBatch>
+  openLogFile?: (
+    kind: LocalRuntimeProcessKind
+  ) => Promise<LocalRuntimeOpenLogResult>
   onSnapshot: (
     listener: (snapshot: LocalRuntimeSnapshot) => void
   ) => () => void
