@@ -14,6 +14,10 @@ import {
 import { tmpdir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import {
+  prepareRuntimePayloadFromEnvironment,
+  validatePackagedRuntimeResources
+} from './runtime-payload.mjs'
 
 import {
   MAX_PACKAGED_APP_BYTES,
@@ -107,6 +111,10 @@ export function validatePackagedMacosApp(
       `app.asar 超出 ${formatMebibytes(maximumBytes)} MiB 预算，当前为 ${formatMebibytes(size)} MiB；请检查生产依赖是否被重复打包`
     )
   }
+  validatePackagedRuntimeResources(
+    join(archivePath, '..'),
+    process.arch === 'arm64' ? 'osx-arm64' : 'osx-64'
+  )
 
   return { path: archivePath, size }
 }
@@ -128,10 +136,11 @@ export function publishMacosArtifacts(outputDirectory, destinationDirectory) {
   )
 }
 
-function runCli(entryPath, args) {
+function runCli(entryPath, args, environment = process.env) {
   const result = spawnSync(process.execPath, [entryPath, ...args], {
     cwd: desktopDirectory,
-    stdio: 'inherit'
+    stdio: 'inherit',
+    env: environment
   })
   if (result.error) throw result.error
   if (result.status !== 0) {
@@ -141,16 +150,30 @@ function runCli(entryPath, args) {
 
 export function packageMacos() {
   const outputDirectory = mkdtempSync(join(tmpdir(), 'unilab-macos-package-'))
+  const payloadDirectory = mkdtempSync(join(
+    desktopDirectory,
+    '.runtime-payload-'
+  ))
   const { electronViteCli, electronBuilderCli } = resolvePackagingCliPaths()
 
   try {
+    const targetPlatform = process.arch === 'arm64'
+      ? 'osx-arm64'
+      : 'osx-64'
+    const payload = prepareRuntimePayloadFromEnvironment(
+      payloadDirectory,
+      targetPlatform
+    )
     runCli(electronViteCli, ['build'])
     runCli(electronBuilderCli, [
       '--mac',
       '--publish',
       'never',
       `--config.directories.output=${outputDirectory}`
-    ])
+    ], {
+      ...process.env,
+      UNILAB_RUNTIME_PAYLOAD_DIR: basename(payload.directory)
+    })
 
     const appArchive = validatePackagedMacosApp(outputDirectory)
     const installer = publishMacosArtifacts(outputDirectory, releaseDirectory)
@@ -159,6 +182,7 @@ export function packageMacos() {
     )
   } finally {
     rmSync(outputDirectory, { recursive: true, force: true })
+    rmSync(payloadDirectory, { recursive: true, force: true })
   }
 }
 

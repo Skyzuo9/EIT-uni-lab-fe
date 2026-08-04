@@ -9,6 +9,14 @@ files:
 extraResources:
   - from: ../../packages/device-card-agent-cli/dist/cli.mjs
     to: device-card-agent/cli.mjs
+  - from: ${env.UNILAB_RUNTIME_PAYLOAD_DIR}
+    to: runtime-installer
+    filter:
+      - '**/*'
+  - from: resources/default-workspace
+    to: default-workspace
+    filter:
+      - '**/*'
 npmRebuild: false
 electronLanguages:
   - zh-CN
@@ -26,6 +34,12 @@ win:
   icon: build/icon.ico
   target:
     - nsis
+  artifactName: ${productName}-${version}-${arch}.${ext}
+linux:
+  icon: build/icon.png
+  category: Development
+  target:
+    - AppImage
   artifactName: ${productName}-${version}-${arch}.${ext}
 nsis:
   oneClick: false
