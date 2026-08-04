@@ -10,6 +10,7 @@ const panelPath = fileURLToPath(new URL(
 const dagPath = fileURLToPath(new URL('./WorkflowDag.tsx', import.meta.url))
 
 describe('Published Workflow Catalog in the original Authoring panel', () => {
+  /** 验证操作与子工作流继续由同一目录快照分别呈现。 */
   it('renders separate Action and child Workflow palette groups from one union snapshot', () => {
     const source = readFileSync(panelPath, 'utf8')
     const actionPicker = paletteSection(source, '操作')
@@ -17,11 +18,11 @@ describe('Published Workflow Catalog in the original Authoring panel', () => {
 
     expect(actionPicker).toContain('actionTemplates.map')
     expect(actionPicker).toMatch(
-      /<button[\s\S]*?key=\{template\.uuid\}[\s\S]*?\{template\.displayName\}/
+      /<WorkflowButton[\s\S]*?key=\{template\.uuid\}[\s\S]*?\{template\.displayName\}/
     )
     expect(workflowPicker).toContain('workflowTemplates.map')
     expect(workflowPicker).toMatch(
-      /<button[\s\S]*?key=\{template\.uuid\}[\s\S]*?\{template\.displayName\}/
+      /<WorkflowButton[\s\S]*?key=\{template\.uuid\}[\s\S]*?\{template\.displayName\}/
     )
   })
 

@@ -3,6 +3,8 @@ import type {
   RefObject
 } from 'react'
 
+import { WorkflowButton } from './WorkflowButton'
+
 interface WorkflowToolbarProps {
   authoringMode: 'json' | 'python'
   runMode: 'run' | 'debug'
@@ -67,24 +69,26 @@ export function WorkflowToolbar({
         role="group"
         aria-label="工作流编写格式"
       >
-        <button
+        <WorkflowButton
           type="button"
           className={authoringMode === 'json' ? 'is-active' : ''}
           aria-pressed={authoringMode === 'json'}
           disabled={busy}
+          disabledReason="正在处理工作流，暂时不能切换编写格式"
           onClick={() => onAuthoringModeChange('json')}
         >
           JSON
-        </button>
-        <button
+        </WorkflowButton>
+        <WorkflowButton
           type="button"
           className={authoringMode === 'python' ? 'is-active' : ''}
           aria-pressed={authoringMode === 'python'}
           disabled={busy}
+          disabledReason="正在处理工作流，暂时不能切换编写格式"
           onClick={() => onAuthoringModeChange('python')}
         >
           Python
-        </button>
+        </WorkflowButton>
       </div>
 
       <div
@@ -119,49 +123,58 @@ export function WorkflowToolbar({
           aria-label="选择工作流文件"
           onChange={onFileChange}
         />
-        <button
+        <WorkflowButton
           type="button"
           className="workflow__upload"
           disabled={busy}
+          disabledReason="正在处理工作流，请稍后再导入 JSON"
           onClick={onImportJson}
         >
           导入 JSON
-        </button>
-        <button
+        </WorkflowButton>
+        <WorkflowButton
           type="button"
           className="workflow__upload"
           disabled={busy}
+          disabledReason="正在处理工作流，请稍后再导入 Python"
           onClick={onImportPython}
         >
           导入 Python
-        </button>
+        </WorkflowButton>
         {authoringMode === 'python' && (
-          <button
+          <WorkflowButton
             type="button"
             className="workflow__upload"
             aria-label="编译 Python"
             disabled={busy}
+            disabledReason="正在处理工作流，请稍后再应用 Python"
             onClick={onApplyPython}
           >
             应用 Python 到画布
-          </button>
+          </WorkflowButton>
         )}
-        <button
+        <WorkflowButton
           type="button"
           className="workflow__upload"
           disabled={busy || !sourceRunnable}
+          disabledReason={busy
+            ? '正在处理工作流，请稍后再校验'
+            : '当前内容尚未形成可运行的工作流，不能校验'}
           onClick={onValidate}
         >
           校验
-        </button>
-        <button
+        </WorkflowButton>
+        <WorkflowButton
           type="button"
           className="workflow__upload"
           disabled={busy || !sourceRunnable}
+          disabledReason={busy
+            ? '正在处理工作流，请稍后再保存'
+            : '当前内容尚未形成可运行的工作流，不能保存修订版本'}
           onClick={onSave}
         >
           保存修订版本
-        </button>
+        </WorkflowButton>
 
         <span className="workflow__toolbar-divider" aria-hidden="true" />
         <div
@@ -169,26 +182,28 @@ export function WorkflowToolbar({
           role="group"
           aria-label="运行方式"
         >
-          <button
+          <WorkflowButton
             type="button"
             className={runMode === 'run' ? 'is-active' : ''}
             aria-pressed={runMode === 'run'}
             disabled={busy}
+            disabledReason="正在处理工作流，暂时不能切换运行方式"
             onClick={() => onRunModeChange('run')}
           >
             整图运行
-          </button>
-          <button
+          </WorkflowButton>
+          <WorkflowButton
             type="button"
             className={runMode === 'debug' ? 'is-active' : ''}
             aria-pressed={runMode === 'debug'}
             disabled={busy}
+            disabledReason="正在处理工作流，暂时不能切换运行方式"
             onClick={() => onRunModeChange('debug')}
           >
             调试运行
-          </button>
+          </WorkflowButton>
         </div>
-        <button
+        <WorkflowButton
           type="button"
           className="workflow-runtime__primary"
           aria-label={
@@ -197,6 +212,9 @@ export function WorkflowToolbar({
               : '整图执行：开始运行'
           }
           disabled={busy || !sourceRunnable}
+          disabledReason={busy
+            ? '正在处理上一项工作流操作，请稍候'
+            : '当前内容尚未形成可运行的工作流'}
           onClick={onStart}
         >
           {busy
@@ -204,7 +222,7 @@ export function WorkflowToolbar({
             : runMode === 'debug'
               ? '开始调试'
               : '开始运行'}
-        </button>
+        </WorkflowButton>
       </div>
     </div>
   )

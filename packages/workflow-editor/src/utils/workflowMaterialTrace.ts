@@ -210,6 +210,13 @@ export function projectMaterialTraces(
   }
 }
 
+/**
+ * 查找与输入 Handle 共享同一字段的 ResourceSlot 输出。
+ *
+ * @param node 当前操作节点。
+ * @param targetHandle 已收到上游物料身份的输入 Handle。
+ * @returns 承载同一物料身份的同字段输出 Handle。
+ */
 function passThroughHandles(
   node: WorkflowNode,
   targetHandle: WorkflowHandlePort
@@ -217,7 +224,6 @@ function passThroughHandles(
   const targetKey = targetHandle.dataKey ?? targetHandle.handleKey
   return (node.handles ?? []).filter((handle) =>
     handle.ioType === 'source' &&
-    handle.implicitPassthrough === true &&
     isResourceSlotHandle(handle) &&
     (handle.dataKey ?? handle.handleKey) === targetKey
   )

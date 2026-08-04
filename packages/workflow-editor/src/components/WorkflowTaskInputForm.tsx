@@ -17,6 +17,7 @@ import {
   type WorkflowResourceSlotOption,
   type WorkflowResourceSlotOptionsState
 } from '../utils/workflowResourceSlotOptions'
+import { WorkflowButton } from './WorkflowButton'
 
 interface WorkflowTaskInputFormProps {
   aggregate: WorkflowAuthoringAggregate
@@ -176,19 +177,25 @@ export function WorkflowTaskInputForm({
       {(onSubmit || onCancel) && (
         <footer>
           {onCancel && (
-            <button type="button" disabled={busy} onClick={onCancel}>
+            <WorkflowButton
+              type="button"
+              disabled={busy}
+              disabledReason="正在创建工作流任务，请等待 OS 返回结果"
+              onClick={onCancel}
+            >
               取消
-            </button>
+            </WorkflowButton>
           )}
           {onSubmit && (
-            <button
+            <WorkflowButton
               type="button"
               className="workflow-runtime__primary"
               disabled={busy}
+              disabledReason="正在创建工作流任务，请等待 OS 返回结果"
               onClick={onSubmit}
             >
               {busy ? '正在创建任务…' : '使用以上参数运行'}
-            </button>
+            </WorkflowButton>
           )}
         </footer>
       )}
@@ -291,10 +298,13 @@ function renderWorkflowResourceSlotControl({
               ))}
             </select>
           </label>
-          <button
+          <WorkflowButton
             type="button"
             aria-label={`${name} 上移 ${index + 1}`}
             disabled={unavailable || index === 0}
+            disabledReason={problem ?? (disabled
+              ? '正在创建工作流任务，暂时不能调整物料顺序'
+              : '该物料已经位于第一项')}
             onClick={() => {
               const next = [...values]
               const previous = next[index - 1]
@@ -306,30 +316,34 @@ function renderWorkflowResourceSlotControl({
             }}
           >
             上移
-          </button>
-          <button
+          </WorkflowButton>
+          <WorkflowButton
             type="button"
             aria-label={`${name} 删除 ${index + 1}`}
             disabled={unavailable}
+            disabledReason={problem ?? '正在创建工作流任务，暂时不能删除物料'}
             onClick={() => updateValues(values.filter((_, itemIndex) =>
               itemIndex !== index
             ))}
           >
             删除
-          </button>
+          </WorkflowButton>
         </div>
       ))}
-      <button
+      <WorkflowButton
         type="button"
         aria-label={`${name} 添加资源位`}
         disabled={unavailable || options.length === 0}
+        disabledReason={problem ?? (disabled
+          ? '正在创建工作流任务，暂时不能添加物料'
+          : '当前没有兼容的可选物料')}
         onClick={() => {
           const first = options[0]
           if (first) updateValues([...values, first.materialUuid])
         }}
       >
         添加资源位
-      </button>
+      </WorkflowButton>
       {problem && <span role="status">{problem}</span>}
     </div>
   )

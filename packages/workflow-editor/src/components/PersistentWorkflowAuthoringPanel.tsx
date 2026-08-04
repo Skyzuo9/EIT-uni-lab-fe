@@ -112,6 +112,7 @@ import { WorkflowTaskInputForm } from './WorkflowTaskInputForm'
 import { WorkflowActionParameterDrawer } from './WorkflowActionParameterDrawer'
 import { useWorkflowSessionStore } from './WorkflowSessionProvider'
 import { WorkflowTraceViewer } from './WorkflowTraceViewer'
+import { WorkflowButton } from './WorkflowButton'
 import {
   createWorkflowTaskInputForm,
   containsResourceSlotInput,
@@ -1639,24 +1640,26 @@ export function PersistentWorkflowAuthoringPanel({
           role="group"
           aria-label="工作流单编辑权模式"
         >
-          <button
+          <WorkflowButton
             type="button"
             className={mode === 'code' ? 'is-active' : ''}
             aria-pressed={mode === 'code'}
             disabled={busy}
+            disabledReason="正在处理工作流，暂时不能切换编辑模式"
             onClick={() => requestMode('code')}
           >
             代码模式
-          </button>
-          <button
+          </WorkflowButton>
+          <WorkflowButton
             type="button"
             className={mode === 'canvas' ? 'is-active' : ''}
             aria-pressed={mode === 'canvas'}
             disabled={busy}
+            disabledReason="正在处理工作流，暂时不能切换编辑模式"
             onClick={() => requestMode('canvas')}
           >
             画布模式
-          </button>
+          </WorkflowButton>
         </div>
 
         <div className="workflow__toolbar-actions">
@@ -1674,49 +1677,65 @@ export function PersistentWorkflowAuthoringPanel({
             aria-label="工作流导航与导入"
           >
             {onChooseWorkflow && (
-              <button
+              <WorkflowButton
                 type="button"
                 className="workflow__upload"
                 disabled={busy || dirty}
+                disabledReason={busy
+                  ? '正在处理工作流，请稍后返回列表'
+                  : '请先保存当前可写内容'}
                 title={dirty ? '请先保存当前可写表示' : undefined}
                 onClick={onChooseWorkflow}
               >
                 工作流列表
-              </button>
+              </WorkflowButton>
             )}
-            <button
+            <WorkflowButton
               type="button"
               className="workflow__upload"
               disabled={busy || dirty || !aggregate}
+              disabledReason={busy
+                ? '正在处理工作流，请稍后导入 Python'
+                : dirty
+                  ? '请先保存当前可写内容'
+                  : '工作流尚未加载完成'}
               title={dirty ? '请先保存当前可写表示' : undefined}
               onClick={() => fileUpload.openFilePicker('python')}
             >
               导入 Python
-            </button>
-            <button
+            </WorkflowButton>
+            <WorkflowButton
               type="button"
               className="workflow__upload"
               disabled={busy || dirty || !aggregate}
+              disabledReason={busy
+                ? '正在处理工作流，请稍后导入 JSON'
+                : dirty
+                  ? '请先保存当前可写内容'
+                  : '工作流尚未加载完成'}
               title={dirty ? '请先保存当前可写表示' : undefined}
               onClick={() => fileUpload.openFilePicker('json')}
             >
               导入 JSON
-            </button>
+            </WorkflowButton>
           </div>
           <div
             className="persistent-authoring__toolbar-group"
             role="group"
             aria-label="工作流保存与应用"
           >
-            <button
+            <WorkflowButton
               type="button"
               className="workflow__upload"
               disabled={busy || !aggregate}
+              disabledReason={busy
+                ? '正在处理工作流，请稍后保存草稿'
+                : '工作流尚未加载完成'}
               onClick={saveDraft}
             >
               保存草稿
-            </button>
-            <button
+            </WorkflowButton>
+            <WorkflowButton
               type="button"
               className="workflow__upload persistent-authoring__apply"
               disabled={
@@ -1725,6 +1744,13 @@ export function PersistentWorkflowAuthoringPanel({
                 !aggregate?.candidate ||
                 materialSourceAuthorityBlocked
               }
+              disabledReason={busy
+                ? '正在处理工作流，请稍后应用'
+                : dirty
+                  ? '请先保存当前可写内容'
+                  : materialSourceAuthorityBlocked
+                    ? '物料来源目录或引用已失效，请先刷新'
+                    : '当前没有可应用的候选版本'}
               title={
                 dirty
                   ? '请先保存当前可写表示'
@@ -1735,7 +1761,7 @@ export function PersistentWorkflowAuthoringPanel({
               onClick={applyCandidate}
             >
               应用工作流
-            </button>
+            </WorkflowButton>
           </div>
           <div
             className="persistent-authoring__toolbar-group persistent-authoring__toolbar-run"
@@ -1747,26 +1773,28 @@ export function PersistentWorkflowAuthoringPanel({
               role="group"
               aria-label="任务运行模式"
             >
-            <button
+            <WorkflowButton
               type="button"
               className={taskRunMode === 'normal' ? 'is-active' : ''}
               aria-pressed={taskRunMode === 'normal'}
               disabled={runtimeBusy}
+              disabledReason="正在处理工作流任务，暂时不能切换运行模式"
               onClick={() => setTaskRunMode('normal')}
             >
               正常运行
-            </button>
-            <button
+            </WorkflowButton>
+            <WorkflowButton
               type="button"
               className={taskRunMode === 'step' ? 'is-active' : ''}
               aria-pressed={taskRunMode === 'step'}
               disabled={runtimeBusy}
+              disabledReason="正在处理工作流任务，暂时不能切换运行模式"
               onClick={() => setTaskRunMode('step')}
             >
               单步模式
-            </button>
+            </WorkflowButton>
             </div>
-            <button
+            <WorkflowButton
               type="button"
               className="workflow-runtime__primary"
               disabled={
@@ -1775,6 +1803,13 @@ export function PersistentWorkflowAuthoringPanel({
                 dirty ||
                 !aggregate
               }
+              disabledReason={busy
+                ? '正在处理工作流编写操作，请稍候'
+                : runtimeBusy
+                  ? '正在处理上一项工作流任务操作，请稍候'
+                  : dirty
+                    ? '请先保存当前可写内容'
+                    : '已应用工作流尚未就绪'}
               title={
                 dirty
                   ? '请先保存当前可写表示'
@@ -1785,7 +1820,7 @@ export function PersistentWorkflowAuthoringPanel({
               onClick={openTaskInputForm}
             >
               {runtimeBusy ? '处理中…' : '开始运行'}
-            </button>
+            </WorkflowButton>
           </div>
         </div>
       </header>
@@ -1807,13 +1842,14 @@ export function PersistentWorkflowAuthoringPanel({
                 ? `已确认的反馈事件已保留：${taskRuntime.snapshot.error}`
                 : taskRuntime.snapshot.error}
           </span>
-          <button
+          <WorkflowButton
             type="button"
             disabled={runtimeBusy}
+            disabledReason="正在补读工作流任务状态，请稍候"
             onClick={() => runRuntime(() => taskRuntime.refresh())}
           >
             重试状态读取
-          </button>
+          </WorkflowButton>
           <button type="button" onClick={taskRuntime.clearError}>关闭</button>
         </div>
       )}
@@ -1890,10 +1926,11 @@ export function PersistentWorkflowAuthoringPanel({
                     {nodePaletteOpen ? '隐藏节点库' : '显示节点库'}
                   </button>
                 )}
-                <button
+                <WorkflowButton
                   type="button"
                   className="persistent-authoring__io-trigger"
                   disabled={!graph}
+                  disabledReason="工作流图尚未加载完成"
                   title={mode === 'code'
                     ? '当前为只读预览；切换到画布模式后可配置'
                     : '配置整个工作流的输入、输出与节点参数连接'}
@@ -1904,7 +1941,7 @@ export function PersistentWorkflowAuthoringPanel({
                     输入 {candidateIo?.input_contract.parameters.length ?? 0}
                     {' · '}输出 {candidateIo?.output_contract.outputs.length ?? 0}
                   </strong>
-                </button>
+                </WorkflowButton>
               </div>
             </div>
           </header>
@@ -1932,7 +1969,7 @@ export function PersistentWorkflowAuthoringPanel({
                   </header>
                   <section>
                     <h3>物料</h3>
-                    <button
+                    <WorkflowButton
                       type="button"
                       className="persistent-authoring__palette-source"
                       disabled={
@@ -1941,6 +1978,13 @@ export function PersistentWorkflowAuthoringPanel({
                         !effectiveMaterialSourceCatalog ||
                         materialSourceAuthorityBlocked
                       }
+                      disabledReason={busy
+                        ? '正在处理工作流，请稍后添加物料来源'
+                        : !policy.canvasMutationEnabled
+                          ? '当前模式只允许查看工作流画布'
+                          : materialSourceAuthorityBlocked
+                            ? '物料来源目录或引用已失效，请先刷新'
+                            : '物料与库位目录尚未加载完成'}
                       onClick={addMaterialSourceNode}
                     >
                       <span aria-hidden="true">▱</span>
@@ -1948,7 +1992,7 @@ export function PersistentWorkflowAuthoringPanel({
                         <strong>物料来源</strong>
                         <small>OS 准入声明</small>
                       </span>
-                    </button>
+                    </WorkflowButton>
                     {materialSourceCatalogLoading && (
                       <p role="status">正在读取物料与库位目录…</p>
                     )}
@@ -1968,7 +2012,7 @@ export function PersistentWorkflowAuthoringPanel({
                     <h3>操作</h3>
                     <div className="persistent-authoring__palette-actions">
                       {actionCatalog?.actionTemplates.map((template) => (
-                        <button
+                        <WorkflowButton
                           type="button"
                           key={template.uuid}
                           disabled={
@@ -1976,6 +2020,11 @@ export function PersistentWorkflowAuthoringPanel({
                             !policy.canvasMutationEnabled ||
                             !graph
                           }
+                          disabledReason={busy
+                            ? '正在处理工作流，请稍后添加操作节点'
+                            : !policy.canvasMutationEnabled
+                              ? '当前模式只允许查看工作流画布'
+                              : '工作流图尚未加载完成'}
                           onClick={() => addTypedActionNode(template.uuid)}
                         >
                           <span aria-hidden="true">⌁</span>
@@ -1983,7 +2032,7 @@ export function PersistentWorkflowAuthoringPanel({
                             <strong>{template.displayName}</strong>
                             <small>{template.name}</small>
                           </span>
-                        </button>
+                        </WorkflowButton>
                       ))}
                     </div>
                   </section>
@@ -1992,7 +2041,7 @@ export function PersistentWorkflowAuthoringPanel({
                       <h3>子工作流</h3>
                       <div className="persistent-authoring__palette-actions">
                         {actionCatalog?.workflowTemplates.map((template) => (
-                          <button
+                          <WorkflowButton
                             type="button"
                             key={template.uuid}
                             disabled={
@@ -2000,6 +2049,11 @@ export function PersistentWorkflowAuthoringPanel({
                               !policy.canvasMutationEnabled ||
                               !graph
                             }
+                            disabledReason={busy
+                              ? '正在处理工作流，请稍后添加子工作流'
+                              : !policy.canvasMutationEnabled
+                                ? '当前模式只允许查看工作流画布'
+                                : '工作流图尚未加载完成'}
                             onClick={() => addPublishedWorkflowNode(template.uuid)}
                           >
                             <span aria-hidden="true">▣</span>
@@ -2007,7 +2061,7 @@ export function PersistentWorkflowAuthoringPanel({
                               <strong>{template.displayName}</strong>
                               <small>{template.source.symbol}</small>
                             </span>
-                          </button>
+                          </WorkflowButton>
                         ))}
                       </div>
                     </section>
@@ -2592,24 +2646,26 @@ export function MaterialSourceInspector({
           role="group"
           aria-label="取得方式"
         >
-          <button
+          <WorkflowButton
             type="button"
             className={editor.mode === 'existing' ? 'is-active' : ''}
             aria-pressed={editor.mode === 'existing'}
             disabled={!editable}
+            disabledReason="当前模式只允许查看物料来源"
             onClick={() => onChange({ mode: 'existing' })}
           >
             已有物料
-          </button>
-          <button
+          </WorkflowButton>
+          <WorkflowButton
             type="button"
             className={editor.mode === 'create_new' ? 'is-active' : ''}
             aria-pressed={editor.mode === 'create_new'}
             disabled={!editable}
+            disabledReason="当前模式只允许查看物料来源"
             onClick={() => onChange({ mode: 'create_new' })}
           >
             新建物料
-          </button>
+          </WorkflowButton>
         </div>
         <label>
           挂载点

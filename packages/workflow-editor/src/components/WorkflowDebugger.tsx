@@ -1,3 +1,5 @@
+import { WorkflowButton } from './WorkflowButton'
+
 export interface WorkflowRuntimeControl<TCommand extends string> {
   command: TCommand
   label: string
@@ -5,6 +7,7 @@ export interface WorkflowRuntimeControl<TCommand extends string> {
   message: string
   glyph: string
   disabled: boolean
+  disabledReason: string
   danger?: boolean
   primary?: boolean
 }
@@ -176,7 +179,7 @@ function DebugActionGroup<TCommand extends string>({
       aria-label={ariaLabel}
     >
       {controls.map((control) => (
-        <button
+        <WorkflowButton
           key={control.command}
           type="button"
           className={
@@ -197,6 +200,7 @@ function DebugActionGroup<TCommand extends string>({
           aria-label={control.label}
           title={control.title}
           disabled={control.disabled}
+          disabledReason={control.disabledReason}
           onClick={() => onCommand(control.command, control.message)}
         >
           <span
@@ -206,7 +210,7 @@ function DebugActionGroup<TCommand extends string>({
             {control.glyph}
           </span>
           <span>{control.label}</span>
-        </button>
+        </WorkflowButton>
       ))}
     </div>
   )

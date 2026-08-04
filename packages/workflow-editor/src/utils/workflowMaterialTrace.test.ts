@@ -54,6 +54,31 @@ describe('Material trace projection', () => {
     ])
   })
 
+  /** 验证目录缺少透传提示时，同字段仍沿用同一物料身份。 */
+  it('keeps a same-field ResourceSlot identity when pass-through metadata is absent', () => {
+    const sourceOutput = resourceSlotHandle('source-output', 'material', 'source')
+    const actionInput = resourceSlotHandle('action-input', 'sample', 'target')
+    const actionOutput = resourceSlotHandle('action-output', 'sample', 'source')
+    const nextInput = resourceSlotHandle('next-input', 'sample', 'target')
+    const nodes: WorkflowNode[] = [
+      workflowNode(sourceUuid, '样品板', 'material_source', [sourceOutput]),
+      workflowNode(firstActionUuid, '处理', 'action', [actionInput, actionOutput]),
+      workflowNode(secondActionUuid, '检测', 'action', [nextInput])
+    ]
+
+    const projection = projectMaterialTraces(nodes, [
+      link(sourceUuid, sourceOutput.uuid, firstActionUuid, actionInput.uuid),
+      link(firstActionUuid, actionOutput.uuid, secondActionUuid, nextInput.uuid)
+    ])
+    const accent = materialTraceAccent(sourceUuid)
+
+    expect(projection.edgeAccents).toEqual(new Map([[0, accent], [1, accent]]))
+    expect(projection.handleAccentsByNode.get(firstActionUuid)).toEqual(new Map([
+      [actionInput.uuid, accent],
+      [actionOutput.uuid, accent]
+    ]))
+  })
+
   it('keeps two material sources distinct when they enter the same Action', () => {
     const reagentUuid = '20000000-0000-4000-8000-000000000004'
     const sampleOutput = resourceSlotHandle('sample-output', 'material', 'source')

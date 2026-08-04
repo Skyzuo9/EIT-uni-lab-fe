@@ -71,6 +71,30 @@ describe('Action node presentation', () => {
       targetHandle: handles[1]
     }))
   })
+
+  /** 验证同字段输入、输出始终只投影为一个物料标签。 */
+  it('merges same-field input and output as one material even if accents differ', () => {
+    const output = materialHandle('sample-source', 'sample', 'source', {
+      title: '处理后样品'
+    })
+    const input = materialHandle('sample-target', 'sample', 'target', {
+      title: '待测样品'
+    })
+
+    const cards = workflowMaterialPortCards([output, input], {
+      'sample-source': '#8056a8',
+      'sample-target': '#6657c7'
+    })
+
+    expect(cards).toHaveLength(1)
+    expect(cards[0]).toEqual(expect.objectContaining({
+      variableName: 'sample',
+      label: '待测样品',
+      accent: '#6657c7',
+      targetHandle: input,
+      sourceHandle: output
+    }))
+  })
 })
 
 function materialHandle(
