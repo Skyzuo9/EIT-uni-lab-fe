@@ -28,9 +28,9 @@ describe('WorkflowTaskInputForm Applied projection', () => {
 
     expect(text).toMatch(/Applied[^0-9]*7|已应用[^0-9]*7/i)
     expect(text).toMatch(/attempts[\s\S]*(default|默认)[^0-9]*3/i)
-    expect(markup).toMatch(/untouched|未填写|省略/i)
-    expect(markup).toMatch(/explicit[_ -]?null|显式空值/i)
-    expect(markup).toMatch(/value|明确值/i)
+    expect(markup).toContain('使用工作流默认值')
+    expect(markup).toContain('传入空值')
+    expect(markup).toContain('自定义值')
     expect(text).not.toContain('candidate_only')
   })
 

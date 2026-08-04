@@ -64,8 +64,8 @@ const appliedIo: WorkflowIoMetadata = {
 describe('WorkflowIoSummary', () => {
   it('shows the applied inputs and outputs in order with binding identity', () => {
     const markup = renderToStaticMarkup(<WorkflowIoSummary io={appliedIo} />)
-    const inputStart = markup.indexOf('工作流入参')
-    const outputStart = markup.indexOf('工作流出参')
+    const inputStart = markup.indexOf('输入参数')
+    const outputStart = markup.indexOf('输出参数')
 
     expect(inputStart).toBeGreaterThanOrEqual(0)
     expect(outputStart).toBeGreaterThan(inputStart)
@@ -81,7 +81,7 @@ describe('WorkflowIoSummary', () => {
     expect(outputText).toMatch(/系统生成/)
     expect(outputText).toContain(NODE_UUID)
     expect(outputText).toContain(SOURCE_HANDLE_UUID)
-    expect(outputText).toMatch(/工作流入参[\s\S]*sample/)
+    expect(outputText).toMatch(/工作流输入[\s\S]*sample/)
   })
 })
 

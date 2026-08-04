@@ -1893,13 +1893,13 @@ export function PersistentWorkflowAuthoringPanel({
                   disabled={!graph}
                   title={mode === 'code'
                     ? '当前为只读预览；切换到画布模式后可配置'
-                    : '配置整个工作流的入参、出参与节点端口绑定'}
+                    : '配置整个工作流的输入、输出与节点参数连接'}
                   onClick={() => setWorkflowIoOpen(true)}
                 >
-                  <span>工作流参数</span>
+                  <span>输入与输出</span>
                   <strong>
-                    入 {candidateIo?.input_contract.parameters.length ?? 0}
-                    {' · '}出 {candidateIo?.output_contract.outputs.length ?? 0}
+                    输入 {candidateIo?.input_contract.parameters.length ?? 0}
+                    {' · '}输出 {candidateIo?.output_contract.outputs.length ?? 0}
                   </strong>
                 </button>
               </div>
@@ -2111,14 +2111,14 @@ export function PersistentWorkflowAuthoringPanel({
                           <div>
                             <strong>操作参数</strong>
                             <span>
-                              入参 {selectedActionEditor.fields.length}
-                              {' · '}出参 {selectedActionTemplate?.handles.filter(
+                              输入 {selectedActionEditor.fields.length}
+                              {' · '}输出 {selectedActionTemplate?.handles.filter(
                                 (handle) => handle.ioType === 'source'
                               ).length ?? 0}
                             </span>
                           </div>
                           <p>
-                            点击下方按钮编辑入参，并查看出参端口与绑定关系。
+                            点击下方按钮编辑输入，并查看输出端口与连接关系。
                           </p>
                           <button
                             type="button"
@@ -2237,12 +2237,12 @@ export function PersistentWorkflowAuthoringPanel({
 
       <SlideOverDrawer
         open={workflowIoOpen}
-        size="wide"
-        ariaLabel="工作流入参与出参配置"
+        size="medium"
+        ariaLabel="工作流输入与输出配置"
         title={(
           <span className="persistent-authoring__drawer-title">
-            <span>工作流参数</span>
-            <strong>入参、出参与节点绑定</strong>
+            <span>工作流设置</span>
+            <strong>设置工作流输入与输出</strong>
           </span>
         )}
         onClose={() => setWorkflowIoOpen(false)}
@@ -2261,9 +2261,9 @@ export function PersistentWorkflowAuthoringPanel({
       >
         <div className="persistent-authoring__io-drawer">
           <header>
-            <strong>整个工作流的入参与出参</strong>
+            <strong>整个工作流的输入与输出</strong>
             <p>
-              工作流入参可以提供给节点；工作流出参需要选择节点出参，或直接透传工作流入参。
+              输入可提供给任意节点；输出可连接节点结果，也可直接返回输入值。
             </p>
           </header>
           {appliedIo && (
@@ -2271,8 +2271,8 @@ export function PersistentWorkflowAuthoringPanel({
               <summary>
                 已应用版本 {aggregate?.workflow_revision}
                 <span>
-                  入 {appliedIo.input_contract.parameters.length}
-                  {' · '}出 {appliedIo.output_contract.outputs.length}
+                  输入 {appliedIo.input_contract.parameters.length}
+                  {' · '}输出 {appliedIo.output_contract.outputs.length}
                 </span>
               </summary>
               <WorkflowIoSummary io={appliedIo} />
@@ -2287,7 +2287,7 @@ export function PersistentWorkflowAuthoringPanel({
                 setCanvasDirty(true)
                 setError(null)
                 setMessage(
-                  '工作流入参与出参已修改；保存前将由 OS 生成规范 Python'
+                  '工作流输入与输出已修改；保存前将由 OS 生成规范 Python'
                 )
               }}
             />
@@ -2301,12 +2301,12 @@ export function PersistentWorkflowAuthoringPanel({
 
       <SlideOverDrawer
         open={Boolean(taskInputAuthority && taskInputForm)}
-        size="wide"
+        size="medium"
         ariaLabel="本次工作流运行参数"
         title={(
           <span className="persistent-authoring__drawer-title">
             <span>本次运行</span>
-            <strong>确认入参与预期出参</strong>
+            <strong>确认运行参数</strong>
           </span>
         )}
         onClose={() => {
@@ -2320,9 +2320,21 @@ export function PersistentWorkflowAuthoringPanel({
         {taskInputAuthority && taskInputForm && (
           <div className="persistent-authoring__task-input-drawer">
             {workflowIoMetadata(taskInputAuthority.applied_graph) && (
-              <WorkflowIoSummary
-                io={workflowIoMetadata(taskInputAuthority.applied_graph)!}
-              />
+              <details className="persistent-authoring__task-io-summary">
+                <summary>
+                  查看工作流输入与输出
+                  <span>
+                    输入 {workflowIoMetadata(taskInputAuthority.applied_graph)!
+                      .input_contract.parameters.length}
+                    {' · '}输出 {workflowIoMetadata(
+                      taskInputAuthority.applied_graph
+                    )!.output_contract.outputs.length}
+                  </span>
+                </summary>
+                <WorkflowIoSummary
+                  io={workflowIoMetadata(taskInputAuthority.applied_graph)!}
+                />
+              </details>
             )}
             <WorkflowTaskInputForm
               aggregate={taskInputAuthority}

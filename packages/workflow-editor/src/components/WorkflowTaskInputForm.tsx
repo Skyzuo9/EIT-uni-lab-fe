@@ -64,7 +64,7 @@ export function WorkflowTaskInputForm({
           <span>使用已应用版本 {form.appliedRevision}</span>
         </div>
         <p>
-          未填写字段保持省略，由 OS 使用并固定默认值；编辑中的修改不参与本次运行。
+          本次运行使用已应用版本；未覆盖的参数由 OS 使用固定默认值。
         </p>
       </header>
 
@@ -90,73 +90,83 @@ export function WorkflowTaskInputForm({
                 key={descriptor.name}
                 data-workflow-task-input-name={descriptor.name}
               >
-                <div className="workflow-task-input-form__heading">
-                  <strong>{descriptor.title || descriptor.name}</strong>
-                  <code>{schemaLabel(descriptor.schema)}</code>
-                  {descriptor.required && <span>必填</span>}
+                <div className="workflow-task-input-form__identity">
+                  <div className="workflow-task-input-form__heading">
+                    <strong>{descriptor.title || descriptor.name}</strong>
+                    <code>{schemaLabel(descriptor.schema)}</code>
+                    {descriptor.required && <span>必填</span>}
+                  </div>
+                  {descriptor.description && <p>{descriptor.description}</p>}
                 </div>
-                {descriptor.description && <p>{descriptor.description}</p>}
-                {Object.hasOwn(descriptor, 'default') && (
-                  <p>
-                    默认值：<code>{jsonText(descriptor.default)}</code>
-                  </p>
-                )}
-                <label>
-                  输入状态
-                  <select
-                    aria-label={`${descriptor.name} 输入状态`}
-                    value={state.kind}
-                    disabled={busy}
-                    onChange={(event) => update(
-                      descriptor,
-                      stateForKind(
-                        descriptor.schema,
-                        event.target.value,
-                        compatibleResourceSlotOptions
-                      )
-                    )}
-                  >
-                    <option value="untouched">省略</option>
-                    <option
-                      value="explicit_null"
-                      disabled={!isNullableWorkflowInputSchema(
-                        descriptor.schema
+                <div className="workflow-task-input-form__default">
+                  {Object.hasOwn(descriptor, 'default') ? (
+                    <p>
+                      默认值：<code>{jsonText(descriptor.default)}</code>
+                    </p>
+                  ) : (
+                    <span>无默认值</span>
+                  )}
+                </div>
+                <div className="workflow-task-input-form__control">
+                  <label className="workflow-task-input-form__state">
+                    本次取值
+                    <select
+                      aria-label={`${descriptor.name} 输入状态`}
+                      value={state.kind}
+                      disabled={busy}
+                      onChange={(event) => update(
+                        descriptor,
+                        stateForKind(
+                          descriptor.schema,
+                          event.target.value,
+                          compatibleResourceSlotOptions
+                        )
                       )}
                     >
-                      显式空值（null）
-                    </option>
-                    <option
-                      value="value"
-                      disabled={Boolean(resourceSlotProblem)}
-                    >
-                      明确值
-                    </option>
-                  </select>
-                </label>
-                {resourceSlot ? (
-                  renderWorkflowResourceSlotControl({
-                    name: descriptor.name,
-                    schema: descriptor.schema,
-                    state,
-                    options: compatibleResourceSlotOptions,
-                    problem: resourceSlotProblem,
-                    disabled: busy || state.kind === 'explicit_null',
-                    onChange: (next) => update(descriptor, next)
-                  })
-                ) : state.kind === 'value' ? (
-                  <WorkflowValueControl
-                    key={`${form.appliedRevision}:${state.kind}`}
-                    name={descriptor.name}
-                    schema={descriptor.schema}
-                    value={state.value}
-                    disabled={busy}
-                    onChange={(value) => update(descriptor, {
-                      kind: 'value',
-                      value
-                    })}
-                    onProblem={onProblem}
-                  />
-                ) : null}
+                      <option value="untouched">
+                        {untouchedLabel(descriptor)}
+                      </option>
+                      <option
+                        value="explicit_null"
+                        disabled={!isNullableWorkflowInputSchema(
+                          descriptor.schema
+                        )}
+                      >
+                        传入空值
+                      </option>
+                      <option
+                        value="value"
+                        disabled={Boolean(resourceSlotProblem)}
+                      >
+                        自定义值
+                      </option>
+                    </select>
+                  </label>
+                  {resourceSlot ? (
+                    renderWorkflowResourceSlotControl({
+                      name: descriptor.name,
+                      schema: descriptor.schema,
+                      state,
+                      options: compatibleResourceSlotOptions,
+                      problem: resourceSlotProblem,
+                      disabled: busy || state.kind === 'explicit_null',
+                      onChange: (next) => update(descriptor, next)
+                    })
+                  ) : state.kind === 'value' ? (
+                    <WorkflowValueControl
+                      key={`${form.appliedRevision}:${state.kind}`}
+                      name={descriptor.name}
+                      schema={descriptor.schema}
+                      value={state.value}
+                      disabled={busy}
+                      onChange={(value) => update(descriptor, {
+                        kind: 'value',
+                        value
+                      })}
+                      onProblem={onProblem}
+                    />
+                  ) : null}
+                </div>
               </li>
             )
           })}
@@ -177,13 +187,19 @@ export function WorkflowTaskInputForm({
               disabled={busy}
               onClick={onSubmit}
             >
-              {busy ? '创建中…' : '确认并创建任务'}
+              {busy ? '正在创建任务…' : '使用以上参数运行'}
             </button>
           )}
         </footer>
       )}
     </section>
   )
+}
+
+function untouchedLabel(descriptor: WorkflowInputDescriptor): string {
+  return Object.hasOwn(descriptor, 'default')
+    ? '使用工作流默认值'
+    : '本次不传入'
 }
 
 function renderWorkflowResourceSlotControl({
@@ -342,7 +358,7 @@ function WorkflowValueControl({
     if (base.enum) {
       return (
         <label>
-          明确值
+          参数值
           <select
             aria-label={`${name} 明确值`}
             value={typeof value === 'string' ? value : ''}
@@ -358,7 +374,7 @@ function WorkflowValueControl({
     }
     return (
       <label>
-        明确值
+        参数值
         <input
           type="text"
           aria-label={`${name} 明确值`}
@@ -374,7 +390,7 @@ function WorkflowValueControl({
   if (base.type === 'integer' || base.type === 'number') {
     return (
       <label>
-        明确值
+        参数值
         <input
           type="number"
           step={base.type === 'integer' ? 1 : 'any'}
@@ -394,7 +410,7 @@ function WorkflowValueControl({
   if (base.type === 'boolean') {
     return (
       <label>
-        明确值
+        参数值
         <select
           aria-label={`${name} 明确值`}
           value={value === true ? 'true' : 'false'}
@@ -409,7 +425,7 @@ function WorkflowValueControl({
   }
   return (
     <label>
-      明确值（JSON）
+      参数值（JSON）
       <textarea
         aria-label={`${name} 明确值 JSON`}
         defaultValue={jsonText(value)}

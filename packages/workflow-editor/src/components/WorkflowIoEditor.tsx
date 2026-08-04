@@ -54,6 +54,7 @@ export function WorkflowIoEditor({
   onGraphChange
 }: WorkflowIoEditorProps): React.JSX.Element {
   const [problem, setProblem] = useState<string | null>(null)
+  const [activeGroup, setActiveGroup] = useState<'input' | 'output'>('input')
   const io = workflowIo(graph)
   const options = projectWorkflowIoBindingOptions(graph)
 
@@ -85,19 +86,70 @@ export function WorkflowIoEditor({
   return (
     <section
       className="persistent-authoring__io-editor"
-      aria-label="工作流入参与出参编辑器"
+      aria-label="工作流输入与输出编辑器"
     >
       <header>
         <div>
-          <strong>当前编辑内容</strong>
-          <span>保存草稿时由 OS 生成规范 Python，应用前会自动校验。</span>
+          <strong>编辑工作流参数</strong>
+          <span>修改随草稿保存，应用前由 OS 校验。</span>
         </div>
         {!editable && <span>当前模式只读</span>}
       </header>
       {problem && <p role="alert">{problem}</p>}
 
+      <div
+        className="persistent-authoring__io-editor-tabs"
+        role="tablist"
+        aria-label="参数类型"
+        onKeyDown={(event) => {
+          if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
+            return
+          }
+          event.preventDefault()
+          const next = event.key === 'ArrowRight' || event.key === 'End'
+            ? 'output'
+            : 'input'
+          setActiveGroup(next)
+          document.getElementById(`workflow-io-tab-${next}`)?.focus()
+        }}
+      >
+        <button
+          id="workflow-io-tab-input"
+          type="button"
+          role="tab"
+          aria-controls="workflow-io-panel-input"
+          aria-selected={activeGroup === 'input'}
+          tabIndex={activeGroup === 'input' ? 0 : -1}
+          className={activeGroup === 'input' ? 'is-active' : ''}
+          onClick={() => setActiveGroup('input')}
+        >
+          输入参数 <span>{io.inputs.length}</span>
+        </button>
+        <button
+          id="workflow-io-tab-output"
+          type="button"
+          role="tab"
+          aria-controls="workflow-io-panel-output"
+          aria-selected={activeGroup === 'output'}
+          tabIndex={activeGroup === 'output' ? 0 : -1}
+          className={activeGroup === 'output' ? 'is-active' : ''}
+          onClick={() => setActiveGroup('output')}
+        >
+          输出参数 <span>{io.outputs.length}</span>
+        </button>
+      </div>
+
       <div className="persistent-authoring__io-editor-grid">
-        <IoGroup title="工作流入参">
+        <IoGroup
+          id="input"
+          title="输入参数"
+          active={activeGroup === 'input'}
+        >
+          {io.inputs.length === 0 && (
+            <p className="persistent-authoring__io-editor-empty">
+              暂无输入参数。需要从工作流外部传值时再添加。
+            </p>
+          )}
           <ol>
             {io.inputs.map((descriptor, index) => (
               <li
@@ -328,11 +380,20 @@ export function WorkflowIoEditor({
               required: true
             }))}
           >
-            添加入参
+            添加输入参数
           </button>
         </IoGroup>
 
-        <IoGroup title="工作流出参">
+        <IoGroup
+          id="output"
+          title="输出参数"
+          active={activeGroup === 'output'}
+        >
+          {io.outputs.length === 0 && (
+            <p className="persistent-authoring__io-editor-empty">
+              暂无输出参数。需要向工作流外部返回结果时再添加。
+            </p>
+          )}
           <ol>
             {io.outputs.map((descriptor, index) => {
               const readonly = descriptor.implicit || !editable
@@ -504,7 +565,7 @@ export function WorkflowIoEditor({
                           }
                         >
                           {source.kind === 'workflow_input'
-                            ? `工作流入参 · ${source.parameter}`
+                            ? `工作流输入：${source.parameter}`
                             : handleLabel(
                                 graph,
                                 source.workflowNodeUuid,
@@ -530,7 +591,7 @@ export function WorkflowIoEditor({
               implicit: false
             }))}
           >
-            添加出参
+            添加输出参数
           </button>
         </IoGroup>
       </div>
@@ -539,13 +600,27 @@ export function WorkflowIoEditor({
 }
 
 function IoGroup({
+  id,
   title,
+  active,
   children
 }: {
+  id: 'input' | 'output'
   title: string
+  active: boolean
   children: React.ReactNode
 }): React.JSX.Element {
-  return <section><h3>{title}</h3>{children}</section>
+  return (
+    <section
+      id={`workflow-io-panel-${id}`}
+      role="tabpanel"
+      aria-labelledby={`workflow-io-tab-${id}`}
+      hidden={!active}
+    >
+      <h3>{title}</h3>
+      {children}
+    </section>
+  )
 }
 
 function SchemaControl({

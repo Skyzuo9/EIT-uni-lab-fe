@@ -14,9 +14,9 @@ export function WorkflowIoSummary({
   return (
     <section
       className="persistent-authoring__io-summary"
-      aria-label="已应用的工作流入参与出参"
+      aria-label="已应用的工作流输入与输出"
     >
-      <IoList title="工作流入参">
+      <IoList title="输入参数">
         {io.input_contract.parameters.map((parameter) => (
           <li key={parameter.name}>
             <div className="persistent-authoring__io-name">
@@ -34,7 +34,7 @@ export function WorkflowIoSummary({
         ))}
       </IoList>
 
-      <IoList title="工作流出参">
+      <IoList title="输出参数">
         {io.output_contract.outputs.map((output) => (
           <li key={output.name}>
             <div className="persistent-authoring__io-name">
@@ -70,10 +70,10 @@ function IoList({
 function bindingLabel(binding: WorkflowOutputBinding | undefined): string {
   if (!binding) return '尚未绑定'
   if (binding.kind === 'workflow_input') {
-    return `工作流入参 · ${binding.parameter}`
+    return `工作流输入：${binding.parameter}`
   }
   return [
-    '节点出参',
+    '节点输出',
     `节点 UUID：${binding.workflow_node_uuid}`,
     `端口 UUID：${binding.source_handle_uuid}`
   ].join(' · ')

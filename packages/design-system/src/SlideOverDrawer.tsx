@@ -20,7 +20,7 @@ interface SlideOverDrawerProps {
   footer?: ReactNode
   ariaLabel?: string
   closeLabel?: string
-  size?: 'default' | 'wide'
+  size?: 'default' | 'medium' | 'wide'
 }
 
 // 右侧滑出抽屉:遮罩点击关闭,Esc 关闭,面板从右侧 translate-x 滑入
@@ -106,7 +106,11 @@ export function SlideOverDrawer({
       <div
         ref={dialogRef}
         className={`absolute inset-y-0 right-0 flex ${
-          size === 'wide' ? 'w-[min(1120px,96%)]' : 'w-[480px] max-w-[90%]'
+          size === 'wide'
+            ? 'w-[min(1120px,96%)]'
+            : size === 'medium'
+              ? 'w-[min(860px,96%)]'
+              : 'w-[480px] max-w-[90%]'
         } flex-col bg-[var(--unilab-color-surface)] shadow-[-8px_0_24px_rgba(15,23,42,0.18)] transition-transform duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${
           open ? 'translate-x-0' : 'translate-x-full'
         }`}

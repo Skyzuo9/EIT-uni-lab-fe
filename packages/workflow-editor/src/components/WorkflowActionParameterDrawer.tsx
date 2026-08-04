@@ -45,11 +45,11 @@ export function WorkflowActionParameterDrawer({
   return (
     <SlideOverDrawer
       open={open}
-      size="wide"
+      size="medium"
       ariaLabel={`节点参数 ${nodeName}`}
       title={(
         <span className="persistent-authoring__drawer-title">
-          <span>节点参数</span>
+          <span>节点输入与输出</span>
           <strong>{nodeName || '未选择节点'}</strong>
           {templateName && <small>{templateName}</small>}
         </span>
@@ -65,14 +65,14 @@ export function WorkflowActionParameterDrawer({
       <div className="persistent-authoring__parameter-drawer">
         <header>
           <div>
-            <strong>参数与端口</strong>
+            <strong>设置节点参数</strong>
             <p>
-              入参决定节点如何执行；出参由 OS 操作模板定义，可连接下游节点或作为整个工作流出参。
+              输入决定节点如何执行；输出由 OS 操作模板定义，可连接下游节点或工作流输出。
             </p>
           </div>
           <dl aria-label="节点参数数量">
-            <div><dt>入参</dt><dd>{inputCount}</dd></div>
-            <div><dt>出参</dt><dd>{outputHandles.length}</dd></div>
+            <div><dt>输入</dt><dd>{inputCount}</dd></div>
+            <div><dt>输出</dt><dd>{outputHandles.length}</dd></div>
           </dl>
         </header>
 
@@ -83,13 +83,13 @@ export function WorkflowActionParameterDrawer({
         ) : (
           <div className="persistent-authoring__parameter-columns">
             <ParameterSection
-              title="入参"
-              description="选择参数来源，并填写字面量或绑定整个工作流的输入。"
+              title="输入参数"
+              description="选择参数来源；固定值和工作流输入都在此设置。"
               count={editor.fields.length}
             >
               {editor.fields.length === 0 ? (
                 <p className="persistent-authoring__parameter-empty">
-                  当前操作没有外部入参。
+                  当前操作没有外部输入。
                 </p>
               ) : (
                 <ol className="persistent-authoring__parameter-list">
@@ -125,18 +125,18 @@ export function WorkflowActionParameterDrawer({
                               event.target.value
                             )}
                           >
-                            <option value="missing">未提供</option>
-                            <option value="literal">字面量 / 明确引用</option>
+                            <option value="missing">未设置</option>
+                            <option value="literal">固定值</option>
                             {field.workflowInputOptions.map((name) => (
                               <option key={name} value={`workflow:${name}`}>
-                                工作流入参 · {name}
+                                工作流输入：{name}
                               </option>
                             ))}
                             <option
                               value="upstream_output"
                               disabled={field.providerKind !== 'upstream_output'}
                             >
-                              上游出参 · 通过端口连线
+                              由上游节点提供
                             </option>
                           </select>
                         </label>
@@ -169,7 +169,7 @@ export function WorkflowActionParameterDrawer({
                             disabled={!editable}
                             onClick={() => onNull(field.handleUuid)}
                           >
-                            设为空值（null）
+                            传入空值
                           </button>
                         )}
                       </div>
@@ -191,13 +191,13 @@ export function WorkflowActionParameterDrawer({
             </ParameterSection>
 
             <ParameterSection
-              title="出参"
-              description="输出类型由 OS 操作模板定义，节点连线与工作流出参绑定会显示在这里。"
+              title="输出参数"
+              description="输出类型由 OS 操作模板定义，连接去向会显示在这里。"
               count={outputHandles.length}
             >
               {outputHandles.length === 0 ? (
                 <p className="persistent-authoring__parameter-empty">
-                  当前操作没有对外输出端口。
+                  当前操作没有对外输出。
                 </p>
               ) : (
                 <ol className="persistent-authoring__output-list">
@@ -231,7 +231,7 @@ export function WorkflowActionParameterDrawer({
                         <div className="persistent-authoring__output-destinations">
                           <strong>已连接到</strong>
                           {destinations.length === 0 ? (
-                            <span>尚未连接下游节点或工作流出参</span>
+                            <span>尚未连接下游节点或工作流输出</span>
                           ) : destinations.map((destination) => (
                             <span key={destination}>{destination}</span>
                           ))}
@@ -355,7 +355,7 @@ function outputDestinations(
       const target = graph.nodes.find(
         (node) => node.uuid === edge.target_node_uuid
       )
-      return `下游节点 · ${String(target?.name || edge.target_node_uuid)}`
+      return `下游节点：${String(target?.name || edge.target_node_uuid)}`
     })
   const bindings = graph.workflow.meta_data?.unilab?.output_bindings ?? {}
   for (const [name, value] of Object.entries(bindings)) {
@@ -365,7 +365,7 @@ function outputDestinations(
       value.workflow_node_uuid === nodeUuid &&
       value.source_handle_uuid === handleUuid
     ) {
-      destinations.push(`工作流出参 · ${name}`)
+      destinations.push(`工作流输出：${name}`)
     }
   }
   return destinations

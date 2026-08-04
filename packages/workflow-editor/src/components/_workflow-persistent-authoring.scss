@@ -783,7 +783,7 @@
 
   :global(.persistent-authoring__parameter-columns) {
     display: grid;
-    grid-template-columns: minmax(0, 1.16fr) minmax(320px, .84fr);
+    grid-template-columns: minmax(0, 1fr);
     align-items: start;
     gap: var(--unilab-space-5);
   }
@@ -1148,11 +1148,35 @@
     font: 600 11px var(--unilab-font-mono, monospace);
   }
 
-  :global(.persistent-authoring__task-input-drawer)
-    :global(.persistent-authoring__io-summary) {
+  :global(.persistent-authoring__task-io-summary) {
     overflow: hidden;
     border: 1px solid var(--unilab-color-border);
     border-radius: var(--unilab-radius-lg);
+    background: var(--unilab-color-surface);
+  }
+
+  :global(.persistent-authoring__task-io-summary) > summary {
+    display: flex;
+    min-height: 42px;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--unilab-space-3);
+    padding: 0 var(--unilab-space-4);
+    color: var(--unilab-color-text);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  :global(.persistent-authoring__task-io-summary) > summary span {
+    color: var(--unilab-color-text-muted);
+    font: 600 11px var(--unilab-font-mono, monospace);
+  }
+
+  :global(.persistent-authoring__task-io-summary)
+    :global(.persistent-authoring__io-summary) {
+    border-top: 1px solid var(--unilab-color-border);
+    border-bottom: 0;
   }
 
   :global(.persistent-authoring__diagnostics) {
@@ -1276,11 +1300,60 @@
     background: var(--unilab-color-danger-subtle, #fff1f0);
   }
 
+  :global(.persistent-authoring__io-editor-tabs) {
+    display: flex;
+    gap: 2px;
+    padding: 8px 14px 0;
+    border-bottom: 1px solid var(--unilab-color-border);
+    background: var(--unilab-color-surface);
+  }
+
+  :global(.persistent-authoring__io-editor-tabs) button {
+    display: inline-flex;
+    min-height: 34px;
+    align-items: center;
+    gap: 7px;
+    margin-bottom: -1px;
+    padding: 0 12px;
+    color: var(--unilab-color-text-muted);
+    border: 0;
+    border-bottom: 2px solid transparent;
+    background: transparent;
+    font: 600 12px var(--unilab-font-sans, sans-serif);
+    cursor: pointer;
+  }
+
+  :global(.persistent-authoring__io-editor-tabs) button span {
+    display: inline-grid;
+    min-width: 19px;
+    min-height: 19px;
+    place-items: center;
+    padding: 0 5px;
+    color: var(--unilab-color-text-muted);
+    border-radius: 999px;
+    background: var(--unilab-color-surface-muted);
+    font: 600 10px var(--unilab-font-mono, monospace);
+  }
+
+  :global(.persistent-authoring__io-editor-tabs) button.is-active {
+    color: var(--unilab-color-primary);
+    border-bottom-color: var(--unilab-color-primary);
+  }
+
+  :global(.persistent-authoring__io-editor-tabs) button.is-active span {
+    color: var(--unilab-color-primary);
+    background: var(--unilab-color-primary-soft);
+  }
+
+  :global(.persistent-authoring__io-editor-tabs) button:focus-visible {
+    outline: 2px solid var(--unilab-color-focus);
+    outline-offset: -2px;
+  }
+
   :global(.persistent-authoring__io-editor-grid) {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 1px;
-    background: var(--unilab-color-border);
+    grid-template-columns: minmax(0, 1fr);
+    background: var(--unilab-color-surface-subtle);
   }
 
   :global(.persistent-authoring__io-editor-grid) > section {
@@ -1292,6 +1365,10 @@
     background: var(--unilab-color-surface-subtle);
   }
 
+  :global(.persistent-authoring__io-editor-grid) > section[hidden] {
+    display: none;
+  }
+
   :global(.persistent-authoring__io-editor-grid) h3 {
     margin: 0;
     font-size: 12px;
@@ -1299,17 +1376,23 @@
 
   :global(.persistent-authoring__io-editor-grid) ol {
     display: grid;
-    gap: 5px;
+    gap: 0;
+    overflow: hidden;
     margin: 0;
     padding: 0;
+    border: 1px solid var(--unilab-color-border);
+    border-radius: var(--unilab-radius-md);
+    background: var(--unilab-color-surface);
     list-style: none;
   }
 
   :global(.persistent-authoring__io-editor-grid) li {
     min-width: 0;
-    border: 1px solid var(--unilab-color-border);
-    border-radius: var(--unilab-radius-md);
     background: var(--unilab-color-surface);
+  }
+
+  :global(.persistent-authoring__io-editor-grid) li + li {
+    border-top: 1px solid var(--unilab-color-border);
   }
 
   :global(.persistent-authoring__io-editor-grid) details {
@@ -1318,6 +1401,17 @@
 
   :global(.persistent-authoring__io-editor-grid) li[aria-readonly='true'] {
     background: var(--unilab-color-surface-subtle);
+  }
+
+  :global(.persistent-authoring__io-editor-empty) {
+    margin: 0;
+    padding: 18px;
+    color: var(--unilab-color-text-muted);
+    border: 1px dashed var(--unilab-color-border-strong);
+    border-radius: var(--unilab-radius-md);
+    background: var(--unilab-color-surface);
+    font-size: 12px;
+    text-align: center;
   }
 
   :global(.persistent-authoring__io-editor-row-heading) {
@@ -1516,8 +1610,7 @@
   }
 
   :global(.workflow-task-input-form) > header,
-  :global(.workflow-task-input-form) > header > div,
-  :global(.workflow-task-input-form) li {
+  :global(.workflow-task-input-form) > header > div {
     display: grid;
     gap: 5px;
   }
@@ -1531,19 +1624,35 @@
 
   :global(.workflow-task-input-form) ol {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 10px;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+    overflow: hidden;
     margin: 0;
     padding: 0;
+    border: 1px solid var(--unilab-color-border);
+    border-radius: var(--unilab-radius-md);
+    background: var(--unilab-color-surface);
     list-style: none;
   }
 
   :global(.workflow-task-input-form) li {
+    display: grid;
+    grid-template-columns: minmax(150px, .8fr) 132px minmax(280px, 1.5fr);
     min-width: 0;
-    padding: 10px;
-    border: 1px solid var(--unilab-color-border);
-    border-radius: var(--unilab-radius-md);
-    background: var(--unilab-color-surface-subtle);
+    align-items: center;
+    gap: 10px;
+    padding: 9px 10px;
+    background: var(--unilab-color-surface);
+  }
+
+  :global(.workflow-task-input-form) li + li {
+    border-top: 1px solid var(--unilab-color-border);
+  }
+
+  :global(.workflow-task-input-form__identity) {
+    display: grid;
+    min-width: 0;
+    gap: 3px;
   }
 
   :global(.workflow-task-input-form__heading),
@@ -1557,6 +1666,37 @@
   :global(.workflow-task-input-form__heading) span {
     color: var(--unilab-color-text-muted);
     font-size: 10px;
+  }
+
+  :global(.workflow-task-input-form__heading) strong {
+    overflow: hidden;
+    font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  :global(.workflow-task-input-form__default) {
+    min-width: 0;
+    color: var(--unilab-color-text-muted);
+    font-size: 10px;
+  }
+
+  :global(.workflow-task-input-form__default) code {
+    overflow-wrap: anywhere;
+  }
+
+  :global(.workflow-task-input-form__control) {
+    display: grid;
+    grid-template-columns: minmax(150px, .72fr) minmax(0, 1fr);
+    min-width: 0;
+    align-items: end;
+    gap: 8px;
+  }
+
+  :global(.workflow-task-input-form__control) > div {
+    display: grid;
+    min-width: 0;
+    gap: 5px;
   }
 
   :global(.workflow-task-input-form) label {
@@ -1750,6 +1890,12 @@
     :global(.persistent-authoring__parameter-columns),
     :global(.persistent-authoring__parameter-fields) {
       grid-template-columns: 1fr;
+    }
+
+    :global(.workflow-task-input-form) li,
+    :global(.workflow-task-input-form__control) {
+      grid-template-columns: 1fr;
+      align-items: stretch;
     }
 
     :global(.persistent-authoring__drawer-footer) {
