@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { spawn } from 'node:child_process'
+import { execFile, type ExecFileException } from 'node:child_process'
 import { constants as fsConstants, createReadStream } from 'node:fs'
 import {
   access,
@@ -38,9 +38,11 @@ export interface ManagedRuntimePaths {
   manifestSha256: string
 }
 
+/** 执行 Constructor 载荷，把 Runtime 安装到 prefix，并把诊断信息写入 logPath。 */
 export type RuntimeInstallerRunner = (
   installerPath: string,
-  prefix: string
+  prefix: string,
+  logPath: string
 ) => Promise<void>
 
 interface ManagedRuntimeInstallationOptions {
@@ -112,6 +114,10 @@ export class ManagedRuntimeInstallation {
     }
   }
 
+  /**
+   * 在安装锁内校验并安装 Runtime，返回稳定且可直接执行的最终版本目录。
+   * Constructor 会把绝对前缀写入入口脚本，因此安装过程必须直接使用最终前缀。
+   */
   private async install(): Promise<ManagedRuntimePaths> {
     const payloadDirectory = join(
       this.resourcesDirectory,
@@ -152,29 +158,24 @@ export class ManagedRuntimeInstallation {
         return result
       }
 
-      const stagingPrefix = join(
-        versionsDirectory,
-        `.${versionName}.installing-${process.pid}-${Date.now()}`
+      if (await pathExists(prefix)) {
+        await rename(prefix, `${prefix}.broken-${Date.now()}`)
+      }
+      const logsDirectory = join(runtimeRoot, 'logs')
+      await mkdir(logsDirectory, { recursive: true })
+      const installerLogPath = join(
+        logsDirectory,
+        `constructor-install-${Date.now()}-${process.pid}.log`
       )
-      await rm(stagingPrefix, { recursive: true, force: true })
       try {
-        await this.runInstaller(installerPath, stagingPrefix)
-        const stagingResult = runtimePaths(stagingPrefix, manifest)
-        if (!await validInstallation(stagingResult, this.platform)) {
+        await this.runInstaller(installerPath, prefix, installerLogPath)
+        if (!await validInstallation(result, this.platform)) {
           throw new Error('Constructor 完成后缺少 python、unilab 或 unilab-supervisor')
         }
-
-        if (await pathExists(prefix)) {
-          await rename(
-            prefix,
-            `${prefix}.broken-${Date.now()}`
-          )
-        }
-        await rename(stagingPrefix, prefix)
         await this.writeActive(result)
         return result
       } catch (error) {
-        await rm(stagingPrefix, { recursive: true, force: true })
+        await rm(prefix, { recursive: true, force: true })
         throw error
       }
     } finally {
@@ -280,6 +281,9 @@ function runtimePaths(
   }
 }
 
+/**
+ * 校验 Runtime 必需入口可读可执行，并拒绝旧版本遗留的 staging 绝对路径。
+ */
 async function validInstallation(
   paths: ManagedRuntimePaths,
   platform: NodeJS.Platform
@@ -293,16 +297,26 @@ async function validInstallation(
       access(paths.unilabExecutable, mode),
       access(paths.supervisorExecutable, mode)
     ])
+    if (platform !== 'win32') {
+      const entrypoints = await Promise.all([
+        readFile(paths.unilabExecutable, 'utf8'),
+        readFile(paths.supervisorExecutable, 'utf8')
+      ])
+      if (entrypoints.some((content) => content.includes('.installing-'))) {
+        return false
+      }
+    }
     return true
   } catch {
     return false
   }
 }
 
+/** 根据宿主平台生成静默 Constructor Runner，并保留完整安装诊断。 */
 function runConstructorInstaller(
   platform: NodeJS.Platform
 ): RuntimeInstallerRunner {
-  return async (installerPath, prefix) => {
+  return async (installerPath, prefix, logPath) => {
     const command = platform === 'win32' ? installerPath : 'bash'
     const args = platform === 'win32'
       ? [
@@ -314,28 +328,69 @@ function runConstructorInstaller(
           `/D=${prefix}`
         ]
       : [installerPath, '-b', '-p', prefix]
-    await run(command, args)
+    await run(command, args, logPath)
   }
 }
 
-function run(command: string, args: string[]): Promise<void> {
+/**
+ * 无 shell 执行安装器，记录 stdout/stderr；失败时返回可直接展示的摘要和日志路径。
+ */
+function run(
+  command: string,
+  args: string[],
+  logPath: string
+): Promise<void> {
   return new Promise((resolvePromise, reject) => {
-    const child = spawn(command, args, {
-      shell: false,
-      stdio: 'ignore',
+    /** 持久化一次安装结果，并把进程结果映射为公开 Promise。 */
+    const onComplete = (
+      error: ExecFileException | null,
+      stdout: string,
+      stderr: string
+    ): void => {
+      const log = [
+        `command=${JSON.stringify([command, ...args])}`,
+        '',
+        '[stdout]',
+        stdout,
+        '',
+        '[stderr]',
+        stderr
+      ].join('\n')
+      void writeFile(logPath, log, {
+        encoding: 'utf8',
+        mode: 0o600
+      }).then(() => {
+        if (!error) {
+          resolvePromise()
+          return
+        }
+        const code = 'code' in error ? error.code : null
+        const signal = 'signal' in error ? error.signal : null
+        const detail = summarizeInstallerOutput(stderr || stdout || error.message)
+        reject(new Error(
+          `Runtime 安装器执行失败：code=${String(code)} signal=${String(signal)}`
+          + `；详情：${detail}；日志：${logPath}`,
+          { cause: error }
+        ))
+      }, (logError: unknown) => {
+        reject(new Error(
+          `Runtime 安装器日志写入失败：${logPath}`,
+          { cause: logError }
+        ))
+      })
+    }
+    execFile(command, args, {
+      encoding: 'utf8',
+      maxBuffer: 32 * 1024 * 1024,
       windowsHide: true
-    })
-    child.once('error', reject)
-    child.once('exit', (code, signal) => {
-      if (code === 0) {
-        resolvePromise()
-        return
-      }
-      reject(new Error(
-        `Runtime 安装器执行失败：code=${String(code)} signal=${String(signal)}`
-      ))
-    })
+    }, onComplete)
   })
+}
+
+/** 把多行安装器输出折叠为适合 IPC 错误提示的末尾摘要。 */
+function summarizeInstallerOutput(output: string): string {
+  const normalized = output.trim().replace(/\s+/g, ' ')
+  return normalized.slice(-4_096) || '安装器未输出诊断信息'
 }
 
 function sha256File(path: string): Promise<string> {
