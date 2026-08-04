@@ -626,6 +626,8 @@ const LOG_TABS: Array<{
   { kind: 'edge', label: 'Edge 运行时' }
 ]
 
+const LOG_BOTTOM_TOLERANCE_PX = 4
+
 export function LocalRuntimeLogDrawer({
   instanceId,
   snapshot,
@@ -637,6 +639,8 @@ export function LocalRuntimeLogDrawer({
   onClose
 }: LocalRuntimeLogDrawerProps): React.JSX.Element {
   const outputRef = useRef<HTMLOListElement>(null)
+  const followLogTailRef = useRef(true)
+  const activeLogKindRef = useRef(activeKind)
   const idSuffix = instanceId ? `-${instanceId}` : ''
   const drawerId = `local-runtime-log-drawer${idSuffix}`
   const titleId = `local-runtime-log-title${idSuffix}`
@@ -650,8 +654,14 @@ export function LocalRuntimeLogDrawer({
   )
 
   useEffect(() => {
+    const activeKindChanged = activeLogKindRef.current !== activeKind
+    activeLogKindRef.current = activeKind
+    if (activeKindChanged) followLogTailRef.current = true
+
     const output = outputRef.current
-    if (output) output.scrollTop = output.scrollHeight
+    if (output && followLogTailRef.current) {
+      output.scrollTop = output.scrollHeight
+    }
   }, [activeEntry?.content, activeKind])
 
   return (
@@ -747,6 +757,16 @@ export function LocalRuntimeLogDrawer({
                 ref={outputRef}
                 className={styles.logOutput}
                 aria-label="格式化运行日志"
+                onWheel={(event) => {
+                  if (event.deltaY < 0) followLogTailRef.current = false
+                }}
+                onScroll={(event) => {
+                  const output = event.currentTarget
+                  followLogTailRef.current = (
+                    output.scrollHeight - output.clientHeight - output.scrollTop
+                    <= LOG_BOTTOM_TOLERANCE_PX
+                  )
+                }}
               >
                 {formattedRows.map((row, index) => (
                   <li key={`${index}-${row.message}`} data-level={row.level}>
