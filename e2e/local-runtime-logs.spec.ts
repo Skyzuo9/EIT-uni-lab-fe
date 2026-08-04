@@ -267,6 +267,50 @@ test('长日志自动换行并完整展示末尾内容', async ({ page }) => {
   await capture(page, '08-full-long-log-line.png')
 })
 
+/** 证明大量可换行日志滚到末尾后，虚拟列表不会留下大块空白。 */
+test('大量可换行日志末尾紧贴可视区域', async ({ page }) => {
+  await page.goto('/?wrappedLargeLogs=1')
+  const connectionBar = page.getByRole('group', {
+    name: 'Edge 连接配置'
+  })
+  await connectionBar.getByRole('button', { name: '查看日志' }).click()
+
+  const logOutput = page.getByRole('list', { name: '格式化运行日志' })
+  await expect.poll(() => logRowSetSize(logOutput)).toBe(2_000)
+  await logOutput.evaluate((element) => {
+    element.scrollTop = element.scrollHeight
+    element.dispatchEvent(new Event('scroll', { bubbles: true }))
+  })
+
+  await expect.poll(async () => logOutput.evaluate((element) => {
+    const rows = element.querySelectorAll<HTMLElement>('[role="listitem"]')
+    const firstRow = rows.item(0)
+    const lastRow = rows.item(rows.length - 1)
+    const topGap = firstRow
+      ? firstRow.getBoundingClientRect().top
+        - element.getBoundingClientRect().top
+      : Number.POSITIVE_INFINITY
+    const visualGap = lastRow
+      ? element.getBoundingClientRect().bottom
+        - lastRow.getBoundingClientRect().bottom
+      : Number.POSITIVE_INFINITY
+    return {
+      lastPosition: Number(lastRow?.getAttribute('aria-posinset') ?? 0),
+      scrollGap: Math.round(
+        element.scrollHeight - element.clientHeight - element.scrollTop
+      ),
+      topGapWithinLimit: topGap <= 40,
+      visualGapWithinLimit: visualGap <= 40
+    }
+  })).toEqual({
+    lastPosition: 2_000,
+    scrollGap: 0,
+    topGapWithinLimit: true,
+    visualGapWithinLimit: true
+  })
+  await capture(page, '09-wrapped-large-log-tail.png')
+})
+
 test('Edge 缺少 Phoenix 依赖时在启动界面给出非阻塞修复提示', async ({
   page
 }) => {
@@ -319,7 +363,14 @@ test('Edge 缺少 Phoenix 依赖时在启动界面给出非阻塞修复提示', 
   expect(browserErrors).toEqual([])
 })
 
+/**
+ * 在页面加载前安装确定性的本地运行 API 测试替身。
+ *
+ * @param page Playwright 页面，用于注入不同日志规模和故障场景。
+ * @returns 完成初始化脚本注册后结束，不返回业务数据。
+ */
 async function installRuntimeApi(page: Page): Promise<void> {
+  /** 在浏览器上下文中按 URL 场景生成稳定的增量日志。 */
   await page.addInitScript(() => {
     let logReadCount = 0
     const hasPhoenixMissing = (): boolean => (
@@ -330,6 +381,9 @@ async function installRuntimeApi(page: Page): Promise<void> {
     )
     const hasLongLogs = (): boolean => (
       new URLSearchParams(window.location.search).has('longLogs')
+    )
+    const hasWrappedLargeLogs = (): boolean => (
+      new URLSearchParams(window.location.search).has('wrappedLargeLogs')
     )
     const idleSnapshot = {
       phase: 'idle' as const,
@@ -399,14 +453,26 @@ async function installRuntimeApi(page: Page): Promise<void> {
       }) => {
         logReadCount += 1
         const initial = query.cursor === null
-        const lineCount = initial ? (hasLargeLogs() ? 2_600 : 84) : 4
+        const lineCount = initial
+          ? (hasLargeLogs() || hasWrappedLargeLogs() ? 2_600 : 84)
+          : 4
         const start = initial ? 0 : query.cursor?.offset ?? 0
         const lines = Array.from(
           { length: lineCount },
-          (_, index) => (
-            `26-08-04 [12:00:${String(start + index).padStart(2, '0')}] `
-            + `[INFO] ${query.kind} line ${start + index}`
-          )
+          (_, index) => hasWrappedLargeLogs()
+            ? (
+                `26-08-04 [12:00:${String(start + index).padStart(2, '0')}] `
+                + '[INFO] uvicorn.protocols.http.httptools_impl '
+                + `[Uvicorn.HTTP] 127.0.0.1:64278 - "GET /api/v1/`
+                + 'workflow-node-templates/'
+                + `${String(start + index).padStart(4, '0')}-`
+                + '425ac1b3-2457-4724-b04f-369a362992f3 '
+                + 'HTTP/1.1" 200'
+              )
+            : (
+                `26-08-04 [12:00:${String(start + index).padStart(2, '0')}] `
+                + `[INFO] ${query.kind} line ${start + index}`
+              )
         )
         if (initial && query.kind === 'edge' && hasPhoenixMissing()) {
           lines.unshift(

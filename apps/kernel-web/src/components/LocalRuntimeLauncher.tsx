@@ -825,6 +825,12 @@ const LOG_BOTTOM_TOLERANCE_PX = 4
 const LOG_ROW_ESTIMATED_HEIGHT_PX = 28
 const LOG_ROW_OVERSCAN_PX = LOG_ROW_ESTIMATED_HEIGHT_PX * 8
 
+/**
+ * 展示本地运行日志，并在用户位于底部时持续跟随最新一行。
+ *
+ * @param props 日志快照、当前来源、加载状态及抽屉交互回调。
+ * @returns 支持动态行高和窗口化渲染的日志抽屉。
+ */
 export function LocalRuntimeLogDrawer({
   instanceId,
   snapshot,
@@ -850,6 +856,7 @@ export function LocalRuntimeLogDrawer({
   const activeEntry = snapshot?.entries.find(
     (entry) => entry.kind === activeKind
   )
+  const hasActiveOutput = Boolean(activeEntry?.available && activeEntry.content)
   const formattedRows = useMemo(
     () => formatLocalRuntimeLog(activeEntry?.content ?? ''),
     [activeEntry?.content]
@@ -873,13 +880,19 @@ export function LocalRuntimeLogDrawer({
     })
     return { rows, totalHeight: top }
   }, [formattedRowEntries, rowHeights])
+  // 自动跟随时直接以最新布局的底部计算可视范围，避免实测行高更新后沿用旧 scrollTop。
+  const visibleScrollTop = following
+    ? Math.max(0, rowLayout.totalHeight - viewportHeight)
+    : scrollTop
   const visibleRows = useMemo(() => {
-    const visibleTop = Math.max(0, scrollTop - LOG_ROW_OVERSCAN_PX)
-    const visibleBottom = scrollTop + viewportHeight + LOG_ROW_OVERSCAN_PX
+    const visibleTop = Math.max(0, visibleScrollTop - LOG_ROW_OVERSCAN_PX)
+    const visibleBottom = visibleScrollTop
+      + viewportHeight
+      + LOG_ROW_OVERSCAN_PX
     return rowLayout.rows.filter((entry) => (
       entry.top + entry.height >= visibleTop && entry.top <= visibleBottom
     ))
-  }, [rowLayout.rows, scrollTop, viewportHeight])
+  }, [rowLayout.rows, viewportHeight, visibleScrollTop])
 
   useEffect(() => {
     const activeKeys = new Set(
@@ -896,6 +909,7 @@ export function LocalRuntimeLogDrawer({
     })
   }, [formattedRowEntries])
 
+  // 日志内容异步出现后重新绑定尺寸观察器，不能只在抽屉首次挂载时检查空 ref。
   useEffect(() => {
     const output = outputRef.current
     if (!output || typeof ResizeObserver === 'undefined') return
@@ -906,7 +920,7 @@ export function LocalRuntimeLogDrawer({
     })
     observer.observe(output)
     return () => observer.disconnect()
-  }, [])
+  }, [hasActiveOutput])
 
   useLayoutEffect(() => {
     const output = outputRef.current
