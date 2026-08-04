@@ -359,7 +359,11 @@ export default function WorkflowDag({
           onToggleBreakpoint?.(node.id)
         }}
       >
-        <Background gap={16} color="var(--unilab-color-border)" />
+        <Background
+          gap={22}
+          size={1}
+          color="var(--unilab-color-border-strong)"
+        />
         <Controls showInteractive={false} />
         <Panel position="top-right">
           <button

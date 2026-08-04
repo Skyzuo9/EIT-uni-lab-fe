@@ -88,17 +88,44 @@ export default function WorkflowNodeCard({
         {materialSource && (
           <span className="wf-node__material-glyph" aria-hidden="true">▱</span>
         )}
-        <span className="wf-node__kind">
-          {data.groupKind === 'subworkflow'
-            ? '▣ 子工作流'
-            : workflowNodeKindLabel(data.kind)}
-        </span>
-        <span
-          className="wf-node__id"
-          title={data.name || data.id}
-        >
-          {data.name || data.id}
-        </span>
+        {materialSource ? (
+          <>
+            <span className="wf-node__kind">{workflowNodeKindLabel(data.kind)}</span>
+            <span
+              className="wf-node__id"
+              title={data.name || data.id}
+            >
+              {data.name || data.id}
+            </span>
+          </>
+        ) : (
+          <span className="wf-node__identity">
+            <span className="wf-node__kind-glyph" aria-hidden="true">
+              {workflowNodeKindGlyph(data.kind, data.groupKind)}
+            </span>
+            <span className="wf-node__identity-copy">
+              <span
+                className="wf-node__id"
+                title={data.name || data.id}
+              >
+                {data.name || data.id}
+              </span>
+              <span className="wf-node__identity-meta">
+                <span className="wf-node__kind">
+                  {data.groupKind === 'subworkflow'
+                    ? '子工作流'
+                    : workflowNodeKindLabel(data.kind)}
+                </span>
+                <span
+                  className="wf-node__port-summary"
+                  title={`${targetHandles?.length ?? 1} 个输入端口，${sourceHandles?.length ?? 1} 个输出端口`}
+                >
+                  入 {targetHandles?.length ?? 1} · 出 {sourceHandles?.length ?? 1}
+                </span>
+              </span>
+            </span>
+          </span>
+        )}
         {materialSource && data.materialSource && (
           <span className="wf-node__material-summary">
             {flowRoleLabel(data.materialSource.flowRole)} · {' '}
@@ -138,43 +165,45 @@ export default function WorkflowNodeCard({
             {data.descendantCount || 0} 个内部节点
           </button>
         )}
-        <span className={`wf-node__state wf-node__state--${data.status || 'pending'}`}>
-          {workflowNodeStateLabel(data.kind, data.status || 'pending')}
+        <span className="wf-node__footer">
+          <span className={`wf-node__state wf-node__state--${data.status || 'pending'}`}>
+            {workflowNodeStateLabel(data.kind, data.status || 'pending')}
+          </span>
+          {allowsDebugMarkers && (data.onSetStart || data.onToggleBreakpoint) && (
+            <span className="wf-node__marker-actions">
+              {data.onSetStart && (
+                <button
+                  type="button"
+                  className={data.startNode ? 'is-active is-start' : ''}
+                  aria-label={`${data.startNode ? '取消' : '设为'}起始点 ${data.id}`}
+                  title={data.startNode ? '取消起始点' : '从此节点开始执行'}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    data.onSetStart?.(data.id)
+                  }}
+                >
+                  ⚑
+                </button>
+              )}
+              {data.onToggleBreakpoint && (
+                <button
+                  type="button"
+                  className={data.breakpoint ? 'is-active is-breakpoint' : ''}
+                  aria-label={`${data.breakpoint ? '取消' : '设置'}断点 ${data.id}`}
+                  title={data.breakpoint ? '取消断点' : '在此节点前暂停'}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    data.onToggleBreakpoint?.(data.id)
+                  }}
+                >
+                  ●
+                </button>
+              )}
+            </span>
+          )}
         </span>
-        {allowsDebugMarkers && (data.onSetStart || data.onToggleBreakpoint) && (
-          <div className="wf-node__marker-actions">
-            {data.onSetStart && (
-              <button
-                type="button"
-                className={data.startNode ? 'is-active is-start' : ''}
-                aria-label={`${data.startNode ? '取消' : '设为'}起始点 ${data.id}`}
-                title={data.startNode ? '取消起始点' : '从此节点开始执行'}
-                onPointerDown={(event) => event.stopPropagation()}
-                onClick={(event) => {
-                  event.stopPropagation()
-                  data.onSetStart?.(data.id)
-                }}
-              >
-                ⚑
-              </button>
-            )}
-            {data.onToggleBreakpoint && (
-              <button
-                type="button"
-                className={data.breakpoint ? 'is-active is-breakpoint' : ''}
-                aria-label={`${data.breakpoint ? '取消' : '设置'}断点 ${data.id}`}
-                title={data.breakpoint ? '取消断点' : '在此节点前暂停'}
-                onPointerDown={(event) => event.stopPropagation()}
-                onClick={(event) => {
-                  event.stopPropagation()
-                  data.onToggleBreakpoint?.(data.id)
-                }}
-              >
-                ●
-              </button>
-            )}
-          </div>
-        )}
       </div>
 
       {renderHandles(sourceHandles, 'source', sourcePosition)}
@@ -238,6 +267,20 @@ export function workflowNodeKindLabel(kind?: string): string {
         : kind === 'group'
           ? '▣ 节点组'
           : '操作节点'
+}
+
+function workflowNodeKindGlyph(
+  kind?: string,
+  groupKind?: WorkflowNodeData['groupKind']
+): string {
+  if (groupKind === 'subworkflow') return '▣'
+  return kind === 'branch'
+    ? '◇'
+    : kind === 'join'
+      ? '◆'
+      : kind === 'group'
+        ? '▣'
+        : '→'
 }
 
 export function workflowNodeStateLabel(kind: string | undefined, status: string): string {

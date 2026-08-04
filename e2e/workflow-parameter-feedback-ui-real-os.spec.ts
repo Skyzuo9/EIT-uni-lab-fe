@@ -78,6 +78,9 @@ test('工作流输入输出与节点参数使用紧凑渐进式编辑', async ({
 
   await dialog.getByRole('button', { name: '关闭' }).click()
   await expectDrawerExited(dialog)
+  await expect(page.locator('.wf-node__identity')).toHaveCount(2)
+  await expect(page.locator('.wf-node__kind-glyph')).toHaveCount(2)
+  await capture(page, testInfo, '10-workflow-canvas-reference-light')
   await page.evaluate(() => {
     document.documentElement.dataset.theme = 'dark'
   })

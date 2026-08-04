@@ -287,34 +287,23 @@
   color: var(--unilab-color-danger);
 }
 
-/* impeccable-disable-next-line codex-grid-background -- workflow graph canvas */
 .workflow:global(.workflow-runtime) :global(.wf-dag) {
   background-color: var(--unilab-color-canvas);
-  background-image:
-    radial-gradient(
-      circle at 50% 38%,
-      color-mix(
-        in srgb,
-        var(--unilab-color-workflow) 7%,
-        transparent
-      ),
-      transparent 38%
-    ),
-    linear-gradient(rgb(100 116 139 / 8%) 1px, transparent 1px),
-    linear-gradient(90deg, rgb(100 116 139 / 8%) 1px, transparent 1px);
-  background-size: 100% 100%, 24px 24px, 24px 24px;
+}
+
+.workflow:global(.workflow-runtime) :global(.react-flow__background) {
+  opacity: .46;
 }
 
 .workflow:global(.workflow-runtime) :global(.wf-node) {
   position: relative;
-  min-width: 188px;
+  min-width: 202px;
+  max-width: 240px;
   color: var(--unilab-color-text);
   border-color: var(--unilab-color-border-strong);
   border-radius: var(--unilab-radius-md);
   background: var(--unilab-color-surface);
-  box-shadow:
-    0 8px 20px rgb(37 99 235 / 8%),
-    0 2px 6px rgb(15 23 42 / 7%);
+  box-shadow: 0 1px 2px rgb(15 23 42 / 5%);
   transition:
     border-color var(--unilab-motion-fast) ease,
     box-shadow var(--unilab-motion-fast) ease,
@@ -325,10 +314,10 @@
   position: absolute;
   z-index: 1;
   top: -1px;
-  right: 12px;
-  left: 12px;
+  right: 0;
+  left: 0;
   height: 3px;
-  border-radius: 0 0 3px 3px;
+  border-radius: var(--unilab-radius-md) var(--unilab-radius-md) 0 0;
   background: var(--unilab-color-workflow);
   content: '';
 }
@@ -340,9 +329,9 @@
     var(--unilab-color-border-strong)
   );
   box-shadow:
-    0 12px 26px rgb(37 99 235 / 12%),
-    0 3px 8px rgb(15 23 42 / 9%);
-  transform: translateY(-1px);
+    0 12px 28px rgb(15 23 42 / 12%),
+    0 2px 6px rgb(15 23 42 / 8%);
+  transform: translateY(-2px);
 }
 
 .workflow:global(.workflow-runtime) :global(.wf-node):active {
@@ -350,9 +339,9 @@
 }
 
 .workflow:global(.workflow-runtime) :global(.wf-node__body) {
-  gap: 5px;
-  min-height: 88px;
-  padding: 14px 76px 12px 13px;
+  gap: 8px;
+  min-height: 96px;
+  padding: 14px 12px 10px;
 }
 
 .workflow :global(.wf-node__markers) {
@@ -395,17 +384,15 @@
 }
 
 .workflow :global(.wf-node__marker-actions) {
-  position: absolute;
-  right: 8px;
-  bottom: 8px;
   display: flex;
+  margin-left: auto;
   gap: 4px;
 }
 
 .workflow :global(.wf-node__marker-actions) button {
   display: grid;
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   padding: 0;
   place-items: center;
   color: var(--unilab-color-text-muted);
@@ -443,19 +430,73 @@
 }
 
 .workflow :global(.wf-node__kind) {
-  width: max-content;
-  padding: 2px 6px;
-  color: var(--unilab-color-workflow);
-  border-radius: var(--unilab-radius-sm);
-  background: var(--unilab-color-workflow-soft);
-  font: 600 11px/16px var(--unilab-font-sans);
-  letter-spacing: .01em;
+  color: var(--unilab-color-text-muted);
+  font: 500 11px/15px var(--unilab-font-sans);
 }
 
 .workflow :global(.wf-node__id) {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--unilab-color-text);
   font-size: 14px;
   font-weight: 700;
   letter-spacing: -.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workflow :global(.wf-node__identity) {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+}
+
+.workflow :global(.wf-node__kind-glyph) {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  place-items: center;
+  color: var(--unilab-color-workflow);
+  border: 1px solid color-mix(
+    in srgb,
+    var(--unilab-color-workflow) 22%,
+    var(--unilab-color-border)
+  );
+  border-radius: var(--unilab-radius-control);
+  background: var(--unilab-color-workflow-soft);
+  font: 700 15px/1 var(--unilab-font-sans);
+}
+
+.workflow :global(.wf-node__identity-copy) {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: 2px;
+}
+
+.workflow :global(.wf-node__identity-meta) {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+}
+
+.workflow :global(.wf-node__port-summary) {
+  color: var(--unilab-color-text-subtle);
+  font: 500 9px/15px var(--unilab-font-mono, monospace);
+  white-space: nowrap;
+}
+
+.workflow :global(.wf-node__footer) {
+  display: flex;
+  min-height: 27px;
+  align-items: center;
+  gap: 8px;
+  padding-top: 7px;
+  border-top: 1px solid var(--unilab-color-border);
 }
 
 .workflow :global(.wf-node__state) {
@@ -480,6 +521,13 @@
     transparent
   );
   content: '';
+}
+
+.workflow :global(.wf-node__handle) {
+  width: 12px;
+  height: 12px;
+  border-width: 2px;
+  box-shadow: 0 0 0 2px var(--unilab-color-canvas);
 }
 
 .workflow :global(.wf-node__group-toggle) {
@@ -588,10 +636,27 @@
 }
 
 .workflow :global(.wf-node--material-source) :global(.wf-node__kind) {
-  color: var(--unilab-color-text);
+  width: max-content;
+  padding: 2px 6px;
+  color: var(--wf-material-accent);
+  border-radius: var(--unilab-radius-sm);
+  background: color-mix(
+    in srgb,
+    var(--wf-material-accent) 12%,
+    var(--unilab-color-surface)
+  );
   font-size: 9px;
   font-weight: 700;
   letter-spacing: .08em;
+}
+
+.workflow :global(.wf-node--material-source) :global(.wf-node__footer) {
+  justify-content: center;
+  border-top-color: color-mix(
+    in srgb,
+    var(--wf-material-accent) 20%,
+    var(--unilab-color-border)
+  );
 }
 
 .workflow :global(.wf-node__material-summary) {
@@ -622,7 +687,12 @@
   gap: 4px;
   padding: 2px 6px;
   color: var(--unilab-color-text);
-  border-left: 3px solid var(--wf-material-accent);
+  border: 1px solid color-mix(
+    in srgb,
+    var(--wf-material-accent) 34%,
+    var(--unilab-color-border)
+  );
+  border-radius: var(--unilab-radius-sm);
   background: color-mix(
     in srgb,
     var(--wf-material-accent) 9%,
@@ -635,6 +705,29 @@
 .workflow :global(.wf-node__material-chips) small {
   opacity: .7;
   font: 7px var(--unilab-font-mono, monospace);
+}
+
+.workflow :global(.react-flow__edge) path {
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition:
+    stroke-width var(--unilab-motion-fast) ease,
+    opacity var(--unilab-motion-fast) ease;
+}
+
+.workflow :global(.react-flow__edge):hover path,
+.workflow :global(.react-flow__edge):global(.selected) path {
+  stroke-width: 3;
+}
+
+.workflow :global(.react-flow__edge-textbg) {
+  fill: var(--unilab-color-surface);
+  stroke: var(--unilab-color-border);
+  stroke-width: 1;
+}
+
+.workflow :global(.react-flow__edge-text) {
+  font-family: var(--unilab-font-sans);
 }
 
 .workflow :global(.react-flow__edge.wf-flow-edge--material-trace) path {
@@ -729,7 +822,12 @@
     var(--unilab-color-workflow) 3%,
     var(--unilab-color-surface)
   );
-  box-shadow: 0 8px 22px rgb(15 23 42 / 10%);
+  box-shadow: 0 6px 18px rgb(15 23 42 / 9%);
+}
+
+.workflow :global(.react-flow__minimap) {
+  width: 164px;
+  height: 108px;
 }
 
 .workflow :global(.react-flow__controls-button) {
