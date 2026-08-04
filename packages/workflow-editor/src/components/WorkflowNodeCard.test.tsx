@@ -28,7 +28,9 @@ describe('Action node presentation', () => {
     expect(workflowNodeShowsState('action', 'pending')).toBe(false)
     expect(workflowNodeShowsState('action', 'running')).toBe(true)
     expect(workflowNodeShowsState('action', 'failed')).toBe(true)
-    expect(workflowNodeShowsState('material_source', 'pending')).toBe(true)
+    expect(workflowNodeShowsState('material_source', 'pending')).toBe(false)
+    expect(workflowNodeShowsState('material_source', 'material_waiting'))
+      .toBe(true)
   })
 
   it('uses ResourceSlot variable names and Handle presentation metadata', () => {

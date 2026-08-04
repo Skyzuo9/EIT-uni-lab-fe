@@ -378,7 +378,7 @@ export function workflowNodeAllowsDebugMarkers(kind?: string): boolean {
 }
 
 export function workflowNodeShowsState(kind?: string, status?: string): boolean {
-  return kind === 'material_source' || Boolean(status && status !== 'pending')
+  return Boolean(status && status !== 'pending')
 }
 
 export function workflowNodeKindLabel(kind?: string): string {
