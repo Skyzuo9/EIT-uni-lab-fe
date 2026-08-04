@@ -1201,11 +1201,7 @@ export function PersistentWorkflowAuthoringPanel({
     setSelectedNodeUuid(nodeUuid)
     setSelectedNodeName(String(node.name || ''))
     setSelectedNodeNameDirty(false)
-    setActionParametersOpen(Boolean(
-      actionCatalog?.actionTemplates.some(
-        (template) => template.uuid === node.workflow_node_template_uuid
-      )
-    ))
+    setActionParametersOpen(node.type !== 'material_source')
     const sourceLine = codeSourceMap.find(
       (entry) => entry.workflow_node_uuid === nodeUuid
     )?.start_line

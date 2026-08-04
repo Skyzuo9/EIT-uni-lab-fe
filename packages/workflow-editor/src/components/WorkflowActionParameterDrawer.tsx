@@ -3,6 +3,7 @@ import type {
   WorkflowActionHandleTemplate,
   WorkflowAuthoringGraph
 } from '@unilab/services'
+import { useEffect, useState } from 'react'
 
 import type {
   TypedActionEditorProjection,
@@ -42,6 +43,34 @@ export function WorkflowActionParameterDrawer({
   onNull
 }: WorkflowActionParameterDrawerProps): React.JSX.Element {
   const inputCount = editor?.fields.length ?? 0
+  const [literalDraftHandles, setLiteralDraftHandles] = useState<Set<string>>(
+    () => new Set()
+  )
+  useEffect(() => {
+    if (!open) setLiteralDraftHandles(new Set())
+  }, [open])
+  const selectProvider = (
+    field: TypedActionFieldProjection,
+    provider: string
+  ): void => {
+    setLiteralDraftHandles((current) => withLiteralDraft(
+      current,
+      field.handleUuid,
+      provider === 'literal'
+    ))
+    onProviderChange(field, provider)
+  }
+  const commitLiteral = (
+    field: TypedActionFieldProjection,
+    raw: string
+  ): void => {
+    onLiteralBlur(field, raw)
+    setLiteralDraftHandles((current) => withLiteralDraft(
+      current,
+      field.handleUuid,
+      false
+    ))
+  }
   return (
     <SlideOverDrawer
       open={open}
@@ -93,11 +122,27 @@ export function WorkflowActionParameterDrawer({
                 </p>
               ) : (
                 <ol className="persistent-authoring__parameter-list">
-                  {editor.fields.map((field) => (
-                    <li
-                      key={field.handleUuid}
-                      data-workflow-handle-template-uuid={field.handleUuid}
-                    >
+                  {editor.fields.map((field) => {
+                    const literalDraft = literalDraftHandles.has(
+                      field.handleUuid
+                    )
+                    const providerKind = literalDraft
+                      ? 'literal'
+                      : field.providerKind
+                    const diagnostics = literalDraft
+                      ? editor.diagnostics.filter((diagnostic) =>
+                          diagnostic.handleUuid === field.handleUuid &&
+                          diagnostic.code !== 'required_action_parameter_missing'
+                        )
+                      : editor.diagnostics.filter(
+                          (diagnostic) =>
+                            diagnostic.handleUuid === field.handleUuid
+                        )
+                    return (
+                      <li
+                        key={field.handleUuid}
+                        data-workflow-handle-template-uuid={field.handleUuid}
+                      >
                       <div className="persistent-authoring__parameter-heading">
                         <span>
                           <strong>{field.displayName}</strong>
@@ -116,11 +161,11 @@ export function WorkflowActionParameterDrawer({
                         <label>
                           <select
                             aria-label={`${field.displayName} 参数来源`}
-                            value={field.providerKind === 'workflow_input'
+                            value={providerKind === 'workflow_input'
                               ? `workflow:${field.workflowInput}`
-                              : field.providerKind}
+                              : providerKind}
                             disabled={!editable}
-                            onChange={(event) => onProviderChange(
+                            onChange={(event) => selectProvider(
                               field,
                               event.target.value
                             )}
@@ -142,8 +187,9 @@ export function WorkflowActionParameterDrawer({
                         </label>
                         <ParameterValueControl
                           field={field}
+                          providerKind={providerKind}
                           editable={editable}
-                          onLiteralBlur={onLiteralBlur}
+                          onLiteralBlur={commitLiteral}
                         />
                       </div>
 
@@ -175,12 +221,11 @@ export function WorkflowActionParameterDrawer({
                       </div>
 
                       <ParameterDiagnostics
-                        diagnostics={editor.diagnostics.filter(
-                          (diagnostic) => diagnostic.handleUuid === field.handleUuid
-                        )}
+                        diagnostics={diagnostics}
                       />
-                    </li>
-                  ))}
+                      </li>
+                    )
+                  })}
                 </ol>
               )}
               <ParameterDiagnostics
@@ -273,16 +318,18 @@ function ParameterSection({
 
 function ParameterValueControl({
   field,
+  providerKind,
   editable,
   onLiteralBlur
 }: {
   field: TypedActionFieldProjection
+  providerKind: TypedActionFieldProjection['providerKind']
   editable: boolean
   onLiteralBlur: (field: TypedActionFieldProjection, raw: string) => void
 }): React.JSX.Element {
   const disabled = !editable ||
-    field.providerKind === 'workflow_input' ||
-    field.providerKind === 'upstream_output'
+    providerKind === 'workflow_input' ||
+    providerKind === 'upstream_output'
   if (field.enumValues) {
     return (
       <label>
@@ -320,6 +367,17 @@ function ParameterValueControl({
       />
     </label>
   )
+}
+
+function withLiteralDraft(
+  current: ReadonlySet<string>,
+  handleUuid: string,
+  selected: boolean
+): Set<string> {
+  const next = new Set(current)
+  if (selected) next.add(handleUuid)
+  else next.delete(handleUuid)
+  return next
 }
 
 function ParameterDiagnostics({

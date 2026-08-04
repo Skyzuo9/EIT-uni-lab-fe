@@ -352,6 +352,84 @@ test('SZLab S07 powder dosing projects the complete material flow', async ({
   )
 })
 
+test('节点参数首次打开且节点入参可以改为固定值', async ({ page }) => {
+  test.setTimeout(180_000)
+  const artifactDirectory = resolve(
+    process.env.UNILAB_E2E_ARTIFACT_DIR ||
+      resolve(process.cwd(), '../e2e-artifacts/szlab-s07-material-flow')
+  )
+  mkdirSync(artifactDirectory, { recursive: true })
+  await installWorkflowPanel(page, S07_WORKFLOW_UUID)
+  await page.goto(
+    `/?section=workflow&localOsUrl=${encodeURIComponent(os.url)}`
+  )
+  const panel = page.locator(
+    '[data-panel-type="workflow-dag"]' +
+    '[data-panel-instance-id="runtime-workflow"]'
+  )
+  await expect(panel.getByText('完整控制流 DAG')).toBeVisible()
+  const canvasModeButton = panel.getByRole('button', {
+    name: '画布模式',
+    exact: true
+  })
+  await canvasModeButton.click()
+  await expect(canvasModeButton).toHaveAttribute('aria-pressed', 'true')
+
+  await workflowNode(panel, DOSING_JOIN_UUID).click()
+  const parameterDialog = page.getByRole('dialog', {
+    name: '节点参数 dosed'
+  })
+  await expect(parameterDialog).toBeVisible()
+  await parameterDialog.screenshot({
+    path: join(artifactDirectory, '09-node-parameters-first-click.png'),
+    animations: 'disabled'
+  })
+  await parameterDialog.getByRole('button', { name: '完成' }).click()
+  await expect(parameterDialog).toBeHidden()
+
+  const nodeEditor = panel.getByRole('complementary', {
+    name: '画布节点编辑器'
+  })
+  await nodeEditor.getByRole('button', { name: '配置节点参数' }).click()
+  await expect(parameterDialog).toBeVisible()
+
+  const provider = parameterDialog.getByRole('combobox', {
+    name: 'target_mass_g 参数来源'
+  })
+  await expect(provider).toHaveCount(1)
+  await expect(provider).toBeEnabled()
+  await provider.selectOption('literal')
+  await expect(provider).toHaveValue('literal')
+  await expect(parameterDialog.getByText('target_mass_g为必填参数'))
+    .toHaveCount(0)
+  const value = parameterDialog.getByRole('textbox', {
+    name: 'target_mass_g 参数值'
+  })
+  await expect(value).toBeEnabled()
+  await value.fill('2.5')
+  await parameterDialog.screenshot({
+    path: join(artifactDirectory, '10-node-input-literal-edited.png'),
+    animations: 'disabled'
+  })
+  await parameterDialog.getByRole('button', { name: '完成' }).click()
+  await expect(parameterDialog).toBeHidden()
+
+  await nodeEditor.getByRole('button', { name: '配置节点参数' }).click()
+  await expect(parameterDialog).toBeVisible()
+  await expect(parameterDialog.getByRole('combobox', {
+    name: 'target_mass_g 参数来源'
+  }))
+    .toHaveValue('literal')
+  await expect(parameterDialog.getByRole('textbox', {
+    name: 'target_mass_g 参数值'
+  }))
+    .toHaveValue('2.5')
+  await parameterDialog.screenshot({
+    path: join(artifactDirectory, '11-node-input-literal-persisted.png'),
+    animations: 'disabled'
+  })
+})
+
 function workflowNode(panel: Locator, uuid: string): Locator {
   return panel.locator(`.wf-node[data-workflow-node-uuid="${uuid}"]`)
 }
