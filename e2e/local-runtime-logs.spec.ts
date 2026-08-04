@@ -219,6 +219,54 @@ test('大日志只挂载可视行并把内存窗口限制在两千行', async ({
   await capture(page, '07-large-log-windowed.png')
 })
 
+test('长日志自动换行并完整展示末尾内容', async ({ page }) => {
+  await page.goto('/?longLogs=1')
+  const connectionBar = page.getByRole('group', {
+    name: 'Edge 连接配置'
+  })
+  await connectionBar.getByRole('button', { name: '查看日志' }).click()
+
+  const logOutput = page.getByRole('list', { name: '格式化运行日志' })
+  const longMessage = logOutput.getByText(/完整日志末尾-UNILAB/)
+  const longSource = logOutput.getByText(
+    'unilabos.drivers.powder_feeder.material_flow'
+  )
+  await expect(longMessage).toBeVisible()
+  await expect.poll(async () => longMessage.evaluate((element) => ({
+    clippedHorizontally: element.scrollWidth > element.clientWidth + 1,
+    clippedVertically: element.scrollHeight > element.clientHeight + 1,
+    whiteSpace: getComputedStyle(element).whiteSpace
+  }))).toEqual({
+    clippedHorizontally: false,
+    clippedVertically: false,
+    whiteSpace: 'pre-wrap'
+  })
+  await expect.poll(async () => longSource.evaluate((element) => ({
+    clippedHorizontally: element.scrollWidth > element.clientWidth + 1,
+    clippedVertically: element.scrollHeight > element.clientHeight + 1
+  }))).toEqual({
+    clippedHorizontally: false,
+    clippedVertically: false
+  })
+
+  const row = longMessage.locator('..')
+  await expect.poll(async () => row.evaluate((element) => (
+    element.getBoundingClientRect().height
+  ))).toBeGreaterThan(28)
+  const followingRow = logOutput.getByText('latest edge output').locator('..')
+  await expect.poll(async () => {
+    const [longBox, followingBox] = await Promise.all([
+      row.boundingBox(),
+      followingRow.boundingBox()
+    ])
+    return Boolean(
+      longBox && followingBox
+      && followingBox.y >= longBox.y + longBox.height - 1
+    )
+  }).toBe(true)
+  await capture(page, '08-full-long-log-line.png')
+})
+
 test('Edge 缺少 Phoenix 依赖时在启动界面给出非阻塞修复提示', async ({
   page
 }) => {
@@ -279,6 +327,9 @@ async function installRuntimeApi(page: Page): Promise<void> {
     )
     const hasLargeLogs = (): boolean => (
       new URLSearchParams(window.location.search).has('largeLogs')
+    )
+    const hasLongLogs = (): boolean => (
+      new URLSearchParams(window.location.search).has('longLogs')
     )
     const idleSnapshot = {
       phase: 'idle' as const,
@@ -362,6 +413,16 @@ async function installRuntimeApi(page: Page): Promise<void> {
             '[launcher] 2026-08-04T03:12:00.000Z starting',
             '26-08-04 [11:12:02,100] [ERROR] Phoenix trace 日志服务启动失败：未安装 Arize Phoenix',
             'POST /api/v1/observability/otlp/v1/traces HTTP/1.1 503 Service Unavailable'
+          )
+        }
+        if (initial && query.kind === 'edge' && hasLongLogs()) {
+          lines.push(
+            '2026-08-04 12:01:30.000 | ERROR | '
+            + 'unilabos.drivers.powder_feeder.material_flow - '
+            + '粉末投料执行失败：设备返回的诊断详情包含多个寄存器状态、'
+            + '请求参数与恢复建议，需要在日志抽屉中完整展示，不能使用省略号隐藏。'
+            + '寄存器状态=' + 'A1B2C3D4'.repeat(20)
+            + ' 完整日志末尾-UNILAB'
           )
         }
         if (query.kind === 'edge') lines.push('latest edge output')

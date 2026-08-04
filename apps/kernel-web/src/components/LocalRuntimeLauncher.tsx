@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -818,8 +819,9 @@ const LOG_TABS: Array<{
 ]
 
 const LOG_BOTTOM_TOLERANCE_PX = 4
-const LOG_ROW_HEIGHT_PX = 28
-const LOG_ROW_OVERSCAN = 8
+/** 日志正文允许换行；窗口化列表先估算，再用浏览器实测行高修正坐标。 */
+const LOG_ROW_ESTIMATED_HEIGHT_PX = 28
+const LOG_ROW_OVERSCAN_PX = LOG_ROW_ESTIMATED_HEIGHT_PX * 8
 
 export function LocalRuntimeLogDrawer({
   instanceId,
@@ -838,6 +840,7 @@ export function LocalRuntimeLogDrawer({
   const activeLogKindRef = useRef(activeKind)
   const [scrollTop, setScrollTop] = useState(0)
   const [viewportHeight, setViewportHeight] = useState(480)
+  const [rowHeights, setRowHeights] = useState<Record<string, number>>({})
   const idSuffix = instanceId ? `-${instanceId}` : ''
   const drawerId = `local-runtime-log-drawer${idSuffix}`
   const titleId = `local-runtime-log-title${idSuffix}`
@@ -849,26 +852,80 @@ export function LocalRuntimeLogDrawer({
     () => formatLocalRuntimeLog(activeEntry?.content ?? ''),
     [activeEntry?.content]
   )
-  const visibleStart = Math.max(
-    0,
-    Math.floor(scrollTop / LOG_ROW_HEIGHT_PX) - LOG_ROW_OVERSCAN
+  const formattedRowEntries = useMemo(
+    () => formattedRows.map((row, index) => ({
+      row,
+      index,
+      measurementKey: localRuntimeLogRowMeasurementKey(row)
+    })),
+    [formattedRows]
   )
-  const visibleEnd = Math.min(
-    formattedRows.length,
-    Math.ceil((scrollTop + viewportHeight) / LOG_ROW_HEIGHT_PX)
-      + LOG_ROW_OVERSCAN
-  )
-  const visibleRows = formattedRows.slice(visibleStart, visibleEnd)
+  const rowLayout = useMemo(() => {
+    let top = 0
+    const rows = formattedRowEntries.map((entry) => {
+      const height = rowHeights[entry.measurementKey]
+        ?? LOG_ROW_ESTIMATED_HEIGHT_PX
+      const layoutEntry = { ...entry, height, top }
+      top += height
+      return layoutEntry
+    })
+    return { rows, totalHeight: top }
+  }, [formattedRowEntries, rowHeights])
+  const visibleRows = useMemo(() => {
+    const visibleTop = Math.max(0, scrollTop - LOG_ROW_OVERSCAN_PX)
+    const visibleBottom = scrollTop + viewportHeight + LOG_ROW_OVERSCAN_PX
+    return rowLayout.rows.filter((entry) => (
+      entry.top + entry.height >= visibleTop && entry.top <= visibleBottom
+    ))
+  }, [rowLayout.rows, scrollTop, viewportHeight])
+
+  useEffect(() => {
+    const activeKeys = new Set(
+      formattedRowEntries.map((entry) => entry.measurementKey)
+    )
+    setRowHeights((current) => {
+      const keys = Object.keys(current)
+      if (keys.every((key) => activeKeys.has(key))) return current
+      return Object.fromEntries(
+        keys
+          .filter((key) => activeKeys.has(key))
+          .map((key) => [key, current[key]])
+      )
+    })
+  }, [formattedRowEntries])
 
   useEffect(() => {
     const output = outputRef.current
     if (!output || typeof ResizeObserver === 'undefined') return
     const observer = new ResizeObserver(([entry]) => {
-      if (entry) setViewportHeight(entry.contentRect.height)
+      if (!entry) return
+      setViewportHeight(entry.contentRect.height)
+      setRowHeights({})
     })
     observer.observe(output)
     return () => observer.disconnect()
   }, [])
+
+  useLayoutEffect(() => {
+    const output = outputRef.current
+    if (!output) return
+    const measuredRows = output.querySelectorAll<HTMLElement>(
+      '[data-log-row-index]'
+    )
+    setRowHeights((current) => {
+      let next = current
+      measuredRows.forEach((element) => {
+        const index = Number(element.dataset.logRowIndex)
+        const entry = formattedRowEntries[index]
+        if (!entry) return
+        const height = Math.ceil(element.getBoundingClientRect().height)
+        if (height <= 0 || current[entry.measurementKey] === height) return
+        if (next === current) next = { ...current }
+        next[entry.measurementKey] = height
+      })
+      return next
+    })
+  }, [formattedRowEntries, visibleRows])
 
   useEffect(() => {
     const activeKindChanged = activeLogKindRef.current !== activeKind
@@ -880,7 +937,13 @@ export function LocalRuntimeLogDrawer({
       output.scrollTop = output.scrollHeight
       setScrollTop(output.scrollTop)
     }
-  }, [activeEntry?.content, activeKind, following, onFollowChange])
+  }, [
+    activeEntry?.content,
+    activeKind,
+    following,
+    onFollowChange,
+    rowLayout.totalHeight
+  ])
 
   return (
     <div className={styles.logDrawerLayer}>
@@ -1018,10 +1081,10 @@ export function LocalRuntimeLogDrawer({
               >
                 <div
                   className={styles.logVirtualSpace}
-                  style={{ height: formattedRows.length * LOG_ROW_HEIGHT_PX }}
+                  style={{ height: rowLayout.totalHeight }}
                 >
-                  {visibleRows.map((row, visibleIndex) => {
-                    const rowIndex = visibleStart + visibleIndex
+                  {visibleRows.map((entry) => {
+                    const { row, index: rowIndex } = entry
                     return (
                       <div
                         key={`${rowIndex}-${row.message}`}
@@ -1030,7 +1093,8 @@ export function LocalRuntimeLogDrawer({
                         aria-posinset={rowIndex + 1}
                         aria-setsize={formattedRows.length}
                         data-level={row.level}
-                        style={{ transform: `translateY(${rowIndex * LOG_ROW_HEIGHT_PX}px)` }}
+                        data-log-row-index={rowIndex}
+                        style={{ transform: `translateY(${entry.top}px)` }}
                       >
                         <span className={styles.logRowMeta}>
                           {row.time ? <time>{row.time}</time> : <span>—</span>}
@@ -1075,6 +1139,12 @@ interface FormattedLocalRuntimeLogRow {
   level: LocalRuntimeLogLevel
   source: string
   message: string
+}
+
+function localRuntimeLogRowMeasurementKey(
+  row: FormattedLocalRuntimeLogRow
+): string {
+  return [row.time, row.level, row.source, row.message].join('\u0000')
 }
 
 const ANSI_CSI_PATTERN = new RegExp(
