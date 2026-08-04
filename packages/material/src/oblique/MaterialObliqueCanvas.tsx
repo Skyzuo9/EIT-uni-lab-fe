@@ -1,5 +1,7 @@
 import AimOutlined from '@ant-design/icons/AimOutlined'
 import FullscreenExitOutlined from '@ant-design/icons/FullscreenExitOutlined'
+import RotateLeftOutlined from '@ant-design/icons/RotateLeftOutlined'
+import RotateRightOutlined from '@ant-design/icons/RotateRightOutlined'
 import ZoomInOutlined from '@ant-design/icons/ZoomInOutlined'
 import ZoomOutOutlined from '@ant-design/icons/ZoomOutOutlined'
 import {
@@ -65,9 +67,11 @@ interface ViewportSize {
 
 interface DragState {
   pointerId: number
+  mode: 'rotate' | 'pan'
   clientX: number
   clientY: number
   camera: ObliqueCamera
+  rotationDeg: number
   viewBox: ObliqueViewBox
   moved: boolean
 }
@@ -76,11 +80,13 @@ const MIN_CAMERA_ZOOM = 1
 const MAX_CAMERA_ZOOM = 6
 const DEFAULT_VIEWPORT: ViewportSize = { width: 1600, height: 900 }
 const LANDMARK_LIMIT = 7
+const ROTATION_BUTTON_STEP_DEG = 15
+const DRAG_ROTATION_RANGE_DEG = 180
 
 /**
- * Responsive front-oblique material projection. Every object is an SVG
- * extrusion of its authoritative plan footprint; sites/wells are painted
- * through the same affine top-plane transform, so equal wells remain equal.
+ * 渲染支持环绕旋转、平移与缩放的物料（Material）2.5D 斜投影视图。
+ * @param props 物料聚合、外形声明、选中态与选择回调。
+ * @returns 可访问且可交互的 SVG 物料投影视图。
  */
 export function MaterialObliqueCanvas({
   aggregates,
@@ -90,9 +96,10 @@ export function MaterialObliqueCanvas({
   highlightedMaterialIds = [],
   onSelectionChange
 }: MaterialObliqueCanvasProps): React.JSX.Element {
+  const [rotationDeg, setRotationDeg] = useState(0)
   const scene = useMemo(
-    () => buildMaterialObliqueScene(aggregates, shapes),
-    [aggregates, shapes]
+    () => buildMaterialObliqueScene(aggregates, shapes, rotationDeg),
+    [aggregates, rotationDeg, shapes]
   )
   const [hoveredMaterialId, setHoveredMaterialId] =
     useState<MaterialId | null>(null)
@@ -102,6 +109,7 @@ export function MaterialObliqueCanvas({
     fitCamera(scene.bounds)
   )
   const [isPanning, setIsPanning] = useState(false)
+  const [isRotating, setIsRotating] = useState(false)
   const canvasRef = useRef<HTMLDivElement>(null)
   const svgRef = useRef<SVGSVGElement>(null)
   const dragRef = useRef<DragState | null>(null)
@@ -138,7 +146,11 @@ export function MaterialObliqueCanvas({
         : 'inspect'
 
   useEffect(() => {
-    setCamera(fitCamera(scene.bounds))
+    setCamera((current) => ({
+      centerX: scene.bounds.minX + scene.bounds.width / 2,
+      centerY: scene.bounds.minY + scene.bounds.height / 2,
+      zoom: current.zoom
+    }))
   }, [
     scene.bounds.height,
     scene.bounds.minX,
@@ -178,6 +190,15 @@ export function MaterialObliqueCanvas({
   const fitAll = useCallback(() => {
     setCamera(fitCamera(scene.bounds))
   }, [scene.bounds])
+
+  /**
+   * 在保留缩放级别的前提下按给定角度旋转 2.5D 视角。
+   * @param deltaDeg 本次视角旋转增量，单位为度。
+   * @returns 无返回值。
+   */
+  const rotateBy = useCallback((deltaDeg: number): void => {
+    setRotationDeg((current) => normalizeRotation(current + deltaDeg))
+  }, [])
 
   const changeZoom = useCallback((factor: number) => {
     setCamera((current) => ({
@@ -230,22 +251,37 @@ export function MaterialObliqueCanvas({
     })
   }
 
+  /**
+   * 启动 2.5D 指针交互；左键默认旋转，Shift+左键或中键平移。
+   * @param event SVG 指针按下事件。
+   * @returns 无返回值。
+   */
   const handlePointerDown = (
     event: ReactPointerEvent<SVGSVGElement>
   ): void => {
-    if (event.button !== 0 || event.target !== event.currentTarget) return
+    if (event.button !== 0 && event.button !== 1) return
+    const mode = event.shiftKey || event.button === 1 ? 'pan' : 'rotate'
+    event.preventDefault()
     event.currentTarget.setPointerCapture(event.pointerId)
     dragRef.current = {
       pointerId: event.pointerId,
+      mode,
       clientX: event.clientX,
       clientY: event.clientY,
       camera,
+      rotationDeg,
       viewBox,
       moved: false
     }
-    setIsPanning(true)
+    setIsPanning(mode === 'pan')
+    setIsRotating(mode === 'rotate')
   }
 
+  /**
+   * 把指针位移转换为环绕旋转或视图平移。
+   * @param event SVG 指针移动事件。
+   * @returns 无返回值。
+   */
   const handlePointerMove = (
     event: ReactPointerEvent<SVGSVGElement>
   ): void => {
@@ -257,6 +293,15 @@ export function MaterialObliqueCanvas({
     const deltaX = event.clientX - drag.clientX
     const deltaY = event.clientY - drag.clientY
     if (Math.abs(deltaX) + Math.abs(deltaY) > 3) drag.moved = true
+    if (drag.mode === 'rotate') {
+      setRotationDeg(
+        normalizeRotation(
+          drag.rotationDeg +
+            (deltaX / rect.width) * DRAG_ROTATION_RANGE_DEG
+        )
+      )
+      return
+    }
     setCamera({
       ...drag.camera,
       centerX:
@@ -266,7 +311,12 @@ export function MaterialObliqueCanvas({
     })
   }
 
-  const finishPan = (
+  /**
+   * 结束旋转或平移并阻止拖拽后的误选择。
+   * @param event SVG 指针结束事件。
+   * @returns 无返回值。
+   */
+  const finishInteraction = (
     event: ReactPointerEvent<SVGSVGElement>
   ): void => {
     const drag = dragRef.current
@@ -274,6 +324,7 @@ export function MaterialObliqueCanvas({
     suppressCanvasClickRef.current = drag.moved
     dragRef.current = null
     setIsPanning(false)
+    setIsRotating(false)
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId)
     }
@@ -285,6 +336,7 @@ export function MaterialObliqueCanvas({
       className={materialScopeClassName('material-oblique-canvas')}
       aria-label="实验室 2.5D 物料操作视图"
       aria-describedby={instructionsId}
+      data-camera-rotation={rotationDeg.toFixed(2)}
       data-camera-zoom={camera.zoom.toFixed(2)}
       data-material-oblique-view
       data-site-layer-visible={showSites}
@@ -305,6 +357,25 @@ export function MaterialObliqueCanvas({
           role="group"
           aria-label="2.5D 视图控制"
         >
+          <button
+            type="button"
+            aria-label="向左旋转 2.5D 视图"
+            title="向左旋转"
+            onClick={() => rotateBy(-ROTATION_BUTTON_STEP_DEG)}
+          >
+            <RotateLeftOutlined aria-hidden="true" />
+          </button>
+          <output aria-label="当前旋转角度">
+            {Math.round(rotationDeg)}°
+          </output>
+          <button
+            type="button"
+            aria-label="向右旋转 2.5D 视图"
+            title="向右旋转"
+            onClick={() => rotateBy(ROTATION_BUTTON_STEP_DEG)}
+          >
+            <RotateRightOutlined aria-hidden="true" />
+          </button>
           <button
             type="button"
             aria-label="缩小 2.5D 视图"
@@ -346,8 +417,8 @@ export function MaterialObliqueCanvas({
         </div>
       </header>
       <p id={instructionsId} className="material-oblique-canvas__sr-only">
-        滚轮缩放，拖动画布平移，回车或空格选择物料，按 Escape
-        清除选择，按 Control 或 Command 可多选。
+        滚轮缩放，左右拖动画布旋转，按住 Shift 拖动可平移，回车或空格选择物料，按
+        Escape 清除选择，按 Control 或 Command 可多选。
       </p>
       {scene.diagnostics.invalidObjectCount > 0 ? (
         <div
@@ -396,6 +467,7 @@ export function MaterialObliqueCanvas({
           aria-label="实验室 2.5D 物料视图"
           className="material-oblique-canvas__svg"
           data-panning={isPanning || undefined}
+          data-rotating={isRotating || undefined}
           preserveAspectRatio="none"
           role="group"
           viewBox={viewBoxValue}
@@ -406,10 +478,10 @@ export function MaterialObliqueCanvas({
             }
             onSelectionChange?.([])
           }}
-          onPointerCancel={finishPan}
+          onPointerCancel={finishInteraction}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
-          onPointerUp={finishPan}
+          onPointerUp={finishInteraction}
           onWheel={handleWheel}
         >
           <defs>
@@ -453,6 +525,10 @@ export function MaterialObliqueCanvas({
                 labelOffsetY={landmarkOffsets.get(object.materialId) ?? 0}
                 showTag={showTag}
                 onClick={(event) => {
+                  if (suppressCanvasClickRef.current) {
+                    suppressCanvasClickRef.current = false
+                    return
+                  }
                   event.stopPropagation()
                   event.currentTarget.focus()
                   select(
@@ -498,7 +574,9 @@ function CanvasLegend(): React.JSX.Element {
           已占用
         </span>
       </div>
-      <span>滚轮缩放 · 拖动画布 · Ctrl / ⌘ 多选 · Esc 清除</span>
+      <span>
+        滚轮缩放 · 拖动旋转 · Shift + 拖动平移 · Ctrl / ⌘ 多选 · Esc 清除
+      </span>
     </div>
   )
 }
@@ -1954,6 +2032,15 @@ function midpoint(
 
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(Math.max(value, minimum), maximum)
+}
+
+/**
+ * 把旋转角度规范到 [-180, 180) 区间，避免长时间交互后数值无界增长。
+ * @param rotationDeg 任意角度值。
+ * @returns 规范化后的角度。
+ */
+function normalizeRotation(rotationDeg: number): number {
+  return ((rotationDeg + 180) % 360 + 360) % 360 - 180
 }
 
 function tagAnchor(points: readonly ObliquePoint[]): ObliquePoint {

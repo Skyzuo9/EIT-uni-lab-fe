@@ -7,6 +7,10 @@ import { MaterialObliqueCanvas } from './MaterialObliqueCanvas'
 import { parseShapeLibrary } from './shapeSpec'
 
 describe('MaterialObliqueCanvas', () => {
+  /**
+   * 验证完整 2.5D 视图同时暴露旋转、缩放、聚焦与选择的可访问状态。
+   * 输入包含声明外形和包络兜底对象，输出检查稳定的服务端渲染标记。
+   */
   it('renders accessible viewport controls, fidelity status and selected details', () => {
     const selected = materialAggregate('selected', {
       config: {
@@ -63,7 +67,10 @@ describe('MaterialObliqueCanvas', () => {
 
     expect(markup).toContain('aria-label="2.5D 视图控制"')
     expect(markup).toContain('aria-label="放大 2.5D 视图"')
+    expect(markup).toContain('aria-label="向左旋转 2.5D 视图"')
+    expect(markup).toContain('aria-label="向右旋转 2.5D 视图"')
     expect(markup).toContain('aria-label="聚焦已选物料"')
+    expect(markup).toContain('data-camera-rotation="0.00"')
     expect(markup).toContain('data-semantic-zoom="overview"')
     expect(markup).not.toContain('声明外形 1')
     expect(markup).not.toContain('包络近似 1')
@@ -72,7 +79,7 @@ describe('MaterialObliqueCanvas', () => {
     expect(markup).toContain('data-oblique-fidelity="envelope"')
     expect(markup).toContain('aria-pressed="true"')
     expect(markup).toContain('X 0 · Y 0 · Z 0 mm')
-    expect(markup).toContain('滚轮缩放')
+    expect(markup).toContain('拖动旋转')
   })
 
   it('explains an empty scene while keeping the viewport controls visible', () => {

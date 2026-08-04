@@ -23,6 +23,17 @@ describe('oblique material projection', () => {
     expect(y).toBeCloseTo(-370.710678, 6)
   })
 
+  /**
+   * 验证视角绕 Z 轴旋转后，世界 X 轴会进入斜投影的深度方向。
+   * 输入为 X=100 的世界点与 90° 视角，输出应等同于未旋转的 Y=100 投影。
+   */
+  it('rotates the plan before applying the cabinet projection', () => {
+    const [x, y] = projectObliquePoint([100, 0, 0], 90)
+
+    expect(x).toBeCloseTo(35.355339, 6)
+    expect(y).toBeCloseTo(-35.355339, 6)
+  })
+
   it('fits bounds from geometry and keeps the plan as an affine top plane', () => {
     const scene = buildMaterialObliqueScene([
       aggregate('plate', [100, 200, 30])

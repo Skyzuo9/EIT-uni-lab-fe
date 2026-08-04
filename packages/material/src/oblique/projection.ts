@@ -104,28 +104,49 @@ export interface MaterialObliqueScene {
 }
 
 /**
- * Cabinet oblique projection: X/Z front faces retain true scale while the
- * receding floor-plane Y axis runs at 45° with half depth.
+ * 将世界坐标投影到可旋转的 2.5D 斜投影视图。
+ * @param point 世界坐标点，单位为毫米。
+ * @param viewRotationDeg 视角绕世界 Z 轴旋转的角度，单位为度。
+ * @returns SVG 使用的二维投影坐标。
  */
 export function projectObliquePoint(
-  point: ObliqueWorldPoint
+  point: ObliqueWorldPoint,
+  viewRotationDeg = 0
 ): ObliquePoint {
+  const [rotatedX, rotatedY] = rotatePlanPoint(
+    point[0],
+    point[1],
+    viewRotationDeg
+  )
   return [
-    point[0] + point[1] * DEPTH_X,
-    -point[2] - point[1] * DEPTH_Y
+    rotatedX + rotatedY * DEPTH_X,
+    -point[2] - rotatedY * DEPTH_Y
   ]
 }
 
+/**
+ * 从物料聚合构建指定视角下的 2.5D 场景。
+ * @param aggregates 物料（Material）聚合列表。
+ * @param shapes 设备包提供的外形声明库。
+ * @param viewRotationDeg 视角绕世界 Z 轴旋转的角度。
+ * @returns 已排序、带边界与诊断信息的 2.5D 场景。
+ */
 export function buildMaterialObliqueScene(
   aggregates: readonly MaterialAggregate[],
-  shapes?: MaterialShapeLibrary
+  shapes?: MaterialShapeLibrary,
+  viewRotationDeg = 0
 ): MaterialObliqueScene {
   const aggregatesById = Object.fromEntries(
     aggregates.map((aggregate) => [aggregate.material.id, aggregate])
   )
   const projected = aggregates.map((aggregate) => {
     try {
-      return materialToObliqueObject(aggregate, aggregatesById, shapes)
+      return materialToObliqueObject(
+        aggregate,
+        aggregatesById,
+        shapes,
+        viewRotationDeg
+      )
     } catch {
       return undefined
     }
@@ -182,10 +203,19 @@ export function buildMaterialObliqueScene(
   }
 }
 
+/**
+ * 把单个物料（Material）聚合转换为当前视角下的可绘制对象。
+ * @param aggregate 待投影的物料聚合。
+ * @param aggregatesById 解析父子放置关系使用的物料索引。
+ * @param shapes 设备包外形声明库。
+ * @param viewRotationDeg 当前 2.5D 视角角度。
+ * @returns 带投影点、局部平面矩阵与绘制排序信息的对象。
+ */
 function materialToObliqueObject(
   aggregate: MaterialAggregate,
   aggregatesById: Readonly<Record<MaterialId, MaterialAggregate>>,
-  shapes: MaterialShapeLibrary | undefined
+  shapes: MaterialShapeLibrary | undefined,
+  viewRotationDeg: number
 ): MaterialObliqueObject {
   const visual = readMaterial2DVisual(aggregate)
   const pose = resolveMaterialWorldPose(
@@ -245,9 +275,16 @@ function materialToObliqueObject(
       origin[2]
     ]
   )
-  const base = worldCorners.map(projectObliquePoint)
+  const viewWorldCorners = worldCorners.map(([x, y, z]) => {
+    const [rotatedX, rotatedY] = rotatePlanPoint(x, y, viewRotationDeg)
+    return [rotatedX, rotatedY, z] as const
+  })
+  const base = worldCorners.map((point) =>
+    projectObliquePoint(point, viewRotationDeg)
+  )
   const top = worldCorners.map(
-    ([x, y, z]) => projectObliquePoint([x, y, z + heightMm])
+    ([x, y, z]) =>
+      projectObliquePoint([x, y, z + heightMm], viewRotationDeg)
   )
   const shelves = usesShelves
     ? buildStackShelves(aggregate, heightMm)
@@ -275,7 +312,7 @@ function materialToObliqueObject(
     worldCorners,
     base,
     top,
-    topTransform: topPlaneTransform(pose, heightMm),
+    topTransform: topPlaneTransform(pose, heightMm, viewRotationDeg),
     logicalMount,
     sites,
     siteBounds,
@@ -288,9 +325,9 @@ function materialToObliqueObject(
     // its rear edge instead of its centre.
     sortDepth:
       resolved?.spec.sort === 'rear-edge'
-        ? Math.max(...worldCorners.map((point) => point[1]))
-        : worldCorners.reduce((total, point) => total + point[1], 0) /
-          worldCorners.length
+        ? Math.max(...viewWorldCorners.map((point) => point[1]))
+        : viewWorldCorners.reduce((total, point) => total + point[1], 0) /
+          viewWorldCorners.length
   }
 }
 
@@ -461,21 +498,50 @@ function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(Math.max(value, minimum), maximum)
 }
 
+/**
+ * 生成物料局部平面到旋转后 2.5D 视图的仿射变换。
+ * @param pose 物料在世界坐标中的权威位姿。
+ * @param heightMm 局部平面的物料高度。
+ * @param viewRotationDeg 视角绕世界 Z 轴旋转的角度。
+ * @returns SVG matrix 使用的六元素仿射矩阵。
+ */
 function topPlaneTransform(
   pose: LabPose,
-  heightMm: number
+  heightMm: number,
+  viewRotationDeg: number
 ): readonly [number, number, number, number, number, number] {
-  const yawRad = (pose.rotationDegXYZ[2] * Math.PI) / 180
+  const yawRad =
+    ((pose.rotationDegXYZ[2] + viewRotationDeg) * Math.PI) / 180
   const cosine = Math.cos(yawRad)
   const sine = Math.sin(yawRad)
   const [x, y, z] = pose.positionMm
+  const [rotatedX, rotatedY] = rotatePlanPoint(x, y, viewRotationDeg)
 
   return [
     cosine + sine * DEPTH_X,
     -sine * DEPTH_Y,
     -sine + cosine * DEPTH_X,
     -cosine * DEPTH_Y,
-    x + y * DEPTH_X,
-    -(z + heightMm) - y * DEPTH_Y
+    rotatedX + rotatedY * DEPTH_X,
+    -(z + heightMm) - rotatedY * DEPTH_Y
   ]
+}
+
+/**
+ * 在水平面内绕世界原点旋转坐标。
+ * @param x 世界 X 坐标。
+ * @param y 世界 Y 坐标。
+ * @param rotationDeg 绕 Z 轴旋转的角度。
+ * @returns 旋转后的 X、Y 坐标。
+ */
+function rotatePlanPoint(
+  x: number,
+  y: number,
+  rotationDeg: number
+): readonly [number, number] {
+  if (rotationDeg === 0) return [x, y]
+  const rotationRad = (rotationDeg * Math.PI) / 180
+  const cosine = Math.cos(rotationRad)
+  const sine = Math.sin(rotationRad)
+  return [x * cosine - y * sine, x * sine + y * cosine]
 }

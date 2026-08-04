@@ -2,10 +2,14 @@ import { defineConfig } from '@playwright/test'
 
 const materialCreateFixture =
   process.env.UNILAB_E2E_MATERIAL_CREATE_FIXTURE === '1'
+const materialObliqueFixture =
+  process.env.UNILAB_E2E_MATERIAL_OBLIQUE_FIXTURE === '1'
 const electronFixture = process.env.UNILAB_E2E_ELECTRON === '1'
 const baseURL =
   process.env.UNILAB_FE_E2E_URL ||
-  (materialCreateFixture
+  (materialObliqueFixture
+    ? 'http://127.0.0.1:4175'
+    : materialCreateFixture
     ? 'http://127.0.0.1:4174'
     : 'http://127.0.0.1:4173')
 
@@ -29,9 +33,13 @@ export default defineConfig({
     : {
         command: materialCreateFixture
           ? 'pnpm exec vite build --config e2e/material-create.vite.config.ts && pnpm exec vite preview --config e2e/material-create.vite.config.ts'
+          : materialObliqueFixture
+            ? 'apps/kernel-web/node_modules/.bin/vite build --config e2e/material-oblique.vite.config.ts && apps/kernel-web/node_modules/.bin/vite preview --config e2e/material-oblique.vite.config.ts'
           : 'pnpm build:web && pnpm --filter @unilab/kernel-web preview --host 127.0.0.1 --port 4173',
         url: materialCreateFixture
           ? `${baseURL}/material-create-fixture.html`
+          : materialObliqueFixture
+            ? `${baseURL}/material-oblique-fixture.html`
           : baseURL,
         reuseExistingServer: true,
         timeout: 120_000

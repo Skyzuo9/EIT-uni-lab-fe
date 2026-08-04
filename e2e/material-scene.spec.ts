@@ -55,6 +55,10 @@ test.afterAll(async () => {
   }
 })
 
+/**
+ * 验证真实 SZLab 物料图在 2D、2.5D 与 3D 间切换，并覆盖 2.5D 缩放和旋转。
+ * 输入来自真实 OS 物料图接口，输出检查对象、库位（Site）、视角状态与截图。
+ */
 test('SZLab MaterialGraph renders complete 2.5D and 3D views', async ({
   page
 }) => {
@@ -201,6 +205,25 @@ test('SZLab MaterialGraph renders complete 2.5D and 3D views', async ({
   await captureViewport(page, 'szlab-materials-2_5d-zoomed.png')
   await fitAll.click()
   await expect(oblique).toHaveAttribute('data-camera-zoom', '1.00')
+
+  const obliqueBounds = await oblique.boundingBox()
+  expect(obliqueBounds).not.toBeNull()
+  if (!obliqueBounds) throw new Error('2.5D 视图缺少可交互区域')
+  await page.mouse.move(
+    obliqueBounds.x + obliqueBounds.width / 2,
+    obliqueBounds.y + obliqueBounds.height / 2
+  )
+  await page.mouse.down()
+  await page.mouse.move(
+    obliqueBounds.x + obliqueBounds.width / 2 + 120,
+    obliqueBounds.y + obliqueBounds.height / 2,
+    { steps: 6 }
+  )
+  await page.mouse.up()
+  await expect(oblique).toHaveAttribute(
+    'data-camera-rotation',
+    /-?(?:[1-9]\d*(?:\.\d+)?|0\.\d*[1-9]\d*)/
+  )
 
   await siteLayerToggle.click()
   await expect(siteLayerToggle).toHaveAttribute('aria-pressed', 'false')

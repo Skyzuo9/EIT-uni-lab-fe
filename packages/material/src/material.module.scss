@@ -1004,7 +1004,8 @@
   user-select: none;
 }
 
-:where(.scope, .scope *):global(.material-oblique-canvas__svg)[data-panning] {
+:where(.scope, .scope *):global(.material-oblique-canvas__svg)[data-panning],
+:where(.scope, .scope *):global(.material-oblique-canvas__svg)[data-rotating] {
   cursor: grabbing;
 }
 
