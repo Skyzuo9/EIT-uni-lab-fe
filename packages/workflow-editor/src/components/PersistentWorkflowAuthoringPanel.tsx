@@ -66,7 +66,10 @@ import {
   type MaterialSourceEditorProjection,
   type MaterialSourceSelectorUpdate
 } from '../utils/workflowMaterialSource'
-import { materialTraceAccent } from '../utils/workflowMaterialTrace'
+import {
+  materialTraceAccent,
+  projectMaterialTraces
+} from '../utils/workflowMaterialTrace'
 import {
   projectWorkflowTaskEvents,
   projectWorkflowTaskJob
@@ -343,6 +346,10 @@ export function PersistentWorkflowAuthoringPanel({
       ? projectPersistentAuthoringGraph(graph)
       : { nodes: [], links: [], steps: [], error: null },
     [graph]
+  )
+  const materialTraces = useMemo(
+    () => projectMaterialTraces(structure.nodes, structure.links),
+    [structure.links, structure.nodes]
   )
   const effectiveMaterialSourceCatalog = useMemo(() => {
     if (!materialSourceCatalog) return null
@@ -2082,6 +2089,11 @@ export function PersistentWorkflowAuthoringPanel({
                       {selectedMaterialSourceEditor && (
                         <MaterialSourceInspector
                           editor={selectedMaterialSourceEditor}
+                          accent={
+                            materialTraces.materialSourceAccents.get(
+                              selectedMaterialSourceEditor.nodeUuid
+                            )
+                          }
                           editable={
                             !busy && policy.canvasMutationEnabled &&
                             !materialSourceCatalogLoading &&
@@ -2491,6 +2503,7 @@ export function PersistentWorkflowAuthoringPanel({
 
 export interface MaterialSourceInspectorProps {
   editor: MaterialSourceEditorProjection
+  accent?: string
   editable: boolean
   status: string
   diagnostics: readonly WorkflowAuthoringDiagnostic[]
@@ -2499,12 +2512,13 @@ export interface MaterialSourceInspectorProps {
 
 export function MaterialSourceInspector({
   editor,
+  accent,
   editable,
   status,
   diagnostics,
   onChange
 }: MaterialSourceInspectorProps): React.JSX.Element {
-  const accent = materialTraceAccent(editor.nodeUuid)
+  const resolvedAccent = accent ?? materialTraceAccent(editor.nodeUuid)
   const [siteQuery, setSiteQuery] = useState('')
   const visibleSites = useMemo(
     () => filterMaterialSourceSites(editor.sites, siteQuery),
@@ -2516,7 +2530,7 @@ export function MaterialSourceInspector({
       className="persistent-authoring__material-source-inspector"
       aria-label="物料来源属性"
       data-material-source-node-uuid={editor.nodeUuid}
-      style={{ '--wf-material-accent': accent } as React.CSSProperties}
+      style={{ '--wf-material-accent': resolvedAccent } as React.CSSProperties}
     >
       <div className="persistent-authoring__material-identity">
         <span className="persistent-authoring__material-hex" aria-hidden="true">
