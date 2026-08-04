@@ -1,6 +1,7 @@
 import {
   expect,
   test,
+  type Locator,
   type Page,
   type TestInfo
 } from '@playwright/test'
@@ -47,9 +48,9 @@ test('工作流输入输出与节点参数使用紧凑渐进式编辑', async ({
   }).click()
   await page.getByRole('button', { name: /输入与输出/ }).click()
 
-  const dialog = page.getByRole('dialog', {
-    name: '工作流输入与输出配置'
-  })
+  const dialog = page.locator(
+    '[role="dialog"][aria-label="工作流输入与输出配置"]'
+  )
   const editor = dialog.getByRole('region', {
     name: '工作流输入与输出编辑器'
   })
@@ -74,6 +75,13 @@ test('工作流输入输出与节点参数使用紧凑渐进式编辑', async ({
   await firstOutput.locator('summary').click()
   await expect(firstOutput.locator('details')).toHaveAttribute('open', '')
   await capture(page, testInfo, '04-workflow-output-expanded')
+
+  await dialog.getByRole('button', { name: '关闭' }).click()
+  await expectDrawerExited(dialog)
+  await page.evaluate(() => {
+    document.documentElement.dataset.theme = 'dark'
+  })
+  await capture(page, testInfo, '09-workflow-dark-theme')
 
   expect(browserErrors).toEqual([])
 })
@@ -150,6 +158,10 @@ test('反馈保持事件流顺序并按需展开原始数据', async ({
   }).click()
   const created = await createResponse
   expect(created.status()).toBe(201)
+  const taskInputDialog = page.locator(
+    '[role="dialog"][aria-label="本次工作流运行参数"]'
+  )
+  await expectDrawerExited(taskInputDialog)
   const createdEnvelope = await created.json() as {
     data: { uuid: string }
   }
@@ -218,6 +230,11 @@ function collectBrowserErrors(page: Page): string[] {
   })
   page.on('pageerror', (error) => errors.push(error.message))
   return errors
+}
+
+async function expectDrawerExited(dialog: Locator): Promise<void> {
+  await expect(dialog).toBeHidden()
+  await expect(dialog).toHaveCSS('visibility', 'hidden')
 }
 
 async function ensureAppliedWorkflow(

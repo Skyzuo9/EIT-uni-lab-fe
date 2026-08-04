@@ -94,7 +94,11 @@ export function SlideOverDrawer({
       className={`fixed inset-0 overflow-hidden ${
         open ? 'pointer-events-auto' : 'pointer-events-none'
       }`}
-      style={{ zIndex: 1000 }}
+      style={{
+        zIndex: 1000,
+        visibility: open ? 'visible' : 'hidden',
+        transition: open ? 'none' : 'visibility 0s linear 300ms'
+      }}
       aria-hidden={!open}
     >
       <div
@@ -111,9 +115,10 @@ export function SlideOverDrawer({
             : size === 'medium'
               ? 'w-[min(860px,96%)]'
               : 'w-[480px] max-w-[90%]'
-        } flex-col bg-[var(--unilab-color-surface)] shadow-[-8px_0_24px_rgba(15,23,42,0.18)] transition-transform duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${
-          open ? 'translate-x-0' : 'translate-x-full'
-        }`}
+        } flex-col bg-[var(--unilab-color-surface)] shadow-[-8px_0_24px_rgba(15,23,42,0.18)] transition-transform duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]`}
+        style={{
+          transform: open ? 'translateX(0)' : 'translateX(100%)'
+        }}
         role="dialog"
         aria-modal="true"
         tabIndex={-1}

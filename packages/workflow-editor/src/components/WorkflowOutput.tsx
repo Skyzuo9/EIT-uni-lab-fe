@@ -266,7 +266,10 @@ export function WorkflowOutput({
                   ? eventNodeNames.get(event.nodeId) || event.nodeId
                   : '整体运行'
                 return (
-                  <div key={event.key ?? `${event.nodeId}:${event.seq}:${event.type}`}>
+                  <div
+                    key={event.key ?? `${event.nodeId}:${event.seq}:${event.type}`}
+                    data-event-kind={event.type}
+                  >
                     <code>#{event.seq}</code>
                     <span>
                       <strong>{eventLabel(event.type)}</strong>

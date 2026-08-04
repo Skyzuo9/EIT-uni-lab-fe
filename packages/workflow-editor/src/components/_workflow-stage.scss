@@ -291,18 +291,46 @@
 .workflow:global(.workflow-runtime) :global(.wf-dag) {
   background-color: var(--unilab-color-canvas);
   background-image:
-    linear-gradient(rgb(100 116 139 / 7%) 1px, transparent 1px),
-    linear-gradient(90deg, rgb(100 116 139 / 7%) 1px, transparent 1px);
-  background-size: 24px 24px;
+    radial-gradient(
+      circle at 50% 38%,
+      color-mix(
+        in srgb,
+        var(--unilab-color-workflow) 7%,
+        transparent
+      ),
+      transparent 38%
+    ),
+    linear-gradient(rgb(100 116 139 / 8%) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(100 116 139 / 8%) 1px, transparent 1px);
+  background-size: 100% 100%, 24px 24px, 24px 24px;
 }
 
 .workflow:global(.workflow-runtime) :global(.wf-node) {
+  position: relative;
   min-width: 188px;
   color: var(--unilab-color-text);
   border-color: var(--unilab-color-border-strong);
   border-radius: var(--unilab-radius-md);
   background: var(--unilab-color-surface);
-  box-shadow: none;
+  box-shadow:
+    0 8px 20px rgb(37 99 235 / 8%),
+    0 2px 6px rgb(15 23 42 / 7%);
+  transition:
+    border-color var(--unilab-motion-fast) ease,
+    box-shadow var(--unilab-motion-fast) ease,
+    transform var(--unilab-motion-fast) ease;
+}
+
+.workflow:global(.workflow-runtime) :global(.wf-node)::before {
+  position: absolute;
+  z-index: 1;
+  top: -1px;
+  right: 12px;
+  left: 12px;
+  height: 3px;
+  border-radius: 0 0 3px 3px;
+  background: var(--unilab-color-workflow);
+  content: '';
 }
 
 .workflow:global(.workflow-runtime) :global(.wf-node):hover {
@@ -311,13 +339,20 @@
     var(--unilab-color-workflow) 44%,
     var(--unilab-color-border-strong)
   );
-  box-shadow: var(--unilab-shadow-control);
+  box-shadow:
+    0 12px 26px rgb(37 99 235 / 12%),
+    0 3px 8px rgb(15 23 42 / 9%);
+  transform: translateY(-1px);
+}
+
+.workflow:global(.workflow-runtime) :global(.wf-node):active {
+  transform: translateY(0) scale(.99);
 }
 
 .workflow:global(.workflow-runtime) :global(.wf-node__body) {
-  gap: 4px;
-  min-height: 78px;
-  padding: 11px 76px 11px 12px;
+  gap: 5px;
+  min-height: 88px;
+  padding: 14px 76px 12px 13px;
 }
 
 .workflow :global(.wf-node__markers) {
@@ -408,14 +443,43 @@
 }
 
 .workflow :global(.wf-node__kind) {
-  color: var(--unilab-color-text-muted);
+  width: max-content;
+  padding: 2px 6px;
+  color: var(--unilab-color-workflow);
+  border-radius: var(--unilab-radius-sm);
+  background: var(--unilab-color-workflow-soft);
   font: 600 11px/16px var(--unilab-font-sans);
   letter-spacing: .01em;
 }
 
+.workflow :global(.wf-node__id) {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: -.01em;
+}
+
 .workflow :global(.wf-node__state) {
+  display: inline-flex;
+  width: max-content;
+  align-items: center;
+  gap: 6px;
   color: var(--unilab-color-text-muted);
   font: 500 12px/16px var(--unilab-font-sans);
+}
+
+.workflow :global(.wf-node__state)::before {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border: 2px solid var(--unilab-color-surface);
+  border-radius: 50%;
+  background: var(--unilab-color-skipped);
+  box-shadow: 0 0 0 1px color-mix(
+    in srgb,
+    var(--unilab-color-skipped) 34%,
+    transparent
+  );
+  content: '';
 }
 
 .workflow :global(.wf-node__group-toggle) {
@@ -456,8 +520,16 @@
   color: var(--unilab-color-warning);
 }
 
+.workflow :global(.wf-node__state--running)::before {
+  background: var(--unilab-color-warning);
+}
+
 .workflow :global(.wf-node__state--success) {
   color: var(--unilab-color-success);
+}
+
+.workflow :global(.wf-node__state--success)::before {
+  background: var(--unilab-color-success);
 }
 
 .workflow :global(.wf-node__state--skipped) {
@@ -467,6 +539,11 @@
 .workflow :global(.wf-node__state--failed),
 .workflow :global(.wf-node__state--reconciling) {
   color: var(--unilab-color-danger);
+}
+
+.workflow :global(.wf-node__state--failed)::before,
+.workflow :global(.wf-node__state--reconciling)::before {
+  background: var(--unilab-color-danger);
 }
 
 .workflow :global(.wf-node--material-source) {
@@ -481,6 +558,10 @@
     var(--wf-material-accent) 4%,
     var(--unilab-color-surface)
   );
+}
+
+.workflow :global(.wf-node--material-source)::before {
+  background: var(--wf-material-accent);
 }
 
 .workflow:global(.workflow-runtime) :global(.wf-node--material-source) :global(.wf-node__body) {
@@ -575,6 +656,10 @@
   animation: workflow-running-pulse 1.2s ease-in-out infinite;
 }
 
+.workflow :global(.wf-flow-node--running) :global(.wf-node)::before {
+  background: var(--unilab-color-warning);
+}
+
 .workflow :global(.wf-flow-node--success) :global(.wf-node) {
   border-color: color-mix(
     in srgb,
@@ -583,9 +668,18 @@
   );
 }
 
+.workflow :global(.wf-flow-node--success) :global(.wf-node)::before {
+  background: var(--unilab-color-success);
+}
+
 .workflow :global(.wf-flow-node--skipped) :global(.wf-node) {
   opacity: .58;
   border-color: var(--unilab-color-skipped);
+}
+
+.workflow :global(.wf-flow-node--skipped) :global(.wf-node)::before,
+.workflow :global(.wf-flow-node--before-start) :global(.wf-node)::before {
+  background: var(--unilab-color-skipped);
 }
 
 .workflow :global(.wf-flow-node--before-start) :global(.wf-node) {
@@ -606,6 +700,10 @@
     );
 }
 
+.workflow :global(.wf-flow-node--paused-before) :global(.wf-node)::before {
+  background: var(--unilab-color-paused);
+}
+
 .workflow :global(.react-flow__edge):global(.wf-flow-edge--before-start) {
   opacity: .2;
   filter: grayscale(1);
@@ -614,6 +712,35 @@
 .workflow :global(.wf-flow-node--failed) :global(.wf-node),
 .workflow :global(.wf-flow-node--reconciling) :global(.wf-node) {
   border-color: var(--unilab-color-danger);
+}
+
+.workflow :global(.wf-flow-node--failed) :global(.wf-node)::before,
+.workflow :global(.wf-flow-node--reconciling) :global(.wf-node)::before {
+  background: var(--unilab-color-danger);
+}
+
+.workflow :global(.react-flow__controls),
+.workflow :global(.react-flow__minimap) {
+  overflow: hidden;
+  border: 1px solid var(--unilab-color-border);
+  border-radius: var(--unilab-radius-md);
+  background: color-mix(
+    in srgb,
+    var(--unilab-color-workflow) 3%,
+    var(--unilab-color-surface)
+  );
+  box-shadow: 0 8px 22px rgb(15 23 42 / 10%);
+}
+
+.workflow :global(.react-flow__controls-button) {
+  color: var(--unilab-color-text-muted);
+  border-bottom-color: var(--unilab-color-border);
+  background: transparent;
+}
+
+.workflow :global(.react-flow__controls-button):hover {
+  color: var(--unilab-color-primary);
+  background: var(--unilab-color-workflow-soft);
 }
 
 .workflow :global(.wf-flow-node--breakpoint) :global(.wf-node)::after {
