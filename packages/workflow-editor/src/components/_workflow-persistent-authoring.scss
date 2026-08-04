@@ -26,16 +26,11 @@
   }
 
   :global(.persistent-authoring__toolbar-run) {
-    border-color: color-mix(
-      in srgb,
-      var(--unilab-color-workflow) 22%,
-      var(--unilab-color-border)
-    );
-    background: color-mix(
-      in srgb,
-      var(--unilab-color-workflow) 5%,
-      var(--unilab-color-surface)
-    );
+    gap: var(--unilab-space-2);
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
   }
 
   :global(.persistent-authoring__toolbar-group) > :global(.workflow__upload) {

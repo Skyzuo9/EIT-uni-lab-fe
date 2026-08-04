@@ -21,11 +21,53 @@ export function projectPersistentAuthoringGraph(
     const ioType = String(handle.io_type || '')
     if (!templateUuid || (ioType !== 'source' && ioType !== 'target')) continue
     const handles = handlesByTemplate.get(templateUuid) ?? []
+    const metaData = isRecord(handle.meta_data) ? handle.meta_data : {}
+    const unilab = isRecord(metaData.unilab) ? metaData.unilab : {}
+    const valueSchema = isRecord(unilab.value_schema)
+      ? unilab.value_schema
+      : undefined
+    const handleKey = String(handle.handle_key || '')
+    const dataKey = typeof handle.data_key === 'string'
+      ? handle.data_key
+      : null
+    const displayName = String(handle.display_name || handleKey)
+    const schemaTitle = valueSchema
+      ? nullableString(valueSchema.title)
+      : null
+    const schemaDescription = valueSchema
+      ? nullableString(valueSchema.description)
+      : null
+    const title = nullableString(handle.title) ?? schemaTitle ?? (
+      displayName !== (dataKey || handleKey) ? displayName : null
+    )
+    const description = nullableString(handle.description) ?? schemaDescription
+    const allowlist = stringArrayOrNull(
+      unilab.allowed_resource_template_uuids
+    )
     handles.push({
       uuid: String(handle.uuid || ''),
-      handleKey: String(handle.handle_key || ''),
-      displayName: String(handle.display_name || handle.handle_key || ''),
-      ioType
+      handleKey,
+      displayName,
+      ...(title ? { title } : {}),
+      ...(description ? { description } : {}),
+      ioType,
+      ...(typeof handle.type === 'string'
+        ? { valueType: handle.type }
+        : {}),
+      ...(valueSchema ? { valueSchema } : {}),
+      ...(typeof handle.data_key === 'string' || handle.data_key === null
+        ? { dataKey: handle.data_key }
+        : {}),
+      ...(typeof unilab.editor_control === 'string' ||
+        unilab.editor_control === null
+        ? { editorControl: unilab.editor_control }
+        : {}),
+      ...(allowlist !== undefined
+        ? { allowedResourceTemplateUuids: allowlist }
+        : {}),
+      ...(typeof unilab.implicit_passthrough === 'boolean'
+        ? { implicitPassthrough: unilab.implicit_passthrough }
+        : {})
     })
     handlesByTemplate.set(templateUuid, handles)
   }
@@ -282,6 +324,13 @@ function finite(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value)
     ? value
     : undefined
+}
+
+function stringArrayOrNull(value: unknown): string[] | null | undefined {
+  if (value === null) return null
+  if (!Array.isArray(value)) return undefined
+  if (!value.every((item) => typeof item === 'string')) return undefined
+  return [...value]
 }
 
 function nullableString(value: unknown): string | null {

@@ -32,6 +32,7 @@ export interface WorkflowNodeData {
   descendantCount?: number
   handles?: WorkflowHandlePort[]
   traceAccent?: string
+  materialHandleAccents?: Record<string, string>
   materialChips?: WorkflowMaterialChip[]
   materialSource?: {
     mode: string
@@ -57,6 +58,10 @@ export default function WorkflowNodeCard({
   const sourceHandles = data.handles?.filter(
     (handle) => handle.ioType === 'source'
   )
+  const materialPorts = workflowMaterialPortCards(
+    [...(targetHandles ?? []), ...(sourceHandles ?? [])],
+    data.materialHandleAccents
+  )
   return (
     <div
       className={`${styles.node} wf-node ${materialSource ? 'wf-node--material-source' : 'wf-node--action-strip'} min-w-[150px] max-w-[220px] cursor-pointer overflow-visible rounded-[var(--unilab-radius-md)] border border-[var(--unilab-color-border)] bg-[var(--unilab-color-surface)] transition-[border-color,box-shadow] duration-200`}
@@ -66,7 +71,12 @@ export default function WorkflowNodeCard({
         ? ({ '--wf-material-accent': data.traceAccent } as CSSProperties)
         : undefined}
     >
-      {renderHandles(targetHandles, 'target', targetPosition)}
+      {renderStructuralHandles(
+        targetHandles,
+        'target',
+        targetPosition,
+        data.materialHandleAccents
+      )}
 
       {allowsDebugMarkers && (
         <div className="wf-node__markers">
@@ -118,27 +128,7 @@ export default function WorkflowNodeCard({
             </small>
           </span>
         )}
-        {!materialSource && Boolean(data.materialChips?.length) && (
-          <span className="wf-node__material-chips" aria-label="物料轨道">
-            {data.materialChips?.map((chip) => (
-              <span
-                key={`${chip.handleUuid}:${chip.sourceNodeUuid}`}
-                style={{ '--wf-material-accent': chip.accent } as CSSProperties}
-                title={`${chip.label} · ${chip.sourceNodeUuid} · 端口 ${chip.handleUuid}`}
-              >
-                {chip.label}<small>{chip.shortIdentity}</small>
-              </span>
-            ))}
-          </span>
-        )}
-        {!materialSource && (
-          <span
-            className="wf-node__port-summary"
-            title={`${targetHandles?.length ?? 1} 个输入端口，${sourceHandles?.length ?? 1} 个输出端口`}
-          >
-            入 {targetHandles?.length ?? 1} · 出 {sourceHandles?.length ?? 1}
-          </span>
-        )}
+        {renderMaterialPorts(materialPorts)}
         {data.groupKind === 'subworkflow' && (
           <button
             type="button"
@@ -156,9 +146,11 @@ export default function WorkflowNodeCard({
             {data.descendantCount || 0} 个内部节点
           </button>
         )}
-        <span className={`wf-node__state wf-node__state--${data.status || 'pending'}`}>
-          {workflowNodeStateLabel(data.kind, data.status || 'pending')}
-        </span>
+        {workflowNodeShowsState(data.kind, data.status) && (
+          <span className={`wf-node__state wf-node__state--${data.status || 'pending'}`}>
+            {workflowNodeStateLabel(data.kind, data.status || 'pending')}
+          </span>
+        )}
         {allowsDebugMarkers && (data.onSetStart || data.onToggleBreakpoint) && (
           <span className="wf-node__marker-actions">
             {data.onSetStart && (
@@ -195,40 +187,179 @@ export default function WorkflowNodeCard({
         )}
       </div>
 
-      {renderHandles(sourceHandles, 'source', sourcePosition)}
+      {renderStructuralHandles(
+        sourceHandles,
+        'source',
+        sourcePosition,
+        data.materialHandleAccents
+      )}
     </div>
   )
 }
 
-function renderHandles(
+function renderStructuralHandles(
   handles: WorkflowHandlePort[] | undefined,
   ioType: 'source' | 'target',
-  position: Position
+  position: Position,
+  materialHandleAccents: Record<string, string> | undefined
 ): React.JSX.Element | React.JSX.Element[] {
   if (handles === undefined) {
     return (
       <Handle
         type={ioType}
         position={position}
-        className="wf-node__handle"
+        className="wf-node__handle wf-node__handle--structural"
+        data-workflow-handle-kind="structural"
+        aria-hidden="true"
       />
     )
   }
-  return handles.map((handle, index) => (
+  const structuralHandles = handles.filter(
+    (handle) => !materialHandleAccents?.[handle.uuid]
+  )
+  return structuralHandles.map((handle, index) => {
+    return (
+      <Handle
+        key={handle.uuid}
+        id={handle.uuid}
+        type={ioType}
+        position={position}
+        className="wf-node__handle wf-node__handle--structural"
+        data-workflow-handle-template-uuid={handle.uuid}
+        data-workflow-handle-key={handle.handleKey}
+        data-workflow-handle-io={ioType}
+        data-workflow-handle-kind="structural"
+        aria-hidden="true"
+        style={handlePosition(position, index, structuralHandles.length)}
+      />
+    )
+  })
+}
+
+export interface WorkflowMaterialPortCard {
+  key: string
+  variableName: string
+  label: string
+  description?: string
+  accent: string
+  targetHandle?: WorkflowHandlePort
+  sourceHandle?: WorkflowHandlePort
+}
+
+export function workflowMaterialPortCards(
+  handles: readonly WorkflowHandlePort[],
+  materialHandleAccents: Record<string, string> | undefined
+): WorkflowMaterialPortCard[] {
+  const cards: WorkflowMaterialPortCard[] = []
+  for (const handle of handles) {
+    const accent = materialHandleAccents?.[handle.uuid]
+    if (!accent) continue
+    const variableName = handle.dataKey?.trim() || handle.handleKey
+    const slot = handle.ioType === 'target' ? 'targetHandle' : 'sourceHandle'
+    const existing = cards.find((card) =>
+      card.variableName === variableName &&
+      card.accent === accent &&
+      card[slot] === undefined
+    )
+    if (existing) {
+      existing[slot] = handle
+      existing.label = preferredMaterialPortLabel(existing, handle)
+      existing.description = mergeDescriptions(
+        existing.description,
+        handle.description
+      )
+      continue
+    }
+    cards.push({
+      key: `${variableName}:${accent}:${cards.length}`,
+      variableName,
+      label: handle.title || variableName || handle.displayName,
+      ...(handle.description ? { description: handle.description } : {}),
+      accent,
+      [slot]: handle
+    })
+  }
+  return cards
+}
+
+function preferredMaterialPortLabel(
+  card: WorkflowMaterialPortCard,
+  handle: WorkflowHandlePort
+): string {
+  const target = handle.ioType === 'target'
+    ? handle
+    : card.targetHandle
+  return target?.title || handle.title || card.variableName || handle.displayName
+}
+
+function mergeDescriptions(
+  current: string | undefined,
+  incoming: string | undefined
+): string | undefined {
+  if (!incoming || incoming === current) return current
+  return current ? `${current}\n${incoming}` : incoming
+}
+
+function renderMaterialPorts(
+  cards: readonly WorkflowMaterialPortCard[]
+): React.JSX.Element | null {
+  if (cards.length === 0) return null
+  return (
+    <span className="wf-node__material-ports" aria-label="物料变量">
+      {cards.map((card) => (
+        <span
+          key={card.key}
+          className="wf-node__material-port"
+          data-workflow-material-port-variable={card.variableName}
+          data-workflow-material-port-label={card.label}
+          data-workflow-material-port-description={card.description}
+          style={{ '--wf-material-accent': card.accent } as CSSProperties}
+          title={card.description}
+          aria-label={card.description
+            ? `${card.label}：${card.description}`
+            : card.label}
+        >
+          {card.targetHandle && renderMaterialHandle(
+            card.targetHandle,
+            'target',
+            card.accent,
+            card.label
+          )}
+          <span className="wf-node__material-port-label">{card.label}</span>
+          {card.sourceHandle && renderMaterialHandle(
+            card.sourceHandle,
+            'source',
+            card.accent,
+            card.label
+          )}
+        </span>
+      ))}
+    </span>
+  )
+}
+
+function renderMaterialHandle(
+  handle: WorkflowHandlePort,
+  ioType: 'source' | 'target',
+  accent: string,
+  label: string
+): React.JSX.Element {
+  return (
     <Handle
       key={handle.uuid}
       id={handle.uuid}
       type={ioType}
-      position={position}
-      className="wf-node__handle"
+      position={ioType === 'target' ? Position.Top : Position.Bottom}
+      className={`wf-node__handle wf-node__handle--material wf-node__handle--${ioType}`}
       data-workflow-handle-template-uuid={handle.uuid}
       data-workflow-handle-key={handle.handleKey}
       data-workflow-handle-io={ioType}
-      aria-label={`${handle.displayName} ${ioType === 'target' ? '输入' : '输出'}端口`}
-      title={`${handle.handleKey} · ${handle.uuid}`}
-      style={handlePosition(position, index, handles.length)}
+      data-workflow-handle-kind="material"
+      aria-label={`${label} 物料${ioType === 'target' ? '输入' : '输出'}端口`}
+      title={handle.description || `${label} · 物料流`}
+      style={{ '--wf-material-accent': accent } as CSSProperties}
     />
-  ))
+  )
 }
 
 function handlePosition(
@@ -244,6 +375,10 @@ function handlePosition(
 
 export function workflowNodeAllowsDebugMarkers(kind?: string): boolean {
   return kind !== 'material_source'
+}
+
+export function workflowNodeShowsState(kind?: string, status?: string): boolean {
+  return Boolean(status && status !== 'pending')
 }
 
 export function workflowNodeKindLabel(kind?: string): string {

@@ -488,12 +488,6 @@
   gap: 7px;
 }
 
-.workflow :global(.wf-node__port-summary) {
-  color: var(--unilab-color-text-subtle);
-  font: 500 9px/15px var(--unilab-font-mono, monospace);
-  white-space: nowrap;
-}
-
 .workflow :global(.wf-node__footer) {
   display: flex;
   min-height: 27px;
@@ -534,10 +528,15 @@
   box-shadow: 0 0 0 2px var(--unilab-color-canvas);
 }
 
+.workflow :global(.wf-node__handle--structural) {
+  visibility: hidden;
+  pointer-events: none;
+}
+
 /* 参考 LINQ 的紧凑操作条，节点名称与运行信息统一收在节点内。 */
 .workflow:global(.workflow-runtime) :global(.wf-node--action-strip) {
   min-width: 248px;
-  max-width: 336px;
+  max-width: 520px;
   border-radius: var(--unilab-radius-control);
   background: var(--unilab-color-surface);
   box-shadow: 0 2px 7px rgb(15 23 42 / 8%);
@@ -582,21 +581,13 @@
   line-height: 16px;
 }
 
-.workflow :global(.wf-node--action-strip) :global(.wf-node__port-summary),
-.workflow :global(.wf-node--action-strip) :global(.wf-node__state),
-.workflow :global(.wf-node--action-strip) :global(.wf-node__material-chips) > span {
+.workflow :global(.wf-node--action-strip) :global(.wf-node__state) {
   display: inline-flex;
   height: 28px;
   align-items: center;
   padding: 0 8px;
   border-radius: var(--unilab-radius-sm);
   white-space: nowrap;
-}
-
-.workflow :global(.wf-node--action-strip) :global(.wf-node__port-summary) {
-  color: var(--unilab-color-workflow);
-  background: var(--unilab-color-workflow-soft);
-  font: 600 9px/28px var(--unilab-font-mono, monospace);
 }
 
 .workflow :global(.wf-node--action-strip) :global(.wf-node__state) {
@@ -610,20 +601,6 @@
 .workflow :global(.wf-node--action-strip) :global(.wf-node__state)::before {
   width: 6px;
   height: 6px;
-}
-
-.workflow :global(.wf-node--action-strip) :global(.wf-node__material-chips) {
-  flex-wrap: nowrap;
-  margin: 0;
-}
-
-.workflow :global(.wf-node--action-strip) :global(.wf-node__material-chips) > span {
-  gap: 0;
-  font-size: 10px;
-}
-
-.workflow :global(.wf-node--action-strip) :global(.wf-node__material-chips) small {
-  display: none;
 }
 
 .workflow :global(.wf-node--action-strip) :global(.wf-node__marker-actions) {
@@ -781,18 +758,45 @@
   border-color: var(--wf-material-accent);
 }
 
-.workflow :global(.wf-node__material-chips) {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin-top: 2px;
+.workflow :global(.wf-node__handle--material),
+.workflow :global(.wf-node__handle--material):global(.connecting),
+.workflow :global(.wf-node__handle--material):global(.connected) {
+  border-color: var(--wf-material-accent);
+  background: color-mix(
+    in srgb,
+    var(--wf-material-accent) 12%,
+    var(--unilab-color-surface)
+  );
 }
 
-.workflow :global(.wf-node__material-chips) > span {
+.workflow :global(.wf-node__handle--material):hover {
+  border-color: var(--wf-material-accent);
+}
+
+.workflow :global(.wf-node__material-ports) {
   display: inline-flex;
+  min-width: 0;
+  align-items: stretch;
+  align-self: stretch;
+  flex: 0 0 auto;
+  gap: 5px;
+}
+
+.workflow :global(.wf-node__material-port) {
+  position: relative;
+  display: inline-flex;
+  min-width: 58px;
+  max-width: 116px;
   align-items: center;
-  gap: 4px;
-  padding: 2px 6px;
+  justify-content: center;
+}
+
+.workflow :global(.wf-node__material-port-label) {
+  display: block;
+  width: 100%;
+  height: 28px;
+  overflow: hidden;
+  padding: 0 9px;
   color: var(--unilab-color-text);
   border: 1px solid color-mix(
     in srgb,
@@ -805,13 +809,76 @@
     var(--wf-material-accent) 9%,
     var(--unilab-color-surface)
   );
-  font-size: 9px;
-  font-weight: 650;
+  font: 650 10px/26px var(--unilab-font-sans);
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.workflow :global(.wf-node__material-chips) small {
-  opacity: .7;
-  font: 7px var(--unilab-font-mono, monospace);
+.workflow :global(.wf-node__material-port[data-workflow-material-port-description])::after {
+  position: absolute;
+  z-index: 12;
+  top: calc(50% + 23px);
+  left: 50%;
+  width: max-content;
+  max-width: 220px;
+  padding: 6px 8px;
+  color: var(--unilab-color-text);
+  border: 1px solid var(--unilab-color-border-strong);
+  border-radius: var(--unilab-radius-sm);
+  background: var(--unilab-color-surface);
+  box-shadow: 0 6px 16px rgb(15 23 42 / 12%);
+  content: attr(data-workflow-material-port-description);
+  font: 500 10px/15px var(--unilab-font-sans);
+  opacity: 0;
+  pointer-events: none;
+  text-align: left;
+  transform: translateX(-50%) translateY(-2px);
+  transition:
+    opacity var(--unilab-motion-fast) ease,
+    transform var(--unilab-motion-fast) ease;
+  white-space: normal;
+}
+
+.workflow :global(.wf-node__material-port[data-workflow-material-port-description]):hover::after {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+.workflow :global(.wf-node__material-port) > :global(.wf-node__handle) {
+  z-index: 4;
+  left: 50%;
+  margin: 0;
+}
+
+.workflow :global(.wf-node--action-strip)
+  :global(.wf-node__material-port)
+  > :global(.wf-node__handle--target) {
+  top: -7px;
+  transform: translate(-50%, -50%);
+}
+
+.workflow :global(.wf-node--action-strip)
+  :global(.wf-node__material-port)
+  > :global(.wf-node__handle--source) {
+  top: auto;
+  bottom: -7px;
+  transform: translate(-50%, 50%);
+}
+
+.workflow :global(.wf-node--material-source) :global(.wf-node__material-ports) {
+  width: 100%;
+  align-self: center;
+  justify-content: center;
+  margin-top: 3px;
+}
+
+.workflow :global(.wf-node--material-source)
+  :global(.wf-node__material-port)
+  > :global(.wf-node__handle--source) {
+  top: auto;
+  bottom: -16px;
+  transform: translate(-50%, 50%);
 }
 
 .workflow :global(.react-flow__edge) path {
@@ -838,7 +905,9 @@
 }
 
 .workflow :global(.react-flow__edge.wf-flow-edge--material-trace) path {
+  stroke-dasharray: 3 8;
   stroke-linecap: round;
+  animation: workflow-material-flow-direction 900ms linear infinite;
 }
 
 .workflow :global(.wf-node__state--material_waiting) {
@@ -971,8 +1040,19 @@
   }
 }
 
+@keyframes workflow-material-flow-direction {
+  to {
+    stroke-dashoffset: -22;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .workflow :global(.wf-flow-node--running) :global(.wf-node) {
+    animation: none;
+  }
+
+  .workflow :global(.react-flow__edge.wf-flow-edge--material-trace) path {
+    stroke-dasharray: none;
     animation: none;
   }
 }
