@@ -757,6 +757,9 @@ export function LocalRuntimeLogDrawer({
                 ref={outputRef}
                 className={styles.logOutput}
                 aria-label="格式化运行日志"
+                onPointerDown={() => {
+                  followLogTailRef.current = false
+                }}
                 onWheel={(event) => {
                   if (event.deltaY < 0) followLogTailRef.current = false
                 }}
