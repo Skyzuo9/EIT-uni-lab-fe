@@ -81,6 +81,17 @@ test('工作流输入输出与节点参数使用紧凑渐进式编辑', async ({
   await expect(page.locator('.wf-node__identity')).toHaveCount(2)
   await expect(page.locator('.wf-node__kind-glyph')).toHaveCount(2)
   await capture(page, testInfo, '10-workflow-canvas-reference-light')
+
+  await page.locator('.react-flow__node-wfNode').first().click()
+  const nodeEditor = page.getByRole('complementary', {
+    name: '画布节点编辑器'
+  })
+  await expect(nodeEditor).toBeVisible()
+  await expect(nodeEditor.getByText('节点属性', { exact: true })).toBeVisible()
+  await capture(page, testInfo, '11-workflow-node-properties')
+  await nodeEditor.getByRole('button', { name: '关闭属性面板' }).click()
+  await expect(nodeEditor).toBeHidden()
+
   await page.evaluate(() => {
     document.documentElement.dataset.theme = 'dark'
   })

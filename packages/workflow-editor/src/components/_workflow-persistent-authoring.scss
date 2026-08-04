@@ -257,7 +257,7 @@
   :global(.persistent-authoring__canvas-body) {
     position: relative;
     display: grid;
-    grid-template-columns: 184px minmax(480px, 1fr);
+    grid-template-columns: 208px minmax(480px, 1fr);
     grid-template-areas: 'palette graph';
     flex: 1;
     min-height: 260px;
@@ -265,7 +265,7 @@
   }
 
   :global(.persistent-authoring__canvas-body.has-inspector) {
-    grid-template-columns: 184px minmax(480px, 1fr) 288px;
+    grid-template-columns: 208px minmax(480px, 1fr) 320px;
     grid-template-areas: 'palette graph inspector';
   }
 
@@ -276,7 +276,7 @@
   }
 
   :global(.persistent-authoring__canvas-body.is-palette-closed.has-inspector) {
-    grid-template-columns: minmax(480px, 1fr) 288px;
+    grid-template-columns: minmax(480px, 1fr) 320px;
     grid-template-areas: 'graph inspector';
   }
 
@@ -287,13 +287,11 @@
     min-width: 0;
     overflow: auto;
     flex-direction: column;
-    border-right: 1px solid var(--unilab-color-border);
-    background: color-mix(
-      in srgb,
-      var(--unilab-color-workflow) 2%,
-      var(--unilab-color-surface-subtle)
-    );
-    box-shadow: 5px 0 18px rgb(15 23 42 / 4%);
+    margin: 12px 0 12px 12px;
+    border: 1px solid var(--unilab-color-border);
+    border-radius: var(--unilab-radius-md);
+    background: var(--unilab-color-surface);
+    box-shadow: 0 6px 20px rgb(15 23 42 / 10%);
   }
 
   :global(.persistent-authoring__palette) > header {
@@ -304,11 +302,7 @@
     gap: 2px;
     padding: var(--unilab-space-3);
     border-bottom: 1px solid var(--unilab-color-border);
-    background: color-mix(
-      in srgb,
-      var(--unilab-color-workflow) 4%,
-      var(--unilab-color-surface)
-    );
+    background: var(--unilab-color-surface);
   }
 
   :global(.persistent-authoring__palette) > header strong {
@@ -348,10 +342,10 @@
     gap: var(--unilab-space-2);
     padding: var(--unilab-space-2);
     color: var(--unilab-color-text);
-    border: 1px solid var(--unilab-color-border);
+    border: 1px solid transparent;
     border-radius: var(--unilab-radius-control);
-    background: var(--unilab-color-surface);
-    box-shadow: 0 2px 7px rgb(15 23 42 / 5%);
+    background: var(--unilab-color-surface-subtle);
+    box-shadow: none;
     text-align: left;
     cursor: pointer;
     transition:
@@ -362,8 +356,9 @@
 
   :global(.persistent-authoring__palette-source):hover,
   :global(.persistent-authoring__palette-actions) button:hover {
-    border-color: var(--unilab-color-border-strong);
-    box-shadow: var(--unilab-shadow-control);
+    border-color: var(--unilab-color-border);
+    background: var(--unilab-color-workflow-soft);
+    box-shadow: none;
     transform: translateX(2px);
   }
 
@@ -438,7 +433,12 @@
     gap: 6px;
     padding: 7px;
     color: var(--unilab-color-danger);
-    border-left: 2px solid var(--unilab-color-danger);
+    border: 1px solid color-mix(
+      in srgb,
+      var(--unilab-color-danger) 30%,
+      var(--unilab-color-border)
+    );
+    border-radius: var(--unilab-radius-sm);
     background: var(--unilab-color-danger-soft);
   }
 
@@ -455,7 +455,7 @@
     grid-area: graph;
     min-width: 0;
     min-height: 240px;
-    box-shadow: inset 0 0 0 1px rgb(37 99 235 / 3%);
+    box-shadow: none;
   }
 
   :global(.persistent-authoring__node-editor) {
@@ -468,7 +468,7 @@
     overflow: auto;
     padding: 0 14px 16px;
     border-left: 1px solid var(--unilab-color-border);
-    background: var(--unilab-color-surface-subtle);
+    background: var(--unilab-color-surface);
     font-size: 12px;
   }
 
@@ -483,7 +483,7 @@
     margin: 0 -14px;
     padding: 12px 14px 10px;
     border-bottom: 1px solid var(--unilab-color-border);
-    background: var(--unilab-color-surface-subtle);
+    background: var(--unilab-color-surface);
   }
 
   :global(.persistent-authoring__inspector-heading) > span {
@@ -521,7 +521,8 @@
   }
 
   :global(.persistent-authoring__inspector-heading) strong {
-    font-size: 15px;
+    font-size: 18px;
+    letter-spacing: -.02em;
   }
 
   :global(.persistent-authoring__node-editor) label {

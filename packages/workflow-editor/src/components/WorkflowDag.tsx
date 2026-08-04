@@ -360,8 +360,8 @@ export default function WorkflowDag({
         }}
       >
         <Background
-          gap={22}
-          size={1}
+          gap={24}
+          size={0.75}
           color="var(--unilab-color-border-strong)"
         />
         <Controls showInteractive={false} />
