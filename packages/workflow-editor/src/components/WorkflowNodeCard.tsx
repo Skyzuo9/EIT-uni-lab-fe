@@ -21,7 +21,6 @@ export interface WorkflowNodeData {
   id: string
   name: string
   color: string
-  executorLabel?: string
   kind?: string
   status?: string
   breakpoint?: boolean
@@ -58,14 +57,11 @@ export default function WorkflowNodeCard({
   const sourceHandles = data.handles?.filter(
     (handle) => handle.ioType === 'source'
   )
-  const horizontal = targetPosition === Position.Left ||
-    targetPosition === Position.Right
   return (
     <div
       className={`${styles.node} wf-node ${materialSource ? 'wf-node--material-source' : 'wf-node--action-strip'} min-w-[150px] max-w-[220px] cursor-pointer overflow-visible rounded-[var(--unilab-radius-md)] border border-[var(--unilab-color-border)] bg-[var(--unilab-color-surface)] transition-[border-color,box-shadow] duration-200`}
       data-workflow-node-uuid={data.id}
       data-workflow-node-kind={data.kind || 'action'}
-      data-workflow-axis={horizontal ? 'horizontal' : 'vertical'}
       style={materialSource
         ? ({ '--wf-material-accent': data.traceAccent } as CSSProperties)
         : undefined}
@@ -89,15 +85,6 @@ export default function WorkflowNodeCard({
         </div>
       )}
 
-      {!materialSource && (
-        <span className="wf-node__caption" aria-hidden="true">
-          <strong title={data.name || data.id}>{data.name || data.id}</strong>
-          <small title={data.executorLabel}>
-            {data.executorLabel || workflowNodeKindLabel(data.kind)}
-          </small>
-        </span>
-      )}
-
       <div className="wf-node__body">
         {materialSource && (
           <span className="wf-node__material-glyph" aria-hidden="true">▱</span>
@@ -114,13 +101,11 @@ export default function WorkflowNodeCard({
           </>
         ) : (
           <span className="wf-node__identity">
-            <span className="wf-node__kind-glyph" aria-hidden="true">
-              {workflowNodeKindGlyph(data.kind, data.groupKind)}
-            </span>
-            <span className="wf-node__kind">
-              {data.groupKind === 'subworkflow'
-                ? '子工作流'
-                : workflowNodeKindLabel(data.kind)}
+            <span
+              className="wf-node__id"
+              title={data.name || data.id}
+            >
+              {data.name || data.id}
             </span>
           </span>
         )}
@@ -271,20 +256,6 @@ export function workflowNodeKindLabel(kind?: string): string {
         : kind === 'group'
           ? '▣ 节点组'
           : '操作节点'
-}
-
-function workflowNodeKindGlyph(
-  kind?: string,
-  groupKind?: WorkflowNodeData['groupKind']
-): string {
-  if (groupKind === 'subworkflow') return '▣'
-  return kind === 'branch'
-    ? '◇'
-    : kind === 'join'
-      ? '◆'
-      : kind === 'group'
-        ? '▣'
-        : '→'
 }
 
 export function workflowNodeStateLabel(kind: string | undefined, status: string): string {

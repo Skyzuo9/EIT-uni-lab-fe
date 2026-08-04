@@ -65,7 +65,6 @@ export function useWorkflowDag(nodes: WorkflowNode[], links: WorkflowLink[]): Us
       data: {
         id: node.id,
         name: node.name,
-        executorLabel: node.className || node.labNodeType,
         color: getNodeColor(node.labNodeType, node.type),
         kind: node.type,
         groupKind: node.groupKind,

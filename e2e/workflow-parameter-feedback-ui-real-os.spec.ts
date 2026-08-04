@@ -78,8 +78,11 @@ test('工作流输入输出与节点参数使用紧凑渐进式编辑', async ({
 
   await dialog.getByRole('button', { name: '关闭' }).click()
   await expectDrawerExited(dialog)
-  await expect(page.locator('.wf-node__identity')).toHaveCount(2)
-  await expect(page.locator('.wf-node__kind-glyph')).toHaveCount(2)
+  const actionNodes = page.locator('.wf-node--action-strip')
+  await expect(actionNodes.locator('.wf-node__id')).toHaveCount(2)
+  await expect(actionNodes.locator('.wf-node__caption')).toHaveCount(0)
+  await expect(actionNodes.locator('.wf-node__kind-glyph')).toHaveCount(0)
+  await expect(actionNodes.getByText('操作节点', { exact: true })).toHaveCount(0)
   await capture(page, testInfo, '10-workflow-canvas-reference-light')
 
   await page.locator('.react-flow__node-wfNode').first().click()
