@@ -178,6 +178,7 @@ function initialSection(): WorkbenchSection {
   const section = new URLSearchParams(globalThis.location.search).get('section')
   if (
     section === 'device' ||
+    section === 'cards' ||
     section === 'material' ||
     section === 'scene' ||
     section === 'workflow'
