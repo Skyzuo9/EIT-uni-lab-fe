@@ -112,6 +112,13 @@
     gap: var(--unilab-space-3) !important;
   }
 
+  :global(.persistent-authoring__stage-tools) {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: var(--unilab-space-2);
+  }
+
   :global(.persistent-authoring__stage-header) strong {
     color: var(--unilab-color-text);
     font-size: 13px;
@@ -170,15 +177,57 @@
     opacity: .55;
   }
 
+  :global(.persistent-authoring__panel-toggle) {
+    min-height: 34px;
+    padding: 0 var(--unilab-space-3);
+    color: var(--unilab-color-text-muted);
+    border: 1px solid var(--unilab-color-border-strong);
+    border-radius: var(--unilab-radius-control);
+    background: var(--unilab-color-surface);
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
+  :global(.persistent-authoring__panel-toggle):hover {
+    color: var(--unilab-color-primary);
+    border-color: var(--unilab-color-focus);
+    background: var(--unilab-color-primary-soft);
+  }
+
+  :global(.persistent-authoring__panel-toggle):focus-visible {
+    outline: 2px solid var(--unilab-color-focus);
+    outline-offset: 2px;
+  }
+
   :global(.persistent-authoring__canvas-body) {
     position: relative;
     display: grid;
-    grid-template-columns: 184px minmax(480px, 1fr) 288px;
+    grid-template-columns: 184px minmax(480px, 1fr);
+    grid-template-areas: 'palette graph';
     flex: 1;
     min-height: 260px;
   }
 
+  :global(.persistent-authoring__canvas-body.has-inspector) {
+    grid-template-columns: 184px minmax(480px, 1fr) 288px;
+    grid-template-areas: 'palette graph inspector';
+  }
+
+  :global(.persistent-authoring__canvas-body.is-palette-closed),
+  :global(.persistent-authoring__canvas-body.is-code-mode) {
+    grid-template-columns: minmax(480px, 1fr);
+    grid-template-areas: 'graph';
+  }
+
+  :global(.persistent-authoring__canvas-body.is-palette-closed.has-inspector) {
+    grid-template-columns: minmax(480px, 1fr) 288px;
+    grid-template-areas: 'graph inspector';
+  }
+
   :global(.persistent-authoring__palette) {
+    grid-area: palette;
     z-index: 3;
     display: flex;
     min-width: 0;
@@ -320,6 +369,7 @@
 
   :global(.persistent-authoring__graph-stage) {
     position: relative;
+    grid-area: graph;
     min-width: 0;
     min-height: 240px;
   }
@@ -327,6 +377,7 @@
   :global(.persistent-authoring__node-editor) {
     z-index: 2;
     display: flex;
+    grid-area: inspector;
     min-width: 0;
     flex-direction: column;
     gap: 12px;
@@ -1641,14 +1692,29 @@
     }
 
     :global(.persistent-authoring__canvas-body) {
-      grid-template-columns: 148px minmax(300px, 1fr) 260px;
+      grid-template-columns: 148px minmax(300px, 1fr);
+      grid-template-areas: 'palette graph';
       grid-template-rows: minmax(300px, 1fr);
       overflow: hidden;
     }
 
+    :global(.persistent-authoring__canvas-body.has-inspector) {
+      grid-template-columns: 148px minmax(300px, 1fr) 260px;
+      grid-template-areas: 'palette graph inspector';
+    }
+
+    :global(.persistent-authoring__canvas-body.is-palette-closed),
+    :global(.persistent-authoring__canvas-body.is-code-mode) {
+      grid-template-columns: minmax(300px, 1fr);
+      grid-template-areas: 'graph';
+    }
+
+    :global(.persistent-authoring__canvas-body.is-palette-closed.has-inspector) {
+      grid-template-columns: minmax(300px, 1fr) 260px;
+      grid-template-areas: 'graph inspector';
+    }
+
     :global(.persistent-authoring__palette) {
-      grid-column: 1;
-      grid-row: 1;
       max-height: none;
       border-right: 1px solid var(--unilab-color-border);
       border-bottom: 0;
@@ -1660,15 +1726,12 @@
 
     :global(.persistent-authoring__node-editor) {
       position: relative;
-      grid-column: 3;
-      grid-row: 1;
       width: auto;
       max-height: none;
     }
 
     :global(.persistent-authoring__graph-stage) {
-      grid-column: 2;
-      grid-row: 1;
+      min-width: 0;
     }
 
     :global(.persistent-authoring__stage-header) {
@@ -1696,6 +1759,19 @@
 
     :global(.persistent-authoring__canvas-body) {
       grid-template-columns: 148px minmax(0, 1fr);
+      grid-template-areas: 'palette graph';
+    }
+
+    :global(.persistent-authoring__canvas-body.has-inspector) {
+      grid-template-columns: 148px minmax(0, 1fr);
+      grid-template-areas: 'palette graph';
+    }
+
+    :global(.persistent-authoring__canvas-body.is-palette-closed),
+    :global(.persistent-authoring__canvas-body.is-code-mode),
+    :global(.persistent-authoring__canvas-body.is-palette-closed.has-inspector) {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-areas: 'graph';
     }
 
     :global(.persistent-authoring__node-editor) {
@@ -1721,6 +1797,12 @@
       width: 100%;
       align-items: stretch;
       flex-direction: column;
+    }
+
+    :global(.persistent-authoring__stage-tools) {
+      display: grid;
+      width: 100%;
+      grid-template-columns: auto minmax(132px, 1fr);
     }
 
     :global(.persistent-authoring__stage-context) p {
@@ -1755,18 +1837,17 @@
     :global(.persistent-authoring__canvas-body) {
       --persistent-inspector-height: min(42vh, 440px);
       grid-template-columns: 1fr;
+      grid-template-areas: 'graph';
       grid-template-rows: minmax(260px, 1fr);
-      min-height: calc(260px + var(--persistent-inspector-height));
+      min-height: 260px;
       overflow: hidden;
-      padding-bottom: var(--persistent-inspector-height);
+      padding-bottom: 0;
       box-sizing: border-box;
     }
 
-    :global(.persistent-authoring__canvas-body):has(
-      :global(.persistent-authoring__node-editor.is-empty)
-    ) {
-      min-height: 260px;
-      padding-bottom: 0;
+    :global(.persistent-authoring__canvas-body.has-inspector) {
+      min-height: calc(260px + var(--persistent-inspector-height));
+      padding-bottom: var(--persistent-inspector-height);
     }
 
     :global(.persistent-authoring__palette) {
@@ -1779,11 +1860,11 @@
       border: 1px solid var(--unilab-color-border);
       border-radius: var(--unilab-radius-md);
       box-shadow: var(--unilab-shadow-control);
+      grid-area: graph;
     }
 
     :global(.persistent-authoring__graph-stage) {
-      grid-column: 1;
-      grid-row: 1;
+      grid-area: graph;
       height: 260px;
       min-height: 260px;
     }
@@ -1793,8 +1874,7 @@
       right: 0;
       bottom: 0;
       left: 0;
-      grid-column: auto;
-      grid-row: auto;
+      grid-area: graph;
       width: auto;
       height: var(--persistent-inspector-height);
       max-height: var(--persistent-inspector-height);

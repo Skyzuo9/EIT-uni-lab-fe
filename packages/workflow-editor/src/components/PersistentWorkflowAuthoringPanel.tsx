@@ -198,6 +198,7 @@ export function PersistentWorkflowAuthoringPanel({
   const [selectedNodeNameDirty, setSelectedNodeNameDirty] = useState(false)
   const [actionParametersOpen, setActionParametersOpen] = useState(false)
   const [workflowIoOpen, setWorkflowIoOpen] = useState(false)
+  const [nodePaletteOpen, setNodePaletteOpen] = useState(true)
   const [message, setMessage] = useState('正在读取 OS 工作流编辑状态…')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -1874,30 +1875,54 @@ export function PersistentWorkflowAuthoringPanel({
                     ? '当前显示已应用版本；暂无待应用修改'
                     : '画布编辑区基于已应用版本；暂无待应用修改'}
               </p>
-              <button
-                type="button"
-                className="persistent-authoring__io-trigger"
-                disabled={!graph}
-                title={mode === 'code'
-                  ? '当前为只读预览；切换到画布模式后可配置'
-                  : '配置整个工作流的入参、出参与节点端口绑定'}
-                onClick={() => setWorkflowIoOpen(true)}
-              >
-                <span>工作流参数</span>
-                <strong>
-                  入 {candidateIo?.input_contract.parameters.length ?? 0}
-                  {' · '}出 {candidateIo?.output_contract.outputs.length ?? 0}
-                </strong>
-              </button>
+              <div className="persistent-authoring__stage-tools">
+                {mode === 'canvas' && (
+                  <button
+                    type="button"
+                    className="persistent-authoring__panel-toggle"
+                    aria-controls="persistent-authoring-node-palette"
+                    aria-pressed={nodePaletteOpen}
+                    onClick={() => setNodePaletteOpen((open) => !open)}
+                  >
+                    {nodePaletteOpen ? '隐藏节点库' : '显示节点库'}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="persistent-authoring__io-trigger"
+                  disabled={!graph}
+                  title={mode === 'code'
+                    ? '当前为只读预览；切换到画布模式后可配置'
+                    : '配置整个工作流的入参、出参与节点端口绑定'}
+                  onClick={() => setWorkflowIoOpen(true)}
+                >
+                  <span>工作流参数</span>
+                  <strong>
+                    入 {candidateIo?.input_contract.parameters.length ?? 0}
+                    {' · '}出 {candidateIo?.output_contract.outputs.length ?? 0}
+                  </strong>
+                </button>
+              </div>
             </div>
           </header>
-          <div className="persistent-authoring__canvas-body">
+          <div className={[
+            'persistent-authoring__canvas-body',
+            mode === 'code' ? 'is-code-mode' : '',
+            mode === 'canvas' && !nodePaletteOpen
+              ? 'is-palette-closed'
+              : '',
+            mode === 'canvas' && selectedNodeUuid
+              ? 'has-inspector'
+              : ''
+          ].filter(Boolean).join(' ')}>
             {graph ? (
               <>
-                <aside
-                  className="persistent-authoring__palette"
-                  aria-label="工作流节点面板"
-                >
+                {mode === 'canvas' && nodePaletteOpen && (
+                  <aside
+                    id="persistent-authoring-node-palette"
+                    className="persistent-authoring__palette"
+                    aria-label="工作流节点面板"
+                  >
                   <header>
                     <strong>节点</strong>
                     <span>添加到画布编辑区</span>
@@ -1984,7 +2009,8 @@ export function PersistentWorkflowAuthoringPanel({
                       </div>
                     </section>
                   )}
-                </aside>
+                  </aside>
+                )}
                 <div className="persistent-authoring__graph-stage">
                   <WorkflowDag
                     nodes={structure.nodes}
@@ -2003,21 +2029,18 @@ export function PersistentWorkflowAuthoringPanel({
                     onConnectHandles={connectTypedHandles}
                   />
                 </div>
-                <aside
-                  className={[
-                    'persistent-authoring__node-editor',
-                    selectedNodeUuid ? '' : 'is-empty'
-                  ].filter(Boolean).join(' ')}
-                  aria-label="画布节点编辑器"
-                >
-                  <header className="persistent-authoring__inspector-heading">
-                    <span>
-                      <span>属性</span>
-                      <strong>
-                        {selectedIsMaterialSource ? '物料来源' : '节点属性'}
-                      </strong>
-                    </span>
-                    {selectedNodeUuid && (
+                {mode === 'canvas' && selectedNodeUuid && (
+                  <aside
+                    className="persistent-authoring__node-editor"
+                    aria-label="画布节点编辑器"
+                  >
+                    <header className="persistent-authoring__inspector-heading">
+                      <span>
+                        <span>属性</span>
+                        <strong>
+                          {selectedIsMaterialSource ? '物料来源' : '节点属性'}
+                        </strong>
+                      </span>
                       <button
                         type="button"
                         aria-label="关闭属性面板"
@@ -2037,28 +2060,25 @@ export function PersistentWorkflowAuthoringPanel({
                       >
                         ×
                       </button>
-                    )}
-                  </header>
-                  {selectedNodeUuid ? (
-                    <>
-                      <label>
-                        节点名称
-                        <input
-                          value={selectedNodeName}
-                          disabled={
-                            busy || !policy.canvasMutationEnabled ||
-                            selectedNodeIsInternal
-                          }
-                          aria-describedby="persistent-node-name-help"
-                          onChange={(event) => {
-                            setSelectedNodeName(event.target.value)
-                            setSelectedNodeNameDirty(true)
-                            setMessage(
-                              '画布缓冲已修改；保存前将生成完整 Python 差异'
-                            )
-                          }}
-                        />
-                      </label>
+                    </header>
+                    <label>
+                      节点名称
+                      <input
+                        value={selectedNodeName}
+                        disabled={
+                          busy || !policy.canvasMutationEnabled ||
+                          selectedNodeIsInternal
+                        }
+                        aria-describedby="persistent-node-name-help"
+                        onChange={(event) => {
+                          setSelectedNodeName(event.target.value)
+                          setSelectedNodeNameDirty(true)
+                          setMessage(
+                            '画布缓冲已修改；保存前将生成完整 Python 差异'
+                          )
+                        }}
+                      />
+                    </label>
                       {selectedMaterialSourceEditor && (
                         <MaterialSourceInspector
                           editor={selectedMaterialSourceEditor}
@@ -2115,16 +2135,11 @@ export function PersistentWorkflowAuthoringPanel({
                           {selectedActionProjection.error}
                         </p>
                       )}
-                    </>
-                  ) : (
-                    <p>选择一个节点后可编辑可由 Python 表示的属性。</p>
-                  )}
-                  <p id="persistent-node-name-help">
-                    {mode === 'canvas'
-                      ? '名称修改属于画布缓冲，接受完整 Python 差异后才会持久化。'
-                      : '代码模式下节点属性只读。'}
-                  </p>
-                </aside>
+                    <p id="persistent-node-name-help">
+                      名称修改属于画布缓冲，接受完整 Python 差异后才会持久化。
+                    </p>
+                  </aside>
+                )}
               </>
             ) : (
               <p className="persistent-authoring__empty">
