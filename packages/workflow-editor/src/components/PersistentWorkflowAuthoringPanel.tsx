@@ -44,6 +44,7 @@ import {
   type WorkflowEditMode
 } from '../utils/workflowCanvasPolicy'
 import {
+  beautifyPersistentAuthoringGraph,
   parseWorkflowAuthoringGraphImport,
   projectPersistentAuthoringGraph,
   updatePersistentAuthoringNodeName
@@ -288,7 +289,10 @@ export function PersistentWorkflowAuthoringPanel({
             throw new Error('OS 未返回完整的画布与 Python 数据')
           }
           setMode('canvas')
-          setGraph(generated.graph)
+          const beautifiedGraph = beautifyPersistentAuthoringGraph(
+            generated.graph
+          )
+          setGraph(beautifiedGraph)
           editor.replaceContent(generated.normalized_python_source)
           setCanvasDirty(true)
           setSelectedNodeUuid(null)
@@ -304,7 +308,7 @@ export function PersistentWorkflowAuthoringPanel({
             codeDirty: false,
             canvasDirty: true,
             editorValue: generated.normalized_python_source,
-            graph: generated.graph,
+            graph: beautifiedGraph,
             selectedNodeUuid: null,
             selectedNodeName: '',
             selectedNodeNameDirty: false
@@ -348,6 +352,20 @@ export function PersistentWorkflowAuthoringPanel({
       : { nodes: [], links: [], steps: [], error: null },
     [graph]
   )
+  /**
+   * 将当前候选图重新排成自上而下的工作流布局，并把结果留在画布草稿中。
+   *
+   * @returns 无返回值；没有可编辑候选图时保持现状。
+   */
+  const beautifyCanvasLayout = useCallback((): void => {
+    if (!graph || !policy.canvasMutationEnabled || busy) return
+    const nextGraph = beautifyPersistentAuthoringGraph(graph)
+    setGraph(nextGraph)
+    setCanvasDirty(true)
+    setSelectedNodeNameDirty(false)
+    setError(null)
+    setMessage('布局已美化；保存草稿后将写入工作流')
+  }, [busy, graph, policy.canvasMutationEnabled])
   const materialTraces = useMemo(
     () => projectMaterialTraces(structure.nodes, structure.links),
     [structure.links, structure.nodes]
@@ -562,14 +580,22 @@ export function PersistentWorkflowAuthoringPanel({
     [onUnsavedChangesChange]
   )
 
+  /**
+   * 安装 OS 权威工作流编写聚合，并为首次画布展示建立本地美化布局。
+   *
+   * @param next OS 返回的工作流编写聚合。
+   * @param nextMessage 安装完成后展示给用户的状态文案。
+   * @returns 无返回值；自动布局不会单独制造未保存修改。
+   */
   const installAggregate = useCallback((
     next: WorkflowAuthoringAggregate,
     nextMessage: string
   ): void => {
     const projection = authoringProjection(next)
+    const beautifiedGraph = beautifyPersistentAuthoringGraph(projection.graph)
     const python = authoritativePython(next)
     setAggregate(next)
-    setGraph(projection.graph)
+    setGraph(beautifiedGraph)
     editor.replaceContent(python)
     setCanvasDirty(false)
     setSelectedNodeUuid(null)
@@ -583,7 +609,7 @@ export function PersistentWorkflowAuthoringPanel({
       canvasDirty: false,
       editorValue: python,
       aggregate: next,
-      graph: projection.graph,
+      graph: beautifiedGraph,
       selectedNodeUuid: null,
       selectedNodeName: '',
       selectedNodeNameDirty: false
@@ -905,6 +931,12 @@ export function PersistentWorkflowAuthoringPanel({
     workflowUuid
   ])
 
+  /**
+   * 切换工作流单编辑权模式，并在进入画布模式时自动应用一次美化布局。
+   *
+   * @param nextMode 目标编辑模式。
+   * @returns 模式与 OS 投影同步完成后的 Promise。
+   */
   const enterMode = useCallback(async (
     nextMode: WorkflowEditMode
   ): Promise<void> => {
@@ -913,7 +945,9 @@ export function PersistentWorkflowAuthoringPanel({
     if (nextMode === 'canvas') {
       const sourceGraph = authoringProjection(aggregate).graph
       const generated = await generateCanvasPython(sourceGraph)
-      setGraph(generated.graph || sourceGraph)
+      setGraph(beautifyPersistentAuthoringGraph(
+        generated.graph || sourceGraph
+      ))
       editor.replaceContent(generated.normalized_python_source as string)
       setCanvasDirty(false)
       setSelectedNodeUuid(null)
@@ -2081,7 +2115,17 @@ export function PersistentWorkflowAuthoringPanel({
                     beforeStartNodeIds={
                       debugExecutionScope.beforeStartNodeIds
                     }
-                    canBeautify={false}
+                    canBeautify={
+                      !busy &&
+                      policy.canvasMutationEnabled &&
+                      structure.nodes.length > 0
+                    }
+                    beautifyDisabledReason={busy
+                      ? '正在处理工作流，请稍后美化布局'
+                      : !policy.canvasMutationEnabled
+                        ? '当前模式只允许查看工作流画布'
+                        : '工作流图尚未加载完成'}
+                    onBeautify={beautifyCanvasLayout}
                     canvasMutationEnabled={policy.canvasMutationEnabled}
                     onConnectHandles={connectTypedHandles}
                   />

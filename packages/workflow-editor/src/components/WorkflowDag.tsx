@@ -50,6 +50,7 @@ interface WorkflowDagProps {
   beforeStartNodeIds?: ReadonlySet<string>
   pausedBeforeNodeId?: string | null
   canBeautify?: boolean
+  beautifyDisabledReason?: string
   onBeautify?: () => void
   canvasMutationEnabled?: boolean
   nodePositionMutationEnabled?: boolean
@@ -68,7 +69,12 @@ interface WorkflowDagProps {
 // 注册自定义节点类型(在组件外定义,避免每次渲染重建)
 const nodeTypes = { wfNode: WorkflowNodeCard }
 
-// 拓扑 DAG:只读展示,支持缩放/平移/minimap,节点为大 web 风格卡片
+/**
+ * 渲染工作流拓扑、运行状态、物料流句柄及可选的画布编辑控制。
+ *
+ * @param props 工作流节点、边、状态、编辑能力与布局回调。
+ * @returns 可缩放、可适配且遵守当前画布权限的 ReactFlow 视图。
+ */
 export default function WorkflowDag({
   nodes,
   links,
@@ -81,6 +87,7 @@ export default function WorkflowDag({
   beforeStartNodeIds = new Set(),
   pausedBeforeNodeId = null,
   canBeautify = true,
+  beautifyDisabledReason = '当前工作流暂时不能美化布局',
   onBeautify,
   canvasMutationEnabled = false,
   nodePositionMutationEnabled = false,
@@ -373,12 +380,12 @@ export default function WorkflowDag({
             disabled={!canBeautify || isBeautifying}
             disabledReason={isBeautifying
               ? '正在美化工作流布局，请稍候'
-              : '请先完成当前 Python 编译'}
+              : beautifyDisabledReason}
             aria-label="美化工作流布局"
             title={
               canBeautify
                 ? '按控制流自动排列并适配画布'
-                : '请先完成当前 Python 编译'
+                : beautifyDisabledReason
             }
             onClick={handleBeautify}
           >

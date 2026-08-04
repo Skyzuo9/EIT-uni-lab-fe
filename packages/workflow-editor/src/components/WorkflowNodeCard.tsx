@@ -14,6 +14,7 @@ import type { NodeProps } from 'reactflow'
 import type { CSSProperties } from 'react'
 import type { WorkflowHandlePort } from '../utils/parseWorkflow'
 import type { WorkflowMaterialChip } from '../utils/workflowMaterialTrace'
+import WorkflowMaterialSourceNode from './WorkflowMaterialSourceNode'
 import styles from './workflow.module.scss'
 
 // 自定义节点承载的数据
@@ -44,7 +45,12 @@ export interface WorkflowNodeData {
   onToggleGroup?: (nodeId: string) => void
 }
 
-// 节点卡片:无头部，输入/输出端点位置由 DAG 布局方向决定。
+/**
+ * 渲染动作节点卡片或物料来源起点；物料来源采用外置名称与六边形视觉。
+ *
+ * @param props ReactFlow 节点数据与输入、输出句柄方向。
+ * @returns 与节点类型匹配的可交互工作流节点。
+ */
 export default function WorkflowNodeCard({
   data,
   targetPosition = Position.Top,
@@ -62,14 +68,33 @@ export default function WorkflowNodeCard({
     [...(targetHandles ?? []), ...(sourceHandles ?? [])],
     data.materialHandleAccents
   )
+  if (materialSource) {
+    return (
+      <WorkflowMaterialSourceNode
+        data={data}
+        materialPorts={materialPorts}
+        stateVisible={workflowNodeShowsState(data.kind, data.status)}
+        stateLabel={workflowNodeStateLabel(data.kind, data.status || 'pending')}
+        structuralTargetHandles={renderStructuralHandles(
+          targetHandles,
+          'target',
+          targetPosition,
+          data.materialHandleAccents
+        )}
+        structuralSourceHandles={renderStructuralHandles(
+          sourceHandles,
+          'source',
+          sourcePosition,
+          data.materialHandleAccents
+        )}
+      />
+    )
+  }
   return (
     <div
-      className={`${styles.node} wf-node ${materialSource ? 'wf-node--material-source' : 'wf-node--action-strip'} min-w-[150px] max-w-[220px] cursor-pointer overflow-visible rounded-[var(--unilab-radius-md)] border border-[var(--unilab-color-border)] bg-[var(--unilab-color-surface)] transition-[border-color,box-shadow] duration-200`}
+      className={`${styles.node} wf-node wf-node--action-strip min-w-[150px] max-w-[220px] cursor-pointer overflow-visible rounded-[var(--unilab-radius-md)] border border-[var(--unilab-color-border)] bg-[var(--unilab-color-surface)] transition-[border-color,box-shadow] duration-200`}
       data-workflow-node-uuid={data.id}
       data-workflow-node-kind={data.kind || 'action'}
-      style={materialSource
-        ? ({ '--wf-material-accent': data.traceAccent } as CSSProperties)
-        : undefined}
     >
       {renderStructuralHandles(
         targetHandles,
@@ -96,38 +121,14 @@ export default function WorkflowNodeCard({
       )}
 
       <div className="wf-node__body">
-        {materialSource && (
-          <span className="wf-node__material-glyph" aria-hidden="true">▱</span>
-        )}
-        {materialSource ? (
-          <>
-            <span className="wf-node__kind">{workflowNodeKindLabel(data.kind)}</span>
-            <span
-              className="wf-node__id"
-              title={data.name || data.id}
-            >
-              {data.name || data.id}
-            </span>
-          </>
-        ) : (
-          <span className="wf-node__identity">
-            <span
-              className="wf-node__id"
-              title={data.name || data.id}
-            >
-              {data.name || data.id}
-            </span>
+        <span className="wf-node__identity">
+          <span
+            className="wf-node__id"
+            title={data.name || data.id}
+          >
+            {data.name || data.id}
           </span>
-        )}
-        {materialSource && data.materialSource && (
-          <span className="wf-node__material-summary">
-            {flowRoleLabel(data.materialSource.flowRole)} · {' '}
-            {data.materialSource.mode === 'create_new' ? '新建物料' : '已有物料'}
-            <small title={data.materialSource.mountUuid}>
-              挂载点 · {shortIdentity(data.materialSource.mountUuid)}
-            </small>
-          </span>
-        )}
+        </span>
         {renderMaterialPorts(materialPorts)}
         {data.groupKind === 'subworkflow' && (
           <button
@@ -427,17 +428,4 @@ export function workflowNodeStateLabel(kind: string | undefined, status: string)
     reconciling: '状态核对中'
   }
   return labels[status] || status
-}
-
-function flowRoleLabel(flowRole: string): string {
-  return {
-    primary_sample: '主样品',
-    aliquot_sample: '分装样品',
-    reagent: '试剂',
-    consumable: '耗材'
-  }[flowRole] || flowRole
-}
-
-function shortIdentity(value: string): string {
-  return value ? value.replace(/-/g, '').slice(-6) : '未设置'
 }

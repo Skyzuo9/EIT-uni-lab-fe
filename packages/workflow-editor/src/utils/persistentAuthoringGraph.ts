@@ -5,6 +5,7 @@ import type {
   WorkflowNode,
   WorkflowStructure
 } from './parseWorkflow'
+import { layoutDag } from './dagLayout'
 
 export function projectPersistentAuthoringGraph(
   graph: WorkflowAuthoringGraph
@@ -195,6 +196,53 @@ export function projectPersistentAuthoringGraph(
       schema: null
     })),
     error: null
+  }
+}
+
+/**
+ * 按完整工作流拓扑重新排列持久编写图，同时保留 OS 节点姿态中的非平面信息。
+ *
+ * @param graph OS 返回或前端候选区持有的工作流编写图。
+ * @returns 新的工作流编写图；原图及其节点不会被修改。
+ */
+export function beautifyPersistentAuthoringGraph(
+  graph: WorkflowAuthoringGraph
+): WorkflowAuthoringGraph {
+  const structure = projectPersistentAuthoringGraph(graph)
+  // 六边形物料来源比动作条更高；上移一小段可保证第一条物料流明确向下。
+  const materialSourceNodeIds = new Set(
+    structure.nodes
+      .filter((node) => node.type === 'material_source')
+      .map((node) => node.id)
+  )
+  const layout = layoutDag(structure.nodes, structure.links, {
+    preserveExistingPositions: false
+  })
+  const positionByNodeUuid = new Map(
+    layout.nodes.map((node) => [node.id, {
+      x: node.x,
+      y: materialSourceNodeIds.has(node.id) ? node.y - 24 : node.y
+    }])
+  )
+  return {
+    ...graph,
+    nodes: graph.nodes.map((node) => {
+      const nodeUuid = String(node.uuid || '')
+      const position = positionByNodeUuid.get(nodeUuid)
+      if (!position) return node
+      const pose = isRecord(node.pose) ? node.pose : {}
+      const previousPosition = isRecord(pose.position) ? pose.position : {}
+      return {
+        ...node,
+        pose: {
+          ...pose,
+          position: {
+            ...previousPosition,
+            ...position
+          }
+        }
+      }
+    })
   }
 }
 
