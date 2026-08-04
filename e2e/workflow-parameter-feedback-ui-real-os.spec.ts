@@ -95,11 +95,6 @@ test('工作流输入输出与节点参数使用紧凑渐进式编辑', async ({
   await nodeEditor.getByRole('button', { name: '关闭属性面板' }).click()
   await expect(nodeEditor).toBeHidden()
 
-  await page.evaluate(() => {
-    document.documentElement.dataset.theme = 'dark'
-  })
-  await capture(page, testInfo, '09-workflow-dark-theme')
-
   expect(browserErrors).toEqual([])
 })
 
