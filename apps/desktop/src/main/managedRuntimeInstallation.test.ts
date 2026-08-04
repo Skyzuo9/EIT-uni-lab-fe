@@ -1,13 +1,25 @@
 import { createHash } from 'node:crypto'
-import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { execFile } from 'node:child_process'
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  writeFile
+} from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { promisify } from 'node:util'
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { ManagedRuntimeInstallation } from './managedRuntimeInstallation'
 
 const temporaryDirectories: string[] = []
+/** 把 Node 回调式进程执行接口转换为 Promise，供入口可执行性验收使用。 */
+const execFileAsync = promisify(execFile)
 
 afterEach(async () => {
   await Promise.all(temporaryDirectories.splice(0).map((directory) => rm(
@@ -106,7 +118,11 @@ describe('ManagedRuntimeInstallation', () => {
       join(first.prefix, 'bin', 'unilab-supervisor')
     )
     expect(runner).toHaveBeenCalledTimes(1)
-    expect(runner).toHaveBeenCalledWith(installerPath, expect.any(String))
+    expect(runner).toHaveBeenCalledWith(
+      installerPath,
+      first.prefix,
+      expect.stringMatching(/managed-runtime\/logs\/constructor-install-/)
+    )
   })
 
   it('serializes concurrent installers that share one user data directory', async () => {
@@ -141,9 +157,147 @@ describe('ManagedRuntimeInstallation', () => {
     ])
     expect(runner).toHaveBeenCalledTimes(1)
   })
+
+  /**
+   * 验收公开返回的 Supervisor 入口可直接运行；Constructor 生成的入口会固化安装前缀，
+   * 因而安装完成后不能再把整个 Runtime 改名到另一个目录。
+   */
+  it('keeps Constructor entrypoints executable at the returned prefix', async () => {
+    const fixture = await createInstallationFixture()
+    const runner = vi.fn(async (_installerPath: string, prefix: string) => {
+      await mkdir(join(prefix, 'bin'), { recursive: true })
+      await writeFile(
+        join(prefix, 'bin', 'python3.11'),
+        '#!/bin/sh\nprintf "supervisor-ready\\n"\n'
+      )
+      await writeFile(
+        join(prefix, 'bin', 'python'),
+        '#!/bin/sh\nexec "$(dirname "$0")/python3.11" "$@"\n'
+      )
+      await writeFile(
+        join(prefix, 'bin', 'unilab'),
+        `#!/bin/sh\nexec "${prefix}/bin/python3.11" "$@"\n`
+      )
+      await writeFile(
+        join(prefix, 'bin', 'unilab-supervisor'),
+        `#!/bin/sh\nexec "${prefix}/bin/python3.11" "$@"\n`
+      )
+      await Promise.all([
+        'python3.11',
+        'python',
+        'unilab',
+        'unilab-supervisor'
+      ].map((name) => chmod(join(prefix, 'bin', name), 0o755)))
+    })
+    const installation = new ManagedRuntimeInstallation({
+      ...fixture,
+      platform: 'linux',
+      runInstaller: runner
+    })
+
+    const installed = await installation.ensureInstalled()
+
+    await expect(execFileAsync(
+      installed.supervisorExecutable,
+      ['--version']
+    )).resolves.toMatchObject({ stdout: 'supervisor-ready\n' })
+  })
+
+  /**
+   * 验收 Constructor 非零退出时，调用者能看到原始 stderr 摘要，并可从用户目录读取日志。
+   */
+  it('preserves Constructor diagnostics when installation fails', async () => {
+    const fixture = await createInstallationFixture(Buffer.from(
+      '#!/bin/sh\nprintf "模拟安装失败：目标目录不可写\\n" >&2\nexit 1\n'
+    ))
+    const installation = new ManagedRuntimeInstallation({
+      ...fixture,
+      platform: 'linux'
+    })
+
+    await expect(installation.ensureInstalled()).rejects.toThrow(
+      /Runtime 安装器执行失败.*模拟安装失败：目标目录不可写.*日志：/
+    )
+    const logDirectory = join(
+      fixture.dataDirectory,
+      'managed-runtime',
+      'logs'
+    )
+    const logFiles = await readdir(logDirectory)
+
+    expect(logFiles).toHaveLength(1)
+    await expect(readFile(
+      join(logDirectory, logFiles[0]!),
+      'utf8'
+    )).resolves.toContain('模拟安装失败：目标目录不可写')
+  })
+
+  /**
+   * 验收旧桌面端留下的 staging 绝对路径会被识别为损坏，并触发一次原地修复安装。
+   */
+  it('repairs a legacy Runtime whose entrypoint targets staging', async () => {
+    const fixture = await createInstallationFixture()
+    const bootstrapRunner = vi.fn(async (
+      _installerPath: string,
+      prefix: string
+    ) => writeLinuxRuntime(prefix))
+    const bootstrap = new ManagedRuntimeInstallation({
+      ...fixture,
+      platform: 'linux',
+      runInstaller: bootstrapRunner
+    })
+    const legacy = await bootstrap.ensureInstalled()
+    await writeFile(
+      legacy.supervisorExecutable,
+      '#!/bin/sh\nexec "/tmp/.runtime.installing-old/bin/python3.11" "$@"\n'
+    )
+    const repairRunner = vi.fn(async (
+      _installerPath: string,
+      prefix: string
+    ) => {
+      await mkdir(join(prefix, 'bin'), { recursive: true })
+      await Promise.all([
+        writeFile(
+          join(prefix, 'bin', 'python'),
+          '#!/bin/sh\nprintf "python-ready\\n"\n'
+        ),
+        writeFile(
+          join(prefix, 'bin', 'unilab'),
+          '#!/bin/sh\nprintf "unilab-ready\\n"\n'
+        ),
+        writeFile(
+          join(prefix, 'bin', 'unilab-supervisor'),
+          '#!/bin/sh\nprintf "supervisor-repaired\\n"\n'
+        )
+      ])
+      await Promise.all([
+        'python',
+        'unilab',
+        'unilab-supervisor'
+      ].map((name) => chmod(join(prefix, 'bin', name), 0o755)))
+    })
+    const repair = new ManagedRuntimeInstallation({
+      ...fixture,
+      platform: 'linux',
+      runInstaller: repairRunner
+    })
+
+    const installed = await repair.ensureInstalled()
+
+    expect(repairRunner).toHaveBeenCalledTimes(1)
+    await expect(execFileAsync(
+      installed.supervisorExecutable,
+      ['--version']
+    )).resolves.toMatchObject({ stdout: 'supervisor-repaired\n' })
+  })
 })
 
-async function createInstallationFixture(): Promise<{
+/**
+ * 创建最小 Runtime 安装资源与用户目录；installerBytes 是待校验并执行的载荷内容。
+ */
+async function createInstallationFixture(
+  installerBytes = Buffer.from('offline-constructor-payload')
+): Promise<{
   resourcesDirectory: string
   dataDirectory: string
 }> {
@@ -153,7 +307,6 @@ async function createInstallationFixture(): Promise<{
   const dataDirectory = join(root, 'data')
   const payloadDirectory = join(resourcesDirectory, 'runtime-installer')
   const installerName = 'Uni-Lab-OS-0.11.3-linux-64.sh'
-  const installerBytes = Buffer.from('offline-constructor-payload')
   await mkdir(payloadDirectory, { recursive: true })
   await writeFile(join(payloadDirectory, installerName), installerBytes)
   await writeFile(join(payloadDirectory, 'manifest.json'), JSON.stringify({
