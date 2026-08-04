@@ -89,7 +89,9 @@ export function useWorkflowDag(nodes: WorkflowNode[], links: WorkflowLink[]): Us
         targetHandle: link.targetHandleUuid || undefined,
         label: link.branch ? (link.branch === 'true' ? 'TRUE' : 'FALSE') : undefined,
         labelStyle: {
-          fill: link.branch === 'true' ? '#087f5b' : '#c92a2a',
+          fill: link.branch === 'true'
+            ? 'var(--unilab-color-success)'
+            : 'var(--unilab-color-danger)',
           fontSize: 10,
           fontWeight: 700
         },
@@ -97,7 +99,7 @@ export function useWorkflowDag(nodes: WorkflowNode[], links: WorkflowLink[]): Us
         animated: isComm,
         style: {
           stroke: materialTraces.edgeAccents.get(index) ?? EDGE_COLOR,
-          strokeWidth: materialTraces.edgeAccents.has(index) ? 2.2 : 1.6,
+          strokeWidth: materialTraces.edgeAccents.has(index) ? 2.4 : 2,
           strokeDasharray: isComm ? '4 4' : undefined
         },
         className: materialTraces.edgeAccents.has(index)

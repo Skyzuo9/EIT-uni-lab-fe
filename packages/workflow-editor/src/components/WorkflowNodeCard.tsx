@@ -59,7 +59,7 @@ export default function WorkflowNodeCard({
   )
   return (
     <div
-      className={`${styles.node} wf-node ${materialSource ? 'wf-node--material-source' : ''} min-w-[150px] max-w-[220px] cursor-pointer overflow-visible rounded-[var(--unilab-radius-md)] border border-[var(--unilab-color-border)] bg-[var(--unilab-color-surface)] transition-[border-color,box-shadow] duration-200`}
+      className={`${styles.node} wf-node ${materialSource ? 'wf-node--material-source' : 'wf-node--action-strip'} min-w-[150px] max-w-[220px] cursor-pointer overflow-visible rounded-[var(--unilab-radius-md)] border border-[var(--unilab-color-border)] bg-[var(--unilab-color-surface)] transition-[border-color,box-shadow] duration-200`}
       data-workflow-node-uuid={data.id}
       data-workflow-node-kind={data.kind || 'action'}
       style={materialSource
@@ -68,57 +68,75 @@ export default function WorkflowNodeCard({
     >
       {renderHandles(targetHandles, 'target', targetPosition)}
 
+      {allowsDebugMarkers && (
+        <div className="wf-node__markers">
+          {data.startNode && (
+            <span className="wf-node__marker wf-node__marker--start">⚑ 起始点</span>
+          )}
+          {data.breakpoint && (
+            <span className="wf-node__marker wf-node__marker--breakpoint">● 断点</span>
+          )}
+          {data.pausedBefore && (
+            <span className="wf-node__marker wf-node__marker--paused">下一步</span>
+          )}
+          {data.beforeStart && (
+            <span className="wf-node__marker wf-node__marker--excluded">不执行</span>
+          )}
+        </div>
+      )}
+
       <div className="wf-node__body">
-        {allowsDebugMarkers && (
-          <div className="wf-node__markers">
-            {data.startNode && (
-              <span className="wf-node__marker wf-node__marker--start">⚑ 起始点</span>
-            )}
-            {data.breakpoint && (
-              <span className="wf-node__marker wf-node__marker--breakpoint">● 断点</span>
-            )}
-            {data.pausedBefore && (
-              <span className="wf-node__marker wf-node__marker--paused">下一步</span>
-            )}
-            {data.beforeStart && (
-              <span className="wf-node__marker wf-node__marker--excluded">不执行</span>
-            )}
-          </div>
-        )}
         {materialSource && (
           <span className="wf-node__material-glyph" aria-hidden="true">▱</span>
         )}
-        <span className="wf-node__kind">
-          {data.groupKind === 'subworkflow'
-            ? '▣ 子工作流'
-            : workflowNodeKindLabel(data.kind)}
-        </span>
-        <span
-          className="wf-node__id"
-          title={data.name || data.id}
-        >
-          {data.name || data.id}
-        </span>
+        {materialSource ? (
+          <>
+            <span className="wf-node__kind">{workflowNodeKindLabel(data.kind)}</span>
+            <span
+              className="wf-node__id"
+              title={data.name || data.id}
+            >
+              {data.name || data.id}
+            </span>
+          </>
+        ) : (
+          <span className="wf-node__identity">
+            <span
+              className="wf-node__id"
+              title={data.name || data.id}
+            >
+              {data.name || data.id}
+            </span>
+          </span>
+        )}
         {materialSource && data.materialSource && (
           <span className="wf-node__material-summary">
             {flowRoleLabel(data.materialSource.flowRole)} · {' '}
             {data.materialSource.mode === 'create_new' ? '新建物料' : '已有物料'}
             <small title={data.materialSource.mountUuid}>
-              Mount · {shortIdentity(data.materialSource.mountUuid)}
+              挂载点 · {shortIdentity(data.materialSource.mountUuid)}
             </small>
           </span>
         )}
         {!materialSource && Boolean(data.materialChips?.length) && (
-          <span className="wf-node__material-chips" aria-label="Material 轨道">
+          <span className="wf-node__material-chips" aria-label="物料轨道">
             {data.materialChips?.map((chip) => (
               <span
                 key={`${chip.handleUuid}:${chip.sourceNodeUuid}`}
                 style={{ '--wf-material-accent': chip.accent } as CSSProperties}
-                title={`${chip.label} · ${chip.sourceNodeUuid} · Handle ${chip.handleUuid}`}
+                title={`${chip.label} · ${chip.sourceNodeUuid} · 端口 ${chip.handleUuid}`}
               >
                 {chip.label}<small>{chip.shortIdentity}</small>
               </span>
             ))}
+          </span>
+        )}
+        {!materialSource && (
+          <span
+            className="wf-node__port-summary"
+            title={`${targetHandles?.length ?? 1} 个输入端口，${sourceHandles?.length ?? 1} 个输出端口`}
+          >
+            入 {targetHandles?.length ?? 1} · 出 {sourceHandles?.length ?? 1}
           </span>
         )}
         {data.groupKind === 'subworkflow' && (
@@ -142,7 +160,7 @@ export default function WorkflowNodeCard({
           {workflowNodeStateLabel(data.kind, data.status || 'pending')}
         </span>
         {allowsDebugMarkers && (data.onSetStart || data.onToggleBreakpoint) && (
-          <div className="wf-node__marker-actions">
+          <span className="wf-node__marker-actions">
             {data.onSetStart && (
               <button
                 type="button"
@@ -173,7 +191,7 @@ export default function WorkflowNodeCard({
                 ●
               </button>
             )}
-          </div>
+          </span>
         )}
       </div>
 
