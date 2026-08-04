@@ -416,7 +416,6 @@ export function LocalRuntimeDialog({
   const edgeActive = snapshot.bridgeRunning || snapshot.edgeRunning
   const environmentDisabled = simulatorActive || edgeActive || transitioning
   const simulatorDisabled = simulatorActive
-    || edgeActive
     || simulatorTransitioning
     || edgeTransitioning
   const edgeDisabled = edgeActive || edgeTransitioning
@@ -511,7 +510,6 @@ export function LocalRuntimeDialog({
                   ? styles.stopButton
                   : styles.primaryButton}
                 disabled={simulatorTransitioning
-                  || edgeActive
                   || edgeTransitioning}
                 onClick={simulatorActive
                   ? onStopSimulator

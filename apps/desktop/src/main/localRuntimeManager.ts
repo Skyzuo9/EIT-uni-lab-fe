@@ -157,10 +157,6 @@ export class LocalRuntimeManager {
       this.activeOperation = null
       throw new Error('PLC-Sim 已在运行')
     }
-    if (this.edgeIsRunning()) {
-      this.activeOperation = null
-      throw new Error('请先停止领域侧 Edge，再启动 PLC-Sim')
-    }
 
     this.resetAcceptance()
 
@@ -195,8 +191,10 @@ export class LocalRuntimeManager {
         PROCESS_READY_TIMEOUT_MS
       )
       this.publishState(
-        'simulator_ready',
-        'PLC-Sim 已就绪；请上传 PLC 变量表后再启动领域侧 Edge'
+        this.edgeIsRunning() ? 'ready' : 'simulator_ready',
+        this.edgeIsRunning()
+          ? 'PLC-Sim 与领域侧 Edge 已就绪'
+          : 'PLC-Sim 已就绪；请上传 PLC 变量表后再启动领域侧 Edge'
       )
       return this.getSnapshot()
     } catch (error) {
@@ -263,10 +261,6 @@ export class LocalRuntimeManager {
 
   async stopSimulator(): Promise<LocalRuntimeSnapshot> {
     this.beginOperation('simulator')
-    if (this.edgeIsRunning()) {
-      this.activeOperation = null
-      throw new Error('请先停止领域侧 Edge，再停止 PLC-Sim')
-    }
     if (!this.simulatorIsRunning()) {
       this.activeOperation = null
       return this.getSnapshot()
@@ -277,7 +271,16 @@ export class LocalRuntimeManager {
     try {
       await this.stopSimulatorProcess()
       this.stopping = false
-      this.publish({ ...IDLE_LOCAL_RUNTIME_SNAPSHOT })
+      if (this.edgeIsRunning()) {
+        this.publishState(
+          'ready',
+          this.options.managedRuntime
+            ? '内置 Runtime 仍在运行'
+            : '领域侧 Edge 仍在运行'
+        )
+      } else {
+        this.publish({ ...IDLE_LOCAL_RUNTIME_SNAPSHOT })
+      }
       return this.getSnapshot()
     } finally {
       this.stopping = false
@@ -443,8 +446,10 @@ export class LocalRuntimeManager {
       )
     }
     this.publishState(
-      'simulator_ready',
-      'PLC-Sim 已就绪；请上传 PLC 变量表后再启动领域侧 Edge'
+      this.edgeIsRunning() ? 'ready' : 'simulator_ready',
+      this.edgeIsRunning()
+        ? 'PLC-Sim 与内置 Runtime 已就绪'
+        : 'PLC-Sim 已就绪；请上传 PLC 变量表后再启动领域侧 Edge'
     )
   }
 

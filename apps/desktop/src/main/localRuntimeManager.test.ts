@@ -138,6 +138,54 @@ describe('LocalRuntimeManager command plan', () => {
     expect(stopSimulator).toHaveBeenCalledTimes(1)
   })
 
+  it('starts PLC-Sim while the isolated Runtime Worker remains running', async () => {
+    const fixture = await createFixture('packages')
+    const workerRunning = {
+      status: 'running' as const,
+      worker: { pid: 42 },
+      error: null,
+      simulator: { status: 'idle' as const, pid: null, error: null }
+    }
+    const bothRunning = {
+      ...workerRunning,
+      simulator: { status: 'running' as const, pid: 84, error: null }
+    }
+    const manager = new LocalRuntimeManager(
+      join(fixture.szlabRoot, 'logs'),
+      vi.fn(),
+      {
+        managedRuntime: {
+          getModeInfo: async () => ({
+            mode: 'managed',
+            label: '内置 Runtime',
+            runtimeVersion: '0.11.3'
+          }),
+          getRuntimePaths: vi.fn(),
+          startWorker: vi.fn(async () => workerRunning),
+          stopWorker: vi.fn(),
+          startSimulator: vi.fn(async () => bothRunning),
+          stopSimulator: vi.fn(async () => workerRunning)
+        },
+        waitForEdgeReadiness: async () => undefined,
+        waitForSimulatorReadiness: async () => undefined
+      }
+    )
+
+    await manager.startEdge(fixture.config)
+
+    await expect(manager.startSimulator(fixture.config)).resolves.toMatchObject({
+      phase: 'ready',
+      simulatorRunning: true,
+      edgeRunning: true
+    })
+
+    await expect(manager.stopSimulator()).resolves.toMatchObject({
+      phase: 'ready',
+      simulatorRunning: false,
+      edgeRunning: true
+    })
+  })
+
   it('runs manual package acceptance and cleans up managed processes by default', async () => {
     const fixture = await createFixture('packages')
     const running = {

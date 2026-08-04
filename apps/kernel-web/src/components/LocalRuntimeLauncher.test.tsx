@@ -126,7 +126,7 @@ describe('LocalRuntimeLauncher', () => {
     expect(markup).toMatch(/data-status="idle"[^>]*>.*领域侧 Edge/s)
   })
 
-  it('prevents PLC changes while Edge is running', () => {
+  it('keeps PLC control available while Edge is running', () => {
     const markup = renderDialog(baseConfig, {
       ...idleSnapshot,
       phase: 'ready',
@@ -136,7 +136,10 @@ describe('LocalRuntimeLauncher', () => {
       edgeRunning: true
     })
 
-    expect(markup).toMatch(/<button[^>]*disabled=""[^>]*>停止 PLC<\/button>/)
+    const plcButton = markup.match(
+      /<button[^>]*>停止 PLC<\/button>/
+    )?.[0] ?? ''
+    expect(plcButton).not.toContain('disabled')
     expect(markup).toContain('停止 Edge')
     expect(markup.match(/>运行中<\/span>/g)).toHaveLength(2)
   })
