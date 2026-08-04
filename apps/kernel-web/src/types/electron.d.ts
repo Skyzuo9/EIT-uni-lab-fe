@@ -34,6 +34,38 @@ export interface LocalRuntimeLaunchConfig {
   simulatorProjectPath: string
 }
 
+export type LocalRuntimeMode = 'managed' | 'development'
+
+export interface LocalRuntimeModeInfo {
+  mode: LocalRuntimeMode
+  label: string
+  runtimeVersion: string | null
+  defaultLaunchConfig?: LocalRuntimeLaunchConfig
+}
+
+export type LocalRuntimeAcceptanceStatus =
+  | 'unverified'
+  | 'verified'
+  | 'failed'
+
+export interface LocalRuntimeAcceptanceResult {
+  status: LocalRuntimeAcceptanceStatus
+  message: string
+  checkedAt: number | null
+  descriptorPath: string | null
+  packageName: string | null
+  packageVersion: string | null
+}
+
+export interface DevicePackageTrustInfo {
+  workspacePath: string
+  contentHash: string
+  signatureStatus: 'valid' | 'invalid' | 'unsigned'
+  signerFingerprint: string | null
+  trusted: boolean
+  confirmationRequired: boolean
+}
+
 export type LocalRuntimeProcessKind = 'simulator' | 'bridge' | 'edge'
 
 export interface LocalRuntimeLogEntry {
@@ -59,6 +91,8 @@ export type LocalRuntimePhase =
   | 'waiting_bridge'
   | 'starting_edge'
   | 'waiting_edge'
+  | 'validating_acceptance'
+  | 'cleaning_acceptance'
   | 'ready'
   | 'stopping_simulator'
   | 'stopping_edge'
@@ -70,6 +104,7 @@ export interface LocalRuntimeSnapshot {
   simulatorRunning: boolean
   bridgeRunning: boolean
   edgeRunning: boolean
+  acceptance?: LocalRuntimeAcceptanceResult
   failedProcess?: LocalRuntimeProcessKind
   error?: string
 }
@@ -78,12 +113,23 @@ export interface DesktopRuntimeApi {
   selectPath: (kind: LocalRuntimePathKind) => Promise<string | null>
   getDefaultEnvironmentPath: () => Promise<string | null>
   getSnapshot: () => Promise<LocalRuntimeSnapshot>
+  getModeInfo: () => Promise<LocalRuntimeModeInfo>
+  inspectDevicePackage: (
+    config: LocalRuntimeLaunchConfig
+  ) => Promise<DevicePackageTrustInfo>
+  confirmDevicePackage: (
+    config: LocalRuntimeLaunchConfig,
+    expectedHash: string
+  ) => Promise<DevicePackageTrustInfo>
   startSimulator: (
     config: LocalRuntimeLaunchConfig
   ) => Promise<LocalRuntimeSnapshot>
   stopSimulator: () => Promise<LocalRuntimeSnapshot>
   startEdge: (config: LocalRuntimeLaunchConfig) => Promise<LocalRuntimeSnapshot>
   stopEdge: () => Promise<LocalRuntimeSnapshot>
+  runAcceptance: (
+    config: LocalRuntimeLaunchConfig
+  ) => Promise<LocalRuntimeSnapshot>
   readLogs: () => Promise<LocalRuntimeLogsSnapshot>
   onSnapshot: (
     listener: (snapshot: LocalRuntimeSnapshot) => void

@@ -7,13 +7,16 @@ import {
   type IpcMainInvokeEvent
 } from 'electron'
 import { basename, join } from 'path'
-import { appendFileSync } from 'node:fs'
+import { appendFileSync, existsSync } from 'node:fs'
 import { readFile, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { readSession, clearSession, runOAuthLogin } from './authManager'
 import { discoverDefaultCondaEnvironment } from './localRuntimeEnvironment'
 import { LocalRuntimeManager } from './localRuntimeManager'
+import { ManagedRuntime } from './managedRuntime'
+import { ManagedRuntimeInstallation } from './managedRuntimeInstallation'
+import { DevicePackageTrustStore } from './devicePackageTrust'
 import {
   createElectronObservability,
   resolveElectronObservabilityOptions
@@ -74,6 +77,7 @@ const localAppIcon = join(__dirname, '../../build/icon.png')
 // 主窗口引用,供 OAuth 弹窗作为模态父窗口使用
 let mainWindow: BrowserWindow | null = null
 let localRuntimeManager: LocalRuntimeManager | null = null
+let devicePackageTrustStore: DevicePackageTrustStore | null = null
 let quitCleanupStarted = false
 let quitCleanupFinished = false
 
@@ -234,8 +238,15 @@ app.whenReady().then(() => {
   }
   ipcMain.handle('app:getVersion', () => app.getVersion())
 
+  const localRuntimeLogsDirectory = join(app.getPath('logs'), 'local-runtime')
+  devicePackageTrustStore = new DevicePackageTrustStore(join(
+    app.getPath('userData'),
+    'managed-runtime',
+    'device-package-trust'
+  ))
+  const managedRuntime = createManagedRuntime(localRuntimeLogsDirectory)
   localRuntimeManager = new LocalRuntimeManager(
-    join(app.getPath('logs'), 'local-runtime'),
+    localRuntimeLogsDirectory,
     (snapshot) => {
       electronObservability.record('electron.runtime.state_changed', {
         'runtime.phase': snapshot.phase,
@@ -250,7 +261,17 @@ app.whenReady().then(() => {
       if (window && !window.isDestroyed()) {
         window.webContents.send('runtime:snapshot', snapshot)
       }
-    }
+    },
+    managedRuntime
+      ? {
+          managedRuntime,
+          managedWorkingRoot: join(
+            app.getPath('userData'),
+            'managed-runtime',
+            'workspaces'
+          )
+        }
+      : undefined
   )
 
   ipcMain.handle(
@@ -268,6 +289,32 @@ app.whenReady().then(() => {
     assertMainWindowSender(event)
     return requireRuntimeManager().getSnapshot()
   })
+  ipcMain.handle('runtime:getModeInfo', (event) => {
+    assertMainWindowSender(event)
+    return requireRuntimeManager().getModeInfo()
+  })
+  ipcMain.handle(
+    'runtime:inspectDevicePackage',
+    async (event, payload: unknown) => {
+      assertMainWindowSender(event)
+      const config = parseRuntimeConfig(payload)
+      return requireDevicePackageTrustStore().inspect(config.szlabProjectPath)
+    }
+  )
+  ipcMain.handle(
+    'runtime:confirmDevicePackage',
+    async (event, payload: unknown, expectedHash: unknown) => {
+      assertMainWindowSender(event)
+      if (typeof expectedHash !== 'string' || !/^[0-9a-f]{64}$/.test(expectedHash)) {
+        throw new Error('设备包内容哈希无效')
+      }
+      const config = parseRuntimeConfig(payload)
+      return requireDevicePackageTrustStore().confirm(
+        config.szlabProjectPath,
+        expectedHash
+      )
+    }
+  )
   ipcMain.handle('runtime:getDefaultEnvironmentPath', async (event) => {
     assertMainWindowSender(event)
     return electronObservability.run(
@@ -318,6 +365,14 @@ app.whenReady().then(() => {
       'electron.runtime.stop',
       { 'runtime.target': 'edge' },
       () => requireRuntimeManager().stopEdge()
+    )
+  })
+  ipcMain.handle('runtime:runAcceptance', async (event, payload: unknown) => {
+    assertMainWindowSender(event)
+    return electronObservability.run(
+      'electron.runtime.acceptance',
+      {},
+      () => requireRuntimeManager().runAcceptance(parseRuntimeConfig(payload))
     )
   })
   ipcMain.handle('runtime:readLogs', async (event) => {
@@ -447,27 +502,35 @@ app.on('before-quit', (event) => {
 })
 
 async function cleanupBeforeQuit(): Promise<void> {
-  const manager = localRuntimeManager
-  try {
-    if (manager && manager.getSnapshot().phase !== 'idle') {
-      await electronObservability.run(
-        'electron.runtime.stop_on_quit',
-        {},
-        () => manager.stop()
-      )
-    }
-  } catch (error) {
-    logLine(
-      `退出时停止本地运行时失败: ${error instanceof Error ? error.stack : String(error)}`
-    )
-    electronObservability.record(
-      'electron.runtime.stop_on_quit_failed',
-      {},
-      error
-    )
-  }
+  // Runtime 由独立 Supervisor 拥有。Electron 退出只断开控制面，不停止实验。
   electronObservability.record('electron.app.quit')
   await electronObservability.shutdown()
+}
+
+function createManagedRuntime(
+  supervisorStateDirectory: string
+): ManagedRuntime | undefined {
+  const resourcesDirectory = process.env['UNILAB_MANAGED_RUNTIME_RESOURCES']
+    ?? (app.isPackaged ? process.resourcesPath : undefined)
+  if (!resourcesDirectory) return undefined
+  const manifestPath = join(
+    resourcesDirectory,
+    'runtime-installer',
+    'manifest.json'
+  )
+  if (!existsSync(manifestPath)) {
+    if (app.isPackaged) {
+      throw new Error(`安装包缺少私有 Runtime manifest：${manifestPath}`)
+    }
+    return undefined
+  }
+  return new ManagedRuntime(
+    new ManagedRuntimeInstallation({
+      resourcesDirectory,
+      dataDirectory: app.getPath('userData')
+    }),
+    supervisorStateDirectory
+  )
 }
 
 function createMainObservability(): ReturnType<
@@ -507,6 +570,11 @@ function requireRuntimeManager(): LocalRuntimeManager {
   return localRuntimeManager
 }
 
+function requireDevicePackageTrustStore(): DevicePackageTrustStore {
+  if (!devicePackageTrustStore) throw new Error('设备包信任存储尚未初始化')
+  return devicePackageTrustStore
+}
+
 function runtimePathDialogOptions(
   kind: LocalRuntimePathKind
 ): Electron.OpenDialogOptions {
@@ -521,10 +589,13 @@ function runtimePathDialogOptions(
     os: '选择 Uni-Lab-OS 项目根目录',
     szlab: '选择领域项目根目录（以 Uni-Lab-SZLab 为例）',
     environment: '选择 unilab Conda 环境目录',
-    simulator: '选择 PLC-Sim 项目根目录'
+    simulator: '选择 PLC-Sim 源码目录或已安装可执行文件'
   }
   if (!(kind in titles)) throw new Error('不支持的本地运行时路径类型')
-  return {
+  return kind === 'simulator' ? {
+    title: titles.simulator,
+    properties: ['openFile', 'openDirectory']
+  } : {
     title: titles[kind as Exclude<LocalRuntimePathKind, 'graph'>],
     properties: ['openDirectory']
   }

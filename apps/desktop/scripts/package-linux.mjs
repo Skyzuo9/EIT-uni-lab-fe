@@ -14,6 +14,11 @@ import {
 import { tmpdir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+
+import {
+  MAX_PACKAGED_APP_BYTES,
+  resolvePackagingCliPaths
+} from './package-windows.mjs'
 import {
   prepareRuntimePayloadFromEnvironment,
   validatePackagedRuntimeResources
@@ -21,75 +26,62 @@ import {
 
 const MEBIBYTE = 1024 * 1024
 
-export const MIN_WINDOWS_INSTALLER_BYTES = 10 * MEBIBYTE
-export const MAX_PACKAGED_APP_BYTES = 32 * MEBIBYTE
+export const MIN_LINUX_INSTALLER_BYTES = 10 * MEBIBYTE
 
 const desktopDirectory = join(dirname(fileURLToPath(import.meta.url)), '..')
 const releaseDirectory = join(desktopDirectory, 'release')
 
-export function resolvePackagingCliPaths() {
-  return {
-    electronViteCli: join(
-      desktopDirectory,
-      'node_modules',
-      'electron-vite',
-      'bin',
-      'electron-vite.js'
-    ),
-    electronBuilderCli: join(
-      desktopDirectory,
-      'node_modules',
-      'electron-builder',
-      'out',
-      'cli',
-      'cli.js'
-    )
-  }
-}
-
-export function validateWindowsInstaller(
+export function validateLinuxInstaller(
   installerPath,
-  minimumBytes = MIN_WINDOWS_INSTALLER_BYTES
+  minimumBytes = MIN_LINUX_INSTALLER_BYTES
 ) {
   if (!existsSync(installerPath)) {
-    throw new Error(`Windows 安装包不存在：${installerPath}`)
+    throw new Error(`Linux 安装包不存在：${installerPath}`)
   }
-
   const size = statSync(installerPath).size
   if (size < minimumBytes) {
     throw new Error(
-      `Windows 安装包不完整：${basename(installerPath)} 仅 ${formatMebibytes(size)} MiB`
+      `Linux 安装包不完整：${basename(installerPath)} 仅 ${formatMebibytes(size)} MiB`
     )
   }
-
-  const header = Buffer.alloc(2)
+  const header = Buffer.alloc(4)
   const descriptor = openSync(installerPath, 'r')
   try {
     readSync(descriptor, header, 0, header.length, 0)
   } finally {
     closeSync(descriptor)
   }
-  if (header.toString('ascii') !== 'MZ') {
-    throw new Error(`Windows 安装包缺少 PE 文件头：${installerPath}`)
+  if (!header.equals(Buffer.from([0x7f, 0x45, 0x4c, 0x46]))) {
+    throw new Error(`Linux AppImage 缺少 ELF 文件头：${installerPath}`)
   }
-
   return { path: installerPath, size }
 }
 
-export function validatePackagedApp(
+export function findLinuxInstaller(outputDirectory) {
+  const candidates = readdirSync(outputDirectory)
+    .filter((name) => name.toLowerCase().endsWith('.appimage'))
+    .map((name) => join(outputDirectory, name))
+  if (candidates.length !== 1) {
+    throw new Error(
+      `Linux 安装包数量异常：预期 1 个，实际 ${candidates.length} 个`
+    )
+  }
+  return validateLinuxInstaller(candidates[0])
+}
+
+export function validatePackagedLinuxApp(
   outputDirectory,
   maximumBytes = MAX_PACKAGED_APP_BYTES
 ) {
   const archivePath = join(
     outputDirectory,
-    'win-unpacked',
+    'linux-unpacked',
     'resources',
     'app.asar'
   )
   if (!existsSync(archivePath)) {
-    throw new Error(`Windows 应用归档不存在：${archivePath}`)
+    throw new Error(`Linux 应用归档不存在：${archivePath}`)
   }
-
   const size = statSync(archivePath).size
   if (size > maximumBytes) {
     throw new Error(
@@ -97,42 +89,10 @@ export function validatePackagedApp(
     )
   }
   validatePackagedRuntimeResources(
-    join(outputDirectory, 'win-unpacked', 'resources'),
-    'win-64'
+    join(outputDirectory, 'linux-unpacked', 'resources'),
+    'linux-64'
   )
-
   return { path: archivePath, size }
-}
-
-export function findWindowsInstaller(outputDirectory) {
-  const candidates = readdirSync(outputDirectory)
-    .filter((name) => /-setup\.exe$/i.test(name))
-    .map((name) => join(outputDirectory, name))
-
-  if (candidates.length !== 1) {
-    throw new Error(
-      `Windows 安装包数量异常：预期 1 个，实际 ${candidates.length} 个`
-    )
-  }
-
-  return validateWindowsInstaller(candidates[0])
-}
-
-export function publishWindowsArtifacts(outputDirectory, destinationDirectory) {
-  const installer = findWindowsInstaller(outputDirectory)
-  validatePackagedApp(outputDirectory)
-  mkdirSync(destinationDirectory, { recursive: true })
-
-  const artifactNames = readdirSync(outputDirectory).filter((name) =>
-    /(?:-setup\.exe(?:\.blockmap)?|latest\.yml)$/i.test(name)
-  )
-  for (const name of artifactNames) {
-    copyFileSync(join(outputDirectory, name), join(destinationDirectory, name))
-  }
-
-  return validateWindowsInstaller(
-    join(destinationDirectory, basename(installer.path))
-  )
 }
 
 function runCli(entryPath, args, environment = process.env) {
@@ -147,22 +107,21 @@ function runCli(entryPath, args, environment = process.env) {
   }
 }
 
-export function packageWindows() {
-  const outputDirectory = mkdtempSync(join(tmpdir(), 'unilab-win-package-'))
+export function packageLinux() {
+  const outputDirectory = mkdtempSync(join(tmpdir(), 'unilab-linux-package-'))
   const payloadDirectory = mkdtempSync(join(
     desktopDirectory,
     '.runtime-payload-'
   ))
   const { electronViteCli, electronBuilderCli } = resolvePackagingCliPaths()
-
   try {
     const payload = prepareRuntimePayloadFromEnvironment(
       payloadDirectory,
-      'win-64'
+      'linux-64'
     )
     runCli(electronViteCli, ['build'])
     runCli(electronBuilderCli, [
-      '--win',
+      '--linux',
       '--publish',
       'never',
       `--config.directories.output=${outputDirectory}`
@@ -171,13 +130,19 @@ export function packageWindows() {
       UNILAB_RUNTIME_PAYLOAD_DIR: basename(payload.directory)
     })
 
-    const appArchive = validatePackagedApp(outputDirectory)
-    const installer = publishWindowsArtifacts(
-      outputDirectory,
-      releaseDirectory
-    )
+    const appArchive = validatePackagedLinuxApp(outputDirectory)
+    const installer = findLinuxInstaller(outputDirectory)
+    mkdirSync(releaseDirectory, { recursive: true })
+    for (const name of readdirSync(outputDirectory).filter((entry) =>
+      /(?:\.appimage(?:\.blockmap)?|latest-linux\.yml)$/i.test(entry)
+    )) {
+      copyFileSync(
+        join(outputDirectory, name),
+        join(releaseDirectory, name)
+      )
+    }
     console.log(
-      `Windows 安装包已发布：${installer.path}（${formatMebibytes(installer.size)} MiB），app.asar ${formatMebibytes(appArchive.size)} MiB`
+      `Linux 安装包已发布：${installer.path}（${formatMebibytes(installer.size)} MiB），app.asar ${formatMebibytes(appArchive.size)} MiB`
     )
   } finally {
     rmSync(outputDirectory, { recursive: true, force: true })
@@ -191,7 +156,7 @@ function formatMebibytes(bytes) {
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
-    packageWindows()
+    packageLinux()
   } catch (error) {
     console.error(error instanceof Error ? error.message : error)
     process.exitCode = 1

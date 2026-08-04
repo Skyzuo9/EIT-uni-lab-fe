@@ -1,4 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { constants as fsConstants, createWriteStream } from 'node:fs'
 import { access, mkdir, open, stat } from 'node:fs/promises'
 import { createConnection } from 'node:net'
@@ -6,12 +7,21 @@ import { basename, delimiter, dirname, join, normalize, resolve } from 'node:pat
 
 import {
   IDLE_LOCAL_RUNTIME_SNAPSHOT,
+  type LocalRuntimeAcceptanceResult,
   type LocalRuntimeLaunchConfig,
   type LocalRuntimeLogEntry,
   type LocalRuntimeLogsSnapshot,
   type LocalRuntimeProcessKind,
-  type LocalRuntimeSnapshot
+  type LocalRuntimeSnapshot,
+  type LocalRuntimeModeInfo
 } from '../shared/localRuntime'
+import { runDevicePackageAcceptance } from './devicePackageAcceptance'
+import type { ManagedRuntimePaths } from './managedRuntimeInstallation'
+import type {
+  ManagedSimulatorLaunch,
+  ManagedRuntimeSupervisorSnapshot,
+  ManagedWorkerLaunch
+} from './managedRuntimeSupervisor'
 
 export interface LocalRuntimeSpawnSpec {
   command: string
@@ -47,6 +57,11 @@ interface ResolvedSimulatorConfig {
   workingDirectory: string
 }
 
+interface ManagedSimulatorRuntime {
+  environmentPath: string
+  pythonExecutable: string
+}
+
 interface PortRequirement {
   port: number
   label: string
@@ -54,6 +69,29 @@ interface PortRequirement {
 
 type SnapshotListener = (snapshot: LocalRuntimeSnapshot) => void
 type ActiveOperation = 'simulator' | 'edge' | 'all'
+
+export interface ManagedRuntimePort {
+  getModeInfo: () => Promise<LocalRuntimeModeInfo>
+  getRuntimePaths: () => Promise<ManagedRuntimePaths>
+  startWorker: (
+    launch: ManagedWorkerLaunch
+  ) => Promise<ManagedRuntimeSupervisorSnapshot>
+  stopWorker: () => Promise<ManagedRuntimeSupervisorSnapshot>
+  startSimulator: (
+    launch: ManagedSimulatorLaunch
+  ) => Promise<ManagedRuntimeSupervisorSnapshot>
+  stopSimulator: () => Promise<ManagedRuntimeSupervisorSnapshot>
+}
+
+interface LocalRuntimeManagerOptions {
+  managedRuntime?: ManagedRuntimePort
+  managedWorkingRoot?: string
+  waitForEdgeReadiness?: () => Promise<void>
+  waitForSimulatorReadiness?: () => Promise<void>
+  runAcceptance?: (
+    workspacePath: string
+  ) => Promise<LocalRuntimeAcceptanceResult>
+}
 
 export const LOCAL_RUNTIME_PORTS = {
   simulator: 18_765,
@@ -80,14 +118,28 @@ export class LocalRuntimeManager {
   }
   private edgeProcess: ChildProcessWithoutNullStreams | null = null
   private simulatorProcess: ChildProcessWithoutNullStreams | null = null
+  private managedEdgeRunning = false
+  private managedSimulatorRunning = false
+  private acceptance: LocalRuntimeAcceptanceResult = {
+    ...IDLE_LOCAL_RUNTIME_SNAPSHOT.acceptance!
+  }
   private readonly expectedExits = new WeakSet<ChildProcessWithoutNullStreams>()
   private stopping = false
   private activeOperation: ActiveOperation | null = null
 
   constructor(
     private readonly logsDirectory: string,
-    private readonly onSnapshot: SnapshotListener
+    private readonly onSnapshot: SnapshotListener,
+    private readonly options: LocalRuntimeManagerOptions = {}
   ) {}
+
+  getModeInfo(): Promise<LocalRuntimeModeInfo> {
+    return this.options.managedRuntime?.getModeInfo() ?? Promise.resolve({
+      mode: 'development',
+      label: '开发环境 Runtime',
+      runtimeVersion: null
+    })
+  }
 
   getSnapshot(): LocalRuntimeSnapshot {
     return { ...this.snapshot }
@@ -101,19 +153,33 @@ export class LocalRuntimeManager {
     config: LocalRuntimeLaunchConfig
   ): Promise<LocalRuntimeSnapshot> {
     this.beginOperation('simulator')
-    if (this.simulatorProcess) {
+    if (this.simulatorIsRunning()) {
       this.activeOperation = null
       throw new Error('PLC-Sim 已在运行')
     }
-    if (this.edgeProcess) {
+    if (this.edgeIsRunning()) {
       this.activeOperation = null
       throw new Error('请先停止领域侧 Edge，再启动 PLC-Sim')
     }
 
-    this.publishState('validating_simulator', '正在检查 PLC-Sim 与 Conda 环境…')
+    this.resetAcceptance()
+
+    this.publishState(
+      'validating_simulator',
+      this.options.managedRuntime
+        ? '正在检查 PLC-Sim 与内置 Runtime…'
+        : '正在检查 PLC-Sim 与 Conda 环境…'
+    )
 
     try {
-      const plan = await resolveLocalSimulatorLaunchPlan(config)
+      if (this.options.managedRuntime) {
+        await this.startManagedSimulator(config)
+        return this.getSnapshot()
+      }
+      const plan = await resolveLocalSimulatorLaunchPlan(
+        config,
+        process.platform
+      )
       await requireAvailablePorts([{
         port: LOCAL_RUNTIME_PORTS.simulator,
         label: 'OPC UA'
@@ -149,14 +215,21 @@ export class LocalRuntimeManager {
     config: LocalRuntimeLaunchConfig
   ): Promise<LocalRuntimeSnapshot> {
     this.beginOperation('edge')
-    if (this.edgeProcess) {
+    if (this.edgeIsRunning()) {
       this.activeOperation = null
       throw new Error('领域侧 Edge 已在运行')
     }
 
+    this.resetAcceptance()
+
     this.publishState('validating_edge', '正在检查 Edge 项目、Conda 环境与固定端口…')
 
     try {
+      if (this.options.managedRuntime) {
+        await this.startManagedEdge(config)
+        return this.getSnapshot()
+      }
+
       const plan = await resolveLocalRuntimeLaunchPlan(config)
       await requireAvailablePorts([
         { port: LOCAL_RUNTIME_PORTS.edgeHttp, label: '领域侧 Edge HTTP' }
@@ -167,37 +240,7 @@ export class LocalRuntimeManager {
       this.publishState('starting_edge', '正在通过 unilab CLI 启动 ROS Edge…')
       this.edgeProcess = this.spawnManaged('edge', plan.edge)
       this.publishState('waiting_edge', '领域侧 Edge 正在初始化 HostNode…')
-      await waitForHttp(
-        OS_HEALTH_URL,
-        managedChildren([
-          ['simulator', this.simulatorProcess],
-          ['edge', this.edgeProcess]
-        ]),
-        PROCESS_READY_TIMEOUT_MS,
-        (payload) => isRecord(payload) && payload['status'] === 'ok'
-      )
-
-      this.publishState('waiting_edge', 'HostNode 已启动，正在等待工作流模板目录…')
-      await waitForHttp(
-        WORKFLOW_TEMPLATE_CATALOG_URL,
-        managedChildren([
-          ['simulator', this.simulatorProcess],
-          ['edge', this.edgeProcess]
-        ]),
-        PROCESS_READY_TIMEOUT_MS,
-        () => true
-      )
-
-      this.publishState('waiting_edge', '工作流目录已就绪，正在等待设备运行时…')
-      await waitForHttp(
-        DEVICE_CATALOG_URL,
-        managedChildren([
-          ['simulator', this.simulatorProcess],
-          ['edge', this.edgeProcess]
-        ]),
-        PROCESS_READY_TIMEOUT_MS,
-        isDeviceCatalogReady
-      )
+      await this.waitUntilEdgeReady()
 
       this.publishState(
         'ready',
@@ -220,11 +263,11 @@ export class LocalRuntimeManager {
 
   async stopSimulator(): Promise<LocalRuntimeSnapshot> {
     this.beginOperation('simulator')
-    if (this.edgeProcess) {
+    if (this.edgeIsRunning()) {
       this.activeOperation = null
       throw new Error('请先停止领域侧 Edge，再停止 PLC-Sim')
     }
-    if (!this.simulatorProcess) {
+    if (!this.simulatorIsRunning()) {
       this.activeOperation = null
       return this.getSnapshot()
     }
@@ -244,7 +287,7 @@ export class LocalRuntimeManager {
 
   async stopEdge(): Promise<LocalRuntimeSnapshot> {
     this.beginOperation('edge')
-    if (!this.edgeProcess) {
+    if (!this.edgeIsRunning()) {
       this.activeOperation = null
       return this.getSnapshot()
     }
@@ -254,7 +297,7 @@ export class LocalRuntimeManager {
     try {
       await this.stopEdgeProcesses()
       this.stopping = false
-      if (this.simulatorProcess) {
+      if (this.simulatorIsRunning()) {
         this.publishState(
           'simulator_ready',
           'PLC-Sim 仍在运行；上传变量表后可再次启动领域侧 Edge'
@@ -280,12 +323,160 @@ export class LocalRuntimeManager {
     return this.getSnapshot()
   }
 
+  async runAcceptance(
+    config: LocalRuntimeLaunchConfig
+  ): Promise<LocalRuntimeSnapshot> {
+    this.beginOperation('all')
+    if (!this.edgeIsRunning()) {
+      this.activeOperation = null
+      throw new Error('请先启动领域侧 Edge，再运行设备包验收')
+    }
+    this.publishState('validating_acceptance', '正在验收 PLC-Sim 与设备包启动状态…')
+    let acceptance: LocalRuntimeAcceptanceResult
+    try {
+      const workspacePath = normalizeRequiredPath(
+        config.szlabProjectPath,
+        '请选择领域项目根目录'
+      )
+      acceptance = await (
+        this.options.runAcceptance ?? runDevicePackageAcceptance
+      )(workspacePath)
+    } catch (error) {
+      acceptance = {
+        status: 'failed',
+        message: `验收执行失败：${errorMessage(error)}`,
+        checkedAt: Date.now(),
+        descriptorPath: null,
+        packageName: null,
+        packageVersion: null
+      }
+    }
+
+    this.stopping = true
+    this.publishState('cleaning_acceptance', '验收完成，正在按默认策略清理本地进程…')
+    try {
+      await this.stopProcesses()
+    } finally {
+      this.stopping = false
+      this.activeOperation = null
+    }
+    this.acceptance = acceptance
+    this.publish({
+      ...IDLE_LOCAL_RUNTIME_SNAPSHOT,
+      message: `${acceptance.message} 本次验收进程已清理。`,
+      acceptance
+    })
+    return this.getSnapshot()
+  }
+
   private beginOperation(operation: ActiveOperation): void {
     if (this.activeOperation) {
       throw new Error('本地服务正在执行其他操作，请稍后再试')
     }
     this.activeOperation = operation
     this.stopping = false
+  }
+
+  private async startManagedEdge(
+    config: LocalRuntimeLaunchConfig
+  ): Promise<void> {
+    const managedRuntime = this.options.managedRuntime
+    if (!managedRuntime) throw new Error('受管 Runtime 尚未配置')
+    const workingRoot = this.options.managedWorkingRoot
+      ?? join(dirname(this.logsDirectory), 'workspaces')
+    const launch = await resolveManagedWorkerLaunch(config, workingRoot)
+    await requireAvailablePorts([
+      { port: LOCAL_RUNTIME_PORTS.edgeHttp, label: '领域侧 Edge HTTP' }
+    ])
+    await mkdir(this.logsDirectory, { recursive: true })
+    await mkdir(launch.workingDirectory, { recursive: true })
+    this.publishState('starting_edge', '正在启动内置 Runtime Supervisor…')
+    const supervisor = await managedRuntime.startWorker(launch)
+    if (supervisor.status !== 'running') {
+      throw new Error(
+        supervisor.status === 'interrupted'
+          ? '上次 Runtime 未正常结束，请先确认设备状态'
+          : supervisor.error ?? '内置 Runtime 未进入运行状态'
+      )
+    }
+    this.managedEdgeRunning = true
+    this.publishState('waiting_edge', '内置 Runtime 正在初始化领域设备…')
+    await this.waitUntilEdgeReady()
+    this.publishState(
+      'ready',
+      this.simulatorIsRunning()
+        ? 'PLC-Sim 与内置 Runtime 已就绪'
+        : '内置 Runtime 已就绪'
+    )
+  }
+
+  private async startManagedSimulator(
+    config: LocalRuntimeLaunchConfig
+  ): Promise<void> {
+    const managedRuntime = this.options.managedRuntime
+    if (!managedRuntime) throw new Error('受管 Runtime 尚未配置')
+    const launch = await resolveManagedSimulatorLaunch(config)
+    await requireAvailablePorts([{
+      port: LOCAL_RUNTIME_PORTS.simulator,
+      label: 'OPC UA'
+    }])
+    await mkdir(this.logsDirectory, { recursive: true })
+    this.publishState('starting_simulator', '正在通过 Runtime Supervisor 启动 PLC-Sim…')
+    const supervisor = await managedRuntime.startSimulator(launch)
+    if (supervisor.simulator.status !== 'running') {
+      throw new Error(
+        supervisor.simulator.status === 'interrupted'
+          ? '上次 PLC-Sim 未正常结束，请先确认端口和设备状态'
+          : supervisor.simulator.error ?? 'PLC-Sim 未进入运行状态'
+      )
+    }
+    this.managedSimulatorRunning = true
+    this.publishState('waiting_simulator', 'PLC-Sim 已启动，正在等待 18765 端口…')
+    if (this.options.waitForSimulatorReadiness) {
+      await this.options.waitForSimulatorReadiness()
+    } else {
+      await waitForPort(
+        HOST,
+        LOCAL_RUNTIME_PORTS.simulator,
+        [],
+        PROCESS_READY_TIMEOUT_MS
+      )
+    }
+    this.publishState(
+      'simulator_ready',
+      'PLC-Sim 已就绪；请上传 PLC 变量表后再启动领域侧 Edge'
+    )
+  }
+
+  private async waitUntilEdgeReady(): Promise<void> {
+    if (this.options.waitForEdgeReadiness) {
+      await this.options.waitForEdgeReadiness()
+      return
+    }
+    const children = managedChildren([
+      ['simulator', this.simulatorProcess],
+      ['edge', this.edgeProcess]
+    ])
+    await waitForHttp(
+      OS_HEALTH_URL,
+      children,
+      PROCESS_READY_TIMEOUT_MS,
+      (payload) => isRecord(payload) && payload['status'] === 'ok'
+    )
+    this.publishState('waiting_edge', 'HostNode 已启动，正在等待工作流模板目录…')
+    await waitForHttp(
+      WORKFLOW_TEMPLATE_CATALOG_URL,
+      children,
+      PROCESS_READY_TIMEOUT_MS,
+      () => true
+    )
+    this.publishState('waiting_edge', '工作流目录已就绪，正在等待设备运行时…')
+    await waitForHttp(
+      DEVICE_CATALOG_URL,
+      children,
+      PROCESS_READY_TIMEOUT_MS,
+      isDeviceCatalogReady
+    )
   }
 
   private spawnManaged(
@@ -364,6 +555,10 @@ export class LocalRuntimeManager {
       this.expectedExits.add(child)
       await stopProcessTree(child)
     }
+    if (this.managedSimulatorRunning && this.options.managedRuntime) {
+      await this.options.managedRuntime.stopSimulator()
+      this.managedSimulatorRunning = false
+    }
   }
 
   private async stopEdgeProcesses(): Promise<void> {
@@ -374,6 +569,10 @@ export class LocalRuntimeManager {
         this.expectedExits.add(child)
         await stopProcessTree(child)
       }
+    }
+    if (this.managedEdgeRunning && this.options.managedRuntime) {
+      await this.options.managedRuntime.stopWorker()
+      this.managedEdgeRunning = false
     }
   }
 
@@ -390,11 +589,12 @@ export class LocalRuntimeManager {
     this.publish({
       phase: 'failed',
       message,
-      simulatorRunning: Boolean(this.simulatorProcess),
+      simulatorRunning: this.simulatorIsRunning(),
       bridgeRunning: false,
-      edgeRunning: Boolean(this.edgeProcess),
+      edgeRunning: this.edgeIsRunning(),
       failedProcess,
-      error
+      error,
+      acceptance: this.acceptance
     })
   }
 
@@ -405,15 +605,30 @@ export class LocalRuntimeManager {
     this.publish({
       phase,
       message,
-      simulatorRunning: Boolean(this.simulatorProcess),
+      simulatorRunning: this.simulatorIsRunning(),
       bridgeRunning: false,
-      edgeRunning: Boolean(this.edgeProcess)
+      edgeRunning: this.edgeIsRunning(),
+      acceptance: this.acceptance
     })
   }
 
   private publish(snapshot: LocalRuntimeSnapshot): void {
     this.snapshot = snapshot
     this.onSnapshot(this.getSnapshot())
+  }
+
+  private resetAcceptance(): void {
+    this.acceptance = {
+      ...IDLE_LOCAL_RUNTIME_SNAPSHOT.acceptance!
+    }
+  }
+
+  private edgeIsRunning(): boolean {
+    return Boolean(this.edgeProcess) || this.managedEdgeRunning
+  }
+
+  private simulatorIsRunning(): boolean {
+    return Boolean(this.simulatorProcess) || this.managedSimulatorRunning
   }
 }
 
@@ -484,11 +699,81 @@ export async function resolveLocalRuntimeLaunchPlan(
   }
 }
 
+export async function resolveManagedWorkerLaunch(
+  config: LocalRuntimeLaunchConfig,
+  managedWorkingRoot: string
+): Promise<ManagedWorkerLaunch> {
+  const graphPath = normalizeRequiredPath(config.graphPath, '请选择设备图 JSON')
+  const workspacePath = normalizeRequiredPath(
+    config.szlabProjectPath,
+    '请选择领域项目根目录'
+  )
+  if (!graphPath.toLowerCase().endsWith('.json')) {
+    throw new Error('设备图必须是 JSON 文件')
+  }
+  await requireFile(graphPath, '设备图 JSON 不存在')
+  await requireDirectory(workspacePath, '领域项目根目录不存在')
+  const configPath = join(workspacePath, 'deployment', 'local_config.py')
+  await requireFile(configPath, '领域项目缺少 deployment/local_config.py')
+  const workspaceKey = createHash('sha256')
+    .update(workspacePath)
+    .digest('hex')
+    .slice(0, 12)
+  const workspaceName = basename(workspacePath)
+    .replace(/[^a-zA-Z0-9._-]+/g, '-')
+    .slice(0, 48) || 'workspace'
+  return {
+    workspacePath,
+    graphPath,
+    configPath,
+    workingDirectory: join(
+      resolve(managedWorkingRoot),
+      `${workspaceName}-${workspaceKey}`
+    ),
+    backend: 'ros'
+  }
+}
+
+export async function resolveManagedSimulatorLaunch(
+  config: LocalRuntimeLaunchConfig
+): Promise<ManagedSimulatorLaunch> {
+  const selectedPath = normalizeRequiredPath(
+    config.simulatorProjectPath,
+    '请选择 PLC-Sim 源码目录或已安装可执行文件'
+  )
+  let selectedStat: Awaited<ReturnType<typeof stat>>
+  try {
+    selectedStat = await stat(selectedPath)
+  } catch (error) {
+    if (isNodeError(error) && error.code === 'ENOENT') {
+      throw new Error(`PLC-Sim 路径不存在：${selectedPath}`)
+    }
+    throw error
+  }
+  if (selectedStat.isFile()) {
+    await requireExecutable(
+      selectedPath,
+      '所选 PLC-Sim 文件不可执行'
+    )
+    return { kind: 'executable', path: selectedPath }
+  }
+  if (!selectedStat.isDirectory()) {
+    throw new Error('PLC-Sim 路径必须是源码目录或可执行文件')
+  }
+  await resolveSimulatorWorkingDirectory(selectedPath)
+  return { kind: 'source', path: selectedPath }
+}
+
 export async function resolveLocalSimulatorLaunchPlan(
   config: LocalRuntimeLaunchConfig,
-  platform: NodeJS.Platform = process.platform
+  platform: NodeJS.Platform = process.platform,
+  managedRuntime?: ManagedSimulatorRuntime
 ): Promise<LocalSimulatorLaunchPlan> {
-  const resolvedConfig = await resolveSimulatorConfig(config, platform)
+  const resolvedConfig = await resolveSimulatorConfig(
+    config,
+    platform,
+    managedRuntime
+  )
   return { simulator: simulatorSpec(resolvedConfig) }
 }
 
@@ -550,22 +835,22 @@ async function resolveRuntimeConfig(
 
 async function resolveSimulatorConfig(
   config: LocalRuntimeLaunchConfig,
-  platform: NodeJS.Platform
+  platform: NodeJS.Platform,
+  managedRuntime?: ManagedSimulatorRuntime
 ): Promise<ResolvedSimulatorConfig> {
-  const environmentPath = normalizeRequiredPath(
-    config.environmentPath,
-    '请选择 unilab Conda 环境目录'
-  )
+  const environmentPath = managedRuntime?.environmentPath
+    ?? normalizeRequiredPath(
+      config.environmentPath,
+      '请选择 unilab Conda 环境目录'
+    )
   const simulatorProjectPath = normalizeRequiredPath(
     config.simulatorProjectPath,
     '请选择 PLC-Sim 项目根目录'
   )
   await requireDirectory(environmentPath, 'unilab Conda 环境目录不存在')
   await requireDirectory(simulatorProjectPath, 'PLC-Sim 项目根目录不存在')
-  const { pythonExecutable } = runtimeExecutablePaths(
-    environmentPath,
-    platform
-  )
+  const pythonExecutable = managedRuntime?.pythonExecutable
+    ?? runtimeExecutablePaths(environmentPath, platform).pythonExecutable
   await requireExecutable(
     pythonExecutable,
     platform === 'win32'

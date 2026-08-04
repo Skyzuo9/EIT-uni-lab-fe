@@ -10,6 +10,7 @@
     "preview": "unset ELECTRON_RUN_AS_NODE; electron-vite preview",
     "package:mac": "node scripts/package-macos.mjs",
     "package:win": "node scripts/package-windows.mjs",
+    "package:linux": "node scripts/package-linux.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run && node scripts/verify-icons.mjs && node scripts/verify-installer.mjs"
   },

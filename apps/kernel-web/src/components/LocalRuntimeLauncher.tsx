@@ -12,6 +12,8 @@ import type {
   DesktopRuntimeApi,
   LocalRuntimeLaunchConfig,
   LocalRuntimeLogsSnapshot,
+  LocalRuntimeMode,
+  LocalRuntimeModeInfo,
   LocalRuntimePathKind,
   LocalRuntimeProcessKind,
   LocalRuntimeSnapshot
@@ -34,6 +36,11 @@ const IDLE_SNAPSHOT: LocalRuntimeSnapshot = {
   simulatorRunning: false,
   bridgeRunning: false,
   edgeRunning: false
+}
+const DEVELOPMENT_RUNTIME_INFO: LocalRuntimeModeInfo = {
+  mode: 'development',
+  label: '开发环境 Runtime',
+  runtimeVersion: null
 }
 
 interface LocalRuntimeLauncherProps {
@@ -165,6 +172,7 @@ export default function LocalRuntimeLauncher({
   const [open, setOpen] = useState(false)
   const [config, setConfig] = useState(readStoredConfig)
   const [snapshot, setSnapshot] = useState(IDLE_SNAPSHOT)
+  const [runtimeInfo, setRuntimeInfo] = useState(DEVELOPMENT_RUNTIME_INFO)
   const [localError, setLocalError] = useState<string | null>(null)
   const [simulatorSubmitted, setSimulatorSubmitted] = useState(false)
   const [edgeSubmitted, setEdgeSubmitted] = useState(false)
@@ -178,6 +186,18 @@ export default function LocalRuntimeLauncher({
     }).catch((error: unknown) => {
       if (active) setLocalError(errorMessage(error))
     })
+    void runtimeApi.getModeInfo().then((nextInfo) => {
+      if (!active) return
+      setRuntimeInfo(nextInfo)
+      if (nextInfo.defaultLaunchConfig) {
+        setConfig((current) => mergeDefaultLaunchConfig(
+          current,
+          nextInfo.defaultLaunchConfig!
+        ))
+      }
+    }).catch((error: unknown) => {
+      if (active) setLocalError(errorMessage(error))
+    })
     const unsubscribe = runtimeApi.onSnapshot((nextSnapshot) => {
       if (active) setSnapshot(nextSnapshot)
     })
@@ -188,7 +208,11 @@ export default function LocalRuntimeLauncher({
   }, [runtimeApi])
 
   useEffect(() => {
-    if (!runtimeApi || config.environmentPath.trim()) return
+    if (
+      !runtimeApi
+      || runtimeInfo.mode === 'managed'
+      || config.environmentPath.trim()
+    ) return
     let active = true
     void runtimeApi.getDefaultEnvironmentPath().then((environmentPath) => {
       if (!active || !environmentPath) return
@@ -201,7 +225,7 @@ export default function LocalRuntimeLauncher({
     return () => {
       active = false
     }
-  }, [config.environmentPath, runtimeApi])
+  }, [config.environmentPath, runtimeApi, runtimeInfo.mode])
 
   useEffect(() => {
     if (typeof globalThis.localStorage === 'undefined') return
@@ -220,8 +244,8 @@ export default function LocalRuntimeLauncher({
 
   if (!runtimeApi) return null
 
-  const simulatorValidation = validateSimulatorConfig(config)
-  const edgeValidation = validateEdgeConfig(config)
+  const simulatorValidation = validateSimulatorConfig(config, runtimeInfo.mode)
+  const edgeValidation = validateEdgeConfig(config, runtimeInfo.mode)
   const transitioning = isTransitioning(snapshot)
 
   const closeDialog = (): void => {
@@ -268,6 +292,12 @@ export default function LocalRuntimeLauncher({
     setLocalError(null)
     if (!edgeValidation.valid) return
     try {
+      const trust = await runtimeApi.inspectDevicePackage(config)
+      if (trust.confirmationRequired) {
+        const confirmed = globalThis.confirm(devicePackageTrustPrompt(trust))
+        if (!confirmed) return
+        await runtimeApi.confirmDevicePackage(config, trust.contentHash)
+      }
       setSnapshot(await runtimeApi.startEdge(config))
       onReady?.()
     } catch (error) {
@@ -279,6 +309,15 @@ export default function LocalRuntimeLauncher({
     setLocalError(null)
     try {
       setSnapshot(await runtimeApi.stopEdge())
+    } catch (error) {
+      setLocalError(errorMessage(error))
+    }
+  }
+
+  const runAcceptance = async (): Promise<void> => {
+    setLocalError(null)
+    try {
+      setSnapshot(await runtimeApi.runAcceptance(config))
     } catch (error) {
       setLocalError(errorMessage(error))
     }
@@ -299,6 +338,7 @@ export default function LocalRuntimeLauncher({
         ? createPortal(
             <LocalRuntimeDialog
               config={config}
+              runtimeInfo={runtimeInfo}
               snapshot={snapshot}
               error={localError ?? snapshot.error ?? null}
               simulatorSubmitted={simulatorSubmitted}
@@ -312,6 +352,7 @@ export default function LocalRuntimeLauncher({
               onStopSimulator={() => void stopSimulator()}
               onStartEdge={() => void startEdge()}
               onStopEdge={() => void stopEdge()}
+              onRunAcceptance={() => void runAcceptance()}
               transitioning={transitioning}
               logControl={(
                 <LocalRuntimeLogLauncher
@@ -330,6 +371,7 @@ export default function LocalRuntimeLauncher({
 
 interface LocalRuntimeDialogProps {
   config: LocalRuntimeLaunchConfig
+  runtimeInfo: LocalRuntimeModeInfo
   snapshot: LocalRuntimeSnapshot
   error: string | null
   simulatorSubmitted: boolean
@@ -344,11 +386,13 @@ interface LocalRuntimeDialogProps {
   onStopSimulator: () => void
   onStartEdge: () => void
   onStopEdge: () => void
+  onRunAcceptance: () => void
   logControl?: ReactNode
 }
 
 export function LocalRuntimeDialog({
   config,
+  runtimeInfo,
   snapshot,
   error,
   simulatorSubmitted,
@@ -363,6 +407,7 @@ export function LocalRuntimeDialog({
   onStopSimulator,
   onStartEdge,
   onStopEdge,
+  onRunAcceptance,
   logControl
 }: LocalRuntimeDialogProps): React.JSX.Element {
   const simulatorTransitioning = isSimulatorTransitioning(snapshot)
@@ -409,28 +454,46 @@ export function LocalRuntimeDialog({
         </header>
 
         <div className={styles.body}>
-          <div className={styles.fields}>
-            <PathField
-              id="runtime-environment-path"
-              label="unilab Conda 环境目录"
-              value={config.environmentPath}
-              placeholder="自动识别，或选择 Conda 环境目录"
-              buttonLabel="选择目录"
-              disabled={environmentDisabled}
-              invalid={Boolean(
-                (simulatorSubmitted
-                  && simulatorValidation.errors.environmentPath)
-                || (edgeSubmitted
-                  && edgeValidation.errors.environmentPath)
-              )}
-              error={simulatorSubmitted
-                ? simulatorValidation.errors.environmentPath
-                : edgeSubmitted
-                  ? edgeValidation.errors.environmentPath
-                  : undefined}
-              autoFocus
-              onChoose={() => onChoosePath('environment')}
-            />
+          {runtimeInfo.mode === 'managed' ? (
+            <div className={styles.dependencyNotice} role="note">
+              <strong>{runtimeInfo.label}</strong>
+              <span>
+                {runtimeInfo.runtimeVersion
+                  ? `Uni-Lab Runtime ${runtimeInfo.runtimeVersion}，由桌面端校验和维护。`
+                  : '随安装包提供，由桌面端校验和维护。'}
+              </span>
+            </div>
+          ) : (
+            <div className={styles.fields}>
+              <PathField
+                id="runtime-environment-path"
+                label="unilab Conda 环境目录"
+                value={config.environmentPath}
+                placeholder="自动识别，或选择 Conda 环境目录"
+                buttonLabel="选择目录"
+                disabled={environmentDisabled}
+                invalid={Boolean(
+                  (simulatorSubmitted
+                    && simulatorValidation.errors.environmentPath)
+                  || (edgeSubmitted
+                    && edgeValidation.errors.environmentPath)
+                )}
+                error={simulatorSubmitted
+                  ? simulatorValidation.errors.environmentPath
+                  : edgeSubmitted
+                    ? edgeValidation.errors.environmentPath
+                    : undefined}
+                autoFocus
+                onChoose={() => onChoosePath('environment')}
+              />
+            </div>
+          )}
+
+          <div className={styles.dependencyNotice} role="note">
+            <strong>设备包由你决定是否运行</strong>
+            <span>
+              首次使用或内容变化时会显示签名状态与 SHA-256；未签名或签名无效也可在确认后启动，并写入本机审计记录。
+            </span>
           </div>
 
           <section
@@ -459,10 +522,10 @@ export function LocalRuntimeDialog({
             </header>
             <PathField
               id="runtime-simulator-path"
-              label="PLC-Sim 项目根目录"
+              label="PLC-Sim 源码目录或已安装可执行文件"
               value={config.simulatorProjectPath}
-              placeholder="选择包含 OpcUaSim 的 PLC-Sim 项目根目录"
-              buttonLabel="选择目录"
+              placeholder="选择包含 OpcUaSim 的源码目录，或 PLC-Sim 可执行文件"
+              buttonLabel="选择路径"
               disabled={simulatorDisabled}
               invalid={simulatorSubmitted
                 && Boolean(simulatorValidation.errors.simulatorProjectPath)}
@@ -509,25 +572,27 @@ export function LocalRuntimeDialog({
             </div>
 
             <div className={styles.fields}>
-              <PathField
-                id="runtime-os-path"
-                label="Uni-Lab-OS 项目根目录"
-                value={config.osProjectPath}
-                placeholder="选择 Uni-Lab-OS 项目根目录"
-                buttonLabel="选择目录"
-                disabled={edgeDisabled}
-                invalid={edgeSubmitted
-                  && Boolean(edgeValidation.errors.osProjectPath)}
-                error={edgeSubmitted
-                  ? edgeValidation.errors.osProjectPath
-                  : undefined}
-                editable
-                onValueChange={(osProjectPath) => onChange({
-                  ...config,
-                  osProjectPath
-                })}
-                onChoose={() => onChoosePath('os')}
-              />
+              {runtimeInfo.mode === 'development' ? (
+                <PathField
+                  id="runtime-os-path"
+                  label="Uni-Lab-OS 项目根目录"
+                  value={config.osProjectPath}
+                  placeholder="选择 Uni-Lab-OS 项目根目录"
+                  buttonLabel="选择目录"
+                  disabled={edgeDisabled}
+                  invalid={edgeSubmitted
+                    && Boolean(edgeValidation.errors.osProjectPath)}
+                  error={edgeSubmitted
+                    ? edgeValidation.errors.osProjectPath
+                    : undefined}
+                  editable
+                  onValueChange={(osProjectPath) => onChange({
+                    ...config,
+                    osProjectPath
+                  })}
+                  onChoose={() => onChoosePath('os')}
+                />
+              ) : null}
               <PathField
                 id="runtime-szlab-path"
                 label="领域项目根目录（以 Uni-Lab-SZLab 为例）"
@@ -565,6 +630,31 @@ export function LocalRuntimeDialog({
           </section>
 
           <RuntimeStatus snapshot={snapshot} />
+
+          <div
+            className={styles.acceptancePanel}
+            data-status={snapshot.acceptance?.status ?? 'unverified'}
+          >
+            <div>
+              <strong>
+                设备包验收：{acceptanceStatusLabel(
+                  snapshot.acceptance?.status ?? 'unverified'
+                )}
+              </strong>
+              <span>
+                {snapshot.acceptance?.message
+                  ?? '启动 PLC-Sim 与 Edge 后可手动运行；结束后默认停止本次进程。'}
+              </span>
+            </div>
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              disabled={!edgeActive || transitioning}
+              onClick={onRunAcceptance}
+            >
+              运行验收（完成后清理）
+            </button>
+          </div>
 
           {error ? (
             <p className={styles.error} role="alert">
@@ -903,30 +993,32 @@ interface ValidationResult {
 }
 
 export function validateSimulatorConfig(
-  config: LocalRuntimeLaunchConfig
+  config: LocalRuntimeLaunchConfig,
+  mode: LocalRuntimeMode = 'development'
 ): ValidationResult {
   const errors: ValidationResult['errors'] = {}
-  if (!config.environmentPath.trim()) {
+  if (mode === 'development' && !config.environmentPath.trim()) {
     errors.environmentPath = '请选择 unilab Conda 环境目录'
   }
   if (!config.simulatorProjectPath.trim()) {
-    errors.simulatorProjectPath = '请选择 PLC-Sim 项目根目录'
+    errors.simulatorProjectPath = '请选择 PLC-Sim 源码目录或已安装可执行文件'
   }
   return { valid: Object.keys(errors).length === 0, errors }
 }
 
 export function validateEdgeConfig(
-  config: LocalRuntimeLaunchConfig
+  config: LocalRuntimeLaunchConfig,
+  mode: LocalRuntimeMode = 'development'
 ): ValidationResult {
   const errors: ValidationResult['errors'] = {}
   if (!config.graphPath.trim()) errors.graphPath = '请选择设备图 JSON'
-  if (!config.osProjectPath.trim()) {
+  if (mode === 'development' && !config.osProjectPath.trim()) {
     errors.osProjectPath = '请选择 Uni-Lab-OS 项目根目录'
   }
   if (!config.szlabProjectPath.trim()) {
     errors.szlabProjectPath = '请选择领域项目根目录'
   }
-  if (!config.environmentPath.trim()) {
+  if (mode === 'development' && !config.environmentPath.trim()) {
     errors.environmentPath = '请选择 unilab Conda 环境目录'
   }
   return { valid: Object.keys(errors).length === 0, errors }
@@ -950,9 +1042,36 @@ function isTransitioning(snapshot: LocalRuntimeSnapshot): boolean {
     'waiting_bridge',
     'starting_edge',
     'waiting_edge',
+    'validating_acceptance',
+    'cleaning_acceptance',
     'stopping_simulator',
     'stopping_edge'
   ].includes(snapshot.phase)
+}
+
+function acceptanceStatusLabel(
+  status: 'unverified' | 'verified' | 'failed'
+): string {
+  if (status === 'verified') return '已验证'
+  if (status === 'failed') return '失败'
+  return '未验证'
+}
+
+function devicePackageTrustPrompt(trust: {
+  contentHash: string
+  signatureStatus: 'valid' | 'invalid' | 'unsigned'
+  signerFingerprint: string | null
+}): string {
+  const signature = trust.signatureStatus === 'valid'
+    ? `签名有效，签名者指纹 ${trust.signerFingerprint ?? '未知'}`
+    : trust.signatureStatus === 'invalid'
+      ? '签名无效'
+      : '未签名'
+  return [
+    `设备包${signature}。`,
+    `SHA-256：${trust.contentHash}`,
+    '是否确认本次内容并启动？该决定会写入本机审计记录。'
+  ].join('\n')
 }
 
 function isSimulatorTransitioning(snapshot: LocalRuntimeSnapshot): boolean {
@@ -1011,6 +1130,20 @@ function readStoredConfig(): LocalRuntimeLaunchConfig {
   } catch {
     return { ...EMPTY_CONFIG }
   }
+}
+
+function mergeDefaultLaunchConfig(
+  current: LocalRuntimeLaunchConfig,
+  defaults: LocalRuntimeLaunchConfig
+): LocalRuntimeLaunchConfig {
+  return Object.fromEntries(
+    Object.entries(current).map(([key, value]) => [
+      key,
+      value.trim()
+        ? value
+        : defaults[key as keyof LocalRuntimeLaunchConfig]
+    ])
+  ) as unknown as LocalRuntimeLaunchConfig
 }
 
 function simulatorRuntimeStatus(

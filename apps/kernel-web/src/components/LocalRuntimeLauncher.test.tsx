@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type {
   LocalRuntimeLaunchConfig,
   LocalRuntimeLogsSnapshot,
+  LocalRuntimeModeInfo,
   LocalRuntimeSnapshot
 } from '../types/electron'
 import {
@@ -47,6 +48,38 @@ describe('LocalRuntimeLauncher', () => {
     })).toEqual({ valid: true, errors: {} })
   })
 
+  it('uses the bundled Runtime without asking for Conda or OS source', () => {
+    const managedConfig = {
+      ...baseConfig,
+      environmentPath: '',
+      osProjectPath: ''
+    }
+    const runtimeInfo: LocalRuntimeModeInfo = {
+      mode: 'managed',
+      label: '内置 Runtime',
+      runtimeVersion: '0.11.3'
+    }
+
+    expect(validateEdgeConfig(managedConfig, 'managed')).toEqual({
+      valid: true,
+      errors: {}
+    })
+    expect(validateSimulatorConfig(managedConfig, 'managed')).toEqual({
+      valid: true,
+      errors: {}
+    })
+    const markup = renderDialog(
+      managedConfig,
+      idleSnapshot,
+      runtimeInfo
+    )
+
+    expect(markup).toContain('内置 Runtime')
+    expect(markup).toContain('0.11.3')
+    expect(markup).not.toContain('unilab Conda 环境目录')
+    expect(markup).not.toContain('Uni-Lab-OS 项目根目录')
+  })
+
   it('renders separate PLC and Edge controls with the variable-table reminder', () => {
     const markup = renderDialog(baseConfig, idleSnapshot)
     const headerMarkup = markup.match(/<header[^>]*>.*?<\/header>/s)?.[0] ?? ''
@@ -59,6 +92,8 @@ describe('LocalRuntimeLauncher', () => {
     expect(markup).toContain('领域设备图 JSON（以 sz_lab 为例）')
     expect(markup).toContain('启动 PLC')
     expect(markup).toContain('启动 Edge')
+    expect(markup).toContain('设备包验收：未验证')
+    expect(markup).toContain('运行验收（完成后清理）')
     expect(markup).toContain('使用 PLC 时，请先上传变量表')
     expect(markup).toContain(
       '先启动 PLC-Sim，在 PLC-Sim 中上传 PLC 变量表，确认完成后再启动领域侧 Edge。'
@@ -182,7 +217,12 @@ describe('LocalRuntimeLauncher', () => {
 
 function renderDialog(
   config: LocalRuntimeLaunchConfig,
-  snapshot: LocalRuntimeSnapshot
+  snapshot: LocalRuntimeSnapshot,
+  runtimeInfo: LocalRuntimeModeInfo = {
+    mode: 'development',
+    label: '开发环境 Runtime',
+    runtimeVersion: null
+  }
 ): string {
   const transitioning = ![
     'idle',
@@ -193,12 +233,13 @@ function renderDialog(
   return renderToStaticMarkup(
     <LocalRuntimeDialog
       config={config}
+      runtimeInfo={runtimeInfo}
       snapshot={snapshot}
       error={null}
       simulatorSubmitted={false}
       edgeSubmitted={false}
-      simulatorValidation={validateSimulatorConfig(config)}
-      edgeValidation={validateEdgeConfig(config)}
+      simulatorValidation={validateSimulatorConfig(config, runtimeInfo.mode)}
+      edgeValidation={validateEdgeConfig(config, runtimeInfo.mode)}
       transitioning={transitioning}
       onChange={vi.fn()}
       onChoosePath={vi.fn()}
@@ -207,6 +248,7 @@ function renderDialog(
       onStopSimulator={vi.fn()}
       onStartEdge={vi.fn()}
       onStopEdge={vi.fn()}
+      onRunAcceptance={vi.fn()}
       logControl={<button type="button">查看日志</button>}
     />
   )

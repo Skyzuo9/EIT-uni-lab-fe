@@ -6,6 +6,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { LocalRuntimeLaunchConfig } from '../shared/localRuntime'
 import {
+  LocalRuntimeManager,
+  type ManagedRuntimePort,
   readLocalRuntimeLogs,
   resolveLocalRuntimeLaunchPlan,
   resolveLocalSimulatorLaunchPlan
@@ -24,6 +26,182 @@ afterEach(async () => {
 })
 
 describe('LocalRuntimeManager command plan', () => {
+  it('starts a workspace through the managed Runtime without Conda or OS source paths', async () => {
+    const fixture = await createFixture('packages')
+    const managedWorkingRoot = join(fixture.szlabRoot, 'managed-data')
+    const startWorker = vi.fn(async () => ({
+      status: 'running' as const,
+      worker: { pid: 42 },
+      error: null,
+      simulator: { status: 'idle' as const, pid: null, error: null }
+    }))
+    const stopWorker = vi.fn(async () => ({
+      status: 'idle' as const,
+      worker: null,
+      error: null,
+      simulator: { status: 'idle' as const, pid: null, error: null }
+    }))
+    const managedRuntime: ManagedRuntimePort = {
+      getModeInfo: async () => ({
+        mode: 'managed',
+        label: '内置 Runtime',
+        runtimeVersion: '0.11.3'
+      }),
+      getRuntimePaths: vi.fn(),
+      startWorker,
+      stopWorker,
+      startSimulator: vi.fn(),
+      stopSimulator: vi.fn()
+    }
+    const manager = new LocalRuntimeManager(
+      join(fixture.szlabRoot, 'logs'),
+      vi.fn(),
+      {
+        managedRuntime,
+        managedWorkingRoot,
+        waitForEdgeReadiness: async () => undefined
+      }
+    )
+
+    const snapshot = await manager.startEdge({
+      ...fixture.config,
+      osProjectPath: '',
+      environmentPath: ''
+    })
+
+    expect(snapshot).toMatchObject({ phase: 'ready', edgeRunning: true })
+    expect(startWorker).toHaveBeenCalledWith({
+      workspacePath: fixture.szlabRoot,
+      graphPath: fixture.graphPath,
+      configPath: join(fixture.szlabRoot, 'deployment', 'local_config.py'),
+      workingDirectory: expect.stringMatching(
+        new RegExp(`^${managedWorkingRoot.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`)
+      ),
+      backend: 'ros'
+    })
+
+    await expect(manager.stopEdge()).resolves.toMatchObject({
+      phase: 'idle',
+      edgeRunning: false
+    })
+    expect(stopWorker).toHaveBeenCalledTimes(1)
+  })
+
+  it('lets the persistent Supervisor own a source PLC-Sim in managed mode', async () => {
+    const fixture = await createFixture('packages')
+    const startSimulator = vi.fn(async () => ({
+      status: 'idle' as const,
+      worker: null,
+      error: null,
+      simulator: { status: 'running' as const, pid: 84, error: null }
+    }))
+    const stopSimulator = vi.fn(async () => ({
+      status: 'idle' as const,
+      worker: null,
+      error: null,
+      simulator: { status: 'idle' as const, pid: null, error: null }
+    }))
+    const managedRuntime: ManagedRuntimePort = {
+      getModeInfo: async () => ({
+        mode: 'managed',
+        label: '内置 Runtime',
+        runtimeVersion: '0.11.3'
+      }),
+      getRuntimePaths: vi.fn(),
+      startWorker: vi.fn(),
+      stopWorker: vi.fn(),
+      startSimulator,
+      stopSimulator
+    }
+    const manager = new LocalRuntimeManager(
+      join(fixture.szlabRoot, 'logs'),
+      vi.fn(),
+      { managedRuntime, waitForSimulatorReadiness: async () => undefined }
+    )
+
+    await expect(manager.startSimulator({
+      ...fixture.config,
+      environmentPath: ''
+    })).resolves.toMatchObject({
+      phase: 'simulator_ready',
+      simulatorRunning: true
+    })
+    expect(startSimulator).toHaveBeenCalledWith({
+      kind: 'source',
+      path: fixture.simulatorRoot
+    })
+
+    await expect(manager.stopSimulator()).resolves.toMatchObject({
+      phase: 'idle',
+      simulatorRunning: false
+    })
+    expect(stopSimulator).toHaveBeenCalledTimes(1)
+  })
+
+  it('runs manual package acceptance and cleans up managed processes by default', async () => {
+    const fixture = await createFixture('packages')
+    const running = {
+      status: 'running' as const,
+      worker: { pid: 42 },
+      error: null,
+      simulator: { status: 'running' as const, pid: 84, error: null }
+    }
+    const stopped = {
+      status: 'idle' as const,
+      worker: null,
+      error: null,
+      simulator: { status: 'idle' as const, pid: null, error: null }
+    }
+    const stopWorker = vi.fn(async () => stopped)
+    const stopSimulator = vi.fn(async () => stopped)
+    const runAcceptance = vi.fn(async () => ({
+      status: 'verified' as const,
+      message: 'PLC-Sim 与设备包启动验收通过。',
+      checkedAt: 1_785_499_200_000,
+      descriptorPath: join(fixture.szlabRoot, 'unilab.acceptance.json'),
+      packageName: 'plc-reference',
+      packageVersion: '1.0.0'
+    }))
+    const manager = new LocalRuntimeManager(
+      join(fixture.szlabRoot, 'logs'),
+      vi.fn(),
+      {
+        managedRuntime: {
+          getModeInfo: async () => ({
+            mode: 'managed',
+            label: '内置 Runtime',
+            runtimeVersion: '0.11.3'
+          }),
+          getRuntimePaths: vi.fn(),
+          startWorker: vi.fn(async () => running),
+          stopWorker,
+          startSimulator: vi.fn(async () => running),
+          stopSimulator
+        },
+        waitForSimulatorReadiness: async () => undefined,
+        waitForEdgeReadiness: async () => undefined,
+        runAcceptance
+      }
+    )
+
+    await manager.startSimulator(fixture.config)
+    await manager.startEdge(fixture.config)
+    await expect(manager.runAcceptance(fixture.config)).resolves.toMatchObject({
+      phase: 'idle',
+      simulatorRunning: false,
+      edgeRunning: false,
+      acceptance: { status: 'verified', packageName: 'plc-reference' }
+    })
+    expect(runAcceptance).toHaveBeenCalledWith(fixture.szlabRoot)
+    expect(stopWorker).toHaveBeenCalledTimes(1)
+    expect(stopSimulator).toHaveBeenCalledTimes(1)
+
+    await manager.startEdge(fixture.config)
+    expect(manager.getSnapshot().acceptance).toMatchObject({
+      status: 'unverified'
+    })
+  })
+
   it('reads only the tail of fixed local runtime log files', async () => {
     const logsDirectory = await mkdtemp(join(tmpdir(), 'unilab-runtime-logs-'))
     temporaryDirectories.push(logsDirectory)

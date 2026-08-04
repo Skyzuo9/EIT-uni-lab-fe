@@ -1,7 +1,9 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type {
   LocalRuntimeLaunchConfig,
+  DevicePackageTrustInfo,
   LocalRuntimeLogsSnapshot,
+  LocalRuntimeModeInfo,
   LocalRuntimePathKind,
   LocalRuntimeSnapshot
 } from '../shared/localRuntime'
@@ -72,6 +74,17 @@ const api = {
       ipcRenderer.invoke('runtime:getDefaultEnvironmentPath'),
     getSnapshot: (): Promise<LocalRuntimeSnapshot> =>
       ipcRenderer.invoke('runtime:getSnapshot'),
+    getModeInfo: (): Promise<LocalRuntimeModeInfo> =>
+      ipcRenderer.invoke('runtime:getModeInfo'),
+    inspectDevicePackage: (
+      config: LocalRuntimeLaunchConfig
+    ): Promise<DevicePackageTrustInfo> =>
+      ipcRenderer.invoke('runtime:inspectDevicePackage', config),
+    confirmDevicePackage: (
+      config: LocalRuntimeLaunchConfig,
+      expectedHash: string
+    ): Promise<DevicePackageTrustInfo> =>
+      ipcRenderer.invoke('runtime:confirmDevicePackage', config, expectedHash),
     startSimulator: (
       config: LocalRuntimeLaunchConfig
     ): Promise<LocalRuntimeSnapshot> =>
@@ -84,6 +97,10 @@ const api = {
       ipcRenderer.invoke('runtime:startEdge', config),
     stopEdge: (): Promise<LocalRuntimeSnapshot> =>
       ipcRenderer.invoke('runtime:stopEdge'),
+    runAcceptance: (
+      config: LocalRuntimeLaunchConfig
+    ): Promise<LocalRuntimeSnapshot> =>
+      ipcRenderer.invoke('runtime:runAcceptance', config),
     readLogs: (): Promise<LocalRuntimeLogsSnapshot> =>
       ipcRenderer.invoke('runtime:readLogs'),
     onSnapshot: (
