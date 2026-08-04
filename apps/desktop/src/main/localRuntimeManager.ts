@@ -89,6 +89,10 @@ const LOCAL_RUNTIME_LOG_KINDS: readonly LocalRuntimeProcessKind[] = [
   'edge'
 ]
 
+// 启动器为每次 Edge 子进程分配的 ROS 2 域编号闭区间。
+const EDGE_ROS_DOMAIN_ID_MIN = 2
+const EDGE_ROS_DOMAIN_ID_COUNT = 98
+
 export class RotatingLogWriter extends Writable {
   private handle: Awaited<ReturnType<typeof open>> | null = null
   private byteLength: number
@@ -793,6 +797,12 @@ function simulatorSpec(config: ResolvedSimulatorConfig): LocalRuntimeSpawnSpec {
   }
 }
 
+/**
+ * 构造一次 Edge 子进程启动规范。
+ *
+ * @param config 已校验且解析完成的本地运行配置。
+ * @returns 包含命令、参数、工作目录和本次随机 ROS 域编号的启动规范。
+ */
 function edgeSpec(config: ResolvedRuntimeConfig): LocalRuntimeSpawnSpec {
   return {
     command: config.unilabExecutable,
@@ -824,9 +834,20 @@ function edgeSpec(config: ResolvedRuntimeConfig): LocalRuntimeSpawnSpec {
       UNILABOS_OBSERVABILITYCONFIG_ENABLED: 'true',
       UNILABOS_OBSERVABILITYCONFIG_PROJECT_NAME: 'uni-lab-electron',
       UNILABOS_HOSTLINKCONFIG_PORT: String(LOCAL_RUNTIME_PORTS.hostLink),
-      ROS_DOMAIN_ID: '42'
+      ROS_DOMAIN_ID: randomEdgeRosDomainId()
     }
   }
+}
+
+/**
+ * 为一次 Edge 启动生成 `02` 至 `99` 的两位 ROS 域编号。
+ *
+ * @returns 可直接写入 `ROS_DOMAIN_ID` 环境变量的两位字符串。
+ */
+function randomEdgeRosDomainId(): string {
+  const domainId = Math.floor(Math.random() * EDGE_ROS_DOMAIN_ID_COUNT)
+    + EDGE_ROS_DOMAIN_ID_MIN
+  return twoDigits(domainId)
 }
 
 function edgeRuntimeDatabasePath(

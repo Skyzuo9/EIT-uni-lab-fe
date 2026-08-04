@@ -99,6 +99,7 @@ describe('LocalRuntimeManager command plan', () => {
     expect(await readFile(`${logPath}.2`, 'utf8')).toBe('12345678')
   })
 
+  /** 证明公开 ROS CLI 启动计划携带合法的两位 ROS 域编号。 */
   it('launches the selected workspace through the public ROS unilab CLI', async () => {
     const fixture = await createFixture('packages')
     const plan = await resolveLocalRuntimeLaunchPlan(fixture.config)
@@ -140,7 +141,7 @@ describe('LocalRuntimeManager command plan', () => {
       '--skip_env_check',
       '--test_mode'
     ])
-    expect(plan.edge.env['ROS_DOMAIN_ID']).toBe('42')
+    expect(plan.edge.env['ROS_DOMAIN_ID']).toMatch(/^(0[2-9]|[1-9]\d)$/)
     expect(plan.edge.env['UNILABOS_OBSERVABILITYCONFIG_ENABLED']).toBe('true')
     expect(plan.edge.env['UNILABOS_OBSERVABILITYCONFIG_PROJECT_NAME']).toBe(
       'uni-lab-electron'
@@ -162,6 +163,28 @@ describe('LocalRuntimeManager command plan', () => {
     expect(basename(runtimeDatabase ?? '')).toMatch(
       /^edge-runtime-\d{8}-\d{6}\.sqlite3$/
     )
+  })
+
+  /** 证明每次 Edge 启动计划都重新取值，并覆盖 02 与 99 两个闭区间边界。 */
+  it('assigns a new two-digit ROS domain id for each Edge launch plan', async () => {
+    const fixture = await createFixture('packages')
+    const random = vi.spyOn(Math, 'random')
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(1 - Number.EPSILON)
+
+    try {
+      const lowerBoundaryPlan = await resolveLocalRuntimeLaunchPlan(
+        fixture.config
+      )
+      const upperBoundaryPlan = await resolveLocalRuntimeLaunchPlan(
+        fixture.config
+      )
+
+      expect(lowerBoundaryPlan.edge.env['ROS_DOMAIN_ID']).toBe('02')
+      expect(upperBoundaryPlan.edge.env['ROS_DOMAIN_ID']).toBe('99')
+    } finally {
+      random.mockRestore()
+    }
   })
 
   it('supports the current root-level szlab_poly_studio layout', async () => {

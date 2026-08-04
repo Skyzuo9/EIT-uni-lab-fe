@@ -39,7 +39,8 @@
    `127.0.0.1:18765`。
 2. 如需使用 PLC，用户在 PLC-Sim 中上传 PLC 变量表并确认完成。
 3. 领域侧 Edge：用户再单独通过 `unilab` CLI 启动 Edge。`sz_lab` 示例使用
-   ROS backend、FastAPI bridge 与 Edge Scheduler，`ROS_DOMAIN_ID=42`，HTTP
+   ROS backend、FastAPI bridge 与 Edge Scheduler；每次启动会随机分配两位
+   `ROS_DOMAIN_ID`（`02`–`99`），HTTP
    监听 `18003`，HostLink 使用本地调试专用端口 `18004`；不再额外启动
    本地 Bridge 进程。挂载领域项目时，每次启动会在
    `runtime/ideawit-e2e` 下生成独立的
