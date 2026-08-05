@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 
 import {
   startPersistentAuthoringOs,
@@ -25,6 +25,59 @@ test.beforeAll(async () => {
 test.afterAll(async () => {
   await os?.stop()
 })
+
+/**
+ * 验证软件包初始工作流创作候选（Candidate）在规范化源码尚未保存时，
+ * 通过公开工作流 UI 先要求用户确认完整差异，且不会提前请求应用接口。
+ *
+ * @param page Playwright 浏览器页面，用于观察用户可见对话框与 OS 网络请求。
+ * @returns 异步完成 UI 断言；门禁或网络事实不符合预期时测试失败。
+ */
+async function requiresPackageCandidateMaterialization({
+  page
+}: {
+  page: Page
+}): Promise<void> {
+  test.setTimeout(90_000)
+  const evidence = collectBrowserEvidence(page, os.url)
+  await selectWorkflow(page, os.workflowUuid, os.url)
+  const panel = page.getByRole('tabpanel', { name: '工作流' })
+  const applyPath =
+    `/api/v1/workflows/${os.workflowUuid}/authoring/apply`
+  const applyRequestsBefore = countRequests(
+    evidence.apiRequests,
+    'POST',
+    applyPath
+  )
+
+  await panel.getByRole('button', {
+    name: '应用工作流',
+    exact: true
+  }).click()
+
+  const normalizationDiff = page.getByRole('dialog', {
+    name: '完整 Python 差异'
+  })
+  await expect(normalizationDiff.getByText(
+    '规范化源码确认',
+    { exact: true }
+  )).toBeVisible()
+  expect(countRequests(
+    evidence.apiRequests,
+    'POST',
+    applyPath
+  )).toBe(applyRequestsBefore)
+  await normalizationDiff.getByRole('button', {
+    name: '取消',
+    exact: true
+  }).click()
+  expect(evidence.browserErrors).toEqual([])
+}
+
+test(
+  '软件包候选的规范化工作流源码未保存时禁止直接应用',
+  requiresPackageCandidateMaterialization
+)
 
 test('imports Python into the existing persistent Authoring UI and applies the OS Candidate', async ({
   page
@@ -79,7 +132,7 @@ test('imports Python into the existing persistent Authoring UI and applies the O
     name: '完整 Python 差异'
   })
   await expect(normalizationDiff.getByText(
-    '导入源码规范化检查',
+    '规范化源码确认',
     { exact: true }
   )).toBeVisible()
   await normalizationDiff.screenshot({

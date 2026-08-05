@@ -40,6 +40,7 @@ import { useWorkflowFileUpload } from '../hooks/useWorkflowFileUpload'
 import {
   workflowAuthoringModeSwitchDecision,
   workflowAuthoringSurfacePolicy,
+  workflowCandidateMaterializationDecision,
   workflowCanvasDraftSaveDecision,
   type WorkflowEditMode
 } from '../utils/workflowCanvasPolicy'
@@ -961,6 +962,12 @@ export function PersistentWorkflowAuthoringPanel({
     void run(() => enterMode(nextMode))
   }
 
+  /**
+   * 保存当前可写工作流源码，并在 OS 规范化结果变化时要求用户确认完整差异。
+   * 该操作只持久化工作流源码（Workflow Source），不会应用工作流创作候选。
+   *
+   * @returns 不返回值；异步保存结果通过工作流编辑器状态呈现。
+   */
   const saveDraft = (): void => {
     if (!aggregate) return
     if (remotePending.current) {
@@ -981,24 +988,25 @@ export function PersistentWorkflowAuthoringPanel({
             )
           )
           installAggregate(saved, draftSaveMessage(saved))
-          const normalized = saved.candidate?.normalized_python_source
-          const draftSource = saved.draft?.python_source
-          if (
-            pendingPythonImport &&
-            normalized &&
-            draftSource &&
-            normalized !== draftSource
-          ) {
+          const materialization = saved.candidate && saved.draft
+            ? workflowCandidateMaterializationDecision({
+                draftPython: saved.draft.python_source,
+                normalizedPython: saved.candidate.normalized_python_source
+              })
+            : null
+          if (materialization?.kind === 'review_normalized_source') {
             setFullSourceDiff({
-              before: draftSource,
-              after: normalized,
+              before: materialization.before,
+              after: materialization.after,
               expectedDraftHash: saved.draft?.draft_hash ?? null,
               expectedWorkflowRevision: saved.workflow_revision,
               reason: 'source_normalization',
               resumeMode: 'code'
             })
             setMessage(
-              `${pendingPythonImport} 已保存；请接受 OS 规范化 Python 后再应用`
+              pendingPythonImport
+                ? `${pendingPythonImport} 已保存；请接受 OS 规范化 Python 后再应用`
+                : '草稿已保存；请接受 OS 规范化 Python 后再应用'
             )
           } else {
             setPendingPythonImport(null)
@@ -1127,12 +1135,41 @@ export function PersistentWorkflowAuthoringPanel({
     installAggregate(remote, '已采用远端工作流编辑状态，本地修改已放弃')
   }
 
+  /**
+   * 应用服务器签发的工作流创作候选；若规范化源码尚未物化，则先打开完整差异确认。
+   * 只有工作流源码与候选规范化源码完全一致时，才向 OS 提交候选哈希。
+   *
+   * @returns 不返回值；异步应用结果通过工作流编辑器状态呈现。
+   */
   const applyCandidate = (): void => {
-    const candidateHash = aggregate?.candidate?.candidate_hash
-    if (!candidateHash) {
+    const candidate = aggregate?.candidate
+    if (!candidate) {
       setError('当前没有可应用的服务器候选版本')
       return
     }
+    const draft = aggregate?.draft
+    if (!draft) {
+      setError('当前候选缺少可确认的工作流源码，请刷新后重试')
+      return
+    }
+    const materialization = workflowCandidateMaterializationDecision({
+      draftPython: draft.python_source,
+      normalizedPython: candidate.normalized_python_source
+    })
+    if (materialization.kind === 'review_normalized_source') {
+      setFullSourceDiff({
+        before: materialization.before,
+        after: materialization.after,
+        expectedDraftHash: draft.draft_hash,
+        expectedWorkflowRevision: aggregate.workflow_revision,
+        reason: 'source_normalization',
+        resumeMode: mode
+      })
+      setMessage('请先接受并保存 OS 规范化 Python，再应用工作流')
+      return
+    }
+    // 候选哈希是 OS 签发的单次应用身份，只能在源码物化门禁通过后提交。
+    const candidateHash = candidate.candidate_hash
     void run(async () => {
       try {
         const applied = await queue.run(
@@ -2513,7 +2550,7 @@ export function PersistentWorkflowAuthoringPanel({
                 {fullSourceDiff.reason === 'conflict_retry'
                   ? '冲突重试检查'
                   : fullSourceDiff.reason === 'source_normalization'
-                    ? '导入源码规范化检查'
+                    ? '规范化源码确认'
                     : '画布保存检查'}
               </span>
               <h2>完整 Python 差异</h2>
