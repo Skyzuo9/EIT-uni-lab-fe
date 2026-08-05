@@ -288,8 +288,6 @@
 .runtimeAuxiliaryService {
   display: grid;
   gap: 12px;
-  padding-block-start: 14px;
-  border-block-start: 1px solid var(--unilab-color-border);
 }
 
 .fields {
@@ -543,7 +541,7 @@
   }
 }
 
-.commandWorkspaceField {
+.domainProjectField {
   display: grid;
   min-width: 0;
   gap: 6px;

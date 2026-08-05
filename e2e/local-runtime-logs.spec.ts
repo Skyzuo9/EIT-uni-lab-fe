@@ -103,6 +103,74 @@ test('keeps the original log entry in the local runtime dialog', async ({
   await expect(runtimeDialog).toBeVisible()
 })
 
+/** 证明 PLC-Sim 折叠边界与常驻路径顺序在真实浏览器渲染中保持一致。 */
+test('本地运行配置按依赖顺序展示且仅折叠 PLC-Sim', async ({ page }) => {
+  await page.goto('/?longRuntimePaths=1')
+  const connectionBar = page.getByRole('group', {
+    name: 'Edge 连接配置'
+  })
+  await connectionBar.getByRole('button', { name: '启动本地环境' }).click()
+
+  const runtimeDialog = page.getByRole('dialog', {
+    name: '领域侧 Edge（以 sz_lab 为例）'
+  })
+  const plcDetails = runtimeDialog.locator('details').filter({
+    hasText: 'PLC-Sim（可选）'
+  }).first()
+  const environmentPath = runtimeDialog.locator('#runtime-environment-path')
+  const osPath = runtimeDialog.locator('#runtime-os-path')
+  const domainPath = runtimeDialog.locator('#runtime-szlab-path')
+  const graphPath = runtimeDialog.locator('#runtime-graph-path')
+  const simulatorPath = runtimeDialog.locator('#runtime-simulator-path')
+  await expect(plcDetails).not.toHaveAttribute('open', '')
+  for (const pathControl of [
+    environmentPath,
+    osPath,
+    domainPath,
+    graphPath
+  ]) {
+    await pathControl.scrollIntoViewIfNeeded()
+    await expect(pathControl).toBeVisible()
+  }
+  await expect(simulatorPath).toBeHidden()
+
+  expect(await runtimeDialog.locator([
+    '#runtime-simulator-path',
+    '#runtime-environment-path',
+    '#runtime-os-path',
+    '#runtime-szlab-path',
+    '#runtime-graph-path'
+  ].join(', ')).evaluateAll((elements) => (
+    elements.map((element) => element.id)
+  ))).toEqual([
+    'runtime-simulator-path',
+    'runtime-environment-path',
+    'runtime-os-path',
+    'runtime-szlab-path',
+    'runtime-graph-path'
+  ])
+  expect(await plcDetails.locator([
+    '#runtime-environment-path',
+    '#runtime-os-path',
+    '#runtime-szlab-path',
+    '#runtime-graph-path'
+  ].join(', ')).count()).toBe(0)
+  await capture(page, '10-local-runtime-plc-collapsed.png')
+
+  await plcDetails.locator('summary').click()
+  await expect(plcDetails).toHaveAttribute('open', '')
+  await expect(simulatorPath).toBeVisible()
+  await capture(page, '11-local-runtime-plc-expanded.png')
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await environmentPath.scrollIntoViewIfNeeded()
+  await expect(environmentPath).toBeVisible()
+  await expect.poll(() => runtimeDialog.evaluate((element) => (
+    element.scrollWidth <= element.clientWidth
+  ))).toBe(true)
+  await capture(page, '12-local-runtime-narrow-long-path.png')
+})
+
 test('用户拖动滚动条与自动刷新重叠时保持阅读位置', async ({
   page
 }) => {
@@ -435,6 +503,9 @@ async function installRuntimeApi(page: Page): Promise<void> {
     const hasLogFilters = (): boolean => (
       new URLSearchParams(window.location.search).has('logFilters')
     )
+    const hasLongRuntimePaths = (): boolean => (
+      new URLSearchParams(window.location.search).has('longRuntimePaths')
+    )
     const idleSnapshot = {
       phase: 'idle' as const,
       message: 'PLC-Sim 与领域侧 Edge 均未启动',
@@ -450,7 +521,9 @@ async function installRuntimeApi(page: Page): Promise<void> {
     }
     const runtimeApi = {
       selectPath: async () => null,
-      getDefaultEnvironmentPath: async () => '/tmp/envs/unilab',
+      getDefaultEnvironmentPath: async () => hasLongRuntimePaths()
+        ? '/tmp/a-very-long-workspace-name/conda/environments/unilab-runtime-with-a-long-name'
+        : '/tmp/envs/unilab',
       getSnapshot: async () => hasPhoenixMissing()
         ? readySnapshot
         : idleSnapshot,

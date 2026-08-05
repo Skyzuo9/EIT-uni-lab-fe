@@ -60,6 +60,7 @@ describe('LocalRuntimeLauncher', () => {
     })).toEqual({ valid: true, errors: {} })
   })
 
+  /** 证明本地调试弹窗保留独立服务控制，并按新的配置分组呈现。 */
   it('renders separate PLC and Edge controls with the variable-table reminder', () => {
     const markup = renderDialog(baseConfig, idleSnapshot)
     const headerMarkup = markup.match(/<header[^>]*>.*?<\/header>/s)?.[0] ?? ''
@@ -67,7 +68,8 @@ describe('LocalRuntimeLauncher', () => {
 
     expect(markup).toContain('PLC-Sim（可选）')
     expect(markup).toContain('领域侧 Edge（以 sz_lab 为例）')
-    expect(markup).toContain('运行环境与 PLC-Sim')
+    expect(markup).toContain('unilab Conda 环境目录')
+    expect(markup).not.toContain('运行环境与 PLC-Sim')
     expect(markup).toContain('领域侧 Edge（以 sz_lab 为例）')
     expect(markup).toContain('领域项目根目录（可选，以 Uni-Lab-SZLab 为例）')
     expect(markup).toContain('留空时仅加载 Uni-Lab-OS 内置设备能力')
@@ -89,6 +91,37 @@ describe('LocalRuntimeLauncher', () => {
     expect(markup.match(/<input/g)).toHaveLength(5)
     expect(headerMarkup).toContain('查看日志')
     expect(footerMarkup).not.toContain('查看日志')
+  })
+
+  /** 证明 PLC-Sim 折叠区边界、路径 DOM 顺序与键盘读取顺序保持一致。 */
+  it('orders optional PLC-Sim before always-visible runtime paths', () => {
+    const markup = renderDialog(baseConfig, idleSnapshot)
+    const optionalStart = markup.indexOf('<details')
+    const optionalEnd = markup.indexOf('</details>', optionalStart)
+    const optionalMarkup = markup.slice(optionalStart, optionalEnd)
+    const orderedFieldIds = [
+      'runtime-simulator-path',
+      'runtime-environment-path',
+      'runtime-os-path',
+      'runtime-szlab-path',
+      'runtime-graph-path'
+    ]
+    /** 每个字段在服务器渲染 DOM 中的位置，同时代表默认键盘导航顺序。 */
+    const fieldPositions = orderedFieldIds.map((id) => markup.indexOf(`id="${id}"`))
+
+    expect(optionalStart).toBeGreaterThan(-1)
+    expect(optionalEnd).toBeGreaterThan(optionalStart)
+    expect(optionalMarkup).toContain('PLC-Sim（可选）')
+    expect(optionalMarkup).toContain('PLC-Sim 项目根目录')
+    expect(optionalMarkup).toContain('启动 PLC')
+    expect(optionalMarkup).not.toContain('unilab Conda 环境目录')
+    expect(optionalMarkup).not.toContain('Uni-Lab-OS 项目根目录')
+    expect(optionalMarkup).not.toContain('领域项目根目录')
+    expect(optionalMarkup).not.toContain('领域设备图 JSON')
+    expect(markup.slice(optionalEnd)).toContain('unilab Conda 环境目录')
+    expect(markup).not.toMatch(/<details[^>]*\sopen(?:=|>)/)
+    expect(fieldPositions.every((position) => position >= 0)).toBe(true)
+    expect(fieldPositions).toEqual([...fieldPositions].sort((a, b) => a - b))
   })
 
   it('keeps Edge available after PLC starts and reminds the user to upload variables', () => {

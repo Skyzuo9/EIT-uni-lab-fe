@@ -1,4 +1,4 @@
-import type { ChangeEvent, ReactNode } from 'react'
+import type { ChangeEvent } from 'react'
 
 import type { LocalRuntimeLaunchConfig } from '../types/electron'
 
@@ -12,7 +12,6 @@ interface LocalRuntimeEdgeCommandEditorProps {
   workingDirectoryError?: string
   environmentError?: string
   loadingGeneratedCommand: boolean
-  workspaceField: ReactNode
   onChange: (config: LocalRuntimeLaunchConfig) => void
   onChooseExecutable: () => void
   onChooseWorkingDirectory: () => void
@@ -44,7 +43,6 @@ export default function LocalRuntimeEdgeCommandEditor({
   workingDirectoryError,
   environmentError,
   loadingGeneratedCommand,
-  workspaceField,
   onChange,
   onChooseExecutable,
   onChooseWorkingDirectory,
@@ -172,8 +170,6 @@ export default function LocalRuntimeEdgeCommandEditor({
           </span>
         </label>
       </div>
-
-      <div className={styles.commandWorkspaceField}>{workspaceField}</div>
 
       {customEnabled ? (
         <section
@@ -366,7 +362,7 @@ export default function LocalRuntimeEdgeCommandEditor({
               <ul className={styles.commandCompatibilityNotes}>
                 <li>程序和参数会分别启动，不经过 shell。</li>
                 <li>Windows 仅支持绝对 .exe 路径，不执行 cmd、PowerShell 或脚本。</li>
-                <li>启动器继续管理 Conda、运行数据库、18003/18004 端口和可观测性。</li>
+                <li>启动器继续管理 Conda、18003/18004 端口和可观测性。</li>
                 <li>启动前会由系统对话框确认程序、工作目录、参数与环境变量。</li>
               </ul>
             </div>

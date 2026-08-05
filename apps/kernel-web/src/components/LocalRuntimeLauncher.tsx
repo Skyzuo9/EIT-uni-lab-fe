@@ -613,13 +613,13 @@ export function LocalRuntimeDialog({
     || edgeTransitioning
   const edgeDisabled = edgeActive || edgeTransitioning
   const [runtimeAuxiliaryOpen, setRuntimeAuxiliaryOpen] = useState(
-    () => !config.environmentPath.trim() || simulatorActive
+    () => simulatorActive
   )
 
   /**
    * 同步原生 details 的展开状态，使配置变化时不会意外重置用户选择。
    *
-   * @param event 运行环境折叠区的原生 toggle 事件。
+   * @param event PLC-Sim 可选配置区的原生 toggle 事件。
    */
   const toggleRuntimeAuxiliary = (
     event: SyntheticEvent<HTMLDetailsElement>
@@ -698,36 +698,6 @@ export function LocalRuntimeDialog({
                 }
                 environmentError={edgeValidation.errors.customEdgeEnvironment}
                 loadingGeneratedCommand={resolvingGeneratedEdgeCommand}
-                workspaceField={(
-                  <>
-                    <PathField
-                      id="runtime-szlab-path"
-                      label={config.edgeCommandMode === 'custom'
-                        ? '领域项目根目录（自定义模式必填）'
-                        : '领域项目根目录（可选，以 Uni-Lab-SZLab 为例）'}
-                      value={config.szlabProjectPath}
-                      placeholder="可留空，或选择领域项目根目录"
-                      buttonLabel="选择目录"
-                      disabled={edgeDisabled}
-                      invalid={edgeSubmitted
-                        && Boolean(edgeValidation.errors.szlabProjectPath)}
-                      error={edgeSubmitted
-                        ? edgeValidation.errors.szlabProjectPath
-                        : undefined}
-                      editable
-                      onValueChange={(szlabProjectPath) => onChange({
-                        ...config,
-                        szlabProjectPath
-                      })}
-                      onChoose={() => onChoosePath('szlab')}
-                    />
-                    <p className={styles.fieldHint}>
-                      {config.edgeCommandMode === 'custom'
-                        ? '用于校验领域设备动作是否完整上报；自定义模板仍需自行挂载该目录。'
-                        : '留空时仅加载 Uni-Lab-OS 内置设备能力；填写后同时校验领域设备动作上报。'}
-                    </p>
-                  </>
-                )}
                 onChange={onChange}
                 onChooseExecutable={() => onChoosePath('edgeExecutable')}
                 onChooseWorkingDirectory={() => (
@@ -735,55 +705,71 @@ export function LocalRuntimeDialog({
                 )}
                 onLoadGeneratedCommand={onLoadGeneratedEdgeCommand}
               />
-              <PathField
-                id="runtime-os-path"
-                label="Uni-Lab-OS 项目根目录"
-                value={config.osProjectPath}
-                placeholder="选择 Uni-Lab-OS 项目根目录"
-                buttonLabel="选择目录"
-                disabled={edgeDisabled}
-                invalid={edgeSubmitted
-                  && Boolean(edgeValidation.errors.osProjectPath)}
-                error={edgeSubmitted
-                  ? edgeValidation.errors.osProjectPath
-                  : undefined}
-                editable
-                onValueChange={(osProjectPath) => onChange({
-                  ...config,
-                  osProjectPath
-                })}
-                onChoose={() => onChoosePath('os')}
-              />
-              <PathField
-                id="runtime-graph-path"
-                label="领域设备图 JSON（以 sz_lab 为例）"
-                value={config.graphPath}
-                placeholder="选择领域设备图，例如 szlab-ideawit-sim"
-                buttonLabel="选择文件"
-                disabled={edgeDisabled}
-                invalid={edgeSubmitted
-                  && Boolean(edgeValidation.errors.graphPath)}
-                error={edgeSubmitted
-                  ? edgeValidation.errors.graphPath
-                  : undefined}
-                onChoose={() => onChoosePath('graph')}
-              />
-            </div>
-          </section>
 
-          <details
-            className={styles.runtimeAuxiliary}
-            open={runtimeAuxiliaryOpen}
-            onToggle={toggleRuntimeAuxiliary}
-          >
-            <summary>
-              <span>
-                <strong>运行环境与 PLC-Sim</strong>
-                <small>Conda 环境、可选本地 OPC UA</small>
-              </span>
-              <small>{simulatorActive ? 'PLC-Sim 运行中' : '按需设置'}</small>
-            </summary>
-            <div className={styles.runtimeAuxiliaryBody}>
+              <details
+                className={styles.runtimeAuxiliary}
+                open={runtimeAuxiliaryOpen}
+                onToggle={toggleRuntimeAuxiliary}
+              >
+                <summary>
+                  <span>
+                    <strong>PLC-Sim（可选）</strong>
+                    <small>本地模拟服务 · Web 127.0.0.1:18765</small>
+                  </span>
+                  <small>{simulatorActive ? '运行中' : '按需设置'}</small>
+                </summary>
+                <div className={styles.runtimeAuxiliaryBody}>
+                  <section
+                    className={styles.runtimeAuxiliaryService}
+                    aria-labelledby="local-plc-title"
+                  >
+                    <header className={styles.serviceHeader}>
+                      <div>
+                        <h3 id="local-plc-title">PLC-Sim 项目与服务</h3>
+                        <p>
+                          仅在需要模拟 PLC 时配置并启动；OPC UA 默认使用 4855。
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        className={simulatorActive
+                          ? styles.stopButton
+                          : styles.primaryButton}
+                        disabled={simulatorTransitioning
+                          || edgeActive
+                          || edgeTransitioning}
+                        onClick={simulatorActive
+                          ? onStopSimulator
+                          : onStartSimulator}
+                      >
+                        {simulatorControlLabel(snapshot, simulatorActive)}
+                      </button>
+                    </header>
+                    <PathField
+                      id="runtime-simulator-path"
+                      label="PLC-Sim 项目根目录"
+                      value={config.simulatorProjectPath}
+                      placeholder="选择包含 OpcUaSim 的 PLC-Sim 项目根目录"
+                      buttonLabel="选择目录"
+                      disabled={simulatorDisabled}
+                      invalid={simulatorSubmitted
+                        && Boolean(
+                          simulatorValidation.errors.simulatorProjectPath
+                        )}
+                      error={simulatorSubmitted
+                        ? simulatorValidation.errors.simulatorProjectPath
+                        : undefined}
+                      editable
+                      onValueChange={(simulatorProjectPath) => onChange({
+                        ...config,
+                        simulatorProjectPath
+                      })}
+                      onChoose={() => onChoosePath('simulator')}
+                    />
+                  </section>
+                </div>
+              </details>
+
               <PathField
                 id="runtime-environment-path"
                 label="unilab Conda 环境目录"
@@ -805,52 +791,71 @@ export function LocalRuntimeDialog({
                 onChoose={() => onChoosePath('environment')}
               />
 
-              <section
-                className={styles.runtimeAuxiliaryService}
-                aria-labelledby="local-plc-title"
-              >
-                <header className={styles.serviceHeader}>
-                  <div>
-                    <h3 id="local-plc-title">PLC-Sim（可选）</h3>
-                    <p>启动本地 OPC UA，监听 127.0.0.1:18765。</p>
-                  </div>
-                  <button
-                    type="button"
-                    className={simulatorActive
-                      ? styles.stopButton
-                      : styles.primaryButton}
-                    disabled={simulatorTransitioning
-                      || edgeActive
-                      || edgeTransitioning}
-                    onClick={simulatorActive
-                      ? onStopSimulator
-                      : onStartSimulator}
-                  >
-                    {simulatorControlLabel(snapshot, simulatorActive)}
-                  </button>
-                </header>
+              <PathField
+                id="runtime-os-path"
+                label="Uni-Lab-OS 项目根目录"
+                value={config.osProjectPath}
+                placeholder="选择 Uni-Lab-OS 项目根目录"
+                buttonLabel="选择目录"
+                disabled={edgeDisabled}
+                invalid={edgeSubmitted
+                  && Boolean(edgeValidation.errors.osProjectPath)}
+                error={edgeSubmitted
+                  ? edgeValidation.errors.osProjectPath
+                  : undefined}
+                editable
+                onValueChange={(osProjectPath) => onChange({
+                  ...config,
+                  osProjectPath
+                })}
+                onChoose={() => onChoosePath('os')}
+              />
+
+              <div className={styles.domainProjectField}>
                 <PathField
-                  id="runtime-simulator-path"
-                  label="PLC-Sim 项目根目录"
-                  value={config.simulatorProjectPath}
-                  placeholder="选择包含 OpcUaSim 的 PLC-Sim 项目根目录"
+                  id="runtime-szlab-path"
+                  label={config.edgeCommandMode === 'custom'
+                    ? '领域项目根目录（自定义模式必填）'
+                    : '领域项目根目录（可选，以 Uni-Lab-SZLab 为例）'}
+                  value={config.szlabProjectPath}
+                  placeholder="可留空，或选择领域项目根目录"
                   buttonLabel="选择目录"
-                  disabled={simulatorDisabled}
-                  invalid={simulatorSubmitted
-                    && Boolean(simulatorValidation.errors.simulatorProjectPath)}
-                  error={simulatorSubmitted
-                    ? simulatorValidation.errors.simulatorProjectPath
+                  disabled={edgeDisabled}
+                  invalid={edgeSubmitted
+                    && Boolean(edgeValidation.errors.szlabProjectPath)}
+                  error={edgeSubmitted
+                    ? edgeValidation.errors.szlabProjectPath
                     : undefined}
                   editable
-                  onValueChange={(simulatorProjectPath) => onChange({
+                  onValueChange={(szlabProjectPath) => onChange({
                     ...config,
-                    simulatorProjectPath
+                    szlabProjectPath
                   })}
-                  onChoose={() => onChoosePath('simulator')}
+                  onChoose={() => onChoosePath('szlab')}
                 />
-              </section>
+                <p className={styles.fieldHint}>
+                  {config.edgeCommandMode === 'custom'
+                    ? '用于校验领域设备动作是否完整上报；自定义模板仍需自行挂载该目录。'
+                    : '留空时仅加载 Uni-Lab-OS 内置设备能力；填写后同时校验领域设备动作上报。'}
+                </p>
+              </div>
+
+              <PathField
+                id="runtime-graph-path"
+                label="领域设备图 JSON（以 sz_lab 为例）"
+                value={config.graphPath}
+                placeholder="选择领域设备图，例如 szlab-ideawit-sim"
+                buttonLabel="选择文件"
+                disabled={edgeDisabled}
+                invalid={edgeSubmitted
+                  && Boolean(edgeValidation.errors.graphPath)}
+                error={edgeSubmitted
+                  ? edgeValidation.errors.graphPath
+                  : undefined}
+                onChoose={() => onChoosePath('graph')}
+              />
             </div>
-          </details>
+          </section>
 
           <RuntimeStatus snapshot={snapshot} />
 
