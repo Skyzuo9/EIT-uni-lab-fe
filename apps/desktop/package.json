@@ -6,10 +6,10 @@
   "main": "./out/main/index.js",
   "scripts": {
     "predev": "pnpm --filter @unilab/device-card-host build && pnpm --filter @unilab/device-card-agent-cli build",
-    "dev": "unset ELECTRON_RUN_AS_NODE; electron-vite dev",
+    "dev": "node scripts/run-electron-vite.mjs dev",
     "prebuild": "pnpm --filter @unilab/device-card-host build && pnpm --filter @unilab/device-card-agent-cli build",
     "build": "electron-vite build",
-    "preview": "unset ELECTRON_RUN_AS_NODE; electron-vite preview",
+    "preview": "node scripts/run-electron-vite.mjs preview",
     "prepackage:mac": "pnpm --filter @unilab/device-card-host build && pnpm --filter @unilab/device-card-agent-cli build",
     "package:mac": "node scripts/package-macos.mjs",
     "prepackage:win": "pnpm --filter @unilab/device-card-host build && pnpm --filter @unilab/device-card-agent-cli build",
