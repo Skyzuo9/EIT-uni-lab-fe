@@ -589,6 +589,13 @@ describe('WorkflowTaskController', () => {
   })
 })
 
+/**
+ * 把测试关心的最小运行时能力收窄为工作流运行端口。
+ *
+ * @param value 当前用例提供的运行时方法。
+ * @returns 仅供控制器测试使用的工作流运行端口。
+ * @throws 无；缺失方法会在具体用例调用时由测试失败揭示。
+ */
 function runtimePort(
   value: Partial<WorkflowRuntimePort>
 ): WorkflowRuntimePort {

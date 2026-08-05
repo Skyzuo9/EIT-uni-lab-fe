@@ -213,7 +213,7 @@ export function parseWorkflowNodeTemplateDetail(
 }
 
 /**
- * 构造仅含 Backend 正式字段的节点模板列表路径。
+ * 构造仅含后端（Backend）正式字段的节点模板列表路径。
  *
  * @param nodeType 可选的显式节点类型筛选。
  * @param cursorUuid 上一页给出的 UUID 游标。
@@ -257,7 +257,7 @@ function catalogEnvelope(raw: unknown): Record<string, unknown> {
  * 拒绝旧页码字段和未约定的节点模板列表字段。
  *
  * @param data 列表响应 data 对象。
- * @returns 无返回值；全部字段均在 Backend 合同或 OS 扩展中时通过。
+ * @returns 无返回值；全部字段均在后端（Backend）合同或 OS 扩展中时通过。
  * @throws 出现 page/page_size/total 或其他未知字段时关闭失败。
  */
 function assertListFields(data: Record<string, unknown>): void {
@@ -274,10 +274,10 @@ function assertListFields(data: Record<string, unknown>): void {
 }
 
 /**
- * 解析 Backend 可省略、OS 必须成对发布的目录代际扩展。
+ * 解析后端（Backend）可省略、OS 必须成对发布的目录代际扩展。
  *
  * @param data 列表或详情数据主体。
- * @returns Backend 响应返回 null；OS 响应返回权威和指纹。
+ * @returns 后端（Backend）响应返回 null；OS 响应返回权威和指纹。
  * @throws authority 与 catalog_fingerprint 只出现一个或格式无效时关闭失败。
  */
 function optionalGeneration(
@@ -309,8 +309,8 @@ function optionalGeneration(
  * 合并前后响应中的可选 OS 目录代际。
  *
  * @param current 已观察代际；undefined 表示尚未观察任何响应。
- * @param next 新响应携带的代际或 Backend 缺省值 null。
- * @returns 第一次观察到的代际；合法 Backend 流程始终为 null。
+ * @param next 新响应携带的代际或后端（Backend）缺省值 null。
+ * @returns 第一次观察到的代际；合法后端（Backend）流程始终为 null。
  * @throws 混合缺失、权威漂移或指纹漂移时关闭失败。
  */
 function mergeGeneration(

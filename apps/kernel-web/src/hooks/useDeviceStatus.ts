@@ -57,6 +57,12 @@ export function useDeviceStatus(): UseDeviceStatusResult {
   return value
 }
 
+/**
+ * 根据当前工作台切面管理旧设备状态订阅生命周期。
+ *
+ * @returns 设备状态映射、连接标志和最后更新时间。
+ * @throws 实时服务未装配或 React Hook 使用非法时原样传播。
+ */
 function useDeviceStatusSubscription(): UseDeviceStatusResult {
   const { backendEnabled, connection, section } = useWorkbench()
   const services = useServices()

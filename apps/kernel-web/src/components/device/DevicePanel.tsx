@@ -59,6 +59,12 @@ interface DeviceActionFeedbackState {
   items: WorkflowNodeJobFeedback[]
 }
 
+/**
+ * 渲染设备目录、实时状态与单动作任务控制面板。
+ *
+ * @returns 设备工作台 React 元素。
+ * @throws 服务上下文缺失等装配错误由对应 Hook 原样传播。
+ */
 export default function DevicePanel(): React.JSX.Element {
   const { backend, connection } = useWorkbench()
   const services = useServices()
@@ -360,6 +366,15 @@ export default function DevicePanel(): React.JSX.Element {
     services.workflow
   ])
 
+  /**
+   * 用冻结动作目录代际创建一个设备单动作工作流任务（WorkflowTask）。
+   *
+   * @param device 当前选择的设备。
+   * @param action 当前选择的动作。
+   * @param template 动作对应的工作流节点模板（WorkflowNodeTemplate）。
+   * @returns 提交及首次补水完成后返回无。
+   * @throws 异常在回调内投影为可见错误状态，不向事件循环传播。
+   */
   const handleRunAction = useCallback(async (
     device: ManagedDevice,
     action: DeviceAction,
