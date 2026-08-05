@@ -3,22 +3,29 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 import {
-  startPersistentAuthoringOs,
-  type PersistentAuthoringOs
-} from './helpers/persistent-authoring-os'
+  startF06CompositeRealOs,
+  type F06CompositeRealOs
+} from './helpers/f06-composite-real-os'
 
-let os: PersistentAuthoringOs
+let os: F06CompositeRealOs
 
 test.describe.configure({ mode: 'serial' })
 
 test.beforeAll(async () => {
-  os = await startPersistentAuthoringOs({ compositeFixture: true })
+  os = await startF06CompositeRealOs()
 })
 
 test.afterAll(async () => {
   await os?.stop()
 })
 
+/**
+ * 验证已发布子工作流在前端保持单一调用边界，并仅在会话内展开 OS 私有内部图。
+ *
+ * @param page Playwright 浏览器页面；测试通过当前候选真实 OS HTTP 接口读取图。
+ * @returns Promise 完成时表示折叠、展开、重载和零写入断言全部通过。
+ * @throws OS、目录、浏览器交互或证据写入失败时由 Playwright 报告。
+ */
 test('Published child stays a boundary while its OS-owned graph expands locally', async ({
   page
 }) => {
@@ -117,6 +124,7 @@ test('Published child stays a boundary while its OS-owned graph expands locally'
     `/?section=workflow&localOsUrl=${encodeURIComponent(os.url)}`
   )
   await expect(page.getByText('完整控制流 DAG')).toBeVisible()
+  await page.getByRole('button', { name: '画布模式' }).click()
   await expect(page.getByLabel('Action 模板')).toBeVisible()
   await expect(page.getByLabel('子工作流模板')).toBeVisible()
   await expect(page.getByText('Workflow Action Catalog 返回了无效响应'))

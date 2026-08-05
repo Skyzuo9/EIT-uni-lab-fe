@@ -201,6 +201,30 @@ describe('persistent Authoring canvas graph edits', () => {
 })
 
 describe('C1 persistent Composite hierarchy', () => {
+  /**
+   * 验证 OS 数据库读投影中的 JSON 文本 Schema 仍能识别组合工作流调用。
+   *
+   * @returns 无返回值；投影缺少子工作流分组语义时由 Vitest 报告失败。
+   * @throws 测试夹具或投影解析异常时由 Vitest 报告。
+   */
+  it('accepts the OS JSON string schema for Published workflow hierarchy', () => {
+    const source = compositeGraph()
+    source.node_templates = source.node_templates.map((template) =>
+      template.uuid === 'outer-template'
+        ? { ...template, schema: JSON.stringify(template.schema) }
+        : template
+    )
+
+    const projected = projectPersistentAuthoringGraph(source)
+    const outer = projected.nodes.find((node) => node.id === 'outer')
+
+    expect(outer).toEqual(expect.objectContaining({
+      groupKind: 'subworkflow',
+      collapsedByDefault: true,
+      openChildWorkflowUuid: 'workflow-child-outer'
+    }))
+  })
+
   it('projects the robot transfer visual from OS published source metadata', () => {
     const source = compositeGraph()
     source.node_templates = source.node_templates.map((template) =>
