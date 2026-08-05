@@ -9,10 +9,14 @@ export {
 export {
   materialAggregatesToSceneGraph,
   materialSceneObjectId,
+  orthogonalTransferPath,
+  projectMaterialTransferSceneLayer,
   readMaterialRendering,
   sceneGraphToMaterialMoves,
   type MaterialRenderingSnapshot,
-  type MaterialSceneMove
+  type MaterialSceneMove,
+  type MaterialTransferSceneEndpoint,
+  type MaterialTransferSceneRoute
 } from './materialAggregateSceneBridge'
 export {
   configureLabModelRuntime,
@@ -34,11 +38,15 @@ export { buildLabFloorplan } from './floorplan'
 export {
   LabAttachPointSchema,
   LabDeviceNodeSchema,
+  LabMaterialTransferLayerNodeSchema,
+  LabMaterialTransferRouteSchema,
+  LabMaterialTransferStatusSchema,
   LabFloorplanSiteSchema,
   LabFloorplanSnapshotSchema,
   LabPlacementRefSchema,
   LabTableNodeSchema,
   isLabDeviceNode,
+  isLabMaterialTransferLayerNode,
   isLabTableNode,
   type LabAttachPoint,
   type LabDeviceNode,
@@ -46,6 +54,9 @@ export {
   type LabFloorplanSnapshot,
   type LabPlacementRef,
   type LabSceneNode,
+  type LabMaterialTransferLayerNode,
+  type LabMaterialTransferRoute,
+  type LabMaterialTransferStatus,
   type LabTableNode
 } from './schema'
 export {

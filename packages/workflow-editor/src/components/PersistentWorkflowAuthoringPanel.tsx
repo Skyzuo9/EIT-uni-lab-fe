@@ -143,6 +143,7 @@ interface PersistentWorkflowAuthoringPanelProps {
   traceRuntime?: WorkflowTracePort
   resourceSlotOptionsPort?: WorkflowResourceSlotOptionsPort
   onUnsavedChangesChange?: (hasUnsavedChanges: boolean) => void
+  onSelectedWorkflowStepChange?: (workflowNodeUuid: string | null) => void
   onChooseWorkflow?: () => void
 }
 
@@ -178,6 +179,7 @@ export function PersistentWorkflowAuthoringPanel({
   traceRuntime,
   resourceSlotOptionsPort,
   onUnsavedChangesChange,
+  onSelectedWorkflowStepChange,
   onChooseWorkflow
 }: PersistentWorkflowAuthoringPanelProps): React.JSX.Element {
   const sessionStore = useWorkflowSessionStore()
@@ -211,6 +213,11 @@ export function PersistentWorkflowAuthoringPanel({
     useState<string | null>(null)
   const [canvasDirty, setCanvasDirty] = useState(false)
   const [selectedNodeUuid, setSelectedNodeUuid] = useState<string | null>(null)
+
+  useEffect(() => {
+    onSelectedWorkflowStepChange?.(selectedNodeUuid)
+    return () => onSelectedWorkflowStepChange?.(null)
+  }, [onSelectedWorkflowStepChange, selectedNodeUuid])
   const [selectedNodeName, setSelectedNodeName] = useState('')
   const [selectedNodeNameDirty, setSelectedNodeNameDirty] = useState(false)
   const [actionParametersOpen, setActionParametersOpen] = useState(false)

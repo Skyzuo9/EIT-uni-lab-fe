@@ -614,7 +614,11 @@ function mapBackendMaterialGraph(
       }
     }
 
-    const config = mapBackendMaterialConfig(material.config, position)
+    const config = mapBackendMaterialConfig(
+      material.config,
+      position,
+      material.meta_data
+    )
     return {
       material: {
         id,
@@ -648,15 +652,23 @@ function mapBackendMaterialGraph(
 
 function mapBackendMaterialConfig(
   value: unknown,
-  position: Record<string, unknown> | undefined
+  position: Record<string, unknown> | undefined,
+  metaData: unknown
 ): Record<string, unknown> {
   const config = recordValue(value)
+  const sourceIdentity = optionalString(
+    recordValue(metaData).source_node_id
+  )
+  const identifiedConfig = {
+    ...config,
+    ...(sourceIdentity ? { sourceIdentity } : {})
+  }
   const rawRendering = isRecord(config.rendering)
     ? config.rendering
     : {}
-  if (!position) return config
+  if (!position) return identifiedConfig
   return {
-    ...config,
+    ...identifiedConfig,
     rendering: {
       ...rawRendering,
       kind: optionalString(rawRendering.kind) ?? 'custom',

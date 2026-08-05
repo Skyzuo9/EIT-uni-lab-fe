@@ -94,6 +94,26 @@
   font-size: 11px;
 }
 
+.pascal-lab-toolbar__transfer-status {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  color: var(--unilab-color-text-muted);
+  font-size: 11px;
+}
+
+.pascal-lab-toolbar__transfer-status i {
+  width: 6px;
+  height: 6px;
+  background: var(--unilab-color-scene);
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px color-mix(
+    in srgb,
+    var(--unilab-color-scene) 14%,
+    transparent
+  );
+}
+
 .pascal-lab-toolbar__actions {
   display: flex;
   gap: 6px;
@@ -190,4 +210,62 @@
     var(--unilab-color-primary) 86%,
     #0f172a
   );
+}
+
+.pascal-transfer-executor {
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+  min-width: 30px;
+  min-height: 30px;
+  padding: 5px;
+  color: #312e81;
+  background: rgb(255 255 255 / 94%);
+  border: 1px solid rgb(79 70 229 / 28%);
+  border-radius: 9px;
+  box-shadow: 0 5px 16px rgb(15 23 42 / 20%);
+  font: 11px/1.25 var(--unilab-font-sans);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.pascal-transfer-executor > svg {
+  width: 19px;
+  height: 19px;
+  flex: 0 0 19px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.6;
+}
+
+.pascal-transfer-executor > span {
+  display: grid;
+  gap: 2px;
+  max-width: 180px;
+}
+
+.pascal-transfer-executor strong {
+  overflow: hidden;
+  color: #1e1b4b;
+  font-weight: 650;
+  text-overflow: ellipsis;
+}
+
+.pascal-transfer-executor small {
+  color: #52525b;
+  font-size: 10px;
+}
+
+.pascal-transfer-site-label {
+  padding: 4px 7px;
+  color: #0c4a6e;
+  background: rgb(240 249 255 / 96%);
+  border: 1px solid rgb(14 165 233 / 34%);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgb(15 23 42 / 16%);
+  font: 600 10px/1 var(--unilab-font-sans);
+  white-space: nowrap;
+  pointer-events: none;
 }

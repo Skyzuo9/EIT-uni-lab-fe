@@ -7,9 +7,13 @@ import { describe, expect, it } from 'vitest'
 
 import {
   materialAggregatesToSceneGraph,
+  projectMaterialTransferSceneLayer,
   sceneGraphToMaterialMoves
 } from './materialAggregateSceneBridge'
-import { isLabDeviceNode } from './schema'
+import {
+  isLabDeviceNode,
+  isLabMaterialTransferLayerNode
+} from './schema'
 
 describe('Material Aggregate / Pascal bridge', () => {
   it('projects the instance rendering snapshot without copying the entity', () => {
@@ -306,7 +310,123 @@ describe('Material Aggregate / Pascal bridge', () => {
     expectTupleCloseTo(node.position, [0.6, 0.3, -0.3])
     expect(sceneGraphToMaterialMoves(scene, [parent, child])).toEqual([])
   })
+
+  it('resolves workflow transfer Sites into one Pascal route layer', () => {
+    const source = aggregate('source-warehouse', {
+      placement: {
+        kind: 'world',
+        pose: {
+          positionMm: [100, 200, 0],
+          rotationDegXYZ: [0, 0, 0]
+        }
+      },
+      sites: [site('source-warehouse', 'source-site', 'L1B1', [20, 30, 100])]
+    })
+    const target = aggregate('target-warehouse', {
+      placement: {
+        kind: 'world',
+        pose: {
+          positionMm: [900, 600, 0],
+          rotationDegXYZ: [0, 0, 0]
+        }
+      },
+      sites: [site('target-warehouse', 'target-site', 'S0721', [50, 70, 120])]
+    })
+    const routes = [{
+      id: 'route-1',
+      workflowNodeUuid: 'node-1',
+      label: '烧杯搬到 S07',
+      source: {
+        ownerMaterialId: 'source-warehouse',
+        siteKey: 'L1B1'
+      },
+      target: {
+        ownerMaterialId: 'target-warehouse',
+        siteKey: 'S0721'
+      },
+      executorId: 'szlab_mixer_robot',
+      status: 'running' as const,
+      selected: true
+    }]
+
+    const projected = projectMaterialTransferSceneLayer(
+      [source, target],
+      routes
+    )
+    expect(projected.unresolvedRouteIds).toEqual([])
+    expect(projected.routes[0]).toMatchObject({
+      sourceSiteId: 'source-site',
+      targetSiteId: 'target-site',
+      status: 'running',
+      selected: true
+    })
+    expect(projected.routes[0]?.points).toHaveLength(6)
+    expectTupleCloseTo(projected.routes[0]?.points[0] ?? [], [
+      0.14,
+      0.15,
+      -0.25
+    ])
+
+    const scene = materialAggregatesToSceneGraph([source, target], {
+      materialTransferRoutes: routes,
+      showMaterialTransfers: true
+    })
+    const level = scene.nodes.level_unilab as {
+      children: string[]
+      materialTransferLayer?: unknown
+    }
+    const layer = level.materialTransferLayer
+    expect(isLabMaterialTransferLayerNode(layer)).toBe(true)
+    expect(level.children).not.toContain('lab-material-transfer-layer-unilab')
+  })
+
+  it('rejects a transfer route when either Site identity is unresolved', () => {
+    const source = aggregate('source-warehouse', {
+      sites: [site('source-warehouse', 'source-site', 'L1B1')]
+    })
+    const projected = projectMaterialTransferSceneLayer([source], [{
+      id: 'route-missing-target',
+      workflowNodeUuid: 'node-1',
+      label: 'unresolved',
+      source: {
+        ownerMaterialId: 'source-warehouse',
+        siteKey: 'L1B1'
+      },
+      target: {
+        ownerMaterialId: 'missing-warehouse',
+        siteKey: 'S0721'
+      },
+      executorId: 'robot',
+      status: 'planned'
+    }])
+
+    expect(projected.routes).toEqual([])
+    expect(projected.unresolvedRouteIds).toEqual(['route-missing-target'])
+  })
 })
+
+function site(
+  ownerMaterialId: string,
+  id: string,
+  key: string,
+  positionMm: readonly [number, number, number] = [0, 0, 0]
+): MaterialSite {
+  return {
+    id,
+    ownerMaterialId,
+    key,
+    name: key,
+    anchor: { kind: 'root' },
+    poseInAnchor: {
+      positionMm,
+      rotationDegXYZ: [0, 0, 0]
+    },
+    sizeMm: [40, 40, 100],
+    capacity: 1,
+    allowedTemplateIds: [],
+    occupiedMaterialIds: []
+  }
+}
 
 function aggregate(
   id: string,
