@@ -17,7 +17,7 @@ export interface WorkflowMaterialSourceGraphProjection {
  * 将公共物料图（MaterialGraph）投影成工作流物料来源（MaterialSource）目录所需的最小读模型。
  *
  * @param aggregates 由公共物料图端口解码完成的物料聚合；函数不会读取 wire DTO 或私有库存接口。
- * @returns 按稳定身份和公共图遍历顺序组织的资源模板、物料与业务库位（Site）。
+ * @returns 资源模板/物料按 UUID、业务库位（Site）按 sort_order/UUID 组织的目录。
  * @throws 公共图出现重复身份、所有者冲突、非单一占用或悬空占用物料时抛出结构化服务错误。
  */
 export function projectWorkflowMaterialSourceGraph(

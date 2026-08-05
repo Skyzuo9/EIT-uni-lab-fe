@@ -57,10 +57,17 @@ function rejectsDirtyRevision(): void {
     " 263b176d4e8e081d58654bd13c12921560c9ac25",
   ];
   for (const dirtyRevision of dirtyRevisions) {
-    expect(() =>
-      resolveExpectedF05OsRevision({
+    /**
+     * 尝试解析当前不可信修订字符串。
+     *
+     * @returns 仅在门禁错误接受输入时返回修订。
+     * @throws 预期抛出带环境变量名称的校验错误。
+     */
+    function resolveDirtyRevision(): string {
+      return resolveExpectedF05OsRevision({
         UNILAB_AUTHORING_OS_REVISION: dirtyRevision,
-      }),
-    ).toThrow(/UNILAB_AUTHORING_OS_REVISION/);
+      });
+    }
+    expect(resolveDirtyRevision).toThrow(/UNILAB_AUTHORING_OS_REVISION/);
   }
 }

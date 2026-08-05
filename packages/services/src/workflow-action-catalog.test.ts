@@ -499,9 +499,17 @@ function actionTemplateUuids(
  * @throws 定时器回调不抛出异常。
  */
 function delay(milliseconds: number): Promise<void> {
-  return new Promise((resolve) => {
+  /**
+   * 把 Promise 完成回调交给定时器辅助函数。
+   *
+   * @param resolve 完成当前等待的回调。
+   * @returns 无。
+   * @throws 定时器调度失败时由运行时传播。
+   */
+  function schedule(resolve: () => void): void {
     resolveAfterTimeout(resolve, milliseconds)
-  })
+  }
+  return new Promise(schedule)
 }
 
 /**

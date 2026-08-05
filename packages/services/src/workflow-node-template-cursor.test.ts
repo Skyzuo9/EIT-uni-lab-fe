@@ -20,7 +20,7 @@ const fingerprint = `sha256:${'a'.repeat(64)}`
  */
 function registerWorkflowNodeTemplateCursorTests(): void {
   it(
-    'accepts the Backend UUID cursor contract without authority or total',
+    '接受后端（Backend）UUID 游标合同且不要求权威或总数',
     acceptsBackendCursorWithoutOsExtensions
   )
   it(
@@ -65,7 +65,7 @@ describe(
  * @throws 游标字段、项目身份或请求路径不符合合同时由断言报告。
  */
 async function acceptsBackendCursorWithoutOsExtensions(): Promise<void> {
-  // 请求路径用于证明客户端只发送 Backend 规定的 limit/cursor_uuid 字段。
+  // 请求路径用于证明客户端只发送后端（Backend）规定的 limit/cursor_uuid 字段。
   const requests: string[] = []
   const http = fixtureHttp({
     '/api/v1/workflow-node-templates?limit=100': page(
@@ -79,7 +79,7 @@ async function acceptsBackendCursorWithoutOsExtensions(): Promise<void> {
 
   const catalog = await loadWorkflowNodeTemplateCatalog(http)
 
-  expect(catalog.items.map((item) => item.uuid)).toEqual([
+  expect(catalog.items.map(readTemplateUuid)).toEqual([
     firstUuid,
     secondUuid
   ])
@@ -185,7 +185,7 @@ async function rejectsLegacyPageMetadata(): Promise<void> {
  * 验证物料来源（MaterialSource）目录必须通过显式 node_type 筛选读取。
  *
  * @returns Promise 完成时表示请求未携带旧 page/page_size 字段。
- * @throws 若请求路径偏离 Backend 合同则测试 HTTP fixture 抛错。
+ * @throws 若请求路径偏离后端（Backend）合同则测试 HTTP fixture 抛错。
  */
 async function sendsExplicitMaterialSourceFilter(): Promise<void> {
   const requests: string[] = []
@@ -223,10 +223,19 @@ function mergesDefaultAndPublishedWorkflowCatalogs(): void {
   )).toEqual({ items: [action, workflow], generation })
 
   const conflictingAction = { ...action, display_name: '冲突标题' }
-  expect(() => mergeWorkflowNodeTemplateCatalogs(
-    { items: [action], generation },
-    { items: [conflictingAction], generation }
-  )).toThrow('节点模板')
+  /**
+   * 尝试合并同身份但不同内容的目录摘要。
+   *
+   * @returns 仅在冲突门禁失效时返回合并目录。
+   * @throws 预期抛出节点模板（WorkflowNodeTemplate）冲突。
+   */
+  function mergeConflictingCatalogs(): unknown {
+    return mergeWorkflowNodeTemplateCatalogs(
+      { items: [action], generation },
+      { items: [conflictingAction], generation }
+    )
+  }
+  expect(mergeConflictingCatalogs).toThrow('节点模板')
 }
 
 /**
@@ -260,10 +269,30 @@ async function verifiesOsGenerationAcrossListAndDetail(): Promise<void> {
     coherentDetail,
     catalog.generation
   ).template).toEqual({ uuid: firstUuid })
-  expect(() => parseWorkflowNodeTemplateDetail(
-    missingGenerationDetail,
-    catalog.generation
-  )).toThrow('节点模板')
+  /**
+   * 尝试解码缺少 OS 目录代际的详情。
+   *
+   * @returns 仅在混代门禁失效时返回详情。
+   * @throws 预期抛出节点模板（WorkflowNodeTemplate）代际错误。
+   */
+  function parseMissingGenerationDetail(): unknown {
+    return parseWorkflowNodeTemplateDetail(
+      missingGenerationDetail,
+      catalog.generation
+    )
+  }
+  expect(parseMissingGenerationDetail).toThrow('节点模板')
+}
+
+/**
+ * 读取节点模板（WorkflowNodeTemplate）摘要 UUID。
+ *
+ * @param item 目录摘要。
+ * @returns 稳定 UUID。
+ * @throws 无。
+ */
+function readTemplateUuid(item: Record<string, unknown>): string {
+  return String(item.uuid)
 }
 
 /**
@@ -272,7 +301,7 @@ async function verifiesOsGenerationAcrossListAndDetail(): Promise<void> {
  * @param uuid 节点模板稳定 UUID。
  * @param name 节点模板稳定名称。
  * @param nodeType 节点类型；默认模拟设备动作。
- * @returns Backend 列表接口使用的最小合法摘要。
+ * @returns 后端（Backend）列表接口使用的最小合法摘要。
  */
 function summary(
   uuid: string,
@@ -299,7 +328,7 @@ function summary(
  * @param items 本页节点模板摘要。
  * @param hasMore 是否仍有后续页。
  * @param nextCursorUuid 下一页使用的模板 UUID；末页必须为 null。
- * @param generation 可选 OS 目录代际扩展；Backend fixture 省略。
+ * @param generation 可选 OS 目录代际扩展；后端（Backend）fixture 省略。
  * @returns 带 code/data 外壳的节点模板列表响应。
  */
 function page(

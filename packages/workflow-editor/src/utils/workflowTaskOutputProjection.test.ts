@@ -32,7 +32,13 @@ const job: WorkflowNodeJob = {
   finished_at: '2026-08-03T06:00:03Z'
 }
 
-describe('workflow Task output projection', () => {
+/**
+ * 注册工作流任务（WorkflowTask）输出投影测试。
+ *
+ * @returns 无。
+ * @throws 作业或反馈证据丢失时由 Vitest 报告。
+ */
+function registerWorkflowTaskOutputProjectionTests(): void {
   it('keeps complete Job dispatch, result, and timing evidence', () => {
     expect(projectWorkflowTaskJob(job).result).toMatchObject({
       param: { source: 'tube-a', target: 'plate-a' },
@@ -78,4 +84,9 @@ describe('workflow Task output projection', () => {
       }
     ])
   })
-})
+}
+
+describe(
+  '工作流任务（WorkflowTask）输出投影',
+  registerWorkflowTaskOutputProjectionTests
+)

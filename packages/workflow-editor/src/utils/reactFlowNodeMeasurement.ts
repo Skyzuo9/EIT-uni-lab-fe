@@ -34,23 +34,30 @@ export function reconcileReactFlowNodeMeasurements<
   nextNodes: readonly Node<Data, NodeType>[],
 ): Node<Data, NodeType>[] {
   // `currentNodesById` 是当前流程画布节点测量按稳定身份建立的只读索引。
-  const currentNodesById = new Map(currentNodes.map((node) => [node.id, node]))
+  const currentNodesById = new Map<string, Node<Data, NodeType>>()
+  for (const currentNode of currentNodes) {
+    currentNodesById.set(currentNode.id, currentNode)
+  }
 
-  return nextNodes.map((nextNode) => {
+  const reconciledNodes: Node<Data, NodeType>[] = []
+  for (const nextNode of nextNodes) {
     if (hasValidMeasurement(nextNode)) {
-      return nextNode
+      reconciledNodes.push(nextNode)
+      continue
     }
 
     // `currentNode` 是与下一版节点身份完全一致的当前测量来源。
     const currentNode = currentNodesById.get(nextNode.id)
     if (!currentNode || !hasValidMeasurement(currentNode)) {
-      return nextNode
+      reconciledNodes.push(nextNode)
+      continue
     }
 
-    return {
+    reconciledNodes.push({
       ...nextNode,
       width: currentNode.width,
       height: currentNode.height,
-    }
-  })
+    })
+  }
+  return reconciledNodes
 }

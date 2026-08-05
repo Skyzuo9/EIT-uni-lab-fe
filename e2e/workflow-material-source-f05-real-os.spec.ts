@@ -63,7 +63,11 @@ interface WorkflowTaskWire {
 interface WorkflowJobWire {
   uuid: string
   workflow_node_uuid: string
+  executor_kind: string
   status: string
+  return_info: {
+    material?: { uuid?: string; resource_template_uuid?: string }
+  }
 }
 
 interface NetworkEntry {
@@ -337,7 +341,7 @@ async function runF05MaterialSourceAcceptance(
     'succeeded',
     'succeeded'
   )
-  expect(firstRuntime.job.workflow_node_uuid).toBe(os.sourceNodeUuid)
+  assertMaterialSourceResolutionJob(firstRuntime.job, existingMaterialUuid)
 
   // 只含来源的任务成功后必须自行释放短期预留；夹具随后通过同一生产
   // InventoryService 明确建立测试占用，使第二个任务的等待不依赖资源泄漏。
@@ -396,6 +400,12 @@ async function runF05MaterialSourceAcceptance(
   )
   expect(admittedRuntime.task.uuid).toBe(secondTaskUuid)
   expect(admittedRuntime.job.uuid).toBe(blockedJobUuid)
+  assertMaterialSourceResolutionJob(admittedRuntime.job, existingMaterialUuid)
+  let ordinaryDispatchJobCount = 0
+  for (const job of [firstRuntime.job, admittedRuntime.job]) {
+    if (job.executor_kind !== 'material_source') ordinaryDispatchJobCount += 1
+  }
+  expect(ordinaryDispatchJobCount).toBe(0)
 
   await clickVisibleCanvasWorkflowNode(panel, os.sourceNodeUuid)
   await inspector.getByRole('button', {
@@ -446,6 +456,7 @@ async function runF05MaterialSourceAcceptance(
     blockedJobUuid,
     releaseResult,
     admittedRuntime,
+    ordinaryDispatchJobCount,
     fixedExecutor,
     requests: evidence.requests,
     responses: evidence.responses,
@@ -518,7 +529,7 @@ async function saveAndApply(panel: Locator, page: Page): Promise<void> {
 }
 
 /**
- * 通过工作流面板启动一次工作流任务（WorkflowTask）并返回原始 Backend envelope。
+ * 通过工作流面板启动一次工作流任务（WorkflowTask）并返回原始后端（Backend）信封。
  *
  * 参数：`panel` 是运行入口，`page` 用于等待公开任务创建响应。
  * 返回：任务创建的业务 envelope，成功和失败均保留原样。
@@ -559,12 +570,34 @@ async function waitForTaskAndJob(
     const jobs = await readPublicEnvelope<WorkflowJobWire[]>(
       `${url}/api/v1/workflow-tasks/${taskUuid}/jobs`
     )
-    if (task.status === taskStatus && jobs[0]?.status === jobStatus) {
-      return { task, job: jobs[0] }
+    if (jobs.length !== 1) {
+      throw new Error(
+        `工作流任务 ${taskUuid} 必须恰有一个物料来源解析作业，实际 ${jobs.length}`
+      )
+    }
+    const job = jobs[0]
+    if (task.status === taskStatus && job.status === jobStatus) {
+      return { task, job }
     }
     await delay(100)
   }
   throw new Error(
     `工作流任务 ${taskUuid} 未达到 ${taskStatus}/${jobStatus}`
   )
+}
+
+/**
+ * 核验唯一作业只承担物料来源解析，不包含可派发设备动作。
+ *
+ * 参数：`job` 是公开作业投影，`materialUuid` 是预期任务物料绑定
+ * （TaskMaterialBinding）身份。返回：无。异常：节点、执行种类或有类型
+ * `return_info.material` 不一致时由 Playwright 断言失败。
+ */
+function assertMaterialSourceResolutionJob(
+  job: WorkflowJobWire,
+  materialUuid: string
+): void {
+  expect(job.workflow_node_uuid).toBe(os.sourceNodeUuid)
+  expect(job.executor_kind).toBe('material_source')
+  expect(job.return_info.material?.uuid).toBe(materialUuid)
 }

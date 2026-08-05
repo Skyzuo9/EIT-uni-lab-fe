@@ -3,12 +3,20 @@ import { describe, expect, it } from "vitest";
 
 import { reconcileReactFlowNodeMeasurements } from "./reactFlowNodeMeasurement";
 
-describe("流程画布引擎（React Flow）节点测量保持", () => {
+/**
+ * 注册流程画布引擎（React Flow）节点测量保持测试。
+ *
+ * @returns 无。
+ * @throws 测量断言失败时由 Vitest 报告。
+ */
+function registerReactFlowNodeMeasurementTests(): void {
   it("稳定节点身份继承当前有效测量", preservesCurrentMeasurement);
   it("下一版显式有效测量优先", prefersExplicitNextMeasurement);
   it("不同节点身份不串用测量", isolatesMeasurementsByNodeIdentity);
   it("没有有效测量时不伪造尺寸", doesNotFabricateMeasurement);
-});
+}
+
+describe("流程画布引擎（React Flow）节点测量保持", registerReactFlowNodeMeasurementTests);
 
 /**
  * 创建只包含本组断言所需字段的流程画布节点。

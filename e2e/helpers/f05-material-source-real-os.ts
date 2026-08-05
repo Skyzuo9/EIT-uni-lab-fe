@@ -206,6 +206,49 @@ export async function startF05MaterialSourceRealOs(): Promise<F05MaterialSourceR
     rmSync(directory, { recursive: true, force: true })
     throw error
   }
+
+  /**
+   * 为进程外测试持有者预留指定具体物料。
+   *
+   * @param workflowTaskUuid 测试持有者身份。
+   * @param materialUuid 待预留的具体物料 UUID。
+   * @returns 生产库存服务的预留结果。
+   * @throws 子进程或库存权威失败时原样传播。
+   */
+  function reserveWorkflowMaterial(
+    workflowTaskUuid: string,
+    materialUuid: string
+  ): { workflow_id: string; reserved_nodes: string[] } {
+    return runReservationReserve({
+      python,
+      script: reservationControlScript,
+      inventoryDatabase: join(workingDirectory, 'inventory.db'),
+      workflowTaskUuid,
+      workflowNodeUuid: F05_SOURCE_NODE_UUID,
+      materialUuid,
+      pythonPath
+    })
+  }
+
+  /**
+   * 释放进程外测试持有者的全部活跃预留。
+   *
+   * @param workflowTaskUuid 测试持有者身份。
+   * @returns 生产库存服务的释放结果。
+   * @throws 子进程或库存权威失败时原样传播。
+   */
+  function releaseWorkflowReservation(
+    workflowTaskUuid: string
+  ): { workflow_id: string; released_nodes: string[] } {
+    return runReservationRelease({
+      python,
+      script: reservationControlScript,
+      inventoryDatabase: join(workingDirectory, 'inventory.db'),
+      workflowTaskUuid,
+      pythonPath
+    })
+  }
+
   return {
     url,
     workflowUuid: F05_WORKFLOW_UUID,
@@ -217,23 +260,8 @@ export async function startF05MaterialSourceRealOs(): Promise<F05MaterialSourceR
     workingDirectory,
     logs: output.text.bind(output),
     nativeLogs: readNativeLogs.bind(undefined, workingDirectory),
-    reserveWorkflowMaterial: (workflowTaskUuid, materialUuid) =>
-      runReservationReserve({
-        python,
-        script: reservationControlScript,
-        inventoryDatabase: join(workingDirectory, 'inventory.db'),
-        workflowTaskUuid,
-        workflowNodeUuid: F05_SOURCE_NODE_UUID,
-        materialUuid,
-        pythonPath
-      }),
-    releaseWorkflowReservation: (workflowTaskUuid) => runReservationRelease({
-      python,
-      script: reservationControlScript,
-      inventoryDatabase: join(workingDirectory, 'inventory.db'),
-      workflowTaskUuid,
-      pythonPath
-    }),
+    reserveWorkflowMaterial,
+    releaseWorkflowReservation,
     stop: createRuntimeStop(child, directory)
   }
 }
@@ -273,7 +301,7 @@ function runReservationReserve(input: {
   if (
     !result || result.workflow_id !== input.workflowTaskUuid ||
     !Array.isArray(result.reserved_nodes) ||
-    result.reserved_nodes.some((node) => typeof node !== 'string')
+    containsNonString(result.reserved_nodes)
   ) {
     throw new Error(`短期预留建立结果无效：${JSON.stringify(result)}`)
   }
@@ -314,7 +342,7 @@ function runReservationRelease(input: {
   if (
     !result || result.workflow_id !== input.workflowTaskUuid ||
     !Array.isArray(result.released_nodes) ||
-    result.released_nodes.some((node) => typeof node !== 'string')
+    containsNonString(result.released_nodes)
   ) {
     throw new Error(`短期预留释放结果无效：${JSON.stringify(result)}`)
   }
@@ -322,6 +350,20 @@ function runReservationRelease(input: {
     workflow_id: result.workflow_id,
     released_nodes: result.released_nodes as string[]
   }
+}
+
+/**
+ * 判断不可信数组是否包含非字符串成员。
+ *
+ * @param values 待校验数组。
+ * @returns 任一成员不是字符串时返回 `true`。
+ * @throws 无。
+ */
+function containsNonString(values: unknown[]): boolean {
+  for (const value of values) {
+    if (typeof value !== 'string') return true
+  }
+  return false
 }
 
 /**

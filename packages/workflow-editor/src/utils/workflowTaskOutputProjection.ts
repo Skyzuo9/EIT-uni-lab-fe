@@ -48,12 +48,13 @@ export function projectWorkflowTaskEvents(
   feedback: readonly WorkflowNodeJobFeedback[],
   jobs: readonly WorkflowNodeJob[]
 ): WorkflowOutputEvent[] {
-  const sourceNodeByJob = new Map(jobs.map((job) => [
-    job.uuid,
-    job.workflow_node_uuid
-  ]))
-  return feedback
-    .map((item) => ({
+  const sourceNodeByJob = new Map<string, string>()
+  for (const job of jobs) {
+    sourceNodeByJob.set(job.uuid, job.workflow_node_uuid)
+  }
+  const events: WorkflowOutputEvent[] = []
+  for (const item of feedback) {
+    events.push({
       key: `feedback-${item.uuid}`,
       seq: item.sequence,
       type: 'node.feedback',
@@ -64,6 +65,22 @@ export function projectWorkflowTaskEvents(
         observed_at: item.observed_at,
         received_at: item.received_at
       }
-    }))
-    .sort((left, right) => left.seq - right.seq)
+    })
+  }
+  return events.sort(compareProjectedFeedbackBySequence)
+}
+
+/**
+ * 按反馈序号比较两个工作流运行事件投影。
+ *
+ * @param left 左侧反馈事件。
+ * @param right 右侧反馈事件。
+ * @returns 负数、零或正数。
+ * @throws 无。
+ */
+function compareProjectedFeedbackBySequence(
+  left: WorkflowOutputEvent,
+  right: WorkflowOutputEvent
+): number {
+  return left.seq - right.seq
 }

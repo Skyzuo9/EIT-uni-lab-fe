@@ -42,7 +42,13 @@ export function workflowSummary(
   const list = (responses[workflowCatalogPath] as Envelope).data as {
     items: Array<Record<string, unknown>>
   }
-  const value = list.items.find((item) => item.uuid === workflowNodeUuid)
+  let value: Record<string, unknown> | undefined
+  for (const item of list.items) {
+    if (item.uuid === workflowNodeUuid) {
+      value = item
+      break
+    }
+  }
   if (!value) throw new Error('Published Workflow summary fixture missing')
   return value
 }

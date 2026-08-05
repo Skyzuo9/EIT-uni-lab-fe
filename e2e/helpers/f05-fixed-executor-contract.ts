@@ -58,9 +58,7 @@ export async function readFixedExecutorEvidence(
     `${url}/api/v1/workflows/${F05_FIXED_WORKFLOW_UUID}/authoring`
   )
   const nodes = authoring.candidate?.graph.nodes ?? authoring.applied_graph.nodes
-  const node = nodes.find(
-    (candidate) => candidate.uuid === F05_ACTION_NODE_UUID
-  )
+  const node = nodes.find(isF05ActionNode)
   if (!node || node.material_uuid !== deviceMaterialUuid ||
     node.meta_data?.unilab?.executor_binding?.mode !== 'fixed' ||
     node.meta_data.unilab.executor_binding.device_id !== deviceMaterialUuid) {
@@ -69,9 +67,17 @@ export async function readFixedExecutorEvidence(
   const graph = await readPublicEnvelope<MaterialGraph>(
     `${url}/api/v1/materials/graph`
   )
-  const device = graph.nodes.find(
-    (aggregate) => aggregate.material.uuid === deviceMaterialUuid
-  )
+  /**
+   * 判断物料聚合是否属于目标固定执行器。
+   *
+   * @param aggregate 公共物料图（MaterialGraph）聚合。
+   * @returns 聚合物料 UUID 与目标设备一致时返回 `true`。
+   * @throws 无。
+   */
+  function isFixedExecutorMaterial(aggregate: MaterialGraph['nodes'][number]): boolean {
+    return aggregate.material.uuid === deviceMaterialUuid
+  }
+  const device = graph.nodes.find(isFixedExecutorMaterial)
   const detail = await readPublicEnvelope<NodeTemplateDetail>(
     `${url}/api/v1/workflow-node-templates/${node.workflow_node_template_uuid}`
   )
@@ -89,4 +95,17 @@ export async function readFixedExecutorEvidence(
     resourceTemplateUuid: detail.template.resource_template_uuid,
     schemaText: detail.template.schema
   }
+}
+
+/**
+ * 判断创作节点是否为 F05 固定动作节点。
+ *
+ * @param candidate 候选工作流节点。
+ * @returns 节点 UUID 与固定动作身份一致时返回 `true`。
+ * @throws 无。
+ */
+function isF05ActionNode(
+  candidate: FixedExecutorAuthoring['applied_graph']['nodes'][number]
+): boolean {
+  return candidate.uuid === F05_ACTION_NODE_UUID
 }

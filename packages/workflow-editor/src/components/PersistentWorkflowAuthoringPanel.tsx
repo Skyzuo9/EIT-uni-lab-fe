@@ -176,6 +176,19 @@ interface PersistentWorkflowDebugSession {
 
 type WorkflowCodeProjection = 'python' | 'json'
 
+/**
+ * 渲染持久工作流（Workflow）创作、应用与运行控制面板。
+ *
+ * @param runtime 工作流创作和运行公共端口。
+ * @param workflowUuid 当前工作流稳定 UUID。
+ * @param traceRuntime 可选调试追踪端口。
+ * @param resourceSlotOptionsPort 物料占位符（ResourceSlot）候选端口。
+ * @param onUnsavedChangesChange 草稿脏状态通知。
+ * @param onSelectedWorkflowStepChange 当前步骤选择通知。
+ * @param onChooseWorkflow 返回工作流目录的命令。
+ * @returns 完整持久创作面板 React 元素。
+ * @throws 上下文装配错误由对应 Hook 原样传播；交互错误投影到面板状态。
+ */
 export function PersistentWorkflowAuthoringPanel({
   runtime,
   workflowUuid,
@@ -876,6 +889,14 @@ export function PersistentWorkflowAuthoringPanel({
     setMessage('远端状态已补读；本地内容保持不变，请比较后明确处理')
   }, [installAggregate, queue, runtime, workflowUuid])
 
+  /**
+   * 把当前画布图生成并校验为规范 Python 工作流源码。
+   *
+   * @param sourceGraph 待生成源码的当前工作流图。
+   * @param authority 当前创作权威聚合；默认使用面板已加载聚合。
+   * @returns 服务端生成并验证后的图、源码与诊断。
+   * @throws 权威、来源 URI 或生成合同缺失时失败关闭。
+   */
   const generateCanvasPython = useCallback(async (
     sourceGraph: WorkflowAuthoringGraph,
     authority: WorkflowAuthoringAggregate = aggregate as WorkflowAuthoringAggregate
@@ -2862,7 +2883,7 @@ function removeCandidateSiteUuid(
   selectedSiteUuids: readonly string[],
   removedSiteUuid: string
 ): string[] {
-  // 剩余库位（Site）UUID 集合延续公共物料图（MaterialGraph）交互时的原相对顺序。
+  // 剩余库位（Site）UUID 集合延续公共物料图（MaterialGraph）的 sort_order/UUID 顺序。
   const remainingSiteUuids: string[] = []
   for (const siteUuid of selectedSiteUuids) {
     if (siteUuid !== removedSiteUuid) remainingSiteUuids.push(siteUuid)
@@ -2874,7 +2895,7 @@ function removeCandidateSiteUuid(
  * 渲染物料来源（MaterialSource）节点的闭合属性选择器。
  *
  * @param props 属性面板输入。
- * @param props.editor 已按公共物料图（MaterialGraph）顺序投影的编辑读模型。
+ * @param props.editor 已按库位（Site）sort_order/UUID 投影的编辑读模型。
  * @param props.accent 可选的物料（Material）链路强调色。
  * @param props.editable 当前工作流（Workflow）是否允许修改。
  * @param props.status 当前物料来源（MaterialSource）节点状态。
@@ -2919,7 +2940,7 @@ export function MaterialSourceInspector({
   /**
    * 渲染一条可交互的候选库位（Site）。
    *
-   * @param site 按公共物料图（MaterialGraph）顺序给出的候选库位（Site）。
+   * @param site 按 sort_order/UUID 顺序给出的候选库位（Site）。
    * @returns 绑定当前选中集合与更新回调的候选库位（Site）行。
    * @throws 不主动抛出异常。
    */

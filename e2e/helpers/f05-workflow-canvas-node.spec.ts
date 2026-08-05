@@ -34,7 +34,16 @@ function rejectsUnsafeIdentity(): void {
     '66000000-0000-4000-8000-0000000002b0"] option',
   ];
   for (const unsafeIdentity of unsafeIdentities) {
-    expect(() => canvasWorkflowNodeSelector(unsafeIdentity)).toThrow(
+    /**
+     * 尝试把当前不可信身份转换为画布节点选择器。
+     *
+     * @returns 仅在安全门错误接受输入时返回选择器。
+     * @throws 预期抛出工作流节点 UUID 校验错误。
+     */
+    function selectUnsafeIdentity(): string {
+      return canvasWorkflowNodeSelector(unsafeIdentity);
+    }
+    expect(selectUnsafeIdentity).toThrow(
       /工作流节点 UUID/,
     );
   }

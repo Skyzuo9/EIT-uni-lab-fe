@@ -24,9 +24,9 @@ const materialUuid = '52000000-0000-4000-8000-000000000001'
 const mountTemplateUuid = '61000000-0000-4000-8000-000000000001'
 // 样品资源模板 UUID 标识候选孔板类型。
 const sampleTemplateUuid = '62000000-0000-4000-8000-000000000001'
-// 第一库位 UUID 对应公共图中挂载物料发布的第二个库位。
+// 第一库位 UUID 在相同 sort_order 下字典序较大。
 const firstSiteUuid = '71000000-0000-4000-8000-000000000009'
-// 第二库位 UUID 对应公共图优先发布且具有库位占用（SiteOccupancy）的库位。
+// 第二库位 UUID 在相同 sort_order 下字典序较小且具有库位占用（SiteOccupancy）。
 const secondSiteUuid = '71000000-0000-4000-8000-000000000001'
 // 目录指纹冻结工作流模板目录的权威版本。
 const fingerprint = `sha256:${'b'.repeat(64)}`
@@ -36,7 +36,7 @@ const materialSourceCatalogPath =
 /** 注册物料来源（MaterialSource）目录适配器测试；无参数和返回值，断言失败由 Vitest 汇报。 */
 function registerWorkflowMaterialSourceCatalogTests(): void {
   it(
-    '按公共物料图（MaterialGraph）发布顺序加载框架模板和库存事实',
+    '按库位（Site）sort_order 与 UUID 加载框架模板和库存事实',
     loadsMaterialSourceCatalogInPublicGraphOrder
   )
   it(
@@ -88,7 +88,7 @@ async function validatesScaffoldSchemaNullability(): Promise<void> {
 }
 
 /**
- * 验证物料来源目录、公共物料图和库位（Site）发布顺序的完整投影。
+ * 验证物料来源目录、公共物料图和库位（Site）业务顺序的完整投影。
  *
  * @returns Promise 完成时表示模板、物料、库位和请求路径均精确匹配。
  * @throws 任一目录合同或断言不一致时由 Vitest 汇报。

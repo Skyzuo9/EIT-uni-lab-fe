@@ -29,7 +29,15 @@ function verifiesDeviceStatusSubscriptionScope(): void {
   })).toBe(false)
 }
 
-describe('设备状态实时订阅范围', () => {
+/**
+ * 注册设备状态订阅范围测试。
+ *
+ * @returns 无。
+ * @throws 策略断言失败时由 Vitest 报告。
+ */
+function registerDeviceStatusSubscriptionScopeTests(): void {
   it('工作流页面不建立旧设备状态 WebSocket',
     verifiesDeviceStatusSubscriptionScope)
-})
+}
+
+describe('设备状态实时订阅范围', registerDeviceStatusSubscriptionScopeTests)

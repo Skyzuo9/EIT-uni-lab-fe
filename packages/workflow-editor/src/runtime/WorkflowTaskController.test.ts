@@ -10,7 +10,13 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { WorkflowTaskController } from './WorkflowTaskController'
 
-describe('WorkflowTaskController', () => {
+/**
+ * 注册工作流任务控制器（WorkflowTaskController）行为测试。
+ *
+ * @returns 无。
+ * @throws 任一运行合同断言失败时由 Vitest 报告。
+ */
+function registerWorkflowTaskControllerTests(): void {
   it('subscribes before discovering and installing a coherent Task/Jobs snapshot', async () => {
     const order: string[] = []
     const task = workflowTask()
@@ -135,13 +141,22 @@ describe('WorkflowTaskController', () => {
    */
   it('does not request the retired Task-scoped runtime event page', async () => {
     const task = workflowTask()
+    /**
+     * 返回当前任务唯一的持久作业。
+     *
+     * @returns 唯一工作流节点作业（WorkflowNodeJob）集合。
+     * @throws 无。
+     */
+    async function listWorkflowTaskJobs(): Promise<WorkflowNodeJob[]> {
+      return [workflowJob()]
+    }
     const runtime = runtimePort({
       subscribeWorkflowRuntime: vi.fn(() => ({ dispose: vi.fn() })),
       listWorkflowTasks: vi.fn(async () => ({
         items: [task], total: 1, page: 1, page_size: 1
       })),
       getWorkflowTask: vi.fn(async () => task),
-      listWorkflowTaskJobs: vi.fn(async () => [workflowJob()])
+      listWorkflowTaskJobs: vi.fn(listWorkflowTaskJobs)
     })
     const controller = new WorkflowTaskController(runtime, task.workflow_uuid)
 
@@ -587,7 +602,9 @@ describe('WorkflowTaskController', () => {
       generation: 0
     })
   })
-})
+}
+
+describe('WorkflowTaskController', registerWorkflowTaskControllerTests)
 
 /**
  * 把测试关心的最小运行时能力收窄为工作流运行端口。
