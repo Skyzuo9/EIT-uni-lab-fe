@@ -173,6 +173,16 @@
   bottom: -18px;
   display: flex;
   gap: 4px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--unilab-motion-fast) ease;
+}
+
+.workflow :global(.wf-node--robot-transfer:hover)
+  :global(.wf-node__robot-transfer-actions),
+.workflow :global(.wf-node__robot-transfer-actions:has(button.is-active)) {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .workflow :global(.wf-node__robot-transfer-actions) button {
