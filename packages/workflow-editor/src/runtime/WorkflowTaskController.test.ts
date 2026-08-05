@@ -459,6 +459,7 @@ describe('WorkflowTaskController', () => {
   })
 
   it('creates the selected Task mode and rehydrates the returned identity', async () => {
+    // 证明创建请求保留所选运行模式，并最终安装对应的权威任务投影。
     const task = { ...workflowTask(), run_mode: 'step' as const }
     const runtime = runtimePort({
       subscribeWorkflowRuntime: vi.fn(() => ({ dispose: vi.fn() })),
@@ -473,6 +474,7 @@ describe('WorkflowTaskController', () => {
     await controller.start()
 
     await controller.create('step')
+    await vi.waitFor(() => expect(controller.getSnapshot().task).toEqual(task))
 
     expect(runtime.createWorkflowTask).toHaveBeenCalledWith({
       workflow_uuid: task.workflow_uuid,
@@ -480,6 +482,42 @@ describe('WorkflowTaskController', () => {
     })
     expect(runtime.getWorkflowTask).toHaveBeenCalledWith(task.uuid)
     expect(controller.getSnapshot().task?.run_mode).toBe('step')
+  })
+
+  it('finishes Task creation without waiting for the runtime projection refresh', async () => {
+    // 证明工作流任务创建的成功响应独立于后续运行投影补读，避免参数抽屉无限等待。
+    const task = workflowTask()
+    let resolveJobs: ((jobs: WorkflowNodeJob[]) => void) | null = null
+    const pendingJobs = new Promise<WorkflowNodeJob[]>((resolve) => {
+      resolveJobs = resolve
+    })
+    const runtime = runtimePort({
+      subscribeWorkflowRuntime: vi.fn(() => ({ dispose: vi.fn() })),
+      listWorkflowTasks: vi.fn(async () => ({
+        items: [], total: 0, page: 1, page_size: 1
+      })),
+      createWorkflowTask: vi.fn(async () => task),
+      getWorkflowTask: vi.fn(async () => task),
+      listWorkflowTaskJobs: vi.fn(() => pendingJobs)
+    })
+    const controller = new WorkflowTaskController(runtime, task.workflow_uuid)
+    await controller.start()
+
+    let creationSettled = false
+    const creation = controller.create('normal').then((created) => {
+      creationSettled = true
+      return created
+    })
+    await vi.waitFor(() => {
+      expect(runtime.listWorkflowTaskJobs).toHaveBeenCalled()
+    })
+    await Promise.resolve()
+
+    expect(creationSettled).toBe(true)
+
+    expect(resolveJobs).not.toBeNull()
+    ;(resolveJobs as unknown as (jobs: WorkflowNodeJob[]) => void)([])
+    await creation
   })
 
   it('submits the exact validated input without debugger or revision-private fields', async () => {

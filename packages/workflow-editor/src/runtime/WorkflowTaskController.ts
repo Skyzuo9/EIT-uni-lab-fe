@@ -100,6 +100,13 @@ export class WorkflowTaskController {
     await this.requestRefresh(this.snapshot.task?.uuid ?? null)
   }
 
+  /**
+   * 创建工作流任务，并在成功响应后异步补读任务、作业、事件与反馈投影。
+   * @param runMode 本次工作流任务使用的正常或单步运行模式。
+   * @param input 已按工作流输入合同校验的可选任务输入。
+   * @returns OS 创建接口返回的权威工作流任务；返回不等待后续读投影完成。
+   * @throws 创建接口失败时保留可行动错误并向调用方传播原始异常。
+   */
   async create(
     runMode: Exclude<WorkflowTaskRunMode, 'single_node'>,
     input?: Record<string, unknown>
@@ -113,7 +120,8 @@ export class WorkflowTaskController {
       })
       if (this.active) {
         this.install({ lastCommand: null })
-        await this.requestRefresh(created.uuid)
+        // 工作流任务创建响应已经是本次提交的权威结果；运行投影独立补读，不能阻塞输入抽屉收敛。
+        void this.requestRefresh(created.uuid)
       }
       return created
     } catch (error) {
