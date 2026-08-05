@@ -132,18 +132,29 @@ test('SZLab composite material workflow uses one orthogonal visible layout', asy
       const handleRect = element.getBoundingClientRect()
       const nodeRect = node.getBoundingClientRect()
       const io = element.dataset.workflowHandleIo
+      const transferVisual = node.dataset.workflowNodeVisualKind === 'robot-transfer'
+        ? node.querySelector<HTMLElement>('[data-workflow-robot-arm]')
+        : null
+      const anchorRect = transferVisual?.getBoundingClientRect() ?? nodeRect
       return {
         io,
+        owner: transferVisual ? 'robot-transfer' : 'node',
         width: handleRect.width,
         height: handleRect.height,
+        crossAxisDelta: Math.abs(
+          handleRect.left + handleRect.width / 2
+            - (anchorRect.left + anchorRect.width / 2)
+        ),
         edgeDelta: io === 'target'
-          ? Math.abs(handleRect.top + handleRect.height / 2 - nodeRect.top)
-          : Math.abs(handleRect.top + handleRect.height / 2 - nodeRect.bottom)
+          ? Math.abs(handleRect.top + handleRect.height / 2 - anchorRect.top)
+          : Math.abs(handleRect.top + handleRect.height / 2 - anchorRect.bottom)
       }
     })
   )
   expect(readyHandleEvidence.every((handle) =>
-    handle.height >= handle.width * 2 && handle.edgeDelta <= 2
+    handle.height >= handle.width * 2
+      && handle.crossAxisDelta <= 2
+      && handle.edgeDelta <= 2
   ), JSON.stringify(readyHandleEvidence, null, 2)).toBe(true)
   expect(new Set(readyHandleEvidence.map((handle) => handle.io)))
     .toEqual(new Set(['target', 'source']))

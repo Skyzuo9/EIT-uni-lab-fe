@@ -28,6 +28,12 @@ import WorkflowTransferNode from './WorkflowTransferNode'
 import type { WorkflowNodeVisualKind } from '../utils/workflowNodeVisualKind'
 import styles from './workflow.module.scss'
 
+/** 隐藏的转运 ready 锚点以 72px 端口内 54px 菱形的上、下尖角为中心。 */
+const ROBOT_TRANSFER_READY_ANCHOR = {
+  left: '36px',
+  edgeInset: '3px'
+} as const
+
 // 自定义节点承载的数据
 export interface WorkflowNodeData {
   id: string
@@ -126,13 +132,15 @@ export default function WorkflowNodeCard({
           targetHandles,
           'target',
           targetPosition,
-          projectedMaterialHandleIds
+          projectedMaterialHandleIds,
+          ROBOT_TRANSFER_READY_ANCHOR
         )}
         structuralSourceHandles={renderStructuralHandles(
           sourceHandles,
           'source',
           sourcePosition,
-          projectedMaterialHandleIds
+          projectedMaterialHandleIds,
+          ROBOT_TRANSFER_READY_ANCHOR
         )}
       />
     )
@@ -256,11 +264,22 @@ export default function WorkflowNodeCard({
   )
 }
 
+/**
+ * 渲染非物料结构句柄，并将就绪依赖（Ready）锚点放在所属视觉的边缘中心。
+ *
+ * @param handles 操作系统（OS）投影出的当前方向句柄。
+ * @param ioType 当前句柄集合属于输入端还是输出端。
+ * @param position 非 ready 结构句柄沿用的 React Flow 方位。
+ * @param projectedMaterialHandleIds 已由物料占位符（ResourceSlot）卡片承载的句柄 UUID。
+ * @param readyAnchor 特殊视觉的 ready 横向中心与边缘内缩；省略时使用节点边缘正中。
+ * @returns 可供 React Flow 测量和连线的结构句柄元素。
+ */
 function renderStructuralHandles(
   handles: WorkflowHandlePort[] | undefined,
   ioType: 'source' | 'target',
   position: Position,
-  projectedMaterialHandleIds: ReadonlySet<string>
+  projectedMaterialHandleIds: ReadonlySet<string>,
+  readyAnchor?: Readonly<{ left: string; edgeInset: string }>
 ): React.JSX.Element | React.JSX.Element[] {
   if (handles === undefined) {
     return (
@@ -298,7 +317,14 @@ function renderStructuralHandles(
         aria-hidden={ready ? undefined : true}
         title={ready ? '执行顺序' : undefined}
         style={ready
-          ? { left: 'calc(100% - 18px)' }
+          ? {
+              left: readyAnchor?.left ?? '50%',
+              ...(readyAnchor
+                ? ioType === 'target'
+                  ? { top: readyAnchor.edgeInset }
+                  : { bottom: readyAnchor.edgeInset }
+                : {})
+            }
           : handlePosition(position, index, structuralHandles.length)}
       />
     )
