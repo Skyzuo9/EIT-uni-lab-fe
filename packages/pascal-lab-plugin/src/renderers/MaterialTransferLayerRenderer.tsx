@@ -352,12 +352,31 @@ function uniqueMarkers(routes: readonly LabMaterialTransferRoute[]): Array<{
   return [...markers.values()]
 }
 
-function RobotArmIcon(): React.JSX.Element {
+/**
+ * 渲染与工作流画布共用几何语言的细线机械臂执行器（Executor）图标。
+ * 参数：无；图标不读取执行或物理状态。
+ * 返回：包含底座、两级关节和末端夹爪的装饰性 SVG。
+ */
+export function RobotArmIcon(): React.JSX.Element {
   return (
-    <svg aria-hidden="true" viewBox="0 0 24 24">
-      <path d="M5 19h14M8 19v-3h8v3M10 16v-4l3-3 3 3M13 9V5h4M17 3v4" />
-      <circle cx="10" cy="12" r="1.5" />
-      <circle cx="13" cy="9" r="1.5" />
+    <svg
+      aria-hidden="true"
+      data-executor-icon="precision-robot-arm"
+      focusable="false"
+      viewBox="0 0 48 48"
+    >
+      <path d="M13 39h22" />
+      <path d="M17 39v-6h14v6" />
+      <circle cx="19" cy="29" r="4" />
+      <path d="m21.8 26.2 7.3-8.2" />
+      <circle cx="31" cy="16" r="3.5" />
+      <path d="m28.6 13.5-5.3-5.2" />
+      <path d="M20.7 6h6v4.7" />
+      <g data-robot-gripper="true">
+        <path d="m34 16 4.2 3.4" />
+        <path d="M38.2 19.4 41 17" />
+        <path d="m38.2 19.4.7 3.7" />
+      </g>
     </svg>
   )
 }

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
+import { renderToStaticMarkup } from 'react-dom/server'
 
 import {
+  RobotArmIcon,
   pointAlongPolyline,
   polylineStrokeSegments
 } from './MaterialTransferLayerRenderer'
@@ -40,5 +42,20 @@ describe('3D 物料（Material）转运路径动画', () => {
       expect(segment.length).toBeCloseTo(0.1, 8)
     }
     expect(segments[0]?.position).toEqual([0.05, 0, 0])
+  })
+
+  /**
+   * 验证执行器（Executor）使用与工作流画布一致的精密细线机械臂图形。
+   * 参数：无；直接渲染内部 SVG 图标。
+   * 返回：通过断言确认图标身份、48 单位几何与末端夹爪全部存在。
+   */
+  it('渲染精密细线机械臂执行器图标', () => {
+    const markup = renderToStaticMarkup(RobotArmIcon())
+
+    expect(markup).toContain(
+      'data-executor-icon="precision-robot-arm"'
+    )
+    expect(markup).toContain('viewBox="0 0 48 48"')
+    expect(markup).toContain('data-robot-gripper="true"')
   })
 })
