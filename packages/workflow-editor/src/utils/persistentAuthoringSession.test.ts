@@ -7,10 +7,12 @@ import type {
 
 import {
   AuthoringOperationQueue,
+  applyMaterializedWorkflowCandidate,
   authoringProjection,
   authoringStateMessage,
   diagnosticRange,
   draftSaveMessage,
+  hasRunnableAppliedWorkflow,
   isSameAuthoringVersion,
   isCurrentAuthoringInvalidation
 } from './persistentAuthoringSession'
@@ -45,6 +47,49 @@ WorkflowAuthoringAggregate => ({
 })
 
 describe('persistent Authoring session coordination', () => {
+  it('applies the fresh Candidate issued after normalized source is saved', async () => {
+    const calls: string[] = []
+    const saved = aggregate({
+      candidate: {
+        ...aggregate().candidate!,
+        candidate_hash: `sha256:${'d'.repeat(64)}`
+      }
+    })
+
+    const result = await applyMaterializedWorkflowCandidate({
+      save: async () => {
+        calls.push('save')
+        return saved
+      },
+      apply: async (candidateHash) => {
+        calls.push(`apply:${candidateHash}`)
+        return 'applied'
+      }
+    })
+
+    expect(result).toEqual({ saved, applied: 'applied' })
+    expect(calls).toEqual([
+      'save',
+      `apply:sha256:${'d'.repeat(64)}`
+    ])
+  })
+
+  it('does not run an empty or disabled Applied Graph', () => {
+    expect(hasRunnableAppliedWorkflow(aggregate())).toBe(false)
+    expect(hasRunnableAppliedWorkflow(aggregate({
+      applied_graph: {
+        ...emptyGraph(),
+        nodes: [{ disabled: true, type: 'device' } as never]
+      }
+    }))).toBe(false)
+    expect(hasRunnableAppliedWorkflow(aggregate({
+      applied_graph: {
+        ...emptyGraph(),
+        nodes: [{ disabled: false, type: 'device' } as never]
+      }
+    }))).toBe(true)
+  })
+
   it('serializes initial GET, writes and SSE rehydration', async () => {
     const queue = new AuthoringOperationQueue()
     const calls: string[] = []

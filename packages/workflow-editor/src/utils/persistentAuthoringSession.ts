@@ -17,6 +17,42 @@ export class AuthoringOperationQueue {
   }
 }
 
+export async function applyMaterializedWorkflowCandidate<Applied>(input: {
+  save: () => Promise<WorkflowAuthoringAggregate>
+  apply: (candidateHash: string) => Promise<Applied>
+}): Promise<{
+  saved: WorkflowAuthoringAggregate
+  applied: Applied
+}> {
+  const saved = await input.save()
+  const candidateHash = saved.candidate?.candidate_hash
+  if (!candidateHash) {
+    throw new Error('规范化源码已保存，但 OS 未返回可应用的工作流候选')
+  }
+  return {
+    saved,
+    applied: await input.apply(candidateHash)
+  }
+}
+
+export function hasRunnableAppliedWorkflow(
+  aggregate: WorkflowAuthoringAggregate | null
+): boolean {
+  if (!aggregate) return false
+  const templateKinds = new Map(
+    aggregate.applied_graph.node_templates.map((template) => [
+      template.uuid,
+      String(template.node_type || '').trim().toLowerCase()
+    ])
+  )
+  return aggregate.applied_graph.nodes.some((node) => {
+    if (node.disabled) return false
+    const kind = templateKinds.get(node.workflow_node_template_uuid) ||
+      String(node.type || '').trim().toLowerCase()
+    return kind !== 'group'
+  })
+}
+
 export function authoringStateMessage(
   aggregate: WorkflowAuthoringAggregate
 ): string {

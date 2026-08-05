@@ -84,11 +84,13 @@ import {
 } from '../utils/workflowTaskOutputProjection'
 import {
   AuthoringOperationQueue,
+  applyMaterializedWorkflowCandidate,
   authoringProjection,
   authoringStateMessage,
   catalogConflictDecision,
   diagnosticRange,
   draftSaveMessage,
+  hasRunnableAppliedWorkflow,
   isAuthoringConflict,
   isCurrentAuthoringInvalidation,
   isSameAuthoringVersion,
@@ -153,6 +155,7 @@ interface FullSourceDiff {
   expectedWorkflowRevision: number
   reason: 'canvas_save' | 'conflict_retry' | 'source_normalization'
   resumeMode: WorkflowEditMode
+  applyAfterSave: boolean
 }
 
 interface RemoteConflict {
@@ -484,6 +487,10 @@ export function PersistentWorkflowAuthoringPanel({
   const dirty = mode === 'code'
     ? editor.isDirty
     : canvasDirty || selectedNodeNameDirty
+  const appliedWorkflowRunnable = useMemo(
+    () => hasRunnableAppliedWorkflow(aggregate),
+    [aggregate]
+  )
   const task = taskRuntime.snapshot.task
   const taskJobs = taskRuntime.snapshot.jobs
   const taskOutputNodes = useMemo(
@@ -1070,7 +1077,8 @@ export function PersistentWorkflowAuthoringPanel({
               expectedDraftHash: saved.draft?.draft_hash ?? null,
               expectedWorkflowRevision: saved.workflow_revision,
               reason: 'source_normalization',
-              resumeMode: 'code'
+              resumeMode: 'code',
+              applyAfterSave: false
             })
             setMessage(
               pendingPythonImport
@@ -1115,14 +1123,15 @@ export function PersistentWorkflowAuthoringPanel({
           expectedDraftHash: aggregate.draft?.draft_hash ?? null,
           expectedWorkflowRevision: aggregate.workflow_revision,
           reason: 'canvas_save',
-          resumeMode: 'canvas'
+          resumeMode: 'canvas',
+          applyAfterSave: false
         })
       }
     })
   }
 
   const acceptFullSourceDiff = (): void => {
-    if (!fullSourceDiff) return
+    if (!fullSourceDiff || busy) return
     const diff = fullSourceDiff
     const decision = workflowCanvasDraftSaveDecision({
       baselinePython: diff.before,
@@ -1132,7 +1141,7 @@ export function PersistentWorkflowAuthoringPanel({
     if (decision.kind !== 'write_complete_draft') return
     void run(async () => {
       try {
-        const saved = await queue.run(
+        const saveNormalizedDraft = () => queue.run(
           () => runtime.saveWorkflowAuthoringDraft(
             workflowUuid,
             {
@@ -1142,6 +1151,29 @@ export function PersistentWorkflowAuthoringPanel({
             }
           )
         )
+        if (diff.applyAfterSave) {
+          const { applied } = await applyMaterializedWorkflowCandidate({
+            save: saveNormalizedDraft,
+            apply: (candidateHash) => queue.run(
+              () => runtime.applyWorkflowAuthoring(
+                workflowUuid,
+                { candidate_hash: candidateHash }
+              )
+            )
+          })
+          remotePending.current = false
+          setFullSourceDiff(null)
+          setPendingPythonImport(null)
+          setMode(diff.resumeMode)
+          installAggregate(
+            applied.authoring,
+            applied.apply_result.kind === 'graph'
+              ? `工作流已应用，当前版本为 ${applied.apply_result.workflow_revision}`
+              : '源码已应用，工作流图未发生变化'
+          )
+          return
+        }
+        const saved = await saveNormalizedDraft()
         remotePending.current = false
         setFullSourceDiff(null)
         installAggregate(saved, draftSaveMessage(saved))
@@ -1189,7 +1221,8 @@ export function PersistentWorkflowAuthoringPanel({
         expectedDraftHash: conflict.remote.draft?.draft_hash ?? null,
         expectedWorkflowRevision: conflict.remote.workflow_revision,
         reason: 'conflict_retry',
-        resumeMode: conflict.localMode
+        resumeMode: conflict.localMode,
+        applyAfterSave: false
       })
       setRemoteConflict(null)
     })
@@ -1232,9 +1265,10 @@ export function PersistentWorkflowAuthoringPanel({
         expectedDraftHash: draft.draft_hash,
         expectedWorkflowRevision: aggregate.workflow_revision,
         reason: 'source_normalization',
-        resumeMode: mode
+        resumeMode: mode,
+        applyAfterSave: true
       })
-      setMessage('请先接受并保存 OS 规范化 Python，再应用工作流')
+      setMessage('请确认 OS 规范化 Python；接受后将自动应用工作流')
       return
     }
     // 候选哈希是 OS 签发的单次应用身份，只能在源码物化门禁通过后提交。
@@ -1638,11 +1672,20 @@ export function PersistentWorkflowAuthoringPanel({
 
   const openTaskInputForm = (): void => {
     setTaskInputProblem(null)
+    if (!hasRunnableAppliedWorkflow(aggregate)) {
+      setError('当前工作流候选尚未应用；请先应用包含可执行节点的工作流')
+      return
+    }
     runRuntime(async () => {
       try {
         const latest = await queue.run(
           () => runtime.getWorkflowAuthoring(workflowUuid)
         )
+        if (!hasRunnableAppliedWorkflow(latest)) {
+          throw new Error(
+            '当前工作流候选尚未应用；已应用版本不包含可执行节点'
+          )
+        }
         const nextForm = createWorkflowTaskInputForm(latest)
         setTaskInputAuthority(latest)
         setTaskInputForm(nextForm)
@@ -1907,7 +1950,8 @@ export function PersistentWorkflowAuthoringPanel({
                 busy ||
                 runtimeBusy ||
                 dirty ||
-                !aggregate
+                !aggregate ||
+                !appliedWorkflowRunnable
               }
               disabledReason={busy
                 ? '正在处理工作流编写操作，请稍候'
@@ -1915,13 +1959,15 @@ export function PersistentWorkflowAuthoringPanel({
                   ? '正在处理上一项工作流任务操作，请稍候'
                   : dirty
                     ? '请先保存当前可写内容'
-                    : '已应用工作流尚未就绪'}
+                    : !appliedWorkflowRunnable
+                      ? '请先应用包含可执行节点的工作流'
+                      : '已应用工作流尚未就绪'}
               title={
                 dirty
                   ? '请先保存当前可写表示'
-                  : aggregate
+                  : appliedWorkflowRunnable && aggregate
                     ? `将使用已应用版本 ${aggregate.workflow_revision}`
-                    : '已应用工作流尚未就绪'
+                    : '请先应用包含可执行节点的工作流'
               }
               onClick={openTaskInputForm}
             >
@@ -2700,20 +2746,28 @@ export function PersistentWorkflowAuthoringPanel({
               </section>
             </div>
             <footer className="workflow-save-prompt__actions">
-              <button
+              <WorkflowButton
                 type="button"
                 className="workflow-save-prompt__cancel"
+                disabled={busy}
+                disabledReason="正在处理工作流源码，请稍候"
                 onClick={() => setFullSourceDiff(null)}
               >
                 取消
-              </button>
-              <button
+              </WorkflowButton>
+              <WorkflowButton
                 type="button"
                 className="workflow-save-prompt__file"
+                disabled={busy}
+                disabledReason="正在保存并校验工作流源码，请稍候"
                 onClick={acceptFullSourceDiff}
               >
-                接受完整差异并保存
-              </button>
+                {busy
+                  ? '处理中…'
+                  : fullSourceDiff.applyAfterSave
+                    ? '接受完整差异并应用'
+                    : '接受完整差异并保存'}
+              </WorkflowButton>
             </footer>
           </section>
         </div>
