@@ -9,7 +9,15 @@ import {
   stat
 } from 'node:fs/promises'
 import { createConnection } from 'node:net'
-import { basename, delimiter, dirname, join, normalize, resolve } from 'node:path'
+import {
+  basename,
+  delimiter,
+  dirname,
+  isAbsolute,
+  join,
+  normalize,
+  resolve
+} from 'node:path'
 import { Writable } from 'node:stream'
 
 import {
@@ -22,6 +30,10 @@ import {
   type LocalRuntimeProcessKind,
   type LocalRuntimeSnapshot
 } from '../shared/localRuntime'
+import {
+  resolveLocalRuntimeEdgeCommand,
+  type ResolvedLocalRuntimeEdgeCommand
+} from './localRuntimeEdgeCommand'
 
 export interface LocalRuntimeSpawnSpec {
   command: string
@@ -46,9 +58,11 @@ interface ResolvedRuntimeConfig {
   osProjectPath: string
   szlabProjectPath: string
   environmentPath: string
+  pythonExecutable: string
   unilabExecutable: string
   localConfigPath: string
   runtimeDirectory: string
+  customEdgeCommand: ResolvedLocalRuntimeEdgeCommand | null
 }
 
 interface ResolvedSimulatorConfig {
@@ -691,6 +705,14 @@ export async function resolveLocalSimulatorLaunchPlan(
   return { simulator: simulatorSpec(resolvedConfig) }
 }
 
+/**
+ * 校验用户选择的项目与 Conda 路径，并把生成式或自定义 Edge 命令解析成一次启动事实。
+ *
+ * @param config renderer 经 IPC 提交的本地运行配置。
+ * @param platform 当前目标平台，用于选择 Conda 可执行文件布局和 Windows 规则。
+ * @returns 已规范化路径、运行目录、配置文件和可选自定义命令。
+ * @throws 当项目结构、可执行文件、自定义命令或领域设备包约束不满足时抛出。
+ */
 async function resolveRuntimeConfig(
   config: LocalRuntimeLaunchConfig,
   platform: NodeJS.Platform
@@ -714,17 +736,14 @@ async function resolveRuntimeConfig(
   if (szlabProjectPath) {
     await requireDirectory(szlabProjectPath, '领域项目根目录不存在')
   }
+  if (config.edgeCommandMode === 'custom' && !szlabProjectPath) {
+    throw new Error('自定义 Edge 启动命令仅适用于已挂载领域设备包')
+  }
   await requireDirectory(environmentPath, 'unilab Conda 环境目录不存在')
 
-  const { unilabExecutable } = runtimeExecutablePaths(
+  const { pythonExecutable, unilabExecutable } = runtimeExecutablePaths(
     environmentPath,
     platform
-  )
-  await requireExecutable(
-    unilabExecutable,
-    platform === 'win32'
-      ? '所选 Conda 环境缺少 Scripts/unilab.exe'
-      : '所选 Conda 环境缺少 bin/unilab'
   )
 
   const localConfigPath = szlabProjectPath
@@ -736,6 +755,41 @@ async function resolveRuntimeConfig(
       ? '领域项目缺少 deployment/local_config.py'
       : 'Uni-Lab-OS 缺少内置本地调试配置'
   )
+  const runtimeDirectory = szlabProjectPath
+    ? join(szlabProjectPath, 'runtime', 'ideawit-e2e')
+    : join(osProjectPath, 'runtime', 'edge-local-debug')
+  const customEdgeCommand = config.edgeCommandMode === 'custom'
+    ? resolveLocalRuntimeEdgeCommand(config.customEdgeCommand, {
+        unilab: unilabExecutable,
+        python: pythonExecutable,
+        workspace: szlabProjectPath,
+        graph: graphPath,
+        config: localConfigPath,
+        working_dir: runtimeDirectory,
+        edge_http_port: String(LOCAL_RUNTIME_PORTS.edgeHttp),
+        hostlink_port: String(LOCAL_RUNTIME_PORTS.hostLink)
+      }, platform)
+    : null
+
+  if (!customEdgeCommand) {
+    await requireExecutable(
+      unilabExecutable,
+      platform === 'win32'
+        ? '所选 Conda 环境缺少 Scripts/unilab.exe'
+        : '所选 Conda 环境缺少 bin/unilab'
+    )
+  } else if (commandLooksLikePath(customEdgeCommand.command)) {
+    await requireExecutable(
+      customEdgeCommand.command,
+      'Edge 自定义可执行文件不存在或不可执行'
+    )
+  }
+  if (customEdgeCommand) {
+    await requireDirectory(
+      customEdgeCommand.workingDirectory,
+      'Edge 自定义工作目录不存在'
+    )
+  }
 
   return {
     platform,
@@ -743,11 +797,11 @@ async function resolveRuntimeConfig(
     osProjectPath,
     szlabProjectPath,
     environmentPath,
+    pythonExecutable,
     unilabExecutable,
     localConfigPath,
-    runtimeDirectory: szlabProjectPath
-      ? join(szlabProjectPath, 'runtime', 'ideawit-e2e')
-      : join(osProjectPath, 'runtime', 'edge-local-debug'),
+    runtimeDirectory,
+    customEdgeCommand
   }
 }
 
@@ -804,32 +858,40 @@ function simulatorSpec(config: ResolvedSimulatorConfig): LocalRuntimeSpawnSpec {
  * @returns 包含命令、参数、工作目录和本次随机 ROS 域编号的启动规范。
  */
 function edgeSpec(config: ResolvedRuntimeConfig): LocalRuntimeSpawnSpec {
+  const generatedArgs = [
+    ...(config.szlabProjectPath
+      ? ['--workspace', config.szlabProjectPath]
+      : []),
+    '--graph',
+    config.graphPath,
+    '--config',
+    config.localConfigPath,
+    '--working_dir',
+    config.runtimeDirectory,
+    '--backend',
+    'ros',
+    '--app_bridges',
+    'fastapi',
+    '--edge_scheduler',
+    '--port',
+    String(LOCAL_RUNTIME_PORTS.edgeHttp),
+    '--disable_browser',
+    '--skip_env_check',
+    '--test_mode'
+  ]
+  const customEnvironment = config.customEdgeCommand?.environment ?? []
+  const userExtendedEnvironment = mergeCustomEdgeEnvironment(
+    runtimeEnvironment(config),
+    customEnvironment,
+    config.platform
+  )
   return {
-    command: config.unilabExecutable,
-    args: [
-      ...(config.szlabProjectPath
-        ? ['--workspace', config.szlabProjectPath]
-        : []),
-      '--graph',
-      config.graphPath,
-      '--config',
-      config.localConfigPath,
-      '--working_dir',
-      config.runtimeDirectory,
-      '--backend',
-      'ros',
-      '--app_bridges',
-      'fastapi',
-      '--edge_scheduler',
-      '--port',
-      String(LOCAL_RUNTIME_PORTS.edgeHttp),
-      '--disable_browser',
-      '--skip_env_check',
-      '--test_mode'
-    ],
-    cwd: config.szlabProjectPath || config.osProjectPath,
+    command: config.customEdgeCommand?.command ?? config.unilabExecutable,
+    args: config.customEdgeCommand?.args ?? generatedArgs,
+    cwd: config.customEdgeCommand?.workingDirectory
+      ?? (config.szlabProjectPath || config.osProjectPath),
     env: {
-      ...runtimeEnvironment(config),
+      ...userExtendedEnvironment,
       UNILABOS_RUNTIME_DB: edgeRuntimeDatabasePath(config.runtimeDirectory),
       UNILABOS_OBSERVABILITYCONFIG_ENABLED: 'true',
       UNILABOS_OBSERVABILITYCONFIG_PROJECT_NAME: 'uni-lab-electron',
@@ -840,14 +902,59 @@ function edgeSpec(config: ResolvedRuntimeConfig): LocalRuntimeSpawnSpec {
 }
 
 /**
- * 为一次 Edge 启动生成 `02` 至 `99` 的两位 ROS 域编号。
+ * 把用户声明的非敏感环境变量合并到 Conda 运行环境，同时处理 Windows 名称大小写。
  *
- * @returns 可直接写入 `ROS_DOMAIN_ID` 环境变量的两位字符串。
+ * @param baseEnvironment 启动器构造的 Conda、PATH 与 PYTHONPATH 基线环境。
+ * @param overrides 已通过主进程安全校验的用户环境变量覆盖。
+ * @param platform 当前目标平台，用于 Windows 环境变量名称不区分大小写的规则。
+ * @returns 不含重复名称、可继续写入启动器权威变量的进程环境副本。
+ */
+function mergeCustomEdgeEnvironment(
+  baseEnvironment: NodeJS.ProcessEnv,
+  overrides: Array<{ name: string; value: string }>,
+  platform: NodeJS.Platform
+): NodeJS.ProcessEnv {
+  if (overrides.length === 0) return baseEnvironment
+  if (platform !== 'win32') {
+    return {
+      ...baseEnvironment,
+      ...Object.fromEntries(overrides.map(({ name, value }) => [name, value]))
+    }
+  }
+  const overrideNames = new Set(
+    overrides.map(({ name }) => name.toUpperCase())
+  )
+  const withoutShadowedNames = Object.fromEntries(
+    Object.entries(baseEnvironment).filter(
+      ([name]) => !overrideNames.has(name.toUpperCase())
+    )
+  )
+  return {
+    ...withoutShadowedNames,
+    ...Object.fromEntries(overrides.map(({ name, value }) => [name, value]))
+  }
+}
+
+/**
+ * 判断自定义可执行文件是否显式携带目录，从而需要在启动前做文件校验。
+ *
+ * @param command 已展开占位符的可执行文件名称或路径。
+ * @returns 绝对路径或包含任一平台目录分隔符时返回 true；裸命令名交给激活后的 PATH 解析。
+ */
+function commandLooksLikePath(command: string): boolean {
+  return isAbsolute(command) || command.includes('/') || command.includes('\\')
+}
+
+/**
+ * 为一次 Edge 启动生成 `2` 至 `99` 的 ROS 域编号。
+ *
+ * @returns 可直接写入 `ROS_DOMAIN_ID` 环境变量的十进制字符串。
+ * @remarks ROS 2 底层按 C 整数解析该值，`08`/`09` 会因前导零被拒绝。
  */
 function randomEdgeRosDomainId(): string {
   const domainId = Math.floor(Math.random() * EDGE_ROS_DOMAIN_ID_COUNT)
     + EDGE_ROS_DOMAIN_ID_MIN
-  return twoDigits(domainId)
+  return String(domainId)
 }
 
 function edgeRuntimeDatabasePath(
