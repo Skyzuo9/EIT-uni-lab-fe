@@ -22,7 +22,11 @@ import {
 } from 'react'
 import { useServices } from '@unilab/services'
 import { useWorkbench } from '../context/WorkbenchContext'
-import type { DeviceStatus } from '../data/lab'
+import type {
+  ConnectionStatus,
+  DeviceStatus,
+  WorkbenchSection
+} from '../data/lab'
 
 export interface UseDeviceStatusResult {
   // 以 deviceId 为键的实时状态表
@@ -54,7 +58,7 @@ export function useDeviceStatus(): UseDeviceStatusResult {
 }
 
 function useDeviceStatusSubscription(): UseDeviceStatusResult {
-  const { backendEnabled, connection } = useWorkbench()
+  const { backendEnabled, connection, section } = useWorkbench()
   const services = useServices()
   const realtime = services.realtime
   const canSubscribeStatus = services.capabilities.devices.subscribeStatus
@@ -65,10 +69,12 @@ function useDeviceStatusSubscription(): UseDeviceStatusResult {
   // 用 ref 保存最新状态表,避免每条推送都重建订阅
   const mapRef = useRef<Map<string, DeviceStatus>>(new Map())
 
-  const canConnect =
-    backendEnabled &&
-    connection === 'connected' &&
-    canSubscribeStatus
+  const canConnect = shouldSubscribeDeviceStatus({
+    backendEnabled,
+    connection,
+    canSubscribeStatus,
+    section
+  })
 
   useEffect(() => {
     if (!canConnect) {
@@ -106,6 +112,25 @@ function useDeviceStatusSubscription(): UseDeviceStatusResult {
     () => ({ statusMap, connected, lastUpdate }),
     [statusMap, connected, lastUpdate]
   )
+}
+
+/**
+ * 判定当前工作台是否需要旧设备状态 WebSocket。
+ *
+ * @param input 后端开关、连接状态、能力与当前工作台切面。
+ * @returns 只有设备或设备卡片切面在能力就绪时返回 `true`。
+ * @throws 无；输入是前端已规范化的状态。
+ */
+export function shouldSubscribeDeviceStatus(input: {
+  backendEnabled: boolean
+  connection: ConnectionStatus
+  canSubscribeStatus: boolean
+  section: WorkbenchSection
+}): boolean {
+  return input.backendEnabled &&
+    input.connection === 'connected' &&
+    input.canSubscribeStatus &&
+    (input.section === 'device' || input.section === 'cards')
 }
 
 // 在状态表中按设备的多种标识(uuid/deviceKey/nodeName)查找状态
