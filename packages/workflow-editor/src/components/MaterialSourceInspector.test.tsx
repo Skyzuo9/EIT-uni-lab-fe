@@ -1,50 +1,98 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 
-import type { MaterialSourceEditorProjection } from '../utils/workflowMaterialSource'
+import type {
+  MaterialSourceEditorProjection,
+  MaterialSourceSelectorUpdate
+} from '../utils/workflowMaterialSource'
 import {
   filterMaterialSourceSites,
   MaterialSourceInspector
 } from './PersistentWorkflowAuthoringPanel'
 
-describe('MaterialSource Properties inspector', () => {
-  it('renders the closed selector in LINQ-inspired groups and Site business order', () => {
-    const markup = renderToStaticMarkup(
-      <MaterialSourceInspector
-        editor={editor()}
-        editable
-        status="material_waiting"
-        diagnostics={[]}
-        onChange={vi.fn()}
-      />
-    )
+/**
+ * 注册物料来源（MaterialSource）属性面板对公共物料图（MaterialGraph）目录顺序的行为测试。
+ *
+ * @returns 不返回值；渲染或过滤合同被破坏时由 Vitest 报告失败。
+ */
+function registerMaterialSourceInspectorTests(): void {
+  it(
+    '物料来源（MaterialSource）属性面板按公共物料图（MaterialGraph）顺序渲染闭合选择器',
+    rendersClosedSelectorInPublicGraphOrder
+  )
+  it(
+    '候选库位（Site）只按名称和稳定 UUID 过滤',
+    filtersCandidateSitesByNameAndUuid
+  )
+}
 
-    expect(markup).toContain('物料来源属性')
-    expect(markup).toContain('等待物料')
-    expect(markup).toContain('物料角色')
-    expect(markup).toContain('资源模板')
-    expect(markup).toContain('已有物料')
-    expect(markup).toContain('新建物料')
-    expect(markup).toContain('挂载点')
-    expect(markup).toContain('库位范围')
-    expect(markup).toContain('搜索候选库位')
-    expect(markup).toContain('已选择 1 / 2')
-    expect(markup.indexOf('Slot 1')).toBeLessThan(markup.indexOf('Slot 2'))
-    expect(markup).not.toContain('Closure State')
-    expect(markup).not.toContain('Comments')
-    expect(markup).not.toContain('Content')
-  })
+describe(
+  '物料来源（MaterialSource）属性面板',
+  registerMaterialSourceInspectorTests
+)
 
-  it('filters candidate Sites by name, business order, and stable UUID', () => {
-    const sites = editor().sites
+/**
+ * 验证物料来源（MaterialSource）闭合选择器保留公共物料图（MaterialGraph）的库位（Site）目录顺序。
+ *
+ * @returns 不返回值；字段分组、状态或库位顺序不符时断言失败。
+ */
+function rendersClosedSelectorInPublicGraphOrder(): void {
+  const markup = renderToStaticMarkup(
+    <MaterialSourceInspector
+      editor={editor()}
+      editable
+      status="material_waiting"
+      diagnostics={[]}
+      onChange={vi.fn(ignoreMaterialSourceChange)}
+    />
+  )
 
-    expect(filterMaterialSourceSites(sites, 'slot 2')).toEqual([sites[1]])
-    expect(filterMaterialSourceSites(sites, '#1')).toEqual([sites[0]])
-    expect(filterMaterialSourceSites(sites, '000002')).toEqual([sites[1]])
-    expect(filterMaterialSourceSites(sites, 'missing')).toEqual([])
-  })
-})
+  expect(markup).toContain('物料来源属性')
+  expect(markup).toContain('等待物料')
+  expect(markup).toContain('物料角色')
+  expect(markup).toContain('资源模板')
+  expect(markup).toContain('已有物料')
+  expect(markup).toContain('新建物料')
+  expect(markup).toContain('挂载点')
+  expect(markup).toContain('库位范围')
+  expect(markup).toContain('搜索候选库位')
+  expect(markup).toContain('已选择 1 / 2')
+  expect(markup.indexOf('库位 1')).toBeLessThan(markup.indexOf('库位 2'))
+  expect(markup).not.toContain('Closure State')
+  expect(markup).not.toContain('Comments')
+  expect(markup).not.toContain('Content')
+}
 
+/**
+ * 验证候选库位（Site）过滤只读取名称和稳定 UUID，不依赖伪业务顺序字段。
+ *
+ * @returns 不返回值；名称、UUID 或缺失查询的结果不符时断言失败。
+ */
+function filtersCandidateSitesByNameAndUuid(): void {
+  const sites = editor().sites
+
+  expect(filterMaterialSourceSites(sites, '库位 2')).toEqual([sites[1]])
+  expect(filterMaterialSourceSites(sites, '000002')).toEqual([sites[1]])
+  expect(filterMaterialSourceSites(sites, 'missing')).toEqual([])
+}
+
+/**
+ * 接收属性面板测试中的物料来源（MaterialSource）补丁，不产生外部副作用。
+ *
+ * @param _patch 面板尝试提交的物料来源选择器补丁；静态渲染测试不会调用它。
+ * @returns 不返回值。
+ */
+function ignoreMaterialSourceChange(
+  _patch: Partial<MaterialSourceSelectorUpdate>
+): void {
+  void _patch
+}
+
+/**
+ * 构造属性面板测试使用的物料来源（MaterialSource）编辑投影。
+ *
+ * @returns 含两个按公共物料图（MaterialGraph）顺序排列的候选库位（Site）的只读投影。
+ */
 function editor(): MaterialSourceEditorProjection {
   return {
     nodeUuid: '20000000-0000-4000-8000-000000000001',
@@ -71,8 +119,7 @@ function editor(): MaterialSourceEditorProjection {
     sites: [
       {
         uuid: '70000000-0000-4000-8000-000000000001',
-        name: 'Slot 1',
-        sortOrder: 1,
+        name: '库位 1',
         mountMaterialUuid: '50000000-0000-4000-8000-000000000001',
         allowedResourceTemplateUuids: [
           '60000000-0000-4000-8000-000000000001'
@@ -81,8 +128,7 @@ function editor(): MaterialSourceEditorProjection {
       },
       {
         uuid: '70000000-0000-4000-8000-000000000002',
-        name: 'Slot 2',
-        sortOrder: 2,
+        name: '库位 2',
         mountMaterialUuid: '50000000-0000-4000-8000-000000000001',
         allowedResourceTemplateUuids: [],
         occupiedMaterialUuid: null

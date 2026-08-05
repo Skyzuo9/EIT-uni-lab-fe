@@ -31,22 +31,25 @@ export function projectWorkflowMaterialSourceGraph(
 
   for (const aggregate of aggregates) {
     // 物料 UUID 是工作流选择器与后续任务物料准入（TaskMaterialAdmission）的稳定身份。
-    const materialUuid = uuidValue(aggregate.material.id, 'Material UUID')
+    const materialUuid = uuidValue(
+      aggregate.material.id,
+      '物料（Material）UUID'
+    )
     if (materialIds.has(materialUuid)) {
-      invalidGraph(`Material UUID is duplicated: ${materialUuid}`)
+      invalidGraph(`物料（Material）UUID 重复: ${materialUuid}`)
     }
     materialIds.add(materialUuid)
     // 资源模板 UUID 只表达物料的来源类型，不从物料名称推导模板显示名。
     const resourceTemplateUuid = uuidValue(
       aggregate.material.sourceTemplateId,
-      `Material ${materialUuid} ResourceTemplate UUID`
+      `物料（Material）${materialUuid} 的资源模板（ResourceTemplate）UUID`
     )
     resourceTemplateIds.add(resourceTemplateUuid)
     materials.push({
       uuid: materialUuid,
       name: nonEmptyString(
         aggregate.material.name,
-        `Material ${materialUuid} name`
+        `物料（Material）${materialUuid} 名称`
       ),
       resourceTemplateUuid
     })
@@ -55,39 +58,39 @@ export function projectWorkflowMaterialSourceGraph(
   // 库位身份集合保证多个挂载物料不会发布同一个业务库位。
   const siteIds = new Set<string>()
   const sites: WorkflowMaterialSourceSite[] = []
-  // 库位遍历序号保留公共图中挂载物料与其业务库位数组给出的稳定顺序。
-  let siteTraversalOrder = 0
   for (const aggregate of aggregates) {
     // 聚合物料 UUID 是其 sites 数组中每个业务库位的唯一合法所有者。
     const ownerMaterialUuid = uuidValue(
       aggregate.material.id,
-      'Site owner Material UUID'
+      '库位（Site）所有者物料（Material）UUID'
     )
     for (const site of aggregate.sites) {
       if (isManagedLabwareComponent(site)) continue
       // 库位 UUID 是物料来源挂载范围中的稳定选择身份。
-      const siteUuid = uuidValue(site.id, 'Site UUID')
+      const siteUuid = uuidValue(site.id, '库位（Site）UUID')
       if (siteIds.has(siteUuid)) {
-        invalidGraph(`Site UUID is duplicated: ${siteUuid}`)
+        invalidGraph(`库位（Site）UUID 重复: ${siteUuid}`)
       }
       siteIds.add(siteUuid)
       // 库位所有者 UUID 必须与承载该库位数组的公共聚合一致。
       const declaredOwnerUuid = uuidValue(
         site.ownerMaterialId,
-        `Site ${siteUuid} owner Material UUID`
+        `库位（Site）${siteUuid} 的所有者物料（Material）UUID`
       )
       if (declaredOwnerUuid !== ownerMaterialUuid) {
         invalidGraph(
-          `Site ${siteUuid} owner ${declaredOwnerUuid} does not match ${ownerMaterialUuid}`
+          `库位（Site）${siteUuid} 的所有者物料（Material）${declaredOwnerUuid} 与聚合所有者 ${ownerMaterialUuid} 不一致`
         )
       }
       if (site.capacity !== 1 || site.occupiedMaterialIds.length > 1) {
-        invalidGraph(`Site ${siteUuid} cannot project to single occupancy`)
+        invalidGraph(
+          `库位（Site）${siteUuid} 无法投影为单一库位占用（SiteOccupancy）`
+        )
       }
       // 允许资源模板 UUID 集合来自公共库位兼容性事实，并按 UUID 排序以稳定输出。
       const allowedResourceTemplateUuids = uniqueUuidArray(
         site.allowedTemplateIds,
-        `Site ${siteUuid} allowed ResourceTemplate UUIDs`
+        `库位（Site）${siteUuid} 允许的资源模板（ResourceTemplate）UUID 集合`
       ).sort(compareUuid)
       for (const resourceTemplateUuid of allowedResourceTemplateUuids) {
         resourceTemplateIds.add(resourceTemplateUuid)
@@ -97,22 +100,20 @@ export function projectWorkflowMaterialSourceGraph(
         ? null
         : uuidValue(
             site.occupiedMaterialIds[0],
-            `Site ${siteUuid} occupied Material UUID`
+            `库位（Site）${siteUuid} 占用的物料（Material）UUID`
           )
       if (occupiedMaterialUuid && !materialIds.has(occupiedMaterialUuid)) {
         invalidGraph(
-          `Site ${siteUuid} occupied Material ${occupiedMaterialUuid} is missing`
+          `库位（Site）${siteUuid} 占用的物料（Material）${occupiedMaterialUuid} 在公共物料图（MaterialGraph）中不存在`
         )
       }
       sites.push({
         uuid: siteUuid,
-        name: nonEmptyString(site.name, `Site ${siteUuid} name`),
-        sortOrder: siteTraversalOrder,
+        name: nonEmptyString(site.name, `库位（Site）${siteUuid} 名称`),
         mountMaterialUuid: ownerMaterialUuid,
         allowedResourceTemplateUuids,
         occupiedMaterialUuid
       })
-      siteTraversalOrder += 1
     }
   }
 
@@ -121,7 +122,7 @@ export function projectWorkflowMaterialSourceGraph(
       .sort(compareUuid)
       .map(resourceTemplateProjection),
     materials: materials.sort(compareMaterialByUuid),
-    sites: sites.sort(compareSiteByTraversalOrder)
+    sites
   }
 }
 
@@ -163,20 +164,6 @@ function compareMaterialByUuid(
 }
 
 /**
- * 按公共图遍历序号排序业务库位（Site），并以 UUID 作为冲突时的稳定次序。
- *
- * @param left 左侧工作流库位目录条目。
- * @param right 右侧工作流库位目录条目。
- * @returns 先比较遍历序号、再比较 UUID 的排序结果。
- */
-function compareSiteByTraversalOrder(
-  left: WorkflowMaterialSourceSite,
-  right: WorkflowMaterialSourceSite
-): number {
-  return left.sortOrder - right.sortOrder || compareUuid(left.uuid, right.uuid)
-}
-
-/**
  * 判断一个公共物料库位是否只是孔或吸头点位等耗材内部结构。
  *
  * @param site 公共物料聚合中的候选库位对象。
@@ -201,7 +188,7 @@ function uniqueUuidArray(
   const uuids: string[] = []
   for (const value of values) uuids.push(uuidValue(value, label))
   if (new Set(uuids).size !== uuids.length) {
-    invalidGraph(`${label} contains duplicates`)
+    invalidGraph(`${label} 包含重复 UUID`)
   }
   return uuids
 }
@@ -217,7 +204,7 @@ function uniqueUuidArray(
 function uuidValue(value: string, label: string): string {
   const uuid = nonEmptyString(value, label)
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(uuid)) {
-    invalidGraph(`${label} must be a UUID`)
+    invalidGraph(`${label} 必须是 UUID`)
   }
   return uuid
 }
@@ -232,7 +219,7 @@ function uuidValue(value: string, label: string): string {
  */
 function nonEmptyString(value: string, label: string): string {
   const normalized = value.trim()
-  if (!normalized) invalidGraph(`${label} must be non-empty`)
+  if (!normalized) invalidGraph(`${label} 必须是非空字符串`)
   return normalized
 }
 

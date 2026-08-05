@@ -51,7 +51,6 @@ export interface WorkflowMaterialSourceMaterial {
 export interface WorkflowMaterialSourceSite {
   uuid: string
   name: string
-  sortOrder: number
   mountMaterialUuid: string
   allowedResourceTemplateUuids: string[]
   occupiedMaterialUuid: string | null

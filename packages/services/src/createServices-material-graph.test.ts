@@ -23,13 +23,13 @@ const fingerprint = `sha256:${'c'.repeat(64)}`
  */
 function registerCreateServicesMaterialGraphTests(): void {
   it(
-    '工作流物料来源目录经组合根复用公共物料服务读取 MaterialGraph',
+    '工作流物料来源（MaterialSource）目录经组合根复用公共物料服务读取公共物料图（MaterialGraph）',
     composesWorkflowWithPublicMaterialService
   )
 }
 
 describe(
-  '服务组合根的公共物料图装配',
+  '服务组合根的公共物料图（MaterialGraph）装配',
   registerCreateServicesMaterialGraphTests
 )
 
@@ -39,7 +39,9 @@ describe(
  * @returns Promise 完成时表示目录可用、公共图只读取一次且私有库存路径从未出现。
  */
 async function composesWorkflowWithPublicMaterialService(): Promise<void> {
+  // 请求路径集合审计组合根（Composition Root）实际触达的公开接口边界。
   const requests: string[] = []
+  // 服务集合由真实组合根创建，用于验证工作流运行时（Workflow Runtime）复用公共物料服务。
   const services = createServices({
     backend: getDefaultBackend('local-python'),
     fetcher: fixtureFetcher(serviceResponses(), requests)
@@ -58,10 +60,8 @@ async function composesWorkflowWithPublicMaterialService(): Promise<void> {
       `/api/v1/workflow-node-templates/${frameworkTemplateUuid}`,
       '/api/v1/materials/graph'
     ])
-    expect(requests.filter((path) => path === '/api/v1/materials/graph'))
-      .toHaveLength(1)
-    expect(requests.some((path) => path.startsWith('/api/v1/inventory/')))
-      .toBe(false)
+    expect(countMatchingPath(requests, '/api/v1/materials/graph')).toBe(1)
+    expect(hasPathPrefix(requests, '/api/v1/inventory/')).toBe(false)
   } finally {
     services.dispose()
   }
@@ -180,7 +180,7 @@ function fixtureFetcher(
     const path = `${url.pathname}${url.search}`
     requests.push(path)
     if (!Object.prototype.hasOwnProperty.call(responses, path)) {
-      throw new Error(`Unexpected request: ${path}`)
+      throw new Error(`出现未声明请求路径: ${path}`)
     }
     return new Response(JSON.stringify(responses[path]), {
       status: 200,
@@ -189,4 +189,33 @@ function fixtureFetcher(
   }
 
   return fetchFixture as typeof fetch
+}
+
+/**
+ * 统计请求审计集合中与目标路径完全相同的次数。
+ *
+ * @param paths 已记录的 HTTP 相对请求路径。
+ * @param target 要精确匹配的目标路径。
+ * @returns 目标路径出现的次数。
+ */
+function countMatchingPath(paths: readonly string[], target: string): number {
+  let matches = 0
+  for (const path of paths) {
+    if (path === target) matches += 1
+  }
+  return matches
+}
+
+/**
+ * 判断请求审计集合是否包含指定路径前缀。
+ *
+ * @param paths 已记录的 HTTP 相对请求路径。
+ * @param prefix 要检查的路径前缀。
+ * @returns 存在匹配路径时返回 `true`，否则返回 `false`。
+ */
+function hasPathPrefix(paths: readonly string[], prefix: string): boolean {
+  for (const path of paths) {
+    if (path.startsWith(prefix)) return true
+  }
+  return false
 }

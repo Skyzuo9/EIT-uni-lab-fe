@@ -38,7 +38,7 @@ const fingerprint = `sha256:${'b'.repeat(64)}`
  */
 function registerWorkflowMaterialSourceCatalogTests(): void {
   it(
-    '模板来自工作流 API 且物料事实只来自注入的公共物料图端口',
+    '模板来自工作流 API 且物料事实只来自注入的公共物料图（MaterialGraph）端口',
     loadsTemplateAndInjectedPublicMaterialGraph
   )
   it(
@@ -116,7 +116,6 @@ async function loadsTemplateAndInjectedPublicMaterialGraph(): Promise<void> {
       {
         uuid: firstSiteUuid,
         name: '库位 A',
-        sortOrder: 0,
         mountMaterialUuid: mountUuid,
         allowedResourceTemplateUuids: [sampleTemplateUuid],
         occupiedMaterialUuid: null
@@ -124,7 +123,6 @@ async function loadsTemplateAndInjectedPublicMaterialGraph(): Promise<void> {
       {
         uuid: secondSiteUuid,
         name: '库位 B',
-        sortOrder: 1,
         mountMaterialUuid: mountUuid,
         allowedResourceTemplateUuids: [],
         occupiedMaterialUuid: materialUuid
@@ -146,8 +144,7 @@ async function loadsTemplateAndInjectedPublicMaterialGraph(): Promise<void> {
     '/api/v1/workflow-node-templates?page=1&page_size=100',
     `/api/v1/workflow-node-templates/${frameworkTemplateUuid}`
   ])
-  expect(requests.some((path) => path.startsWith('/api/v1/inventory/')))
-    .toBe(false)
+  expect(hasPathPrefix(requests, '/api/v1/inventory/')).toBe(false)
 }
 
 /**
@@ -383,10 +380,24 @@ function fixtureHttp(
   async function request<ResponseValue>(path: string): Promise<ResponseValue> {
     requests.push(path)
     if (!Object.prototype.hasOwnProperty.call(fixture, path)) {
-      throw new Error(`Unexpected request: ${path}`)
+      throw new Error(`出现未声明请求路径: ${path}`)
     }
     return structuredClone(fixture[path]) as ResponseValue
   }
 
   return { request }
+}
+
+/**
+ * 判断请求审计集合是否包含指定公开或私有路径前缀。
+ *
+ * @param paths 已记录的 HTTP 相对请求路径。
+ * @param prefix 要检查的路径前缀。
+ * @returns 存在匹配路径时返回 `true`，否则返回 `false`。
+ */
+function hasPathPrefix(paths: readonly string[], prefix: string): boolean {
+  for (const path of paths) {
+    if (path.startsWith(prefix)) return true
+  }
+  return false
 }

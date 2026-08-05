@@ -2792,6 +2792,18 @@ export interface MaterialSourceInspectorProps {
   onChange: (patch: Partial<MaterialSourceSelectorUpdate>) => void
 }
 
+/**
+ * 渲染物料来源（MaterialSource）节点的闭合属性选择器。
+ *
+ * @param props 属性面板输入。
+ * @param props.editor 已按公共物料图（MaterialGraph）顺序投影的编辑读模型。
+ * @param props.accent 可选的物料链路强调色。
+ * @param props.editable 当前工作流（Workflow）是否允许修改。
+ * @param props.status 当前物料来源节点状态。
+ * @param props.diagnostics 当前工作流创作诊断集合。
+ * @param props.onChange 提交物料来源选择器补丁的回调。
+ * @returns 可渲染的 React 属性面板元素。
+ */
 export function MaterialSourceInspector({
   editor,
   accent,
@@ -2978,7 +2990,7 @@ export function MaterialSourceInspector({
             >
               {editor.sites.map((site) => (
                 <option key={site.uuid} value={site.uuid}>
-                  {site.name} · #{site.sortOrder}
+                  {site.name}
                 </option>
               ))}
             </select>
@@ -2992,7 +3004,7 @@ export function MaterialSourceInspector({
                 type="search"
                 aria-label="搜索候选库位"
                 value={siteQuery}
-                placeholder="名称、顺序或 UUID"
+                placeholder="名称或 UUID"
                 onChange={(event) => setSiteQuery(event.target.value)}
               />
             </label>
@@ -3026,7 +3038,6 @@ export function MaterialSourceInspector({
                     <span>
                       {site.name}
                       <small>
-                        库位 #{site.sortOrder} · {' '}
                         {site.occupiedMaterialUuid ? '已占用' : '空闲'}
                       </small>
                     </span>
@@ -3063,23 +3074,31 @@ export function MaterialSourceInspector({
         </ul>
       )}
       <p className="persistent-authoring__selector-authority">
-        仅保存稳定 UUID；库位按业务顺序展示，候选集按 UUID 规范保存。
+        仅保存稳定 UUID；库位（Site）按公共物料图（MaterialGraph）顺序展示，候选集按 UUID 规范保存。
       </p>
     </section>
   )
 }
 
+/**
+ * 按名称或稳定 UUID 过滤物料来源（MaterialSource）的候选库位（Site）。
+ *
+ * @param sites 已按公共物料图（MaterialGraph）目录顺序排列的候选库位集合。
+ * @param query 用户输入的名称或 UUID 查询文本。
+ * @returns 保留输入目录顺序的匹配库位；空查询直接返回原集合。
+ */
 export function filterMaterialSourceSites(
   sites: MaterialSourceEditorProjection['sites'],
   query: string
 ): MaterialSourceEditorProjection['sites'] {
   const normalized = query.trim().toLocaleLowerCase()
   if (!normalized) return sites
-  return sites.filter((site) => (
-    `${site.name} #${site.sortOrder} ${site.uuid}`
-      .toLocaleLowerCase()
-      .includes(normalized)
-  ))
+  const matches: MaterialSourceEditorProjection['sites'] = []
+  for (const site of sites) {
+    const searchableText = `${site.name} ${site.uuid}`.toLocaleLowerCase()
+    if (searchableText.includes(normalized)) matches.push(site)
+  }
+  return matches
 }
 
 function materialFlowRoleLabel(flowRole: string): string {

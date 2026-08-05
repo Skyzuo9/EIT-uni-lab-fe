@@ -311,20 +311,27 @@ function materialSourceMounts(
   return catalog.materials.filter((material) => mountUuids.has(material.uuid))
 }
 
+/**
+ * 按公共物料图（MaterialGraph）目录顺序筛选与挂载物料和资源模板兼容的库位（Site）。
+ *
+ * @param catalog 工作流物料来源（MaterialSource）目录快照。
+ * @param mountUuid 当前选择的挂载物料稳定 UUID。
+ * @param resourceTemplateUuid 当前选择的资源模板（ResourceTemplate）稳定 UUID。
+ * @returns 保留目录原始顺序的兼容库位集合；不会构造或猜测业务排序字段。
+ */
 function compatibleSites(
   catalog: WorkflowMaterialSourceCatalogSnapshot,
   mountUuid: string,
   resourceTemplateUuid: string
 ): WorkflowMaterialSourceSite[] {
-  return catalog.sites.filter((site) =>
-    site.mountMaterialUuid === mountUuid &&
-    (
-      site.allowedResourceTemplateUuids.length === 0 ||
+  const sites: WorkflowMaterialSourceSite[] = []
+  for (const site of catalog.sites) {
+    const sameMount = site.mountMaterialUuid === mountUuid
+    const acceptsTemplate = site.allowedResourceTemplateUuids.length === 0 ||
       site.allowedResourceTemplateUuids.includes(resourceTemplateUuid)
-    )
-  ).sort((left, right) =>
-    left.sortOrder - right.sortOrder || left.uuid.localeCompare(right.uuid)
-  )
+    if (sameMount && acceptsTemplate) sites.push(site)
+  }
+  return sites
 }
 
 function appendStableTemplate(

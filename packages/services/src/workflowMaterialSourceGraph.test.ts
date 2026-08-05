@@ -23,14 +23,17 @@ const secondSiteUuid = '71000000-0000-4000-8000-000000000001'
  */
 function registerWorkflowMaterialSourceGraphTests(): void {
   it(
-    '按公共图遍历顺序投影物料、挂载物料、库位占用与兼容模板',
+    '公共物料图（MaterialGraph）按遍历顺序投影物料、挂载物料、库位占用与兼容模板',
     projectsPublicGraphFactsInStableOrder
   )
-  it('重复物料 UUID 必须失败关闭', rejectsDuplicateMaterialIdentity)
-  it('重复库位 UUID 必须失败关闭', rejectsDuplicateSiteIdentity)
-  it('库位所有者与聚合物料不一致时必须失败关闭', rejectsMismatchedSiteOwner)
-  it('单占用目录遇到多个占用物料时必须失败关闭', rejectsMultipleSiteOccupants)
-  it('实验耗材内部结构不得进入工作流候选库位', excludesManagedLabwareComponents)
+  it('物料（Material）UUID 重复时必须失败关闭', rejectsDuplicateMaterialIdentity)
+  it('库位（Site）UUID 重复时必须失败关闭', rejectsDuplicateSiteIdentity)
+  it('库位（Site）所有者与聚合物料不一致时必须失败关闭', rejectsMismatchedSiteOwner)
+  it('库位占用（SiteOccupancy）引用悬空物料时必须失败关闭', rejectsDanglingSiteOccupancy)
+  it('库位（Site）容量不等于一时必须失败关闭', rejectsNonSingleSiteCapacity)
+  it('库位（Site）允许的资源模板（ResourceTemplate）UUID 重复时必须失败关闭', rejectsDuplicateAllowedTemplates)
+  it('单一库位占用（SiteOccupancy）遇到多个占用物料时必须失败关闭', rejectsMultipleSiteOccupants)
+  it('实验耗材内部结构不得进入工作流候选库位（Site）', excludesManagedLabwareComponents)
 }
 
 describe(
@@ -93,7 +96,6 @@ function projectsPublicGraphFactsInStableOrder(): void {
       {
         uuid: firstSiteUuid,
         name: '库位 A',
-        sortOrder: 0,
         mountMaterialUuid: mountUuid,
         allowedResourceTemplateUuids: [],
         occupiedMaterialUuid: null
@@ -101,14 +103,13 @@ function projectsPublicGraphFactsInStableOrder(): void {
       {
         uuid: secondSiteUuid,
         name: '库位 B',
-        sortOrder: 1,
         mountMaterialUuid: mountUuid,
         allowedResourceTemplateUuids: [sampleTemplateUuid],
         occupiedMaterialUuid: materialUuid
       }
     ]
   })
-  expect(mountAggregate.sites.map((site) => site.id)).toEqual([
+  expect(siteIds(mountAggregate.sites)).toEqual([
     firstSiteUuid,
     secondSiteUuid
   ])
@@ -120,13 +121,12 @@ function projectsPublicGraphFactsInStableOrder(): void {
  * @returns 不返回值；重复身份未产生结构化失败时断言失败。
  */
 function rejectsDuplicateMaterialIdentity(): void {
+  // 重复物料 UUID 用于证明公共物料图（MaterialGraph）不会合并同一稳定身份。
   const duplicatedMaterialUuid = mountUuid
-  expect(() => projectWorkflowMaterialSourceGraph([
+  expectInvalidProjection([
     materialAggregate(duplicatedMaterialUuid, mountTemplateUuid, 'Deck A'),
     materialAggregate(duplicatedMaterialUuid, sampleTemplateUuid, 'Deck B')
-  ])).toThrowError(expect.objectContaining({
-    code: 'INVALID_WORKFLOW_MATERIAL_SOURCE_GRAPH'
-  }))
+  ])
 }
 
 /**
@@ -135,17 +135,16 @@ function rejectsDuplicateMaterialIdentity(): void {
  * @returns 不返回值；重复库位身份未失败关闭时断言失败。
  */
 function rejectsDuplicateSiteIdentity(): void {
+  // 第二挂载物料 UUID 标识发布冲突库位（Site）的另一个聚合所有者。
   const secondMountUuid = '51000000-0000-4000-8000-000000000002'
-  expect(() => projectWorkflowMaterialSourceGraph([
+  expectInvalidProjection([
     materialAggregate(mountUuid, mountTemplateUuid, 'Deck A', [
       materialSite(firstSiteUuid, mountUuid, '库位 A', [], [])
     ]),
     materialAggregate(secondMountUuid, mountTemplateUuid, 'Deck B', [
       materialSite(firstSiteUuid, secondMountUuid, '库位 B', [], [])
     ])
-  ])).toThrowError(expect.objectContaining({
-    code: 'INVALID_WORKFLOW_MATERIAL_SOURCE_GRAPH'
-  }))
+  ])
 }
 
 /**
@@ -154,13 +153,65 @@ function rejectsDuplicateSiteIdentity(): void {
  * @returns 不返回值；不一致所有者被静默接受时断言失败。
  */
 function rejectsMismatchedSiteOwner(): void {
-  expect(() => projectWorkflowMaterialSourceGraph([
+  expectInvalidProjection([
     materialAggregate(mountUuid, mountTemplateUuid, 'Deck A', [
       materialSite(firstSiteUuid, materialUuid, '库位 A', [], [])
     ])
-  ])).toThrowError(expect.objectContaining({
-    code: 'INVALID_WORKFLOW_MATERIAL_SOURCE_GRAPH'
-  }))
+  ])
+}
+
+/**
+ * 验证库位占用（SiteOccupancy）不能引用公共物料图（MaterialGraph）中不存在的物料。
+ *
+ * @returns 不返回值；悬空物料 UUID 未触发结构化失败时断言失败。
+ */
+function rejectsDanglingSiteOccupancy(): void {
+  // 悬空物料 UUID 故意不对应任何物料聚合，用于验证失败关闭。
+  const danglingMaterialUuid = '52000000-0000-4000-8000-000000000099'
+  expectInvalidProjection([
+    materialAggregate(mountUuid, mountTemplateUuid, 'Deck A', [
+      materialSite(
+        firstSiteUuid,
+        mountUuid,
+        '库位 A',
+        [sampleTemplateUuid],
+        [danglingMaterialUuid]
+      )
+    ])
+  ])
+}
+
+/**
+ * 验证工作流物料来源（MaterialSource）目录不能有损投影容量不等于一的库位（Site）。
+ *
+ * @returns 不返回值；非单容量库位未触发结构化失败时断言失败。
+ */
+function rejectsNonSingleSiteCapacity(): void {
+  const invalidSite = materialSite(firstSiteUuid, mountUuid, '库位 A', [], [])
+  // 容量二明确超出当前单一库位占用（SiteOccupancy）读模型的表达能力。
+  invalidSite.capacity = 2
+  expectInvalidProjection([
+    materialAggregate(mountUuid, mountTemplateUuid, 'Deck A', [invalidSite])
+  ])
+}
+
+/**
+ * 验证库位（Site）的兼容资源模板集合不能包含重复稳定身份。
+ *
+ * @returns 不返回值；重复资源模板（ResourceTemplate）UUID 未触发结构化失败时断言失败。
+ */
+function rejectsDuplicateAllowedTemplates(): void {
+  expectInvalidProjection([
+    materialAggregate(mountUuid, mountTemplateUuid, 'Deck A', [
+      materialSite(
+        firstSiteUuid,
+        mountUuid,
+        '库位 A',
+        [sampleTemplateUuid, sampleTemplateUuid],
+        []
+      )
+    ])
+  ])
 }
 
 /**
@@ -169,8 +220,9 @@ function rejectsMismatchedSiteOwner(): void {
  * @returns 不返回值；多个占用物料被折叠为一个 UUID 时断言失败。
  */
 function rejectsMultipleSiteOccupants(): void {
+  // 第二物料 UUID 标识同一库位（Site）中不应被静默吞掉的额外占用物料。
   const secondMaterialUuid = '52000000-0000-4000-8000-000000000002'
-  expect(() => projectWorkflowMaterialSourceGraph([
+  expectInvalidProjection([
     materialAggregate(mountUuid, mountTemplateUuid, 'Deck A', [
       materialSite(
         firstSiteUuid,
@@ -182,9 +234,7 @@ function rejectsMultipleSiteOccupants(): void {
     ]),
     materialAggregate(materialUuid, sampleTemplateUuid, 'Plate A'),
     materialAggregate(secondMaterialUuid, sampleTemplateUuid, 'Plate B')
-  ])).toThrowError(expect.objectContaining({
-    code: 'INVALID_WORKFLOW_MATERIAL_SOURCE_GRAPH'
-  }))
+  ])
 }
 
 /**
@@ -205,7 +255,40 @@ function excludesManagedLabwareComponents(): void {
     ])
   ])
 
-  expect(projection.sites.map((site) => site.uuid)).toEqual([firstSiteUuid])
+  expect(siteIds(projection.sites)).toEqual([firstSiteUuid])
+}
+
+/**
+ * 断言公共物料图（MaterialGraph）投影以固定错误码失败关闭。
+ *
+ * @param aggregates 应被拒绝的公共物料聚合集合。
+ * @returns 不返回值；未抛错或错误码不符时断言失败。
+ * @throws 仅当投影未按预期失败时抛出测试断言错误。
+ */
+function expectInvalidProjection(
+  aggregates: readonly MaterialAggregate[]
+): void {
+  try {
+    projectWorkflowMaterialSourceGraph(aggregates)
+  } catch (error) {
+    expect(error).toMatchObject({
+      code: 'INVALID_WORKFLOW_MATERIAL_SOURCE_GRAPH'
+    })
+    return
+  }
+  throw new Error('预期公共物料图（MaterialGraph）投影失败关闭')
+}
+
+/**
+ * 读取库位（Site）集合的稳定 UUID，并保留调用方给出的公共图顺序。
+ *
+ * @param sites 公共库位或工作流物料来源库位集合。
+ * @returns 与输入遍历顺序一致的库位 UUID 数组。
+ */
+function siteIds(sites: ReadonlyArray<{ id?: string; uuid?: string }>): string[] {
+  const identities: string[] = []
+  for (const site of sites) identities.push(site.id ?? site.uuid ?? '')
+  return identities
 }
 
 /**
