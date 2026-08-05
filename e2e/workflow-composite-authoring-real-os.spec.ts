@@ -39,12 +39,15 @@ async function startCompositeFixture(): Promise<void> {
  */
 async function stopCompositeFixture(): Promise<void> {
   if (!os) return
-  writeFileSync(
-    resolve(ARTIFACT_DIRECTORY, 'os-console.log'),
-    os.logs(),
-    'utf8'
-  )
-  await os.stop()
+  try {
+    writeFileSync(
+      resolve(ARTIFACT_DIRECTORY, 'os-console.log'),
+      os.logs(),
+      'utf8'
+    )
+  } finally {
+    await os.stop()
+  }
 }
 
 test.beforeAll(startCompositeFixture)

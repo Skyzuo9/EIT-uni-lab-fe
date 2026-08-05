@@ -5,6 +5,10 @@ import { createServer } from 'node:net'
 import { resolve } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 
+/** 当前包装器拥有并必须在信号退出时回收的进程组。 */
+const ACTIVE_PROCESS_GROUPS = new Set()
+let signalCleanupStarted = false
+
 /**
  * 启动命令并把输出同时写入终端和前端启动日志。
  *
@@ -21,7 +25,7 @@ function startLoggedCommand(
   args,
   environment,
   log,
-  detached = false
+  detached = true
 ) {
   const child = spawn(command, args, {
     cwd: process.cwd(),
@@ -29,6 +33,8 @@ function startLoggedCommand(
     detached,
     stdio: ['ignore', 'pipe', 'pipe']
   })
+  child.gateOutput = ''
+  if (detached) ACTIVE_PROCESS_GROUPS.add(child)
   /**
    * 转发标准输出。
    *
@@ -37,6 +43,7 @@ function startLoggedCommand(
    * @throws 流写入异常由 Node.js 流错误事件报告。
    */
   const forwardStdout = (chunk) => {
+    child.gateOutput += chunk.toString()
     process.stdout.write(chunk)
     log.write(chunk)
   }
@@ -48,11 +55,23 @@ function startLoggedCommand(
    * @throws 流写入异常由 Node.js 流错误事件报告。
    */
   const forwardStderr = (chunk) => {
+    child.gateOutput += chunk.toString()
     process.stderr.write(chunk)
     log.write(chunk)
   }
   child.stdout?.on('data', forwardStdout)
   child.stderr?.on('data', forwardStderr)
+  /**
+   * 从待回收集合移除已经退出的进程组。
+   *
+   * @returns 集合更新后返回无。
+   * @throws 不抛异常。
+   */
+  const forgetProcessGroup = () => {
+    ACTIVE_PROCESS_GROUPS.delete(child)
+  }
+  child.once('exit', forgetProcessGroup)
+  child.once('error', forgetProcessGroup)
   return child
 }
 
@@ -120,7 +139,7 @@ async function waitForPreview(url, preview) {
     }
     try {
       const response = await fetch(url)
-      if (response.ok) return
+      if (response.ok && preview.gateOutput.includes(`${url}/`)) return
       lastError = `HTTP ${response.status}`
     } catch (error) {
       lastError = error instanceof Error ? error.message : String(error)
@@ -151,6 +170,46 @@ async function stopPreview(preview) {
     process.kill(-preview.pid, 'SIGKILL')
     await once(preview, 'exit')
   }
+}
+
+/**
+ * 外部信号到达时回收所有当前候选子进程组后退出。
+ *
+ * @param signal 收到的 POSIX 信号名称。
+ * @param exitCode shell 约定的信号退出码。
+ * @returns 全部进程组已退出后返回；随后立即终止包装器。
+ * @throws 单个清理异常会被报告，但不会阻止后续进程组清理。
+ */
+async function stopForSignal(signal, exitCode) {
+  if (signalCleanupStarted) return
+  signalCleanupStarted = true
+  const failures = []
+  for (const child of [...ACTIVE_PROCESS_GROUPS]) {
+    try {
+      await stopPreview(child)
+    } catch (error) {
+      failures.push(error)
+    }
+  }
+  if (failures.length > 0) {
+    console.error(new AggregateError(failures, `${signal} 清理失败`))
+  }
+  process.exit(exitCode)
+}
+
+/** SIGINT 入口；参数无，返回无，清理异常在共享处理器中报告。 */
+function handleSigint() {
+  void stopForSignal('SIGINT', 130)
+}
+
+/** SIGTERM 入口；参数无，返回无，清理异常在共享处理器中报告。 */
+function handleSigterm() {
+  void stopForSignal('SIGTERM', 143)
+}
+
+/** SIGHUP 入口；参数无，返回无，清理异常在共享处理器中报告。 */
+function handleSighup() {
+  void stopForSignal('SIGHUP', 129)
 }
 
 /**
@@ -197,7 +256,7 @@ async function main() {
       'pnpm',
       [
         '--filter', '@unilab/kernel-web', 'preview',
-        '--host', '127.0.0.1', '--port', String(port)
+        '--host', '127.0.0.1', '--port', String(port), '--strictPort'
       ],
       process.env,
       log,
@@ -251,3 +310,7 @@ function reportFailure(error) {
 }
 
 main().then(applyExitCode, reportFailure)
+
+process.once('SIGINT', handleSigint)
+process.once('SIGTERM', handleSigterm)
+process.once('SIGHUP', handleSighup)

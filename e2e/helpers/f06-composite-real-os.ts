@@ -70,25 +70,51 @@ export async function startF06CompositeRealOs(): Promise<F06CompositeRealOs> {
     process.env.UNILAB_OS_PYTHON ||
     '/home/changjunhan/.micromamba/envs/unilab/bin/python'
   const osRevision = readCleanGitRevision(osRepository, 'OS ')
+  const port = await availablePort()
   const directory = mkdtempSync(join(tmpdir(), 'unilab-f06-composite-'))
   const workingDirectory = join(directory, 'unilabos_data')
   const editableRoot = join(directory, 'editable')
-  const port = await availablePort()
   const url = `http://127.0.0.1:${port}`
   let output = ''
-  const child = spawn(
-    python,
-    ['-c', PYTHON_LAUNCHER, workingDirectory, editableRoot, String(port)],
-    {
-      cwd: osRepository,
-      env: {
-        ...process.env,
-        PYTHONPATH: osRepository,
-        PYTHONUNBUFFERED: '1'
-      },
-      stdio: ['ignore', 'pipe', 'pipe']
-    }
-  )
+  let child: ChildProcess
+  try {
+    child = spawn(
+      python,
+      ['-c', PYTHON_LAUNCHER, workingDirectory, editableRoot, String(port)],
+      {
+        cwd: osRepository,
+        env: {
+          ...process.env,
+          PYTHONPATH: osRepository,
+          PYTHONUNBUFFERED: '1'
+        },
+        stdio: ['ignore', 'pipe', 'pipe']
+      }
+    )
+  } catch (error) {
+    rmSync(directory, { recursive: true, force: true })
+    throw error
+  }
+  let spawnError: Error | undefined
+  /**
+   * 保存 OS 异步启动错误，供就绪循环立即失败关闭。
+   *
+   * @param error Node.js 报告的进程启动错误。
+   * @returns 错误完成落盘后返回无。
+   * @throws 不抛异常。
+   */
+  const recordSpawnError = (error: Error): void => {
+    spawnError = error
+    output += `${error.stack ?? error.message}\n`
+  }
+  /**
+   * 读取可能发生的 OS 异步启动错误。
+   *
+   * @returns 尚未失败时为空，否则返回原始启动错误。
+   * @throws 不抛异常。
+   */
+  const readSpawnError = (): Error | undefined => spawnError
+  child.once('error', recordSpawnError)
   child.stdout?.on('data', (chunk) => {
     output += chunk.toString()
   })
@@ -96,7 +122,7 @@ export async function startF06CompositeRealOs(): Promise<F06CompositeRealOs> {
     output += chunk.toString()
   })
   try {
-    await waitUntilReady(url, child, () => output)
+    await waitUntilReady(url, child, () => output, readSpawnError)
   } catch (error) {
     await stopChild(child)
     rmSync(directory, { recursive: true, force: true })
@@ -111,8 +137,11 @@ export async function startF06CompositeRealOs(): Promise<F06CompositeRealOs> {
     compositeInvocationUuid: F06_INVOCATION_UUID,
     logs: () => output,
     stop: async () => {
-      await stopChild(child)
-      rmSync(directory, { recursive: true, force: true })
+      try {
+        await stopChild(child)
+      } finally {
+        rmSync(directory, { recursive: true, force: true })
+      }
     }
   }
 }
@@ -380,16 +409,20 @@ async function availablePort(): Promise<number> {
 /**
  * 等待工作流列表接口可读或子进程提前退出。
  *
- * 参数：`url` 是 OS 根地址，`child` 是进程，`logs` 返回累计日志。返回：服务
- * 就绪时无值。异常：进程退出或 60 秒超时时抛出包含日志的错误。
+ * 参数：`url` 是 OS 根地址，`child` 是进程，`logs` 返回累计日志，
+ * `spawnError` 返回异步启动错误。返回：服务就绪时无值。异常：启动错误、进程
+ * 退出或 60 秒超时时抛出包含日志的错误。
  */
 async function waitUntilReady(
   url: string,
   child: ChildProcess,
-  logs: () => string
+  logs: () => string,
+  spawnError: () => Error | undefined
 ): Promise<void> {
   const deadline = Date.now() + 60_000
   while (Date.now() < deadline) {
+    const startupFailure = spawnError()
+    if (startupFailure) throw startupFailure
     if (child.exitCode !== null) {
       throw new Error(`F06 OS exited with ${child.exitCode}\n${logs()}`)
     }
@@ -411,7 +444,11 @@ async function waitUntilReady(
  * 失败时拒绝 Promise。
  */
 async function stopChild(child: ChildProcess): Promise<void> {
-  if (child.exitCode !== null) return
+  if (
+    child.pid === undefined ||
+    child.exitCode !== null ||
+    child.signalCode !== null
+  ) return
   await new Promise<void>((resolveStop, rejectStop) => {
     const forceTimer = setTimeout(() => child.kill('SIGKILL'), 5_000)
     child.once('error', (error) => {
