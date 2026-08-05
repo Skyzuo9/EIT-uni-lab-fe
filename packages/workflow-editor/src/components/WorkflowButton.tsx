@@ -12,6 +12,9 @@ interface TooltipPosition {
   top: number
 }
 
+const TOOLTIP_MAX_WIDTH_PX = 280
+const TOOLTIP_VIEWPORT_MARGIN_PX = 16
+
 /**
  * 渲染带统一禁用原因的工作流按钮。
  *
@@ -42,8 +45,21 @@ export const WorkflowButton = forwardRef<
     onPointerEnter?.(event)
     if (!unavailableReason) return
     const bounds = event.currentTarget.getBoundingClientRect()
+    const viewportWidth = globalThis.window.innerWidth
+    const tooltipWidth = Math.min(
+      TOOLTIP_MAX_WIDTH_PX,
+      viewportWidth * 0.72
+    )
+    const halfTooltipWidth = tooltipWidth / 2
+    const buttonCenter = bounds.left + bounds.width / 2
     setTooltipPosition({
-      left: bounds.left + bounds.width / 2,
+      left: Math.min(
+        Math.max(
+          buttonCenter,
+          TOOLTIP_VIEWPORT_MARGIN_PX + halfTooltipWidth
+        ),
+        viewportWidth - TOOLTIP_VIEWPORT_MARGIN_PX - halfTooltipWidth
+      ),
       top: bounds.top
     })
   }
@@ -64,7 +80,7 @@ export const WorkflowButton = forwardRef<
         data-disabled-reason={unavailableReason}
         onPointerEnter={handlePointerEnter}
         onPointerLeave={handlePointerLeave}
-        title={unavailableReason ?? title}
+        title={disabled ? undefined : title}
       />
       {tooltipPosition && unavailableReason && typeof document !== 'undefined'
         ? createPortal(

@@ -378,7 +378,7 @@ export default function WorkflowDag({
             title={
               canBeautify
                 ? '按控制流自动排列并适配画布'
-                : '请先完成当前 Python 编译'
+                : undefined
             }
             onClick={handleBeautify}
           >

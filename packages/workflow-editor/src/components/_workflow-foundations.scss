@@ -34,6 +34,7 @@
   background: var(--unilab-color-surface);
   box-shadow: var(--unilab-shadow-panel);
   font: 500 11px/1.5 var(--unilab-font-sans);
+  overflow-wrap: anywhere;
   pointer-events: none;
   text-align: left;
   transform: translate(-50%, calc(-100% - var(--unilab-space-2)));

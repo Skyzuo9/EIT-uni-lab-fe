@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { WorkflowButton } from './WorkflowButton'
 
 describe('WorkflowButton', () => {
-  /** 验证禁用按钮通过悬浮标题与无障碍说明解释不可点击原因。 */
+  /** 验证禁用按钮只通过自有提示数据和无障碍说明解释不可点击原因。 */
   it('exposes the disabled reason without replacing the visible label', () => {
     const markup = renderToStaticMarkup(
       <WorkflowButton disabled disabledReason="正在保存工作流，请稍候">
@@ -13,7 +13,7 @@ describe('WorkflowButton', () => {
     )
 
     expect(markup).toContain('disabled=""')
-    expect(markup).toContain('title="正在保存工作流，请稍候"')
+    expect(markup).not.toContain('title=')
     expect(markup).toContain('aria-description="正在保存工作流，请稍候"')
     expect(markup).toContain('data-disabled-reason="正在保存工作流，请稍候"')
     expect(markup).toContain('>保存</button>')
