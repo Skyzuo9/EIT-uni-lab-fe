@@ -275,6 +275,64 @@ test('SZLab S07 powder dosing projects the complete material flow', async ({
     source.handleEdgeDelta <= 1.5
   ), JSON.stringify(materialSourcePresentation, null, 2)).toBe(true)
 
+  // 物料来源（MaterialSource）是完整拓扑的图根；竖排布局必须把它与第一个
+  // 物料消费句柄排在同一列，而不是把六边形留在自动布局之外。
+  const materialSourceNodeUuids = new Set([
+    SOURCE_BEAKER_UUID,
+    SOURCE_POWDER_UUID
+  ])
+  const materialSourceEdges = graph.edges.filter((edge) =>
+    materialSourceNodeUuids.has(edge.source_node_uuid)
+  )
+  expect(materialSourceEdges).toHaveLength(2)
+  const materialSourceLayoutEvidence = []
+  for (const edge of materialSourceEdges) {
+    const sourceHandle = panel.locator(
+      `[data-workflow-node-uuid="${edge.source_node_uuid}"] ` +
+      `[data-workflow-handle-template-uuid="${edge.source_handle_uuid}"]`
+    )
+    const targetHandle = panel.locator(
+      `[data-workflow-node-uuid="${edge.target_node_uuid}"] ` +
+      `[data-workflow-handle-template-uuid="${edge.target_handle_uuid}"]`
+    )
+    const sourceBox = await sourceHandle.boundingBox()
+    const targetBox = await targetHandle.boundingBox()
+    if (!sourceBox || !targetBox) {
+      throw new Error('物料来源或第一个物料消费节点缺少可测量句柄')
+    }
+    const edgeIndex = graph.edges.indexOf(edge)
+    const edgePath = panel.locator(
+      `[data-testid="rf__edge-e-${edge.source_node_uuid}-${
+        edge.target_node_uuid
+      }-${edgeIndex}"] .react-flow__edge-path`
+    )
+    const [handleColor, edgeColor] = await Promise.all([
+      sourceHandle.evaluate((handle) => getComputedStyle(handle).borderColor),
+      edgePath.evaluate((path) => getComputedStyle(path).stroke)
+    ])
+    materialSourceLayoutEvidence.push({
+      sourceNodeUuid: edge.source_node_uuid,
+      horizontalDelta: Math.abs(
+        sourceBox.x + sourceBox.width / 2 -
+        (targetBox.x + targetBox.width / 2)
+      ),
+      verticalGap: targetBox.y - (sourceBox.y + sourceBox.height),
+      handleColor,
+      edgeColor
+    })
+  }
+  expect(materialSourceLayoutEvidence.every((source) =>
+    source.horizontalDelta <= 4 &&
+    source.verticalGap > 24 &&
+    source.handleColor === source.edgeColor
+  ), JSON.stringify(materialSourceLayoutEvidence, null, 2)).toBe(true)
+
+  // S07 两个来源都已选定资源模板（ResourceTemplate），应显示 Registry
+  // 注册的 2.5D shape；只有未选模板时才允许保留默认来源图标。
+  await expect(materialSources.locator(
+    '[data-material-shape-source="registry"]'
+  )).toHaveCount(2)
+
   // 同一节点内，同字段只允许存在一个物料标签。
   const materialIdentityEvidence = await nodes.evaluateAll((nodeElements) =>
     nodeElements.map((node) => {
@@ -472,6 +530,7 @@ test('SZLab S07 powder dosing projects the complete material flow', async ({
   expect(workflowRequests).toContain(
     `GET /api/v1/workflows/${S07_WORKFLOW_UUID}/authoring`
   )
+  expect(workflowRequests).toContain('GET /api/v1/resource-templates')
   expect(browserErrors).toEqual([])
   expect(pageErrors).toEqual([])
   writeFileSync(
@@ -483,6 +542,7 @@ test('SZLab S07 powder dosing projects the complete material flow', async ({
       graph: { nodes: graph.nodes.length, edges: graph.edges.length },
       alignmentEvidence,
       materialSourcePresentation,
+      materialSourceLayoutEvidence,
       materialIdentityEvidence,
       sameFieldIdentityEvidence,
       structuralEvidence,

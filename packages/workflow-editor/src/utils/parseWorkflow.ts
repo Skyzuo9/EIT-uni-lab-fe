@@ -9,6 +9,8 @@
  * Human Review Status: [ ] Pending  [ ] Reviewed  [ ] Approved
  * ============================================================
  */
+import type { MaterialShapeSpec } from '@unilab/material'
+
 export interface WorkflowNode {
   id: string
   // 展示名称(JSON 导出格式携带中文名;无则回退 id)
@@ -37,6 +39,8 @@ export interface WorkflowNode {
     mode: string
     flowRole: string
     mountUuid: string
+    resourceTemplateUuid: string
+    shape?: MaterialShapeSpec
   }
 }
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  isReadyHandle,
   workflowMaterialPortCards,
   workflowNodeAllowsDebugMarkers,
   workflowNodeKindLabel,
@@ -23,6 +24,16 @@ describe('MaterialSource node semantics', () => {
 })
 
 describe('Action node presentation', () => {
+  it('recognizes the ready boolean port as execution order', () => {
+    expect(isReadyHandle({
+      uuid: 'ready-target',
+      handleKey: 'ready',
+      displayName: 'ready',
+      ioType: 'target',
+      valueType: 'boolean'
+    })).toBe(true)
+  })
+
   it('hides the idle pending state but keeps meaningful execution states', () => {
     expect(workflowNodeShowsState('action')).toBe(false)
     expect(workflowNodeShowsState('action', 'pending')).toBe(false)
@@ -93,6 +104,27 @@ describe('Action node presentation', () => {
       accent: '#6657c7',
       targetHandle: input,
       sourceHandle: output
+    }))
+  })
+
+  /** 验证绑定自工作流输入的物料仍与同字段输出合并展示。 */
+  it('shows an untraced ResourceSlot input beside its traced pass-through output', () => {
+    const input = materialHandle('resource-target', 'resource', 'target', {
+      title: '试剂瓶'
+    })
+    const output = materialHandle('resource-source', 'resource', 'source')
+
+    const cards = workflowMaterialPortCards([input, output], {
+      'resource-source': '#6657c7'
+    })
+
+    expect(cards).toHaveLength(1)
+    expect(cards[0]).toEqual(expect.objectContaining({
+      variableName: 'resource',
+      label: '试剂瓶',
+      targetHandle: input,
+      sourceHandle: output,
+      accent: '#6657c7'
     }))
   })
 })

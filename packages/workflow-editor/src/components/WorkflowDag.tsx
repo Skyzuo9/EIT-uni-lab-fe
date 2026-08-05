@@ -25,6 +25,7 @@ import type {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useWorkflowDag } from '../hooks/useWorkflowDag'
 import WorkflowNodeCard from './WorkflowNodeCard'
+import WorkflowRoundedStepEdge from './WorkflowRoundedStepEdge'
 import { WorkflowButton } from './WorkflowButton'
 import type { WorkflowNodeData } from './WorkflowNodeCard'
 import type { WorkflowLink, WorkflowNode } from '../utils/parseWorkflow'
@@ -68,6 +69,7 @@ interface WorkflowDagProps {
 
 // 注册自定义节点类型(在组件外定义,避免每次渲染重建)
 const nodeTypes = { wfNode: WorkflowNodeCard }
+const edgeTypes = { workflowRoundedStep: WorkflowRoundedStepEdge }
 
 /**
  * 渲染工作流拓扑、运行状态、物料流句柄及可选的画布编辑控制。
@@ -235,14 +237,14 @@ export default function WorkflowDag({
   )
   const graphSignature = useMemo(
     () => JSON.stringify({
-      nodes: nodes.map((node) => [node.id, node.x, node.y]),
-      links: links.map((link) => [
-        link.source,
-        link.target,
-        link.branch ?? null
-      ])
+      nodes: flowNodes.map((node) => [
+        node.id,
+        node.position.x,
+        node.position.y
+      ]),
+      links: flowEdges.map((edge) => [edge.source, edge.target])
     }),
-    [links, nodes]
+    [flowEdges, flowNodes]
   )
   useEffect(() => {
     let fitFrame = 0
@@ -338,6 +340,7 @@ export default function WorkflowDag({
           })
         }}
         nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
         fitView
         fitViewOptions={{ padding: 0.16, minZoom: 0.2, maxZoom: 1 }}
         minZoom={0.2}

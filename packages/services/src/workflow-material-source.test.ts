@@ -55,7 +55,25 @@ describe('Workflow MaterialSource catalog adapter', () => {
         },
         {
           uuid: sampleTemplateUuid,
-          displayName: 'Plate96'
+          displayName: 'Plate96',
+          shape: {
+            id: 'plate96',
+            bundle: 'test',
+            displayName: undefined,
+            categories: ['plate96'],
+            categoryTokens: [],
+            priority: 0,
+            envelopeMm: [127, 85, 15],
+            units: 'ratio',
+            shadow: 'box',
+            sort: 'center',
+            parts: [{
+              type: 'box',
+              style: 'plate',
+              from: [0, 0, 0],
+              to: [1, 1, 1]
+            }]
+          }
         }
       ],
       materials: [
@@ -105,7 +123,10 @@ describe('Workflow MaterialSource catalog adapter', () => {
       '/api/v1/workflow-node-templates?page=1&page_size=100',
       `/api/v1/workflow-node-templates/${frameworkTemplateUuid}`,
       '/api/v1/inventory/materials?limit=500',
-      '/api/v1/inventory/sites?limit=500'
+      '/api/v1/inventory/sites?limit=500',
+      '/api/v1/resource-templates?limit=100',
+      '/api/v1/material-shapes',
+      `/api/v1/resource-templates?limit=100&cursor_uuid=${mountTemplateUuid}`
     ])
   })
 
@@ -193,6 +214,60 @@ function responses(): Record<string, unknown> {
         inventorySite(secondSiteUuid, 'Slot B', 2, materialUuid, []),
         inventorySite(firstSiteUuid, 'Slot A', 1, null, [sampleTemplateUuid])
       ]
+    },
+    '/api/v1/resource-templates?limit=100': {
+      code: 0,
+      data: {
+        items: [
+          {
+            uuid: mountTemplateUuid,
+            name: 'test.Deck',
+            display_name: 'Deck',
+            resource_type: 'resource',
+            tags: []
+          }
+        ],
+        has_more: true,
+        next_cursor_uuid: mountTemplateUuid
+      }
+    },
+    [`/api/v1/resource-templates?limit=100&cursor_uuid=${mountTemplateUuid}`]: {
+      code: 0,
+      data: {
+        items: [
+          {
+            uuid: sampleTemplateUuid,
+            name: 'test.Plate96',
+            display_name: 'Plate96',
+            resource_type: 'resource',
+            tags: []
+          }
+        ],
+        has_more: false,
+        next_cursor_uuid: null
+      }
+    },
+    '/api/v1/material-shapes': {
+      code: 0,
+      data: {
+        items: [{
+          id: 'plate96',
+          bundle: 'test',
+          categories: ['plate96'],
+          categoryTokens: [],
+          priority: 0,
+          envelope: [127, 85, 15],
+          units: 'ratio',
+          shadow: 'box',
+          sort: 'center',
+          parts: [{
+            type: 'box',
+            style: 'plate',
+            from: [0, 0, 0],
+            to: [1, 1, 1]
+          }]
+        }]
+      }
     }
   }
 }

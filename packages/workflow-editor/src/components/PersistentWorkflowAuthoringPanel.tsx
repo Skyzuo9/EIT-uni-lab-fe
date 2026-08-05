@@ -348,9 +348,9 @@ export function PersistentWorkflowAuthoringPanel({
 
   const structure = useMemo(
     () => graph
-      ? projectPersistentAuthoringGraph(graph)
+      ? projectPersistentAuthoringGraph(graph, materialSourceCatalog)
       : { nodes: [], links: [], steps: [], error: null },
-    [graph]
+    [graph, materialSourceCatalog]
   )
   /**
    * 将当前候选图重新排成自上而下的工作流布局，并把结果留在画布草稿中。

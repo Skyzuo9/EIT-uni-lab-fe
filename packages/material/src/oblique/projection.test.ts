@@ -222,6 +222,10 @@ describe('oblique material projection', () => {
       'powder_container'
     )
     expect(resolveShapeSpec(shapes, 'vision-cell')?.id).toBe('vision_cell')
+    expect(resolveShapeSpec(
+      shapes,
+      'community.szlab_poly_studio.resources.materials:powder_container'
+    )?.id).toBe('powder_container')
     expect(resolveShapeSpec(shapes, 'device')).toBeUndefined()
   })
 

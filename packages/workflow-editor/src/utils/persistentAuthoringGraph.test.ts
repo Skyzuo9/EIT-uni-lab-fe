@@ -55,11 +55,11 @@ describe('persistent Authoring canvas graph edits', () => {
     expect(updated.nodes[0]).toMatchObject({
       pose: {
         frame: 'workflow',
-        position: { x: 180, y: 16, z: 12 }
+        position: { x: 236, y: 16, z: 12 }
       }
     })
     expect(updated.nodes[1]).toMatchObject({
-      pose: { position: { x: 180, y: 152, z: 18 } }
+      pose: { position: { x: 180, y: 180, z: 18 } }
     })
     expect(source.nodes[0]).toMatchObject({
       pose: { position: { x: 940, y: 720, z: 12 } }

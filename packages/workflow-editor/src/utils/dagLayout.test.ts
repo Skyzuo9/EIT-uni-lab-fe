@@ -43,11 +43,129 @@ describe('layoutDag', () => {
 
     expect(positions.get('start')?.x).toBe(360)
     expect(positions.get('branch')?.x).toBe(360)
-    expect(positions.get('left')?.y).toBe(264)
-    expect(positions.get('right')?.y).toBe(264)
+    expect(positions.get('left')?.y).toBe(320)
+    expect(positions.get('right')?.y).toBe(320)
     expect(positions.get('join')?.x).toBe(360)
-    expect(positions.get('join')?.y).toBe(376)
+    expect(positions.get('join')?.y).toBe(460)
     expect(result.direction).toBe('vertical')
+  })
+
+  it('keeps material sources centered above grouped first consumers', () => {
+    const result = layoutDag(
+      [
+        {
+          ...workflowNode('source-a', 'material_source', 0, 0),
+          handles: [materialHandle('source-a-handle', 'source')]
+        },
+        {
+          ...workflowNode('source-b', 'material_source', 0, 0),
+          handles: [materialHandle('source-b-handle', 'source')]
+        },
+        workflowNode('group-a', 'group', 0, 0),
+        {
+          ...workflowNode('action-a', 'action', 0, 0),
+          parentGroupId: 'group-a',
+          handles: [
+            materialHandle('action-a-handle', 'target'),
+            materialHandle('action-a-unconnected', 'target')
+          ]
+        },
+        workflowNode('group-b', 'group', 0, 0),
+        {
+          ...workflowNode('action-b', 'action', 0, 0),
+          parentGroupId: 'group-b',
+          handles: [
+            materialHandle('action-b-handle', 'target'),
+            materialHandle('action-b-unconnected', 'target')
+          ]
+        }
+      ],
+      [
+        {
+          source: 'source-a',
+          target: 'action-a',
+          type: 'material',
+          sourceHandleUuid: 'source-a-handle',
+          targetHandleUuid: 'action-a-handle'
+        },
+        {
+          source: 'source-b',
+          target: 'action-b',
+          type: 'material',
+          sourceHandleUuid: 'source-b-handle',
+          targetHandleUuid: 'action-b-handle'
+        }
+      ],
+      { preserveExistingPositions: false }
+    )
+    const positions = new Map(
+      result.nodes.map((node) => [node.id, { x: node.x, y: node.y }])
+    )
+    expect(positions.get('source-a')?.x).toBe(
+      (positions.get('action-a')?.x ?? 0) + 81
+    )
+    expect(positions.get('source-b')?.x).toBe(
+      (positions.get('action-b')?.x ?? 0) + 81
+    )
+    expect(positions.get('action-a')?.y).toBeGreaterThan(
+      positions.get('source-a')?.y ?? 0
+    )
+    expect(positions.get('group-a')?.x).toBeLessThan(
+      positions.get('action-a')?.x ?? 0
+    )
+  })
+
+  /** 验证不同物料来源（MaterialSource）对齐同列消费者后仍保持可见间距。 */
+  it('keeps same-column material sources from occupying one position', () => {
+    const result = layoutDag(
+      [
+        {
+          ...workflowNode('fine-powder', 'material_source', 0, 0),
+          handles: [materialHandle('fine-output', 'source')]
+        },
+        {
+          ...workflowNode('sample-vial', 'material_source', 0, 0),
+          handles: [materialHandle('vial-output', 'source')]
+        },
+        {
+          ...workflowNode('prepare-fine', 'action', 0, 0),
+          handles: [materialHandle('fine-input', 'target')]
+        },
+        workflowNode('middle', 'action', 0, 0),
+        {
+          ...workflowNode('open-vial', 'action', 0, 0),
+          handles: [materialHandle('vial-input', 'target')]
+        }
+      ],
+      [
+        materialLink(
+          'fine-powder',
+          'fine-output',
+          'prepare-fine',
+          'fine-input'
+        ),
+        {
+          source: 'prepare-fine',
+          target: 'middle',
+          type: 'control'
+        },
+        { source: 'middle', target: 'open-vial', type: 'control' },
+        materialLink(
+          'sample-vial',
+          'vial-output',
+          'open-vial',
+          'vial-input'
+        )
+      ],
+      { preserveExistingPositions: false }
+    )
+    const positions = new Map(
+      result.nodes.map((node) => [node.id, `${node.x}:${node.y}`])
+    )
+
+    expect(positions.get('fine-powder')).not.toBe(
+      positions.get('sample-vial')
+    )
   })
 
   it('无连线时根据节点坐标跨度判断布局方向', () => {
@@ -122,5 +240,42 @@ function workflowNode(
     labNodeType: type,
     x,
     y
+  }
+}
+
+function materialHandle(
+  uuid: string,
+  ioType: 'source' | 'target'
+): import('./parseWorkflow').WorkflowHandlePort {
+  return {
+    uuid,
+    handleKey: 'resource',
+    displayName: '物料',
+    ioType,
+    valueType: 'ResourceSlot'
+  }
+}
+
+/**
+ * 构造连接两个物料占位符（ResourceSlot）的测试边。
+ *
+ * @param source 来源节点身份。
+ * @param sourceHandleUuid 来源物料句柄（Handle）身份。
+ * @param target 消费节点身份。
+ * @param targetHandleUuid 目标物料句柄（Handle）身份。
+ * @returns 可供布局算法消费的物料流（MaterialFlow）边。
+ */
+function materialLink(
+  source: string,
+  sourceHandleUuid: string,
+  target: string,
+  targetHandleUuid: string
+): WorkflowLink {
+  return {
+    source,
+    target,
+    type: 'material',
+    sourceHandleUuid,
+    targetHandleUuid
   }
 }

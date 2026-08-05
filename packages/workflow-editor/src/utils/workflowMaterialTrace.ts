@@ -229,7 +229,7 @@ function passThroughHandles(
   )
 }
 
-function isResourceSlotHandle(handle: WorkflowHandlePort): boolean {
+export function isResourceSlotHandle(handle: WorkflowHandlePort): boolean {
   if (handle.valueType === 'ResourceSlot') return true
   return isResourceSlotSchema(handle.valueSchema)
 }

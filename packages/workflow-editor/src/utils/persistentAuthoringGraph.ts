@@ -1,4 +1,7 @@
-import type { WorkflowAuthoringGraph } from '@unilab/services'
+import type {
+  WorkflowAuthoringGraph,
+  WorkflowMaterialSourceCatalogSnapshot
+} from '@unilab/services'
 
 import type {
   WorkflowLink,
@@ -8,8 +11,18 @@ import type {
 import { layoutDag } from './dagLayout'
 
 export function projectPersistentAuthoringGraph(
-  graph: WorkflowAuthoringGraph
+  graph: WorkflowAuthoringGraph,
+  materialSourceCatalog?: Pick<
+    WorkflowMaterialSourceCatalogSnapshot,
+    'resourceTemplates'
+  > | null
 ): WorkflowStructure {
+  const resourceTemplateByUuid = new Map(
+    (materialSourceCatalog?.resourceTemplates ?? []).map((template) => [
+      template.uuid,
+      template
+    ])
+  )
   const templates = new Map(
     graph.node_templates.map((template) => [
       String(template.uuid || ''),
@@ -131,6 +144,8 @@ export function projectPersistentAuthoringGraph(
     const position = nodePosition(node.pose)
     const param = isRecord(node.param) ? node.param : {}
     const mount = isRecord(param.mount) ? param.mount : {}
+    const resourceTemplateUuid = String(param.resource_template_uuid || '')
+    const resourceTemplate = resourceTemplateByUuid.get(resourceTemplateUuid)
     return {
       id: nodeUuid,
       name: String(
@@ -167,7 +182,11 @@ export function projectPersistentAuthoringGraph(
             materialSource: {
               mode: String(param.mode || ''),
               flowRole: String(param.flow_role || ''),
-              mountUuid: String(mount.uuid || '')
+              mountUuid: String(mount.uuid || ''),
+              resourceTemplateUuid,
+              ...(resourceTemplate?.shape
+                ? { shape: resourceTemplate.shape }
+                : {})
             }
           }
         : {}),

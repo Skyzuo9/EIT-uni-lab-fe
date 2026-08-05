@@ -1,5 +1,10 @@
 import { ServiceError } from './errors'
-import type { HttpClient } from './http'
+import { requestData, type HttpClient } from './http'
+import {
+  parseShapeLibrary,
+  resolveShapeSpec,
+  type MaterialShapeSpec
+} from '@unilab/material/domain'
 
 export interface WorkflowMaterialSourceHandleTemplate {
   uuid: string
@@ -28,6 +33,7 @@ export interface WorkflowMaterialSourceNodeTemplate {
 export interface WorkflowMaterialSourceResourceTemplate {
   uuid: string
   displayName: string
+  shape?: MaterialShapeSpec
 }
 
 export interface WorkflowMaterialSourceMaterial {
@@ -54,6 +60,12 @@ export interface WorkflowMaterialSourceCatalogSnapshot {
   resourceTemplates: WorkflowMaterialSourceResourceTemplate[]
   materials: WorkflowMaterialSourceMaterial[]
   sites: WorkflowMaterialSourceSite[]
+}
+
+interface RegisteredWorkflowResourceTemplate {
+  uuid: string
+  displayName: string
+  shape?: MaterialShapeSpec
 }
 
 export async function loadWorkflowMaterialSourceCatalog(
@@ -134,9 +146,11 @@ export async function loadWorkflowMaterialSourceCatalog(
     handle.required !== false
   ) invalidCatalog('MaterialSource framework Handle is invalid')
 
-  const [materialResponse, siteResponse] = await Promise.all([
+  const [materialResponse, siteResponse, registeredResourceTemplates] =
+    await Promise.all([
     http.request<unknown>('/api/v1/inventory/materials?limit=500'),
-    http.request<unknown>('/api/v1/inventory/sites?limit=500')
+    http.request<unknown>('/api/v1/inventory/sites?limit=500'),
+    loadRegisteredMaterialSourceTemplates(http)
   ])
   const materials = uniqueRecords(
     recordArray(recordValue(materialResponse).materials),
@@ -177,6 +191,14 @@ export async function loadWorkflowMaterialSourceCatalog(
       if (!templateNames.has(uuid)) templateNames.set(uuid, uuid)
     }
   }
+  const registeredTemplatesByUuid = new Map(
+    registeredResourceTemplates.map((template) => [template.uuid, template])
+  )
+  for (const template of registeredResourceTemplates) {
+    if (!templateNames.has(template.uuid)) {
+      templateNames.set(template.uuid, template.displayName)
+    }
+  }
 
   const sourceHandle = attachWireValue({
     uuid: uuidString(handle.uuid),
@@ -205,11 +227,86 @@ export async function loadWorkflowMaterialSourceCatalog(
     fingerprint,
     template: frameworkTemplate,
     resourceTemplates: [...templateNames.entries()]
-      .map(([uuid, displayName]) => ({ uuid, displayName }))
+      .map(([uuid, displayName]) => {
+        const shape = registeredTemplatesByUuid.get(uuid)?.shape
+        return {
+          uuid,
+          displayName,
+          ...(shape ? { shape } : {})
+        }
+      })
       .sort((left, right) => left.uuid.localeCompare(right.uuid)),
     materials,
     sites
   }
+}
+
+async function loadRegisteredMaterialSourceTemplates(
+  http: HttpClient
+): Promise<RegisteredWorkflowResourceTemplate[]> {
+  try {
+    const [templates, shapeCatalog] = await Promise.all([
+      loadRegisteredResourceTemplatePages(http),
+      requestData<Record<string, unknown>>(
+        http,
+        '/api/v1/material-shapes'
+      )
+    ])
+    const library = parseShapeLibrary(shapeCatalog.items)
+    return templates.map((template) => {
+      const uuid = uuidString(template.uuid)
+      const name = nonEmptyString(template.name)
+      const displayName = nonEmptyString(template.display_name)
+      const shapeCandidates = [
+        ...stringArray(template.tags),
+        name,
+        displayName
+      ]
+      const shape = shapeCandidates.reduce<MaterialShapeSpec | undefined>(
+        (match, candidate) => match ?? resolveShapeSpec(library, candidate),
+        undefined
+      )
+      return {
+        uuid,
+        displayName,
+        ...(shape ? { shape } : {})
+      }
+    })
+  } catch {
+    // 外形注册表是渐进增强；旧边缘侧（Edge）或不完整目录仍使用默认来源图标。
+    return []
+  }
+}
+
+async function loadRegisteredResourceTemplatePages(
+  http: HttpClient
+): Promise<Record<string, unknown>[]> {
+  const templates: Record<string, unknown>[] = []
+  const seen = new Set<string>()
+  let cursorUuid: string | null = null
+  do {
+    const query = new URLSearchParams({ limit: '100' })
+    if (cursorUuid) query.set('cursor_uuid', cursorUuid)
+    const page = await requestData<Record<string, unknown>>(
+      http,
+      `/api/v1/resource-templates?${query.toString()}`
+    )
+    const items = recordArray(page.items)
+    for (const item of items) {
+      const uuid = uuidString(item.uuid)
+      if (seen.has(uuid)) {
+        invalidCatalog('资源模板（ResourceTemplate）UUID 重复')
+      }
+      seen.add(uuid)
+      templates.push(item)
+    }
+    if (page.has_more !== true) return templates
+    const nextCursor = uuidString(page.next_cursor_uuid)
+    if (nextCursor === cursorUuid || items.length === 0) {
+      invalidCatalog('资源模板（ResourceTemplate）目录分页提前终止')
+    }
+    cursorUuid = nextCursor
+  } while (true)
 }
 
 function attachWireValue<T extends object>(
@@ -312,6 +409,14 @@ function uuidArray(value: unknown): string[] {
     invalidCatalog('UUID array contains duplicates')
   }
   return uuids
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((entry): entry is string =>
+      typeof entry === 'string' && Boolean(entry.trim())
+    )
+    : []
 }
 
 function integer(value: unknown): number {

@@ -12,8 +12,12 @@
 import { Handle, Position } from 'reactflow'
 import type { NodeProps } from 'reactflow'
 import type { CSSProperties } from 'react'
+import type { MaterialShapeSpec } from '@unilab/material'
 import type { WorkflowHandlePort } from '../utils/parseWorkflow'
-import type { WorkflowMaterialChip } from '../utils/workflowMaterialTrace'
+import {
+  isResourceSlotHandle,
+  type WorkflowMaterialChip
+} from '../utils/workflowMaterialTrace'
 import WorkflowMaterialSourceNode from './WorkflowMaterialSourceNode'
 import styles from './workflow.module.scss'
 
@@ -39,6 +43,8 @@ export interface WorkflowNodeData {
     mode: string
     flowRole: string
     mountUuid: string
+    resourceTemplateUuid: string
+    shape?: MaterialShapeSpec
   }
   onSetStart?: (nodeId: string) => void
   onToggleBreakpoint?: (nodeId: string) => void
@@ -68,6 +74,12 @@ export default function WorkflowNodeCard({
     [...(targetHandles ?? []), ...(sourceHandles ?? [])],
     data.materialHandleAccents
   )
+  const projectedMaterialHandleIds = new Set(
+    materialPorts.flatMap((port) => [
+      port.targetHandle?.uuid,
+      port.sourceHandle?.uuid
+    ]).filter((uuid): uuid is string => Boolean(uuid))
+  )
   if (materialSource) {
     return (
       <WorkflowMaterialSourceNode
@@ -79,13 +91,13 @@ export default function WorkflowNodeCard({
           targetHandles,
           'target',
           targetPosition,
-          data.materialHandleAccents
+          projectedMaterialHandleIds
         )}
         structuralSourceHandles={renderStructuralHandles(
           sourceHandles,
           'source',
           sourcePosition,
-          data.materialHandleAccents
+          projectedMaterialHandleIds
         )}
       />
     )
@@ -100,7 +112,7 @@ export default function WorkflowNodeCard({
         targetHandles,
         'target',
         targetPosition,
-        data.materialHandleAccents
+        projectedMaterialHandleIds
       )}
 
       {allowsDebugMarkers && (
@@ -192,7 +204,7 @@ export default function WorkflowNodeCard({
         sourceHandles,
         'source',
         sourcePosition,
-        data.materialHandleAccents
+        projectedMaterialHandleIds
       )}
     </div>
   )
@@ -202,7 +214,7 @@ function renderStructuralHandles(
   handles: WorkflowHandlePort[] | undefined,
   ioType: 'source' | 'target',
   position: Position,
-  materialHandleAccents: Record<string, string> | undefined
+  projectedMaterialHandleIds: ReadonlySet<string>
 ): React.JSX.Element | React.JSX.Element[] {
   if (handles === undefined) {
     return (
@@ -216,25 +228,52 @@ function renderStructuralHandles(
     )
   }
   const structuralHandles = handles.filter(
-    (handle) => !materialHandleAccents?.[handle.uuid]
+    (handle) => !projectedMaterialHandleIds.has(handle.uuid)
   )
   return structuralHandles.map((handle, index) => {
+    const ready = isReadyHandle(handle)
+    const readyPosition = ioType === 'target' ? Position.Top : Position.Bottom
     return (
       <Handle
         key={handle.uuid}
         id={handle.uuid}
         type={ioType}
-        position={position}
-        className="wf-node__handle wf-node__handle--structural"
+        position={ready ? readyPosition : position}
+        className={ready
+          ? `wf-node__handle wf-node__handle--ready wf-node__handle--${ioType}`
+          : 'wf-node__handle wf-node__handle--structural'}
         data-workflow-handle-template-uuid={handle.uuid}
         data-workflow-handle-key={handle.handleKey}
         data-workflow-handle-io={ioType}
-        data-workflow-handle-kind="structural"
-        aria-hidden="true"
-        style={handlePosition(position, index, structuralHandles.length)}
+        data-workflow-handle-kind={ready ? 'ready' : 'structural'}
+        aria-label={ready
+          ? `执行顺序${ioType === 'target' ? '输入' : '输出'}端口`
+          : undefined}
+        aria-hidden={ready ? undefined : true}
+        title={ready ? '执行顺序' : undefined}
+        style={ready
+          ? { left: 'calc(100% - 18px)' }
+          : handlePosition(position, index, structuralHandles.length)}
       />
     )
   })
+}
+
+/**
+ * 判断句柄是否承载动作就绪（ready）执行顺序，而非物料（Material）。
+ *
+ * @param handle OS 接口投影出的工作流句柄。
+ * @returns 句柄是否应以南北方向的短竖线显示。
+ */
+export function isReadyHandle(handle: WorkflowHandlePort): boolean {
+  const key = (handle.dataKey?.trim() || handle.handleKey).toLowerCase()
+  const valueType = (handle.valueType ?? '').toLowerCase()
+  return key === 'ready' && (
+    valueType === '' ||
+    valueType === 'boolean' ||
+    valueType === 'bool' ||
+    valueType === 'builtins.bool'
+  )
 }
 
 export interface WorkflowMaterialPortCard {
@@ -259,10 +298,21 @@ export function workflowMaterialPortCards(
   materialHandleAccents: Record<string, string> | undefined
 ): WorkflowMaterialPortCard[] {
   const cards: WorkflowMaterialPortCard[] = []
-  for (const handle of handles) {
+  const resourceHandles = handles.filter(isResourceSlotHandle)
+  const accentByVariable = new Map<string, string>()
+  for (const handle of resourceHandles) {
     const accent = materialHandleAccents?.[handle.uuid]
     if (!accent) continue
     const variableName = handle.dataKey?.trim() || handle.handleKey
+    if (!accentByVariable.has(variableName) || handle.ioType === 'target') {
+      accentByVariable.set(variableName, accent)
+    }
+  }
+  for (const handle of resourceHandles) {
+    const variableName = handle.dataKey?.trim() || handle.handleKey
+    const accent = materialHandleAccents?.[handle.uuid] ??
+      accentByVariable.get(variableName)
+    if (!accent) continue
     const slot = handle.ioType === 'target' ? 'targetHandle' : 'sourceHandle'
     const existing = cards.find((card) =>
       card.variableName === variableName &&
