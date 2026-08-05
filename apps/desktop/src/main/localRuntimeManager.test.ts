@@ -1,3 +1,4 @@
+import { spawn as spawnChild, type ChildProcess } from 'node:child_process'
 import { once } from 'node:events'
 import {
   appendFile,
@@ -23,13 +24,17 @@ import {
   readLocalRuntimeLogs,
   resolveLocalRuntimeLaunchPlan,
   resolveLocalSimulatorLaunchPlan,
+  LocalRuntimeManager,
   RotatingLogWriter
 } from './localRuntimeManager'
 
 const temporaryDirectories: string[] = []
+const temporaryProcesses: ChildProcess[] = []
 
+/** 清理测试创建的残留监听进程与临时目录，避免端口状态污染后续用例。 */
 afterEach(async () => {
   vi.unstubAllEnvs()
+  await Promise.all(temporaryProcesses.splice(0).map(stopTemporaryProcess))
   await Promise.all(
     temporaryDirectories.splice(0).map((path) => rm(path, {
       recursive: true,
@@ -145,7 +150,7 @@ describe('LocalRuntimeManager command plan', () => {
     )
   })
 
-  /** 证明公开 ROS CLI 启动计划携带合法的两位 ROS 域编号。 */
+  /** 证明公开 ROS CLI 启动计划不注入测试模式或独立 SQLite 路径。 */
   it('launches the selected workspace through the public ROS unilab CLI', async () => {
     const fixture = await createFixture('packages')
     const plan = await resolveLocalRuntimeLaunchPlan(fixture.config)
@@ -184,9 +189,9 @@ describe('LocalRuntimeManager command plan', () => {
       '--port',
       '18003',
       '--disable_browser',
-      '--skip_env_check',
-      '--test_mode'
+      '--skip_env_check'
     ])
+    expect(plan.edge.args).not.toContain('--test_mode')
     expect(plan.edge.env['ROS_DOMAIN_ID']).toMatch(/^(?:[2-9]|[1-9]\d)$/)
     expect(plan.edge.env['UNILABOS_OBSERVABILITYCONFIG_ENABLED']).toBe('true')
     expect(plan.edge.env['UNILABOS_OBSERVABILITYCONFIG_PROJECT_NAME']).toBe(
@@ -201,14 +206,84 @@ describe('LocalRuntimeManager command plan', () => {
       fixture.osRoot,
       fixture.szlabRoot
     ])
-    const runtimeDatabase = plan.edge.env['UNILABOS_RUNTIME_DB']
-    expect(runtimeDatabase).toBeDefined()
-    expect(dirname(runtimeDatabase ?? '')).toBe(
-      join(fixture.szlabRoot, 'runtime', 'ideawit-e2e')
+    expect(plan.edge.env).not.toHaveProperty('UNILABOS_RUNTIME_DB')
+  })
+
+  /** 证明两条启动路径声明各自必须提前释放的实际监听端口。 */
+  it('declares the listening ports released before each launch path', async () => {
+    const fixture = await createFixture('packages')
+    const simulatorPlan = await resolveLocalSimulatorLaunchPlan(fixture.config)
+    const edgePlan = await resolveLocalRuntimeLaunchPlan(fixture.config)
+
+    expect(simulatorPlan.requiredPorts).toEqual([
+      { port: 18_003, label: '领域侧 Edge HTTP' },
+      { port: 18_765, label: 'PLC-Sim Web GUI' },
+      { port: 4_855, label: 'PLC-Sim OPC UA' }
+    ])
+    expect(edgePlan.requiredPorts).toEqual([
+      { port: 18_003, label: '领域侧 Edge HTTP' },
+      { port: 18_004, label: 'Edge HostLink' }
+    ])
+  })
+
+  /** 证明 PLC-Sim 启动会先终止占用三个目标端口的上一轮残留监听进程。 */
+  it('reclaims an occupied PLC-Sim port before spawning the new process', async () => {
+    const fixture = await createFixture('packages')
+    await writeFakeSimulatorExecutable(fixture.python)
+    const [edgeHttp, simulatorGui, simulatorOpcUa] = await Promise.all([
+      startTemporaryListener(),
+      startTemporaryListener(),
+      startTemporaryListener()
+    ])
+
+    const manager = new LocalRuntimeManager(
+      join(dirname(fixture.osRoot), 'logs'),
+      () => undefined,
+      logSessionId,
+      {
+        edgeHttp: edgeHttp.port,
+        hostLink: 18_004,
+        simulatorGui: simulatorGui.port,
+        simulatorOpcUa: simulatorOpcUa.port
+      }
     )
-    expect(basename(runtimeDatabase ?? '')).toMatch(
-      /^edge-runtime-\d{8}-\d{6}\.sqlite3$/
+
+    await expect(manager.startSimulator(fixture.config)).resolves.toMatchObject({
+      phase: 'simulator_ready',
+      simulatorRunning: true
+    })
+    await manager.stop()
+  })
+
+  /** 证明未选择 PLC-Sim 时，领域侧 Edge 仍会清理 HTTP 与 HostLink 端口。 */
+  it('reclaims occupied Edge ports when launching Edge directly', async () => {
+    const fixture = await createFixture('packages')
+    await writeFakeEdgeExecutable(fixture.unilab)
+    const [edgeHttp, hostLink] = await Promise.all([
+      startTemporaryListener(),
+      startTemporaryListener()
+    ])
+    const manager = new LocalRuntimeManager(
+      join(dirname(fixture.osRoot), 'logs'),
+      () => undefined,
+      logSessionId,
+      {
+        edgeHttp: edgeHttp.port,
+        hostLink: hostLink.port,
+        simulatorGui: 18_765,
+        simulatorOpcUa: 4_855
+      }
     )
+
+    await expect(manager.startEdge({
+      ...fixture.config,
+      szlabProjectPath: ''
+    })).resolves.toMatchObject({
+      phase: 'ready',
+      edgeRunning: true,
+      simulatorRunning: false
+    })
+    await manager.stop()
   })
 
   /** 证明每次 Edge 启动计划都重新取值，且不产生 C 整数解析会拒绝的前导零。 */
@@ -491,4 +566,95 @@ async function createFixture(
     szlabRoot,
     unilab
   }
+}
+
+/**
+ * 写入一个可执行的 Node.js PLC-Sim 替身。
+ *
+ * @param executablePath Conda Python 占位路径，测试中作为启动命令执行。
+ * @returns 文件写入并授权完成后结束。
+ */
+async function writeFakeSimulatorExecutable(
+  executablePath: string
+): Promise<void> {
+  await writeFile(executablePath, [
+    '#!/usr/bin/env node',
+    "const { createServer } = require('node:net')",
+    "const portIndex = process.argv.indexOf('--port')",
+    'const port = Number(process.argv[portIndex + 1])',
+    'const server = createServer()',
+    "server.listen(port, '127.0.0.1')",
+    "process.on('SIGTERM', () => server.close(() => process.exit(0)))"
+  ].join('\n'))
+  await chmod(executablePath, 0o755)
+}
+
+/**
+ * 写入一个同时提供健康检查、设备目录和 HostLink 监听的 Edge 替身。
+ *
+ * @param executablePath Conda unilab 占位路径，测试中作为启动命令执行。
+ * @returns 文件写入并授权完成后结束。
+ */
+async function writeFakeEdgeExecutable(executablePath: string): Promise<void> {
+  await writeFile(executablePath, [
+    '#!/usr/bin/env node',
+    "const { createServer: createHttpServer } = require('node:http')",
+    "const { createServer: createTcpServer } = require('node:net')",
+    "const portIndex = process.argv.indexOf('--port')",
+    'const httpPort = Number(process.argv[portIndex + 1])',
+    'const hostLinkPort = Number(process.env.UNILABOS_HOSTLINKCONFIG_PORT)',
+    'const httpServer = createHttpServer((request, response) => {',
+    "  response.setHeader('content-type', 'application/json')",
+    "  const payload = request.url === '/api/v1/health'",
+    "    ? { status: 'ok' }",
+    "    : { code: 0, data: { schemaVersion: 'device-catalog/v1', items: [] } }",
+    '  response.end(JSON.stringify(payload))',
+    '})',
+    'const hostLinkServer = createTcpServer()',
+    "httpServer.listen(httpPort, '127.0.0.1')",
+    "hostLinkServer.listen(hostLinkPort, '127.0.0.1')",
+    "process.on('SIGTERM', () => process.exit(0))"
+  ].join('\n'))
+  await chmod(executablePath, 0o755)
+}
+
+/**
+ * 启动一个独立 Node.js TCP 残留监听进程并等待其真正占用端口。
+ *
+ * @param port 要模拟被上一轮进程占用的本地 TCP 端口；0 表示由系统分配。
+ * @returns 已进入监听状态的子进程及其真实端口。
+ */
+async function startTemporaryListener(port = 0): Promise<{
+  child: ChildProcess
+  port: number
+}> {
+  const child = spawnChild(process.execPath, [
+    '-e',
+    [
+      "const { createServer } = require('node:net')",
+      'const server = createServer()',
+      `server.listen(${port}, '127.0.0.1', () => process.stdout.write(String(server.address().port) + '\\n'))`
+    ].join(';')
+  ], {
+    stdio: ['ignore', 'pipe', 'pipe']
+  })
+  temporaryProcesses.push(child)
+  const [portOutput] = await once(child.stdout!, 'data')
+  return {
+    child,
+    port: Number(String(portOutput).trim())
+  }
+}
+
+/**
+ * 强制结束仍存活的测试子进程，并等待其退出事件。
+ *
+ * @param child 测试创建的临时监听或模拟器进程。
+ * @returns 子进程已退出或原本已经结束时完成。
+ */
+async function stopTemporaryProcess(child: ChildProcess): Promise<void> {
+  if (child.exitCode !== null || child.signalCode !== null) return
+  const closed = once(child, 'close')
+  child.kill('SIGKILL')
+  await closed
 }

@@ -42,11 +42,17 @@
    ROS backend、FastAPI bridge 与 Edge Scheduler；每次启动会随机分配两位
    `ROS_DOMAIN_ID`（`02`–`99`），HTTP
    监听 `18003`，HostLink 使用本地调试专用端口 `18004`；不再额外启动
-   本地 Bridge 进程。挂载领域项目时，每次启动会在
-   `runtime/ideawit-e2e` 下生成独立的
-   `edge-runtime-YYYYMMDD-HHMMSS.sqlite3`，并通过 `UNILABOS_RUNTIME_DB`
-   传给 Edge；未挂载领域项目时改用 OS 内置配置与
-   `Uni-Lab-OS/runtime/edge-local-debug`。
+   本地 Bridge 进程。挂载领域项目时工作目录使用 `runtime/ideawit-e2e`；
+   未挂载领域项目时改用 OS 内置配置与
+   `Uni-Lab-OS/runtime/edge-local-debug`。启动计划不启用 `--test_mode`，也不
+   注入 `UNILABOS_RUNTIME_DB`。
+
+每条启动路径都会先使用同一份启动计划端口事实清理上一轮残留监听者：启动
+PLC-Sim 时处理领域侧 Edge HTTP、PLC-Sim Web GUI 与 OPC UA（默认分别为
+`18003`、`18765`、`4855`）；直接启动领域侧 Edge 时处理 HTTP 与 HostLink
+（默认 `18003`、`18004`）。macOS/Linux 使用 `lsof` 精确定位监听 PID，Windows
+使用 PowerShell `Get-NetTCPConnection` 与 `Stop-Process -Force`；没有监听者时
+保持幂等，清理失败则停止本轮启动并显示端口与平台诊断。
 
 就绪门与启动模式对齐：挂载领域设备包时，`GET /api/v1/devices`
 必须至少返回一个非 `host_node` 设备的 Action；仅 OS 模式则只要

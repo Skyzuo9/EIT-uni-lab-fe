@@ -168,7 +168,6 @@ function isProtectedEnvironmentName(name: string): boolean {
     || normalizedName === 'PYTHONPATH'
     || normalizedName === 'PYTHONUNBUFFERED'
     || normalizedName === 'ROS_DOMAIN_ID'
-    || normalizedName === 'UNILABOS_RUNTIME_DB'
     || normalizedName === 'UNILABOS_HOSTLINKCONFIG_PORT'
     || normalizedName.startsWith('CONDA_')
     || normalizedName.startsWith('UNILABOS_OBSERVABILITYCONFIG_')

@@ -38,6 +38,10 @@ import {
   resolveLocalRuntimeEdgeCommand,
   type ResolvedLocalRuntimeEdgeCommand
 } from './localRuntimeEdgeCommand'
+import {
+  releaseListeningPorts,
+  type LocalRuntimePortRequirement
+} from './localRuntimePorts'
 
 export interface LocalRuntimeSpawnSpec {
   command: string
@@ -46,14 +50,25 @@ export interface LocalRuntimeSpawnSpec {
   env: NodeJS.ProcessEnv
 }
 
+export interface LocalRuntimePorts {
+  edgeHttp: number
+  hostLink: number
+  simulatorGui: number
+  simulatorOpcUa: number
+}
+
 export interface LocalRuntimeLaunchPlan {
   runtimeDirectory: string
   edge: LocalRuntimeSpawnSpec
+  ports: LocalRuntimePorts
+  requiredPorts: LocalRuntimePortRequirement[]
   deviceCatalogRequirement: 'catalog' | 'domain_actions'
 }
 
 export interface LocalSimulatorLaunchPlan {
   simulator: LocalRuntimeSpawnSpec
+  ports: LocalRuntimePorts
+  requiredPorts: LocalRuntimePortRequirement[]
 }
 
 interface ResolvedRuntimeConfig {
@@ -67,6 +82,7 @@ interface ResolvedRuntimeConfig {
   localConfigPath: string
   runtimeDirectory: string
   customEdgeCommand: ResolvedLocalRuntimeEdgeCommand | null
+  ports: LocalRuntimePorts
 }
 
 interface ResolvedSimulatorConfig {
@@ -74,30 +90,22 @@ interface ResolvedSimulatorConfig {
   environmentPath: string
   pythonExecutable: string
   workingDirectory: string
-}
-
-interface PortRequirement {
-  port: number
-  label: string
+  ports: LocalRuntimePorts
 }
 
 type SnapshotListener = (snapshot: LocalRuntimeSnapshot) => void
 type ActiveOperation = 'simulator' | 'edge' | 'all'
 
 export const LOCAL_RUNTIME_PORTS = {
-  simulator: 18_765,
+  simulatorGui: 18_765,
+  simulatorOpcUa: 4_855,
   edgeHttp: 18_003,
   hostLink: 18_004
 } as const
 
 const HOST = '127.0.0.1'
-const OS_HEALTH_URL =
-  `http://${HOST}:${LOCAL_RUNTIME_PORTS.edgeHttp}/api/v1/health`
-const WORKFLOW_TEMPLATE_CATALOG_URL =
-  `http://${HOST}:${LOCAL_RUNTIME_PORTS.edgeHttp}/api/v1/workflow-node-templates`
-const DEVICE_CATALOG_URL =
-  `http://${HOST}:${LOCAL_RUNTIME_PORTS.edgeHttp}/api/v1/devices`
 const PROCESS_READY_TIMEOUT_MS = 90_000
+const PORT_RELEASE_TIMEOUT_MS = 5_000
 const LOCAL_RUNTIME_LOG_READ_LIMIT_BYTES = 128 * 1024
 const LOCAL_RUNTIME_LOG_BATCH_LIMIT_BYTES = 64 * 1024
 const LOCAL_RUNTIME_LOG_MAX_BYTES = 10 * 1024 * 1024
@@ -185,13 +193,15 @@ export class LocalRuntimeManager {
   private readonly expectedExits = new WeakSet<ChildProcessWithoutNullStreams>()
   private stopping = false
   private activeOperation: ActiveOperation | null = null
+  private readonly ports: LocalRuntimePorts
 
   /**
-   * 创建一个应用生命周期内唯一的本地运行管理器。
+   * 创建一个应用生命周期内唯一的本地运行管理器，并冻结启动端口事实。
    *
    * @param logsDirectory Electron 管理的本地运行日志目录。
    * @param onSnapshot 运行状态变化时通知渲染器的回调。
    * @param logSessionId 应用启动时冻结、供全部本地子进程共享的日志会话标识。
+   * @param ports 当前启动环境的端口事实；同时驱动命令、清理和就绪探测。
    * @returns 新的本地运行管理器实例。
    * @throws 日志会话标识会在首次解析路径时执行严格校验。
    * @safety 日志路径由主进程目录、会话标识和固定进程枚举共同解析。
@@ -199,8 +209,11 @@ export class LocalRuntimeManager {
   constructor(
     private readonly logsDirectory: string,
     private readonly onSnapshot: SnapshotListener,
-    private readonly logSessionId: string
-  ) {}
+    private readonly logSessionId: string,
+    ports: LocalRuntimePorts = LOCAL_RUNTIME_PORTS
+  ) {
+    this.ports = resolveLocalRuntimePorts(ports)
+  }
 
   getSnapshot(): LocalRuntimeSnapshot {
     return { ...this.snapshot }
@@ -245,6 +258,13 @@ export class LocalRuntimeManager {
     )
   }
 
+  /**
+   * 清理当前计划端口并启动可选 PLC-Sim。
+   *
+   * @param config 已由渲染器提交的本地项目与 Conda 路径。
+   * @returns PLC-Sim 就绪后的最新本地运行快照。
+   * @throws 配置、端口清理、进程启动或就绪等待失败时抛出中文诊断。
+   */
   async startSimulator(
     config: LocalRuntimeLaunchConfig
   ): Promise<LocalRuntimeSnapshot> {
@@ -258,21 +278,29 @@ export class LocalRuntimeManager {
       throw new Error('请先停止领域侧 Edge，再启动 PLC-Sim')
     }
 
-    this.publishState('validating_simulator', '正在检查 PLC-Sim 与 Conda 环境…')
+    this.publishState(
+      'validating_simulator',
+      '正在检查 PLC-Sim、Conda 环境并清理所需端口…'
+    )
 
     try {
-      const plan = await resolveLocalSimulatorLaunchPlan(config)
-      await requireAvailablePorts([{
-        port: LOCAL_RUNTIME_PORTS.simulator,
-        label: 'OPC UA'
-      }])
+      const plan = await resolveLocalSimulatorLaunchPlan(
+        config,
+        process.platform,
+        this.ports
+      )
+      await releaseListeningPorts(plan.requiredPorts)
+      await requireAvailablePorts(plan.requiredPorts)
       await mkdir(this.logsDirectory, { recursive: true })
       this.publishState('starting_simulator', '正在启动 PLC-Sim OPC UA…')
       this.simulatorProcess = this.spawnManaged('simulator', plan.simulator)
-      this.publishState('waiting_simulator', 'PLC-Sim 已启动，正在等待 18765 端口…')
+      this.publishState(
+        'waiting_simulator',
+        `PLC-Sim 已启动，正在等待 ${plan.ports.simulatorGui} 端口…`
+      )
       await waitForPort(
         HOST,
-        LOCAL_RUNTIME_PORTS.simulator,
+        plan.ports.simulatorGui,
         [{ child: this.simulatorProcess, label: 'PLC-Sim OPC UA' }],
         PROCESS_READY_TIMEOUT_MS
       )
@@ -293,6 +321,13 @@ export class LocalRuntimeManager {
     }
   }
 
+  /**
+   * 清理当前计划端口并启动领域侧 Edge。
+   *
+   * @param config 已由渲染器提交的 OS、设备图、领域项目与 Conda 路径。
+   * @returns Edge HTTP、目录与设备投影就绪后的最新本地运行快照。
+   * @throws 配置、端口清理、进程启动或就绪等待失败时抛出中文诊断。
+   */
   async startEdge(
     config: LocalRuntimeLaunchConfig
   ): Promise<LocalRuntimeSnapshot> {
@@ -302,14 +337,19 @@ export class LocalRuntimeManager {
       throw new Error('领域侧 Edge 已在运行')
     }
 
-    this.publishState('validating_edge', '正在检查 Edge 项目、Conda 环境与固定端口…')
+    this.publishState(
+      'validating_edge',
+      '正在检查 Edge 项目、Conda 环境并清理所需端口…'
+    )
 
     try {
-      const plan = await resolveLocalRuntimeLaunchPlan(config)
-      await requireAvailablePorts([
-        { port: LOCAL_RUNTIME_PORTS.edgeHttp, label: '领域侧 Edge HTTP' },
-        { port: LOCAL_RUNTIME_PORTS.hostLink, label: 'Edge HostLink' }
-      ])
+      const plan = await resolveLocalRuntimeLaunchPlan(
+        config,
+        process.platform,
+        this.ports
+      )
+      await releaseListeningPorts(plan.requiredPorts)
+      await requireAvailablePorts(plan.requiredPorts)
       await mkdir(this.logsDirectory, { recursive: true })
       await mkdir(plan.runtimeDirectory, { recursive: true })
 
@@ -317,7 +357,7 @@ export class LocalRuntimeManager {
       this.edgeProcess = this.spawnManaged('edge', plan.edge)
       this.publishState('waiting_edge', '领域侧 Edge 正在初始化 HostNode…')
       await waitForHttp(
-        OS_HEALTH_URL,
+        edgeHttpUrl(plan.ports.edgeHttp, '/api/v1/health'),
         managedChildren([
           ['simulator', this.simulatorProcess],
           ['edge', this.edgeProcess]
@@ -329,7 +369,10 @@ export class LocalRuntimeManager {
       if (plan.deviceCatalogRequirement === 'domain_actions') {
         this.publishState('waiting_edge', 'HostNode 已启动，正在等待工作流模板目录…')
         await waitForHttp(
-          WORKFLOW_TEMPLATE_CATALOG_URL,
+          edgeHttpUrl(
+            plan.ports.edgeHttp,
+            '/api/v1/workflow-node-templates'
+          ),
           managedChildren([
             ['simulator', this.simulatorProcess],
             ['edge', this.edgeProcess]
@@ -346,7 +389,7 @@ export class LocalRuntimeManager {
           : '工作流目录已就绪，正在等待设备运行时…'
       )
       await waitForHttp(
-        DEVICE_CATALOG_URL,
+        edgeHttpUrl(plan.ports.edgeHttp, '/api/v1/devices'),
         managedChildren([
           ['simulator', this.simulatorProcess],
           ['edge', this.edgeProcess]
@@ -760,39 +803,150 @@ async function readLocalRuntimeLogEntry(
   }
 }
 
+/**
+ * 解析领域侧 Edge 的可执行启动计划。
+ *
+ * @param config 用户选择的本地运行路径。
+ * @param platform 当前桌面平台，用于解析 Conda 可执行文件。
+ * @param ports 当前启动环境的端口事实。
+ * @returns Edge 命令、端口要求、运行目录和设备目录就绪条件。
+ */
 export async function resolveLocalRuntimeLaunchPlan(
   config: LocalRuntimeLaunchConfig,
-  platform: NodeJS.Platform = process.platform
+  platform: NodeJS.Platform = process.platform,
+  ports: LocalRuntimePorts = LOCAL_RUNTIME_PORTS
 ): Promise<LocalRuntimeLaunchPlan> {
-  const resolvedConfig = await resolveRuntimeConfig(config, platform)
+  const resolvedConfig = await resolveRuntimeConfig(config, platform, ports)
   return {
     runtimeDirectory: resolvedConfig.runtimeDirectory,
     edge: edgeSpec(resolvedConfig),
+    ports: resolvedConfig.ports,
+    requiredPorts: edgeRequiredPorts(resolvedConfig.ports),
     deviceCatalogRequirement: resolvedConfig.szlabProjectPath
       ? 'domain_actions'
       : 'catalog'
   }
 }
 
+/**
+ * 解析 PLC-Sim 的可执行启动计划。
+ *
+ * @param config 用户选择的 Conda 与 PLC-Sim 路径。
+ * @param platform 当前桌面平台，用于解析 Python 可执行文件。
+ * @param ports 当前启动环境的端口事实。
+ * @returns PLC-Sim 命令和启动前端口要求。
+ */
 export async function resolveLocalSimulatorLaunchPlan(
   config: LocalRuntimeLaunchConfig,
-  platform: NodeJS.Platform = process.platform
+  platform: NodeJS.Platform = process.platform,
+  ports: LocalRuntimePorts = LOCAL_RUNTIME_PORTS
 ): Promise<LocalSimulatorLaunchPlan> {
-  const resolvedConfig = await resolveSimulatorConfig(config, platform)
-  return { simulator: simulatorSpec(resolvedConfig) }
+  const resolvedConfig = await resolveSimulatorConfig(config, platform, ports)
+  return {
+    simulator: simulatorSpec(resolvedConfig),
+    ports: resolvedConfig.ports,
+    requiredPorts: simulatorRequiredPorts(resolvedConfig.ports)
+  }
 }
 
 /**
- * 校验用户选择的项目与 Conda 路径，并把生成式或自定义 Edge 命令解析成一次启动事实。
+ * 声明启动 PLC-Sim 前需要释放的当前本地调试端口。
+ *
+ * @param ports 当前启动环境解析出的端口事实。
+ * @returns 领域侧 Edge HTTP、PLC-Sim Web GUI 与 OPC UA 端口。
+ */
+function simulatorRequiredPorts(
+  ports: LocalRuntimePorts
+): LocalRuntimePortRequirement[] {
+  return [
+    { port: ports.edgeHttp, label: '领域侧 Edge HTTP' },
+    { port: ports.simulatorGui, label: 'PLC-Sim Web GUI' },
+    { port: ports.simulatorOpcUa, label: 'PLC-Sim OPC UA' }
+  ]
+}
+
+/**
+ * 声明直接启动领域侧 Edge 前需要释放的当前本地调试端口。
+ *
+ * @param ports 当前启动环境解析出的端口事实。
+ * @returns Edge HTTP 与 HostLink 端口。
+ */
+function edgeRequiredPorts(
+  ports: LocalRuntimePorts
+): LocalRuntimePortRequirement[] {
+  return [
+    { port: ports.edgeHttp, label: '领域侧 Edge HTTP' },
+    { port: ports.hostLink, label: 'Edge HostLink' }
+  ]
+}
+
+/**
+ * 合并当前启动环境端口覆盖与桌面端稳定默认值。
+ *
+ * @param overrides 当前启动环境提供的完整端口事实。
+ * @returns 同时驱动启动命令、就绪探测和端口释放的唯一端口事实。
+ */
+function resolveLocalRuntimePorts(
+  overrides: LocalRuntimePorts
+): LocalRuntimePorts {
+  return {
+    edgeHttp: validLocalRuntimePort(
+      '领域侧 Edge HTTP',
+      overrides.edgeHttp
+    ),
+    hostLink: validLocalRuntimePort(
+      'Edge HostLink',
+      overrides.hostLink
+    ),
+    simulatorGui: validLocalRuntimePort(
+      'PLC-Sim Web GUI',
+      overrides.simulatorGui
+    ),
+    simulatorOpcUa: validLocalRuntimePort(
+      'PLC-Sim OPC UA',
+      overrides.simulatorOpcUa
+    )
+  }
+}
+
+/**
+ * 校验启动配置中的单个 TCP 端口。
+ *
+ * @param label 端口所属组件的用户可见名称。
+ * @param port 待校验端口值。
+ * @returns 1 至 65535 范围内的整数端口。
+ */
+function validLocalRuntimePort(label: string, port: number): number {
+  if (!Number.isSafeInteger(port) || port < 1 || port > 65_535) {
+    throw new Error(`${label}不是有效 TCP 端口：${port}`)
+  }
+  return port
+}
+
+/**
+ * 使用已解析的 Edge HTTP 端口构造本地就绪探测 URL。
+ *
+ * @param port 当前启动计划的 Edge HTTP 端口。
+ * @param path 固定的 OS HTTP 路径。
+ * @returns 指向本机领域侧 Edge 的完整 URL。
+ */
+function edgeHttpUrl(port: number, path: string): string {
+  return `http://${HOST}:${port}${path}`
+}
+
+/**
+ * 校验路径并把生成式或自定义 Edge 命令解析成一次启动事实。
  *
  * @param config renderer 经 IPC 提交的本地运行配置。
  * @param platform 当前目标平台，用于选择 Conda 可执行文件布局和 Windows 规则。
- * @returns 已规范化路径、运行目录、配置文件和可选自定义命令。
- * @throws 当项目结构、可执行文件、自定义命令或领域设备包约束不满足时抛出。
+ * @param ports 当前启动环境的端口事实。
+ * @returns 已规范化路径、运行目录、配置文件、端口和可选自定义命令。
+ * @throws 当项目结构、端口、可执行文件、自定义命令或领域设备包约束不满足时抛出。
  */
 async function resolveRuntimeConfig(
   config: LocalRuntimeLaunchConfig,
-  platform: NodeJS.Platform
+  platform: NodeJS.Platform,
+  ports: LocalRuntimePorts
 ): Promise<ResolvedRuntimeConfig> {
   const graphPath = normalizeRequiredPath(config.graphPath, '请选择设备图 JSON')
   const osProjectPath = normalizeRequiredPath(
@@ -835,6 +989,7 @@ async function resolveRuntimeConfig(
   const runtimeDirectory = szlabProjectPath
     ? join(szlabProjectPath, 'runtime', 'ideawit-e2e')
     : join(osProjectPath, 'runtime', 'edge-local-debug')
+  const resolvedPorts = resolveLocalRuntimePorts(ports)
   const customEdgeCommand = config.edgeCommandMode === 'custom'
     ? resolveLocalRuntimeEdgeCommand(config.customEdgeCommand, {
         unilab: unilabExecutable,
@@ -843,8 +998,8 @@ async function resolveRuntimeConfig(
         graph: graphPath,
         config: localConfigPath,
         working_dir: runtimeDirectory,
-        edge_http_port: String(LOCAL_RUNTIME_PORTS.edgeHttp),
-        hostlink_port: String(LOCAL_RUNTIME_PORTS.hostLink)
+        edge_http_port: String(resolvedPorts.edgeHttp),
+        hostlink_port: String(resolvedPorts.hostLink)
       }, platform)
     : null
 
@@ -878,13 +1033,23 @@ async function resolveRuntimeConfig(
     unilabExecutable,
     localConfigPath,
     runtimeDirectory,
-    customEdgeCommand
+    customEdgeCommand,
+    ports: resolvedPorts
   }
 }
 
+/**
+ * 校验并规范化 PLC-Sim 启动配置。
+ *
+ * @param config 用户提交的原始路径配置。
+ * @param platform 当前桌面平台。
+ * @param ports 当前启动环境的端口事实。
+ * @returns 可直接生成 PLC-Sim 子进程规范的配置。
+ */
 async function resolveSimulatorConfig(
   config: LocalRuntimeLaunchConfig,
-  platform: NodeJS.Platform
+  platform: NodeJS.Platform,
+  ports: LocalRuntimePorts
 ): Promise<ResolvedSimulatorConfig> {
   const environmentPath = normalizeRequiredPath(
     config.environmentPath,
@@ -912,14 +1077,28 @@ async function resolveSimulatorConfig(
     pythonExecutable,
     workingDirectory: await resolveSimulatorWorkingDirectory(
       simulatorProjectPath
-    )
+    ),
+    ports: resolveLocalRuntimePorts(ports)
   }
 }
 
+/**
+ * 构造 PLC-Sim Web GUI 子进程规范。
+ *
+ * @param config 已校验的 Conda、工作目录和端口配置。
+ * @returns 禁用 shell 的 Python 模块启动命令。
+ */
 function simulatorSpec(config: ResolvedSimulatorConfig): LocalRuntimeSpawnSpec {
   return {
     command: config.pythonExecutable,
-    args: ['-m', 'gui.backend', '--host', HOST, '--port', String(LOCAL_RUNTIME_PORTS.simulator)],
+    args: [
+      '-m',
+      'gui.backend',
+      '--host',
+      HOST,
+      '--port',
+      String(config.ports.simulatorGui)
+    ],
     cwd: config.workingDirectory,
     env: {
       ...activatedCondaEnvironment(config.environmentPath, config.platform),
@@ -951,10 +1130,9 @@ function edgeSpec(config: ResolvedRuntimeConfig): LocalRuntimeSpawnSpec {
     'fastapi',
     '--edge_scheduler',
     '--port',
-    String(LOCAL_RUNTIME_PORTS.edgeHttp),
+    String(config.ports.edgeHttp),
     '--disable_browser',
-    '--skip_env_check',
-    '--test_mode'
+    '--skip_env_check'
   ]
   const customEnvironment = config.customEdgeCommand?.environment ?? []
   const userExtendedEnvironment = mergeCustomEdgeEnvironment(
@@ -969,10 +1147,9 @@ function edgeSpec(config: ResolvedRuntimeConfig): LocalRuntimeSpawnSpec {
       ?? (config.szlabProjectPath || config.osProjectPath),
     env: {
       ...userExtendedEnvironment,
-      UNILABOS_RUNTIME_DB: edgeRuntimeDatabasePath(config.runtimeDirectory),
       UNILABOS_OBSERVABILITYCONFIG_ENABLED: 'true',
       UNILABOS_OBSERVABILITYCONFIG_PROJECT_NAME: 'uni-lab-electron',
-      UNILABOS_HOSTLINKCONFIG_PORT: String(LOCAL_RUNTIME_PORTS.hostLink),
+      UNILABOS_HOSTLINKCONFIG_PORT: String(config.ports.hostLink),
       ROS_DOMAIN_ID: randomEdgeRosDomainId()
     }
   }
@@ -1032,26 +1209,6 @@ function randomEdgeRosDomainId(): string {
   const domainId = Math.floor(Math.random() * EDGE_ROS_DOMAIN_ID_COUNT)
     + EDGE_ROS_DOMAIN_ID_MIN
   return String(domainId)
-}
-
-function edgeRuntimeDatabasePath(
-  runtimeDirectory: string,
-  now = new Date()
-): string {
-  const timestamp = [
-    now.getFullYear(),
-    twoDigits(now.getMonth() + 1),
-    twoDigits(now.getDate()),
-    '-',
-    twoDigits(now.getHours()),
-    twoDigits(now.getMinutes()),
-    twoDigits(now.getSeconds())
-  ].join('')
-  return join(runtimeDirectory, `edge-runtime-${timestamp}.sqlite3`)
-}
-
-function twoDigits(value: number): string {
-  return String(value).padStart(2, '0')
 }
 
 function runtimeEnvironment(
@@ -1180,15 +1337,32 @@ async function resolveSimulatorWorkingDirectory(
   )
 }
 
+/**
+ * 等待已终止监听者真正释放全部端口，并在超时后报告仍占用的组件。
+ *
+ * @param requirements 已执行平台清理的端口要求。
+ * @returns 全部端口均不可连接时完成。
+ */
 async function requireAvailablePorts(
-  requirements: PortRequirement[]
+  requirements: LocalRuntimePortRequirement[]
 ): Promise<void> {
-  for (const requirement of requirements) {
-    if (await canConnect(HOST, requirement.port)) {
-      throw new Error(
-        `${requirement.label} 端口 ${requirement.port} 已被占用，请先停止已有进程`
-      )
+  const deadline = Date.now() + PORT_RELEASE_TIMEOUT_MS
+  while (Date.now() < deadline) {
+    let occupiedRequirement: LocalRuntimePortRequirement | null = null
+    for (const requirement of requirements) {
+      if (await canConnect(HOST, requirement.port)) {
+        occupiedRequirement = requirement
+        break
+      }
     }
+    if (!occupiedRequirement) return
+    await delay(100)
+  }
+  for (const requirement of requirements) {
+    if (!await canConnect(HOST, requirement.port)) continue
+    throw new Error(
+      `${requirement.label} 端口 ${requirement.port} 清理后仍被占用`
+    )
   }
 }
 
