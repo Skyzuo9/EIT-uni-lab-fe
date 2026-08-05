@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from 'node:child_process'
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -13,11 +13,45 @@ export const F06_INVOCATION_UUID =
 
 export interface F06CompositeRealOs {
   url: string
+  osRevision: GitRevisionEvidence
   compositeChildWorkflowUuid: string
   compositeParentWorkflowUuid: string
   compositeInvocationUuid: string
   logs: () => string
   stop: () => Promise<void>
+}
+
+/** 干净 Git 源码候选的可复核身份。 */
+export interface GitRevisionEvidence {
+  sha: string
+  dirty: false
+}
+
+/**
+ * 读取并锁定一个源码候选的 Git 身份。
+ *
+ * @param repository 待验收的仓库或工作树根目录。
+ * @param label 错误消息中的中文候选名称。
+ * @returns 当前完整提交 SHA 与固定的干净状态。
+ * @throws Git 查询失败或工作树存在修改/未跟踪文件时抛出异常。
+ */
+export function readCleanGitRevision(
+  repository: string,
+  label: string
+): GitRevisionEvidence {
+  const sha = execFileSync('git', ['rev-parse', 'HEAD'], {
+    cwd: repository,
+    encoding: 'utf8'
+  }).trim()
+  const status = execFileSync(
+    'git',
+    ['status', '--porcelain', '--untracked-files=normal'],
+    { cwd: repository, encoding: 'utf8' }
+  ).trim()
+  if (status) {
+    throw new Error(`${label}工作树不是干净候选:\n${status}`)
+  }
+  return { sha, dirty: false }
 }
 
 /**
@@ -35,6 +69,7 @@ export async function startF06CompositeRealOs(): Promise<F06CompositeRealOs> {
   const python =
     process.env.UNILAB_OS_PYTHON ||
     '/home/changjunhan/.micromamba/envs/unilab/bin/python'
+  const osRevision = readCleanGitRevision(osRepository, 'OS ')
   const directory = mkdtempSync(join(tmpdir(), 'unilab-f06-composite-'))
   const workingDirectory = join(directory, 'unilabos_data')
   const editableRoot = join(directory, 'editable')
@@ -70,6 +105,7 @@ export async function startF06CompositeRealOs(): Promise<F06CompositeRealOs> {
 
   return {
     url,
+    osRevision,
     compositeChildWorkflowUuid: F06_CHILD_WORKFLOW_UUID,
     compositeParentWorkflowUuid: F06_PARENT_WORKFLOW_UUID,
     compositeInvocationUuid: F06_INVOCATION_UUID,
