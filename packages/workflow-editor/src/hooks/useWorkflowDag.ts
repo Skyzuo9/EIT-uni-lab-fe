@@ -16,6 +16,7 @@ import {
   type WorkflowMaterialSwimlaneDirection
 } from '../utils/workflowDagLayoutStrategy'
 import { layoutWorkflowMaterialSwimlanes } from '../utils/workflowMaterialSwimlaneLayout'
+import { reconcileReactFlowNodeMeasurements } from '../utils/reactFlowNodeMeasurement'
 import {
   materialTraceAccent,
   projectMaterialTraces
@@ -72,7 +73,11 @@ export function useWorkflowDag(
   )
 
   useEffect(() => {
-    setNodes(fallback.flowNodes)
+    // `currentNodes` 是流程画布引擎当前持有、可能已完成测量的节点集合。
+    setNodes((currentNodes) => reconcileReactFlowNodeMeasurements(
+      currentNodes,
+      fallback.flowNodes
+    ))
     setEdges(fallback.flowEdges)
   }, [fallback, setEdges, setNodes])
 
@@ -86,7 +91,11 @@ export function useWorkflowDag(
     ).then((layout) => {
       if (cancelled) return
       const elements = buildFlowElements(layout, nodes, links, strategy)
-      setNodes(elements.flowNodes)
+      // `currentNodes` 是异步布局完成时仍有效的最新节点与测量集合。
+      setNodes((currentNodes) => reconcileReactFlowNodeMeasurements(
+        currentNodes,
+        elements.flowNodes
+      ))
       setEdges(elements.flowEdges)
     }).catch(() => {
       // ELK 不可用时保留已通过碰撞检测的同步分层布局。
