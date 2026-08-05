@@ -40,6 +40,10 @@ function registerWorkflowMaterialSourceCatalogTests(): void {
     loadsMaterialSourceCatalogInSiteBusinessOrder
   )
   it(
+    '框架模板 schema 被 wire omitempty 省略时仍按内部 null 加载',
+    loadsMaterialSourceCatalogWithOmittedScaffoldSchema
+  )
+  it(
     'OS 未发布精确物料来源框架模板时关闭失败',
     rejectsMissingExactMaterialSourceTemplate
   )
@@ -53,6 +57,29 @@ describe(
   '工作流物料来源（MaterialSource）目录适配器',
   registerWorkflowMaterialSourceCatalogTests
 )
+
+/**
+ * 验证框架模板（ScaffoldTemplate）的 `schema` 被 wire 省略时等价于显式 null。
+ *
+ * @returns Promise 完成时表示物料来源（MaterialSource）目录仍被合法加载。
+ * @throws 若省略值未规范为内部 null，则由 Vitest 断言失败。
+ */
+async function loadsMaterialSourceCatalogWithOmittedScaffoldSchema(): Promise<void> {
+  const fixture = responses()
+  // `detailTemplate` 是服务端经 `omitempty` 输出的框架模板 wire 记录。
+  const detailTemplate = (fixture[
+    `/api/v1/workflow-node-templates/${frameworkTemplateUuid}`
+  ] as { data: { template: Record<string, unknown> } }).data.template
+  delete detailTemplate.schema
+  const runtime = createWorkflowRuntime(
+    fixtureHttp(fixture, []),
+    getDefaultBackend('local-python'),
+    { materialGraph: fixtureMaterialGraph() }
+  )
+
+  const snapshot = await runtime.getWorkflowMaterialSourceCatalog()
+  expect(snapshot.template.uuid).toBe(frameworkTemplateUuid)
+}
 
 /**
  * 验证物料来源目录、公共物料图和库位（Site）业务顺序的完整投影。
