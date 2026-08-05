@@ -1,5 +1,9 @@
-import { Edges } from '@react-three/drei'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import {
+  BoxGeometry,
+  CylinderGeometry,
+  EdgesGeometry
+} from 'three'
 
 import type { LabFloorplanSite } from '../schema'
 import { labPoseToPascal, MILLIMETERS_TO_METERS } from '../units'
@@ -61,6 +65,28 @@ export function siteBoundsGeometry(
   return { kind: 'box', position, size: scale }
 }
 
+/**
+ * Drei's `Edges` uses an InstancedBufferGeometry whose default instance count
+ * is `Infinity`. WebGPU submits that value directly to `drawIndexed`, which
+ * rejects the entire frame. Native EdgesGeometry has a finite vertex count and
+ * keeps the same blue-outline presentation without poisoning Pascal's renderer.
+ */
+export function createSiteOutlineGeometry(
+  geometry: SiteBoundsGeometry
+): EdgesGeometry {
+  const surface = geometry.kind === 'cylinder'
+    ? new CylinderGeometry(
+        geometry.radius,
+        geometry.radius,
+        geometry.height,
+        32
+      )
+    : new BoxGeometry(...geometry.size)
+  const outline = new EdgesGeometry(surface, 15)
+  surface.dispose()
+  return outline
+}
+
 export function selectRenderableSiteBounds(
   sites: readonly LabFloorplanSite[],
   showSites: boolean,
@@ -97,7 +123,18 @@ function SiteBound({
   shown: boolean
   onHover: React.Dispatch<React.SetStateAction<string | null>>
 }): React.JSX.Element {
-  const geometry = siteBoundsGeometry(site)
+  const geometry = useMemo(
+    () => siteBoundsGeometry(site),
+    [site.positionMm, site.shape, site.sizeMm]
+  )
+  const outlineGeometry = useMemo(
+    () => createSiteOutlineGeometry(geometry),
+    [geometry]
+  )
+  useEffect(
+    () => () => outlineGeometry.dispose(),
+    [outlineGeometry]
+  )
   return (
     <mesh
       name={`unilab-site-bound-${site.id}`}
@@ -122,7 +159,13 @@ function SiteBound({
         transparent
       />
       {shown && (
-        <Edges color="#38bdf8" depthTest={false} threshold={15} />
+        <lineSegments geometry={outlineGeometry} renderOrder={19}>
+          <lineBasicMaterial
+            color="#38bdf8"
+            depthTest={false}
+            depthWrite={false}
+          />
+        </lineSegments>
       )}
     </mesh>
   )

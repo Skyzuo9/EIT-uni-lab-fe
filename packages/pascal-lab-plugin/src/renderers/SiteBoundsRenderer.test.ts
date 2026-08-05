@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { LabFloorplanSiteSchema } from '../schema'
 import {
+  createSiteOutlineGeometry,
   selectRenderableSiteBounds,
   siteBoundsGeometry,
   siteBoundsTransform
@@ -54,6 +55,25 @@ describe('SiteBoundsRenderer', () => {
       radius: 0.02,
       height: 0.06
     })
+  })
+
+  it('builds native finite-count outlines that cannot poison WebGPU draws', () => {
+    const site = LabFloorplanSiteSchema.parse({
+      id: 'site-outline',
+      key: 'outline',
+      name: 'outline',
+      shape: 'rectangle',
+      positionMm: [0, 0, 0],
+      sizeMm: [40, 50, 60],
+      occupied: false
+    })
+
+    const outline = createSiteOutlineGeometry(siteBoundsGeometry(site))
+    expect('isInstancedBufferGeometry' in outline).toBe(false)
+    expect(outline.index?.count ?? outline.attributes.position?.count).toBe(
+      24
+    )
+    outline.dispose()
   })
 
   it('shows all empty Sites when enabled and only the hovered one when disabled', () => {
