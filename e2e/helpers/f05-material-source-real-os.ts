@@ -45,6 +45,10 @@ export interface F05MaterialSourceRealOs {
   workingDirectory: string
   logs: () => string
   nativeLogs: () => readonly NativeLogEvidence[]
+  reserveWorkflowMaterial: (
+    workflowTaskUuid: string,
+    materialUuid: string
+  ) => { workflow_id: string; reserved_nodes: string[] }
   releaseWorkflowReservation: (
     workflowTaskUuid: string
   ) => { workflow_id: string; released_nodes: string[] }
@@ -213,6 +217,16 @@ export async function startF05MaterialSourceRealOs(): Promise<F05MaterialSourceR
     workingDirectory,
     logs: output.text.bind(output),
     nativeLogs: readNativeLogs.bind(undefined, workingDirectory),
+    reserveWorkflowMaterial: (workflowTaskUuid, materialUuid) =>
+      runReservationReserve({
+        python,
+        script: reservationControlScript,
+        inventoryDatabase: join(workingDirectory, 'inventory.db'),
+        workflowTaskUuid,
+        workflowNodeUuid: F05_SOURCE_NODE_UUID,
+        materialUuid,
+        pythonPath
+      }),
     releaseWorkflowReservation: (workflowTaskUuid) => runReservationRelease({
       python,
       script: reservationControlScript,
@@ -221,6 +235,51 @@ export async function startF05MaterialSourceRealOs(): Promise<F05MaterialSourceR
       pythonPath
     }),
     stop: createRuntimeStop(child, directory)
+  }
+}
+
+/**
+ * 在浏览器进程外调用生产库存服务建立真实短期测试占用。
+ *
+ * 参数：`input` 固定 Python、夹具、库存库、任务/节点/物料身份和导入路径。
+ * 返回：生产 `InventoryService.reserve_workflow` 的领域结果。
+ * 异常：子进程失败、JSON 缺失或结果身份漂移时抛出。
+ */
+function runReservationReserve(input: {
+  python: string
+  script: string
+  inventoryDatabase: string
+  workflowTaskUuid: string
+  workflowNodeUuid: string
+  materialUuid: string
+  pythonPath: string
+}): { workflow_id: string; reserved_nodes: string[] } {
+  const stdout = execFileSync(input.python, [
+    input.script,
+    'reserve',
+    input.inventoryDatabase,
+    input.workflowTaskUuid,
+    input.workflowNodeUuid,
+    input.materialUuid
+  ], {
+    encoding: 'utf8',
+    env: { ...process.env, PYTHONPATH: input.pythonPath }
+  })
+  const lines = stdout.trim().split('\n')
+  const result = JSON.parse(lines.at(-1) || 'null') as {
+    workflow_id?: unknown
+    reserved_nodes?: unknown
+  } | null
+  if (
+    !result || result.workflow_id !== input.workflowTaskUuid ||
+    !Array.isArray(result.reserved_nodes) ||
+    result.reserved_nodes.some((node) => typeof node !== 'string')
+  ) {
+    throw new Error(`短期预留建立结果无效：${JSON.stringify(result)}`)
+  }
+  return {
+    workflow_id: result.workflow_id,
+    reserved_nodes: result.reserved_nodes as string[]
   }
 }
 
@@ -240,6 +299,7 @@ function runReservationRelease(input: {
 }): { workflow_id: string; released_nodes: string[] } {
   const stdout = execFileSync(input.python, [
     input.script,
+    'release',
     input.inventoryDatabase,
     input.workflowTaskUuid
   ], {

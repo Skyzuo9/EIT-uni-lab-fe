@@ -72,6 +72,9 @@ interface NetworkEntry {
   status?: number
 }
 
+// 该身份只属于进程外验收夹具，用于在首个终态任务自动释放后制造真实库存冲突。
+const FIXTURE_HOLDER_TASK_UUID = 'f0500000-0000-4000-8000-000000000001'
+
 /**
  * 记录浏览器对真实 OS 的公共网络访问和运行时异常证据。
  *
@@ -336,6 +339,17 @@ async function runF05MaterialSourceAcceptance(
   )
   expect(firstRuntime.job.workflow_node_uuid).toBe(os.sourceNodeUuid)
 
+  // 只含来源的任务成功后必须自行释放短期预留；夹具随后通过同一生产
+  // InventoryService 明确建立测试占用，使第二个任务的等待不依赖资源泄漏。
+  const fixtureReserveResult = os.reserveWorkflowMaterial(
+    FIXTURE_HOLDER_TASK_UUID,
+    existingMaterialUuid
+  )
+  expect(fixtureReserveResult).toEqual({
+    workflow_id: FIXTURE_HOLDER_TASK_UUID,
+    reserved_nodes: [os.sourceNodeUuid]
+  })
+
   const secondEnvelope = await startWorkflowFromPanel(panel, page)
   expect(secondEnvelope.code).toBe(0)
   // `secondTaskUuid` 是争用相同既有物料的第二个工作流任务（WorkflowTask）身份。
@@ -364,9 +378,9 @@ async function runF05MaterialSourceAcceptance(
   expect(blockedAfterRetry.task.uuid).toBe(secondTaskUuid)
   expect(blockedAfterRetry.job.uuid).toBe(blockedJobUuid)
 
-  const releaseResult = os.releaseWorkflowReservation(firstTaskUuid)
+  const releaseResult = os.releaseWorkflowReservation(FIXTURE_HOLDER_TASK_UUID)
   expect(releaseResult).toEqual({
-    workflow_id: firstTaskUuid,
+    workflow_id: FIXTURE_HOLDER_TASK_UUID,
     released_nodes: [os.sourceNodeUuid]
   })
   const admittedReschedule = await page.evaluate(requestJsonInBrowser, {
@@ -427,6 +441,7 @@ async function runF05MaterialSourceAcceptance(
     workflowUuid: os.workflowUuid,
     existingMaterialUuid,
     firstTaskUuid,
+    fixtureReserveResult,
     secondTaskUuid,
     blockedJobUuid,
     releaseResult,
