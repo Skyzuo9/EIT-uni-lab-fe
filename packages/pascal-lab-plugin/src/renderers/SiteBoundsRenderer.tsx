@@ -1,10 +1,5 @@
-import { useLayoutEffect, useMemo, useRef } from 'react'
-import {
-  type InstancedMesh,
-  Matrix4,
-  Quaternion,
-  Vector3
-} from 'three'
+import { Edges } from '@react-three/drei'
+import { useMemo, useState } from 'react'
 
 import type { LabFloorplanSite } from '../schema'
 import { labPoseToPascal, MILLIMETERS_TO_METERS } from '../units'
@@ -13,6 +8,19 @@ export interface SiteBoundsTransform {
   position: [number, number, number]
   scale: [number, number, number]
 }
+
+export type SiteBoundsGeometry =
+  | {
+      kind: 'box'
+      position: [number, number, number]
+      size: [number, number, number]
+    }
+  | {
+      kind: 'cylinder'
+      position: [number, number, number]
+      radius: number
+      height: number
+    }
 
 /** Convert a lower-left Z-up Site box into a centered Pascal Y-up box. */
 export function siteBoundsTransform(
@@ -38,81 +46,132 @@ export function siteBoundsTransform(
   }
 }
 
-/** Lightweight instanced cages keep hundreds of warehouse Sites readable. */
+export function siteBoundsGeometry(
+  site: LabFloorplanSite
+): SiteBoundsGeometry {
+  const { position, scale } = siteBoundsTransform(site)
+  if (site.shape === 'circle') {
+    return {
+      kind: 'cylinder',
+      position,
+      radius: Math.min(scale[0], scale[2]) / 2,
+      height: scale[1]
+    }
+  }
+  return { kind: 'box', position, size: scale }
+}
+
+export function selectRenderableSiteBounds(
+  sites: readonly LabFloorplanSite[],
+  showSites: boolean,
+  hoveredSiteId: string | null
+): LabFloorplanSite[] {
+  return sites.filter(
+    (site) =>
+      site.visible &&
+      !site.occupied &&
+      (showSites || site.id === hoveredSiteId)
+  )
+}
+
+function SiteGeometry({
+  geometry
+}: {
+  geometry: SiteBoundsGeometry
+}): React.JSX.Element {
+  return geometry.kind === 'cylinder' ? (
+    <cylinderGeometry
+      args={[geometry.radius, geometry.radius, geometry.height, 32]}
+    />
+  ) : (
+    <boxGeometry args={geometry.size} />
+  )
+}
+
+function SiteBound({
+  site,
+  shown,
+  onHover
+}: {
+  site: LabFloorplanSite
+  shown: boolean
+  onHover: React.Dispatch<React.SetStateAction<string | null>>
+}): React.JSX.Element {
+  const geometry = siteBoundsGeometry(site)
+  return (
+    <mesh
+      name={`unilab-site-bound-${site.id}`}
+      position={geometry.position}
+      renderOrder={18}
+      userData={{ siteId: site.id, siteShape: geometry.kind }}
+      onPointerOver={(event) => {
+        event.stopPropagation()
+        onHover(site.id)
+      }}
+      onPointerOut={(event) => {
+        event.stopPropagation()
+        onHover((current) => (current === site.id ? null : current))
+      }}
+    >
+      <SiteGeometry geometry={geometry} />
+      <meshBasicMaterial
+        color="#bae6fd"
+        depthTest={false}
+        depthWrite={false}
+        opacity={shown ? 0.24 : 0}
+        transparent
+      />
+      {shown && (
+        <Edges color="#38bdf8" depthTest={false} threshold={15} />
+      )}
+    </mesh>
+  )
+}
+
+/**
+ * Empty Sites are always raycastable. The toolbar switch controls whether
+ * they are persistently visible; with it off, only the hovered Site appears.
+ */
 export function SiteBoundsRenderer({
-  sites
+  sites,
+  showSites
 }: {
   sites: readonly LabFloorplanSite[]
+  showSites: boolean
 }): React.JSX.Element | null {
-  const visibleSites = useMemo(
-    () => sites.filter((site) => site.visible),
+  const [hoveredSiteId, setHoveredSiteId] = useState<string | null>(null)
+  const hitSites = useMemo(
+    () => selectRenderableSiteBounds(sites, true, null),
     [sites]
   )
-  const transforms = useMemo(
-    () => visibleSites.map(siteBoundsTransform),
-    [visibleSites]
+  const shownSiteIds = useMemo(
+    () =>
+      new Set(
+        selectRenderableSiteBounds(sites, showSites, hoveredSiteId).map(
+          (site) => site.id
+        )
+      ),
+    [hoveredSiteId, showSites, sites]
   )
-  const fillRef = useRef<InstancedMesh>(null!)
-  const wireRef = useRef<InstancedMesh>(null!)
 
-  useLayoutEffect(() => {
-    const quaternion = new Quaternion()
-    const matrix = new Matrix4()
-    for (const [index, transform] of transforms.entries()) {
-      matrix.compose(
-        new Vector3(...transform.position),
-        quaternion,
-        new Vector3(...transform.scale)
-      )
-      fillRef.current?.setMatrixAt(index, matrix)
-      wireRef.current?.setMatrixAt(index, matrix)
-    }
-    if (fillRef.current) {
-      fillRef.current.instanceMatrix.needsUpdate = true
-      fillRef.current.computeBoundingSphere()
-    }
-    if (wireRef.current) {
-      wireRef.current.instanceMatrix.needsUpdate = true
-      wireRef.current.computeBoundingSphere()
-    }
-  }, [transforms])
-
-  if (visibleSites.length === 0) return null
+  if (hitSites.length === 0) return null
 
   return (
     <group
       name="unilab-site-bounds"
-      userData={{ siteCount: visibleSites.length }}
+      userData={{
+        hitSiteCount: hitSites.length,
+        shownSiteCount: shownSiteIds.size
+      }}
     >
-      <instancedMesh
-        ref={fillRef}
-        args={[undefined, undefined, visibleSites.length]}
-        frustumCulled={false}
-        renderOrder={18}
-      >
-        <boxGeometry args={[1, 1, 1]} />
-        <meshBasicMaterial
-          color="#7dd3fc"
-          depthWrite={false}
-          opacity={0.14}
-          transparent
+      {hitSites.map((site) => (
+        <SiteBound
+          key={site.id}
+          site={site}
+          shown={shownSiteIds.has(site.id)}
+          onHover={setHoveredSiteId}
         />
-      </instancedMesh>
-      <instancedMesh
-        ref={wireRef}
-        args={[undefined, undefined, visibleSites.length]}
-        frustumCulled={false}
-        renderOrder={19}
-      >
-        <boxGeometry args={[1, 1, 1]} />
-        <meshBasicMaterial
-          color="#38bdf8"
-          depthWrite={false}
-          opacity={0.58}
-          transparent
-          wireframe
-        />
-      </instancedMesh>
+      ))}
     </group>
   )
 }

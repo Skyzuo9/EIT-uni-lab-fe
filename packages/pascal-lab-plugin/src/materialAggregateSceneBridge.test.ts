@@ -257,7 +257,19 @@ describe('Material Aggregate / Pascal bridge', () => {
     if (!isLabDeviceNode(node)) throw new Error('Expected lab device')
 
     expect(node.renderBody).toBe(false)
+    expect(node.floorplanSnapshot?.showSites).toBe(true)
     expect(node.floorplanSnapshot?.sites).toHaveLength(1)
+    expect(node.floorplanSnapshot?.sites[0]?.occupied).toBe(false)
+
+    const hoverOnlyScene = materialAggregatesToSceneGraph([warehouse], {
+      showSites: false
+    })
+    const hoverOnlyNode = hoverOnlyScene.nodes['lab-logical-warehouse']
+    if (!isLabDeviceNode(hoverOnlyNode)) {
+      throw new Error('Expected hover-only lab device')
+    }
+    expect(hoverOnlyNode.floorplanSnapshot?.showSites).toBe(false)
+    expect(hoverOnlyNode.floorplanSnapshot?.sites).toHaveLength(1)
   })
 
   it('flattens a static root-anchored child into world space', () => {

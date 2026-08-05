@@ -52,6 +52,7 @@ export const LabFloorplanSiteSchema = z.object({
   positionMm: Vector3Schema,
   sizeMm: Vector3Schema,
   visible: z.boolean().default(true),
+  occupied: z.boolean().default(false),
   visualState: z
     .enum(['empty', 'occupied', 'filled', 'tip-present'])
     .default('empty')
@@ -67,6 +68,7 @@ export const LabFloorplanSnapshotSchema = z.object({
   worldPositionMm: Vector3Schema,
   worldRotationDegXYZ: Vector3Schema,
   footprintMm: z.tuple([z.number(), z.number()]),
+  showSites: z.boolean().default(true),
   sites: z.array(LabFloorplanSiteSchema).default([])
 })
 

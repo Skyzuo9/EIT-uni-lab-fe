@@ -240,7 +240,11 @@ test('SZLab MaterialGraph renders complete 2.5D and 3D views', async ({
   await expect(siteLayerToggle).toHaveAttribute('aria-pressed', 'true')
   const viewer = page.locator('[data-pascal-viewer-3d]')
   await expect(viewer).toBeVisible({ timeout: 30_000 })
-  await expect(viewer.locator('canvas')).toBeVisible()
+  const viewerCanvas = viewer.locator('canvas')
+  await expect(viewerCanvas).toBeVisible()
+  await expect(viewerCanvas.locator('..').locator('..')).toHaveClass(
+    /bg-\[#fafafa\]/
+  )
   await expect(page.getByText('126 个物料 · 只读')).toBeVisible()
   const viewerBox = await viewer.boundingBox()
   expect(viewerBox?.width ?? 0).toBeGreaterThan(900)

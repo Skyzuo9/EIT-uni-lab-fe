@@ -127,22 +127,21 @@ export function materialAggregatesToSceneGraph(
         worldPositionMm: worldPose.positionMm,
         worldRotationDegXYZ: worldPose.rotationDegXYZ,
         footprintMm: rendering.footprintMm,
-        sites:
-          options.showSites === false
-            ? []
-            : aggregate.sites
-                .filter((site) => shouldRenderSiteBounds(aggregate, site))
-                .map((site) => ({
-                  id: site.id,
-                  key: site.key,
-                  name: site.name,
-                  kind: site.kind,
-                  shape: site.shape,
-                  positionMm: site.poseInAnchor.positionMm,
-                  sizeMm: site.sizeMm,
-                  visible: site.visible !== false,
-                  visualState: site.visual?.state ?? 'empty'
-                }))
+        showSites: options.showSites !== false,
+        sites: aggregate.sites
+          .filter((site) => shouldRenderSiteBounds(aggregate, site))
+          .map((site) => ({
+            id: site.id,
+            key: site.key,
+            name: site.name,
+            kind: site.kind,
+            shape: site.shape,
+            positionMm: site.poseInAnchor.positionMm,
+            sizeMm: site.sizeMm,
+            visible: site.visible !== false,
+            occupied: site.occupiedMaterialIds.length > 0,
+            visualState: site.visual?.state ?? 'empty'
+          }))
       }
     }
 

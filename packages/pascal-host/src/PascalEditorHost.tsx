@@ -27,6 +27,7 @@ export interface PascalEditorHostProps {
   floorplanOverlay?: ReactNode
   editorViewMode?: '2d' | '3d' | 'split'
   sceneTheme?: string
+  showGrid?: boolean
   editorProps?: Omit<
     EditorProps,
     'layoutVersion' | 'onDirty' | 'onLoad' | 'onSave' | 'projectId'
@@ -49,6 +50,7 @@ export function PascalEditorHost({
   floorplanOverlay,
   editorViewMode,
   sceneTheme,
+  showGrid,
   editorProps
 }: PascalEditorHostProps): React.JSX.Element {
   const sceneRef = useRef(scene)
@@ -127,6 +129,20 @@ export function PascalEditorHost({
       useViewer.persist.onFinishHydration(applySceneTheme)
     return unsubscribe
   }, [sceneTheme])
+
+  useEffect(() => {
+    if (showGrid === undefined) return
+    const applyGridVisibility = (): void => {
+      const viewer = useViewer.getState()
+      if (viewer.showGrid !== showGrid) {
+        viewer.setShowGrid(showGrid)
+      }
+    }
+    applyGridVisibility()
+    const unsubscribe =
+      useViewer.persist.onFinishHydration(applyGridVisibility)
+    return unsubscribe
+  }, [showGrid])
 
   useEffect(() => {
     if (!isPrepared || !hasLoadedScene) return

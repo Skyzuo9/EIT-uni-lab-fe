@@ -64,7 +64,10 @@ export default function LabTableRenderer({
           />
         </mesh>
       ))}
-      <SiteBoundsRenderer sites={node.floorplanSnapshot?.sites ?? []} />
+      <SiteBoundsRenderer
+        sites={node.floorplanSnapshot?.sites ?? []}
+        showSites={node.floorplanSnapshot?.showSites ?? true}
+      />
       <Html position={[0, height + 0.08, 0]} center>
         <div
           className={`pascal-model-label${

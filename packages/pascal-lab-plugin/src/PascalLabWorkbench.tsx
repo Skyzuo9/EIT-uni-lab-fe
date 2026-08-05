@@ -87,7 +87,6 @@ export function PascalLabWorkbench({
     () => materialIdsToSceneObjectIds(scene, highlightedMaterialIds),
     [highlightedMaterialIds, scene]
   )
-
   useEffect(() => {
     const state = useViewer.getState()
     if (!sameIds(state.selection.selectedIds, selectedSceneObjectIds)) {
@@ -203,7 +202,8 @@ export function PascalLabWorkbench({
           prepare={prepare}
           readOnly={!editable}
           editorViewMode={pascalViewMode}
-          sceneTheme="night"
+          sceneTheme="studio"
+          showGrid
           floorplanOverlay={
             <MaterialCanvas
               floorplanOverlay

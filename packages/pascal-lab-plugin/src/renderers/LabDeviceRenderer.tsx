@@ -371,7 +371,10 @@ export default function LabDeviceRenderer({
         </group>
       )}
       {node.model.instances && <SiteInstanceRenderer node={node} />}
-      <SiteBoundsRenderer sites={node.floorplanSnapshot?.sites ?? []} />
+      <SiteBoundsRenderer
+        sites={node.floorplanSnapshot?.sites ?? []}
+        showSites={node.floorplanSnapshot?.showSites ?? true}
+      />
       {(showPersistentTag || isHovered || isSelected) && (
         <ModelLabel
           node={node}
