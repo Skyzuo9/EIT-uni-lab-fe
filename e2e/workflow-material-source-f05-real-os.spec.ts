@@ -6,6 +6,7 @@ import {
   type Page,
   type Request,
   type Response,
+  type TestInfo,
   type WebSocket
 } from '@playwright/test'
 import { setTimeout as delay } from 'node:timers/promises'
@@ -179,6 +180,18 @@ class BrowserEvidenceCollector {
     }
     return false
   }
+
+  /**
+   * 判断浏览器是否收到失败的 OS 公共响应。
+   *
+   * 参数：无。返回：任一 v1 响应状态码不小于 400 时为 `true`。异常：无。
+   */
+  hasFailedResponse(): boolean {
+    for (const entry of this.responses) {
+      if ((entry.status ?? 0) >= 400) return true
+    }
+    return false
+  }
 }
 
 /**
@@ -232,9 +245,21 @@ async function startRealOs(): Promise<void> {
 /**
  * 停止本文件唯一真实 OS 运行时。
  *
- * 参数：无。返回：无。异常：清理失败时原样传播。
+ * 参数：`testInfo` 提供本轮结果；失败时在停机前保留 native 日志。
+ * 返回：无。异常：证据落盘或清理失败时原样传播。
  */
-async function stopRealOs(): Promise<void> {
+async function stopRealOs({}, testInfo: TestInfo): Promise<void> {
+  if (testInfo.status !== 'passed' && os) {
+    writeF05Evidence({
+      outcome: 'failed',
+      testStatus: testInfo.status,
+      frontendRevision: readGitRevision(process.cwd()),
+      osRevision: os.osRevision,
+      nativeCommand: os.command,
+      nativeStdout: os.logs(),
+      nativeLogs: os.nativeLogs()
+    })
+  }
   await os?.stop()
 }
 
@@ -297,7 +322,9 @@ async function runF05MaterialSourceAcceptance(
 
   const firstCreated = startWorkflowFromPanel(panel, page)
   const firstEnvelope = await firstCreated
-  expect(firstEnvelope.code).toBe(0)
+  if (firstEnvelope.code !== 0) {
+    throw new Error(`首个工作流任务创建失败：${JSON.stringify(firstEnvelope)}`)
+  }
   // `firstTaskUuid` 是成功取得短期遗留库存预留的首个工作流任务（WorkflowTask）身份。
   const firstTaskUuid = (firstEnvelope.data as { uuid: string }).uuid
   expect(firstTaskUuid).toMatch(UUID_PATTERN)
@@ -337,7 +364,26 @@ async function runF05MaterialSourceAcceptance(
   expect(blockedAfterRetry.task.uuid).toBe(secondTaskUuid)
   expect(blockedAfterRetry.job.uuid).toBe(blockedJobUuid)
 
-  await sourceNode.click({ position: { x: 42, y: 42 } })
+  const releaseResult = os.releaseWorkflowReservation(firstTaskUuid)
+  expect(releaseResult).toEqual({
+    workflow_id: firstTaskUuid,
+    released_nodes: [os.sourceNodeUuid]
+  })
+  const admittedReschedule = await page.evaluate(requestJsonInBrowser, {
+    url: `${os.url}/api/v1/reschedule`,
+    method: 'POST'
+  })
+  expect(admittedReschedule.status).toBe(200)
+  const admittedRuntime = await waitForTaskAndJob(
+    os.url,
+    secondTaskUuid,
+    'succeeded',
+    'succeeded'
+  )
+  expect(admittedRuntime.task.uuid).toBe(secondTaskUuid)
+  expect(admittedRuntime.job.uuid).toBe(blockedJobUuid)
+
+  await clickVisibleCanvasWorkflowNode(panel, os.sourceNodeUuid)
   await inspector.getByRole('button', {
     name: '新建物料',
     exact: true
@@ -366,6 +412,7 @@ async function runF05MaterialSourceAcceptance(
   expect(evidence.hasRequest('POST', '/api/v1/workflow-tasks')).toBe(true)
   expect(evidence.hasRequest('POST', '/api/v1/reschedule')).toBe(true)
   expect(evidence.hasPrivateInventoryRequest()).toBe(false)
+  expect(evidence.hasFailedResponse()).toBe(false)
   expect(evidence.websocketUrls).toEqual([])
   expect(evidence.consoleErrors).toEqual([])
   expect(evidence.pageErrors).toEqual([])
@@ -382,6 +429,8 @@ async function runF05MaterialSourceAcceptance(
     firstTaskUuid,
     secondTaskUuid,
     blockedJobUuid,
+    releaseResult,
+    admittedRuntime,
     fixedExecutor,
     requests: evidence.requests,
     responses: evidence.responses,
@@ -440,7 +489,16 @@ async function saveAndApply(panel: Locator, page: Page): Promise<void> {
     name: '接受完整差异并保存',
     exact: true
   }).click()
+  const applyMatcher = new PublicResponseMatcher(
+    'POST',
+    `/api/v1/workflows/${os.workflowUuid}/authoring/apply`
+  )
+  const applyResponsePromise = page.waitForResponse(applyMatcher.matches)
   await panel.getByRole('button', { name: '应用工作流', exact: true }).click()
+  const applyResponse = await applyResponsePromise
+  const applyEnvelope = await applyResponse.json() as PublicEnvelope<unknown>
+  expect(applyResponse.status()).toBe(200)
+  expect(applyEnvelope.code).toBe(0)
   await expect(panel.getByText(/(?:工作流|源码)已应用/)).toBeVisible()
 }
 
