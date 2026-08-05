@@ -19,6 +19,7 @@
     "test:e2e:workflow-composite": "node scripts/run-f06-composite-e2e.mjs",
     "test:e2e:workflow-task-input-f07": "node scripts/run-f07-task-input-e2e.mjs",
     "test:e2e:workflow-single-node-f08": "node scripts/run-f08-single-node-e2e.mjs",
+    "test:e2e:workflow-sse-reconnect-f09": "node scripts/run-f09-sse-reconnect-e2e.mjs",
     "test:e2e:workflow-authoring-import": "playwright test e2e/workflow-authoring-import-real-os.spec.ts",
     "test:e2e:workflow-task-runtime": "playwright test e2e/workflow-task-runtime-real-os.spec.ts",
     "test:e2e:workflow-task-runtime-resilience": "playwright test e2e/workflow-task-runtime-resilience-real-os.spec.ts",

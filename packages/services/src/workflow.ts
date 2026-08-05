@@ -701,6 +701,15 @@ export function createWorkflowRuntime(
           body: JSON.stringify({ candidate_hash: body.candidate_hash })
         }
       ),
+    /**
+     * 订阅指定工作流的创作（Authoring）失效通知。
+     *
+     * 参数：`workflowUuid` 是工作流身份，`onInvalidate` 接收匹配该身份的小型
+     * 失效通知，`options` 提供恢复游标与连接生命周期回调。返回：可幂等释放的
+     * 订阅。异常：连接和解码失败通过 `options.onError` 报告并自动重连，不从
+     * 此调用同步抛出。安全：SSE 数据不得直接成为工作流事实，消费者必须用
+     * REST 复原权威状态。
+     */
     subscribeWorkflowAuthoring: (
       workflowUuid,
       onInvalidate,
@@ -713,6 +722,12 @@ export function createWorkflowRuntime(
       let openedConnections = 0
       const seenEventIds = new Set<string>()
 
+      /**
+       * 安排工作流创作（Authoring）失效流的延迟重连。
+       *
+       * 参数：无。返回：无；至多安装一个三秒后的重连计时器。
+       * 异常：计时器平台异常会原样传播；已释放订阅不会再安排连接。
+       */
       const scheduleReconnect = (): void => {
         if (disposed || reconnectTimer !== null) return
         reconnectTimer = globalThis.setTimeout(() => {
@@ -721,15 +736,23 @@ export function createWorkflowRuntime(
         }, 3000)
       }
 
+      /**
+       * 打开工作流创作（Authoring）失效流，并从当前持久游标继续消费。
+       *
+       * 参数：无。返回：流关闭、失败或订阅释放后完成。
+       * 异常：连接和解码异常通过 `onError` 报告并安排重连；主动中止静默结束。
+       * 安全：SSE 仅发失效通知，权威工作流事实仍必须由 REST 读取。
+       */
       const connect = async (): Promise<void> => {
         if (disposed) return
-        controller = new AbortController()
+        const connectionController = new AbortController()
+        controller = connectionController
         const headers = new Headers({ Accept: 'text/event-stream' })
         if (cursor) headers.set('Last-Event-ID', cursor)
         try {
           const response = await globalThis.fetch(
             workflowEventsUrl(backend),
-            { headers, signal: controller.signal }
+            { headers, signal: connectionController.signal }
           )
           if (!response.ok || !response.body) {
             throw new Error(
@@ -759,25 +782,53 @@ export function createWorkflowRuntime(
               event: 'workflow.authoring.changed',
               data
             })
-          }, controller.signal)
+          }, connectionController.signal)
           scheduleReconnect()
         } catch (error) {
-          if (disposed || controller.signal.aborted) return
+          if (disposed || connectionController.signal.aborted) return
           options.onError?.(asError(error))
           scheduleReconnect()
         }
       }
 
-      const subscription: WorkflowEventSubscription = {
-        dispose: () => {
-          if (disposed) return
-          disposed = true
-          controller?.abort()
-          if (reconnectTimer !== null) {
-            globalThis.clearTimeout(reconnectTimer)
-          }
-          subscriptions.delete(subscription)
+      /**
+       * 浏览器恢复在线时终止可能半开的工作流创作（Authoring）旧流并立即重连。
+       *
+       * 参数：无；由全局 `online` 事件调用。返回：无。
+       * 异常：连接异常由 `connect` 转换为订阅错误；释放后的事件被忽略。
+       * 安全：重连沿用已确认的最后事件 ID，不把 SSE 数据当作工作流权威事实。
+       */
+      const reconnectWhenOnline = (): void => {
+        if (disposed) return
+        if (reconnectTimer !== null) {
+          globalThis.clearTimeout(reconnectTimer)
+          reconnectTimer = null
         }
+        controller?.abort()
+        void connect()
+      }
+
+      globalThis.addEventListener?.('online', reconnectWhenOnline)
+
+      /**
+       * 幂等释放工作流创作（Authoring）订阅拥有的网络与计时器资源。
+       *
+       * 参数：无。返回：无。异常：无；重复调用直接返回。
+       * 安全：释放后移除全局在线监听器、中止当前连接并禁止任何后续重连。
+       */
+      const disposeAuthoringSubscription = (): void => {
+        if (disposed) return
+        disposed = true
+        controller?.abort()
+        globalThis.removeEventListener?.('online', reconnectWhenOnline)
+        if (reconnectTimer !== null) {
+          globalThis.clearTimeout(reconnectTimer)
+        }
+        subscriptions.delete(subscription)
+      }
+
+      const subscription: WorkflowEventSubscription = {
+        dispose: disposeAuthoringSubscription
       }
       subscriptions.add(subscription)
       void connect()

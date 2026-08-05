@@ -10,6 +10,7 @@ import { useCodeMirror, CodeEditor } from '@unilab/code-editor'
 import { SlideOverDrawer } from '@unilab/design-system'
 import type {
   WorkflowActionCatalogSnapshot,
+  WorkflowAuthoringChangedEvent,
   WorkflowNodeJob,
   WorkflowAuthoringDiagnostic,
   WorkflowAuthoringAggregate,
@@ -779,82 +780,174 @@ export function PersistentWorkflowAuthoringPanel({
     }
   }, [installAggregate, queue, runtime, workflowUuid])
 
-  useEffect(() => {
-    let active = true
-    let refreshInFlight = false
-    let refreshPending = false
+  useEffect(
+    /**
+     * 维持当前工作流创作（Authoring）的失效订阅与 REST 权威复原循环。
+     *
+     * 参数：无；闭包绑定当前工作流身份、运行端口和本地编辑状态。返回：卸载或
+     * 依赖变化时调用的资源释放函数。异常：SSE 与 REST 失败均转换为界面错误，
+     * 不从 effect 抛出。安全：失效通知不直接安装状态，所有事实均由 REST 读取。
+     */
+    function synchronizeAuthoringAuthority(): () => void {
+      let active = true
+      let refreshInFlight = false
+      let refreshPending = false
+      let lastRefreshError: string | null = null
 
-    const refreshFromAuthority = async (): Promise<void> => {
-      if (refreshInFlight) {
-        refreshPending = true
-        return
-      }
-      refreshInFlight = true
-      try {
-        do {
-          refreshPending = false
-          const next = await queue.run(
-            () => runtime.getWorkflowAuthoring(workflowUuid)
-          )
-          if (!active) return
-          const current = localState.current
-          if (isSameAuthoringVersion(next, current.aggregate)) {
+      /**
+       * 从 REST 读取当前工作流创作（Authoring）权威聚合。
+       *
+       * 参数：无。返回：服务端持久聚合。异常：网络、信封或合同错误原样拒绝，
+       * 由刷新循环转换为界面错误。
+       */
+      const readAuthoringAuthority = (): Promise<WorkflowAuthoringAggregate> =>
+        runtime.getWorkflowAuthoring(workflowUuid)
+
+      /**
+       * 合并并串行执行一次 REST 权威状态刷新。
+       *
+       * 参数：无。返回：刷新完成、合并到在途刷新或组件失活后完成。异常：读取
+       * 失败转为本刷新循环拥有的界面错误；成功后只清除同一错误。安全：脏本地
+       * 编辑不会被覆盖，而会进入显式冲突处理。
+       */
+      const refreshFromAuthority = async (): Promise<void> => {
+        if (refreshInFlight) {
+          refreshPending = true
+          return
+        }
+        refreshInFlight = true
+        try {
+          do {
+            refreshPending = false
+            const next = await queue.run(readAuthoringAuthority)
+            if (!active) return
+            if (lastRefreshError !== null) {
+              const recoveredError = lastRefreshError
+              lastRefreshError = null
+              /**
+               * 只清除本刷新循环先前写入且现已恢复的错误。
+               *
+               * 参数：`current` 是最新界面错误。返回：匹配时清空，否则保留。
+               * 异常：无；不修改其他操作拥有的错误。
+               */
+              const clearRecoveredRefreshError = (
+                current: string | null
+              ): string | null => current === recoveredError ? null : current
+              setError(clearRecoveredRefreshError)
+            }
+            const current = localState.current
+            if (isSameAuthoringVersion(next, current.aggregate)) {
+              remotePending.current = false
+              continue
+            }
+            const dirtyAtInstall = current.mode === 'code'
+              ? current.codeDirty
+              : current.canvasDirty
+            if (dirtyAtInstall) {
+              remotePending.current = true
+              setRemoteConflict({
+                remote: next,
+                localMode: current.mode,
+                localPython: current.editorValue,
+                localGraph: current.graph,
+                selectedNodeUuid: current.selectedNodeUuid,
+                selectedNodeName: current.selectedNodeName,
+                selectedNodeNameDirty: current.selectedNodeNameDirty
+              })
+              setMessage('检测到外部修改；本地内容已保留，请比较后明确处理')
+              return
+            }
             remotePending.current = false
-            continue
+            installAggregate(next, '已同步外部修改')
+          } while (active && refreshPending)
+        } catch (refreshError) {
+          if (active) {
+            lastRefreshError = errorMessage(refreshError)
+            setError(lastRefreshError)
           }
-          const dirtyAtInstall = current.mode === 'code'
-            ? current.codeDirty
-            : current.canvasDirty
-          if (dirtyAtInstall) {
-            remotePending.current = true
-            setRemoteConflict({
-              remote: next,
-              localMode: current.mode,
-              localPython: current.editorValue,
-              localGraph: current.graph,
-              selectedNodeUuid: current.selectedNodeUuid,
-              selectedNodeName: current.selectedNodeName,
-              selectedNodeNameDirty: current.selectedNodeNameDirty
-            })
-            setMessage('检测到外部修改；本地内容已保留，请比较后明确处理')
-            return
-          }
-          remotePending.current = false
-          installAggregate(next, '已同步外部修改')
-        } while (active && refreshPending)
-      } catch (refreshError) {
-        if (active) setError(errorMessage(refreshError))
-      } finally {
-        refreshInFlight = false
+        } finally {
+          refreshInFlight = false
+        }
       }
-    }
 
-    const subscription = runtime.subscribeWorkflowAuthoring(
-      workflowUuid,
-      (event) => {
+      /**
+       * 处理工作流创作（Authoring）失效流连接成功，并在重连后复原权威状态。
+       *
+       * 参数：`state` 提供当前游标及是否为重连。返回：无；重连时异步安排一次
+       * 权威状态刷新。异常：不主动抛出，刷新失败由刷新循环呈现。
+       * 安全：SSE 只作为失效信号，界面状态只从 REST 响应安装。
+       */
+      const handleRealtimeOpen = (state: {
+        lastEventId: string
+        reconnected: boolean
+      }): void => {
+        /**
+         * 清除已恢复的工作流创作（Authoring）实时连接错误。
+         *
+         * 参数：`current` 是最新界面错误。返回：匹配实时错误时清空，否则保留。
+         * 异常：无；不清除其他编辑或请求错误。
+         */
+        const clearRecoveredRealtimeError = (
+          current: string | null
+        ): string | null =>
+          current?.startsWith('工作流创作实时同步中断：')
+            ? null
+            : current
+        setError(clearRecoveredRealtimeError)
+        if (state.reconnected) {
+          remotePending.current = true
+          void refreshFromAuthority()
+        }
+      }
+
+      /**
+       * 呈现工作流创作（Authoring）失效流中断。
+       *
+       * 参数：`streamError` 是 SSE 连接或解码错误。返回：无；错误保留到重连
+       * 成功或后续操作覆盖。异常：不主动抛出。
+       */
+      const handleRealtimeError = (streamError: Error): void => {
+        setError(`工作流创作实时同步中断：${streamError.message}`)
+      }
+
+      /**
+       * 把匹配当前工作流的失效通知转换为一次 REST 权威刷新。
+       *
+       * 参数：`event` 是已按工作流身份过滤的小型失效通知。返回：无；需要时
+       * 异步安排刷新。异常：不主动抛出，刷新失败由刷新循环呈现。
+       * 安全：事件载荷不直接写入编辑状态。
+       */
+      const handleAuthoringInvalidation = (
+        event: WorkflowAuthoringChangedEvent
+      ): void => {
         const current = localState.current
         if (isCurrentAuthoringInvalidation(event, current.aggregate)) return
         remotePending.current = true
         void refreshFromAuthority()
-      },
-      {
-        onOpen: () => {
-          setError((current) =>
-            current?.startsWith('工作流编辑实时同步中断：')
-              ? null
-              : current
-          )
-        },
-        onError: (streamError) => {
-          setError(`Authoring 实时同步中断：${streamError.message}`)
-        }
       }
-    )
-    return () => {
-      active = false
-      subscription.dispose()
-    }
-  }, [installAggregate, queue, runtime, workflowUuid])
+
+      const subscription = runtime.subscribeWorkflowAuthoring(
+        workflowUuid,
+        handleAuthoringInvalidation,
+        {
+          onOpen: handleRealtimeOpen,
+          onError: handleRealtimeError
+        }
+      )
+      /**
+       * 释放本 effect 拥有的工作流创作（Authoring）实时订阅。
+       *
+       * 参数：无。返回：无。异常：释放接口保证幂等且不抛出。
+       * 安全：先标记失活，阻止任何在途 REST 响应安装到卸载组件。
+       */
+      const disposeAuthoringSynchronization = (): void => {
+        active = false
+        subscription.dispose()
+      }
+      return disposeAuthoringSynchronization
+    },
+    [installAggregate, queue, runtime, workflowUuid]
+  )
 
   const run = useCallback(async (
     operation: () => Promise<void>
