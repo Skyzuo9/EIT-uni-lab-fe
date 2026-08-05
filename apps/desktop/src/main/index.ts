@@ -18,6 +18,10 @@ import {
   deviceCardAgentEndpoint
 } from './deviceCardAgentBridge'
 import { DeviceCardAgentCliManager } from './deviceCardAgentCli'
+import {
+  createDiagnosticLogSessionId,
+  resolveDesktopMainLogPath
+} from './diagnosticLogSession'
 import { discoverDefaultCondaEnvironment } from './localRuntimeEnvironment'
 import {
   LocalRuntimeManager,
@@ -50,8 +54,22 @@ interface OpenFilePayload {
   accept?: 'json' | 'python'
 }
 
-// 诊断日志：写到家目录 ~/lab-pc-client.log，便于定位启动/渲染错误
-const LOG_PATH = join(homedir(), 'lab-pc-client.log')
+// 本次应用生命周期只创建一个日志会话，供主进程和本地运行子进程共同使用。
+const DIAGNOSTIC_LOG_SESSION_ID = createDiagnosticLogSessionId()
+// 主日志保持位于家目录，兼容既有安装包中的故障排查路径。
+const LOG_PATH = resolveDesktopMainLogPath(
+  homedir(),
+  DIAGNOSTIC_LOG_SESSION_ID
+)
+
+/**
+ * 追加一条带 UTC 时间的 Electron 主进程诊断信息。
+ *
+ * @param message 已由调用方去除敏感内容的诊断消息。
+ * @returns 无返回值；写入失败时保持主进程继续运行。
+ * @throws 不向调用方抛出文件系统异常。
+ * @safety 路径在应用加载时冻结，消息不会改变目标文件位置。
+ */
 function logLine(message: string): void {
   try {
     appendFileSync(LOG_PATH, `[${new Date().toISOString()}] ${message}\n`)
@@ -260,6 +278,13 @@ function createWindow(): void {
   }
 }
 
+/**
+ * 完成 Electron 应用初始化，并把同一诊断日志会话注入本地运行管理器。
+ *
+ * @returns 初始化完成后无业务返回值。
+ * @throws 关键初始化失败时拒绝 Promise，由 Electron 启动错误链路处理。
+ * @safety IPC 处理器仍校验主渲染器身份；日志路径不接收渲染器输入。
+ */
 app.whenReady().then(async () => {
   logLine('app ready')
   electronObservability.record('electron.app.ready')
@@ -350,7 +375,8 @@ app.whenReady().then(async () => {
       if (window && !window.isDestroyed()) {
         window.webContents.send('runtime:snapshot', snapshot)
       }
-    }
+    },
+    DIAGNOSTIC_LOG_SESSION_ID
   )
 
   ipcMain.handle(

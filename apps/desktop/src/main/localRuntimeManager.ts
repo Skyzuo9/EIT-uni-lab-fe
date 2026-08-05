@@ -21,6 +21,10 @@ import {
 import { Writable } from 'node:stream'
 
 import {
+  LOCAL_RUNTIME_LOG_KINDS,
+  resolveLocalRuntimeLogPath
+} from './diagnosticLogSession'
+import {
   IDLE_LOCAL_RUNTIME_SNAPSHOT,
   type LocalRuntimeLaunchConfig,
   type LocalRuntimeLogBatch,
@@ -98,11 +102,6 @@ const LOCAL_RUNTIME_LOG_READ_LIMIT_BYTES = 128 * 1024
 const LOCAL_RUNTIME_LOG_BATCH_LIMIT_BYTES = 64 * 1024
 const LOCAL_RUNTIME_LOG_MAX_BYTES = 10 * 1024 * 1024
 const LOCAL_RUNTIME_LOG_BACKUP_COUNT = 5
-const LOCAL_RUNTIME_LOG_KINDS: readonly LocalRuntimeProcessKind[] = [
-  'simulator',
-  'edge'
-]
-
 // 启动器为每次 Edge 子进程分配的 ROS 2 域编号闭区间。
 const EDGE_ROS_DOMAIN_ID_MIN = 2
 const EDGE_ROS_DOMAIN_ID_COUNT = 98
@@ -187,27 +186,63 @@ export class LocalRuntimeManager {
   private stopping = false
   private activeOperation: ActiveOperation | null = null
 
+  /**
+   * 创建一个应用生命周期内唯一的本地运行管理器。
+   *
+   * @param logsDirectory Electron 管理的本地运行日志目录。
+   * @param onSnapshot 运行状态变化时通知渲染器的回调。
+   * @param logSessionId 应用启动时冻结、供全部本地子进程共享的日志会话标识。
+   * @returns 新的本地运行管理器实例。
+   * @throws 日志会话标识会在首次解析路径时执行严格校验。
+   * @safety 日志路径由主进程目录、会话标识和固定进程枚举共同解析。
+   */
   constructor(
     private readonly logsDirectory: string,
-    private readonly onSnapshot: SnapshotListener
+    private readonly onSnapshot: SnapshotListener,
+    private readonly logSessionId: string
   ) {}
 
   getSnapshot(): LocalRuntimeSnapshot {
     return { ...this.snapshot }
   }
 
+  /**
+   * 读取本次应用会话中各本地进程日志的有界尾部快照。
+   *
+   * @returns PLC-Sim 与 Edge 当前会话日志快照。
+   * @throws 文件系统读取失败时透传错误，文件尚未产生则返回不可用条目。
+   * @safety 只读取管理器冻结的日志目录和会话标识。
+   */
   readLogs(): Promise<LocalRuntimeLogsSnapshot> {
-    return readLocalRuntimeLogs(this.logsDirectory)
+    return readLocalRuntimeLogs(this.logsDirectory, this.logSessionId)
   }
 
-  /** 按游标读取一个日志来源新增的有界内容。 */
+  /**
+   * 按游标读取本次应用会话内一个日志来源新增的有界内容。
+   *
+   * @param query 固定来源与上次读取游标，不包含任意文件路径。
+   * @returns 当前会话对应来源的增量日志批次。
+   * @throws 文件系统读取失败或来源非法时透传错误。
+   * @safety 会话和来源均由主进程约束，渲染器无法跨会话读取任意文件。
+   */
   readLog(query: LocalRuntimeLogQuery): Promise<LocalRuntimeLogBatch> {
-    return readLocalRuntimeLog(this.logsDirectory, query)
+    return readLocalRuntimeLog(this.logsDirectory, this.logSessionId, query)
   }
 
-  /** 返回固定日志来源的主进程解析路径，不接受渲染器传入任意路径。 */
+  /**
+   * 返回本次会话固定日志来源的主进程解析路径。
+   *
+   * @param kind 受支持的 PLC-Sim 或 Edge 来源。
+   * @returns 当前应用会话对应的日志文件路径。
+   * @throws 来源或会话标识非法时抛出错误。
+   * @safety 不接受渲染器传入任意路径。
+   */
   getLogPath(kind: LocalRuntimeProcessKind): string {
-    return resolveLocalRuntimeLogPath(this.logsDirectory, kind)
+    return resolveLocalRuntimeLogPath(
+      this.logsDirectory,
+      this.logSessionId,
+      kind
+    )
   }
 
   async startSimulator(
@@ -412,6 +447,15 @@ export class LocalRuntimeManager {
     this.stopping = false
   }
 
+  /**
+   * 启动一个受管理的本地子进程，并把标准输出与错误写入当前应用会话。
+   *
+   * @param kind 固定的 PLC-Sim 或 Edge 进程来源。
+   * @param spec 已通过主进程校验的启动命令、目录与环境。
+   * @returns 已接入停止、异常退出和诊断日志处理的子进程。
+   * @throws spawn 同步拒绝启动时透传错误；异步错误写入对应会话日志。
+   * @safety 不使用 shell，日志路径只由主进程固定值解析。
+   */
   private spawnManaged(
     kind: LocalRuntimeProcessKind,
     spec: LocalRuntimeSpawnSpec
@@ -424,7 +468,7 @@ export class LocalRuntimeManager {
       windowsHide: true
     })
     const logStream = new RotatingLogWriter(
-      resolveLocalRuntimeLogPath(this.logsDirectory, kind),
+      resolveLocalRuntimeLogPath(this.logsDirectory, this.logSessionId, kind),
       positiveEnvironmentInteger(
         'UNILAB_DESKTOP_LOG_MAX_BYTES',
         LOCAL_RUNTIME_LOG_MAX_BYTES
@@ -548,31 +592,59 @@ export class LocalRuntimeManager {
   }
 }
 
+/**
+ * 读取当前应用会话内全部固定来源的有界日志尾部。
+ *
+ * @param logsDirectory Electron 管理的本地运行日志目录。
+ * @param logSessionId 应用启动时冻结的诊断日志会话标识。
+ * @param maxBytes 每个来源允许读取的最大字节数。
+ * @returns 当前会话各固定来源的日志快照。
+ * @throws 目录创建、路径校验或文件读取异常时透传错误。
+ * @safety 不扫描目录，也不会读取其他启动会话或任意文件。
+ */
 export async function readLocalRuntimeLogs(
   logsDirectory: string,
+  logSessionId: string,
   maxBytes = LOCAL_RUNTIME_LOG_READ_LIMIT_BYTES
 ): Promise<LocalRuntimeLogsSnapshot> {
   await mkdir(logsDirectory, { recursive: true })
   const entries = await Promise.all(
-    LOCAL_RUNTIME_LOG_KINDS.map((kind) => readLocalRuntimeLogEntry(
-      logsDirectory,
-      kind,
-      Math.max(1, maxBytes)
-    ))
+    LOCAL_RUNTIME_LOG_KINDS.map(
+      /** 将每个受支持来源投影为当前应用会话的有界日志条目。 */
+      (kind) => readLocalRuntimeLogEntry(
+        logsDirectory,
+        logSessionId,
+        kind,
+        Math.max(1, maxBytes)
+      )
+    )
   )
   return { readAt: Date.now(), entries }
 }
 
 /**
- * 按文件身份与字节偏移读取一个来源；轮转、截断或首次读取会返回重置批次。
+ * 按文件身份与字节偏移读取当前会话的一个来源。
+ *
+ * @param logsDirectory Electron 管理的本地运行日志目录。
+ * @param logSessionId 应用启动时冻结的诊断日志会话标识。
+ * @param query 固定来源与可选字节游标。
+ * @param maxBytes 单次增量读取允许返回的最大字节数。
+ * @returns 增量内容、文件身份游标及是否需要重置前端缓冲区。
+ * @throws 目录创建、路径校验或非文件不存在类读取错误时透传异常。
+ * @safety 轮转、截断或首次读取会返回重置批次，且不会跨会话追随旧游标。
  */
 export async function readLocalRuntimeLog(
   logsDirectory: string,
+  logSessionId: string,
   query: LocalRuntimeLogQuery,
   maxBytes = LOCAL_RUNTIME_LOG_BATCH_LIMIT_BYTES
 ): Promise<LocalRuntimeLogBatch> {
   await mkdir(logsDirectory, { recursive: true })
-  const logPath = resolveLocalRuntimeLogPath(logsDirectory, query.kind)
+  const logPath = resolveLocalRuntimeLogPath(
+    logsDirectory,
+    logSessionId,
+    query.kind
+  )
   let handle: Awaited<ReturnType<typeof open>> | null = null
   try {
     handle = await open(logPath, 'r')
@@ -631,23 +703,28 @@ export async function readLocalRuntimeLog(
   }
 }
 
-/** 解析受支持的日志来源，拒绝历史 Bridge 或任意文件路径。 */
-export function resolveLocalRuntimeLogPath(
-  logsDirectory: string,
-  kind: LocalRuntimeProcessKind
-): string {
-  if (!LOCAL_RUNTIME_LOG_KINDS.includes(kind)) {
-    throw new Error('不支持的本地运行日志来源')
-  }
-  return join(logsDirectory, `${kind}.log`)
-}
-
+/**
+ * 读取当前应用会话中单个固定来源的有界文件尾部。
+ *
+ * @param logsDirectory Electron 管理的本地运行日志目录。
+ * @param logSessionId 应用启动时冻结的诊断日志会话标识。
+ * @param kind 固定的 PLC-Sim 或 Edge 来源。
+ * @param maxBytes 允许读取的最大尾部字节数。
+ * @returns 单个来源的兼容快照条目。
+ * @throws 路径校验或非文件不存在类读取错误时透传异常。
+ * @safety 只读取明确来源的当前会话文件，不执行目录枚举。
+ */
 async function readLocalRuntimeLogEntry(
   logsDirectory: string,
+  logSessionId: string,
   kind: LocalRuntimeProcessKind,
   maxBytes: number
 ): Promise<LocalRuntimeLogEntry> {
-  const logPath = join(logsDirectory, `${kind}.log`)
+  const logPath = resolveLocalRuntimeLogPath(
+    logsDirectory,
+    logSessionId,
+    kind
+  )
   let handle: Awaited<ReturnType<typeof open>> | null = null
   try {
     handle = await open(logPath, 'r')
