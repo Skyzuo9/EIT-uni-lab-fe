@@ -32,6 +32,14 @@ function registerWorkflowNodeTemplateCursorTests(): void {
     rejectsEmptyCursorAdvance
   )
   it(
+    'fails closed when a later page repeats an already used UUID cursor',
+    rejectsRepeatedCursorAdvance
+  )
+  it(
+    'fails closed for legacy page/page_size/total response fields',
+    rejectsLegacyPageMetadata
+  )
+  it(
     'sends the explicit MaterialSource node_type without legacy page fields',
     sendsExplicitMaterialSourceFilter
   )
@@ -114,6 +122,57 @@ async function rejectsRepeatedItemUuid(): Promise<void> {
 async function rejectsEmptyCursorAdvance(): Promise<void> {
   const http = fixtureHttp({
     '/api/v1/workflow-node-templates?limit=100': page([], true, null)
+  })
+
+  await expect(loadWorkflowNodeTemplateCatalog(http)).rejects.toMatchObject({
+    code: 'INVALID_API_RESPONSE',
+    retryable: false
+  })
+}
+
+/**
+ * 验证后续页不得把游标重新指向已使用的 UUID。
+ *
+ * @returns Promise 完成时表示重复游标被不可重试错误拒绝。
+ * @throws 若重复游标导致继续请求或被接受则由 Vitest 断言失败。
+ */
+async function rejectsRepeatedCursorAdvance(): Promise<void> {
+  const secondPath =
+    `/api/v1/workflow-node-templates?limit=100&cursor_uuid=${firstUuid}`
+  const http = fixtureHttp({
+    '/api/v1/workflow-node-templates?limit=100': page(
+      [summary(firstUuid, 'mix')],
+      true,
+      firstUuid
+    ),
+    [secondPath]: page(
+      [summary(secondUuid, 'heat')],
+      true,
+      firstUuid
+    )
+  })
+
+  await expect(loadWorkflowNodeTemplateCatalog(http)).rejects.toMatchObject({
+    code: 'INVALID_API_RESPONSE',
+    retryable: false
+  })
+}
+
+/**
+ * 验证旧 page/page_size/total 字段不能与 UUID 游标合同混用。
+ *
+ * @returns Promise 完成时表示旧分页元数据被关闭失败。
+ * @throws 若旧页码字段被静默忽略则由 Vitest 断言失败。
+ */
+async function rejectsLegacyPageMetadata(): Promise<void> {
+  const response = page([summary(firstUuid, 'mix')], false, null)
+  // `data` 是测试故意污染的列表主体，三个字段都属于已废弃合同。
+  const data = response.data as Record<string, unknown>
+  data.page = 1
+  data.page_size = 100
+  data.total = 1
+  const http = fixtureHttp({
+    '/api/v1/workflow-node-templates?limit=100': response
   })
 
   await expect(loadWorkflowNodeTemplateCatalog(http)).rejects.toMatchObject({

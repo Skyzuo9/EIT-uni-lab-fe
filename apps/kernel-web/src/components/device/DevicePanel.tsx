@@ -371,6 +371,19 @@ export default function DevicePanel(): React.JSX.Element {
       runOperation?.state.kind === 'accepted' ||
       runOperation?.state.kind === 'running'
     ) return
+    const authorityId = actionCatalog.authorityId
+    const catalogFingerprint = actionCatalog.fingerprint
+    if (!authorityId || !catalogFingerprint) {
+      setRunOperation({
+        actionRef: action.actionRef,
+        state: {
+          kind: 'error',
+          message: '当前动作目录缺少权威标识或目录指纹，无法安全创建设备单动作任务',
+          retryable: false
+        }
+      })
+      return
+    }
     let input: Record<string, unknown>
     try {
       input = serializeDeviceActionInput(action, argumentDraft)
@@ -386,8 +399,8 @@ export default function DevicePanel(): React.JSX.Element {
       return
     }
     const signature = JSON.stringify({
-      authorityId: actionCatalog.authorityId,
-      fingerprint: actionCatalog.fingerprint,
+      authorityId,
+      fingerprint: catalogFingerprint,
       templateUuid: template.uuid,
       deviceId: device.id,
       input
@@ -403,8 +416,8 @@ export default function DevicePanel(): React.JSX.Element {
     })
     try {
       const view = await services.deviceActionTasks.createDeviceActionTask({
-        authority_id: actionCatalog.authorityId,
-        template_catalog_fingerprint: actionCatalog.fingerprint,
+        authority_id: authorityId,
+        template_catalog_fingerprint: catalogFingerprint,
         workflow_node_template_uuid: template.uuid,
         device_id: device.id,
         input,

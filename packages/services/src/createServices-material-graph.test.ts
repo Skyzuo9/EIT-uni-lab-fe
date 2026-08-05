@@ -15,6 +15,9 @@ const materialUuid = '52000000-0000-4000-8000-000000000001'
 const materialTemplateUuid = '62000000-0000-4000-8000-000000000001'
 // 目录指纹冻结组合测试读取的工作流模板版本。
 const fingerprint = `sha256:${'c'.repeat(64)}`
+// 节点模板路径证明物料来源（MaterialSource）始终使用显式 node_type 筛选。
+const materialSourceCatalogPath =
+  '/api/v1/workflow-node-templates?limit=100&node_type=material_source'
 
 /**
  * 注册服务组合根（Composition Root）对公共物料服务（Material Service）的装配测试。
@@ -75,7 +78,7 @@ async function composesWorkflowWithPublicMaterialService(): Promise<void> {
  */
 function serviceResponses(): Record<string, unknown> {
   return {
-    '/api/v1/workflow-node-templates?page=1&page_size=100': {
+    [materialSourceCatalogPath]: {
       code: 0,
       data: {
         authority: { authority_id: 'os-local', kind: 'local' },
@@ -92,9 +95,8 @@ function serviceResponses(): Record<string, unknown> {
             display_name: 'Host node'
           }
         }],
-        total: 1,
-        page: 1,
-        page_size: 100
+        has_more: false,
+        next_cursor_uuid: null
       }
     },
     [`/api/v1/workflow-node-templates/${frameworkTemplateUuid}`]: {

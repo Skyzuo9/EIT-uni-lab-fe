@@ -918,7 +918,7 @@ export function PersistentWorkflowAuthoringPanel({
           authority.candidate?.template_catalog_fingerprint ??
           authority.applied_source?.template_catalog_fingerprint ??
           actionCatalog?.fingerprint ?? '',
-        currentFingerprint: refreshedCatalog.fingerprint
+        currentFingerprint: refreshedCatalog.fingerprint ?? ''
       })
       if (!decision) {
         if (catalogFailure) throw catalogFailure

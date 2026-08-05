@@ -30,24 +30,21 @@ const firstSiteUuid = '71000000-0000-4000-8000-000000000009'
 const secondSiteUuid = '71000000-0000-4000-8000-000000000001'
 // 目录指纹冻结工作流模板目录的权威版本。
 const fingerprint = `sha256:${'b'.repeat(64)}`
+const materialSourceCatalogPath =
+  '/api/v1/workflow-node-templates?limit=100&node_type=material_source'
 
-/**
- * 注册工作流物料来源（MaterialSource）目录适配器的公共服务行为测试。
- *
- * @returns 不返回值；模板合同、公共图依赖或失败关闭规则不符时由 Vitest 报告失败。
- * @throws 测试注册失败时由 Vitest 报告异常。
- */
+/** 注册物料来源（MaterialSource）目录适配器测试；无参数和返回值，断言失败由 Vitest 汇报。 */
 function registerWorkflowMaterialSourceCatalogTests(): void {
   it(
-    '模板来自工作流（Workflow）API 且物料（Material）事实只来自注入的公共物料图（MaterialGraph）端口',
-    loadsTemplateAndInjectedPublicMaterialGraph
+    '按库位（Site）业务顺序加载框架模板和库存事实',
+    loadsMaterialSourceCatalogInSiteBusinessOrder
   )
   it(
-    'OS 未发布唯一物料来源（MaterialSource）框架模板时必须失败关闭',
-    rejectsMissingFrameworkTemplate
+    'OS 未发布精确物料来源框架模板时关闭失败',
+    rejectsMissingExactMaterialSourceTemplate
   )
   it(
-    '未注入公共物料图（MaterialGraph）端口时必须失败关闭且不得请求私有库存（Inventory）接口',
+    '缺少公共物料图（MaterialGraph）端口时失败关闭且不发出私有库存请求',
     rejectsMissingPublicMaterialGraphPort
   )
 }
@@ -58,117 +55,145 @@ describe(
 )
 
 /**
- * 验证工作流运行时（Workflow Runtime）从模板 API 读取框架合同，并从公共物料图端口读取物料与库位事实。
+ * 验证物料来源目录、公共物料图和库位（Site）业务顺序的完整投影。
  *
- * @returns Promise 完成时表示目录内容、单例作用域及 HTTP 请求边界均符合规范。
+ * @returns Promise 完成时表示模板、物料、库位和请求路径均精确匹配。
+ * @throws 任一目录合同或断言不一致时由 Vitest 汇报。
  */
-async function loadsTemplateAndInjectedPublicMaterialGraph(): Promise<void> {
-  const requests: string[] = []
-  const graphScopes: MaterialScope[] = []
-  const fixture = templateResponses()
-  const runtime = createWorkflowRuntime(
-    fixtureHttp(fixture, requests),
-    getDefaultBackend('local-python'),
-    { materialGraph: fixtureMaterialGraph(graphScopes) }
-  )
+async function loadsMaterialSourceCatalogInSiteBusinessOrder(): Promise<void> {
+    const requests: string[] = []
+    const fixture = responses()
+    const runtime = createWorkflowRuntime(
+      fixtureHttp(fixture, requests),
+      getDefaultBackend('local-python'),
+      { materialGraph: fixtureMaterialGraph() }
+    )
 
-  const snapshot = await runtime.getWorkflowMaterialSourceCatalog()
-
-  expect(snapshot).toEqual({
-    authorityId: 'os-local',
-    authorityKind: 'local',
-    fingerprint,
-    template: {
-      uuid: frameworkTemplateUuid,
-      resourceTemplateUuid: frameworkOwnerUuid,
-      name: 'material_source',
-      displayName: 'Material Source',
-      actionClass: 'unilabos.workflow.authoring:material_source',
-      actionType: 'material_source',
-      sourceHandle: {
-        uuid: frameworkHandleUuid,
-        workflowNodeTemplateUuid: frameworkTemplateUuid,
-        handleKey: 'material',
-        ioType: 'source',
-        displayName: 'Material',
-        valueType: 'ResourceSlot',
-        required: false,
-        dataSource: 'executor',
-        dataKey: 'material'
-      }
-    },
-    resourceTemplates: [
-      { uuid: mountTemplateUuid, displayName: mountTemplateUuid },
-      { uuid: sampleTemplateUuid, displayName: sampleTemplateUuid }
-    ],
-    materials: [
-      {
-        uuid: mountUuid,
-        name: 'Deck A',
-        resourceTemplateUuid: mountTemplateUuid
+    const snapshot = await runtime.getWorkflowMaterialSourceCatalog()
+    expect(snapshot).toEqual({
+      authorityId: 'os-local',
+      authorityKind: 'local',
+      fingerprint,
+      template: {
+        uuid: frameworkTemplateUuid,
+        resourceTemplateUuid: frameworkOwnerUuid,
+        name: 'material_source',
+        displayName: 'Material Source',
+        actionClass: 'unilabos.workflow.authoring:material_source',
+        actionType: 'material_source',
+        sourceHandle: {
+          uuid: frameworkHandleUuid,
+          workflowNodeTemplateUuid: frameworkTemplateUuid,
+          handleKey: 'material',
+          ioType: 'source',
+          displayName: 'Material',
+          valueType: 'ResourceSlot',
+          required: false,
+          dataSource: 'executor',
+          dataKey: 'material'
+        }
       },
-      {
-        uuid: materialUuid,
-        name: 'Assay plate',
-        resourceTemplateUuid: sampleTemplateUuid
-      }
-    ],
-    sites: [
-      {
-        uuid: firstSiteUuid,
-        name: '库位 A',
-        mountMaterialUuid: mountUuid,
-        allowedResourceTemplateUuids: [sampleTemplateUuid],
-        occupiedMaterialUuid: null
-      },
-      {
-        uuid: secondSiteUuid,
-        name: '库位 B',
-        mountMaterialUuid: mountUuid,
-        allowedResourceTemplateUuids: [],
-        occupiedMaterialUuid: materialUuid
-      }
+      resourceTemplates: [
+        {
+          uuid: mountTemplateUuid,
+          displayName: 'Deck'
+        },
+        {
+          uuid: sampleTemplateUuid,
+          displayName: 'Plate96',
+          shape: {
+            id: 'plate96',
+            bundle: 'test',
+            displayName: undefined,
+            categories: ['plate96'],
+            categoryTokens: [],
+            priority: 0,
+            envelopeMm: [127, 85, 15],
+            units: 'ratio',
+            shadow: 'box',
+            sort: 'center',
+            parts: [{
+              type: 'box',
+              style: 'plate',
+              from: [0, 0, 0],
+              to: [1, 1, 1]
+            }]
+          }
+        }
+      ],
+      materials: [
+        {
+          uuid: mountUuid,
+          name: 'Deck A',
+          resourceTemplateUuid: mountTemplateUuid,
+          materialClass: 'Deck'
+        },
+        {
+          uuid: materialUuid,
+          name: 'Assay plate',
+          resourceTemplateUuid: sampleTemplateUuid,
+          materialClass: 'Plate96'
+        }
+      ],
+      sites: [
+        {
+          uuid: firstSiteUuid,
+          name: 'Slot A',
+          sortOrder: 1,
+          mountMaterialUuid: mountUuid,
+          allowedResourceTemplateUuids: [sampleTemplateUuid],
+          occupiedMaterialUuid: null
+        },
+        {
+          uuid: secondSiteUuid,
+          name: 'Slot B',
+          sortOrder: 2,
+          mountMaterialUuid: mountUuid,
+          allowedResourceTemplateUuids: [],
+          occupiedMaterialUuid: materialUuid
+        }
       ]
-  })
-  expect(snapshot.template.wireValue).toEqual(
-    (fixture[
-      `/api/v1/workflow-node-templates/${frameworkTemplateUuid}`
-    ] as { data: { template: Record<string, unknown> } }).data.template
-  )
-  expect(snapshot.template.sourceHandle.wireValue).toEqual(
-    (fixture[
-      `/api/v1/workflow-node-templates/${frameworkTemplateUuid}`
-    ] as { data: { handles: Record<string, unknown>[] } }).data.handles[0]
-  )
-  expect(graphScopes).toEqual([{ kind: 'singleton' }])
-  expect(requests).toEqual([
-    '/api/v1/workflow-node-templates?page=1&page_size=100',
-    `/api/v1/workflow-node-templates/${frameworkTemplateUuid}`
-  ])
-  expect(hasPathPrefix(requests, '/api/v1/inventory/')).toBe(false)
+    })
+    expect(snapshot.template.wireValue).toEqual(
+      (fixture[
+        `/api/v1/workflow-node-templates/${frameworkTemplateUuid}`
+      ] as { data: { template: Record<string, unknown> } }).data.template
+    )
+    expect(snapshot.template.sourceHandle.wireValue).toEqual(
+      (fixture[
+        `/api/v1/workflow-node-templates/${frameworkTemplateUuid}`
+      ] as { data: { handles: Record<string, unknown>[] } }).data.handles[0]
+    )
+    expect(requests).toEqual([
+      materialSourceCatalogPath,
+      `/api/v1/workflow-node-templates/${frameworkTemplateUuid}`,
+      '/api/v1/resource-templates?limit=100',
+      '/api/v1/material-shapes',
+      `/api/v1/resource-templates?limit=100&cursor_uuid=${mountTemplateUuid}`
+    ])
 }
 
 /**
- * 验证工作流物料来源（MaterialSource）框架模板身份不精确时不发布有损目录。
+ * 验证 OS 忽略显式筛选并返回错误节点类型时关闭失败。
  *
- * @returns Promise 完成时表示无效模板被结构化拒绝。
- * @throws 异步断言未观测到预期结构化错误时由 Vitest 报告异常。
+ * @returns Promise 完成时表示精确框架模板错误已被观察。
+ * @throws 若错误模板被接受则由 Vitest 断言失败。
  */
-async function rejectsMissingFrameworkTemplate(): Promise<void> {
-  const fixture = templateResponses()
-  const list = fixture[
-    '/api/v1/workflow-node-templates?page=1&page_size=100'
-  ] as { data: { items: Array<Record<string, unknown>> } }
-  list.data.items[0].node_type = 'device'
-  const runtime = createWorkflowRuntime(
-    fixtureHttp(fixture, []),
-    getDefaultBackend('local-python'),
-    { materialGraph: fixtureMaterialGraph([]) }
-  )
+async function rejectsMissingExactMaterialSourceTemplate(): Promise<void> {
+    const fixture = responses()
+    const list = fixture[materialSourceCatalogPath] as {
+      data: { items: Array<Record<string, unknown>> }
+    }
+    list.data.items[0].node_type = 'device'
+    const runtime = createWorkflowRuntime(
+      fixtureHttp(fixture, []),
+      getDefaultBackend('local-python'),
+      { materialGraph: fixtureMaterialGraph() }
+    )
 
-  await expect(runtime.getWorkflowMaterialSourceCatalog()).rejects.toThrow(
-    '物料来源（MaterialSource）框架模板'
-  )
+    await expect(runtime.getWorkflowMaterialSourceCatalog()).rejects.toThrow(
+      '物料来源（MaterialSource）框架模板'
+    )
 }
 
 /**
@@ -179,7 +204,7 @@ async function rejectsMissingFrameworkTemplate(): Promise<void> {
 async function rejectsMissingPublicMaterialGraphPort(): Promise<void> {
   const requests: string[] = []
   const runtime = createWorkflowRuntime(
-    fixtureHttp(templateResponses(), requests),
+    fixtureHttp(responses(), requests),
     getDefaultBackend('local-python')
   )
 
@@ -188,14 +213,10 @@ async function rejectsMissingPublicMaterialGraphPort(): Promise<void> {
   expect(requests).toEqual([])
 }
 
-/**
- * 构造只包含工作流物料来源（MaterialSource）框架模板的 HTTP fixture。
- *
- * @returns 以公开工作流模板路径为键的响应对象，不包含任何私有库存路径。
- */
-function templateResponses(): Record<string, unknown> {
+/** 构造物料来源目录响应；无参数，返回模板、资源模板和外形接口 fixture，不主动抛错。 */
+function responses(): Record<string, unknown> {
   return {
-    '/api/v1/workflow-node-templates?page=1&page_size=100': {
+    [materialSourceCatalogPath]: {
       code: 0,
       data: {
         authority: { authority_id: 'os-local', kind: 'local' },
@@ -212,9 +233,8 @@ function templateResponses(): Record<string, unknown> {
             display_name: 'Host node'
           }
         }],
-        total: 1,
-        page: 1,
-        page_size: 100
+        has_more: false,
+        next_cursor_uuid: null
       }
     },
     [`/api/v1/workflow-node-templates/${frameworkTemplateUuid}`]: {
@@ -248,6 +268,56 @@ function templateResponses(): Record<string, unknown> {
           meta_data: {}
         }]
       }
+    },
+    '/api/v1/resource-templates?limit=100': {
+      code: 0,
+      data: {
+        items: [{
+          uuid: mountTemplateUuid,
+          name: 'test.Deck',
+          display_name: 'Deck',
+          resource_type: 'resource',
+          tags: []
+        }],
+        has_more: true,
+        next_cursor_uuid: mountTemplateUuid
+      }
+    },
+    [`/api/v1/resource-templates?limit=100&cursor_uuid=${mountTemplateUuid}`]: {
+      code: 0,
+      data: {
+        items: [{
+          uuid: sampleTemplateUuid,
+          name: 'test.Plate96',
+          display_name: 'Plate96',
+          resource_type: 'resource',
+          tags: []
+        }],
+        has_more: false,
+        next_cursor_uuid: null
+      }
+    },
+    '/api/v1/material-shapes': {
+      code: 0,
+      data: {
+        items: [{
+          id: 'plate96',
+          bundle: 'test',
+          categories: ['plate96'],
+          categoryTokens: [],
+          priority: 0,
+          envelope: [127, 85, 15],
+          units: 'ratio',
+          shadow: 'box',
+          sort: 'center',
+          parts: [{
+            type: 'box',
+            style: 'plate',
+            from: [0, 0, 0],
+            to: [1, 1, 1]
+          }]
+        }]
+      }
     }
   }
 }
@@ -259,7 +329,7 @@ function templateResponses(): Record<string, unknown> {
  * @returns 只实现 getGraph 的最小公共物料图端口。
  */
 function fixtureMaterialGraph(
-  scopes: MaterialScope[]
+  scopes: MaterialScope[] = []
 ): Pick<MaterialGraphPort, 'getGraph'> {
   /**
    * 返回测试公共物料聚合，绝不读取私有库存 DTO。
@@ -272,21 +342,28 @@ function fixtureMaterialGraph(
   ): Promise<readonly MaterialAggregate[]> {
     scopes.push(scope)
     return [
-      materialAggregate(materialUuid, sampleTemplateUuid, 'Assay plate'),
-      materialAggregate(mountUuid, mountTemplateUuid, 'Deck A', [
-        materialSite(
-          firstSiteUuid,
-          mountUuid,
-          '库位 A',
-          [sampleTemplateUuid],
-          []
-        ),
+      materialAggregate(
+        materialUuid,
+        sampleTemplateUuid,
+        'Assay plate',
+        'Plate96'
+      ),
+      materialAggregate(mountUuid, mountTemplateUuid, 'Deck A', 'Deck', [
         materialSite(
           secondSiteUuid,
           mountUuid,
-          '库位 B',
+          'Slot B',
+          2,
           [],
           [materialUuid]
+        ),
+        materialSite(
+          firstSiteUuid,
+          mountUuid,
+          'Slot A',
+          1,
+          [sampleTemplateUuid],
+          []
         )
       ])
     ]
@@ -301,6 +378,7 @@ function fixtureMaterialGraph(
  * @param materialId 具体物料的稳定 UUID。
  * @param sourceTemplateId 物料来源资源模板 UUID。
  * @param name 物料显示名称。
+ * @param materialClass 公共物料图中明确的模板类业务身份。
  * @param sites 该物料直接拥有的库位（Site）集合。
  * @returns 可由公共物料图端口返回的聚合对象。
  */
@@ -308,12 +386,14 @@ function materialAggregate(
   materialId: string,
   sourceTemplateId: string,
   name: string,
+  materialClass: string,
   sites: readonly MaterialSite[] = []
 ): MaterialAggregate {
   return {
     material: {
       id: materialId,
       sourceTemplateId,
+      materialClass,
       code: materialId,
       name,
       config: {},
@@ -332,6 +412,7 @@ function materialAggregate(
  * @param siteId 库位稳定 UUID。
  * @param ownerMaterialId 直接拥有库位的挂载物料 UUID。
  * @param name 库位显示名称。
+ * @param sortOrder Backend 发布的库位（Site）业务顺序。
  * @param allowedTemplateIds 允许承载的资源模板 UUID。
  * @param occupiedMaterialIds 当前库位占用（SiteOccupancy）的物料 UUID。
  * @returns 容量为一的公共库位事实。
@@ -340,12 +421,14 @@ function materialSite(
   siteId: string,
   ownerMaterialId: string,
   name: string,
+  sortOrder: number,
   allowedTemplateIds: readonly string[],
   occupiedMaterialIds: readonly string[]
 ): MaterialSite {
   return {
     id: siteId,
     ownerMaterialId,
+    sortOrder,
     key: siteId,
     name,
     anchor: { kind: 'root' },
@@ -366,7 +449,7 @@ function materialSite(
  *
  * @param fixture 公开路径到响应的映射。
  * @param requests 接收实际请求路径的审计数组。
- * @returns 遇到未知或私有路径就抛错的 HTTP 客户端。
+ * @throws 请求未知路径时抛出错误，防止旧合同被静默接受。
  */
 function fixtureHttp(
   fixture: Record<string, unknown>,
@@ -388,18 +471,4 @@ function fixtureHttp(
   }
 
   return { request }
-}
-
-/**
- * 判断请求审计集合是否包含指定公开或私有路径前缀。
- *
- * @param paths 已记录的 HTTP 相对请求路径。
- * @param prefix 要检查的路径前缀。
- * @returns 存在匹配路径时返回 `true`，否则返回 `false`。
- */
-function hasPathPrefix(paths: readonly string[], prefix: string): boolean {
-  for (const path of paths) {
-    if (path.startsWith(prefix)) return true
-  }
-  return false
 }
