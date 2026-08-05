@@ -1,8 +1,10 @@
 import { spawn, type ChildProcess } from 'node:child_process'
+import { once } from 'node:events'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { setTimeout as delay } from 'node:timers/promises'
 
 export const F07_WORKFLOW_UUID =
   '71000000-0000-4000-8000-000000000001'
@@ -81,8 +83,14 @@ export async function startF07TaskInputOs(): Promise<F07TaskInputOs> {
   child.once('error', recordSpawnError)
   child.stdout?.on('data', appendOutput)
   child.stderr?.on('data', appendOutput)
+  /**
+   * 返回当前 OS 累计日志。
+   *
+   * 参数：无。返回：标准输出与标准错误的累计文本。异常：不抛异常。
+   */
+  const logs = (): string => output
   try {
-    await waitUntilReady(url, child, () => output, readSpawnError)
+    await waitUntilReady(url, child, logs, readSpawnError)
   } catch (error) {
     try {
       await stopChild(child)
@@ -91,12 +99,6 @@ export async function startF07TaskInputOs(): Promise<F07TaskInputOs> {
     }
     throw error
   }
-  /**
-   * 返回当前 OS 累计日志。
-   *
-   * 参数：无。返回：标准输出与标准错误的累计文本。异常：不抛异常。
-   */
-  const logs = (): string => output
   /**
    * 停止唯一 OS 子进程并删除隔离目录。
    *
@@ -125,19 +127,18 @@ export async function startF07TaskInputOs(): Promise<F07TaskInputOs> {
  * 地址读取或关闭失败时拒绝 Promise。
  */
 async function availablePort(): Promise<number> {
-  return new Promise((accept, reject) => {
-    const server = createServer()
-    server.once('error', reject)
-    server.listen(0, '127.0.0.1', () => {
-      const address = server.address()
-      if (!address || typeof address === 'string') {
-        server.close()
-        reject(new Error('failed to allocate F07 OS port'))
-        return
-      }
-      server.close((error) => error ? reject(error) : accept(address.port))
-    })
-  })
+  const server = createServer()
+  server.listen(0, '127.0.0.1')
+  await once(server, 'listening')
+  const address = server.address()
+  if (!address || typeof address === 'string') {
+    server.close()
+    throw new Error('failed to allocate F07 OS port')
+  }
+  const port = address.port
+  server.close()
+  await once(server, 'close')
+  return port
 }
 
 /**
@@ -168,7 +169,7 @@ async function waitUntilReady(
     } catch {
       // 服务端口尚未监听；下一轮继续检查进程与 HTTP。
     }
-    await new Promise((accept) => setTimeout(accept, 100))
+    await delay(100)
   }
   throw new Error(`F07 product OS did not become ready\n${logs()}`)
 }
@@ -185,18 +186,12 @@ async function stopChild(child: ChildProcess): Promise<void> {
     child.exitCode !== null ||
     child.signalCode !== null
   ) return
-  await new Promise<void>((resolveStop, rejectStop) => {
-    const forceTimer = setTimeout(() => child.kill('SIGKILL'), 5_000)
-    child.once('error', (error) => {
-      clearTimeout(forceTimer)
-      rejectStop(error)
-    })
-    child.once('exit', () => {
-      clearTimeout(forceTimer)
-      resolveStop()
-    })
-    child.kill('SIGTERM')
-  })
+  child.kill('SIGTERM')
+  await Promise.race([once(child, 'exit'), delay(5_000)])
+  if (child.exitCode === null && child.signalCode === null) {
+    child.kill('SIGKILL')
+    await once(child, 'exit')
+  }
 }
 
 const PYTHON_LAUNCHER = String.raw`
@@ -241,6 +236,12 @@ reactor: Reactor = device()
     description="Current product candidate task input gate.",
 )
 def scalar_task(*, label: str, count: int, enabled: bool, attempts: int = 3):
+    """把一次标量工作流任务（WorkflowTask）输入绑定到唯一动作。
+
+    参数：label、count、enabled 是三类必填标量，attempts 验证默认值解析。
+    返回：动作 report 的公开工作流输出。异常：参数规范化和动作合同错误由真实
+    OS 编译或任务创建路径失败关闭；夹具本身不发送物理动作。
+    """
     # unilab:node_uuid={NODE_UUID}
     done = reactor.finalize(report=label)
     return workflow_output(report=done.report)

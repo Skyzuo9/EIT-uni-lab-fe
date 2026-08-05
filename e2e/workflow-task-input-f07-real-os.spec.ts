@@ -196,9 +196,9 @@ async function verifyFrozenTaskInput({ page }: { page: Page }): Promise<void> {
   expect(await workflowTaskCount()).toBe(taskCountBefore + 1)
 
   expect(requests).not.toContainEqual({ method: 'POST', path: '/api/run' })
-  expect(requests.some(({ path }) => path.startsWith('/api/runtime/local/')))
+  expect(requests.some(isLegacyLocalRuntimeRequest))
     .toBe(false)
-  expect(requests.some(({ path }) => path.startsWith('/api/v1/runtime/runs')))
+  expect(requests.some(isLegacyRuntimeRunRequest))
     .toBe(false)
   expect(applicationErrors).toEqual([])
   expect(browserErrors).toEqual([])
@@ -218,6 +218,32 @@ test(
 function isTaskCreateResponse(response: Response): boolean {
   return response.request().method() === 'POST' &&
     new URL(response.url()).pathname === '/api/v1/workflow-tasks'
+}
+
+/**
+ * 判定请求是否访问旧本地运行时路径。
+ *
+ * 参数：`request` 是已记录的方法与路径。返回：路径属于旧接口时为真。异常：
+ * 不抛异常；本谓词不发起网络请求。
+ */
+function isLegacyLocalRuntimeRequest(request: {
+  method: string
+  path: string
+}): boolean {
+  return request.path.startsWith('/api/runtime/local/')
+}
+
+/**
+ * 判定请求是否访问旧运行实例路径。
+ *
+ * 参数：`request` 是已记录的方法与路径。返回：路径属于旧接口时为真。异常：
+ * 不抛异常；本谓词不发起网络请求。
+ */
+function isLegacyRuntimeRunRequest(request: {
+  method: string
+  path: string
+}): boolean {
+  return request.path.startsWith('/api/v1/runtime/runs')
 }
 
 /**
