@@ -22,7 +22,13 @@ import type {
   NodeChange,
   ReactFlowInstance
 } from 'reactflow'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState
+} from 'react'
 import { useWorkflowDag } from '../hooks/useWorkflowDag'
 import WorkflowNodeCard from './WorkflowNodeCard'
 import { WorkflowButton } from './WorkflowButton'
@@ -289,7 +295,7 @@ export default function WorkflowDag({
   if (flowNodes.length === 0) {
     return (
       <p className="px-3.5 py-3 text-xs text-[var(--unilab-color-text-muted)]">
-        当前 JSON 未定义节点，无法生成拓扑图
+        当前工作流未定义节点，无法生成拓扑图
       </p>
     )
   }

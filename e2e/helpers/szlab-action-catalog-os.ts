@@ -21,6 +21,8 @@ export const SZLAB_MATERIAL_WORKFLOW_UUID =
   '5e7ce142-bf5a-5d30-8666-fdf5374941f1'
 export const SZLAB_MATERIAL_FIXTURE_SHA =
   '60a0fc00fc6be4d09ecfa8e83e1cc876e7cc3cce'
+export const SZLAB_S06_WORKFLOW_UUID =
+  '0b4e6fce-14bc-5866-a373-16ad25c7f8cf'
 
 export interface SzlabActionCatalogOs {
   url: string
@@ -44,6 +46,21 @@ export async function startSzlabActionCatalogOs(): Promise<SzlabActionCatalogOs>
 export async function startSzlabMaterialWorkflowOs(): Promise<SzlabMaterialWorkflowOs> {
   return startSzlabOs({
     workflowUuid: SZLAB_MATERIAL_WORKFLOW_UUID,
+    fixtureSha: SZLAB_MATERIAL_FIXTURE_SHA,
+    applyCompatibility: false
+  })
+}
+
+/**
+ * 启动绑定真实 S06 工作流定义的隔离 Uni-Lab-OS 创作夹具。
+ *
+ * @returns 已就绪的 OS 地址、S06 工作流 UUID、日志读取器和停止函数。
+ * @throws 仓库缺失、依赖未就绪或 OS 健康检查失败时抛出诊断异常。
+ * @safety 关闭兼容补丁且不启动真实设备执行，仅验证工作流创作接口。
+ */
+export async function startSzlabS06AuthoringOs(): Promise<SzlabMaterialWorkflowOs> {
+  return startSzlabOs({
+    workflowUuid: SZLAB_S06_WORKFLOW_UUID,
     fixtureSha: SZLAB_MATERIAL_FIXTURE_SHA,
     applyCompatibility: false
   })
