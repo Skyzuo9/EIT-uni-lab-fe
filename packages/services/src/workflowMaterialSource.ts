@@ -117,6 +117,8 @@ export async function loadWorkflowMaterialSourceCatalog(
   )
   const template = recordValue(detail.template)
   const handles = recordArray(detail.handles)
+  // `scaffoldSchema` 把 Backend `omitempty` 缺失值规范为框架模板的内部 null。
+  const scaffoldSchema = template.schema ?? null
   if (
     uuidString(template.uuid) !== summaryUuid ||
     uuidString(template.resource_template_uuid) !== summaryResourceUuid ||
@@ -124,7 +126,7 @@ export async function loadWorkflowMaterialSourceCatalog(
     template.type !== 'material_source' ||
     template.node_type !== 'material_source' ||
     template.class !== 'unilabos.workflow.authoring:material_source' ||
-    template.schema !== null ||
+    scaffoldSchema !== null ||
     handles.length !== 1
   ) invalidCatalog('物料来源（MaterialSource）框架模板详情无效')
   const handle = handles[0]

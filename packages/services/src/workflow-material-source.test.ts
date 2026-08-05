@@ -40,8 +40,8 @@ function registerWorkflowMaterialSourceCatalogTests(): void {
     loadsMaterialSourceCatalogInSiteBusinessOrder
   )
   it(
-    '框架模板 schema 被 wire omitempty 省略时仍按内部 null 加载',
-    loadsMaterialSourceCatalogWithOmittedScaffoldSchema
+    '框架模板 schema 空值规范为 null 且非空错误类型关闭失败',
+    validatesScaffoldSchemaNullability
   )
   it(
     'OS 未发布精确物料来源框架模板时关闭失败',
@@ -59,12 +59,12 @@ describe(
 )
 
 /**
- * 验证框架模板（ScaffoldTemplate）的 `schema` 被 wire 省略时等价于显式 null。
+ * 验证框架模板（ScaffoldTemplate）的 `schema` wire 空值语义和失败关闭边界。
  *
- * @returns Promise 完成时表示物料来源（MaterialSource）目录仍被合法加载。
- * @throws 若省略值未规范为内部 null，则由 Vitest 断言失败。
+ * @returns Promise 完成时表示缺失值等价于 null，非空错误类型仍被拒绝。
+ * @throws 若空值规范化或错误类型边界失效，则由 Vitest 断言失败。
  */
-async function loadsMaterialSourceCatalogWithOmittedScaffoldSchema(): Promise<void> {
+async function validatesScaffoldSchemaNullability(): Promise<void> {
   const fixture = responses()
   // `detailTemplate` 是服务端经 `omitempty` 输出的框架模板 wire 记录。
   const detailTemplate = (fixture[
@@ -79,6 +79,12 @@ async function loadsMaterialSourceCatalogWithOmittedScaffoldSchema(): Promise<vo
 
   const snapshot = await runtime.getWorkflowMaterialSourceCatalog()
   expect(snapshot.template.uuid).toBe(frameworkTemplateUuid)
+
+  // 非空对象不是 Backend `*string` 合同，也不是无参数框架模板的合法值。
+  detailTemplate.schema = { type: 'object' }
+  await expect(runtime.getWorkflowMaterialSourceCatalog()).rejects.toMatchObject({
+    code: 'INVALID_WORKFLOW_MATERIAL_SOURCE_CATALOG'
+  })
 }
 
 /**
