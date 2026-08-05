@@ -72,6 +72,10 @@ import {
   projectMaterialTraces
 } from '../utils/workflowMaterialTrace'
 import {
+  workflowDagLayoutStrategyLabel,
+  type WorkflowDagLayoutStrategy
+} from '../utils/workflowDagLayoutStrategy'
+import {
   projectWorkflowTaskEvents,
   projectWorkflowTaskJob
 } from '../utils/workflowTaskOutputProjection'
@@ -353,18 +357,24 @@ export function PersistentWorkflowAuthoringPanel({
     [graph, materialSourceCatalog]
   )
   /**
-   * 将当前候选图重新排成自上而下的工作流布局，并把结果留在画布草稿中。
+   * 按选定策略重排当前候选图，并把坐标结果留在画布草稿中。
    *
+   * @param strategy 用户选择的工作流（Workflow）画布布局策略。
    * @returns 无返回值；没有可编辑候选图时保持现状。
    */
-  const beautifyCanvasLayout = useCallback((): void => {
+  const beautifyCanvasLayout = useCallback((
+    strategy: WorkflowDagLayoutStrategy
+  ): void => {
     if (!graph || !policy.canvasMutationEnabled || busy) return
-    const nextGraph = beautifyPersistentAuthoringGraph(graph)
+    const nextGraph = beautifyPersistentAuthoringGraph(graph, strategy)
     setGraph(nextGraph)
     setCanvasDirty(true)
     setSelectedNodeNameDirty(false)
     setError(null)
-    setMessage('布局已美化；保存草稿后将写入工作流')
+    setMessage(
+      `已应用${workflowDagLayoutStrategyLabel(strategy)}布局；` +
+      '保存草稿后将写入工作流'
+    )
   }, [busy, graph, policy.canvasMutationEnabled])
   const materialTraces = useMemo(
     () => projectMaterialTraces(structure.nodes, structure.links),

@@ -100,6 +100,20 @@ describe('Material trace projection', () => {
     expect(projection.edgeAccents.get(0)).toBe(materialTraceAccent(sourceUuid))
     expect(projection.edgeAccents.get(1)).toBe(materialTraceAccent(reagentUuid))
     expect(projection.edgeAccents.get(0)).not.toBe(projection.edgeAccents.get(1))
+    expect(projection.lineages.map((lineage) => lineage.sourceNodeUuid)).toEqual([
+      sourceUuid,
+      reagentUuid
+    ])
+    expect(projection.edgeLineages).toEqual(new Map([
+      [0, sourceUuid],
+      [1, reagentUuid]
+    ]))
+    expect(projection.handleLineagesByNode.get(firstActionUuid)).toEqual(
+      new Map([
+        [sampleInput.uuid, sourceUuid],
+        [reagentInput.uuid, reagentUuid]
+      ])
+    )
     expect(projection.chipsByNode.get(firstActionUuid)).toEqual([
       materialChip(sampleInput.uuid, materialTraceAccent(sourceUuid), {
         sourceNodeUuid: sourceUuid,
@@ -140,6 +154,40 @@ describe('Material trace projection', () => {
       sourceHandleName: '产物板',
       accent,
     }])
+  })
+
+  /** 验证下游边先出现时仍沿用最上游的同一物料身份。 */
+  it('resolves an unbound pass-through chain independently of edge order', () => {
+    const rootOutput = resourceSlotHandle('root-output', 'resource', 'source')
+    const middleInput = resourceSlotHandle('middle-input', 'resource', 'target')
+    const middleOutput = resourceSlotHandle('middle-output', 'resource', 'source')
+    const finalInput = resourceSlotHandle('final-input', 'resource', 'target')
+    const nodes = [
+      workflowNode(sourceUuid, '工作流输入', 'action', [rootOutput]),
+      workflowNode(firstActionUuid, '搬运', 'action', [
+        middleInput,
+        middleOutput
+      ]),
+      workflowNode(secondActionUuid, '使用', 'action', [finalInput])
+    ]
+    const projection = projectMaterialTraces(nodes, [
+      link(firstActionUuid, middleOutput.uuid, secondActionUuid, finalInput.uuid),
+      link(sourceUuid, rootOutput.uuid, firstActionUuid, middleInput.uuid)
+    ])
+    const lineageKey = `${sourceUuid}:${rootOutput.uuid}`
+
+    expect(projection.lineages.map((lineage) => lineage.key)).toEqual([
+      lineageKey
+    ])
+    expect(new Set(projection.edgeLineages.values())).toEqual(
+      new Set([lineageKey])
+    )
+    expect(projection.handleLineagesByNode.get(firstActionUuid)).toEqual(
+      new Map([
+        [middleInput.uuid, lineageKey],
+        [middleOutput.uuid, lineageKey]
+      ])
+    )
   })
 
   it('keeps adjacent material identities distinct when stable hashes collide', () => {

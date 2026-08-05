@@ -1,0 +1,45 @@
+@use './workflow-foundations' as *;
+
+/* 物料泳道把每个物料占位符（ResourceSlot）中心锁到固定纵轴。 */
+.workflow:global(.workflow-runtime)
+  :global(.wf-node--action-strip[data-workflow-layout-strategy='material-swimlanes']) {
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+}
+
+.workflow:global(.workflow-runtime)
+  :global(.wf-node--action-strip[data-workflow-layout-strategy='material-swimlanes'])
+  :global(.wf-node__body) {
+  width: 100%;
+}
+
+.workflow
+  :global(.wf-node--action-strip[data-workflow-layout-strategy='material-swimlanes'])
+  :global(.wf-node__identity) {
+  width: 112px;
+  min-width: 112px;
+  max-width: 112px;
+  flex-basis: 112px;
+}
+
+.workflow
+  :global(.wf-node--action-strip[data-workflow-layout-strategy='material-swimlanes'])
+  :global(.wf-node__material-ports[data-workflow-material-lane-start]) {
+  position: relative;
+  height: 38px;
+  align-self: center;
+  flex: none;
+  gap: 0;
+}
+
+.workflow
+  :global(.wf-node--action-strip[data-workflow-layout-strategy='material-swimlanes'])
+  :global(.wf-node__material-port[data-workflow-material-lane-index]) {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 128px;
+  min-width: 128px;
+  max-width: 128px;
+}

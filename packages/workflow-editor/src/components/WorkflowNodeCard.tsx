@@ -14,6 +14,8 @@ import type { NodeProps } from 'reactflow'
 import type { CSSProperties } from 'react'
 import type { MaterialShapeSpec } from '@unilab/material'
 import type { WorkflowHandlePort } from '../utils/parseWorkflow'
+import type { WorkflowDagLayoutStrategy } from '../utils/workflowDagLayoutStrategy'
+import { WORKFLOW_MATERIAL_LANE_GAP } from '../utils/workflowMaterialSwimlaneLayout'
 import {
   isResourceSlotHandle,
   type WorkflowMaterialChip
@@ -39,6 +41,9 @@ export interface WorkflowNodeData {
   traceAccent?: string
   materialHandleAccents?: Record<string, string>
   materialChips?: WorkflowMaterialChip[]
+  layoutStrategy?: WorkflowDagLayoutStrategy
+  materialLaneRange?: { start: number; end: number }
+  materialLaneByHandle?: Record<string, number>
   materialSource?: {
     mode: string
     flowRole: string
@@ -72,7 +77,8 @@ export default function WorkflowNodeCard({
   )
   const materialPorts = workflowMaterialPortCards(
     [...(targetHandles ?? []), ...(sourceHandles ?? [])],
-    data.materialHandleAccents
+    data.materialHandleAccents,
+    data.materialLaneByHandle
   )
   const projectedMaterialHandleIds = new Set(
     materialPorts.flatMap((port) => [
@@ -107,6 +113,7 @@ export default function WorkflowNodeCard({
       className={`${styles.node} wf-node wf-node--action-strip min-w-[150px] max-w-[220px] cursor-pointer overflow-visible rounded-[var(--unilab-radius-md)] border border-[var(--unilab-color-border)] bg-[var(--unilab-color-surface)] transition-[border-color,box-shadow] duration-200`}
       data-workflow-node-uuid={data.id}
       data-workflow-node-kind={data.kind || 'action'}
+      data-workflow-layout-strategy={data.layoutStrategy}
     >
       {renderStructuralHandles(
         targetHandles,
@@ -141,7 +148,7 @@ export default function WorkflowNodeCard({
             {data.name || data.id}
           </span>
         </span>
-        {renderMaterialPorts(materialPorts)}
+        {renderMaterialPorts(materialPorts, data.materialLaneRange)}
         {data.groupKind === 'subworkflow' && (
           <button
             type="button"
@@ -284,6 +291,7 @@ export interface WorkflowMaterialPortCard {
   accent: string
   targetHandle?: WorkflowHandlePort
   sourceHandle?: WorkflowHandlePort
+  laneIndex?: number
 }
 
 /**
@@ -291,11 +299,13 @@ export interface WorkflowMaterialPortCard {
  *
  * @param handles 节点的输入、输出 Handle。
  * @param materialHandleAccents 按 Handle UUID 索引的物料流颜色。
+ * @param materialLaneByHandle 按 Handle UUID 索引的物料泳道序号。
  * @returns 按逻辑字段合并后的物料标签；同字段输入、输出只占一项。
  */
 export function workflowMaterialPortCards(
   handles: readonly WorkflowHandlePort[],
-  materialHandleAccents: Record<string, string> | undefined
+  materialHandleAccents: Record<string, string> | undefined,
+  materialLaneByHandle: Record<string, number> | undefined = undefined
 ): WorkflowMaterialPortCard[] {
   const cards: WorkflowMaterialPortCard[] = []
   const resourceHandles = handles.filter(isResourceSlotHandle)
@@ -320,6 +330,7 @@ export function workflowMaterialPortCards(
     )
     if (existing) {
       existing[slot] = handle
+      existing.laneIndex ??= materialLaneByHandle?.[handle.uuid]
       // 同字段输入与输出是同一个 ResourceSlot；输入侧颜色代表进入节点的
       // 既有物料身份，因此在目录数据暂时不一致时仍以输入侧为准。
       if (handle.ioType === 'target') existing.accent = accent
@@ -336,10 +347,14 @@ export function workflowMaterialPortCards(
       label: handle.title || variableName || handle.displayName,
       ...(handle.description ? { description: handle.description } : {}),
       accent,
+      laneIndex: materialLaneByHandle?.[handle.uuid],
       [slot]: handle
     })
   }
-  return cards
+  return cards.sort((left, right) =>
+    (left.laneIndex ?? Number.MAX_SAFE_INTEGER) -
+      (right.laneIndex ?? Number.MAX_SAFE_INTEGER)
+  )
 }
 
 function preferredMaterialPortLabel(
@@ -360,12 +375,34 @@ function mergeDescriptions(
   return current ? `${current}\n${incoming}` : incoming
 }
 
+/**
+ * 渲染节点内物料占位符（ResourceSlot）标签及其南北句柄。
+ *
+ * @param cards 已按变量合并并排序的物料端口卡片。
+ * @param laneRange 节点在物料泳道中的最左与最右序号；缺省时使用紧凑排列。
+ * @returns 物料端口容器；没有物料端口时返回空。
+ */
 function renderMaterialPorts(
-  cards: readonly WorkflowMaterialPortCard[]
+  cards: readonly WorkflowMaterialPortCard[],
+  laneRange: { start: number; end: number } | undefined
 ): React.JSX.Element | null {
   if (cards.length === 0) return null
+  const swimlane = laneRange && cards.every(
+    (card) => card.laneIndex !== undefined
+  )
   return (
-    <span className="wf-node__material-ports" aria-label="物料变量">
+    <span
+      className="wf-node__material-ports"
+      aria-label="物料变量"
+      data-workflow-material-lane-start={swimlane ? laneRange.start : undefined}
+      data-workflow-material-lane-end={swimlane ? laneRange.end : undefined}
+      style={swimlane
+        ? {
+            width: 128 +
+              (laneRange.end - laneRange.start) * WORKFLOW_MATERIAL_LANE_GAP
+          }
+        : undefined}
+    >
       {cards.map((card) => (
         <span
           key={card.key}
@@ -373,7 +410,16 @@ function renderMaterialPorts(
           data-workflow-material-port-variable={card.variableName}
           data-workflow-material-port-label={card.label}
           data-workflow-material-port-description={card.description}
-          style={{ '--wf-material-accent': card.accent } as CSSProperties}
+          data-workflow-material-lane-index={card.laneIndex}
+          style={{
+            '--wf-material-accent': card.accent,
+            ...(swimlane
+              ? {
+                  left: (card.laneIndex as number - laneRange.start) *
+                    WORKFLOW_MATERIAL_LANE_GAP
+                }
+              : {})
+          } as CSSProperties}
           title={card.description}
           aria-label={card.description
             ? `${card.label}：${card.description}`

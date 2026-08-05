@@ -114,9 +114,11 @@ describe('Action node presentation', () => {
     })
     const output = materialHandle('resource-source', 'resource', 'source')
 
-    const cards = workflowMaterialPortCards([input, output], {
-      'resource-source': '#6657c7'
-    })
+    const cards = workflowMaterialPortCards(
+      [input, output],
+      { 'resource-source': '#6657c7' },
+      { 'resource-source': 4 }
+    )
 
     expect(cards).toHaveLength(1)
     expect(cards[0]).toEqual(expect.objectContaining({
@@ -124,7 +126,8 @@ describe('Action node presentation', () => {
       label: '试剂瓶',
       targetHandle: input,
       sourceHandle: output,
-      accent: '#6657c7'
+      accent: '#6657c7',
+      laneIndex: 4
     }))
   })
 })

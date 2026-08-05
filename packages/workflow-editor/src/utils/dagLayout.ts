@@ -12,6 +12,12 @@
 import type { WorkflowLink, WorkflowNode } from './parseWorkflow'
 import type { WorkflowRevision } from '@unilab/services'
 import { isResourceSlotHandle } from './workflowMaterialTrace'
+import type { WorkflowDagLayoutStrategy } from './workflowDagLayoutStrategy'
+import { DEFAULT_WORKFLOW_DAG_LAYOUT_STRATEGY } from './workflowDagLayoutStrategy'
+import {
+  layoutWorkflowMaterialSwimlanes,
+  type WorkflowMaterialSwimlaneProjection
+} from './workflowMaterialSwimlaneLayout'
 
 // 布局后的节点(带坐标)
 export interface LayoutNode extends WorkflowNode {
@@ -25,6 +31,7 @@ export interface LayoutResult {
   nodes: LayoutNode[]
   links: WorkflowLink[]
   direction: DagLayoutDirection
+  swimlanes?: WorkflowMaterialSwimlaneProjection
 }
 
 export interface LayoutDagOptions {
@@ -331,17 +338,28 @@ function layoutDirection(
   return horizontalSpan > verticalSpan ? 'horizontal' : 'vertical'
 }
 
+/**
+ * 按布局策略更新 Canonical 修订版本的节点坐标并保留其它布局元数据。
+ *
+ * @param revision 当前 Canonical 工作流（Workflow）修订版本。
+ * @param nodes 修订版本投影出的可见节点。
+ * @param links 修订版本投影出的有效边。
+ * @param strategy 用户选择的画布布局策略。
+ * @returns 带新节点坐标且不修改原对象的修订版本。
+ */
 export function beautifyWorkflowRevision(
   revision: WorkflowRevision,
   nodes: WorkflowNode[],
-  links: WorkflowLink[]
+  links: WorkflowLink[],
+  strategy: WorkflowDagLayoutStrategy =
+    DEFAULT_WORKFLOW_DAG_LAYOUT_STRATEGY
 ): WorkflowRevision {
   const layout = recordValue(revision.layout)
   const previousNodes = recordValue(layout.nodes)
   const nextNodes = { ...previousNodes }
-  const result = layoutDag(nodes, links, {
-    preserveExistingPositions: false
-  })
+  const result = strategy === 'material-swimlanes'
+    ? layoutWorkflowMaterialSwimlanes(nodes, links)
+    : layoutDag(nodes, links, { preserveExistingPositions: false })
   for (const node of result.nodes) {
     nextNodes[node.id] = {
       ...recordValue(previousNodes[node.id]),

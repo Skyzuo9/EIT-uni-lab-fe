@@ -31,6 +31,12 @@ import type { WorkflowNodeData } from './WorkflowNodeCard'
 import type { WorkflowLink, WorkflowNode } from '../utils/parseWorkflow'
 import { projectNestedWorkflow } from '../utils/canonicalWorkflow'
 import {
+  DEFAULT_WORKFLOW_DAG_LAYOUT_STRATEGY,
+  WORKFLOW_DAG_LAYOUT_STRATEGIES,
+  workflowDagLayoutStrategyLabel,
+  type WorkflowDagLayoutStrategy
+} from '../utils/workflowDagLayoutStrategy'
+import {
   CANVAS_EDIT_WORKFLOW_CANVAS,
   READ_ONLY_WORKFLOW_CANVAS,
   visibleReadOnlyEdgeChanges,
@@ -52,7 +58,7 @@ interface WorkflowDagProps {
   pausedBeforeNodeId?: string | null
   canBeautify?: boolean
   beautifyDisabledReason?: string
-  onBeautify?: () => void
+  onBeautify?: (strategy: WorkflowDagLayoutStrategy) => void
   canvasMutationEnabled?: boolean
   nodePositionMutationEnabled?: boolean
   onNodePositionChange?: (
@@ -97,6 +103,10 @@ export default function WorkflowDag({
   onConnectHandles
 }: WorkflowDagProps): React.JSX.Element {
   const [isBeautifying, setIsBeautifying] = useState(false)
+  const [layoutStrategy, setLayoutStrategy] =
+    useState<WorkflowDagLayoutStrategy>(
+      DEFAULT_WORKFLOW_DAG_LAYOUT_STRATEGY
+    )
   const [expandedGroupIds, setExpandedGroupIds] = useState<Set<string>>(
     () => new Set()
   )
@@ -137,7 +147,8 @@ export default function WorkflowDag({
   }, [])
   const { nodes: flowNodes, edges: flowEdges, onNodesChange, onEdgesChange } = useWorkflowDag(
     nestedProjection.nodes,
-    nestedProjection.links
+    nestedProjection.links,
+    layoutStrategy
   )
   const handleNodesChange = useCallback(
     (changes: NodeChange[]) => {
@@ -285,7 +296,7 @@ export default function WorkflowDag({
   const handleBeautify = useCallback(() => {
     if (!canBeautify || !onBeautify) return
     setIsBeautifying(true)
-    onBeautify()
+    onBeautify(layoutStrategy)
     if (beautifyTimerRef.current !== null) {
       globalThis.clearTimeout(beautifyTimerRef.current)
     }
@@ -293,7 +304,19 @@ export default function WorkflowDag({
       setIsBeautifying(false)
       beautifyTimerRef.current = null
     }, 480)
-  }, [canBeautify, onBeautify])
+  }, [canBeautify, layoutStrategy, onBeautify])
+
+  /**
+   * 切换画布布局策略并立即刷新本地预览。
+   *
+   * @param event 布局策略下拉框的变更事件。
+   * @returns 无返回值；只有点击“应用布局”才会写入工作流草稿。
+   */
+  const handleLayoutStrategyChange = useCallback((
+    event: React.ChangeEvent<HTMLSelectElement>
+  ): void => {
+    setLayoutStrategy(event.target.value as WorkflowDagLayoutStrategy)
+  }, [])
 
   if (flowNodes.length === 0) {
     return (
@@ -319,7 +342,10 @@ export default function WorkflowDag({
       }}
     >
       <ReactFlow
-        className={isBeautifying ? 'is-beautifying' : undefined}
+        className={[
+          isBeautifying ? 'is-beautifying' : '',
+          `wf-layout--${layoutStrategy}`
+        ].filter(Boolean).join(' ')}
         nodes={runtimeNodes}
         edges={runtimeEdges}
         onNodesChange={handleNodesChange}
@@ -377,38 +403,57 @@ export default function WorkflowDag({
         />
         <Controls showInteractive={false} />
         <Panel position="top-right">
-          <WorkflowButton
-            type="button"
-            className="workflow-runtime__beautify"
-            disabled={!canBeautify || isBeautifying}
-            disabledReason={isBeautifying
-              ? '正在美化工作流布局，请稍候'
-              : beautifyDisabledReason}
-            aria-label="美化工作流布局"
-            title={
-              canBeautify
-                ? '按控制流自动排列并适配画布'
-                : beautifyDisabledReason
-            }
-            onClick={handleBeautify}
+          <div
+            className="workflow-runtime__layout-tools"
+            aria-label="工作流布局工具"
           >
-            <svg
-              aria-hidden="true"
-              viewBox="0 0 24 24"
-              fill="none"
+            <select
+              className="workflow-runtime__layout-strategy"
+              aria-label="布局策略"
+              value={layoutStrategy}
+              onChange={handleLayoutStrategyChange}
             >
-              <path
-                d="M12 3l1.35 3.65L17 8l-3.65 1.35L12 13l-1.35-3.65L7 8l3.65-1.35L12 3Z"
-              />
-              <path
-                d="M18.5 13l.85 2.15L21.5 16l-2.15.85L18.5 19l-.85-2.15L15.5 16l2.15-.85L18.5 13Z"
-              />
-              <path
-                d="M6 14l.65 1.35L8 16l-1.35.65L6 18l-.65-1.35L4 16l1.35-.65L6 14Z"
-              />
-            </svg>
-            <span>{isBeautifying ? '正在美化' : '美化布局'}</span>
-          </WorkflowButton>
+              {WORKFLOW_DAG_LAYOUT_STRATEGIES.map((strategy) => (
+                <option key={strategy.value} value={strategy.value}>
+                  {strategy.label}
+                </option>
+              ))}
+            </select>
+            <WorkflowButton
+              type="button"
+              className="workflow-runtime__beautify"
+              disabled={!canBeautify || isBeautifying}
+              disabledReason={isBeautifying
+                ? '正在应用工作流布局，请稍候'
+                : beautifyDisabledReason}
+              aria-label={`应用${workflowDagLayoutStrategyLabel(layoutStrategy)}布局`}
+              title={
+                canBeautify
+                  ? WORKFLOW_DAG_LAYOUT_STRATEGIES.find(
+                      (strategy) => strategy.value === layoutStrategy
+                    )?.description
+                  : beautifyDisabledReason
+              }
+              onClick={handleBeautify}
+            >
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                fill="none"
+              >
+                <path
+                  d="M12 3l1.35 3.65L17 8l-3.65 1.35L12 13l-1.35-3.65L7 8l3.65-1.35L12 3Z"
+                />
+                <path
+                  d="M18.5 13l.85 2.15L21.5 16l-2.15.85L18.5 19l-.85-2.15L15.5 16l2.15-.85L18.5 13Z"
+                />
+                <path
+                  d="M6 14l.65 1.35L8 16l-1.35.65L6 18l-.65-1.35L4 16l1.35-.65L6 14Z"
+                />
+              </svg>
+              <span>{isBeautifying ? '正在应用' : '应用布局'}</span>
+            </WorkflowButton>
+          </div>
         </Panel>
         <MiniMap
           pannable

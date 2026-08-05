@@ -10,6 +10,11 @@ import { getNodeColor } from '../utils/nodeColors'
 import type { WorkflowLink, WorkflowNode } from '../utils/parseWorkflow'
 import { layoutVisibleWorkflowDag } from '../utils/workflowDagLayout'
 import {
+  DEFAULT_WORKFLOW_DAG_LAYOUT_STRATEGY,
+  type WorkflowDagLayoutStrategy
+} from '../utils/workflowDagLayoutStrategy'
+import { layoutWorkflowMaterialSwimlanes } from '../utils/workflowMaterialSwimlaneLayout'
+import {
   materialTraceAccent,
   projectMaterialTraces
 } from '../utils/workflowMaterialTrace'
@@ -34,19 +39,25 @@ const STRUCTURAL_EDGE_COLOR = 'var(--unilab-color-text-subtle)'
  *
  * @param nodes 已折叠组合工作流后的全部可见节点。
  * @param links 已重接端点的控制边与物料流（MaterialFlow）边。
+ * @param strategy 当前选中的画布布局策略。
  * @returns ReactFlow 状态以及节点、边变更入口。
  */
 export function useWorkflowDag(
   nodes: WorkflowNode[],
-  links: WorkflowLink[]
+  links: WorkflowLink[],
+  strategy: WorkflowDagLayoutStrategy =
+    DEFAULT_WORKFLOW_DAG_LAYOUT_STRATEGY
 ): UseWorkflowDagResult {
   const fallback = useMemo(
     () => buildFlowElements(
-      layoutDag(nodes, links, { preserveExistingPositions: false }),
+      strategy === 'material-swimlanes'
+        ? layoutWorkflowMaterialSwimlanes(nodes, links)
+        : layoutDag(nodes, links, { preserveExistingPositions: false }),
       nodes,
-      links
+      links,
+      strategy
     ),
-    [nodes, links]
+    [nodes, links, strategy]
   )
   const [flowNodes, setNodes, onNodesChange] = useNodesState(
     fallback.flowNodes
@@ -62,9 +73,9 @@ export function useWorkflowDag(
 
   useEffect(() => {
     let cancelled = false
-    void layoutVisibleWorkflowDag(nodes, links).then((layout) => {
+    void layoutVisibleWorkflowDag(nodes, links, strategy).then((layout) => {
       if (cancelled) return
-      const elements = buildFlowElements(layout, nodes, links)
+      const elements = buildFlowElements(layout, nodes, links, strategy)
       setNodes(elements.flowNodes)
       setEdges(elements.flowEdges)
     }).catch(() => {
@@ -73,7 +84,7 @@ export function useWorkflowDag(
     return () => {
       cancelled = true
     }
-  }, [links, nodes, setEdges, setNodes])
+  }, [links, nodes, setEdges, setNodes, strategy])
 
   return {
     nodes: flowNodes,
@@ -94,7 +105,8 @@ export function useWorkflowDag(
 function buildFlowElements(
   layout: LayoutResult,
   sourceNodes: readonly WorkflowNode[],
-  sourceLinks: readonly WorkflowLink[]
+  sourceLinks: readonly WorkflowLink[],
+  strategy: WorkflowDagLayoutStrategy
 ): WorkflowFlowElements {
   const materialTraces = projectMaterialTraces(sourceNodes, sourceLinks)
   const nodeNames = new Map(sourceNodes.map((node) => [node.id, node.name]))
@@ -103,32 +115,44 @@ function buildFlowElements(
       (node.handles ?? []).map((handle) => [handle.uuid, handle] as const)
     )
   )
-  const flowNodes: Node<WorkflowNodeData>[] = layout.nodes.map((node) => ({
-    id: node.id,
-    type: 'wfNode',
-    focusable: node.groupKind !== 'subworkflow',
-    position: { x: node.x, y: node.y },
-    targetPosition: Position.Top,
-    sourcePosition: Position.Bottom,
-    data: {
+  const flowNodes: Node<WorkflowNodeData>[] = layout.nodes.map((node) => {
+    const laneLayout = layout.swimlanes?.nodeLayouts.get(node.id)
+    const handleLanes = layout.swimlanes?.handleLaneIndexes.get(node.id)
+    return {
       id: node.id,
-      name: node.name,
-      color: getNodeColor(node.labNodeType, node.type),
-      kind: node.type,
-      groupKind: node.groupKind,
-      descendantCount: node.descendantNodeIds?.length,
-      handles: node.handles,
-      materialSource: node.materialSource,
-      traceAccent: node.type === 'material_source'
-        ? materialTraces.materialSourceAccents.get(node.id) ??
-          materialTraceAccent(node.id)
-        : undefined,
-      materialHandleAccents: Object.fromEntries(
-        materialTraces.handleAccentsByNode.get(node.id) ?? []
-      ),
-      materialChips: materialTraces.chipsByNode.get(node.id) ?? []
+      type: 'wfNode',
+      focusable: node.groupKind !== 'subworkflow',
+      position: { x: node.x, y: node.y },
+      targetPosition: Position.Top,
+      sourcePosition: Position.Bottom,
+      ...(laneLayout ? { style: { width: laneLayout.width } } : {}),
+      data: {
+        id: node.id,
+        name: node.name,
+        color: getNodeColor(node.labNodeType, node.type),
+        kind: node.type,
+        groupKind: node.groupKind,
+        descendantCount: node.descendantNodeIds?.length,
+        handles: node.handles,
+        materialSource: node.materialSource,
+        traceAccent: node.type === 'material_source'
+          ? materialTraces.materialSourceAccents.get(node.id) ??
+            materialTraceAccent(node.id)
+          : undefined,
+        materialHandleAccents: Object.fromEntries(
+          materialTraces.handleAccentsByNode.get(node.id) ?? []
+        ),
+        materialChips: materialTraces.chipsByNode.get(node.id) ?? [],
+        layoutStrategy: strategy,
+        materialLaneRange: laneLayout
+          ? { start: laneLayout.startLane, end: laneLayout.endLane }
+          : undefined,
+        materialLaneByHandle: handleLanes
+          ? Object.fromEntries(handleLanes)
+          : undefined
+      }
     }
-  }))
+  })
 
   const flowEdges: Edge<WorkflowRoundedStepEdgeData>[] = layout.links.map(
     (link, index) => {

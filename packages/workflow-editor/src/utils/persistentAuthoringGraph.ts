@@ -9,6 +9,11 @@ import type {
   WorkflowStructure
 } from './parseWorkflow'
 import { layoutDag } from './dagLayout'
+import {
+  DEFAULT_WORKFLOW_DAG_LAYOUT_STRATEGY,
+  type WorkflowDagLayoutStrategy
+} from './workflowDagLayoutStrategy'
+import { layoutWorkflowMaterialSwimlanes } from './workflowMaterialSwimlaneLayout'
 
 export function projectPersistentAuthoringGraph(
   graph: WorkflowAuthoringGraph,
@@ -222,10 +227,13 @@ export function projectPersistentAuthoringGraph(
  * 按完整工作流拓扑重新排列持久编写图，同时保留 OS 节点姿态中的非平面信息。
  *
  * @param graph OS 返回或前端候选区持有的工作流编写图。
+ * @param strategy 用户选择的工作流（Workflow）画布布局策略。
  * @returns 新的工作流编写图；原图及其节点不会被修改。
  */
 export function beautifyPersistentAuthoringGraph(
-  graph: WorkflowAuthoringGraph
+  graph: WorkflowAuthoringGraph,
+  strategy: WorkflowDagLayoutStrategy =
+    DEFAULT_WORKFLOW_DAG_LAYOUT_STRATEGY
 ): WorkflowAuthoringGraph {
   const structure = projectPersistentAuthoringGraph(graph)
   // 六边形物料来源比动作条更高；上移一小段可保证第一条物料流明确向下。
@@ -234,9 +242,11 @@ export function beautifyPersistentAuthoringGraph(
       .filter((node) => node.type === 'material_source')
       .map((node) => node.id)
   )
-  const layout = layoutDag(structure.nodes, structure.links, {
-    preserveExistingPositions: false
-  })
+  const layout = strategy === 'material-swimlanes'
+    ? layoutWorkflowMaterialSwimlanes(structure.nodes, structure.links)
+    : layoutDag(structure.nodes, structure.links, {
+        preserveExistingPositions: false
+      })
   const positionByNodeUuid = new Map(
     layout.nodes.map((node) => [node.id, {
       x: node.x,

@@ -27,6 +27,48 @@
     transform var(--unilab-motion-fast);
 }
 
+.workflow :global(.workflow-runtime__layout-tools) {
+  display: inline-flex;
+  height: 34px;
+  align-items: stretch;
+  overflow: hidden;
+  border: 1px solid color-mix(
+    in srgb,
+    var(--unilab-color-workflow) 30%,
+    var(--unilab-color-border)
+  );
+  border-radius: var(--unilab-radius-control);
+  background: var(--unilab-color-surface);
+  box-shadow: var(--unilab-shadow-control);
+}
+
+.workflow :global(.workflow-runtime__layout-strategy) {
+  height: 32px;
+  padding: 0 26px 0 10px;
+  color: var(--unilab-color-text);
+  border: 0;
+  border-right: 1px solid var(--unilab-color-border);
+  border-radius: 0;
+  outline: 0;
+  background: var(--unilab-color-surface);
+  font: 600 12px/1 var(--unilab-font-sans);
+  cursor: pointer;
+}
+
+.workflow :global(.workflow-runtime__layout-strategy):focus-visible {
+  box-shadow: inset 0 0 0 2px var(--unilab-color-focus);
+}
+
+.workflow
+  :global(.workflow-runtime__layout-tools)
+  :global(.workflow-runtime__beautify) {
+  height: 32px;
+  border: 0;
+  border-radius: 0;
+  background: var(--unilab-color-workflow-soft);
+  box-shadow: none;
+}
+
 .workflow :global(.workflow-runtime__beautify) svg {
   width: 16px;
   height: 16px;
