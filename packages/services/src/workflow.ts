@@ -663,7 +663,7 @@ export function createWorkflowRuntime(
     if (!materialGraph) {
       throw new ServiceError({
         code: 'WORKFLOW_MATERIAL_GRAPH_PORT_REQUIRED',
-        message: '工作流物料来源目录缺少公共物料图端口',
+        message: '物料来源（MaterialSource）目录缺少公共物料图（MaterialGraph）端口',
         retryable: false
       })
     }
