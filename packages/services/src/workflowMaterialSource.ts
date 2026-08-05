@@ -209,7 +209,11 @@ function mergeRegisteredResourceTemplates(
   }
   for (const material of materials) {
     const current = templatesByUuid.get(material.resourceTemplateUuid)
-    if (current && current.displayName === current.uuid) {
+    if (
+      current
+      && current.displayName === current.uuid
+      && material.materialClass
+    ) {
       templatesByUuid.set(current.uuid, {
         ...current,
         displayName: material.materialClass

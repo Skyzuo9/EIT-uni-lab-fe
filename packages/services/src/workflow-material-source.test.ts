@@ -374,15 +374,13 @@ function fixtureMaterialGraph(
       materialAggregate(
         materialUuid,
         sampleTemplateUuid,
-        'Assay plate',
-        'Plate96'
+        'Assay plate'
       ),
-      materialAggregate(mountUuid, mountTemplateUuid, 'Deck A', 'Deck', [
+      materialAggregate(mountUuid, mountTemplateUuid, 'Deck A', [
         materialSite(
           secondSiteUuid,
           mountUuid,
           'Slot B',
-          2,
           [],
           [materialUuid]
         ),
@@ -390,7 +388,6 @@ function fixtureMaterialGraph(
           firstSiteUuid,
           mountUuid,
           'Slot A',
-          1,
           [sampleTemplateUuid],
           []
         )
@@ -407,7 +404,6 @@ function fixtureMaterialGraph(
  * @param materialId 具体物料的稳定 UUID。
  * @param sourceTemplateId 物料来源资源模板 UUID。
  * @param name 物料显示名称。
- * @param materialClass 公共物料图中明确的模板类业务身份。
  * @param sites 该物料直接拥有的库位（Site）集合。
  * @returns 可由公共物料图端口返回的聚合对象。
  */
@@ -415,14 +411,12 @@ function materialAggregate(
   materialId: string,
   sourceTemplateId: string,
   name: string,
-  materialClass: string,
   sites: readonly MaterialSite[] = []
 ): MaterialAggregate {
   return {
     material: {
       id: materialId,
       sourceTemplateId,
-      materialClass,
       code: materialId,
       name,
       config: {},
@@ -441,7 +435,6 @@ function materialAggregate(
  * @param siteId 库位稳定 UUID。
  * @param ownerMaterialId 直接拥有库位的挂载物料 UUID。
  * @param name 库位显示名称。
- * @param sortOrder Backend 发布的库位（Site）业务顺序。
  * @param allowedTemplateIds 允许承载的资源模板 UUID。
  * @param occupiedMaterialIds 当前库位占用（SiteOccupancy）的物料 UUID。
  * @returns 容量为一的公共库位事实。
@@ -450,14 +443,12 @@ function materialSite(
   siteId: string,
   ownerMaterialId: string,
   name: string,
-  sortOrder: number,
   allowedTemplateIds: readonly string[],
   occupiedMaterialIds: readonly string[]
 ): MaterialSite {
   return {
     id: siteId,
     ownerMaterialId,
-    sortOrder,
     key: siteId,
     name,
     anchor: { kind: 'root' },
