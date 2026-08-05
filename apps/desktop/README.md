@@ -42,7 +42,8 @@
    ROS backend、FastAPI bridge 与 Edge Scheduler；每次启动会随机分配两位
    `ROS_DOMAIN_ID`（`02`–`99`），HTTP
    监听 `18003`，HostLink 使用本地调试专用端口 `18004`；不再额外启动
-   本地 Bridge 进程。挂载领域项目时工作目录使用 `runtime/ideawit-e2e`；
+   本地 Bridge 进程。挂载领域项目时运行数据目录使用
+   `runtime/plc-sim-e2e/os`；
    未挂载领域项目时改用 OS 内置配置与
    `Uni-Lab-OS/runtime/edge-local-debug`。启动计划不启用 `--test_mode`，也不
    注入 `UNILABOS_RUNTIME_DB`。
@@ -68,7 +69,7 @@ PLC-Sim 时处理领域侧 Edge HTTP、PLC-Sim Web GUI 与 OPC UA（默认分别
 覆盖，主进程解析
 `{{unilab}}`、`{{python}}`、`{{workspace}}`、`{{graph}}`、`{{config}}`、
 `{{working_dir}}`、`{{edge_http_port}}` 和 `{{hostlink_port}}`，随后继续使用
-`shell: false` 直接启动。Conda/PYTHONPATH、随机 `ROS_DOMAIN_ID`、运行数据库、
+`shell: false` 直接启动。Conda/PYTHONPATH、随机 `ROS_DOMAIN_ID`、
 HostLink 和可观测性环境变量仍由启动器管理；用户变量不能覆盖这些名称，也不能把
 密码、令牌等敏感值保存在 renderer 的本地配置中。自定义进程仍必须满足现有
 `18003/18004` 端口和领域设备动作目录就绪门。

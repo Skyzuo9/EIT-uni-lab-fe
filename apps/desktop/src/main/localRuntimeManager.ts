@@ -987,7 +987,7 @@ async function resolveRuntimeConfig(
       : 'Uni-Lab-OS 缺少内置本地调试配置'
   )
   const runtimeDirectory = szlabProjectPath
-    ? join(szlabProjectPath, 'runtime', 'ideawit-e2e')
+    ? join(szlabProjectPath, 'runtime', 'plc-sim-e2e', 'os')
     : join(osProjectPath, 'runtime', 'edge-local-debug')
   const resolvedPorts = resolveLocalRuntimePorts(ports)
   const customEdgeCommand = config.edgeCommandMode === 'custom'
