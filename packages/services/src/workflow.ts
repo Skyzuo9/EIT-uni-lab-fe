@@ -1,3 +1,5 @@
+import type { MaterialGraphPort } from '@unilab/material'
+
 import type { BackendConfig } from './backends'
 import type { HttpClient } from './http'
 import { ServiceError } from './errors'
@@ -625,11 +627,48 @@ export interface WorkflowRuntimePort {
   dispose: () => void
 }
 
+export interface WorkflowRuntimeDependencies {
+  /** 公共物料图端口是工作流物料来源（MaterialSource）目录唯一允许使用的物料读边界。 */
+  materialGraph?: Pick<MaterialGraphPort, 'getGraph'>
+}
+
+/**
+ * 创建统一工作流运行时（Workflow Runtime）端口并装配公开服务依赖。
+ *
+ * @param http 工作流、创作与运行时公开 API 的 HTTP 客户端。
+ * @param backend 当前服务端配置，用于构造全局事件流地址。
+ * @param dependencies 可选的公开服务依赖；只有物料来源目录读取需要公共物料图端口。
+ * @returns 可供前端工作流编辑器使用的统一运行时端口。
+ * @throws 调用物料来源目录但未注入公共物料图端口时失败关闭，不回退私有库存 HTTP。
+ */
 export function createWorkflowRuntime(
   http: HttpClient,
-  backend: BackendConfig
+  backend: BackendConfig,
+  dependencies: WorkflowRuntimeDependencies = {}
 ): WorkflowRuntimePort {
+  // 订阅集合统一拥有工作流创作与运行时事件连接的释放生命周期。
   const subscriptions = new Set<WorkflowEventSubscription>()
+
+  /**
+   * 通过已注入公共物料图端口加载工作流物料来源（MaterialSource）目录。
+   *
+   * @returns 工作流框架模板与公共物料/库位（Site）事实的目录快照。
+   * @throws 公共物料图端口缺失时抛出不可重试错误，且不会发出任何 HTTP 回退请求。
+   */
+  async function getWorkflowMaterialSourceCatalog(): Promise<
+    WorkflowMaterialSourceCatalogSnapshot
+  > {
+    // 公共物料图端口由组合根注入，并保持物料服务（Material Service）的单一 wire 解码权威。
+    const materialGraph = dependencies.materialGraph
+    if (!materialGraph) {
+      throw new ServiceError({
+        code: 'WORKFLOW_MATERIAL_GRAPH_PORT_REQUIRED',
+        message: '工作流物料来源目录缺少公共物料图端口',
+        retryable: false
+      })
+    }
+    return await loadWorkflowMaterialSourceCatalog(http, materialGraph)
+  }
 
   const request = async <Value>(
     path: string,
@@ -652,8 +691,7 @@ export function createWorkflowRuntime(
 
   const port: WorkflowRuntimePort = {
     getWorkflowActionCatalog: (signal) => loadWorkflowActionCatalog(http, signal),
-    getWorkflowMaterialSourceCatalog: () =>
-      loadWorkflowMaterialSourceCatalog(http),
+    getWorkflowMaterialSourceCatalog,
     listWorkflows: (query = {}) =>
       runtimeRequest(workflowListPath(query)),
     getWorkflowAuthoring: async (workflowUuid) =>

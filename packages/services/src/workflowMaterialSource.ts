@@ -1,10 +1,13 @@
-import { ServiceError } from './errors'
-import { requestData, type HttpClient } from './http'
+import type { MaterialGraphPort } from '@unilab/material'
 import {
   parseShapeLibrary,
   resolveShapeSpec,
   type MaterialShapeSpec
 } from '@unilab/material/domain'
+
+import { ServiceError } from './errors'
+import { requestData, type HttpClient } from './http'
+import { projectWorkflowMaterialSourceGraph } from './workflowMaterialSourceGraph'
 
 export interface WorkflowMaterialSourceHandleTemplate {
   uuid: string
@@ -34,13 +37,15 @@ export interface WorkflowMaterialSourceResourceTemplate {
   uuid: string
   displayName: string
   shape?: MaterialShapeSpec
+  shape?: MaterialShapeSpec
 }
 
 export interface WorkflowMaterialSourceMaterial {
   uuid: string
   name: string
   resourceTemplateUuid: string
-  materialClass: string
+  /** 遗留展示字段；公共物料图没有该权威事实时必须省略，不能从物料名称猜测。 */
+  materialClass?: string
 }
 
 export interface WorkflowMaterialSourceSite {
@@ -68,12 +73,24 @@ interface RegisteredWorkflowResourceTemplate {
   shape?: MaterialShapeSpec
 }
 
+/**
+ * 组合工作流物料来源（MaterialSource）框架模板与公共物料图（MaterialGraph）读模型。
+ *
+ * @param http 只负责读取公开工作流节点模板 API 的 HTTP 客户端。
+ * @param materialGraph 公共物料图端口；其 wire 解码由物料服务（Material Service）唯一负责。
+ * @returns 带目录权威、框架模板和公共物料/库位（Site）事实的创作快照。
+ * @throws 模板目录不一致或公共物料图无效时抛出结构化服务错误。
+ */
 export async function loadWorkflowMaterialSourceCatalog(
-  http: HttpClient
+  http: HttpClient,
+  materialGraph: Pick<MaterialGraphPort, 'getGraph'>
 ): Promise<WorkflowMaterialSourceCatalogSnapshot> {
+  // 模板摘要集合保存同一目录指纹下的全部工作流节点模板页。
   const summaries: Record<string, unknown>[] = []
+  // 目录权威标识哪个 OS 或 Backend 发布了当前工作流模板事实。
   let authority: { authorityId: string; authorityKind: 'local' | 'backend' } |
     null = null
+  // 目录指纹冻结模板摘要和详情必须属于同一个版本。
   let fingerprint: string | null = null
   let total: number | null = null
   let page = 1
@@ -106,6 +123,7 @@ export async function loadWorkflowMaterialSourceCatalog(
     invalidCatalog('MaterialSource catalog metadata is incomplete')
   }
 
+  // 框架候选必须精确匹配物料来源（MaterialSource）节点的三项 wire 身份。
   const candidates = summaries.filter((summary) =>
     summary.name === 'material_source' &&
     summary.type === 'material_source' &&
@@ -115,8 +133,10 @@ export async function loadWorkflowMaterialSourceCatalog(
     invalidCatalog('OS must publish exactly one MaterialSource framework template')
   }
   const summary = candidates[0]
+  // 框架模板 UUID 是工作流图引用该非动作节点合同的稳定身份。
   const summaryUuid = uuidString(summary.uuid)
   const summaryResource = recordValue(summary.resource_template)
+  // 框架所有者资源模板 UUID 证明摘要与详情描述同一个节点模板。
   const summaryResourceUuid = uuidString(summaryResource.uuid)
   const detail = catalogEnvelope(await http.request<unknown>(
     `/api/v1/workflow-node-templates/${encodeURIComponent(summaryUuid)}`
@@ -146,60 +166,29 @@ export async function loadWorkflowMaterialSourceCatalog(
     handle.required !== false
   ) invalidCatalog('MaterialSource framework Handle is invalid')
 
-  const [materialResponse, siteResponse, registeredResourceTemplates] =
-    await Promise.all([
-    http.request<unknown>('/api/v1/inventory/materials?limit=500'),
-    http.request<unknown>('/api/v1/inventory/sites?limit=500'),
-    loadRegisteredMaterialSourceTemplates(http)
-  ])
-  const materials = uniqueRecords(
-    recordArray(recordValue(materialResponse).materials),
-    'Material'
+  // 公共物料图聚合是物料、挂载关系和库位占用（SiteOccupancy）的唯一前端业务投影。
+  const graphProjection = projectWorkflowMaterialSourceGraph(
+    await materialGraph.getGraph({ kind: 'singleton' })
   )
-    .filter((item) => item.deleted_at === null || item.deleted_at === undefined)
-    .map((item): WorkflowMaterialSourceMaterial => ({
-      uuid: uuidString(item.uuid),
-      name: nonEmptyString(item.name),
-      resourceTemplateUuid: uuidString(item.resource_template_uuid),
-      materialClass: nonEmptyString(item.class)
-    }))
-    .sort((left, right) => left.uuid.localeCompare(right.uuid))
-  const sites = uniqueRecords(
-    recordArray(recordValue(siteResponse).sites),
-    'Site'
+  // 公共资源模板与外形目录只增强标题/外形，不再提供物料或库位事实。
+  const registeredResourceTemplates =
+    await loadRegisteredMaterialSourceTemplates(http)
+  const resourceTemplatesByUuid = new Map(
+    graphProjection.resourceTemplates.map((template) => [
+      template.uuid,
+      { ...template } as WorkflowMaterialSourceResourceTemplate
+    ])
   )
-    .filter((item) => item.deleted_at === null || item.deleted_at === undefined)
-    .map((item): WorkflowMaterialSourceSite => ({
-      uuid: uuidString(item.uuid),
-      name: nonEmptyString(item.name),
-      sortOrder: integer(item.sort_order),
-      mountMaterialUuid: uuidString(item.material_uuid),
-      allowedResourceTemplateUuids: uuidArray(
-        item.allowed_resource_template_uuids
-      ),
-      occupiedMaterialUuid: nullableUuid(item.occupied_material_uuid)
-    }))
-    .sort((left, right) =>
-      left.sortOrder - right.sortOrder || left.uuid.localeCompare(right.uuid)
-    )
-  const templateNames = new Map<string, string>()
-  for (const material of materials) {
-    templateNames.set(material.resourceTemplateUuid, material.materialClass)
-  }
-  for (const site of sites) {
-    for (const uuid of site.allowedResourceTemplateUuids) {
-      if (!templateNames.has(uuid)) templateNames.set(uuid, uuid)
-    }
-  }
-  const registeredTemplatesByUuid = new Map(
-    registeredResourceTemplates.map((template) => [template.uuid, template])
-  )
-  for (const template of registeredResourceTemplates) {
-    if (!templateNames.has(template.uuid)) {
-      templateNames.set(template.uuid, template.displayName)
-    }
+  for (const registered of registeredResourceTemplates) {
+    const projected = resourceTemplatesByUuid.get(registered.uuid)
+    resourceTemplatesByUuid.set(registered.uuid, {
+      uuid: registered.uuid,
+      displayName: registered.displayName || projected?.displayName || registered.uuid,
+      ...(registered.shape ? { shape: registered.shape } : {})
+    })
   }
 
+  // 来源句柄携带物料占位符（ResourceSlot）的原始 wire 合同以供图保存。
   const sourceHandle = attachWireValue({
     uuid: uuidString(handle.uuid),
     workflowNodeTemplateUuid: summaryUuid,
@@ -211,6 +200,7 @@ export async function loadWorkflowMaterialSourceCatalog(
     dataSource: nullableString(handle.data_source),
     dataKey: nullableString(handle.data_key)
   }, handle)
+  // 框架模板保存 OS 发布的完整 wire 值，不从公共物料图反向构造模板合同。
   const frameworkTemplate = attachWireValue({
     uuid: summaryUuid,
     resourceTemplateUuid: summaryResourceUuid,
@@ -226,18 +216,9 @@ export async function loadWorkflowMaterialSourceCatalog(
     authorityKind: authority.authorityKind,
     fingerprint,
     template: frameworkTemplate,
-    resourceTemplates: [...templateNames.entries()]
-      .map(([uuid, displayName]) => {
-        const shape = registeredTemplatesByUuid.get(uuid)?.shape
-        return {
-          uuid,
-          displayName,
-          ...(shape ? { shape } : {})
-        }
-      })
-      .sort((left, right) => left.uuid.localeCompare(right.uuid)),
-    materials,
-    sites
+    ...graphProjection,
+    resourceTemplates: [...resourceTemplatesByUuid.values()]
+      .sort((left, right) => left.uuid.localeCompare(right.uuid))
   }
 }
 
@@ -354,19 +335,6 @@ function sameAuthority(
     left.authorityKind === right.authorityKind
 }
 
-function uniqueRecords(
-  records: Record<string, unknown>[],
-  label: string
-): Record<string, unknown>[] {
-  const seen = new Set<string>()
-  for (const record of records) {
-    const uuid = uuidString(record.uuid)
-    if (seen.has(uuid)) invalidCatalog(`${label} UUID is duplicated`)
-    seen.add(uuid)
-  }
-  return records
-}
-
 function recordArray(value: unknown): Record<string, unknown>[] {
   if (!Array.isArray(value) || value.some((item) => !isRecord(item))) {
     invalidCatalog('Expected an object array')
@@ -394,21 +362,8 @@ function uuidString(value: unknown): string {
   return uuid
 }
 
-function nullableUuid(value: unknown): string | null {
-  return value === null || value === undefined ? null : uuidString(value)
-}
-
 function nullableString(value: unknown): string | null {
   return value === null || value === undefined ? null : nonEmptyString(value)
-}
-
-function uuidArray(value: unknown): string[] {
-  if (!Array.isArray(value)) invalidCatalog('Expected a UUID array')
-  const uuids = value.map(uuidString)
-  if (new Set(uuids).size !== uuids.length) {
-    invalidCatalog('UUID array contains duplicates')
-  }
-  return uuids
 }
 
 function stringArray(value: unknown): string[] {
