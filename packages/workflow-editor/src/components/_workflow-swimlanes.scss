@@ -157,20 +157,6 @@
   box-shadow: none;
 }
 
-.workflow:global(.workflow-runtime)
-  :global(.wf-node--action-strip[data-workflow-layout-direction='horizontal'][data-workflow-multi-material='true'])
-  > :global(.wf-node__swimlane-rail) {
-  position: absolute;
-  z-index: 0;
-  top: 18px;
-  right: 71px;
-  bottom: 18px;
-  width: 1px;
-  background: var(--unilab-color-border-strong);
-  content: '';
-  pointer-events: none;
-}
-
 .workflow
   :global(.wf-node--action-strip[data-workflow-layout-direction='horizontal'][data-workflow-multi-material='true'])
   :global(.wf-node__identity) {
@@ -187,18 +173,6 @@
   border-radius: 0;
   background: transparent;
   transform: translateY(-50%);
-}
-
-.workflow
-  :global(.wf-node--action-strip[data-workflow-layout-direction='horizontal'][data-workflow-multi-material='true'])
-  :global(.wf-node__identity)::after {
-  position: absolute;
-  top: 50%;
-  left: 100%;
-  width: 88px;
-  height: 1px;
-  background: var(--unilab-color-border-strong);
-  content: '';
 }
 
 .workflow

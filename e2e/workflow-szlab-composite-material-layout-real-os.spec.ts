@@ -391,6 +391,7 @@ test('SZLab composite material workflow uses one orthogonal visible layout', asy
     const element = node as HTMLElement
     const nodeRect = element.getBoundingClientRect()
     const style = getComputedStyle(element)
+    const identity = element.querySelector<HTMLElement>('.wf-node__identity')
     const ports = [...element.querySelectorAll<HTMLElement>(
       '[data-workflow-material-port-variable]'
     )]
@@ -400,6 +401,12 @@ test('SZLab composite material workflow uses one orthogonal visible layout', asy
       backgroundColor: style.backgroundColor,
       borderStyle: style.borderTopStyle,
       borderWidth: Number.parseFloat(style.borderTopWidth),
+      decorativeRailCount: element.querySelectorAll(
+        ':scope > .wf-node__swimlane-rail'
+      ).length,
+      identityConnectorContent: identity
+        ? getComputedStyle(identity, '::after').content
+        : 'none',
       portLabels: ports.map((port) =>
         port.dataset.workflowMaterialPortLabel ?? ''),
       portsInsideFrame: ports.every((port) => {
@@ -419,6 +426,8 @@ test('SZLab composite material workflow uses one orthogonal visible layout', asy
     node.backgroundColor === 'rgb(255, 255, 255)'
       && node.borderStyle === 'solid'
       && node.borderWidth >= 1
+      && node.decorativeRailCount === 0
+      && node.identityConnectorContent === 'none'
       && node.portsInsideFrame
   ), JSON.stringify(horizontalGroupedActionEvidence, null, 2)).toBe(true)
   const horizontalViewport = { width: 6000, height: 1800 }

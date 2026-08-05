@@ -161,7 +161,10 @@ export default function WorkflowNodeCard({
         targetPosition,
         projectedMaterialHandleIds
       )}
-      {data.layoutStrategy === 'material-swimlanes' && materialPorts.length > 0 && (
+      {data.layoutStrategy === 'material-swimlanes'
+        && materialPorts.length > 0
+        && !(data.materialLaneDirection === 'horizontal'
+          && materialPorts.length > 1) && (
         <span className="wf-node__swimlane-rail" aria-hidden="true" />
       )}
 
