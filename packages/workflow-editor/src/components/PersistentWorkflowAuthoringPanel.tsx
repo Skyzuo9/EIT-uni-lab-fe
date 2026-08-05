@@ -527,13 +527,11 @@ export function PersistentWorkflowAuthoringPanel({
   )
   const taskRuntimeEvents = useMemo(
     () => projectWorkflowTaskEvents(
-      taskRuntime.snapshot.events,
       taskRuntime.snapshot.feedback,
       taskJobs
     ),
     [
       taskJobs,
-      taskRuntime.snapshot.events,
       taskRuntime.snapshot.feedback
     ]
   )

@@ -465,17 +465,6 @@ export interface WorkflowTaskRuntimeEvent {
   command_result?: Record<string, unknown>
 }
 
-export interface WorkflowTaskRuntimeEventQuery {
-  after_sequence?: number
-  limit?: number
-}
-
-export interface WorkflowTaskRuntimeEventPage {
-  items: WorkflowTaskRuntimeEvent[]
-  next_cursor: number
-  has_more: boolean
-}
-
 export interface WorkflowRuntimeChangedEvent {
   id: string
   event: 'workflow.runtime.changed'
@@ -607,10 +596,6 @@ export interface WorkflowRuntimePort {
   listWorkflowTaskJobs: (
     taskUuid: string
   ) => Promise<WorkflowNodeJob[]>
-  listWorkflowTaskEvents: (
-    taskUuid: string,
-    query?: WorkflowTaskRuntimeEventQuery
-  ) => Promise<WorkflowTaskRuntimeEventPage>
   commandWorkflowTask: (
     taskUuid: string,
     request: WorkflowTaskCommandRequest
@@ -874,8 +859,6 @@ export function createWorkflowRuntime(
       runtimeRequest(
         `/api/v1/workflow-tasks/${encodeURIComponent(taskUuid)}/jobs`
       ),
-    listWorkflowTaskEvents: (taskUuid, query = {}) =>
-      runtimeRequest(workflowTaskRuntimeEventsPath(taskUuid, query)),
     commandWorkflowTask: (taskUuid, body) =>
       runtimeRequest(
         `/api/v1/workflow-tasks/${encodeURIComponent(taskUuid)}/commands`,
@@ -1263,20 +1246,6 @@ function workflowNodeJobFeedbackPath(
   const base = `/api/v1/workflow-node-jobs/${
     encodeURIComponent(jobUuid)
   }/feedback`
-  return `${base}${suffix ? `?${suffix}` : ''}`
-}
-
-function workflowTaskRuntimeEventsPath(
-  taskUuid: string,
-  query: WorkflowTaskRuntimeEventQuery
-): string {
-  const search = new URLSearchParams()
-  if (query.after_sequence !== undefined) {
-    search.set('after_sequence', String(query.after_sequence))
-  }
-  if (query.limit !== undefined) search.set('limit', String(query.limit))
-  const suffix = search.toString()
-  const base = `/api/v1/workflow-tasks/${encodeURIComponent(taskUuid)}/events`
   return `${base}${suffix ? `?${suffix}` : ''}`
 }
 
