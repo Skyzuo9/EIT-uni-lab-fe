@@ -384,6 +384,41 @@ describe('LocalRuntimeLauncher', () => {
     expect(markup).toContain('在系统文件管理器中打开当前日志目录')
   })
 
+  /**
+   * 验证暂停自动跟随后仍明确告知日志继续刷新，并提供恢复到底部的入口。
+   *
+   * @returns 无返回值；通过服务端静态标记断言初始暂停态合同。
+   * @throws 渲染合同缺少暂停说明或恢复按钮时由断言报告失败。
+   */
+  it('keeps refreshing while follow mode is paused', () => {
+    const markup = renderToStaticMarkup(
+      <LocalRuntimeLogDrawer
+        snapshot={{
+          readAt: 1_785_499_200_000,
+          entries: [{
+            kind: 'edge',
+            content: 'latest edge output',
+            available: true,
+            truncated: false
+          }]
+        }}
+        activeKind="edge"
+        loading={false}
+        error={null}
+        following={false}
+        onFollowChange={vi.fn()}
+        onSelect={vi.fn()}
+        onRefresh={vi.fn()}
+        onClose={vi.fn()}
+      />
+    )
+
+    expect(markup).toContain('已暂停自动跟随；日志仍每 2 秒刷新。')
+    expect(markup).toContain('已暂停自动跟随')
+    expect(markup).toContain('回到底部')
+    expect(markup).not.toContain('已暂停自动刷新')
+  })
+
   it('strips terminal control codes and renders structured log rows', () => {
     const markup = renderToStaticMarkup(
       <LocalRuntimeLogDrawer

@@ -99,6 +99,14 @@ interface LocalRuntimeLogLauncherProps {
   onOpenChange?: (open: boolean) => void
 }
 
+/**
+ * 管理本地运行日志抽屉的增量读取、来源切换和自动跟随状态。
+ *
+ * @param props Electron 日志接口、入口样式及抽屉开关通知。
+ * @returns 桌面环境中的日志入口和按需挂载的抽屉；接口缺失时返回 null。
+ * @throws 不主动抛出异常；日志读取与目录打开失败转为抽屉错误提示。
+ * @safety 只读取主进程白名单日志来源，不接收或拼接任意文件路径。
+ */
 export function LocalRuntimeLogLauncher({
   runtimeApi = desktopRuntimeApi(),
   variant = 'toolbar',
@@ -166,8 +174,15 @@ export function LocalRuntimeLogLauncher({
     }
   }, [activeKind, runtimeApi])
 
+  /**
+   * 日志抽屉打开时持续增量读取；自动跟随只控制滚动，不得停止诊断数据刷新。
+   *
+   * @returns 关闭抽屉、切换来源或卸载时清除轮询并使旧请求失效。
+   * @throws 不向界面抛出异常；读取失败由 refresh 写入可见错误状态。
+   * @safety 只读取当前固定日志来源，不改变进程或日志文件内容。
+   */
   useEffect(() => {
-    if (!open || !following) return
+    if (!open) return
     if (typeof document === 'undefined' || document.visibilityState === 'visible') {
       void refresh(activeKind)
     }
@@ -180,7 +195,7 @@ export function LocalRuntimeLogLauncher({
       globalThis.clearInterval(refreshTimer)
       readSequenceRef.current += 1
     }
-  }, [activeKind, following, open, refresh])
+  }, [activeKind, open, refresh])
 
   useEffect(() => {
     if (!open || typeof document === 'undefined') return
@@ -1016,10 +1031,15 @@ export function LocalRuntimeLogDrawer({
 }: LocalRuntimeLogDrawerProps): React.JSX.Element {
   const outputRef = useRef<HTMLDivElement>(null)
   const activeLogKindRef = useRef(activeKind)
+  const activeLogContentRef = useRef({
+    kind: activeKind,
+    content: ''
+  })
   const [scrollTop, setScrollTop] = useState(0)
   const [viewportHeight, setViewportHeight] = useState(480)
   const [rowHeights, setRowHeights] = useState<Record<string, number>>({})
   const [levelFilter, setLevelFilter] = useState<LocalRuntimeLogFilter>('all')
+  const [hasNewOutput, setHasNewOutput] = useState(false)
   const idSuffix = instanceId ? `-${instanceId}` : ''
   const drawerId = `local-runtime-log-drawer${idSuffix}`
   const titleId = `local-runtime-log-title${idSuffix}`
@@ -1071,6 +1091,29 @@ export function LocalRuntimeLogDrawer({
       entry.top + entry.height >= visibleTop && entry.top <= visibleBottom
     ))
   }, [rowLayout.rows, viewportHeight, visibleScrollTop])
+
+  /**
+   * 比较当前来源的日志内容，在暂停自动跟随期间记录新内容提示。
+   *
+   * @returns 无清理函数；每次内容、来源或跟随状态变化后同步提示状态。
+   * @throws 不抛出异常；只比较内存中的日志文本。
+   * @safety 提示状态不修改日志快照，也不影响后台增量读取游标。
+   */
+  useEffect(() => {
+    const currentContent = activeEntry?.content ?? ''
+    const previous = activeLogContentRef.current
+    const activeKindChanged = previous.kind !== activeKind
+    activeLogContentRef.current = {
+      kind: activeKind,
+      content: currentContent
+    }
+
+    if (activeKindChanged || following) {
+      setHasNewOutput(false)
+      return
+    }
+    if (currentContent !== previous.content) setHasNewOutput(true)
+  }, [activeEntry?.content, activeKind, following])
 
   useEffect(() => {
     const activeKeys = new Set(
@@ -1165,6 +1208,18 @@ export function LocalRuntimeLogDrawer({
     setLevelFilter('all')
   }, [])
 
+  /**
+   * 清除新日志提示并恢复日志列表对最新输出的自动跟随。
+   *
+   * @returns 无返回值。
+   * @throws 不抛出异常。
+   * @safety 只改变滚动展示状态，不跳过、不删除任何日志记录。
+   */
+  const resumeFollowing = useCallback((): void => {
+    setHasNewOutput(false)
+    onFollowChange(true)
+  }, [onFollowChange])
+
   return (
     <div className={styles.logDrawerLayer}>
       <button
@@ -1186,7 +1241,7 @@ export function LocalRuntimeLogDrawer({
             <p>
               {following
                 ? '显示当前来源的最新输出，每 2 秒增量刷新。'
-                : '已暂停自动刷新，便于保持当前阅读位置。'}
+                : '已暂停自动跟随；日志仍每 2 秒刷新。'}
             </p>
           </div>
           <div className={styles.logDrawerActions}>
@@ -1198,15 +1253,6 @@ export function LocalRuntimeLogDrawer({
                 onClick={onOpenFile}
               >
                 打开日志目录
-              </button>
-            ) : null}
-            {!following ? (
-              <button
-                type="button"
-                className={styles.secondaryButton}
-                onClick={() => onFollowChange(true)}
-              >
-                继续跟随
               </button>
             ) : null}
             <button
@@ -1291,6 +1337,19 @@ export function LocalRuntimeLogDrawer({
                   显示 {filteredRows.length} / {formattedRows.length} 条
                 </span>
               </div>
+              {!following ? (
+                <button
+                  type="button"
+                  className={styles.logFollowNotice}
+                  aria-live="polite"
+                  aria-atomic="true"
+                  onClick={resumeFollowing}
+                >
+                  {hasNewOutput
+                    ? '有新日志，回到底部'
+                    : '已暂停自动跟随，回到底部'}
+                </button>
+              ) : null}
               {activeEntry.truncated ? (
                 <p className={styles.logNotice}>
                   界面保留最近 {LOCAL_RUNTIME_LOG_MAX_LINES.toLocaleString()} 行；

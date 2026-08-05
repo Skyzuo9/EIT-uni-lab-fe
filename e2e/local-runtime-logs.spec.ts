@@ -103,7 +103,13 @@ test('keeps the original log entry in the local runtime dialog', async ({
   await expect(runtimeDialog).toBeVisible()
 })
 
-/** 证明 PLC-Sim 折叠边界与常驻路径顺序在真实浏览器渲染中保持一致。 */
+/**
+ * 证明 PLC-Sim 折叠边界与常驻路径顺序在真实浏览器渲染中保持一致。
+ *
+ * @param page 已安装本地运行配置夹具的浏览器页面。
+ * @returns 完成依赖顺序、折叠边界与窄屏布局验收。
+ * @throws 任一配置项顺序、可见性或横向溢出不符合预期时由 Playwright 断言报告失败。
+ */
 test('本地运行配置按依赖顺序展示且仅折叠 PLC-Sim', async ({ page }) => {
   await page.goto('/?longRuntimePaths=1')
   const connectionBar = page.getByRole('group', {
@@ -171,10 +177,17 @@ test('本地运行配置按依赖顺序展示且仅折叠 PLC-Sim', async ({ pag
   await capture(page, '12-local-runtime-narrow-long-path.png')
 })
 
-test('用户拖动滚动条与自动刷新重叠时保持阅读位置', async ({
+/**
+ * 验证高频增量刷新持续进入虚拟日志列表，同时保留用户查看长日志时的滚动位置。
+ *
+ * @param page 已安装增量日志夹具的浏览器页面。
+ * @returns 完成自动跟随、暂停、新内容提示和一键恢复的界面验收。
+ * @throws 任一滚动或刷新不变量失效时由 Playwright 断言报告失败。
+ */
+test('用户查看历史时持续刷新并保持阅读位置', async ({
   page
 }) => {
-  await page.goto('/')
+  await page.goto('/?longLogs=1')
   const connectionBar = page.getByRole('group', {
     name: 'Edge 连接配置'
   })
@@ -206,13 +219,19 @@ test('用户拖动滚动条与自动刷新重叠时保持阅读位置', async ({
   ))
   await capture(page, '02-user-scroll-started.png')
 
-  await expect(page.getByText('已暂停自动刷新，便于保持当前阅读位置。'))
+  await expect(page.getByText('已暂停自动跟随；日志仍每 2 秒刷新。'))
     .toBeVisible()
-  await page.waitForTimeout(2_200)
-  expect(await logRowSetSize(logOutput)).toBe(rowsBeforePause)
+  await expect.poll(
+    () => logRowSetSize(logOutput),
+    { timeout: 5_000 }
+  ).toBeGreaterThan(rowsBeforePause)
   expect(await logOutput.evaluate((element) => element.scrollTop))
     .toBe(scrollTopBeforeRefresh)
-  await capture(page, '03-auto-refresh-paused.png')
+  const newLogButton = logDrawer.getByRole('button', {
+    name: '有新日志，回到底部'
+  })
+  await expect(newLogButton).toBeVisible()
+  await capture(page, '03-new-logs-preserved-reading-position.png')
 
   const scrollTopWhileReading = await logOutput.evaluate((element) => {
     element.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }))
@@ -220,20 +239,25 @@ test('用户拖动滚动条与自动刷新重叠时保持阅读位置', async ({
     element.dispatchEvent(new Event('scroll', { bubbles: true }))
     return element.scrollTop
   })
-  const rowsBeforeManualRefresh = await logRowSetSize(logOutput)
-  await logDrawer.getByRole('button', { name: '刷新' }).click()
-  await expect.poll(
-    () => logRowSetSize(logOutput),
-    { timeout: 5_000 }
-  ).toBeGreaterThan(rowsBeforeManualRefresh)
+  for (let refreshIndex = 0; refreshIndex < 3; refreshIndex += 1) {
+    const rowsBeforeManualRefresh = await logRowSetSize(logOutput)
+    await logDrawer.getByRole('button', { name: '刷新' }).click()
+    await expect.poll(
+      () => logRowSetSize(logOutput),
+      { timeout: 5_000 }
+    ).toBeGreaterThan(rowsBeforeManualRefresh)
+  }
   expect(await logOutput.evaluate((element) => element.scrollTop))
     .toBe(scrollTopWhileReading)
   await capture(page, '04-manual-refresh-preserved-reading-position.png')
 
-  await logOutput.evaluate((element) => {
-    element.scrollTop = element.scrollHeight
-    element.dispatchEvent(new Event('scroll', { bubbles: true }))
-  })
+  await newLogButton.click()
+  await expect(newLogButton).toBeHidden()
+  await expect.poll(
+    () => logOutput.evaluate((element) => (
+      element.scrollHeight - element.clientHeight - element.scrollTop
+    ))
+  ).toBeLessThanOrEqual(4)
   const rowsBeforeFollowResumed = await logRowSetSize(logOutput)
   await expect.poll(
     () => logRowSetSize(logOutput),
@@ -271,6 +295,67 @@ test('keeps the log drawer usable on a narrow viewport', async ({ page }) => {
   await expect(logDrawer).toHaveCSS('width', '390px')
   await page.waitForTimeout(250)
   await capture(page, '06-log-drawer-narrow.png')
+})
+
+/**
+ * 验证 PLC-Sim 与领域侧 Edge 的四种运行组合各自拥有独立、不串色的状态区域。
+ *
+ * @param page 已安装本地运行状态夹具的浏览器页面。
+ * @returns 完成状态文字、背景色和前景色的组合验收。
+ * @throws 任一进程状态或视觉颜色依赖相邻区域时由 Playwright 断言报告失败。
+ */
+test('PLC-Sim 与领域侧 Edge 按各自运行状态独立着色', async ({ page }) => {
+  const scenarios = [
+    { key: 'idle', plc: 'idle', edge: 'idle' },
+    { key: 'plc', plc: 'running', edge: 'idle' },
+    { key: 'edge', plc: 'idle', edge: 'running' },
+    { key: 'both', plc: 'running', edge: 'running' }
+  ] as const
+  const visuals = new Map<string, {
+    plc: { background: string; color: string }
+    edge: { background: string; color: string }
+  }>()
+
+  for (const scenario of scenarios) {
+    await page.goto(`/?runtimeStatus=${scenario.key}`)
+    const connectionBar = page.getByRole('group', {
+      name: 'Edge 连接配置'
+    })
+    await connectionBar.locator('button[data-runtime-phase]').click()
+    const runtimeDialog = page.getByRole('dialog', {
+      name: '领域侧 Edge（以 sz_lab 为例）'
+    })
+    const plcState = runtimeDialog.locator('[data-status]').filter({
+      hasText: 'PLC-Sim'
+    })
+    const edgeState = runtimeDialog.locator('[data-status]').filter({
+      hasText: '领域侧 Edge'
+    })
+    await expect(plcState).toHaveAttribute('data-status', scenario.plc)
+    await expect(edgeState).toHaveAttribute('data-status', scenario.edge)
+    visuals.set(scenario.key, {
+      plc: await processVisualStyle(plcState),
+      edge: await processVisualStyle(edgeState)
+    })
+  }
+
+  const idle = visuals.get('idle')
+  const plcOnly = visuals.get('plc')
+  const edgeOnly = visuals.get('edge')
+  const both = visuals.get('both')
+  expect(idle).toBeDefined()
+  expect(plcOnly).toBeDefined()
+  expect(edgeOnly).toBeDefined()
+  expect(both).toBeDefined()
+  expect(plcOnly?.plc.background).not.toBe(plcOnly?.edge.background)
+  expect(plcOnly?.plc.color).not.toBe(plcOnly?.edge.color)
+  expect(edgeOnly?.edge.background).not.toBe(edgeOnly?.plc.background)
+  expect(edgeOnly?.edge.color).not.toBe(edgeOnly?.plc.color)
+  expect(plcOnly?.plc).toEqual(both?.plc)
+  expect(edgeOnly?.edge).toEqual(both?.edge)
+  expect(idle?.plc).toEqual(plcOnly?.edge)
+  expect(idle?.edge).toEqual(edgeOnly?.plc)
+  expect(idle?.plc.background).not.toBe('rgba(0, 0, 0, 0)')
 })
 
 test('大日志只挂载可视行并把内存窗口限制在两千行', async ({ page }) => {
@@ -506,6 +591,9 @@ async function installRuntimeApi(page: Page): Promise<void> {
     const hasLongRuntimePaths = (): boolean => (
       new URLSearchParams(window.location.search).has('longRuntimePaths')
     )
+    const runtimeStatusScenario = (): string | null => (
+      new URLSearchParams(window.location.search).get('runtimeStatus')
+    )
     const idleSnapshot = {
       phase: 'idle' as const,
       message: 'PLC-Sim 与领域侧 Edge 均未启动',
@@ -519,14 +607,42 @@ async function installRuntimeApi(page: Page): Promise<void> {
       message: '领域侧 Edge 已就绪',
       edgeRunning: true
     }
+    /**
+     * 按浏览器场景生成 PLC-Sim 与领域侧 Edge 的独立进程状态快照。
+     *
+     * @returns 命中四种状态场景时返回快照，否则返回 null 继续使用普通夹具。
+     * @throws 不抛出异常；未知查询值按未配置场景处理。
+     */
+    const scenarioSnapshot = () => {
+      const scenario = runtimeStatusScenario()
+      if (scenario === 'plc') {
+        return {
+          ...idleSnapshot,
+          phase: 'simulator_ready' as const,
+          message: 'PLC-Sim 运行中；领域侧 Edge 未启动',
+          simulatorRunning: true
+        }
+      }
+      if (scenario === 'edge') {
+        return readySnapshot
+      }
+      if (scenario === 'both') {
+        return {
+          ...readySnapshot,
+          message: 'PLC-Sim 与领域侧 Edge 已就绪',
+          simulatorRunning: true,
+          bridgeRunning: true
+        }
+      }
+      return scenario === 'idle' ? idleSnapshot : null
+    }
     const runtimeApi = {
       selectPath: async () => null,
       getDefaultEnvironmentPath: async () => hasLongRuntimePaths()
         ? '/tmp/a-very-long-workspace-name/conda/environments/unilab-runtime-with-a-long-name'
         : '/tmp/envs/unilab',
-      getSnapshot: async () => hasPhoenixMissing()
-        ? readySnapshot
-        : idleSnapshot,
+      getSnapshot: async () => scenarioSnapshot()
+        ?? (hasPhoenixMissing() ? readySnapshot : idleSnapshot),
       startSimulator: async () => idleSnapshot,
       stopSimulator: async () => idleSnapshot,
       startEdge: async () => idleSnapshot,
@@ -660,6 +776,26 @@ async function logRowSetSize(logOutput: Locator): Promise<number> {
   const value = await logOutput.getByRole('listitem').first()
     .getAttribute('aria-setsize')
   return Number(value ?? 0)
+}
+
+/**
+ * 读取单个本地进程状态区域的最终背景色和文字色。
+ *
+ * @param processState PLC-Sim 或领域侧 Edge 的状态区域定位器。
+ * @returns 浏览器计算后的不透明背景色与前景色。
+ * @throws 元素不存在或浏览器求值失败时透传 Playwright 异常。
+ */
+async function processVisualStyle(processState: Locator): Promise<{
+  background: string
+  color: string
+}> {
+  return processState.evaluate((element) => {
+    const style = window.getComputedStyle(element)
+    return {
+      background: style.backgroundColor,
+      color: style.color
+    }
+  })
 }
 
 async function capture(page: Page, name: string): Promise<void> {

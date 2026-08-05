@@ -838,8 +838,8 @@
 .processGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  border-top: 1px solid currentColor;
-  border-top-color: color-mix(in srgb, currentColor 18%, transparent);
+  border-top: 1px solid var(--unilab-color-border);
+  background: var(--unilab-color-surface);
 }
 
 .processItem {
@@ -849,26 +849,37 @@
   justify-content: space-between;
   gap: 10px;
   padding: 9px 10px;
+  color: var(--unilab-color-text-muted);
+  background: var(--unilab-color-surface);
 
   & + & {
-    border-inline-start: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+    border-inline-start: 1px solid var(--unilab-color-border);
+  }
+
+  &[data-status='idle'] {
+    color: var(--unilab-color-text-muted);
+    background: var(--unilab-color-surface);
   }
 
   &[data-status='running'] {
     color: var(--unilab-color-success);
+    background: var(--unilab-color-success-soft);
   }
 
   &[data-status='starting'],
   &[data-status='stopping'] {
     color: var(--unilab-color-warning);
+    background: var(--unilab-color-warning-soft);
   }
 
   &[data-status='failed'] {
     color: var(--unilab-color-danger);
+    background: var(--unilab-color-danger-soft);
   }
 
   &[data-status='disabled'] {
     color: var(--unilab-color-text-subtle);
+    background: var(--unilab-color-surface-muted);
   }
 }
 
@@ -1296,6 +1307,35 @@
   font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.logFollowNotice {
+  display: flex;
+  min-height: 32px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 12px;
+  color: var(--unilab-color-primary);
+  border: 1px solid color-mix(
+    in srgb,
+    var(--unilab-color-primary) 28%,
+    var(--unilab-color-border)
+  );
+  border-radius: var(--unilab-radius-control);
+  background: var(--unilab-color-primary-soft);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+
+  &:hover {
+    border-color: var(--unilab-color-primary);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--unilab-color-focus);
+    outline-offset: 2px;
+  }
 }
 
 .logOutput {
