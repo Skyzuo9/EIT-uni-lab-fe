@@ -138,6 +138,10 @@ function registerPublishedWorkflowTests(): void {
     'loads one coherent executable union with a complete Published Workflow projection',
     projectsCompletePublishedWorkflow
   )
+  it(
+    'loads persisted schema text with canonical ready Handles',
+    acceptsPersistedSchemaTextAndCanonicalReadyHandles
+  )
   it.each(malformedWorkflowCases)(
     'fails closed for malformed Published Workflow $name',
     rejectsMalformedPublishedWorkflow
@@ -362,6 +366,53 @@ async function projectsCompletePublishedWorkflow(): Promise<void> {
     expect(Object.getOwnPropertyDescriptor(handle, 'wireValue'))
       .toMatchObject({ enumerable: false, writable: false })
   }
+}
+
+/**
+ * 证明数据库读投影的 JSON 文本 Schema 与规范 ready 连接点（Handle）可执行。
+ *
+ * @returns 测试完成后的 Promise。
+ * @throws Schema 文本或规范结构连接点被遗漏、错误放宽或拒绝时使测试失败。
+ */
+async function acceptsPersistedSchemaTextAndCanonicalReadyHandles(): Promise<void> {
+  const responses = executableCatalogResponses()
+  const detail = workflowDetail(responses)
+  detail.schema = JSON.stringify(detail.schema)
+  const readyHandles = workflowHandles(responses).filter(
+    (handle) => handle.handle_key === 'ready'
+  )
+  for (const handle of readyHandles) {
+    handle.type = 'default'
+    delete handle.data_source
+    delete handle.data_key
+    handle.meta_data = {}
+  }
+  const runtime = createWorkflowRuntime(
+    fixtureHttp(responses),
+    getDefaultBackend('local-python')
+  )
+
+  const catalog = await runtime.getWorkflowActionCatalog()
+
+  expect(catalog.workflowTemplates).toHaveLength(1)
+  expect(catalog.workflowTemplates[0]?.handles.slice(-2)).toEqual([
+    expect.objectContaining({
+      handleKey: 'ready',
+      ioType: 'target',
+      valueType: 'default',
+      dataSource: null,
+      dataKey: null,
+      structuralRole: 'ready'
+    }),
+    expect.objectContaining({
+      handleKey: 'ready',
+      ioType: 'source',
+      valueType: 'default',
+      dataSource: null,
+      dataKey: null,
+      structuralRole: 'ready'
+    })
+  ])
 }
 
 /**

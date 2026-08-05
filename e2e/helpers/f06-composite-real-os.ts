@@ -85,14 +85,17 @@ const PYTHON_LAUNCHER = String.raw`
 import sys
 from pathlib import Path
 
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from tests.registry.test_template_projection import (
     DEVICE_MATERIAL_UUID,
-    FakeInventoryStore,
     FakeRegistry,
+    RESOURCE_TEMPLATE_UUID,
 )
-from unilabos.app.workflow_api import install_workflow_api
+from unilabos.app.scheduler.integration import (
+    get_edge_scheduler,
+    setup_edge_inventory,
+    setup_edge_scheduler,
+)
+from unilabos.config.config import BasicConfig
 from unilabos.workflow.composition import (
     compose_local_workflow_template_runtime,
     reset_workflow_service_for_test,
@@ -201,12 +204,70 @@ editable_root.mkdir(parents=True, exist_ok=True)
     encoding="utf-8",
 )
 working_dir.mkdir(parents=True, exist_ok=True)
-inventory_store = FakeInventoryStore()
+BasicConfig.working_dir = str(working_dir)
+BasicConfig.workflow_editable_package_roots = (editable_root,)
+inventory_service = setup_edge_inventory(str(working_dir / "inventory.db"))
+with inventory_service.store.transaction() as connection:
+    connection.execute(
+        """
+        INSERT INTO resource_template(
+            uuid, create_time, update_time, name, display_name,
+            resource_type, module
+        ) VALUES (?,?,?,?,?,?,?)
+        """,
+        (
+            RESOURCE_TEMPLATE_UUID,
+            "2026-01-01T00:00:00.000Z",
+            "2026-01-01T00:00:00.000Z",
+            "pump",
+            "注射泵",
+            "device",
+            "lab.devices:Pump",
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO resource_template_inventory(
+            resource_template_uuid, aggregate_version
+        ) VALUES (?,1)
+        """,
+        (RESOURCE_TEMPLATE_UUID,),
+    )
+    connection.execute(
+        """
+        INSERT INTO material(
+            uuid, create_time, update_time, meta_data,
+            resource_template_uuid, class, barcode, name
+        ) VALUES (?,?,?,?,?,?,?,?)
+        """,
+        (
+            DEVICE_MATERIAL_UUID,
+            "2026-01-01T00:00:00.000Z",
+            "2026-01-01T00:00:00.000Z",
+            '{"edge_local_id":"pump-01"}',
+            RESOURCE_TEMPLATE_UUID,
+            "device",
+            "",
+            "pump-01",
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO material_inventory(material_uuid, aggregate_version)
+        VALUES (?,1)
+        """,
+        (DEVICE_MATERIAL_UUID,),
+    )
+setup_edge_scheduler(
+    device_state_db_path="off",
+    workflow_history_db_path="off",
+)
 reset_workflow_service_for_test()
-service, projection = compose_local_workflow_template_runtime(
+service, _projection = compose_local_workflow_template_runtime(
     working_dir,
-    inventory_store=inventory_store,
+    inventory_store=inventory_service.store,
     registry=FixtureRegistry(),
+    scheduler=get_edge_scheduler(),
     editable_package_roots=(editable_root,),
 )
 
@@ -245,20 +306,9 @@ def apply_fixture(workflow_uuid, source_path):
 apply_fixture(child_workflow_uuid, child_path)
 apply_fixture(parent_workflow_uuid, parent_path)
 
-app = FastAPI()
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "Accept", "Last-Event-ID"],
-)
-install_workflow_api(
-    app,
-    service,
-    template_snapshot_provider=projection,
-    authoring_transform=service.compiler,
-)
+from unilabos.app.web import server
+
+app = server.setup_server()
 
 import uvicorn
 

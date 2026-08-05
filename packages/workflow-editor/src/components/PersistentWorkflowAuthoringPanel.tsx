@@ -2241,7 +2241,7 @@ export function PersistentWorkflowAuthoringPanel({
                       </div>
                     )}
                   </section>
-                  <section>
+                  <section aria-label="动作（Action）模板">
                     <h3>操作</h3>
                     <div className="persistent-authoring__palette-actions">
                       {actionCatalog?.actionTemplates.map((template) => (
@@ -2270,7 +2270,7 @@ export function PersistentWorkflowAuthoringPanel({
                     </div>
                   </section>
                   {Boolean(actionCatalog?.workflowTemplates.length) && (
-                    <section>
+                    <section aria-label="子工作流（Workflow）模板">
                       <h3>子工作流</h3>
                       <div className="persistent-authoring__palette-actions">
                         {actionCatalog?.workflowTemplates.map((template) => (

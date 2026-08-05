@@ -60,6 +60,87 @@ test('Published child stays a boundary while its OS-owned graph expands locally'
     `${JSON.stringify({ list: catalogList, details: catalogDetails }, null, 2)}\n`,
     'utf8'
   )
+  const compiled = await readEnvelope<AuthoringTransformResult>(
+    `${os.url}/api/v1/authoring/compile`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        workflow_uuid: os.compositeParentWorkflowUuid,
+        revision: before.workflow_revision,
+        source_uri: before.draft?.source_uri,
+        python_source: before.draft?.python_source,
+        applied_graph: before.applied_graph
+      })
+    }
+  )
+  writeFileSync(
+    resolve(artifactDirectory, 'compile-fixed-point.json'),
+    `${JSON.stringify(compiled, null, 2)}\n`,
+    'utf8'
+  )
+  const recompiled = await readEnvelope<AuthoringTransformResult>(
+    `${os.url}/api/v1/authoring/compile`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        workflow_uuid: os.compositeParentWorkflowUuid,
+        revision: before.workflow_revision,
+        source_uri: before.draft?.source_uri,
+        python_source: compiled.normalized_python_source,
+        applied_graph: before.applied_graph
+      })
+    }
+  )
+  writeFileSync(
+    resolve(artifactDirectory, 'recompile-fixed-point.json'),
+    `${JSON.stringify(recompiled, null, 2)}\n`,
+    'utf8'
+  )
+  const generated = await readEnvelope<AuthoringTransformResult>(
+    `${os.url}/api/v1/authoring/generate-python`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        workflow_uuid: os.compositeParentWorkflowUuid,
+        revision: before.workflow_revision,
+        source_uri: before.draft?.source_uri,
+        graph: before.applied_graph
+      })
+    }
+  )
+  writeFileSync(
+    resolve(artifactDirectory, 'generate-fixed-point.json'),
+    `${JSON.stringify(generated, null, 2)}\n`,
+    'utf8'
+  )
+  const generatedRecompiled = await readEnvelope<AuthoringTransformResult>(
+    `${os.url}/api/v1/authoring/compile`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        workflow_uuid: os.compositeParentWorkflowUuid,
+        revision: before.workflow_revision,
+        source_uri: before.draft?.source_uri,
+        python_source: generated.normalized_python_source,
+        applied_graph: generated.graph
+      })
+    }
+  )
+  writeFileSync(
+    resolve(artifactDirectory, 'generate-recompile-fixed-point.json'),
+    `${JSON.stringify(generatedRecompiled, null, 2)}\n`,
+    'utf8'
+  )
+  for (const result of [compiled, recompiled, generated, generatedRecompiled]) {
+    expect(result.diagnostics.filter((item) => item.severity === 'error'))
+      .toEqual([])
+    expect(result.graph).not.toBeNull()
+    expect(result.normalized_python_source).not.toBeNull()
+  }
   const invocation = before.applied_graph.nodes.find(
     (node) => node.uuid === os.compositeInvocationUuid
   )
@@ -125,8 +206,14 @@ test('Published child stays a boundary while its OS-owned graph expands locally'
   )
   await expect(page.getByText('完整控制流 DAG')).toBeVisible()
   await page.getByRole('button', { name: '画布模式' }).click()
-  await expect(page.getByLabel('Action 模板')).toBeVisible()
-  await expect(page.getByLabel('子工作流模板')).toBeVisible()
+  const actionPalette = page.getByLabel('动作（Action）模板')
+  const workflowPalette = page.getByLabel('子工作流（Workflow）模板')
+  await expect(actionPalette).toBeVisible()
+  await expect(actionPalette.getByText('输送', { exact: true })).toBeVisible()
+  await expect(workflowPalette).toBeVisible()
+  await expect(workflowPalette.getByText('F06 Published child', {
+    exact: true
+  })).toBeVisible()
   await expect(page.getByText('Workflow Action Catalog 返回了无效响应'))
     .toHaveCount(0)
   const invocationCard = page.locator(
@@ -209,9 +296,15 @@ test('Published child stays a boundary while its OS-owned graph expands locally'
 interface AuthoringAggregate {
   state: string
   workflow_revision: number
-  draft: { python_source: string } | null
+  draft: { python_source: string; source_uri: string } | null
   candidate: { graph: AuthoringGraph } | null
   applied_graph: AuthoringGraph
+}
+
+interface AuthoringTransformResult {
+  diagnostics: Array<{ severity: string; code: string; message: string }>
+  graph: AuthoringGraph | null
+  normalized_python_source: string | null
 }
 
 interface AuthoringGraph {
