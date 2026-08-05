@@ -149,11 +149,11 @@
   bottom: 8px;
 }
 
-/* 多物料横向泳道使用一条精密操作轨，避免大跨度节点形成空白卡片墙。 */
+/* 多物料横向泳道用一个连续外框声明所有物料端口属于同一操作。 */
 .workflow:global(.workflow-runtime)
   :global(.wf-node--action-strip[data-workflow-layout-direction='horizontal'][data-workflow-multi-material='true']) {
-  border-color: transparent;
-  background: transparent;
+  border-color: var(--unilab-color-border-strong);
+  background: var(--unilab-color-surface);
   box-shadow: none;
 }
 
@@ -183,9 +183,9 @@
   max-width: 112px;
   min-height: 40px;
   padding: 0 10px;
-  border: 1px solid var(--unilab-color-border-strong);
-  border-radius: var(--unilab-radius-md);
-  background: var(--unilab-color-surface);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   transform: translateY(-50%);
 }
 
@@ -230,14 +230,14 @@
 .workflow
   :global(.react-flow__node-wfNode.selected)
   :global(.wf-node--action-strip[data-workflow-layout-direction='horizontal'][data-workflow-multi-material='true']) {
-  box-shadow: none;
+  box-shadow: var(--unilab-shadow-selected);
 }
 
 .workflow
   :global(.react-flow__node-wfNode.selected)
   :global(.wf-node--action-strip[data-workflow-layout-direction='horizontal'][data-workflow-multi-material='true'])
   :global(.wf-node__identity) {
-  box-shadow: var(--unilab-shadow-selected);
+  box-shadow: none;
 }
 
 .workflow:global(.workflow-runtime)

@@ -40,8 +40,8 @@ test.afterAll(async () => {
 })
 
 /**
- * 验证复杂复合物料工作流的 ready、物料输入和全部节点共同布局，并确保转运
- * 节点只展示物料流（MaterialFlow）句柄。
+ * 验证复杂复合物料工作流的 ready、物料输入和全部节点共同布局，确保转运
+ * 节点只展示物料流（MaterialFlow）句柄，并确保多物料操作共享一个外框。
  *
  * @param page 连接真实前端（Frontend）与操作系统（OS）的浏览器页面。
  * @returns 验证完成后生成截图和结构化证据文件。
@@ -383,6 +383,44 @@ test('SZLab composite material workflow uses one orthogonal visible layout', asy
     height: (node as HTMLElement).offsetHeight
   })).filter((node) => node.height > 112))
   expect(verticallyStretchedActions.length).toBeGreaterThan(0)
+  const horizontalGroupedActionEvidence = await panel.locator(
+    '.wf-node--action-strip' +
+    '[data-workflow-layout-direction="horizontal"]' +
+    '[data-workflow-multi-material="true"]'
+  ).evaluateAll((nodes) => nodes.map((node) => {
+    const element = node as HTMLElement
+    const nodeRect = element.getBoundingClientRect()
+    const style = getComputedStyle(element)
+    const ports = [...element.querySelectorAll<HTMLElement>(
+      '[data-workflow-material-port-variable]'
+    )]
+    return {
+      id: element.dataset.workflowNodeUuid ?? '',
+      name: element.querySelector('.wf-node__id')?.textContent?.trim() ?? '',
+      backgroundColor: style.backgroundColor,
+      borderStyle: style.borderTopStyle,
+      borderWidth: Number.parseFloat(style.borderTopWidth),
+      portLabels: ports.map((port) =>
+        port.dataset.workflowMaterialPortLabel ?? ''),
+      portsInsideFrame: ports.every((port) => {
+        const portRect = port.getBoundingClientRect()
+        return portRect.top >= nodeRect.top - 1
+          && portRect.right <= nodeRect.right + 1
+          && portRect.bottom <= nodeRect.bottom + 1
+          && portRect.left >= nodeRect.left - 1
+      })
+    }
+  }))
+  expect(horizontalGroupedActionEvidence.length).toBeGreaterThan(0)
+  expect(horizontalGroupedActionEvidence.some((node) =>
+    node.portLabels.length >= 3
+  ), JSON.stringify(horizontalGroupedActionEvidence, null, 2)).toBe(true)
+  expect(horizontalGroupedActionEvidence.every((node) =>
+    node.backgroundColor === 'rgb(255, 255, 255)'
+      && node.borderStyle === 'solid'
+      && node.borderWidth >= 1
+      && node.portsInsideFrame
+  ), JSON.stringify(horizontalGroupedActionEvidence, null, 2)).toBe(true)
   const horizontalViewport = { width: 6000, height: 1800 }
   await page.setViewportSize(horizontalViewport)
   await page.waitForTimeout(400)
@@ -448,6 +486,7 @@ test('SZLab composite material workflow uses one orthogonal visible layout', asy
       node_overlap_pairs: overlappingPairs(swimlaneNodeBoxes),
       horizontal: {
         screenshot_viewport: horizontalViewport,
+        grouped_actions: horizontalGroupedActionEvidence,
         source_order: horizontalSourceOrder,
         horizontal_edges: horizontalMaterialPathEvidence,
         directional_handles: horizontalMaterialHandleEvidence,
