@@ -360,6 +360,66 @@ test('SZLab workflow projects material transfers into the Pascal 3D scene', asyn
   expect(browserErrors).toEqual([])
 })
 
+/**
+ * 使用宽屏侧前方视角完整呈现已解析的物料（Material）转运路径、库位（Site）
+ * 锚点与执行器（Executor），验证相机旋转后仍可按全场景边界完成取景。
+ * 参数：`page` 是承载真实 SZLab 3D 场景的 Playwright 页面。
+ * 返回：无；验收产物写入侧面全景截图，并断言浏览器无错误。
+ */
+test('SZLab 物料（Material）转运呈现完整侧面全景', async ({
+  page
+}) => {
+  test.setTimeout(180_000)
+  const browserErrors: string[] = []
+  page.on('console', (message) => {
+    if (message.type() === 'error') browserErrors.push(message.text())
+  })
+  page.on('pageerror', (error) => browserErrors.push(error.message))
+
+  await page.setViewportSize({ width: 1920, height: 1080 })
+  await installMaterialTransferLayout(page)
+  await page.goto(
+    `/?section=material&localOsUrl=${encodeURIComponent(API_URL)}`
+  )
+  const viewer = page.locator('[data-pascal-viewer-3d]')
+  await expect(viewer).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByText('5 条物料转运路线', { exact: true }))
+    .toBeVisible({ timeout: 30_000 })
+  await expect(page.locator('.pascal-transfer-executor')).toHaveCount(5)
+
+  const topView = page.getByRole('button', {
+    name: '顶视图',
+    exact: true
+  })
+  await topView.click()
+  await page.waitForTimeout(500)
+  await topView.click()
+  await page.waitForTimeout(500)
+  const sceneCanvas = viewer.locator('canvas')
+  const sceneBounds = await sceneCanvas.boundingBox()
+  if (!sceneBounds) throw new Error('3D 场景缺少可交互画布')
+  await page.mouse.move(
+    sceneBounds.x + sceneBounds.width * 0.9,
+    sceneBounds.y + sceneBounds.height * 0.35
+  )
+  await page.mouse.down({ button: 'right' })
+  await page.mouse.move(
+    sceneBounds.x + sceneBounds.width * 0.62,
+    sceneBounds.y + sceneBounds.height * 0.35,
+    { steps: 12 }
+  )
+  await page.mouse.up({ button: 'right' })
+  await page.waitForTimeout(500)
+  await page.getByRole('button', { name: '适配场景', exact: true }).click()
+  await page.waitForTimeout(900)
+  await captureViewport(
+    page,
+    'szlab-material-transfer-06-side-overview.png'
+  )
+
+  expect(browserErrors).toEqual([])
+})
+
 async function installMaterialOnlyLayout(page: Page): Promise<void> {
   await page.addInitScript(() => {
     localStorage.setItem(
