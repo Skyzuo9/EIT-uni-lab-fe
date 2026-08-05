@@ -8,10 +8,18 @@ import { setTimeout as delay } from 'node:timers/promises'
 
 export const F07_WORKFLOW_UUID =
   '71000000-0000-4000-8000-000000000001'
+export const F08_SECOND_NODE_UUID =
+  '75000000-0000-4000-8000-000000000002'
+
+export interface F07TaskInputOsOptions {
+  includeSecondNode?: boolean
+}
 
 export interface F07TaskInputOs {
   url: string
   workflowUuid: string
+  firstNodeUuid: string
+  secondNodeUuid: string
   logs: () => string
   stop: () => Promise<void>
 }
@@ -19,12 +27,15 @@ export interface F07TaskInputOs {
 /**
  * 启动当前产品候选的真实工作流服务和公共 v1 HTTP 接口。
  *
- * 参数：无；`UNILAB_F07_OS_ROOT` 必须指向干净的 OS 候选，Python 可由
+ * 参数：`options.includeSecondNode` 为真时发布 F08 双节点夹具；
+ * `UNILAB_F07_OS_ROOT` 必须指向干净 OS 候选，Python 可由
  * `UNILAB_OS_PYTHON` 覆盖。返回：供浏览器调用、读取日志和显式关闭的句柄。
  * 异常：缺少候选路径、端口分配、进程启动或就绪探测失败时拒绝 Promise；凡已
  * 创建的子进程和临时目录都在失败路径回收。
  */
-export async function startF07TaskInputOs(): Promise<F07TaskInputOs> {
+export async function startF07TaskInputOs(
+  options: F07TaskInputOsOptions = {}
+): Promise<F07TaskInputOs> {
   const configuredRoot = process.env.UNILAB_F07_OS_ROOT
   if (!configuredRoot) {
     throw new Error('UNILAB_F07_OS_ROOT must identify the OS product candidate')
@@ -40,7 +51,13 @@ export async function startF07TaskInputOs(): Promise<F07TaskInputOs> {
   try {
     child = spawn(
       python,
-      ['-c', PYTHON_LAUNCHER, directory, String(port)],
+      [
+        '-c',
+        PYTHON_LAUNCHER,
+        directory,
+        String(port),
+        options.includeSecondNode ? 'true' : 'false'
+      ],
       {
         cwd: osRepository,
         env: {
@@ -115,6 +132,8 @@ export async function startF07TaskInputOs(): Promise<F07TaskInputOs> {
   return {
     url,
     workflowUuid: F07_WORKFLOW_UUID,
+    firstNodeUuid: '75000000-0000-4000-8000-000000000001',
+    secondNodeUuid: F08_SECOND_NODE_UUID,
     logs,
     stop
   }
@@ -208,6 +227,7 @@ from unilabos.app.scheduler.inventory.backend_contract import BackendResourceSer
 from unilabos.workflow.authoring_engine import WorkflowAuthoringEngine
 from unilabos.workflow.authoring_kernel import AuthoringCatalogSnapshot
 from unilabos.workflow.composition import compose_workflow_runtime
+from unilabos.workflow.handle_projection import structural_ready_handle
 from unilabos.workflow.service import WorkflowService
 from unilabos.workflow.store import WorkflowStore
 
@@ -216,14 +236,21 @@ TEMPLATE_UUID = "72000000-0000-4000-8000-000000000001"
 RESOURCE_TEMPLATE_UUID = "73000000-0000-4000-8000-000000000001"
 TARGET_HANDLE_UUID = "74000000-0000-4000-8000-000000000001"
 SOURCE_HANDLE_UUID = "74000000-0000-4000-8000-000000000002"
+READY_TARGET_HANDLE_UUID = "74000000-0000-4000-8000-000000000003"
+READY_SOURCE_HANDLE_UUID = "74000000-0000-4000-8000-000000000004"
 NODE_UUID = "75000000-0000-4000-8000-000000000001"
+SECOND_NODE_UUID = "${F08_SECOND_NODE_UUID}"
 
 root = Path(sys.argv[1])
 port = int(sys.argv[2])
+include_second_node = sys.argv[3] == "true"
 working_dir = root / "unilabos_data"
 editable_root = root / "editable"
 source_path = editable_root / "f07_lab" / "workflows" / "scalar.py"
 source_path.parent.mkdir(parents=True, exist_ok=True)
+second_action = f'''    # unilab:node_uuid={SECOND_NODE_UUID}
+    second = reactor.finalize(report="f08-second")
+''' if include_second_node else ""
 source_path.write_text(
     f'''from lab.devices import Reactor
 from unilabos.workflow.authoring import device, workflow, workflow_output
@@ -236,14 +263,16 @@ reactor: Reactor = device()
     description="Current product candidate task input gate.",
 )
 def scalar_task(*, label: str, count: int, enabled: bool, attempts: int = 3):
-    """把一次标量工作流任务（WorkflowTask）输入绑定到唯一动作。
+    """把一次标量工作流任务（WorkflowTask）输入绑定到固定动作计划。
 
     参数：label、count、enabled 是三类必填标量，attempts 验证默认值解析。
-    返回：动作 report 的公开工作流输出。异常：参数规范化和动作合同错误由真实
-    OS 编译或任务创建路径失败关闭；夹具本身不发送物理动作。
+    返回：首动作 report 的公开工作流输出；F08 模式另含可选第二动作。异常：
+    参数规范化和动作合同错误由真实 OS 编译或任务创建路径失败关闭；夹具本身
+    不发送物理动作。
     """
     # unilab:node_uuid={NODE_UUID}
     done = reactor.finalize(report=label)
+{second_action}
     return workflow_output(report=done.report)
 ''',
     encoding="utf-8",
@@ -314,9 +343,25 @@ def handle(identity, io_type):
         "meta_data": {"unilab": {"value_schema": {"type": "string"}}},
     }
 
+def ready_handle(identity, io_type):
+    """构造多动作顺序所需的结构连接点（Handle）。
+
+    参数：identity 是固定连接点 UUID，io_type 是 target 或 source。返回：绑定
+    当前动作模板的规范 ready 连接点。异常：非法方向由真实投影器失败关闭。
+    """
+    projected = structural_ready_handle(io_type)
+    projected["uuid"] = identity
+    projected["workflow_node_template_uuid"] = TEMPLATE_UUID
+    return projected
+
 catalog = AuthoringCatalogSnapshot.from_entities(
     [template],
-    [handle(TARGET_HANDLE_UUID, "target"), handle(SOURCE_HANDLE_UUID, "source")],
+    [
+        handle(TARGET_HANDLE_UUID, "target"),
+        handle(SOURCE_HANDLE_UUID, "source"),
+        ready_handle(READY_TARGET_HANDLE_UUID, "target"),
+        ready_handle(READY_SOURCE_HANDLE_UUID, "source"),
+    ],
     resource_template_symbols={"lab.devices:Reactor": RESOURCE_TEMPLATE_UUID},
 )
 compiler = WorkflowAuthoringEngine(catalog=catalog)

@@ -225,16 +225,19 @@ async function closeLog(log) {
 }
 
 /**
- * 强制构建并预览当前工作树，然后执行唯一 F07 专项门禁。
+ * 强制构建并预览当前工作树，然后执行所选任务输入专项门禁。
  *
  * @returns Playwright 的真实退出码。
  * @throws 构建、预览、测试启动或清理失败时抛出异常。
  */
 async function main() {
   const artifactDirectory = resolve(
-    process.env.UNILAB_F07_E2E_ARTIFACT_DIR ||
+    process.env.UNILAB_WORKFLOW_E2E_ARTIFACT_DIR ||
+      process.env.UNILAB_F07_E2E_ARTIFACT_DIR ||
       '../e2e-artifacts/f07-task-input'
   )
+  const testSpec = process.env.UNILAB_WORKFLOW_E2E_SPEC ||
+    'e2e/workflow-task-input-f07-real-os.spec.ts'
   mkdirSync(artifactDirectory, { recursive: true })
   const log = createWriteStream(
     resolve(artifactDirectory, 'frontend-startup.log'),
@@ -267,7 +270,7 @@ async function main() {
       'pnpm',
       [
         'exec', 'playwright', 'test',
-        'e2e/workflow-task-input-f07-real-os.spec.ts',
+        testSpec,
         '--workers=1', ...process.argv.slice(2)
       ],
       { ...process.env, UNILAB_FE_E2E_URL: url },

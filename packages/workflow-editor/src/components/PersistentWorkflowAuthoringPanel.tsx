@@ -250,7 +250,7 @@ export function PersistentWorkflowAuthoringPanel({
   const [remoteConflict, setRemoteConflict] =
     useState<RemoteConflict | null>(null)
   const [taskRunMode, setTaskRunMode] =
-    useState<Exclude<WorkflowTaskRunMode, 'single_node'>>('normal')
+    useState<WorkflowTaskRunMode>('normal')
   const [runtimeBusy, setRuntimeBusy] = useState(false)
   const [taskInputAuthority, setTaskInputAuthority] =
     useState<WorkflowAuthoringAggregate | null>(null)
@@ -504,6 +504,20 @@ export function PersistentWorkflowAuthoringPanel({
     ),
     [debugStartNodeId, structure.links, structure.nodes]
   )
+  /**
+   * 选择单节点调试运行模式。
+   *
+   * 参数：无。返回：模式和可行动提示更新后无值。异常：不抛异常；未选择起始
+   * 节点时仍允许切换模式，但创建按钮保持禁用。
+   */
+  const selectSingleNodeMode = (): void => {
+    setTaskRunMode('single_node')
+    setMessage(
+      debugExecutionScope.startNodeId
+        ? '单节点调试将只创建起始点对应的正式作业'
+        : '请在画布节点上设置起始点，再启动单节点调试'
+    )
+  }
   const dirty = mode === 'code'
     ? editor.isDirty
     : canvasDirty || selectedNodeNameDirty
@@ -511,6 +525,8 @@ export function PersistentWorkflowAuthoringPanel({
     () => hasRunnableAppliedWorkflow(aggregate),
     [aggregate]
   )
+  const singleNodeTargetMissing =
+    taskRunMode === 'single_node' && !debugExecutionScope.startNodeId
   const task = taskRuntime.snapshot.task
   const taskJobs = taskRuntime.snapshot.jobs
   const taskOutputNodes = useMemo(
@@ -1696,17 +1712,39 @@ export function PersistentWorkflowAuthoringPanel({
     }
   }
 
+  /**
+   * 读取最新已应用合同并打开本次工作流任务（WorkflowTask）输入表单。
+   *
+   * 参数：无。返回：异步操作入队后无值。异常：候选未应用、单节点目标缺失、
+   * 合同变化或物料选项读取失败时写入可行动错误，不创建任务。
+   */
   const openTaskInputForm = (): void => {
     setTaskInputProblem(null)
     if (!hasRunnableAppliedWorkflow(aggregate)) {
       setError('当前工作流候选尚未应用；请先应用包含可执行节点的工作流')
       return
     }
-    runRuntime(async () => {
+    if (taskRunMode === 'single_node' && !debugExecutionScope.startNodeId) {
+      setError('单节点调试前请先在画布节点上设置起始点')
+      return
+    }
+    /**
+     * 在串行运行队列中重读合同并构造表单。
+     *
+     * 参数：无。返回：表单与提示安装完成后无值。异常：读取或投影失败时传播给
+     * `runRuntime`，确保当前权威不被部分替换。
+     */
+    const openLatestInput = async (): Promise<void> => {
       try {
-        const latest = await queue.run(
-          () => runtime.getWorkflowAuthoring(workflowUuid)
-        )
+        /**
+         * 执行一次真实 OS 创作聚合读取。
+         *
+         * 参数：无。返回：当前工作流（Workflow）创作聚合。异常：网络或信封
+         * 错误原样传播给串行队列。
+         */
+        const readAuthority = (): Promise<WorkflowAuthoringAggregate> =>
+          runtime.getWorkflowAuthoring(workflowUuid)
+        const latest = await queue.run(readAuthority)
         if (!hasRunnableAppliedWorkflow(latest)) {
           throw new Error(
             '当前工作流候选尚未应用；已应用版本不包含可执行节点'
@@ -1716,22 +1754,33 @@ export function PersistentWorkflowAuthoringPanel({
         setTaskInputAuthority(latest)
         setTaskInputForm(nextForm)
         setResourceSlotOptions(undefined)
-        if (nextForm.fields.some(({ descriptor }) =>
-          containsResourceSlotInput(descriptor.schema)
-        )) {
+        /**
+         * 判定字段是否包含物料占位符（ResourceSlot）。
+         *
+         * 参数：`field` 是表单字段投影。返回：Schema 含占位符时为真。异常：
+         * Schema 解析错误由 `containsResourceSlotInput` 传播并阻止表单开放。
+         */
+        const hasResourceSlotField = (
+          field: WorkflowTaskInputFormState['fields'][number]
+        ): boolean => containsResourceSlotInput(field.descriptor.schema)
+        if (nextForm.fields.some(hasResourceSlotField)) {
           setResourceSlotOptions(
             await loadWorkflowResourceSlotOptions(resourceSlotOptionsPort)
           )
         }
         setMessage(
           `本次运行使用已应用版本 ${latest.workflow_revision}；` +
+          (taskRunMode === 'single_node'
+            ? `目标节点 ${debugExecutionScope.startNodeId}；`
+            : '') +
           '未填写且没有默认值的字段将保持省略'
         )
       } catch (openError) {
         setError(errorMessage(openError))
         throw openError
       }
-    })
+    }
+    runRuntime(openLatestInput)
   }
 
   const updateTaskInput = (
@@ -1744,17 +1793,59 @@ export function PersistentWorkflowAuthoringPanel({
     setTaskInputProblem(null)
   }
 
+  /**
+   * 校验并提交本次工作流任务（WorkflowTask）输入。
+   *
+   * 参数：无。返回：异步提交入队后无值。异常：合同重投影或 OS 创建失败时保留
+   * 表单及可行动问题；单节点模式只附带已选目标，不建立第二入口。
+   */
   const submitTaskInput = (): void => {
     if (!taskInputAuthority || !taskInputForm) return
     const submittedForm = taskInputForm
-    runRuntime(async () => {
+    /**
+     * 从 OS 重读当前已应用工作流（Workflow）权威。
+     *
+     * 参数：无。返回：串行队列读取的创作聚合。异常：网络和合同错误原样传播。
+     */
+    const readApplied = (): Promise<WorkflowAuthoringAggregate> => {
+      /**
+       * 执行一次真实 OS 创作聚合读取。
+       *
+       * 参数：无。返回：当前工作流（Workflow）创作聚合。异常：网络或信封错误
+       * 原样传播给串行队列。
+       */
+      const readAuthority = (): Promise<WorkflowAuthoringAggregate> =>
+        runtime.getWorkflowAuthoring(workflowUuid)
+      return queue.run(readAuthority)
+    }
+    /**
+     * 通过规范任务入口创建当前模式的任务。
+     *
+     * 参数：`input` 是表单校验后的公开输入。返回：OS 权威工作流任务
+     * （WorkflowTask）。异常：创建失败原样传播；单节点模式缺目标时 OS 仍失败
+     * 关闭，不回退旧运行接口。
+     */
+    const createTask = (
+      input: Record<string, unknown>
+    ): Promise<WorkflowTask> => taskRuntime.create(
+      taskRunMode,
+      input,
+      taskRunMode === 'single_node'
+        ? debugExecutionScope.startNodeId ?? undefined
+        : undefined
+    )
+    /**
+     * 在串行运行队列中完成重投影与创建。
+     *
+     * 参数：无。返回：表单关闭或重投影完成后无值。异常：错误写入表单问题后
+     * 继续传播给 `runRuntime`。
+     */
+    const submitValidatedInput = async (): Promise<void> => {
       try {
         const result = await submitWorkflowTaskInput({
           form: submittedForm,
-          readApplied: () => queue.run(
-            () => runtime.getWorkflowAuthoring(workflowUuid)
-          ),
-          createTask: (input) => taskRuntime.create(taskRunMode, input)
+          readApplied,
+          createTask
         })
         if (result.kind === 'reproject_before_create') {
           setTaskInputAuthority(result.authority)
@@ -1779,7 +1870,8 @@ export function PersistentWorkflowAuthoringPanel({
         )
         throw submitError
       }
-    })
+    }
+    runRuntime(submitValidatedInput)
   }
   const appliedIo = aggregate
     ? workflowIoMetadata(aggregate.applied_graph)
@@ -1968,6 +2060,16 @@ export function PersistentWorkflowAuthoringPanel({
             >
               单步模式
             </WorkflowButton>
+            <WorkflowButton
+              type="button"
+              className={taskRunMode === 'single_node' ? 'is-active' : ''}
+              aria-pressed={taskRunMode === 'single_node'}
+              disabled={runtimeBusy}
+              disabledReason="正在处理工作流任务，暂时不能切换运行模式"
+              onClick={selectSingleNodeMode}
+            >
+              单节点调试
+            </WorkflowButton>
             </div>
             <WorkflowButton
               type="button"
@@ -1977,7 +2079,8 @@ export function PersistentWorkflowAuthoringPanel({
                 runtimeBusy ||
                 dirty ||
                 !aggregate ||
-                !appliedWorkflowRunnable
+                !appliedWorkflowRunnable ||
+                singleNodeTargetMissing
               }
               disabledReason={busy
                 ? '正在处理工作流编写操作，请稍候'
@@ -1987,6 +2090,8 @@ export function PersistentWorkflowAuthoringPanel({
                     ? '请先保存当前可写内容'
                     : !appliedWorkflowRunnable
                       ? '请先应用包含可执行节点的工作流'
+                      : singleNodeTargetMissing
+                        ? '请先在画布节点上设置起始点'
                       : '已应用工作流尚未就绪'}
               title={
                 dirty
@@ -1997,7 +2102,11 @@ export function PersistentWorkflowAuthoringPanel({
               }
               onClick={openTaskInputForm}
             >
-              {runtimeBusy ? '处理中…' : '开始运行'}
+              {runtimeBusy
+                ? '处理中…'
+                : taskRunMode === 'single_node'
+                  ? '开始单节点调试'
+                  : '开始运行'}
             </WorkflowButton>
           </div>
         </div>

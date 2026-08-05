@@ -102,20 +102,25 @@ export class WorkflowTaskController {
 
   /**
    * 创建工作流任务，并在成功响应后异步补读任务、作业与反馈投影。
-   * @param runMode 本次工作流任务使用的正常或单步运行模式。
+   * @param runMode 本次工作流任务使用的正常、单步或单节点运行模式。
    * @param input 已按工作流输入合同校验的可选任务输入。
+   * @param targetNodeUuid 单节点模式选择的已应用工作流节点身份。
    * @returns OS 创建接口返回的权威工作流任务；返回不等待后续读投影完成。
    * @throws 创建接口失败时保留可行动错误并向调用方传播原始异常。
    */
   async create(
-    runMode: Exclude<WorkflowTaskRunMode, 'single_node'>,
-    input?: Record<string, unknown>
+    runMode: WorkflowTaskRunMode,
+    input?: Record<string, unknown>,
+    targetNodeUuid?: string
   ): Promise<WorkflowTask> {
     this.install({ actionError: null })
     try {
       const created = await this.runtime.createWorkflowTask({
         workflow_uuid: this.workflowUuid,
         run_mode: runMode,
+        ...(targetNodeUuid === undefined
+          ? {}
+          : { target_node_uuid: targetNodeUuid }),
         ...(input === undefined ? {} : { input })
       })
       if (this.active) {
