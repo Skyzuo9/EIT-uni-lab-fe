@@ -73,7 +73,9 @@ import {
 } from '../utils/workflowMaterialTrace'
 import {
   workflowDagLayoutStrategyLabel,
-  type WorkflowDagLayoutStrategy
+  workflowMaterialSwimlaneDirectionLabel,
+  type WorkflowDagLayoutStrategy,
+  type WorkflowMaterialSwimlaneDirection
 } from '../utils/workflowDagLayoutStrategy'
 import {
   projectWorkflowTaskEvents,
@@ -360,19 +362,31 @@ export function PersistentWorkflowAuthoringPanel({
    * 按选定策略重排当前候选图，并把坐标结果留在画布草稿中。
    *
    * @param strategy 用户选择的工作流（Workflow）画布布局策略。
+   * @param swimlaneDirection 物料泳道策略当前选中的流向。
    * @returns 无返回值；没有可编辑候选图时保持现状。
    */
   const beautifyCanvasLayout = useCallback((
-    strategy: WorkflowDagLayoutStrategy
+    strategy: WorkflowDagLayoutStrategy,
+    swimlaneDirection: WorkflowMaterialSwimlaneDirection
   ): void => {
     if (!graph || !policy.canvasMutationEnabled || busy) return
-    const nextGraph = beautifyPersistentAuthoringGraph(graph, strategy)
+    const nextGraph = beautifyPersistentAuthoringGraph(
+      graph,
+      strategy,
+      swimlaneDirection
+    )
     setGraph(nextGraph)
     setCanvasDirty(true)
     setSelectedNodeNameDirty(false)
     setError(null)
     setMessage(
-      `已应用${workflowDagLayoutStrategyLabel(strategy)}布局；` +
+      `已应用${workflowDagLayoutStrategyLabel(strategy)}${
+        strategy === 'material-swimlanes'
+          ? `（${workflowMaterialSwimlaneDirectionLabel(
+              swimlaneDirection
+            )}）`
+          : ''
+      }布局；` +
       '保存草稿后将写入工作流'
     )
   }, [busy, graph, policy.canvasMutationEnabled])

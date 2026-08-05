@@ -32,9 +32,13 @@ import type { WorkflowLink, WorkflowNode } from '../utils/parseWorkflow'
 import { projectNestedWorkflow } from '../utils/canonicalWorkflow'
 import {
   DEFAULT_WORKFLOW_DAG_LAYOUT_STRATEGY,
+  DEFAULT_WORKFLOW_MATERIAL_SWIMLANE_DIRECTION,
   WORKFLOW_DAG_LAYOUT_STRATEGIES,
+  WORKFLOW_MATERIAL_SWIMLANE_DIRECTIONS,
   workflowDagLayoutStrategyLabel,
-  type WorkflowDagLayoutStrategy
+  workflowMaterialSwimlaneDirectionLabel,
+  type WorkflowDagLayoutStrategy,
+  type WorkflowMaterialSwimlaneDirection
 } from '../utils/workflowDagLayoutStrategy'
 import {
   CANVAS_EDIT_WORKFLOW_CANVAS,
@@ -58,7 +62,10 @@ interface WorkflowDagProps {
   pausedBeforeNodeId?: string | null
   canBeautify?: boolean
   beautifyDisabledReason?: string
-  onBeautify?: (strategy: WorkflowDagLayoutStrategy) => void
+  onBeautify?: (
+    strategy: WorkflowDagLayoutStrategy,
+    swimlaneDirection: WorkflowMaterialSwimlaneDirection
+  ) => void
   canvasMutationEnabled?: boolean
   nodePositionMutationEnabled?: boolean
   onNodePositionChange?: (
@@ -107,6 +114,10 @@ export default function WorkflowDag({
     useState<WorkflowDagLayoutStrategy>(
       DEFAULT_WORKFLOW_DAG_LAYOUT_STRATEGY
     )
+  const [swimlaneDirection, setSwimlaneDirection] =
+    useState<WorkflowMaterialSwimlaneDirection>(
+      DEFAULT_WORKFLOW_MATERIAL_SWIMLANE_DIRECTION
+    )
   const [expandedGroupIds, setExpandedGroupIds] = useState<Set<string>>(
     () => new Set()
   )
@@ -148,7 +159,8 @@ export default function WorkflowDag({
   const { nodes: flowNodes, edges: flowEdges, onNodesChange, onEdgesChange } = useWorkflowDag(
     nestedProjection.nodes,
     nestedProjection.links,
-    layoutStrategy
+    layoutStrategy,
+    swimlaneDirection
   )
   const handleNodesChange = useCallback(
     (changes: NodeChange[]) => {
@@ -296,7 +308,7 @@ export default function WorkflowDag({
   const handleBeautify = useCallback(() => {
     if (!canBeautify || !onBeautify) return
     setIsBeautifying(true)
-    onBeautify(layoutStrategy)
+    onBeautify(layoutStrategy, swimlaneDirection)
     if (beautifyTimerRef.current !== null) {
       globalThis.clearTimeout(beautifyTimerRef.current)
     }
@@ -304,7 +316,7 @@ export default function WorkflowDag({
       setIsBeautifying(false)
       beautifyTimerRef.current = null
     }, 480)
-  }, [canBeautify, layoutStrategy, onBeautify])
+  }, [canBeautify, layoutStrategy, onBeautify, swimlaneDirection])
 
   /**
    * 切换画布布局策略并立即刷新本地预览。
@@ -316,6 +328,18 @@ export default function WorkflowDag({
     event: React.ChangeEvent<HTMLSelectElement>
   ): void => {
     setLayoutStrategy(event.target.value as WorkflowDagLayoutStrategy)
+  }, [])
+
+  /**
+   * 切换物料泳道的流向并立即刷新本地预览。
+   *
+   * @param direction 用户选择的纵向或横向物料泳道方向。
+   * @returns 无返回值；只有点击“应用布局”才会写入工作流草稿。
+   */
+  const handleSwimlaneDirectionChange = useCallback((
+    direction: WorkflowMaterialSwimlaneDirection
+  ): void => {
+    setSwimlaneDirection(direction)
   }, [])
 
   if (flowNodes.length === 0) {
@@ -344,7 +368,8 @@ export default function WorkflowDag({
       <ReactFlow
         className={[
           isBeautifying ? 'is-beautifying' : '',
-          `wf-layout--${layoutStrategy}`
+          `wf-layout--${layoutStrategy}`,
+          `wf-layout-direction--${swimlaneDirection}`
         ].filter(Boolean).join(' ')}
         nodes={runtimeNodes}
         edges={runtimeEdges}
@@ -419,6 +444,30 @@ export default function WorkflowDag({
                 </option>
               ))}
             </select>
+            {layoutStrategy === 'material-swimlanes' && (
+              <div
+                className="workflow-runtime__swimlane-direction"
+                role="group"
+                aria-label="物料泳道方向"
+              >
+                {WORKFLOW_MATERIAL_SWIMLANE_DIRECTIONS.map((direction) => (
+                  <button
+                    key={direction.value}
+                    type="button"
+                    className={swimlaneDirection === direction.value
+                      ? 'is-active'
+                      : undefined}
+                    aria-pressed={swimlaneDirection === direction.value}
+                    title={direction.description}
+                    onClick={() => handleSwimlaneDirectionChange(
+                      direction.value
+                    )}
+                  >
+                    {direction.label}
+                  </button>
+                ))}
+              </div>
+            )}
             <WorkflowButton
               type="button"
               className="workflow-runtime__beautify"
@@ -426,7 +475,11 @@ export default function WorkflowDag({
               disabledReason={isBeautifying
                 ? '正在应用工作流布局，请稍候'
                 : beautifyDisabledReason}
-              aria-label={`应用${workflowDagLayoutStrategyLabel(layoutStrategy)}布局`}
+              aria-label={layoutStrategy === 'material-swimlanes'
+                ? `应用${workflowMaterialSwimlaneDirectionLabel(
+                    swimlaneDirection
+                  )}物料泳道布局`
+                : `应用${workflowDagLayoutStrategyLabel(layoutStrategy)}布局`}
               title={
                 canBeautify
                   ? WORKFLOW_DAG_LAYOUT_STRATEGIES.find(

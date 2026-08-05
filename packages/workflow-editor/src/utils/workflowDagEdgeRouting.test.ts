@@ -31,4 +31,15 @@ describe('workflowDagEdgeRouting', () => {
       targetY: 377
     })).toEqual({ centerY: 349 })
   })
+
+  /** 验证横向跨层边把最后一个折点收在目标节点左侧。 */
+  it('keeps the final bend of a long horizontal edge near its target', () => {
+    expect(getWorkflowSmoothStepCenter({
+      sourceX: 110,
+      sourceY: 35,
+      targetX: 477,
+      targetY: 170,
+      direction: 'LR'
+    })).toEqual({ centerX: 449 })
+  })
 })

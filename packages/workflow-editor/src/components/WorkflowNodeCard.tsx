@@ -14,7 +14,10 @@ import type { NodeProps } from 'reactflow'
 import type { CSSProperties } from 'react'
 import type { MaterialShapeSpec } from '@unilab/material'
 import type { WorkflowHandlePort } from '../utils/parseWorkflow'
-import type { WorkflowDagLayoutStrategy } from '../utils/workflowDagLayoutStrategy'
+import type {
+  WorkflowDagLayoutStrategy,
+  WorkflowMaterialSwimlaneDirection
+} from '../utils/workflowDagLayoutStrategy'
 import { WORKFLOW_MATERIAL_LANE_GAP } from '../utils/workflowMaterialSwimlaneLayout'
 import {
   isResourceSlotHandle,
@@ -42,6 +45,7 @@ export interface WorkflowNodeData {
   materialHandleAccents?: Record<string, string>
   materialChips?: WorkflowMaterialChip[]
   layoutStrategy?: WorkflowDagLayoutStrategy
+  materialLaneDirection?: WorkflowMaterialSwimlaneDirection
   materialLaneRange?: { start: number; end: number }
   materialLaneByHandle?: Record<string, number>
   materialSource?: {
@@ -114,6 +118,7 @@ export default function WorkflowNodeCard({
       data-workflow-node-uuid={data.id}
       data-workflow-node-kind={data.kind || 'action'}
       data-workflow-layout-strategy={data.layoutStrategy}
+      data-workflow-layout-direction={data.materialLaneDirection}
     >
       {renderStructuralHandles(
         targetHandles,
@@ -148,7 +153,11 @@ export default function WorkflowNodeCard({
             {data.name || data.id}
           </span>
         </span>
-        {renderMaterialPorts(materialPorts, data.materialLaneRange)}
+        {renderMaterialPorts(
+          materialPorts,
+          data.materialLaneRange,
+          data.materialLaneDirection
+        )}
         {data.groupKind === 'subworkflow' && (
           <button
             type="button"
@@ -376,15 +385,17 @@ function mergeDescriptions(
 }
 
 /**
- * 渲染节点内物料占位符（ResourceSlot）标签及其南北句柄。
+ * 渲染节点内物料占位符（ResourceSlot）标签及其泳道方向句柄。
  *
  * @param cards 已按变量合并并排序的物料端口卡片。
  * @param laneRange 节点在物料泳道中的最左与最右序号；缺省时使用紧凑排列。
+ * @param direction 物料泳道从上到下或从左到右的流向。
  * @returns 物料端口容器；没有物料端口时返回空。
  */
 function renderMaterialPorts(
   cards: readonly WorkflowMaterialPortCard[],
-  laneRange: { start: number; end: number } | undefined
+  laneRange: { start: number; end: number } | undefined,
+  direction: WorkflowMaterialSwimlaneDirection | undefined
 ): React.JSX.Element | null {
   if (cards.length === 0) return null
   const swimlane = laneRange && cards.every(
@@ -396,11 +407,19 @@ function renderMaterialPorts(
       aria-label="物料变量"
       data-workflow-material-lane-start={swimlane ? laneRange.start : undefined}
       data-workflow-material-lane-end={swimlane ? laneRange.end : undefined}
+      data-workflow-material-lane-direction={swimlane ? direction : undefined}
       style={swimlane
-        ? {
-            width: 128 +
-              (laneRange.end - laneRange.start) * WORKFLOW_MATERIAL_LANE_GAP
-          }
+        ? direction === 'horizontal'
+          ? {
+              width: 128,
+              height: 38 +
+                (laneRange.end - laneRange.start) * WORKFLOW_MATERIAL_LANE_GAP
+            }
+          : {
+              width: 128 +
+                (laneRange.end - laneRange.start) * WORKFLOW_MATERIAL_LANE_GAP,
+              height: 38
+            }
         : undefined}
     >
       {cards.map((card) => (
@@ -414,12 +433,17 @@ function renderMaterialPorts(
           style={{
             '--wf-material-accent': card.accent,
             ...(swimlane
-              ? {
-                  left: (card.laneIndex as number - laneRange.start) *
-                    WORKFLOW_MATERIAL_LANE_GAP
-                }
+              ? direction === 'horizontal'
+                ? {
+                    top: (card.laneIndex as number - laneRange.start) *
+                      WORKFLOW_MATERIAL_LANE_GAP
+                  }
+                : {
+                    left: (card.laneIndex as number - laneRange.start) *
+                      WORKFLOW_MATERIAL_LANE_GAP
+                  }
               : {})
-          } as CSSProperties}
+          } as CSSProperties & { '--wf-material-accent': string }}
           title={card.description}
           aria-label={card.description
             ? `${card.label}：${card.description}`
@@ -429,14 +453,16 @@ function renderMaterialPorts(
             card.targetHandle,
             'target',
             card.accent,
-            card.label
+            card.label,
+            direction
           )}
           <span className="wf-node__material-port-label">{card.label}</span>
           {card.sourceHandle && renderMaterialHandle(
             card.sourceHandle,
             'source',
             card.accent,
-            card.label
+            card.label,
+            direction
           )}
         </span>
       ))}
@@ -444,18 +470,31 @@ function renderMaterialPorts(
   )
 }
 
+/**
+ * 渲染一个物料流（MaterialFlow）句柄，并按泳道方向选择节点外缘。
+ *
+ * @param handle OS 投影出的物料占位符（ResourceSlot）句柄。
+ * @param ioType 句柄是输入端还是输出端。
+ * @param accent 当前物料链的稳定强调色。
+ * @param label 物料变量的中文优先展示标签。
+ * @param direction 物料泳道从上到下或从左到右的流向。
+ * @returns 可供 ReactFlow 连线的物料句柄元素。
+ */
 function renderMaterialHandle(
   handle: WorkflowHandlePort,
   ioType: 'source' | 'target',
   accent: string,
-  label: string
+  label: string,
+  direction: WorkflowMaterialSwimlaneDirection | undefined
 ): React.JSX.Element {
   return (
     <Handle
       key={handle.uuid}
       id={handle.uuid}
       type={ioType}
-      position={ioType === 'target' ? Position.Top : Position.Bottom}
+      position={direction === 'horizontal'
+        ? ioType === 'target' ? Position.Left : Position.Right
+        : ioType === 'target' ? Position.Top : Position.Bottom}
       className={`wf-node__handle wf-node__handle--material wf-node__handle--${ioType}`}
       data-workflow-handle-template-uuid={handle.uuid}
       data-workflow-handle-key={handle.handleKey}

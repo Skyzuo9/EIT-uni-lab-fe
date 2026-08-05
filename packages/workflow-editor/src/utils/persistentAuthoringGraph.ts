@@ -11,7 +11,9 @@ import type {
 import { layoutDag } from './dagLayout'
 import {
   DEFAULT_WORKFLOW_DAG_LAYOUT_STRATEGY,
-  type WorkflowDagLayoutStrategy
+  DEFAULT_WORKFLOW_MATERIAL_SWIMLANE_DIRECTION,
+  type WorkflowDagLayoutStrategy,
+  type WorkflowMaterialSwimlaneDirection
 } from './workflowDagLayoutStrategy'
 import { layoutWorkflowMaterialSwimlanes } from './workflowMaterialSwimlaneLayout'
 
@@ -228,12 +230,15 @@ export function projectPersistentAuthoringGraph(
  *
  * @param graph OS 返回或前端候选区持有的工作流编写图。
  * @param strategy 用户选择的工作流（Workflow）画布布局策略。
+ * @param swimlaneDirection 物料泳道策略当前选中的流向。
  * @returns 新的工作流编写图；原图及其节点不会被修改。
  */
 export function beautifyPersistentAuthoringGraph(
   graph: WorkflowAuthoringGraph,
   strategy: WorkflowDagLayoutStrategy =
-    DEFAULT_WORKFLOW_DAG_LAYOUT_STRATEGY
+    DEFAULT_WORKFLOW_DAG_LAYOUT_STRATEGY,
+  swimlaneDirection: WorkflowMaterialSwimlaneDirection =
+    DEFAULT_WORKFLOW_MATERIAL_SWIMLANE_DIRECTION
 ): WorkflowAuthoringGraph {
   const structure = projectPersistentAuthoringGraph(graph)
   // 六边形物料来源比动作条更高；上移一小段可保证第一条物料流明确向下。
@@ -243,14 +248,20 @@ export function beautifyPersistentAuthoringGraph(
       .map((node) => node.id)
   )
   const layout = strategy === 'material-swimlanes'
-    ? layoutWorkflowMaterialSwimlanes(structure.nodes, structure.links)
+    ? layoutWorkflowMaterialSwimlanes(
+        structure.nodes,
+        structure.links,
+        swimlaneDirection
+      )
     : layoutDag(structure.nodes, structure.links, {
         preserveExistingPositions: false
       })
   const positionByNodeUuid = new Map(
     layout.nodes.map((node) => [node.id, {
       x: node.x,
-      y: materialSourceNodeIds.has(node.id) ? node.y - 24 : node.y
+      y: materialSourceNodeIds.has(node.id) && layout.direction === 'vertical'
+        ? node.y - 24
+        : node.y
     }])
   )
   return {

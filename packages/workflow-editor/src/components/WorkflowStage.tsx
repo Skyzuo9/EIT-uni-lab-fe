@@ -15,7 +15,10 @@ import type {
   WorkflowNode
 } from '../utils/parseWorkflow'
 import WorkflowDag from './WorkflowDag'
-import type { WorkflowDagLayoutStrategy } from '../utils/workflowDagLayoutStrategy'
+import type {
+  WorkflowDagLayoutStrategy,
+  WorkflowMaterialSwimlaneDirection
+} from '../utils/workflowDagLayoutStrategy'
 
 interface WorkflowStageProps {
   compactPane: 'code' | 'dag'
@@ -46,7 +49,10 @@ interface WorkflowStageProps {
   pythonHasUnappliedChanges: boolean
   legendOpen: boolean
   canBeautify: boolean
-  onBeautify: (strategy: WorkflowDagLayoutStrategy) => void
+  onBeautify: (
+    strategy: WorkflowDagLayoutStrategy,
+    swimlaneDirection: WorkflowMaterialSwimlaneDirection
+  ) => void
   onLegendToggle: () => void
   onNodeSelect: (nodeId: string) => void
   onSetStart: (nodeId: string) => void

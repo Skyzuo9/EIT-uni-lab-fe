@@ -11,7 +11,7 @@ import {
 } from '../utils/workflowDagEdgeRouting'
 
 export interface WorkflowRoundedStepEdgeData {
-  direction: 'TB'
+  direction: 'TB' | 'LR'
   borderRadius: number
 }
 
@@ -38,11 +38,12 @@ export default function WorkflowRoundedStepEdge({
   labelBgBorderRadius,
   data
 }: EdgeProps<WorkflowRoundedStepEdgeData>): React.JSX.Element {
-  const { centerY } = getWorkflowSmoothStepCenter({
+  const { centerX, centerY } = getWorkflowSmoothStepCenter({
     sourceX,
     sourceY,
     targetX,
-    targetY
+    targetY,
+    direction: data?.direction
   })
   const [path, labelX, labelY] = getSmoothStepPath({
     sourceX,
@@ -52,6 +53,7 @@ export default function WorkflowRoundedStepEdge({
     targetY,
     targetPosition,
     borderRadius: data?.borderRadius ?? 8,
+    centerX,
     centerY,
     offset: WORKFLOW_SMOOTHSTEP_OFFSET
   })

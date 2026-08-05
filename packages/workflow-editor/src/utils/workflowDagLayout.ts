@@ -4,7 +4,9 @@ import type { WorkflowLink, WorkflowNode } from './parseWorkflow'
 import type { LayoutNode, LayoutResult } from './dagLayout'
 import {
   DEFAULT_WORKFLOW_DAG_LAYOUT_STRATEGY,
-  type WorkflowDagLayoutStrategy
+  DEFAULT_WORKFLOW_MATERIAL_SWIMLANE_DIRECTION,
+  type WorkflowDagLayoutStrategy,
+  type WorkflowMaterialSwimlaneDirection
 } from './workflowDagLayoutStrategy'
 import { layoutWorkflowMaterialSwimlanes } from './workflowMaterialSwimlaneLayout'
 
@@ -31,16 +33,19 @@ interface SizedNode {
  * @param nodes 已完成组合工作流折叠投影的可见节点。
  * @param links 已完成端点重接的控制边与物料流（MaterialFlow）边。
  * @param strategy 当前选中的工作流（Workflow）画布布局策略。
- * @returns 从上到下、层内无重叠且保留所有有效边的布局结果。
+ * @param swimlaneDirection 物料泳道策略当前选中的流向。
+ * @returns 按选定方向、层内无重叠且保留所有有效边的布局结果。
  */
 export async function layoutVisibleWorkflowDag(
   nodes: readonly WorkflowNode[],
   links: readonly WorkflowLink[],
   strategy: WorkflowDagLayoutStrategy =
-    DEFAULT_WORKFLOW_DAG_LAYOUT_STRATEGY
+    DEFAULT_WORKFLOW_DAG_LAYOUT_STRATEGY,
+  swimlaneDirection: WorkflowMaterialSwimlaneDirection =
+    DEFAULT_WORKFLOW_MATERIAL_SWIMLANE_DIRECTION
 ): Promise<LayoutResult> {
   if (strategy === 'material-swimlanes') {
-    return layoutWorkflowMaterialSwimlanes(nodes, links)
+    return layoutWorkflowMaterialSwimlanes(nodes, links, swimlaneDirection)
   }
   if (nodes.length === 0) {
     return { nodes: [], links: [], direction: 'vertical' }

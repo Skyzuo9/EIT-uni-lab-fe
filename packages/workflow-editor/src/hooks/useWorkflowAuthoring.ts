@@ -21,7 +21,9 @@ import {
 import { beautifyWorkflowRevision } from '../utils/dagLayout'
 import {
   workflowDagLayoutStrategyLabel,
-  type WorkflowDagLayoutStrategy
+  workflowMaterialSwimlaneDirectionLabel,
+  type WorkflowDagLayoutStrategy,
+  type WorkflowMaterialSwimlaneDirection
 } from '../utils/workflowDagLayoutStrategy'
 import {
   compilePythonRevision,
@@ -472,17 +474,20 @@ export function useWorkflowAuthoring({
    * 按选定策略更新 Canonical 修订版本中的节点布局坐标。
    *
    * @param strategy 用户选择的工作流（Workflow）画布布局策略。
+   * @param swimlaneDirection 物料泳道策略当前选中的流向。
    * @returns 无返回值；结果写入当前未保存修订版本。
    */
   const beautifyLayout = useCallback((
-    strategy: WorkflowDagLayoutStrategy
+    strategy: WorkflowDagLayoutStrategy,
+    swimlaneDirection: WorkflowMaterialSwimlaneDirection
   ): void => {
     if (!parsed.revision || parsed.nodes.length === 0) return
     const nextRevision = beautifyWorkflowRevision(
       parsed.revision,
       parsed.nodes,
       parsed.links,
-      strategy
+      strategy,
+      swimlaneDirection
     )
     const nextCanonical = JSON.stringify(nextRevision, null, 2)
     setCanonicalSource(nextCanonical)
@@ -492,7 +497,13 @@ export function useWorkflowAuthoring({
     setLayoutDirty(true)
     onResetRun()
     setMessage(
-      `已应用${workflowDagLayoutStrategyLabel(strategy)}布局；` +
+      `已应用${workflowDagLayoutStrategyLabel(strategy)}${
+        strategy === 'material-swimlanes'
+          ? `（${workflowMaterialSwimlaneDirectionLabel(
+              swimlaneDirection
+            )}）`
+          : ''
+      }布局；` +
       '保存修订版本后将写入工作流'
     )
   }, [

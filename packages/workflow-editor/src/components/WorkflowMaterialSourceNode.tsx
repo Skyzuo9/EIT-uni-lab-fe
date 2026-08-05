@@ -42,6 +42,7 @@ export default function WorkflowMaterialSourceNode({
       data-workflow-node-uuid={data.id}
       data-workflow-node-kind="material_source"
       data-workflow-layout-strategy={data.layoutStrategy}
+      data-workflow-layout-direction={data.materialLaneDirection}
       style={{ '--wf-material-accent': data.traceAccent } as CSSProperties}
     >
       {structuralTargetHandles}
@@ -73,7 +74,10 @@ export default function WorkflowMaterialSourceNode({
             <path d="m31 17.5-12 6" />
           </svg>
         )}
-        {renderMaterialSourceHandles(materialPorts)}
+        {renderMaterialSourceHandles(
+          materialPorts,
+          data.materialLaneDirection
+        )}
       </span>
       {stateVisible && (
         <span className={`wf-node__material-source-state wf-node__state--${data.status || 'pending'}`}>
@@ -89,10 +93,12 @@ export default function WorkflowMaterialSourceNode({
  * 把物料来源（MaterialSource）的输出物料占位符映射到六边形底边句柄。
  *
  * @param cards 已按变量合并的物料占位符端口。
+ * @param direction 物料泳道从上到下或从左到右的流向。
  * @returns 对准六边形底边的物料流（MaterialFlow）输出句柄。
  */
 function renderMaterialSourceHandles(
-  cards: readonly WorkflowMaterialPortCard[]
+  cards: readonly WorkflowMaterialPortCard[],
+  direction: WorkflowNodeData['materialLaneDirection']
 ): React.JSX.Element[] | null {
   const outputs = cards.filter((card) => card.sourceHandle)
   if (outputs.length === 0) return null
@@ -103,7 +109,7 @@ function renderMaterialSourceHandles(
         key={handle.uuid}
         id={handle.uuid}
         type="source"
-        position={Position.Bottom}
+        position={direction === 'horizontal' ? Position.Right : Position.Bottom}
         className="wf-node__handle wf-node__handle--material wf-node__material-source-handle"
         data-workflow-handle-template-uuid={handle.uuid}
         data-workflow-handle-key={handle.handleKey}
@@ -111,10 +117,15 @@ function renderMaterialSourceHandles(
         data-workflow-handle-kind="material"
         aria-label={`${card.label} 物料输出端口`}
         title={handle.description || `${card.label} · 物料流`}
-        style={{
-          left: `${((index + 1) * 100) / (outputs.length + 1)}%`,
-          '--wf-material-accent': card.accent
-        } as CSSProperties}
+        style={direction === 'horizontal'
+          ? {
+              top: `${((index + 1) * 100) / (outputs.length + 1)}%`,
+              '--wf-material-accent': card.accent
+            } as CSSProperties
+          : {
+              left: `${((index + 1) * 100) / (outputs.length + 1)}%`,
+              '--wf-material-accent': card.accent
+            } as CSSProperties}
       />
     )
   })

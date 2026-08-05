@@ -11,7 +11,9 @@ import type { WorkflowLink, WorkflowNode } from '../utils/parseWorkflow'
 import { layoutVisibleWorkflowDag } from '../utils/workflowDagLayout'
 import {
   DEFAULT_WORKFLOW_DAG_LAYOUT_STRATEGY,
-  type WorkflowDagLayoutStrategy
+  DEFAULT_WORKFLOW_MATERIAL_SWIMLANE_DIRECTION,
+  type WorkflowDagLayoutStrategy,
+  type WorkflowMaterialSwimlaneDirection
 } from '../utils/workflowDagLayoutStrategy'
 import { layoutWorkflowMaterialSwimlanes } from '../utils/workflowMaterialSwimlaneLayout'
 import {
@@ -40,24 +42,27 @@ const STRUCTURAL_EDGE_COLOR = 'var(--unilab-color-text-subtle)'
  * @param nodes 已折叠组合工作流后的全部可见节点。
  * @param links 已重接端点的控制边与物料流（MaterialFlow）边。
  * @param strategy 当前选中的画布布局策略。
+ * @param swimlaneDirection 物料泳道策略当前选中的流向。
  * @returns ReactFlow 状态以及节点、边变更入口。
  */
 export function useWorkflowDag(
   nodes: WorkflowNode[],
   links: WorkflowLink[],
   strategy: WorkflowDagLayoutStrategy =
-    DEFAULT_WORKFLOW_DAG_LAYOUT_STRATEGY
+    DEFAULT_WORKFLOW_DAG_LAYOUT_STRATEGY,
+  swimlaneDirection: WorkflowMaterialSwimlaneDirection =
+    DEFAULT_WORKFLOW_MATERIAL_SWIMLANE_DIRECTION
 ): UseWorkflowDagResult {
   const fallback = useMemo(
     () => buildFlowElements(
       strategy === 'material-swimlanes'
-        ? layoutWorkflowMaterialSwimlanes(nodes, links)
+        ? layoutWorkflowMaterialSwimlanes(nodes, links, swimlaneDirection)
         : layoutDag(nodes, links, { preserveExistingPositions: false }),
       nodes,
       links,
       strategy
     ),
-    [nodes, links, strategy]
+    [nodes, links, strategy, swimlaneDirection]
   )
   const [flowNodes, setNodes, onNodesChange] = useNodesState(
     fallback.flowNodes
@@ -73,7 +78,12 @@ export function useWorkflowDag(
 
   useEffect(() => {
     let cancelled = false
-    void layoutVisibleWorkflowDag(nodes, links, strategy).then((layout) => {
+    void layoutVisibleWorkflowDag(
+      nodes,
+      links,
+      strategy,
+      swimlaneDirection
+    ).then((layout) => {
       if (cancelled) return
       const elements = buildFlowElements(layout, nodes, links, strategy)
       setNodes(elements.flowNodes)
@@ -84,7 +94,7 @@ export function useWorkflowDag(
     return () => {
       cancelled = true
     }
-  }, [links, nodes, setEdges, setNodes, strategy])
+  }, [links, nodes, setEdges, setNodes, strategy, swimlaneDirection])
 
   return {
     nodes: flowNodes,
@@ -100,6 +110,7 @@ export function useWorkflowDag(
  * @param layout 当前可见图的节点坐标与有效边。
  * @param sourceNodes 用于查询句柄、物料颜色和节点展示信息的源节点。
  * @param sourceLinks 用于计算物料流（MaterialFlow）追踪颜色的源边。
+ * @param strategy 当前画布布局策略，用于节点样式和交互投影。
  * @returns 可直接交给 ReactFlow 的节点与边。
  */
 function buildFlowElements(
@@ -123,9 +134,15 @@ function buildFlowElements(
       type: 'wfNode',
       focusable: node.groupKind !== 'subworkflow',
       position: { x: node.x, y: node.y },
-      targetPosition: Position.Top,
-      sourcePosition: Position.Bottom,
-      ...(laneLayout ? { style: { width: laneLayout.width } } : {}),
+      targetPosition: layout.direction === 'horizontal'
+        ? Position.Left
+        : Position.Top,
+      sourcePosition: layout.direction === 'horizontal'
+        ? Position.Right
+        : Position.Bottom,
+      ...(laneLayout
+        ? { style: { width: laneLayout.width, height: laneLayout.height } }
+        : {}),
       data: {
         id: node.id,
         name: node.name,
@@ -144,6 +161,7 @@ function buildFlowElements(
         ),
         materialChips: materialTraces.chipsByNode.get(node.id) ?? [],
         layoutStrategy: strategy,
+        materialLaneDirection: layout.swimlanes?.direction,
         materialLaneRange: laneLayout
           ? { start: laneLayout.startLane, end: laneLayout.endLane }
           : undefined,
@@ -184,7 +202,14 @@ function buildFlowElements(
           fontWeight: 700
         },
         type: 'workflowRoundedStep',
-        data: { direction: 'TB', borderRadius: 8 },
+        data: {
+          direction: ready
+            ? 'TB'
+            : layout.direction === 'horizontal'
+              ? 'LR'
+              : 'TB',
+          borderRadius: 8
+        },
         animated: communication || Boolean(materialAccent),
         markerEnd: materialAccent
           ? {

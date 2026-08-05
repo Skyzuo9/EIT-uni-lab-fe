@@ -25,9 +25,10 @@ let os: SzlabMaterialWorkflowOs
 
 test.describe.configure({ mode: 'serial' })
 
+/** 启动真实操作系统（OS），并为复合工作流编译预留完整冷启动时间。 */
 test.beforeAll(async () => {
   os = await startSzlabCompositeMaterialWorkflowOs()
-})
+}, 120_000)
 
 test.afterAll(async () => {
   await os?.stop()
@@ -177,9 +178,17 @@ test('SZLab composite material workflow uses one orthogonal visible layout', asy
   await strategySelect.selectOption('material-swimlanes')
   await expect(panel.locator('.react-flow'))
     .toHaveClass(/wf-layout--material-swimlanes/)
+  const swimlaneDirection = panel.getByRole('group', {
+    name: '物料泳道方向'
+  })
+  await expect(swimlaneDirection).toBeVisible()
+  await expect(swimlaneDirection.getByRole('button', {
+    name: '纵向',
+    exact: true
+  })).toHaveAttribute('aria-pressed', 'true')
   await page.waitForTimeout(600)
-  await panel.getByRole('button', { name: '应用物料泳道布局' }).click()
-  await expect(panel.getByText('已应用物料泳道布局')).toBeVisible()
+  await panel.getByRole('button', { name: '应用纵向物料泳道布局' }).click()
+  await expect(panel.getByText('已应用物料泳道（纵向）布局')).toBeVisible()
   await panel.locator('.react-flow__controls-fitview').click()
   await page.waitForTimeout(500)
 
@@ -232,6 +241,83 @@ test('SZLab composite material workflow uses one orthogonal visible layout', asy
     '08-multi-material-swimlane-node.png'
   ), 180)
 
+  await swimlaneDirection.getByRole('button', {
+    name: '横向',
+    exact: true
+  }).click()
+  await expect(swimlaneDirection.getByRole('button', {
+    name: '横向',
+    exact: true
+  })).toHaveAttribute('aria-pressed', 'true')
+  await expect(panel.locator('.react-flow'))
+    .toHaveClass(/wf-layout-direction--horizontal/)
+  await page.waitForTimeout(600)
+  await panel.getByRole('button', { name: '应用横向物料泳道布局' }).click()
+  await expect(panel.getByText('已应用物料泳道（横向）布局')).toBeVisible()
+  await panel.locator('.react-flow__controls-fitview').click()
+  await page.waitForTimeout(500)
+
+  const horizontalNodeBoxes = await boundingBoxes(visibleNodes)
+  expect(
+    overlappingPairs(horizontalNodeBoxes),
+    JSON.stringify(horizontalNodeBoxes, null, 2)
+  ).toEqual([])
+  const horizontalMaterialPathEvidence = await materialEdges
+    .locator('.react-flow__edge-path')
+    .evaluateAll((paths) => paths.map((path) => ({
+      edgeId: path.closest('.react-flow__edge')?.getAttribute('data-testid') ?? '',
+      height: (path as SVGGraphicsElement).getBBox().height,
+      path: path.getAttribute('d') ?? ''
+    })))
+  expect(horizontalMaterialPathEvidence.every((edge) => edge.height <= 0.5),
+    JSON.stringify(horizontalMaterialPathEvidence, null, 2)).toBe(true)
+  const horizontalSourceOrder = await materialSources.evaluateAll((sources) =>
+    sources.map((source) => {
+      const label = source.querySelector(
+        '[data-workflow-material-source-name]'
+      )?.textContent?.trim() ?? ''
+      return { label, y: source.getBoundingClientRect().y }
+    }).sort((left, right) => left.y - right.y).map((source) => source.label)
+  )
+  expect(horizontalSourceOrder).toEqual(
+    graph.nodes
+      .filter((node) => node.type === 'material_source')
+      .map((node) => node.name)
+  )
+  const verticallyStretchedActions = await panel.locator(
+    '.wf-node--action-strip' +
+    '[data-workflow-layout-strategy="material-swimlanes"]' +
+    '[data-workflow-layout-direction="horizontal"]'
+  ).evaluateAll((nodes) => nodes.map((node) => ({
+    id: node.getAttribute('data-workflow-node-uuid') ?? '',
+    height: (node as HTMLElement).offsetHeight
+  })).filter((node) => node.height > 112))
+  expect(verticallyStretchedActions.length).toBeGreaterThan(0)
+  const horizontalViewport = { width: 6000, height: 1800 }
+  await page.setViewportSize(horizontalViewport)
+  await page.waitForTimeout(400)
+  await panel.locator('.react-flow__controls-fitview').click()
+  await page.waitForTimeout(500)
+  await panel.locator('.react-flow').screenshot({
+    path: resolve(artifactDirectory, '09-horizontal-material-swimlane-layout.png')
+  })
+  const tallestAction = [...verticallyStretchedActions]
+    .sort((left, right) => right.height - left.height)[0]!
+  const tallestActionNode = panel.locator(
+    `.wf-node[data-workflow-node-uuid="${tallestAction.id}"]`
+  )
+  await focusViewportOn(panel, tallestActionNode, 0.9)
+  await screenshotAround(page, tallestActionNode, resolve(
+    artifactDirectory,
+    '10-horizontal-multi-material-node.png'
+  ), 180)
+  await screenshotAround(page, panel.locator(
+    '.workflow-runtime__layout-tools'
+  ), resolve(
+    artifactDirectory,
+    '11-swimlane-direction-controls.png'
+  ), 24)
+
   expect(requestFailures).toEqual([])
   expect(browserErrors).toEqual([])
   writeFileSync(resolve(artifactDirectory, 'evidence.json'), `${JSON.stringify({
@@ -252,7 +338,14 @@ test('SZLab composite material workflow uses one orthogonal visible layout', asy
       source_order: swimlaneSourceOrder,
       vertical_edges: materialPathEvidence,
       stretched_actions: stretchedActions,
-      node_overlap_pairs: overlappingPairs(swimlaneNodeBoxes)
+      node_overlap_pairs: overlappingPairs(swimlaneNodeBoxes),
+      horizontal: {
+        screenshot_viewport: horizontalViewport,
+        source_order: horizontalSourceOrder,
+        horizontal_edges: horizontalMaterialPathEvidence,
+        stretched_actions: verticallyStretchedActions,
+        node_overlap_pairs: overlappingPairs(horizontalNodeBoxes)
+      }
     },
     browser_errors: browserErrors,
     request_failures: requestFailures

@@ -12,8 +12,14 @@
 import type { WorkflowLink, WorkflowNode } from './parseWorkflow'
 import type { WorkflowRevision } from '@unilab/services'
 import { isResourceSlotHandle } from './workflowMaterialTrace'
-import type { WorkflowDagLayoutStrategy } from './workflowDagLayoutStrategy'
-import { DEFAULT_WORKFLOW_DAG_LAYOUT_STRATEGY } from './workflowDagLayoutStrategy'
+import type {
+  WorkflowDagLayoutStrategy,
+  WorkflowMaterialSwimlaneDirection
+} from './workflowDagLayoutStrategy'
+import {
+  DEFAULT_WORKFLOW_DAG_LAYOUT_STRATEGY,
+  DEFAULT_WORKFLOW_MATERIAL_SWIMLANE_DIRECTION
+} from './workflowDagLayoutStrategy'
 import {
   layoutWorkflowMaterialSwimlanes,
   type WorkflowMaterialSwimlaneProjection
@@ -345,6 +351,7 @@ function layoutDirection(
  * @param nodes 修订版本投影出的可见节点。
  * @param links 修订版本投影出的有效边。
  * @param strategy 用户选择的画布布局策略。
+ * @param swimlaneDirection 物料泳道策略当前选中的流向。
  * @returns 带新节点坐标且不修改原对象的修订版本。
  */
 export function beautifyWorkflowRevision(
@@ -352,13 +359,15 @@ export function beautifyWorkflowRevision(
   nodes: WorkflowNode[],
   links: WorkflowLink[],
   strategy: WorkflowDagLayoutStrategy =
-    DEFAULT_WORKFLOW_DAG_LAYOUT_STRATEGY
+    DEFAULT_WORKFLOW_DAG_LAYOUT_STRATEGY,
+  swimlaneDirection: WorkflowMaterialSwimlaneDirection =
+    DEFAULT_WORKFLOW_MATERIAL_SWIMLANE_DIRECTION
 ): WorkflowRevision {
   const layout = recordValue(revision.layout)
   const previousNodes = recordValue(layout.nodes)
   const nextNodes = { ...previousNodes }
   const result = strategy === 'material-swimlanes'
-    ? layoutWorkflowMaterialSwimlanes(nodes, links)
+    ? layoutWorkflowMaterialSwimlanes(nodes, links, swimlaneDirection)
     : layoutDag(nodes, links, { preserveExistingPositions: false })
   for (const node of result.nodes) {
     nextNodes[node.id] = {
