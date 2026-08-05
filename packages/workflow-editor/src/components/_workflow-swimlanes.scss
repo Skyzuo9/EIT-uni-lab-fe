@@ -266,3 +266,37 @@
   left: auto;
   transform: translate(50%, -50%);
 }
+
+/* 横向物料流使用垂直短胶囊：空心为输入，实心为输出。 */
+.workflow
+  :global([data-workflow-layout-direction='horizontal'])
+  :global(.wf-node__handle--material) {
+  width: 8px;
+  height: 18px;
+  border-width: 2px;
+  border-color: var(--wf-material-accent);
+  border-radius: 4px;
+  background: var(--unilab-color-surface);
+  box-shadow: 0 0 0 2px var(--unilab-color-canvas);
+  transition:
+    background var(--unilab-motion-fast) ease,
+    box-shadow var(--unilab-motion-fast) ease;
+}
+
+.workflow
+  :global([data-workflow-layout-direction='horizontal'])
+  :global(.wf-node__handle--material[data-workflow-handle-io='source']) {
+  background: var(--wf-material-accent);
+}
+
+.workflow
+  :global([data-workflow-layout-direction='horizontal'])
+  :global(.wf-node__handle--material:hover) {
+  box-shadow:
+    0 0 0 2px var(--unilab-color-canvas),
+    0 0 0 4px color-mix(
+      in srgb,
+      var(--wf-material-accent) 22%,
+      transparent
+    );
+}

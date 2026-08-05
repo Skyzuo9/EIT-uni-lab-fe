@@ -39,7 +39,12 @@ test.afterAll(async () => {
   await os?.stop()
 })
 
-/** 验证复杂复合物料工作流的 ready、物料输入和全部节点共同布局。 */
+/**
+ * 验证复杂复合物料工作流的 ready、物料输入和全部节点共同布局。
+ *
+ * @param page 连接真实前端（Frontend）与操作系统（OS）的浏览器页面。
+ * @returns 验证完成后生成截图和结构化证据文件。
+ */
 test('SZLab composite material workflow uses one orthogonal visible layout', async ({
   page
 }) => {
@@ -294,6 +299,35 @@ test('SZLab composite material workflow uses one orthogonal visible layout', asy
     })))
   expect(horizontalMaterialPathEvidence.every((edge) => edge.height <= 0.5),
     JSON.stringify(horizontalMaterialPathEvidence, null, 2)).toBe(true)
+  const horizontalMaterialHandles = panel.locator(
+    '.wf-node[data-workflow-layout-direction="horizontal"] ' +
+    '[data-workflow-handle-kind="material"]'
+  )
+  // 句柄证据同时覆盖操作（Action）、物料来源（MaterialSource）和机械臂转运节点。
+  const horizontalMaterialHandleEvidence = await readHorizontalMaterialHandles(
+    horizontalMaterialHandles
+  )
+  expect(horizontalMaterialHandleEvidence.length).toBeGreaterThan(0)
+  expect(horizontalMaterialHandleEvidence.every((handle) =>
+    handle.cssHeight >= 17 && handle.cssWidth <= 9
+  ), JSON.stringify(horizontalMaterialHandleEvidence, null, 2)).toBe(true)
+  expect(new Set(horizontalMaterialHandleEvidence.map((handle) => handle.owner)))
+    .toEqual(new Set(['action', 'material-source', 'robot-transfer']))
+  const horizontalInputHandles = horizontalMaterialHandleEvidence.filter(
+    (handle) => handle.io === 'target'
+  )
+  const horizontalOutputHandles = horizontalMaterialHandleEvidence.filter(
+    (handle) => handle.io === 'source'
+  )
+  expect(horizontalInputHandles.length).toBeGreaterThan(0)
+  expect(horizontalOutputHandles.length).toBeGreaterThan(0)
+  expect(horizontalInputHandles.every((handle) =>
+    handle.backgroundColor === 'rgb(255, 255, 255)'
+  )).toBe(true)
+  expect(horizontalOutputHandles.every((handle) =>
+    handle.backgroundColor !== 'rgb(255, 255, 255)' &&
+    handle.backgroundColor !== 'rgba(0, 0, 0, 0)'
+  )).toBe(true)
   const horizontalSourceOrder = await materialSources.evaluateAll((sources) =>
     sources.map((source) => {
       const label = source.querySelector(
@@ -382,6 +416,7 @@ test('SZLab composite material workflow uses one orthogonal visible layout', asy
         screenshot_viewport: horizontalViewport,
         source_order: horizontalSourceOrder,
         horizontal_edges: horizontalMaterialPathEvidence,
+        directional_handles: horizontalMaterialHandleEvidence,
         stretched_actions: verticallyStretchedActions,
         node_overlap_pairs: overlappingPairs(horizontalNodeBoxes)
       }
@@ -390,6 +425,47 @@ test('SZLab composite material workflow uses one orthogonal visible layout', asy
     request_failures: requestFailures
   }, null, 2)}\n`, 'utf8')
 })
+
+interface HorizontalMaterialHandleEvidence {
+  owner: 'action' | 'material-source' | 'robot-transfer'
+  io: string
+  cssWidth: number
+  cssHeight: number
+  screenWidth: number
+  screenHeight: number
+  backgroundColor: string
+}
+
+/**
+ * 读取横向物料流（MaterialFlow）句柄的所有者、方向和实际视觉尺寸。
+ *
+ * @param handles 当前横向工作流（Workflow）画布中的全部物料句柄。
+ * @returns 可验证输入空心、输出实心和垂直短胶囊比例的浏览器证据。
+ */
+async function readHorizontalMaterialHandles(
+  handles: Locator
+): Promise<HorizontalMaterialHandleEvidence[]> {
+  return handles.evaluateAll((elements) => elements.map((element) => {
+    const handle = element as HTMLElement
+    const bounds = handle.getBoundingClientRect()
+    const style = getComputedStyle(handle)
+    const node = handle.closest<HTMLElement>('.wf-node')
+    const owner = node?.dataset.workflowNodeVisualKind === 'robot-transfer'
+      ? 'robot-transfer'
+      : node?.dataset.workflowNodeKind === 'material_source'
+        ? 'material-source'
+        : 'action'
+    return {
+      owner,
+      io: handle.dataset.workflowHandleIo ?? '',
+      cssWidth: Number.parseFloat(style.width),
+      cssHeight: Number.parseFloat(style.height),
+      screenWidth: bounds.width,
+      screenHeight: bounds.height,
+      backgroundColor: style.backgroundColor
+    }
+  }))
+}
 
 interface TransferHandleEvidence {
   nodeId: string
