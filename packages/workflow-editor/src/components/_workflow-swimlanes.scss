@@ -6,6 +6,11 @@
   width: 100%;
   min-width: 0;
   max-width: none;
+  background: color-mix(
+    in srgb,
+    var(--unilab-color-surface) 94%,
+    var(--unilab-color-canvas)
+  );
 }
 
 .workflow:global(.workflow-runtime)
@@ -21,6 +26,20 @@
   min-width: 112px;
   max-width: 112px;
   flex-basis: 112px;
+}
+
+.workflow
+  :global(.wf-node--action-strip[data-workflow-layout-strategy='material-swimlanes'][data-workflow-layout-direction='vertical'])
+  > :global(.wf-node__swimlane-rail) {
+  position: absolute;
+  z-index: 0;
+  top: 50%;
+  right: 12px;
+  left: 120px;
+  height: 1px;
+  background: var(--unilab-color-border);
+  content: '';
+  pointer-events: none;
 }
 
 .workflow
@@ -128,6 +147,97 @@
   position: absolute;
   right: 8px;
   bottom: 8px;
+}
+
+/* 多物料横向泳道使用一条精密操作轨，避免大跨度节点形成空白卡片墙。 */
+.workflow:global(.workflow-runtime)
+  :global(.wf-node--action-strip[data-workflow-layout-direction='horizontal'][data-workflow-multi-material='true']) {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+.workflow:global(.workflow-runtime)
+  :global(.wf-node--action-strip[data-workflow-layout-direction='horizontal'][data-workflow-multi-material='true'])
+  > :global(.wf-node__swimlane-rail) {
+  position: absolute;
+  z-index: 0;
+  top: 18px;
+  right: 71px;
+  bottom: 18px;
+  width: 1px;
+  background: var(--unilab-color-border-strong);
+  content: '';
+  pointer-events: none;
+}
+
+.workflow
+  :global(.wf-node--action-strip[data-workflow-layout-direction='horizontal'][data-workflow-multi-material='true'])
+  :global(.wf-node__identity) {
+  position: absolute;
+  z-index: 2;
+  top: 50%;
+  left: 8px;
+  width: 112px;
+  min-width: 112px;
+  max-width: 112px;
+  min-height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--unilab-color-border-strong);
+  border-radius: var(--unilab-radius-md);
+  background: var(--unilab-color-surface);
+  transform: translateY(-50%);
+}
+
+.workflow
+  :global(.wf-node--action-strip[data-workflow-layout-direction='horizontal'][data-workflow-multi-material='true'])
+  :global(.wf-node__identity)::after {
+  position: absolute;
+  top: 50%;
+  left: 100%;
+  width: 88px;
+  height: 1px;
+  background: var(--unilab-color-border-strong);
+  content: '';
+}
+
+.workflow
+  :global(.wf-node--action-strip[data-workflow-layout-direction='horizontal'][data-workflow-multi-material='true'])
+  :global(.wf-node__material-ports[data-workflow-material-lane-direction='horizontal']) {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  transform: translateY(-50%);
+}
+
+.workflow
+  :global(.wf-node--action-strip[data-workflow-layout-direction='horizontal'][data-workflow-multi-material='true'])
+  :global(.wf-node__state) {
+  top: calc(50% - 36px);
+  right: auto;
+  left: 8px;
+}
+
+.workflow
+  :global(.wf-node--action-strip[data-workflow-layout-direction='horizontal'][data-workflow-multi-material='true'])
+  :global(.wf-node__marker-actions) {
+  top: calc(50% + 26px);
+  right: auto;
+  bottom: auto;
+  left: 8px;
+}
+
+.workflow
+  :global(.react-flow__node-wfNode.selected)
+  :global(.wf-node--action-strip[data-workflow-layout-direction='horizontal'][data-workflow-multi-material='true']) {
+  box-shadow: none;
+}
+
+.workflow
+  :global(.react-flow__node-wfNode.selected)
+  :global(.wf-node--action-strip[data-workflow-layout-direction='horizontal'][data-workflow-multi-material='true'])
+  :global(.wf-node__identity) {
+  box-shadow: var(--unilab-shadow-selected);
 }
 
 .workflow:global(.workflow-runtime)

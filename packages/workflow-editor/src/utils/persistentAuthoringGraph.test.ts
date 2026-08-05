@@ -201,6 +201,26 @@ describe('persistent Authoring canvas graph edits', () => {
 })
 
 describe('C1 persistent Composite hierarchy', () => {
+  it('projects the robot transfer visual from OS published source metadata', () => {
+    const source = compositeGraph()
+    source.node_templates = source.node_templates.map((template) =>
+      template.uuid === 'outer-template'
+        ? publishedTemplate(
+            'outer-template',
+            'workflow-child-outer',
+            'sha256:outer-contract',
+            's_z_lab_标准物料转运'
+          )
+        : template
+    )
+
+    const projected = projectPersistentAuthoringGraph(source)
+    const byId = new Map(projected.nodes.map((node) => [node.id, node]))
+
+    expect(byId.get('outer')?.visualKind).toBe('robot-transfer')
+    expect(byId.get('inner')).not.toHaveProperty('visualKind')
+  })
+
   it('uses OS parent_uuid and Published templates as the hierarchy authority', () => {
     const projected = projectPersistentAuthoringGraph(compositeGraph())
     const byId = new Map(projected.nodes.map((node) => [node.id, node]))
@@ -408,13 +428,27 @@ function compositeGraph(): WorkflowAuthoringGraph {
 function publishedTemplate(
   uuid: string,
   workflowUuid: string,
-  contractDigest: string
+  contractDigest: string,
+  sourceSymbol?: string
 ): Record<string, unknown> {
   return {
     uuid,
     type: 'workflow',
     node_type: 'workflow',
     name: `workflow:${workflowUuid}`,
+    ...(sourceSymbol
+      ? {
+          meta_data: {
+            unilab: {
+              workflow_source: {
+                symbol: sourceSymbol,
+                definition_fqid:
+                  `szlab_poly_studio.workflows.material_transfer.${sourceSymbol}`
+              }
+            }
+          }
+        }
+      : {}),
     schema: {
       'x-unilabos-workflow-contract': {
         version: 1,

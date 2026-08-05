@@ -17,6 +17,8 @@ const ACTION_NODE_MAX_WIDTH = 520
 const ACTION_NODE_HEIGHT = 64
 const MATERIAL_SOURCE_WIDTH = 136
 const MATERIAL_SOURCE_HEIGHT = 148
+const TRANSFER_NODE_WIDTH = 168
+const TRANSFER_NODE_HEIGHT = 72
 const SUBWORKFLOW_NODE_HEIGHT = 88
 const NODE_GAP = 80
 const LAYER_GAP = 96
@@ -191,6 +193,9 @@ function workflowLayers(
 function sizeWorkflowNode(node: WorkflowNode): SizedNode {
   if (node.type === 'material_source') {
     return { node, width: MATERIAL_SOURCE_WIDTH, height: MATERIAL_SOURCE_HEIGHT }
+  }
+  if (node.visualKind === 'robot-transfer') {
+    return { node, width: TRANSFER_NODE_WIDTH, height: TRANSFER_NODE_HEIGHT }
   }
   const materialVariables = new Set(
     (node.handles ?? [])

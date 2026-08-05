@@ -1,0 +1,259 @@
+.workflow:global(.workflow-runtime) :global(.wf-node--robot-transfer) {
+  position: relative;
+  display: grid;
+  width: 168px;
+  min-width: 168px;
+  max-width: 168px;
+  height: 72px;
+  min-height: 72px;
+  grid-template-columns: 72px 1fr;
+  grid-template-rows: 1fr auto;
+  align-items: center;
+  color: var(--unilab-color-text);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.workflow:global(.workflow-runtime) :global(.wf-node--robot-transfer)::before {
+  display: none;
+}
+
+.workflow :global(.wf-node__robot-transfer-port) {
+  position: relative;
+  display: grid;
+  width: 72px;
+  height: 72px;
+  grid-row: 1 / 3;
+  place-items: center;
+}
+
+.workflow :global(.wf-node__robot-transfer-visual) {
+  position: relative;
+  display: grid;
+  width: 54px;
+  height: 54px;
+  place-items: center;
+  color: var(--unilab-color-surface);
+  background: var(--unilab-color-device);
+  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+  filter: drop-shadow(0 2px 3px color-mix(in srgb, var(--unilab-color-text) 18%, transparent));
+  transition: transform var(--unilab-motion-fast) ease;
+}
+
+.workflow :global(.wf-node__robot-transfer-visual)::before {
+  position: absolute;
+  inset: 3px;
+  border: 1px solid color-mix(in srgb, var(--wf-material-accent) 58%, white);
+  clip-path: inherit;
+  content: '';
+}
+
+.workflow :global(.wf-node--robot-transfer):hover
+  :global(.wf-node__robot-transfer-visual) {
+  transform: translateY(-2px);
+}
+
+.workflow :global(.wf-node__robot-transfer-visual) svg {
+  position: relative;
+  z-index: 1;
+  width: 32px;
+  height: 32px;
+  fill: none;
+  stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.3;
+}
+
+.workflow :global(.wf-node__robot-transfer-copy) {
+  display: grid;
+  min-width: 0;
+  align-self: end;
+  gap: 2px;
+}
+
+.workflow :global(.wf-node__robot-transfer-copy) strong,
+.workflow :global(.wf-node__robot-transfer-copy) small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 横向物料泳道从菱形中心穿过，名称抬到流线之上避免文字被连线切开。 */
+.workflow
+  :global(.wf-node--robot-transfer[data-workflow-layout-direction='horizontal'])
+  :global(.wf-node__robot-transfer-copy) {
+  position: absolute;
+  top: -24px;
+  left: 8px;
+  width: 160px;
+}
+
+.workflow :global(.wf-node__robot-transfer-copy) strong {
+  color: var(--unilab-color-text);
+  font: 700 12px/16px var(--unilab-font-sans);
+}
+
+.workflow :global(.wf-node__robot-transfer-copy) small {
+  color: var(--unilab-color-text-muted);
+  font: 500 9px/13px var(--unilab-font-sans);
+}
+
+.workflow :global(.wf-node__robot-transfer-toggle) {
+  min-width: 0;
+  padding: 0;
+  align-self: start;
+  justify-self: start;
+  color: var(--unilab-color-text-subtle);
+  border: 0;
+  background: transparent;
+  font: 600 9px/14px var(--unilab-font-sans);
+  cursor: pointer;
+}
+
+.workflow :global(.wf-node__robot-transfer-toggle):hover {
+  color: var(--unilab-color-text);
+}
+
+.workflow
+  :global(.wf-node--robot-transfer[data-workflow-layout-direction='horizontal'])
+  :global(.wf-node__robot-transfer-toggle) {
+  position: absolute;
+  top: 54px;
+  left: 72px;
+}
+
+.workflow :global(.wf-node__robot-transfer-state) {
+  position: absolute;
+  top: -4px;
+  right: 0;
+  font: 600 9px/12px var(--unilab-font-sans);
+}
+
+.workflow
+  :global(.wf-node--robot-transfer[data-workflow-layout-direction='horizontal'])
+  :global(.wf-node__robot-transfer-state) {
+  top: auto;
+  right: 48px;
+  bottom: -14px;
+}
+
+.workflow
+  :global(.wf-node--robot-transfer[data-workflow-layout-direction='horizontal'])
+  :global(.wf-node__robot-transfer-copy) {
+  position: absolute;
+  top: 2px;
+  left: 72px;
+  width: 96px;
+}
+
+.workflow
+  :global(.wf-node--robot-transfer[data-workflow-layout-direction='horizontal'])
+  :global(.wf-node__robot-transfer-toggle) {
+  position: absolute;
+  top: 48px;
+  left: 72px;
+}
+
+.workflow :global(.wf-node__robot-transfer-flags) {
+  position: absolute;
+  top: -12px;
+  left: 72px;
+  display: flex;
+  gap: 4px;
+  color: var(--unilab-color-warning);
+  font: 700 10px/12px var(--unilab-font-sans);
+}
+
+.workflow :global(.wf-node__robot-transfer-actions) {
+  position: absolute;
+  right: 0;
+  bottom: -18px;
+  display: flex;
+  gap: 4px;
+}
+
+.workflow :global(.wf-node__robot-transfer-actions) button {
+  display: grid;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  place-items: center;
+  color: var(--unilab-color-text-subtle);
+  border: 1px solid var(--unilab-color-border);
+  border-radius: 50%;
+  background: var(--unilab-color-surface);
+  font: 700 9px/1 var(--unilab-font-sans);
+  cursor: pointer;
+}
+
+.workflow :global(.wf-node__robot-transfer-actions) button:hover,
+.workflow :global(.wf-node__robot-transfer-actions) button:global(.is-active) {
+  color: var(--unilab-color-primary);
+  border-color: var(--unilab-color-primary);
+}
+
+.workflow :global(.wf-node__robot-transfer-handle),
+.workflow :global(.wf-node__robot-transfer-handle):global(.connecting),
+.workflow :global(.wf-node__robot-transfer-handle):global(.connected) {
+  z-index: 4;
+  width: 11px;
+  height: 11px;
+  border: 3px solid var(--wf-material-accent);
+  background: var(--unilab-color-surface);
+}
+
+.workflow
+  :global(.wf-node--robot-transfer:not([data-workflow-layout-direction='horizontal']))
+  :global(.wf-node__robot-transfer-handle) {
+  right: auto;
+  left: 36px;
+}
+
+.workflow
+  :global(.wf-node--robot-transfer:not([data-workflow-layout-direction='horizontal']))
+  :global(.wf-node__robot-transfer-handle--target) {
+  top: 9px;
+  bottom: auto;
+  transform: translate(-50%, -50%);
+}
+
+.workflow
+  :global(.wf-node--robot-transfer:not([data-workflow-layout-direction='horizontal']))
+  :global(.wf-node__robot-transfer-handle--source) {
+  top: auto;
+  bottom: 9px;
+  transform: translate(-50%, 50%);
+}
+
+.workflow
+  :global(.wf-node--robot-transfer[data-workflow-layout-direction='horizontal'])
+  :global(.wf-node__robot-transfer-handle) {
+  top: 36px;
+  bottom: auto;
+}
+
+.workflow
+  :global(.wf-node--robot-transfer[data-workflow-layout-direction='horizontal'])
+  :global(.wf-node__robot-transfer-handle--target) {
+  right: auto;
+  left: 9px;
+  transform: translate(-50%, -50%);
+}
+
+.workflow
+  :global(.wf-node--robot-transfer[data-workflow-layout-direction='horizontal'])
+  :global(.wf-node__robot-transfer-handle--source) {
+  right: 9px;
+  left: auto;
+  transform: translate(50%, -50%);
+}
+
+.workflow :global(.react-flow__node-wfNode.selected)
+  :global(.wf-node__robot-transfer-visual) {
+  filter: drop-shadow(
+    0 3px 5px color-mix(in srgb, var(--unilab-color-device) 32%, transparent)
+  );
+}

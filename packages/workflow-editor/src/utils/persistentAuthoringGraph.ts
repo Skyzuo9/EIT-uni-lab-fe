@@ -16,6 +16,10 @@ import {
   type WorkflowMaterialSwimlaneDirection
 } from './workflowDagLayoutStrategy'
 import { layoutWorkflowMaterialSwimlanes } from './workflowMaterialSwimlaneLayout'
+import {
+  workflowNodeVisualKind,
+  type WorkflowNodeVisualKind
+} from './workflowNodeVisualKind'
 
 export function projectPersistentAuthoringGraph(
   graph: WorkflowAuthoringGraph,
@@ -174,6 +178,9 @@ export function projectPersistentAuthoringGraph(
             descendantNodeIds: descendants(nodeUuid),
             collapsedByDefault: true,
             openChildWorkflowUuid: composite.workflowUuid,
+            ...(composite.visualKind
+              ? { visualKind: composite.visualKind }
+              : {}),
             compositeSignature: [
               String(graph.workflow.uuid || ''),
               String(graph.workflow.revision ?? ''),
@@ -289,6 +296,7 @@ export function beautifyPersistentAuthoringGraph(
 interface PublishedWorkflowProjection {
   workflowUuid: string
   contractDigest: string
+  visualKind?: WorkflowNodeVisualKind
 }
 
 function publishedWorkflowProjection(
@@ -303,7 +311,20 @@ function publishedWorkflowProjection(
   const workflowUuid = nullableString(contract.workflow_uuid)
   const contractDigest = nullableString(contract.contract_digest)
   if (!workflowUuid || !contractDigest) return null
-  return { workflowUuid, contractDigest }
+  const metaData = isRecord(template.meta_data) ? template.meta_data : {}
+  const unilab = isRecord(metaData.unilab) ? metaData.unilab : {}
+  const source = isRecord(unilab.workflow_source)
+    ? unilab.workflow_source
+    : {}
+  const visualKind = workflowNodeVisualKind({
+    symbol: nullableString(source.symbol),
+    definitionFqid: nullableString(source.definition_fqid)
+  })
+  return {
+    workflowUuid,
+    contractDigest,
+    ...(visualKind ? { visualKind } : {})
+  }
 }
 
 export function updatePersistentAuthoringNodeName(

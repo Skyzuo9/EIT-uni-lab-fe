@@ -148,6 +148,7 @@ function buildFlowElements(
         name: node.name,
         color: getNodeColor(node.labNodeType, node.type),
         kind: node.type,
+        visualKind: node.visualKind,
         groupKind: node.groupKind,
         descendantCount: node.descendantNodeIds?.length,
         handles: node.handles,

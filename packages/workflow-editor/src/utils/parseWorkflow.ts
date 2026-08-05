@@ -10,6 +10,7 @@
  * ============================================================
  */
 import type { MaterialShapeSpec } from '@unilab/material'
+import type { WorkflowNodeVisualKind } from './workflowNodeVisualKind'
 
 export interface WorkflowNode {
   id: string
@@ -34,6 +35,8 @@ export interface WorkflowNode {
   openChildWorkflowUuid?: string
   // Resets session-only expansion when the authoritative OS graph changes.
   compositeSignature?: string
+  // OS 已发布工作流来源元数据派生的专用画布视觉。
+  visualKind?: WorkflowNodeVisualKind
   handles?: WorkflowHandlePort[]
   materialSource?: {
     mode: string

@@ -5,6 +5,7 @@ import { projectMaterialTraces } from './workflowMaterialTrace'
 export const WORKFLOW_MATERIAL_LANE_GAP = 192
 export const WORKFLOW_MATERIAL_ACTION_FIRST_HANDLE_X = 191
 export const WORKFLOW_MATERIAL_ACTION_FIRST_HANDLE_Y = 56
+export const WORKFLOW_TRANSFER_NODE_HANDLE_AXIS = 36
 
 const LANE_ORIGIN_X = 320
 const LANE_ORIGIN_Y = 220
@@ -14,6 +15,8 @@ const HORIZONTAL_MATERIAL_SOURCE_WIDTH = 180
 const HORIZONTAL_MATERIAL_SOURCE_HEIGHT = 72
 const ACTION_NODE_HEIGHT = 64
 const HORIZONTAL_ACTION_NODE_WIDTH = 280
+const TRANSFER_NODE_WIDTH = 168
+const TRANSFER_NODE_HEIGHT = 72
 const ACTION_NODE_TRAILING_WIDTH = 150
 const ACTION_NODE_MIN_WIDTH = 248
 const NODE_HORIZONTAL_GAP = 36
@@ -150,7 +153,9 @@ function layoutVerticalMaterialSwimlanes(
   let auxiliaryColumn = 0
   const laneRight = lanes.at(-1)?.x ?? LANE_ORIGIN_X
   const sizedNodes = nodes.map((node) => {
-    const laneIndexes = [...(handleLaneIndexes.get(node.id)?.values() ?? [])]
+    const laneIndexes = [...new Set(
+      handleLaneIndexes.get(node.id)?.values() ?? []
+    )]
     if (node.type === 'material_source' && laneIndexes.length > 0) {
       const laneIndex = Math.min(...laneIndexes)
       return {
@@ -158,6 +163,21 @@ function layoutVerticalMaterialSwimlanes(
         x: lanes[laneIndex]!.x - MATERIAL_SOURCE_WIDTH / 2,
         width: MATERIAL_SOURCE_WIDTH,
         height: MATERIAL_SOURCE_HEIGHT
+      }
+    }
+    if (node.visualKind === 'robot-transfer' && laneIndexes.length === 1) {
+      const laneIndex = laneIndexes[0]!
+      nodeLayouts.set(node.id, {
+        startLane: laneIndex,
+        endLane: laneIndex,
+        width: TRANSFER_NODE_WIDTH,
+        height: TRANSFER_NODE_HEIGHT
+      })
+      return {
+        node,
+        x: lanes[laneIndex]!.x - WORKFLOW_TRANSFER_NODE_HANDLE_AXIS,
+        width: TRANSFER_NODE_WIDTH,
+        height: TRANSFER_NODE_HEIGHT
       }
     }
     if (laneIndexes.length > 0) {
@@ -241,7 +261,9 @@ function layoutHorizontalMaterialSwimlanes(
   let auxiliaryRow = 0
   const laneBottom = lanes.at(-1)?.axis ?? LANE_ORIGIN_Y
   const sizedNodes = nodes.map((node): HorizontallyFlowingNode => {
-    const laneIndexes = [...(handleLaneIndexes.get(node.id)?.values() ?? [])]
+    const laneIndexes = [...new Set(
+      handleLaneIndexes.get(node.id)?.values() ?? []
+    )]
     if (node.type === 'material_source' && laneIndexes.length > 0) {
       const laneIndex = Math.min(...laneIndexes)
       return {
@@ -249,6 +271,21 @@ function layoutHorizontalMaterialSwimlanes(
         y: lanes[laneIndex]!.axis - HORIZONTAL_MATERIAL_SOURCE_HEIGHT / 2,
         width: HORIZONTAL_MATERIAL_SOURCE_WIDTH,
         height: HORIZONTAL_MATERIAL_SOURCE_HEIGHT
+      }
+    }
+    if (node.visualKind === 'robot-transfer' && laneIndexes.length === 1) {
+      const laneIndex = laneIndexes[0]!
+      nodeLayouts.set(node.id, {
+        startLane: laneIndex,
+        endLane: laneIndex,
+        width: TRANSFER_NODE_WIDTH,
+        height: TRANSFER_NODE_HEIGHT
+      })
+      return {
+        node,
+        y: lanes[laneIndex]!.axis - WORKFLOW_TRANSFER_NODE_HANDLE_AXIS,
+        width: TRANSFER_NODE_WIDTH,
+        height: TRANSFER_NODE_HEIGHT
       }
     }
     if (laneIndexes.length > 0) {

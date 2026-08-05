@@ -24,6 +24,8 @@ import {
   type WorkflowMaterialChip
 } from '../utils/workflowMaterialTrace'
 import WorkflowMaterialSourceNode from './WorkflowMaterialSourceNode'
+import WorkflowTransferNode from './WorkflowTransferNode'
+import type { WorkflowNodeVisualKind } from '../utils/workflowNodeVisualKind'
 import styles from './workflow.module.scss'
 
 // 自定义节点承载的数据
@@ -32,6 +34,7 @@ export interface WorkflowNodeData {
   name: string
   color: string
   kind?: string
+  visualKind?: WorkflowNodeVisualKind
   status?: string
   breakpoint?: boolean
   startNode?: boolean
@@ -112,6 +115,28 @@ export default function WorkflowNodeCard({
       />
     )
   }
+  if (data.visualKind === 'robot-transfer' && materialPorts.length === 1) {
+    return (
+      <WorkflowTransferNode
+        data={data}
+        materialPort={materialPorts[0]!}
+        stateVisible={workflowNodeShowsState(data.kind, data.status)}
+        stateLabel={workflowNodeStateLabel(data.kind, data.status || 'pending')}
+        structuralTargetHandles={renderStructuralHandles(
+          targetHandles,
+          'target',
+          targetPosition,
+          projectedMaterialHandleIds
+        )}
+        structuralSourceHandles={renderStructuralHandles(
+          sourceHandles,
+          'source',
+          sourcePosition,
+          projectedMaterialHandleIds
+        )}
+      />
+    )
+  }
   return (
     <div
       className={`${styles.node} wf-node wf-node--action-strip min-w-[150px] max-w-[220px] cursor-pointer overflow-visible rounded-[var(--unilab-radius-md)] border border-[var(--unilab-color-border)] bg-[var(--unilab-color-surface)] transition-[border-color,box-shadow] duration-200`}
@@ -119,12 +144,17 @@ export default function WorkflowNodeCard({
       data-workflow-node-kind={data.kind || 'action'}
       data-workflow-layout-strategy={data.layoutStrategy}
       data-workflow-layout-direction={data.materialLaneDirection}
+      data-workflow-material-port-count={materialPorts.length}
+      data-workflow-multi-material={materialPorts.length > 1 ? 'true' : undefined}
     >
       {renderStructuralHandles(
         targetHandles,
         'target',
         targetPosition,
         projectedMaterialHandleIds
+      )}
+      {data.layoutStrategy === 'material-swimlanes' && materialPorts.length > 0 && (
+        <span className="wf-node__swimlane-rail" aria-hidden="true" />
       )}
 
       {allowsDebugMarkers && (

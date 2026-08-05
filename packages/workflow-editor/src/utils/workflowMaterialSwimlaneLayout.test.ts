@@ -9,7 +9,8 @@ import {
   layoutWorkflowMaterialSwimlanes,
   WORKFLOW_MATERIAL_ACTION_FIRST_HANDLE_X,
   WORKFLOW_MATERIAL_ACTION_FIRST_HANDLE_Y,
-  WORKFLOW_MATERIAL_LANE_GAP
+  WORKFLOW_MATERIAL_LANE_GAP,
+  WORKFLOW_TRANSFER_NODE_HANDLE_AXIS
 } from './workflowMaterialSwimlaneLayout'
 
 describe('layoutWorkflowMaterialSwimlanes', () => {
@@ -137,6 +138,48 @@ describe('layoutWorkflowMaterialSwimlanes', () => {
       handleCenterY(result, 'bottle-check', bottleNext.uuid)
     )
   })
+
+  /** 验证菱形机械臂节点在两个泳道方向都以菱形中心轴对准物料流。 */
+  it('aligns robot transfer handles to the material lane in both directions', () => {
+    const sourceOutput = resourceSlotHandle('source-output', 'resource', 'source')
+    const transferInput = resourceSlotHandle('transfer-input', 'resource', 'target')
+    const transferOutput = resourceSlotHandle('transfer-output', 'resource', 'source')
+    const sinkInput = resourceSlotHandle('sink-input', 'resource', 'target')
+    const nodes: WorkflowNode[] = [
+      workflowNode('source', '烧杯', 'material_source', [sourceOutput]),
+      {
+        ...workflowNode('transfer', 'beaker_at_s07', 'workflow', [
+          transferInput,
+          transferOutput
+        ]),
+        groupKind: 'subworkflow',
+        visualKind: 'robot-transfer'
+      },
+      workflowNode('sink', '投料', 'action', [sinkInput])
+    ]
+    const links = [
+      materialLink('source', sourceOutput, 'transfer', transferInput),
+      materialLink('transfer', transferOutput, 'sink', sinkInput)
+    ]
+
+    const vertical = layoutWorkflowMaterialSwimlanes(nodes, links, 'vertical')
+    const horizontal = layoutWorkflowMaterialSwimlanes(nodes, links, 'horizontal')
+
+    expect(vertical.swimlanes.nodeLayouts.get('transfer')).toMatchObject({
+      width: 168,
+      height: 72
+    })
+    expect(handleCenterX(vertical, 'transfer', transferInput.uuid)).toBe(
+      vertical.swimlanes.lanes[0]!.axis
+    )
+    expect(horizontal.swimlanes.nodeLayouts.get('transfer')).toMatchObject({
+      width: 168,
+      height: 72
+    })
+    expect(handleCenterY(horizontal, 'transfer', transferOutput.uuid)).toBe(
+      horizontal.swimlanes.lanes[0]!.axis
+    )
+  })
 })
 
 /**
@@ -157,6 +200,9 @@ function handleCenterX(
     .get(nodeId)?.get(handleUuid)
   if (!node || laneIndex === undefined) throw new Error('测试物料句柄缺少泳道')
   if (node.type === 'material_source') return node.x + 68
+  if (node.visualKind === 'robot-transfer') {
+    return node.x + WORKFLOW_TRANSFER_NODE_HANDLE_AXIS
+  }
   const layout = result.swimlanes.nodeLayouts.get(nodeId)
   if (!layout) throw new Error('测试动作节点缺少泳道尺寸')
   return node.x + WORKFLOW_MATERIAL_ACTION_FIRST_HANDLE_X +
@@ -181,6 +227,9 @@ function handleCenterY(
     .get(nodeId)?.get(handleUuid)
   if (!node || laneIndex === undefined) throw new Error('测试物料句柄缺少泳道')
   if (node.type === 'material_source') return node.y + 36
+  if (node.visualKind === 'robot-transfer') {
+    return node.y + WORKFLOW_TRANSFER_NODE_HANDLE_AXIS
+  }
   const layout = result.swimlanes.nodeLayouts.get(nodeId)
   if (!layout) throw new Error('测试动作节点缺少泳道尺寸')
   return node.y + WORKFLOW_MATERIAL_ACTION_FIRST_HANDLE_Y +

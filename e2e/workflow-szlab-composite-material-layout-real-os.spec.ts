@@ -23,7 +23,12 @@ interface AuthoringAggregate {
 
 let os: SzlabMaterialWorkflowOs
 
-test.describe.configure({ mode: 'serial' })
+test.describe.configure({ mode: 'serial', timeout: 240_000 })
+test.use({
+  launchOptions: {
+    args: ['--disable-gpu', '--disable-software-rasterizer']
+  }
+})
 
 /** 启动真实操作系统（OS），并为复合工作流编译预留完整冷启动时间。 */
 test.beforeAll(async () => {
@@ -38,7 +43,6 @@ test.afterAll(async () => {
 test('SZLab composite material workflow uses one orthogonal visible layout', async ({
   page
 }) => {
-  test.setTimeout(240_000)
   const artifactDirectory = resolve(
     process.env.UNILAB_E2E_ARTIFACT_DIR ||
       resolve(process.cwd(), '../e2e-artifacts/szlab-composite-material-layout')
@@ -85,8 +89,14 @@ test('SZLab composite material workflow uses one orthogonal visible layout', asy
   const readyEdges = panel.locator('.wf-flow-edge--ready')
   const readyHandles = panel.locator('[data-workflow-handle-kind="ready"]')
   const materialEdges = panel.locator('.wf-flow-edge--material-trace')
+  const robotTransferNodes = panel.locator(
+    '.wf-node[data-workflow-node-visual-kind="robot-transfer"]'
+  )
   await expect(visibleNodes).toHaveCount(30)
   await expect(materialSources).toHaveCount(4)
+  await expect(robotTransferNodes).toHaveCount(11)
+  await expect(robotTransferNodes.locator('[data-workflow-robot-arm]'))
+    .toHaveCount(11)
   await expect(materialEdges).toHaveCount(28)
   await expect(readyEdges).toHaveCount(7)
   await expect(readyHandles.first()).toBeVisible()
@@ -134,6 +144,10 @@ test('SZLab composite material workflow uses one orthogonal visible layout', asy
   await expect(reagentResource.locator(
     '[data-workflow-handle-kind="material"][data-workflow-handle-io="target"]'
   )).toHaveCount(1)
+  await expect(reagentNode).toHaveAttribute(
+    'data-workflow-node-visual-kind',
+    'robot-transfer'
+  )
   await expect(reagentResource.locator(
     '[data-workflow-handle-kind="material"][data-workflow-handle-io="source"]'
   )).toHaveCount(1)
@@ -240,6 +254,15 @@ test('SZLab composite material workflow uses one orthogonal visible layout', asy
     artifactDirectory,
     '08-multi-material-swimlane-node.png'
   ), 180)
+  const verticalTransferEvidence = await transferHandleEvidence(robotTransferNodes)
+  expect(verticalTransferEvidence.every((item) =>
+    item.crossAxisDelta <= 1 && item.edgeDelta <= 2
+  ), JSON.stringify(verticalTransferEvidence, null, 2)).toBe(true)
+  await focusViewportOn(panel, reagentNode, 1)
+  await screenshotAround(page, reagentNode, resolve(
+    artifactDirectory,
+    '12-robot-transfer-node-vertical.png'
+  ), 120)
 
   await swimlaneDirection.getByRole('button', {
     name: '横向',
@@ -317,6 +340,17 @@ test('SZLab composite material workflow uses one orthogonal visible layout', asy
     artifactDirectory,
     '11-swimlane-direction-controls.png'
   ), 24)
+  const horizontalTransferEvidence = await transferHandleEvidence(
+    robotTransferNodes
+  )
+  expect(horizontalTransferEvidence.every((item) =>
+    item.crossAxisDelta <= 1 && item.edgeDelta <= 2
+  ), JSON.stringify(horizontalTransferEvidence, null, 2)).toBe(true)
+  await focusViewportOn(panel, reagentNode, 1)
+  await screenshotAround(page, reagentNode, resolve(
+    artifactDirectory,
+    '13-robot-transfer-node-horizontal.png'
+  ), 120)
 
   expect(requestFailures).toEqual([])
   expect(browserErrors).toEqual([])
@@ -326,6 +360,11 @@ test('SZLab composite material workflow uses one orthogonal visible layout', asy
     source_graph: { nodes: graph.nodes.length, edges: graph.edges.length },
     visible_nodes: await visibleNodes.count(),
     material_sources: await materialSources.count(),
+    robot_transfer_nodes: {
+      count: await robotTransferNodes.count(),
+      vertical_handles: verticalTransferEvidence,
+      horizontal_handles: horizontalTransferEvidence
+    },
     material_edges: await materialEdges.count(),
     ready_edges: await readyEdges.count(),
     ready_handles: readyHandleEvidence,
@@ -351,6 +390,54 @@ test('SZLab composite material workflow uses one orthogonal visible layout', asy
     request_failures: requestFailures
   }, null, 2)}\n`, 'utf8')
 })
+
+interface TransferHandleEvidence {
+  nodeId: string
+  io: string
+  crossAxisDelta: number
+  edgeDelta: number
+}
+
+/** 验证物料流（MaterialFlow）句柄位于菱形机械臂外缘并与其中心轴对齐。 */
+async function transferHandleEvidence(
+  nodes: Locator
+): Promise<TransferHandleEvidence[]> {
+  return nodes.evaluateAll((elements) => elements.flatMap((element) => {
+    const node = element as HTMLElement
+    const visual = node.querySelector<HTMLElement>('[data-workflow-robot-arm]')
+    if (!visual) throw new Error('转运节点缺少机械臂视觉')
+    const visualRect = visual.getBoundingClientRect()
+    const horizontal = node.dataset.workflowLayoutDirection === 'horizontal'
+    return [...node.querySelectorAll<HTMLElement>(
+      '[data-workflow-handle-kind="material"]'
+    )].map((handle) => {
+      const handleRect = handle.getBoundingClientRect()
+      const io = handle.dataset.workflowHandleIo ?? ''
+      return {
+        nodeId: node.dataset.workflowNodeUuid ?? '',
+        io,
+        crossAxisDelta: horizontal
+          ? Math.abs(
+              handleRect.top + handleRect.height / 2 -
+              (visualRect.top + visualRect.height / 2)
+            )
+          : Math.abs(
+              handleRect.left + handleRect.width / 2 -
+              (visualRect.left + visualRect.width / 2)
+            ),
+        edgeDelta: horizontal
+          ? Math.abs(
+              handleRect.left + handleRect.width / 2 -
+              (io === 'target' ? visualRect.left : visualRect.right)
+            )
+          : Math.abs(
+              handleRect.top + handleRect.height / 2 -
+              (io === 'target' ? visualRect.top : visualRect.bottom)
+            )
+      }
+    })
+  }))
+}
 
 interface NamedBox {
   name: string
