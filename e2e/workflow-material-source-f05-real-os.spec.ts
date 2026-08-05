@@ -23,6 +23,7 @@ import {
 } from './helpers/f05-material-source-real-os'
 import { installWorkflowPanel } from './helpers/workflow-runtime-ui'
 import { readFixedExecutorEvidence } from './helpers/f05-fixed-executor-contract'
+import { canvasWorkflowNodeSelector } from './helpers/f05-workflow-canvas-node'
 
 interface PublicEnvelope<Value> {
   code: number
@@ -285,9 +286,7 @@ async function runF05MaterialSourceAcceptance(
   )
   await expect(panel.getByText('完整控制流 DAG')).toBeVisible()
   await panel.getByRole('button', { name: '画布模式', exact: true }).click()
-  const sourceNode = panel.locator(
-    `[data-workflow-node-uuid="${os.sourceNodeUuid}"]`
-  )
+  const sourceNode = panel.locator(canvasWorkflowNodeSelector(os.sourceNodeUuid))
   await sourceNode.click({ position: { x: 42, y: 42 } })
   const inspector = panel.getByRole('region', { name: '物料来源属性' })
   await inspector.getByRole('button', {

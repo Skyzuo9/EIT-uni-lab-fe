@@ -1,9 +1,9 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from "@playwright/test";
 
-import { canvasWorkflowNodeSelector } from './f05-workflow-canvas-node'
+import { canvasWorkflowNodeSelector } from "./f05-workflow-canvas-node";
 
-test('画布工作流节点选择器复用 React Flow 稳定身份', selectsCanvasNode)
-test('画布工作流节点选择器拒绝不可信身份', rejectsUnsafeIdentity)
+test("画布工作流节点选择器复用 React Flow 稳定身份", selectsCanvasNode);
+test("画布工作流节点选择器拒绝不可信身份", rejectsUnsafeIdentity);
 
 /**
  * 证明选择器只命中带精确 `data-id` 的 React Flow 工作流节点（WorkflowNode）。
@@ -13,10 +13,10 @@ test('画布工作流节点选择器拒绝不可信身份', rejectsUnsafeIdentit
  */
 function selectsCanvasNode(): void {
   // ``workflowNodeUuid`` 是画布工作流节点（WorkflowNode）的稳定身份。
-  const workflowNodeUuid = '66000000-0000-4000-8000-0000000002b0'
+  const workflowNodeUuid = "66000000-0000-4000-8000-0000000002b0";
   expect(canvasWorkflowNodeSelector(workflowNodeUuid)).toBe(
-    '.react-flow__node[data-id="66000000-0000-4000-8000-0000000002b0"]'
-  )
+    '.react-flow__node[data-id="66000000-0000-4000-8000-0000000002b0"]',
+  );
 }
 
 /**
@@ -28,14 +28,14 @@ function selectsCanvasNode(): void {
 function rejectsUnsafeIdentity(): void {
   // ``unsafeIdentities`` 是不得进入 CSS 属性选择器的全部测试输入。
   const unsafeIdentities = [
-    '',
-    ' ',
-    '66000000',
-    '66000000-0000-4000-8000-0000000002b0"] option'
-  ]
+    "",
+    " ",
+    "66000000",
+    '66000000-0000-4000-8000-0000000002b0"] option',
+  ];
   for (const unsafeIdentity of unsafeIdentities) {
     expect(() => canvasWorkflowNodeSelector(unsafeIdentity)).toThrow(
-      /工作流节点 UUID/
-    )
+      /工作流节点 UUID/,
+    );
   }
 }
