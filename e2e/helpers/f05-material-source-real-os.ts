@@ -1,4 +1,4 @@
-import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
+import { spawn, type ChildProcess } from 'node:child_process'
 import { once } from 'node:events'
 import {
   cpSync,
@@ -15,20 +15,20 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 
+import {
+  readGitRevision,
+  resolveExpectedF05OsRevision,
+  type GitRevisionEvidence
+} from './f05-os-revision'
+
+export { readGitRevision } from './f05-os-revision'
+
 // 以下 UUID 分别固定真实夹具的工作流（Workflow）、物料来源（MaterialSource）
 // 节点、挂载物料和目标库位（Site）身份。
 export const F05_WORKFLOW_UUID = '65000000-0000-4000-8000-0000000002b0'
 export const F05_SOURCE_NODE_UUID = '66000000-0000-4000-8000-0000000002b0'
 export const F05_MOUNT_MATERIAL_UUID = '97539b08-24de-5003-8b2e-9eb6e983c68a'
 export const F05_SITE_UUID = '1962ab7c-b006-5e44-a1bd-9b1fde81d529'
-export const F05_OS_REVISION =
-  'f55c35391584816155aac1c132e3d5028adf79e6'
-
-export interface GitRevisionEvidence {
-  sha: string
-  dirty: boolean
-}
-
 export interface NativeLogEvidence {
   name: string
   content: string
@@ -94,32 +94,14 @@ class ProcessOutputCollector {
 }
 
 /**
- * 读取仓库精确 Git 修订证据。
- *
- * 参数：`repository` 是待核验仓库根目录。
- * 返回：当前提交 SHA 与工作树是否有未提交修改。
- * 异常：目录不是 Git 仓库或 Git 命令失败时原样抛出。
- */
-export function readGitRevision(repository: string): GitRevisionEvidence {
-  return {
-    sha: execFileSync('git', ['rev-parse', 'HEAD'], {
-      cwd: repository,
-      encoding: 'utf8'
-    }).trim(),
-    dirty: execFileSync('git', ['status', '--porcelain'], {
-      cwd: repository,
-      encoding: 'utf8'
-    }).trim().length > 0
-  }
-}
-
-/**
  * 启动 F05 浏览器验收使用的真实 OS 本地调度运行时。
  *
  * 参数：无；可用 `UNILAB_AUTHORING_OS_ROOT` 覆盖产品 OS 根目录，或用
- * `UNILAB_OS_CLI` 覆盖 native CLI。
+ * `UNILAB_OS_CLI` 覆盖 native CLI；仅显式完整
+ * `UNILAB_AUTHORING_OS_REVISION` 可覆盖默认审定修订。
  * 返回：包含公共 HTTP 地址、领域身份、命令、修订和清理能力的运行时证据。
- * 异常：夹具缺失、CLI 退出或公共就绪接口未在期限内可用时抛出并清理临时目录。
+ * 异常：修订覆盖非法、工作树非干净或 HEAD 不精确匹配、夹具缺失、CLI 退出、
+ * 公共就绪接口未在期限内可用时抛出；已创建的临时目录会被清理。
  */
 export async function startF05MaterialSourceRealOs(): Promise<F05MaterialSourceRealOs> {
   const osRepository = resolve(
@@ -135,9 +117,13 @@ export async function startF05MaterialSourceRealOs(): Promise<F05MaterialSourceR
     'e2e/fixtures/m2b-native-workspace'
   )
   assertRequiredPaths([osRepository, cli, fixtureSource])
+  // ``expectedOsRevision`` 是本轮唯一获准启动的 OS 候选提交身份。
+  const expectedOsRevision = resolveExpectedF05OsRevision()
   const osRevision = readGitRevision(osRepository)
-  if (osRevision.sha !== F05_OS_REVISION || osRevision.dirty) {
-    throw new Error(`F05 真实 OS 修订不匹配：${JSON.stringify(osRevision)}`)
+  if (osRevision.sha !== expectedOsRevision || osRevision.dirty) {
+    throw new Error(
+      `F05 真实 OS 修订不匹配：期望 ${expectedOsRevision}，实际 ${JSON.stringify(osRevision)}`
+    )
   }
 
   const directory = mkdtempSync(join(tmpdir(), 'unilab-f05-real-os-'))

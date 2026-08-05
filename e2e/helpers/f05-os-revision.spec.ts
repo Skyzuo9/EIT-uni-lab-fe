@@ -1,13 +1,13 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from "@playwright/test";
 
 import {
   F05_DEFAULT_OS_REVISION,
-  resolveExpectedF05OsRevision
-} from './f05-os-revision'
+  resolveExpectedF05OsRevision,
+} from "./f05-os-revision";
 
-test('未配置覆盖值时固定使用已审定 OS 产品基线', usesReviewedDefault)
-test('显式完整 SHA 可以选择待验收 OS 候选', usesExplicitRevision)
-test('空值与脏修订值必须关闭失败', rejectsDirtyRevision)
+test("未配置覆盖值时固定使用已审定 OS 产品基线", usesReviewedDefault);
+test("显式完整 SHA 可以选择待验收 OS 候选", usesExplicitRevision);
+test("空值与脏修订值必须关闭失败", rejectsDirtyRevision);
 
 /**
  * 证明默认期望修订仍固定到已经审定的 OS 产品基线。
@@ -17,11 +17,11 @@ test('空值与脏修订值必须关闭失败', rejectsDirtyRevision)
  */
 function usesReviewedDefault(): void {
   expect(resolveExpectedF05OsRevision({})).toBe(
-    'f55c35391584816155aac1c132e3d5028adf79e6'
-  )
+    "f55c35391584816155aac1c132e3d5028adf79e6",
+  );
   expect(F05_DEFAULT_OS_REVISION).toBe(
-    'f55c35391584816155aac1c132e3d5028adf79e6'
-  )
+    "f55c35391584816155aac1c132e3d5028adf79e6",
+  );
 }
 
 /**
@@ -32,10 +32,12 @@ function usesReviewedDefault(): void {
  */
 function usesExplicitRevision(): void {
   // ``candidateRevision`` 是本轮真实 OS 候选的稳定 Git 提交身份。
-  const candidateRevision = '263b176d4e8e081d58654bd13c12921560c9ac25'
-  expect(resolveExpectedF05OsRevision({
-    UNILAB_AUTHORING_OS_REVISION: candidateRevision
-  })).toBe(candidateRevision)
+  const candidateRevision = "263b176d4e8e081d58654bd13c12921560c9ac25";
+  expect(
+    resolveExpectedF05OsRevision({
+      UNILAB_AUTHORING_OS_REVISION: candidateRevision,
+    }),
+  ).toBe(candidateRevision);
 }
 
 /**
@@ -47,16 +49,18 @@ function usesExplicitRevision(): void {
 function rejectsDirtyRevision(): void {
   // ``dirtyRevisions`` 是不得被 trim、补全或当作任意修订接受的输入全集。
   const dirtyRevisions = [
-    '',
-    ' ',
-    '263b176d',
-    '263B176D4E8E081D58654BD13C12921560C9AC25',
-    'g63b176d4e8e081d58654bd13c12921560c9ac25',
-    ' 263b176d4e8e081d58654bd13c12921560c9ac25'
-  ]
+    "",
+    " ",
+    "263b176d",
+    "263B176D4E8E081D58654BD13C12921560C9AC25",
+    "g63b176d4e8e081d58654bd13c12921560c9ac25",
+    " 263b176d4e8e081d58654bd13c12921560c9ac25",
+  ];
   for (const dirtyRevision of dirtyRevisions) {
-    expect(() => resolveExpectedF05OsRevision({
-      UNILAB_AUTHORING_OS_REVISION: dirtyRevision
-    })).toThrow(/UNILAB_AUTHORING_OS_REVISION/)
+    expect(() =>
+      resolveExpectedF05OsRevision({
+        UNILAB_AUTHORING_OS_REVISION: dirtyRevision,
+      }),
+    ).toThrow(/UNILAB_AUTHORING_OS_REVISION/);
   }
 }
