@@ -4,6 +4,7 @@ import {
 } from '@pascal-app/core'
 import { useNodeEvents, useViewer } from '@pascal-app/viewer'
 import { Html } from '@react-three/drei'
+import { shouldShowMaterialLabelByDefault } from '@unilab/material/domain'
 import {
   useEffect,
   useLayoutEffect,
@@ -212,7 +213,9 @@ export default function LabDeviceRenderer({
   const isDeck = node.deviceType.includes('deck')
   const deckSurfaceProvidedByParent =
     isDeck && Boolean(node.attach.parentDeviceId)
-  const showPersistentTag = isEquipmentKind(node.deviceType)
+  const showPersistentTag = shouldShowMaterialLabelByDefault(
+    node.deviceType
+  )
 
   useRegistry(node.id, node.type, groupRef)
 
@@ -391,19 +394,4 @@ export default function LabDeviceRenderer({
       )}
     </group>
   )
-}
-
-function isEquipmentKind(deviceType: string): boolean {
-  const kind = deviceType.replaceAll('_', '-').toLowerCase()
-  return ![
-    'plate',
-    'tip-rack',
-    'tiprack',
-    'labware',
-    'container',
-    'reagent',
-    'sample',
-    'tube',
-    'trash'
-  ].some((token) => kind.includes(token))
 }

@@ -22,6 +22,7 @@ import type {
   MaterialId,
   MaterialSite
 } from '../types'
+import { shouldShowMaterialLabelByDefault } from '../labelPresentation'
 import { materialScopeClassName } from '../materialStyles'
 import {
   buildMaterialObliqueScene,
@@ -512,7 +513,7 @@ export function MaterialObliqueCanvas({
               isHovered ||
               (semanticZoom === 'overview' && isLandmark) ||
               (semanticZoom === 'detail' &&
-                isEquipmentKind(object.kind)) ||
+                shouldShowMaterialLabelByDefault(object.kind)) ||
               semanticZoom === 'inspect'
             return (
               <ObliqueMaterial
@@ -697,7 +698,7 @@ function selectLandmarkIds(
   const landmarks = objects
     .filter(
       (object) =>
-        isEquipmentKind(object.kind) &&
+        shouldShowMaterialLabelByDefault(object.kind) &&
         !['host', 'plc', 'deck'].some((token) =>
           object.kind.toLowerCase().includes(token)
         )
@@ -2055,27 +2056,6 @@ function pointsAttr(points: readonly (ObliquePoint | undefined)[]): string {
     .filter((point): point is ObliquePoint => point != null)
     .map((point) => point.join(','))
     .join(' ')
-}
-
-function isEquipmentKind(kind: string): boolean {
-  const normalized = kind.replaceAll('_', '-').toLowerCase()
-  const isLabware = [
-    'plate',
-    'tip-rack',
-    'tiprack',
-    'labware',
-    'container',
-    'reagent',
-    'sample',
-    'tube',
-    'beaker',
-    'vial',
-    'bottle',
-    'trash',
-    'deck'
-  ].some((token) => normalized.includes(token))
-  // 「烧杯堆栈」这类载架名字里带 beaker，但仍是设备，标签要保留
-  return isLabware ? normalized.includes('stack') : true
 }
 
 function materialKindClass(kind: string): string {

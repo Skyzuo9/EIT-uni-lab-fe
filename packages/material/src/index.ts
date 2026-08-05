@@ -1,6 +1,7 @@
 export * from './types'
 export * from './geometry'
 export * from './rules'
+export * from './labelPresentation'
 export * from './store'
 export * from './undo'
 export * from './MaterialStoreProvider'
