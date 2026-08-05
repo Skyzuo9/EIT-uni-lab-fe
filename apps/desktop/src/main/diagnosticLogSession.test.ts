@@ -1,9 +1,10 @@
 import { basename, join } from 'node:path'
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import {
   createDiagnosticLogSessionId,
+  openLocalRuntimeLogDirectory,
   resolveDesktopMainLogPath,
   resolveLocalRuntimeLogPath
 } from './diagnosticLogSession'
@@ -53,5 +54,52 @@ describe('diagnostic log session', () => {
     expect(() => createDiagnosticLogSessionId(new Date(Number.NaN))).toThrow(
       '应用启动时间无效'
     )
+  })
+
+  /** 验证系统文件管理器只打开安全创建后的当前诊断日志目录。 */
+  it('creates and opens the current diagnostic log directory', async () => {
+    const logsDirectory = join('/tmp', 'logs', 'local-runtime')
+    const createDirectory = vi.fn(async () => undefined)
+    const openPath = vi.fn(async () => '')
+
+    const result = await openLocalRuntimeLogDirectory(logsDirectory, {
+      createDirectory,
+      openPath
+    })
+
+    expect(createDirectory).toHaveBeenCalledWith(logsDirectory)
+    expect(openPath).toHaveBeenCalledWith(logsDirectory)
+    expect(result).toEqual({ opened: true })
+  })
+
+  /** 验证日志目录创建失败时不调用系统文件管理器，并返回可行动提示。 */
+  it('reports a directory creation failure without opening a path', async () => {
+    const openPath = vi.fn(async () => '')
+
+    const result = await openLocalRuntimeLogDirectory('/protected/logs', {
+      createDirectory: async () => {
+        throw new Error('permission denied')
+      },
+      openPath
+    })
+
+    expect(openPath).not.toHaveBeenCalled()
+    expect(result).toEqual({
+      opened: false,
+      error: '无法创建日志目录：permission denied'
+    })
+  })
+
+  /** 验证系统文件管理器拒绝打开目录时保留平台返回的具体原因。 */
+  it('reports a system file manager failure', async () => {
+    const result = await openLocalRuntimeLogDirectory('/tmp/logs', {
+      createDirectory: async () => undefined,
+      openPath: async () => 'No application is associated with this path'
+    })
+
+    expect(result).toEqual({
+      opened: false,
+      error: '无法打开日志目录：No application is associated with this path'
+    })
   })
 })

@@ -235,7 +235,7 @@ export function LocalRuntimeLogLauncher({
                 if (!runtimeApi.openLogFile) return
                 setError(null)
                 void runtimeApi.openLogFile(activeKind).then((result) => {
-                  if (!result.opened) setError(result.error ?? '无法打开日志文件')
+                  if (!result.opened) setError(result.error ?? '无法打开日志目录')
                 }).catch((openError: unknown) => {
                   setError(errorMessage(openError))
                 })
@@ -961,11 +961,40 @@ const LOG_BOTTOM_TOLERANCE_PX = 4
 const LOG_ROW_ESTIMATED_HEIGHT_PX = 28
 const LOG_ROW_OVERSCAN_PX = LOG_ROW_ESTIMATED_HEIGHT_PX * 8
 
+type LocalRuntimeLogLevel =
+  | 'trace'
+  | 'debug'
+  | 'info'
+  | 'warning'
+  | 'error'
+  | 'critical'
+  | 'system'
+  | 'plain'
+
+type LocalRuntimeLogFilter = 'all' | LocalRuntimeLogLevel
+
+const LOG_LEVEL_FILTER_OPTIONS: ReadonlyArray<{
+  value: LocalRuntimeLogFilter
+  label: string
+}> = [
+  { value: 'all', label: '全部级别' },
+  { value: 'trace', label: 'TRACE' },
+  { value: 'debug', label: 'DEBUG' },
+  { value: 'info', label: 'INFO' },
+  { value: 'warning', label: 'WARNING' },
+  { value: 'error', label: 'ERROR' },
+  { value: 'critical', label: 'CRITICAL' },
+  { value: 'system', label: 'SYSTEM' },
+  { value: 'plain', label: 'LOG' }
+]
+
 /**
  * 展示本地运行日志，并在用户位于底部时持续跟随最新一行。
  *
  * @param props 日志快照、当前来源、加载状态及抽屉交互回调。
  * @returns 支持动态行高和窗口化渲染的日志抽屉。
+ * @throws 不主动抛出异常；读取和打开目录失败通过 error 呈现。
+ * @safety 筛选只作用于格式化视图，保留 snapshot 中的原始日志内容。
  */
 export function LocalRuntimeLogDrawer({
   instanceId,
@@ -985,6 +1014,7 @@ export function LocalRuntimeLogDrawer({
   const [scrollTop, setScrollTop] = useState(0)
   const [viewportHeight, setViewportHeight] = useState(480)
   const [rowHeights, setRowHeights] = useState<Record<string, number>>({})
+  const [levelFilter, setLevelFilter] = useState<LocalRuntimeLogFilter>('all')
   const idSuffix = instanceId ? `-${instanceId}` : ''
   const drawerId = `local-runtime-log-drawer${idSuffix}`
   const titleId = `local-runtime-log-title${idSuffix}`
@@ -997,13 +1027,20 @@ export function LocalRuntimeLogDrawer({
     () => formatLocalRuntimeLog(activeEntry?.content ?? ''),
     [activeEntry?.content]
   )
+  const filteredRows = useMemo(
+    () => levelFilter === 'all'
+      ? formattedRows
+      : formattedRows.filter((row) => row.level === levelFilter),
+    [formattedRows, levelFilter]
+  )
+  const hasRenderedOutput = hasActiveOutput && filteredRows.length > 0
   const formattedRowEntries = useMemo(
-    () => formattedRows.map((row, index) => ({
+    () => filteredRows.map((row, index) => ({
       row,
       index,
       measurementKey: localRuntimeLogRowMeasurementKey(row)
     })),
-    [formattedRows]
+    [filteredRows]
   )
   const rowLayout = useMemo(() => {
     let top = 0
@@ -1056,7 +1093,7 @@ export function LocalRuntimeLogDrawer({
     })
     observer.observe(output)
     return () => observer.disconnect()
-  }, [hasActiveOutput])
+  }, [hasRenderedOutput])
 
   useLayoutEffect(() => {
     const output = outputRef.current
@@ -1097,6 +1134,32 @@ export function LocalRuntimeLogDrawer({
     rowLayout.totalHeight
   ])
 
+  /**
+   * 应用受控选择框提供的日志级别筛选。
+   *
+   * @param event 日志级别选择框的变更事件。
+   * @returns 无返回值。
+   * @throws 不抛出异常；选项值由固定列表约束。
+   * @safety 仅更新本地展示状态，不修改或丢弃原始日志快照。
+   */
+  const handleLevelFilterChange = useCallback(
+    (event: SyntheticEvent<HTMLSelectElement>): void => {
+      setLevelFilter(event.currentTarget.value as LocalRuntimeLogFilter)
+    },
+    []
+  )
+
+  /**
+   * 清除日志级别筛选并恢复全部格式化记录。
+   *
+   * @returns 无返回值。
+   * @throws 不抛出异常。
+   * @safety 只恢复视图筛选，不发起日志读取或变更原始数据。
+   */
+  const clearLevelFilter = useCallback((): void => {
+    setLevelFilter('all')
+  }, [])
+
   return (
     <div className={styles.logDrawerLayer}>
       <button
@@ -1126,11 +1189,10 @@ export function LocalRuntimeLogDrawer({
               <button
                 type="button"
                 className={styles.secondaryButton}
-                disabled={!activeEntry?.available}
-                title="使用系统默认应用打开当前日志文件"
+                title="在系统文件管理器中打开当前日志目录"
                 onClick={onOpenFile}
               >
-                打开日志文件
+                打开日志目录
               </button>
             ) : null}
             {!following ? (
@@ -1205,62 +1267,97 @@ export function LocalRuntimeLogDrawer({
             </div>
           ) : activeEntry?.available && activeEntry.content ? (
             <>
+              <div className={styles.logFilterBar}>
+                <label className={styles.logFilterControl}>
+                  <span>日志级别</span>
+                  <select
+                    aria-label="日志级别筛选"
+                    value={levelFilter}
+                    onChange={handleLevelFilterChange}
+                  >
+                    {LOG_LEVEL_FILTER_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <span className={styles.logFilterCount} aria-live="polite">
+                  显示 {filteredRows.length} / {formattedRows.length} 条
+                </span>
+              </div>
               {activeEntry.truncated ? (
                 <p className={styles.logNotice}>
                   界面保留最近 {LOCAL_RUNTIME_LOG_MAX_LINES.toLocaleString()} 行；
-                  当前文件可通过“打开日志文件”查看，轮转历史保留在同一目录。
+                  可通过“打开日志目录”查看当前会话与轮转历史。
                 </p>
               ) : null}
-              <div
-                ref={outputRef}
-                className={styles.logOutput}
-                role="list"
-                aria-label="格式化运行日志"
-                onPointerDown={() => {
-                  onFollowChange(false)
-                }}
-                onWheel={(event) => {
-                  if (event.deltaY < 0) onFollowChange(false)
-                }}
-                onScroll={(event) => {
-                  const output = event.currentTarget
-                  setScrollTop(output.scrollTop)
-                  onFollowChange(
-                    output.scrollHeight - output.clientHeight - output.scrollTop
-                    <= LOG_BOTTOM_TOLERANCE_PX
-                  )
-                }}
-              >
+              {filteredRows.length > 0 ? (
                 <div
-                  className={styles.logVirtualSpace}
-                  style={{ height: rowLayout.totalHeight }}
-                >
-                  {visibleRows.map((entry) => {
-                    const { row, index: rowIndex } = entry
-                    return (
-                      <div
-                        key={`${rowIndex}-${row.message}`}
-                        className={styles.logRow}
-                        role="listitem"
-                        aria-posinset={rowIndex + 1}
-                        aria-setsize={formattedRows.length}
-                        data-level={row.level}
-                        data-log-row-index={rowIndex}
-                        style={{ transform: `translateY(${entry.top}px)` }}
-                      >
-                        <span className={styles.logRowMeta}>
-                          {row.time ? <time>{row.time}</time> : <span>—</span>}
-                          <span className={styles.logLevel}>{logLevelLabel(row.level)}</span>
-                          {row.source ? <code>{row.source}</code> : null}
-                        </span>
-                        <span className={styles.logMessage} title={row.message}>
-                          {row.message || '—'}
-                        </span>
-                      </div>
+                  ref={outputRef}
+                  className={styles.logOutput}
+                  role="list"
+                  aria-label="格式化运行日志"
+                  onPointerDown={() => {
+                    onFollowChange(false)
+                  }}
+                  onWheel={(event) => {
+                    if (event.deltaY < 0) onFollowChange(false)
+                  }}
+                  onScroll={(event) => {
+                    const output = event.currentTarget
+                    setScrollTop(output.scrollTop)
+                    onFollowChange(
+                      output.scrollHeight - output.clientHeight - output.scrollTop
+                      <= LOG_BOTTOM_TOLERANCE_PX
                     )
-                  })}
+                  }}
+                >
+                  <div
+                    className={styles.logVirtualSpace}
+                    style={{ height: rowLayout.totalHeight }}
+                  >
+                    {visibleRows.map((entry) => {
+                      const { row, index: rowIndex } = entry
+                      return (
+                        <div
+                          key={`${rowIndex}-${row.message}`}
+                          className={styles.logRow}
+                          role="listitem"
+                          aria-posinset={rowIndex + 1}
+                          aria-setsize={filteredRows.length}
+                          data-level={row.level}
+                          data-log-row-index={rowIndex}
+                          style={{ transform: `translateY(${entry.top}px)` }}
+                        >
+                          <span className={styles.logRowMeta}>
+                            {row.time ? <time>{row.time}</time> : <span>—</span>}
+                            <span className={styles.logLevel}>{logLevelLabel(row.level)}</span>
+                            {row.source ? <code>{row.source}</code> : null}
+                          </span>
+                          <span className={styles.logMessage} title={row.message}>
+                            {row.message || '—'}
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className={styles.logEmpty} role="status">
+                  <strong>
+                    没有符合 {logFilterLabel(levelFilter)} 条件的日志
+                  </strong>
+                  <span>原始日志仍保留，可清除筛选继续查看。</span>
+                  <button
+                    type="button"
+                    className={styles.secondaryButton}
+                    onClick={clearLevelFilter}
+                  >
+                    清除筛选
+                  </button>
+                </div>
+              )}
             </>
           ) : (
             <div className={styles.logEmpty} role="status">
@@ -1275,16 +1372,6 @@ export function LocalRuntimeLogDrawer({
     </div>
   )
 }
-
-type LocalRuntimeLogLevel =
-  | 'trace'
-  | 'debug'
-  | 'info'
-  | 'warning'
-  | 'error'
-  | 'critical'
-  | 'system'
-  | 'plain'
 
 interface FormattedLocalRuntimeLogRow {
   time: string
@@ -1334,11 +1421,112 @@ export function detectPhoenixObservabilityDependencyIssue(
     ))
 }
 
+/**
+ * 清理并格式化日志，同时把 Python traceback 合并到一条错误记录。
+ *
+ * @param content 当前来源的原始日志窗口。
+ * @returns 可按级别筛选和窗口化渲染的结构化日志记录。
+ * @throws 不抛出异常；无法识别的行以普通日志保留。
+ * @safety 仅移除终端控制码，不执行或解释日志中的控制内容。
+ */
 function formatLocalRuntimeLog(content: string): FormattedLocalRuntimeLogRow[] {
-  return stripTerminalControlCodes(content)
+  const rows: FormattedLocalRuntimeLogRow[] = []
+  let tracebackRowIndex: number | null = null
+  let tracebackTerminalLineSeen = false
+
+  stripTerminalControlCodes(content)
     .split(/\r?\n/)
     .filter((line) => line.length > 0)
-    .map(formatLocalRuntimeLogLine)
+    .forEach((line) => {
+      const row = formatLocalRuntimeLogLine(line)
+      if (isPythonTracebackHeader(row)) {
+        const previousIndex = rows.length - 1
+        const previous = rows[previousIndex]
+        if (previous && (
+          previous.level === 'error' || previous.level === 'critical'
+        )) {
+          rows[previousIndex] = {
+            ...previous,
+            message: `${previous.message}\n${row.message}`
+          }
+          tracebackRowIndex = previousIndex
+        } else {
+          rows.push({
+            ...row,
+            level: 'error',
+            source: row.source || 'Python'
+          })
+          tracebackRowIndex = rows.length - 1
+        }
+        tracebackTerminalLineSeen = false
+        return
+      }
+
+      if (tracebackRowIndex !== null && row.level === 'plain') {
+        if (
+          tracebackTerminalLineSeen
+          && !isPythonTracebackChainSeparator(row.message)
+        ) {
+          tracebackRowIndex = null
+          tracebackTerminalLineSeen = false
+          rows.push(row)
+          return
+        }
+        const tracebackRow = rows[tracebackRowIndex]
+        if (tracebackRow) {
+          rows[tracebackRowIndex] = {
+            ...tracebackRow,
+            message: `${tracebackRow.message}\n${row.message}`
+          }
+          tracebackTerminalLineSeen = isPythonTracebackTerminalLine(row.message)
+          return
+        }
+      }
+
+      tracebackRowIndex = null
+      tracebackTerminalLineSeen = false
+      rows.push(row)
+    })
+
+  return rows
+}
+
+/**
+ * 判断普通日志行是否为 Python traceback 的起始标记。
+ *
+ * @param row 已清理且初步格式化的日志行。
+ * @returns 行是否应开启 traceback 多行合并。
+ * @throws 不抛出异常。
+ * @safety 只做精确前缀匹配，不执行日志文本。
+ */
+function isPythonTracebackHeader(row: FormattedLocalRuntimeLogRow): boolean {
+  return row.level === 'plain'
+    && row.message.startsWith('Traceback (most recent call last):')
+}
+
+/**
+ * 判断 traceback 普通行是否已经给出最终异常类型与消息。
+ *
+ * @param message traceback 中尚未结构化的原始行。
+ * @returns 是否为类似 ValueError 或 module.CustomFailure 的异常终止行。
+ * @throws 不抛出异常。
+ * @safety 只匹配 Python 标识符和冒号，不吞并后续无关普通日志。
+ */
+function isPythonTracebackTerminalLine(message: string): boolean {
+  return /^[A-Za-z_][\w.]*(?::(?:\s|$)|$)/.test(message.trimStart())
+}
+
+/**
+ * 判断最终异常后的文本是否开启 Python 链式异常上下文。
+ *
+ * @param message traceback 中的普通文本行。
+ * @returns 是否为 Python 固定的链式异常分隔提示。
+ * @throws 不抛出异常。
+ * @safety 只接受 Python 固定前缀，避免扩展 traceback 合并范围。
+ */
+function isPythonTracebackChainSeparator(message: string): boolean {
+  return message.startsWith('During handling of the above exception')
+    || message.startsWith('The above exception was the direct cause')
 }
 
 function stripTerminalControlCodes(content: string): string {
@@ -1441,6 +1629,19 @@ function logLevelLabel(level: LocalRuntimeLogLevel): string {
   if (level === 'system') return 'SYSTEM'
   if (level === 'plain') return 'LOG'
   return level.toUpperCase()
+}
+
+/**
+ * 返回当前日志级别筛选的用户可见标签。
+ *
+ * @param filter 固定筛选选项中的值。
+ * @returns 对应选项标签；未知值回退为全部级别。
+ * @throws 不抛出异常。
+ * @safety 只读取本地常量，不接触或修改日志内容。
+ */
+function logFilterLabel(filter: LocalRuntimeLogFilter): string {
+  return LOG_LEVEL_FILTER_OPTIONS.find((option) => option.value === filter)
+    ?.label ?? '全部级别'
 }
 
 function PathField({

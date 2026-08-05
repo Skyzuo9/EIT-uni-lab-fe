@@ -726,6 +726,14 @@ function DeviceListItem({
   )
 }
 
+/**
+ * 渲染当前设备的动作目录与单动作调试工作区。
+ *
+ * @param props 设备、动作选择、运行能力与任务操作回调。
+ * @returns 保持动作目录和调试区稳定布局的设备工作区。
+ * @throws 不主动抛出异常；运行和解锁失败由上层状态呈现。
+ * @safety 零动作设备只展示禁用的运行入口，不会构造或提交任务。
+ */
 function DeviceWorkspace({
   device,
   selectedAction,
@@ -914,6 +922,15 @@ function DeviceWorkspace({
                 onCancel={onCancelActionTask}
               />
             </>
+          ) : device.actions.length === 0 ? (
+            <DeviceActionAvailability
+              state={{
+                kind: 'unavailable',
+                message: '该设备没有可运行的动作'
+              }}
+              disabledRunLabel="运行此动作"
+              onRun={ignoreUnavailableDeviceActionRun}
+            />
           ) : (
             <div className="edge-device__no-actions">
               选择一个动作节点后配置参数并运行。
@@ -1042,14 +1059,36 @@ export type DeviceActionRunState =
       error?: unknown[]
     }
 
+/**
+ * 吸收零动作设备禁用按钮理论上不可达的点击。
+ *
+ * @returns 无返回值。
+ * @throws 不抛出异常。
+ * @safety 不访问服务、不修改状态，也不创建动作任务。
+ */
+function ignoreUnavailableDeviceActionRun(): void {}
+
+/**
+ * 展示单动作任务的可用性、运行控制与执行日志。
+ *
+ * @param props.state 当前动作任务运行状态。
+ * @param props.onRun 可运行时创建动作任务的回调。
+ * @param props.onCancel 运行中取消动作任务的可选回调。
+ * @param props.disabledRunLabel 不可运行时保留在禁用按钮上的场景文案。
+ * @returns 动作任务控制区及存在任务时的执行日志。
+ * @throws 不主动抛出异常；回调错误由调用方处理。
+ * @safety 不可运行状态始终禁用按钮，避免误创建任务。
+ */
 export function DeviceActionAvailability({
   state,
   onRun,
-  onCancel
+  onCancel,
+  disabledRunLabel = '请在工作流中运行'
 }: {
   state: DeviceActionRunState
   onRun: () => void
   onCancel?: (taskUuid: string) => void
+  disabledRunLabel?: string
 }): React.JSX.Element {
   const [copied, setCopied] = useState(false)
   const ready = state.kind === 'ready' || (
@@ -1076,7 +1115,7 @@ export function DeviceActionAvailability({
           onClick={onRun}
         >
           {state.kind === 'unavailable'
-            ? '请在工作流中运行'
+            ? disabledRunLabel
             : state.kind === 'submitting'
               ? '正在创建正式任务…'
               : state.kind === 'error' && state.retryable

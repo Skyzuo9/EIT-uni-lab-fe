@@ -79,7 +79,7 @@ test('keeps the original log entry in the local runtime dialog', async ({
   })
   await connectionBar.getByRole('button', { name: '启动本地环境' }).click()
   const runtimeDialog = page.getByRole('dialog', {
-    name: '启动领域侧本地调试环境（以 sz_lab 为例）'
+    name: '领域侧 Edge（以 sz_lab 为例）'
   })
   const dialogLogButton = runtimeDialog.getByRole('button', {
     name: '查看日志'
@@ -92,7 +92,7 @@ test('keeps the original log entry in the local runtime dialog', async ({
     .toHaveAttribute('aria-selected', 'true')
   await expect(logDrawer.getByText('latest edge output')).toBeVisible()
   const openLogFileButton = logDrawer.getByRole('button', {
-    name: '打开日志文件'
+    name: '打开日志目录'
   })
   await expect(openLogFileButton).toBeEnabled()
   await openLogFileButton.click()
@@ -187,7 +187,7 @@ test('keeps the log drawer usable on a narrow viewport', async ({ page }) => {
   })
   await connectionBar.getByRole('button', { name: '启动本地环境' }).click()
   const runtimeDialog = page.getByRole('dialog', {
-    name: '启动领域侧本地调试环境（以 sz_lab 为例）'
+    name: '领域侧 Edge（以 sz_lab 为例）'
   })
   const dialogLogButton = runtimeDialog.getByRole('button', {
     name: '查看日志'
@@ -267,6 +267,37 @@ test('长日志自动换行并完整展示末尾内容', async ({ page }) => {
   await capture(page, '08-full-long-log-line.png')
 })
 
+/** 验证级别筛选作用于格式化记录，并持续接收符合条件的增量错误。 */
+test('按状态筛选诊断日志并保留 traceback 完整上下文', async ({ page }) => {
+  await page.goto('/?logFilters=1')
+  const connectionBar = page.getByRole('group', {
+    name: 'Edge 连接配置'
+  })
+  await connectionBar.getByRole('button', { name: '查看日志' }).click()
+
+  const logDrawer = page.getByRole('dialog', { name: '本地运行日志' })
+  const levelFilter = logDrawer.getByRole('combobox', {
+    name: '日志级别筛选'
+  })
+  const logOutput = logDrawer.getByRole('list', { name: '格式化运行日志' })
+  await levelFilter.selectOption('error')
+
+  await expect(logOutput).not.toContainText('worker ready')
+  await expect(logOutput).toContainText('Action failed')
+  await expect(logOutput).toContainText('Traceback (most recent call last):')
+  await expect(logOutput).toContainText('ValueError: invalid volume')
+  await expect(logOutput).not.toContainText('latest edge output')
+  await expect.poll(() => logRowSetSize(logOutput)).toBeGreaterThan(1)
+  await capture(page, '10-log-level-filter-error.png')
+
+  await levelFilter.selectOption('warning')
+  await expect(logDrawer.getByText('没有符合 WARNING 条件的日志')).toBeVisible()
+  await logDrawer.getByRole('button', { name: '清除筛选' }).click()
+  await expect(levelFilter).toHaveValue('all')
+  await expect(logOutput).toContainText('worker ready')
+  await capture(page, '11-log-level-filter-cleared.png')
+})
+
 /** 证明大量可换行日志滚到末尾后，虚拟列表不会留下大块空白。 */
 test('大量可换行日志末尾紧贴可视区域', async ({ page }) => {
   await page.goto('/?wrappedLargeLogs=1')
@@ -332,7 +363,7 @@ test('Edge 缺少 Phoenix 依赖时在启动界面给出非阻塞修复提示', 
   await runtimeButton.click()
 
   const runtimeDialog = page.getByRole('dialog', {
-    name: '启动领域侧本地调试环境（以 sz_lab 为例）'
+    name: '领域侧 Edge（以 sz_lab 为例）'
   })
   const recoveryNotice = runtimeDialog.getByRole('status', {
     name: '链路追踪（Trace）功能已降级'
@@ -360,8 +391,24 @@ test('Edge 缺少 Phoenix 依赖时在启动界面给出非阻塞修复提示', 
   await expect(recoveryNotice).toBeVisible()
   await recoveryNotice.scrollIntoViewIfNeeded()
   await capture(page, '05-phoenix-recovery-narrow.png')
-  expect(browserErrors).toEqual([])
+  expect(browserErrors.filter((message) => (
+    !isExpectedMissingDeviceSocketError(message)
+  ))).toEqual([])
 })
+
+/**
+ * 识别本地运行日志夹具未提供设备状态 WebSocket 时的预期连接错误。
+ *
+ * @param message 浏览器控制台采集到的错误文本。
+ * @returns 是否为固定设备状态地址的连接拒绝错误。
+ * @throws 不抛出异常。
+ * @safety 只忽略精确地址与 ERR_CONNECTION_REFUSED 组合，其他错误继续导致回归失败。
+ */
+function isExpectedMissingDeviceSocketError(message: string): boolean {
+  return message.includes(
+    "WebSocket connection to 'ws://127.0.0.1:18003/api/v1/ws/device_status'"
+  ) && message.includes('ERR_CONNECTION_REFUSED')
+}
 
 /**
  * 在页面加载前安装确定性的本地运行 API 测试替身。
@@ -384,6 +431,9 @@ async function installRuntimeApi(page: Page): Promise<void> {
     )
     const hasWrappedLargeLogs = (): boolean => (
       new URLSearchParams(window.location.search).has('wrappedLargeLogs')
+    )
+    const hasLogFilters = (): boolean => (
+      new URLSearchParams(window.location.search).has('logFilters')
     )
     const idleSnapshot = {
       phase: 'idle' as const,
@@ -474,6 +524,25 @@ async function installRuntimeApi(page: Page): Promise<void> {
                 + `[INFO] ${query.kind} line ${start + index}`
               )
         )
+        if (query.kind === 'edge' && hasLogFilters()) {
+          if (initial) {
+            lines.splice(
+              0,
+              lines.length,
+              '2026-08-04 12:01:30.000 | INFO | worker - worker ready',
+              '2026-08-04 12:01:31.000 | ERROR | worker - Action failed',
+              'Traceback (most recent call last):',
+              '  File "worker.py", line 18, in run',
+              'ValueError: invalid volume'
+            )
+          } else {
+            lines.splice(
+              0,
+              lines.length,
+              `2026-08-04 12:01:${String(logReadCount).padStart(2, '0')}.000 | ERROR | worker - incremental failure ${logReadCount}`
+            )
+          }
+        }
         if (initial && query.kind === 'edge' && hasPhoenixMissing()) {
           lines.unshift(
             '[launcher] 2026-08-04T03:12:00.000Z starting',

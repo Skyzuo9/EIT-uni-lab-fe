@@ -1,7 +1,15 @@
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 
-import type { LocalRuntimeProcessKind } from '../shared/localRuntime'
+import type {
+  LocalRuntimeOpenLogResult,
+  LocalRuntimeProcessKind
+} from '../shared/localRuntime'
+
+interface LocalRuntimeLogDirectoryOperations {
+  createDirectory: (logsDirectory: string) => Promise<void>
+  openPath: (logsDirectory: string) => Promise<string>
+}
 
 export const LOCAL_RUNTIME_LOG_KINDS: readonly LocalRuntimeProcessKind[] = [
   'simulator',
@@ -69,6 +77,41 @@ export function resolveLocalRuntimeLogPath(
 }
 
 /**
+ * 安全创建并使用系统文件管理器打开当前本地运行日志目录。
+ *
+ * @param logsDirectory Electron 主进程从当前运行管理器解析出的日志目录。
+ * @param operations 由主进程注入的目录创建与系统路径打开边界。
+ * @returns 是否成功打开目录，以及失败时可直接展示的中文提示。
+ * @throws 不向渲染器抛出文件系统或系统外壳异常。
+ * @safety 只打开主进程提供的目录，不读取、不占用且不锁定任何日志文件。
+ */
+export async function openLocalRuntimeLogDirectory(
+  logsDirectory: string,
+  operations: LocalRuntimeLogDirectoryOperations
+): Promise<LocalRuntimeOpenLogResult> {
+  try {
+    await operations.createDirectory(logsDirectory)
+  } catch (error) {
+    return {
+      opened: false,
+      error: `无法创建日志目录：${diagnosticLogErrorMessage(error)}`
+    }
+  }
+
+  try {
+    const openError = await operations.openPath(logsDirectory)
+    return openError
+      ? { opened: false, error: `无法打开日志目录：${openError}` }
+      : { opened: true }
+  } catch (error) {
+    return {
+      opened: false,
+      error: `无法打开日志目录：${diagnosticLogErrorMessage(error)}`
+    }
+  }
+}
+
+/**
  * 校验内部会话标识，防止后续路径解析接收目录跳转片段。
  *
  * @param sessionId 待用于文件名的应用启动会话标识。
@@ -80,4 +123,18 @@ function assertDiagnosticLogSessionId(sessionId: string): void {
   if (!DIAGNOSTIC_LOG_SESSION_ID_PATTERN.test(sessionId)) {
     throw new Error('诊断日志会话标识无效')
   }
+}
+
+/**
+ * 将未知系统错误收敛为可展示的诊断文本。
+ *
+ * @param error 文件系统或系统外壳抛出的未知错误。
+ * @returns 优先保留 Error.message 的非空文本。
+ * @throws 不抛出异常。
+ * @safety 不拼接调用栈，避免把内部实现细节暴露给界面。
+ */
+function diagnosticLogErrorMessage(error: unknown): string {
+  return error instanceof Error && error.message
+    ? error.message
+    : String(error)
 }

@@ -6,9 +6,9 @@ import {
   dialog,
   type IpcMainInvokeEvent
 } from 'electron'
-import { basename, join } from 'path'
+import { basename, dirname, join } from 'path'
 import { appendFileSync, existsSync } from 'node:fs'
-import { access, mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { readSession, clearSession, runOAuthLogin } from './authManager'
@@ -20,6 +20,7 @@ import {
 import { DeviceCardAgentCliManager } from './deviceCardAgentCli'
 import {
   createDiagnosticLogSessionId,
+  openLocalRuntimeLogDirectory,
   resolveDesktopMainLogPath
 } from './diagnosticLogSession'
 import { discoverDefaultCondaEnvironment } from './localRuntimeEnvironment'
@@ -33,6 +34,7 @@ import {
 } from './observability'
 import type {
   LocalRuntimeLaunchConfig,
+  LocalRuntimeOpenLogResult,
   LocalRuntimeLogQuery,
   LocalRuntimePathKind
 } from '../shared/localRuntime'
@@ -467,20 +469,7 @@ app.whenReady().then(async () => {
       () => requireRuntimeManager().readLog(parseRuntimeLogQuery(payload))
     )
   })
-  ipcMain.handle('runtime:openLogFile', async (event, payload: unknown) => {
-    assertMainWindowSender(event)
-    const kind = parseRuntimeLogKind(payload)
-    const logPath = requireRuntimeManager().getLogPath(kind)
-    try {
-      await accessLogFile(logPath)
-    } catch {
-      return { opened: false, error: '日志文件尚未生成' }
-    }
-    const openError = await shell.openPath(logPath)
-    return openError
-      ? { opened: false, error: openError }
-      : { opened: true }
-  })
+  ipcMain.handle('runtime:openLogFile', handleOpenLocalRuntimeLogDirectory)
 
   ipcMain.handle('observability:getStatus', (event) => {
     assertMainWindowSender(event)
@@ -965,9 +954,54 @@ function parseRuntimeLogQuery(value: unknown): LocalRuntimeLogQuery {
   }
 }
 
-/** 检查日志文件是否存在且可读，失败由调用者转换为用户提示。 */
-async function accessLogFile(logPath: string): Promise<void> {
-  await access(logPath)
+/**
+ * 处理受信任渲染器的“打开日志目录”请求。
+ *
+ * @param event Electron IPC 调用事件，用于验证主渲染器身份。
+ * @param payload 兼容现有协议的固定日志来源，不包含任意路径。
+ * @returns 系统文件管理器是否成功打开当前实际日志目录。
+ * @throws IPC 调用方或日志来源非法时失败关闭。
+ * @safety 目录由 LocalRuntimeManager 解析，渲染器无法指定文件系统位置。
+ */
+async function handleOpenLocalRuntimeLogDirectory(
+  event: IpcMainInvokeEvent,
+  payload: unknown
+): Promise<LocalRuntimeOpenLogResult> {
+  assertMainWindowSender(event)
+  const kind = parseRuntimeLogKind(payload)
+  const logsDirectory = dirname(requireRuntimeManager().getLogPath(kind))
+  return openLocalRuntimeLogDirectory(logsDirectory, {
+    createDirectory: createLocalRuntimeLogsDirectory,
+    openPath: openLocalRuntimeLogsPath
+  })
+}
+
+/**
+ * 创建 Electron 管理的本地运行日志目录。
+ *
+ * @param logsDirectory 主进程解析出的当前日志目录。
+ * @returns 目录存在后完成的 Promise。
+ * @throws 文件系统拒绝创建目录时透传异常，由上层转换为界面提示。
+ * @safety recursive 只作用于主进程固定目录，不接受渲染器路径。
+ */
+async function createLocalRuntimeLogsDirectory(
+  logsDirectory: string
+): Promise<void> {
+  await mkdir(logsDirectory, { recursive: true })
+}
+
+/**
+ * 使用当前平台的系统文件管理器打开本地运行日志目录。
+ *
+ * @param logsDirectory 已安全创建的当前日志目录。
+ * @returns Electron shell.openPath 的空成功文本或具体失败原因。
+ * @throws 系统外壳调用异常时透传，由上层转换为界面提示。
+ * @safety 只打开目录，不创建或锁定正在写入的日志文件。
+ */
+async function openLocalRuntimeLogsPath(
+  logsDirectory: string
+): Promise<string> {
+  return shell.openPath(logsDirectory)
 }
 
 function assertMainRenderer(senderId: number): void {

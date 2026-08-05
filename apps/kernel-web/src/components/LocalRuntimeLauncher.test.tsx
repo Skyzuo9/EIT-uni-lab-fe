@@ -318,10 +318,37 @@ describe('LocalRuntimeLauncher', () => {
     expect(markup).toContain('Edge 运行时')
     expect(markup).toContain('latest edge output')
     expect(markup).toContain('界面保留最近 2,000 行')
-    expect(markup).toContain('打开日志文件')
-    expect(markup).toContain('轮转历史保留在同一目录')
+    expect(markup).toContain('打开日志目录')
+    expect(markup).toContain('查看当前会话与轮转历史')
     expect(markup).not.toContain('Edge 服务')
     expect(markup).not.toContain('>Bridge<')
+  })
+
+  /** 验证尚未生成日志文件时仍可打开目录，以查看其他启动会话和轮转分片。 */
+  it('keeps log directory access available before a log file exists', () => {
+    const markup = renderToStaticMarkup(
+      <LocalRuntimeLogDrawer
+        snapshot={{
+          readAt: 1_785_499_200_000,
+          entries: [{
+            kind: 'edge',
+            content: '',
+            available: false,
+            truncated: false
+          }]
+        }}
+        activeKind="edge"
+        loading={false}
+        error={null}
+        onSelect={vi.fn()}
+        onRefresh={vi.fn()}
+        onOpenFile={vi.fn()}
+        onClose={vi.fn()}
+      />
+    )
+
+    expect(markup).toMatch(/<button(?![^>]*disabled)[^>]*>打开日志目录<\/button>/)
+    expect(markup).toContain('在系统文件管理器中打开当前日志目录')
   })
 
   it('strips terminal control codes and renders structured log rows', () => {
@@ -374,6 +401,48 @@ describe('LocalRuntimeLauncher', () => {
     expect(markup).toContain('device retry')
     expect(markup).toContain('data-level="system"')
     expect(markup).toContain('plain diagnostic tail')
+  })
+
+  /** 验证日志抽屉提供全部级别筛选，并把 Python traceback 保留为一条错误记录。 */
+  it('groups a Python traceback and exposes diagnostic level filters', () => {
+    const markup = renderToStaticMarkup(
+      <LocalRuntimeLogDrawer
+        snapshot={{
+          readAt: 1_785_499_200_000,
+          entries: [{
+            kind: 'edge',
+            content: [
+              '2026-08-04 12:01:30.000 | ERROR | worker - Action failed',
+              'Traceback (most recent call last):',
+              '  File "worker.py", line 18, in run',
+              'ValueError: invalid volume',
+              'latest edge output',
+              '2026-08-04 12:01:31.000 | INFO | worker - retry scheduled'
+            ].join('\n'),
+            available: true,
+            truncated: false
+          }]
+        }}
+        activeKind="edge"
+        loading={false}
+        error={null}
+        onSelect={vi.fn()}
+        onRefresh={vi.fn()}
+        onClose={vi.fn()}
+      />
+    )
+
+    expect(markup).toContain('aria-label="日志级别筛选"')
+    expect(markup).toContain('全部级别')
+    expect(markup).toContain('WARNING')
+    expect(markup).toContain('CRITICAL')
+    expect(markup.match(/role="listitem"/g)).toHaveLength(3)
+    expect(markup).toContain('Action failed\nTraceback (most recent call last):')
+    expect(markup).toContain('ValueError: invalid volume')
+    expect(markup).not.toContain('ValueError: invalid volume\nlatest edge output')
+    expect(markup).toContain('data-level="plain"')
+    expect(markup).toContain('latest edge output')
+    expect(markup).toContain('retry scheduled')
   })
 })
 

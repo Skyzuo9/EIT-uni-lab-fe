@@ -5,6 +5,7 @@ import { expect, test } from '@playwright/test'
 
 const API_URL = 'http://127.0.0.1:18003'
 
+/** 验证零动作设备保持可选择，并以禁用运行入口明确表达不可执行原因。 */
 test('a device with zero actions remains selectable without crashing', async ({
   page
 }) => {
@@ -106,6 +107,9 @@ test('a device with zero actions remains selectable without crashing', async ({
     'Edge 已上报该设备，但没有可调试的动作节点。'
   )
   await expect(workspace.locator('.edge-device__action-node')).toHaveCount(0)
+  await expect(workspace.getByRole('button', { name: '运行此动作' }))
+    .toBeDisabled()
+  await expect(workspace).toContainText('该设备没有可运行的动作')
   await page.screenshot({
     path: join(artifactDirectory, '02-zero-action-device-selected.png'),
     fullPage: true,
@@ -121,5 +125,21 @@ test('a device with zero actions remains selectable without crashing', async ({
     fullPage: true,
     animations: 'disabled'
   })
-  expect(browserErrors).toEqual([])
+  expect(browserErrors.filter((message) => (
+    !isExpectedMissingFixtureSocketError(message)
+  ))).toEqual([])
 })
+
+/**
+ * 识别仅因测试夹具未启动设备状态 WebSocket 服务而产生的预期控制台错误。
+ *
+ * @param message 浏览器控制台采集到的错误文本。
+ * @returns 是否为固定测试端口的连接拒绝错误。
+ * @throws 不抛出异常。
+ * @safety 只忽略精确 WebSocket 地址与 ERR_CONNECTION_REFUSED 组合，其他错误仍失败。
+ */
+function isExpectedMissingFixtureSocketError(message: string): boolean {
+  return message.includes(
+    "WebSocket connection to 'ws://127.0.0.1:18003/api/v1/ws/device_status'"
+  ) && message.includes('ERR_CONNECTION_REFUSED')
+}

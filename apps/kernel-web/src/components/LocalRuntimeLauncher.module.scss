@@ -1252,6 +1252,54 @@
   background: var(--unilab-color-bg-subtle);
 }
 
+.logFilterBar {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--unilab-space-3);
+  min-width: 0;
+}
+
+.logFilterControl {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--unilab-space-2);
+  color: var(--unilab-color-text-muted);
+  font-size: 11px;
+  font-weight: 600;
+
+  select {
+    min-width: 124px;
+    height: 30px;
+    padding-inline: 9px 28px;
+    color: var(--unilab-color-text);
+    border: 1px solid var(--unilab-color-border-strong);
+    border-radius: var(--unilab-radius-control);
+    background: var(--unilab-color-surface);
+    font: inherit;
+    cursor: pointer;
+
+    &:hover {
+      border-color: var(--unilab-color-primary);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--unilab-color-focus);
+      outline-offset: 2px;
+    }
+  }
+}
+
+.logFilterCount {
+  overflow: hidden;
+  color: var(--unilab-color-text-subtle);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .logOutput {
   display: block;
   min-width: 0;
@@ -1351,6 +1399,11 @@
 
   span {
     font-size: 12px;
+  }
+
+  .secondaryButton {
+    justify-self: center;
+    margin-block-start: var(--unilab-space-2);
   }
 }
 
