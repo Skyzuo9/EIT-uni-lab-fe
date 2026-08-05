@@ -77,7 +77,9 @@ export async function readFixedExecutorEvidence(
   )
   if (!device || detail.template.resource_template_uuid !==
     device.material.resource_template_uuid || typeof detail.template.schema !== 'string') {
-    throw new Error('固定执行器的设备物料、资源模板或 Schema 文本映射不完整')
+    throw new Error(
+      `固定执行器映射不完整：${JSON.stringify({ graph, device, template: detail.template })}`
+    )
   }
   JSON.parse(detail.template.schema)
   return {

@@ -408,9 +408,7 @@ function sourceResourceTemplateUuid(authoring: AuthoringWire): string {
       if (identity) return identity
     }
   }
-  throw new Error(
-    `公共创作候选缺少物料来源资源模板 UUID：${JSON.stringify(authoring)}`
-  )
+  throw new Error(`公共创作候选缺少物料来源资源模板 UUID：${JSON.stringify(authoring)}`)
 }
 
 /**

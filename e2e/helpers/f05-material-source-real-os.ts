@@ -185,6 +185,23 @@ export async function startF05MaterialSourceRealOs(): Promise<F05MaterialSourceR
   try {
     await waitUntilPublicContractsReady(url, child, output)
   } catch (error) {
+    // ``publicResponses`` 保存失败时仍可读取的公共 HTTP 状态与响应体，禁止用
+    // SQLite 或私有库存接口补齐证据。
+    const publicResponses = await Promise.all([
+      capturePublicResponse(`${url}/api/v1/materials/graph`),
+      capturePublicResponse(
+        `${url}/api/v1/workflows/${F05_WORKFLOW_UUID}/authoring`
+      )
+    ])
+    writeF05Evidence({
+      outcome: 'blocked',
+      error: String(error),
+      osRevision,
+      nativeCommand: [cli, ...args],
+      publicResponses,
+      nativeStdout: output.text(),
+      nativeLogs: readNativeLogs(workingDirectory)
+    })
     await stopChild(child)
     rmSync(directory, { recursive: true, force: true })
     throw error
@@ -202,6 +219,21 @@ export async function startF05MaterialSourceRealOs(): Promise<F05MaterialSourceR
     logs: output.text.bind(output),
     nativeLogs: readNativeLogs.bind(undefined, workingDirectory),
     stop: createRuntimeStop(child, directory)
+  }
+}
+
+/**
+ * 捕获一个公共 HTTP 响应作为失败证据。
+ *
+ * 参数：`url` 是公共接口地址。返回：URL、HTTP 状态和 JSON 响应体；网络失败时
+ * 返回错误文本。异常：不向外抛出，避免证据采集覆盖原始启动失败。
+ */
+async function capturePublicResponse(url: string): Promise<unknown> {
+  try {
+    const response = await fetch(url)
+    return { url, status: response.status, body: await response.json() }
+  } catch (error) {
+    return { url, captureError: String(error) }
   }
 }
 
@@ -259,6 +291,10 @@ async function waitUntilPublicContractsReady(
         fetch(`${url}/api/v1/workflows/${F05_WORKFLOW_UUID}/authoring`)
       ])
       if (materialGraphResponse.ok && authoringResponse.ok) {
+        const materialGraphEnvelope = await materialGraphResponse.json() as {
+          code?: number
+          data?: unknown
+        }
         const authoringEnvelope = await authoringResponse.json() as {
           code?: number
           data?: {
@@ -266,7 +302,11 @@ async function waitUntilPublicContractsReady(
             applied_graph?: { nodes?: Array<{ uuid?: string }> }
           }
         }
-        if (authoringEnvelope.code === 0) return
+        if (
+          materialGraphEnvelope.code === 0 && authoringEnvelope.code === 0 &&
+          !JSON.stringify(materialGraphEnvelope.data).includes('"nodes":[]') &&
+          JSON.stringify(authoringEnvelope.data).includes(F05_SOURCE_NODE_UUID)
+        ) return
       }
     } catch {
       // native CLI 与包监视器仍在启动；下一轮只重试相同两个公共接口。
