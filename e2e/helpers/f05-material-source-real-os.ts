@@ -192,7 +192,6 @@ export async function startF05MaterialSourceRealOs(): Promise<F05MaterialSourceR
     rmSync(directory, { recursive: true, force: true })
     throw error
   }
-
   return {
     url,
     workflowUuid: F05_WORKFLOW_UUID,
