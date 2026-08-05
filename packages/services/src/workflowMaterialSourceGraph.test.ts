@@ -20,24 +20,25 @@ const secondSiteUuid = '71000000-0000-4000-8000-000000000001'
  * 注册公共物料图（MaterialGraph）到工作流物料来源（MaterialSource）目录的行为测试。
  *
  * @returns 不返回值；任一公开投影或失败关闭不变量被破坏时由 Vitest 报告失败。
+ * @throws 测试注册失败时由 Vitest 报告异常。
  */
 function registerWorkflowMaterialSourceGraphTests(): void {
   it(
-    '公共物料图（MaterialGraph）按遍历顺序投影物料、挂载物料、库位占用与兼容模板',
+    '公共物料图（MaterialGraph）按遍历顺序投影物料（Material）、挂载物料、库位占用（SiteOccupancy）与兼容资源模板（ResourceTemplate）',
     projectsPublicGraphFactsInStableOrder
   )
   it('物料（Material）UUID 重复时必须失败关闭', rejectsDuplicateMaterialIdentity)
   it('库位（Site）UUID 重复时必须失败关闭', rejectsDuplicateSiteIdentity)
-  it('库位（Site）所有者与聚合物料不一致时必须失败关闭', rejectsMismatchedSiteOwner)
-  it('库位占用（SiteOccupancy）引用悬空物料时必须失败关闭', rejectsDanglingSiteOccupancy)
+  it('库位（Site）所有者与聚合物料（Material）不一致时必须失败关闭', rejectsMismatchedSiteOwner)
+  it('库位占用（SiteOccupancy）引用悬空物料（Material）时必须失败关闭', rejectsDanglingSiteOccupancy)
   it('库位（Site）容量不等于一时必须失败关闭', rejectsNonSingleSiteCapacity)
   it('库位（Site）允许的资源模板（ResourceTemplate）UUID 重复时必须失败关闭', rejectsDuplicateAllowedTemplates)
-  it('单一库位占用（SiteOccupancy）遇到多个占用物料时必须失败关闭', rejectsMultipleSiteOccupants)
-  it('实验耗材内部结构不得进入工作流候选库位（Site）', excludesManagedLabwareComponents)
+  it('单一库位占用（SiteOccupancy）遇到多个占用物料（Material）时必须失败关闭', rejectsMultipleSiteOccupants)
+  it('实验耗材内部结构不得进入工作流（Workflow）候选库位（Site）', excludesManagedLabwareComponents)
 }
 
 describe(
-  '工作流物料来源公共物料图投影',
+  '工作流物料来源（MaterialSource）公共物料图（MaterialGraph）投影',
   registerWorkflowMaterialSourceGraphTests
 )
 
@@ -284,8 +285,10 @@ function expectInvalidProjection(
  *
  * @param sites 公共库位或工作流物料来源库位集合。
  * @returns 与输入遍历顺序一致的库位 UUID 数组。
+ * @throws 不主动抛出异常。
  */
 function siteIds(sites: ReadonlyArray<{ id?: string; uuid?: string }>): string[] {
+  // 库位（Site）身份集合保存每个库位（Site）在公共图遍历中的稳定 UUID。
   const identities: string[] = []
   for (const site of sites) identities.push(site.id ?? site.uuid ?? '')
   return identities

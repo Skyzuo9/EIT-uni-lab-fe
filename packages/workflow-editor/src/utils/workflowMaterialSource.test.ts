@@ -319,10 +319,12 @@ function preservesCatalogSiteOrder(): void {
  *
  * @param sites 物料来源（MaterialSource）编辑投影中的库位集合。
  * @returns 按输入遍历顺序排列的库位 UUID。
+ * @throws 不主动抛出异常。
  */
 function workflowSiteUuids(
   sites: WorkflowMaterialSourceCatalogSnapshot['sites']
 ): string[] {
+  // 库位（Site）UUID 集合保存物料来源（MaterialSource）目录给出的稳定库位（Site）身份。
   const uuids: string[] = []
   for (const site of sites) uuids.push(site.uuid)
   return uuids

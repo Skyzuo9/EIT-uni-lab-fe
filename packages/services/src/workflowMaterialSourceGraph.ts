@@ -185,6 +185,7 @@ function uniqueUuidArray(
   values: readonly string[],
   label: string
 ): string[] {
+  // 规范 UUID 集合保存已经校验的物料（Material）、库位（Site）或资源模板（ResourceTemplate）稳定身份。
   const uuids: string[] = []
   for (const value of values) uuids.push(uuidValue(value, label))
   if (new Set(uuids).size !== uuids.length) {
@@ -202,6 +203,7 @@ function uniqueUuidArray(
  * @throws 值为空或不符合 UUID 格式时抛出结构化服务错误。
  */
 function uuidValue(value: string, label: string): string {
+  // 规范 UUID 是去除首尾空白后用于目录去重和引用校验的稳定领域身份。
   const uuid = nonEmptyString(value, label)
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(uuid)) {
     invalidGraph(`${label} 必须是 UUID`)

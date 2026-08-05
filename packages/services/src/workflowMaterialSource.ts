@@ -106,20 +106,22 @@ export async function loadWorkflowMaterialSourceCatalog(
       (authority && !sameAuthority(authority, pageAuthority)) ||
       (fingerprint && fingerprint !== pageFingerprint) ||
       (total !== null && total !== pageTotal)
-    ) invalidCatalog('MaterialSource catalog pagination is inconsistent')
+    ) invalidCatalog('物料来源（MaterialSource）目录分页不一致')
     authority ??= pageAuthority
     fingerprint ??= pageFingerprint
     total ??= pageTotal
     const items = recordArray(envelope.items)
     summaries.push(...items)
-    if (summaries.length > total) invalidCatalog('MaterialSource catalog total changed')
+    if (summaries.length > total) {
+      invalidCatalog('物料来源（MaterialSource）目录总数发生变化')
+    }
     if (summaries.length < total && items.length === 0) {
-      invalidCatalog('MaterialSource catalog pagination stopped early')
+      invalidCatalog('物料来源（MaterialSource）目录分页提前停止')
     }
     page += 1
   } while (summaries.length < (total ?? 0))
   if (!authority || !fingerprint || summaries.length !== total) {
-    invalidCatalog('MaterialSource catalog metadata is incomplete')
+    invalidCatalog('物料来源（MaterialSource）目录元数据不完整')
   }
 
   // 框架候选必须精确匹配物料来源（MaterialSource）节点的三项 wire 身份。
@@ -129,7 +131,7 @@ export async function loadWorkflowMaterialSourceCatalog(
     summary.node_type === 'material_source'
   )
   if (candidates.length !== 1) {
-    invalidCatalog('OS must publish exactly one MaterialSource framework template')
+    invalidCatalog('OS 必须发布且仅发布一个物料来源（MaterialSource）框架模板')
   }
   const summary = candidates[0]
   // 框架模板 UUID 是工作流图引用该非动作节点合同的稳定身份。
@@ -143,7 +145,7 @@ export async function loadWorkflowMaterialSourceCatalog(
   if (
     !sameAuthority(authority, authorityValue(detail.authority)) ||
     fingerprint !== nonEmptyString(detail.catalog_fingerprint)
-  ) invalidCatalog('MaterialSource detail authority changed')
+  ) invalidCatalog('物料来源（MaterialSource）详情权威发生变化')
   const template = recordValue(detail.template)
   const handles = recordArray(detail.handles)
   if (
@@ -155,7 +157,7 @@ export async function loadWorkflowMaterialSourceCatalog(
     template.class !== 'unilabos.workflow.authoring:material_source' ||
     template.schema !== null ||
     handles.length !== 1
-  ) invalidCatalog('MaterialSource framework template detail is invalid')
+  ) invalidCatalog('物料来源（MaterialSource）框架模板详情无效')
   const handle = handles[0]
   if (
     uuidString(handle.workflow_node_template_uuid) !== summaryUuid ||
@@ -163,7 +165,7 @@ export async function loadWorkflowMaterialSourceCatalog(
     handle.io_type !== 'source' ||
     handle.type !== 'ResourceSlot' ||
     handle.required !== false
-  ) invalidCatalog('MaterialSource framework Handle is invalid')
+  ) invalidCatalog('物料来源（MaterialSource）框架句柄无效')
 
   // 公共物料图聚合是物料、挂载关系和库位占用（SiteOccupancy）的唯一前端业务投影。
   const graphProjection = projectWorkflowMaterialSourceGraph(

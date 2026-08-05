@@ -35,24 +35,25 @@ const fingerprint = `sha256:${'b'.repeat(64)}`
  * 注册工作流物料来源（MaterialSource）目录适配器的公共服务行为测试。
  *
  * @returns 不返回值；模板合同、公共图依赖或失败关闭规则不符时由 Vitest 报告失败。
+ * @throws 测试注册失败时由 Vitest 报告异常。
  */
 function registerWorkflowMaterialSourceCatalogTests(): void {
   it(
-    '模板来自工作流 API 且物料事实只来自注入的公共物料图（MaterialGraph）端口',
+    '模板来自工作流（Workflow）API 且物料（Material）事实只来自注入的公共物料图（MaterialGraph）端口',
     loadsTemplateAndInjectedPublicMaterialGraph
   )
   it(
-    'OS 未发布唯一物料来源框架模板时必须失败关闭',
+    'OS 未发布唯一物料来源（MaterialSource）框架模板时必须失败关闭',
     rejectsMissingFrameworkTemplate
   )
   it(
-    '未注入公共物料图端口时必须失败关闭且不得请求私有库存接口',
+    '未注入公共物料图（MaterialGraph）端口时必须失败关闭且不得请求私有库存（Inventory）接口',
     rejectsMissingPublicMaterialGraphPort
   )
 }
 
 describe(
-  '工作流物料来源目录适配器',
+  '工作流物料来源（MaterialSource）目录适配器',
   registerWorkflowMaterialSourceCatalogTests
 )
 
@@ -151,6 +152,7 @@ async function loadsTemplateAndInjectedPublicMaterialGraph(): Promise<void> {
  * 验证工作流物料来源（MaterialSource）框架模板身份不精确时不发布有损目录。
  *
  * @returns Promise 完成时表示无效模板被结构化拒绝。
+ * @throws 异步断言未观测到预期结构化错误时由 Vitest 报告异常。
  */
 async function rejectsMissingFrameworkTemplate(): Promise<void> {
   const fixture = templateResponses()
@@ -165,7 +167,7 @@ async function rejectsMissingFrameworkTemplate(): Promise<void> {
   )
 
   await expect(runtime.getWorkflowMaterialSourceCatalog()).rejects.toThrow(
-    'MaterialSource framework template'
+    '物料来源（MaterialSource）框架模板'
   )
 }
 

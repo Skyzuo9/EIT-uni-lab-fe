@@ -2792,17 +2792,98 @@ export interface MaterialSourceInspectorProps {
   onChange: (patch: Partial<MaterialSourceSelectorUpdate>) => void
 }
 
+interface MaterialSourceCandidateSiteRowProps {
+  site: MaterialSourceEditorProjection['sites'][number]
+  selectedSiteUuids: readonly string[]
+  editable: boolean
+  onChange: (patch: Partial<MaterialSourceSelectorUpdate>) => void
+}
+
+/**
+ * 渲染一条物料来源（MaterialSource）候选库位（Site）复选行。
+ *
+ * @param props 候选库位（Site）行的渲染与更新输入。
+ * @param props.site 当前候选库位（Site）的稳定身份、名称和库位占用（SiteOccupancy）投影。
+ * @param props.selectedSiteUuids 当前选中的候选库位（Site）UUID 集合。
+ * @param props.editable 当前工作流（Workflow）是否允许修改。
+ * @param props.onChange 提交候选库位（Site）身份补丁的回调。
+ * @returns 可渲染的候选库位（Site）React 元素。
+ * @throws 不主动抛出异常；更新异常由上层回调边界处理。
+ */
+function MaterialSourceCandidateSiteRow({
+  site,
+  selectedSiteUuids,
+  editable,
+  onChange
+}: MaterialSourceCandidateSiteRowProps): React.JSX.Element {
+  // 选中状态由稳定库位（Site）UUID 集合派生，不复制第二份库位（Site）事实。
+  const checked = selectedSiteUuids.includes(site.uuid)
+
+  /**
+   * 把当前库位（Site）的复选状态转换成物料来源（MaterialSource）选择器补丁。
+   *
+   * @param event 复选框的受控变更事件。
+   * @returns 不返回值；新的 UUID 集合通过 onChange 提交。
+   * @throws 不主动抛出异常；更新异常由上层回调边界处理。
+   */
+  function handleCandidateSiteChange(
+    event: React.ChangeEvent<HTMLInputElement>
+  ): void {
+    // 新候选库位（Site）UUID 集合只保存稳定库位（Site）身份，不保存库位（Site）快照。
+    const candidateSiteUuids = event.target.checked
+      ? [...selectedSiteUuids, site.uuid]
+      : removeCandidateSiteUuid(selectedSiteUuids, site.uuid)
+    onChange({ candidateSiteUuids })
+  }
+
+  return (
+    <label>
+      <input
+        type="checkbox"
+        checked={checked}
+        disabled={!editable || (checked && selectedSiteUuids.length === 1)}
+        onChange={handleCandidateSiteChange}
+      />
+      <span>
+        {site.name}
+        <small>{site.occupiedMaterialUuid ? '已占用' : '空闲'}</small>
+      </span>
+    </label>
+  )
+}
+
+/**
+ * 从物料来源（MaterialSource）候选库位（Site）身份集合中移除一个 UUID。
+ *
+ * @param selectedSiteUuids 当前选中的稳定库位（Site）UUID 集合。
+ * @param removedSiteUuid 要移除的稳定库位（Site）UUID。
+ * @returns 保持原相对顺序且不包含目标 UUID 的新集合。
+ * @throws 不主动抛出异常。
+ */
+function removeCandidateSiteUuid(
+  selectedSiteUuids: readonly string[],
+  removedSiteUuid: string
+): string[] {
+  // 剩余库位（Site）UUID 集合延续公共物料图（MaterialGraph）交互时的原相对顺序。
+  const remainingSiteUuids: string[] = []
+  for (const siteUuid of selectedSiteUuids) {
+    if (siteUuid !== removedSiteUuid) remainingSiteUuids.push(siteUuid)
+  }
+  return remainingSiteUuids
+}
+
 /**
  * 渲染物料来源（MaterialSource）节点的闭合属性选择器。
  *
  * @param props 属性面板输入。
  * @param props.editor 已按公共物料图（MaterialGraph）顺序投影的编辑读模型。
- * @param props.accent 可选的物料链路强调色。
+ * @param props.accent 可选的物料（Material）链路强调色。
  * @param props.editable 当前工作流（Workflow）是否允许修改。
- * @param props.status 当前物料来源节点状态。
- * @param props.diagnostics 当前工作流创作诊断集合。
- * @param props.onChange 提交物料来源选择器补丁的回调。
+ * @param props.status 当前物料来源（MaterialSource）节点状态。
+ * @param props.diagnostics 当前工作流（Workflow）创作诊断集合。
+ * @param props.onChange 提交物料来源（MaterialSource）选择器补丁的回调。
  * @returns 可渲染的 React 属性面板元素。
+ * @throws 不主动抛出异常；数据与更新异常由上层创作边界处理。
  */
 export function MaterialSourceInspector({
   editor,
@@ -2819,6 +2900,45 @@ export function MaterialSourceInspector({
     [editor.sites, siteQuery]
   )
   useEffect(() => setSiteQuery(''), [editor.nodeUuid])
+
+  /**
+   * 渲染固定库位（Site）下拉列表的一个稳定选项。
+   *
+   * @param site 物料来源（MaterialSource）目录中的候选库位（Site）。
+   * @returns 以库位（Site）UUID 为键和 wire 值的 option 元素。
+   * @throws 不主动抛出异常。
+   */
+  function renderFixedSiteOption(
+    site: MaterialSourceEditorProjection['sites'][number]
+  ): React.JSX.Element {
+    return (
+      <option key={site.uuid} value={site.uuid}>
+        {site.name}
+      </option>
+    )
+  }
+
+  /**
+   * 渲染一条可交互的候选库位（Site）。
+   *
+   * @param site 按公共物料图（MaterialGraph）顺序给出的候选库位（Site）。
+   * @returns 绑定当前选中集合与更新回调的候选库位（Site）行。
+   * @throws 不主动抛出异常。
+   */
+  function renderCandidateSiteRow(
+    site: MaterialSourceEditorProjection['sites'][number]
+  ): React.JSX.Element {
+    return (
+      <MaterialSourceCandidateSiteRow
+        key={site.uuid}
+        site={site}
+        selectedSiteUuids={editor.candidateSiteUuids}
+        editable={editable}
+        onChange={onChange}
+      />
+    )
+  }
+
   return (
     <section
       className="persistent-authoring__material-source-inspector"
@@ -2988,11 +3108,7 @@ export function MaterialSourceInspector({
                 fixedSiteUuid: event.target.value
               })}
             >
-              {editor.sites.map((site) => (
-                <option key={site.uuid} value={site.uuid}>
-                  {site.name}
-                </option>
-              ))}
+              {editor.sites.map(renderFixedSiteOption)}
             </select>
           </label>
         )}
@@ -3017,33 +3133,7 @@ export function MaterialSourceInspector({
               role="group"
               aria-label="候选库位"
             >
-              {visibleSites.map((site) => {
-                const checked = editor.candidateSiteUuids.includes(site.uuid)
-                return (
-                  <label key={site.uuid}>
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      disabled={!editable || (
-                        checked && editor.candidateSiteUuids.length === 1
-                      )}
-                      onChange={(event) => onChange({
-                        candidateSiteUuids: event.target.checked
-                          ? [...editor.candidateSiteUuids, site.uuid]
-                          : editor.candidateSiteUuids.filter((uuid) =>
-                              uuid !== site.uuid
-                            )
-                      })}
-                    />
-                    <span>
-                      {site.name}
-                      <small>
-                        {site.occupiedMaterialUuid ? '已占用' : '空闲'}
-                      </small>
-                    </span>
-                  </label>
-                )
-              })}
+              {visibleSites.map(renderCandidateSiteRow)}
               {visibleSites.length === 0 && (
                 <p role="status">没有匹配的候选库位</p>
               )}

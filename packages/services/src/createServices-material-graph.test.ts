@@ -20,16 +20,17 @@ const fingerprint = `sha256:${'c'.repeat(64)}`
  * 注册服务组合根（Composition Root）对公共物料服务（Material Service）的装配测试。
  *
  * @returns 不返回值；工作流运行时绕过公共物料服务时由 Vitest 报告失败。
+ * @throws 测试注册失败时由 Vitest 报告异常。
  */
 function registerCreateServicesMaterialGraphTests(): void {
   it(
-    '工作流物料来源（MaterialSource）目录经组合根复用公共物料服务读取公共物料图（MaterialGraph）',
+    '工作流物料来源（MaterialSource）目录经组合根（Composition Root）复用公共物料服务（Material Service）读取公共物料图（MaterialGraph）',
     composesWorkflowWithPublicMaterialService
   )
 }
 
 describe(
-  '服务组合根的公共物料图（MaterialGraph）装配',
+  '服务组合根（Composition Root）的公共物料图（MaterialGraph）装配',
   registerCreateServicesMaterialGraphTests
 )
 
