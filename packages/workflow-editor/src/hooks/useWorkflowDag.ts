@@ -1,21 +1,21 @@
-/**
- * ============================================================
- * AI-GENERATED CODE METADATA
- * ============================================================
- * Model: Claude Opus 4.8
- * Generation Date: 2026-07-22
- * Prompt Summary: 将解析出的工作流拓扑转为 ReactFlow 节点/边(自定义节点卡片)
- * Context: 工作流 DAG 视图数据源,分层布局 + 大 web 风格节点类型分色
- * Human Review Status: [ ] Pending  [ ] Reviewed  [ ] Approved
- * ============================================================
- */
 import { useEffect, useMemo } from 'react'
 import type { Edge, Node, OnNodesChange, OnEdgesChange } from 'reactflow'
 import { MarkerType, Position, useNodesState, useEdgesState } from 'reactflow'
-import { layoutDag } from '../utils/dagLayout'
+
+import type { WorkflowNodeData } from '../components/WorkflowNodeCard'
+import { isReadyHandle } from '../components/WorkflowNodeCard'
+import type { WorkflowRoundedStepEdgeData } from '../components/WorkflowRoundedStepEdge'
+import { layoutDag, type LayoutResult } from '../utils/dagLayout'
 import { getNodeColor } from '../utils/nodeColors'
 import type { WorkflowLink, WorkflowNode } from '../utils/parseWorkflow'
-import type { WorkflowNodeData } from '../components/WorkflowNodeCard'
+import { layoutVisibleWorkflowDag } from '../utils/workflowDagLayout'
+import {
+  DEFAULT_WORKFLOW_DAG_LAYOUT_STRATEGY,
+  DEFAULT_WORKFLOW_MATERIAL_SWIMLANE_DIRECTION,
+  type WorkflowDagLayoutStrategy,
+  type WorkflowMaterialSwimlaneDirection
+} from '../utils/workflowDagLayoutStrategy'
+import { layoutWorkflowMaterialSwimlanes } from '../utils/workflowMaterialSwimlaneLayout'
 import {
   materialTraceAccent,
   projectMaterialTraces
@@ -23,51 +23,132 @@ import {
 
 interface UseWorkflowDagResult {
   nodes: Node<WorkflowNodeData>[]
-  edges: Edge[]
+  edges: Edge<WorkflowRoundedStepEdgeData>[]
   onNodesChange: OnNodesChange
   onEdgesChange: OnEdgesChange
 }
 
-// 通信连接用虚线,物理连接用实线
-const COMM_EDGE_TYPE = 'communication'
+interface WorkflowFlowElements {
+  flowNodes: Node<WorkflowNodeData>[]
+  flowEdges: Edge<WorkflowRoundedStepEdgeData>[]
+}
 
-// 连接线采用工作流模块色，保持与导航、控制和状态体系一致。
-const EDGE_COLOR = 'var(--unilab-color-workflow)'
+const COMM_EDGE_TYPE = 'communication'
+const STRUCTURAL_EDGE_COLOR = 'var(--unilab-color-text-subtle)'
 
 /**
- * [AI-MODIFIED] useWorkflowDag
+ * 将当前可见工作流（Workflow）投影为可交互的 ReactFlow 节点和正交边。
  *
- * @ai-model Claude Opus 4.8
- * @ai-date 2026-07-25
- * @ai-modifications 由「仅返回受控 nodes/edges」改为内部用 useNodesState/useEdgesState 管理状态,
- *   并暴露 onNodesChange/onEdgesChange;输入(nodes/links)变化时重新布局并同步。
- * @ai-reason 此前 ReactFlow 以受控方式传入 nodes 但缺少 onNodesChange 变更回写通道,
- *   导致拖动产生的位置变更无法应用,节点无法拖动。
+ * @param nodes 已折叠组合工作流后的全部可见节点。
+ * @param links 已重接端点的控制边与物料流（MaterialFlow）边。
+ * @param strategy 当前选中的画布布局策略。
+ * @param swimlaneDirection 物料泳道策略当前选中的流向。
+ * @returns ReactFlow 状态以及节点、边变更入口。
  */
-export function useWorkflowDag(nodes: WorkflowNode[], links: WorkflowLink[]): UseWorkflowDagResult {
-  // 依据输入重新布局,生成 ReactFlow 节点/边(输入不变时结果稳定)
-  const computed = useMemo(() => {
-    const {
-      nodes: laidOut,
-      links: edges,
-      direction
-    } = layoutDag(nodes, links)
-    const horizontal = direction === 'horizontal'
-    const materialTraces = projectMaterialTraces(nodes, links)
-    const nodeNames = new Map(nodes.map((node) => [node.id, node.name]))
+export function useWorkflowDag(
+  nodes: WorkflowNode[],
+  links: WorkflowLink[],
+  strategy: WorkflowDagLayoutStrategy =
+    DEFAULT_WORKFLOW_DAG_LAYOUT_STRATEGY,
+  swimlaneDirection: WorkflowMaterialSwimlaneDirection =
+    DEFAULT_WORKFLOW_MATERIAL_SWIMLANE_DIRECTION
+): UseWorkflowDagResult {
+  const fallback = useMemo(
+    () => buildFlowElements(
+      strategy === 'material-swimlanes'
+        ? layoutWorkflowMaterialSwimlanes(nodes, links, swimlaneDirection)
+        : layoutDag(nodes, links, { preserveExistingPositions: false }),
+      nodes,
+      links,
+      strategy
+    ),
+    [nodes, links, strategy, swimlaneDirection]
+  )
+  const [flowNodes, setNodes, onNodesChange] = useNodesState(
+    fallback.flowNodes
+  )
+  const [flowEdges, setEdges, onEdgesChange] = useEdgesState(
+    fallback.flowEdges
+  )
 
-    const flowNodes: Node<WorkflowNodeData>[] = laidOut.map((node) => ({
+  useEffect(() => {
+    setNodes(fallback.flowNodes)
+    setEdges(fallback.flowEdges)
+  }, [fallback, setEdges, setNodes])
+
+  useEffect(() => {
+    let cancelled = false
+    void layoutVisibleWorkflowDag(
+      nodes,
+      links,
+      strategy,
+      swimlaneDirection
+    ).then((layout) => {
+      if (cancelled) return
+      const elements = buildFlowElements(layout, nodes, links, strategy)
+      setNodes(elements.flowNodes)
+      setEdges(elements.flowEdges)
+    }).catch(() => {
+      // ELK 不可用时保留已通过碰撞检测的同步分层布局。
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [links, nodes, setEdges, setNodes, strategy, swimlaneDirection])
+
+  return {
+    nodes: flowNodes,
+    edges: flowEdges,
+    onNodesChange,
+    onEdgesChange
+  }
+}
+
+/**
+ * 将布局结果补充为带物料颜色、ready 语义和圆角正交路由的画布元素。
+ *
+ * @param layout 当前可见图的节点坐标与有效边。
+ * @param sourceNodes 用于查询句柄、物料颜色和节点展示信息的源节点。
+ * @param sourceLinks 用于计算物料流（MaterialFlow）追踪颜色的源边。
+ * @param strategy 当前画布布局策略，用于节点样式和交互投影。
+ * @returns 可直接交给 ReactFlow 的节点与边。
+ */
+function buildFlowElements(
+  layout: LayoutResult,
+  sourceNodes: readonly WorkflowNode[],
+  sourceLinks: readonly WorkflowLink[],
+  strategy: WorkflowDagLayoutStrategy
+): WorkflowFlowElements {
+  const materialTraces = projectMaterialTraces(sourceNodes, sourceLinks)
+  const nodeNames = new Map(sourceNodes.map((node) => [node.id, node.name]))
+  const handleByUuid = new Map(
+    sourceNodes.flatMap((node) =>
+      (node.handles ?? []).map((handle) => [handle.uuid, handle] as const)
+    )
+  )
+  const flowNodes: Node<WorkflowNodeData>[] = layout.nodes.map((node) => {
+    const laneLayout = layout.swimlanes?.nodeLayouts.get(node.id)
+    const handleLanes = layout.swimlanes?.handleLaneIndexes.get(node.id)
+    return {
       id: node.id,
       type: 'wfNode',
       focusable: node.groupKind !== 'subworkflow',
       position: { x: node.x, y: node.y },
-      targetPosition: horizontal ? Position.Left : Position.Top,
-      sourcePosition: horizontal ? Position.Right : Position.Bottom,
+      targetPosition: layout.direction === 'horizontal'
+        ? Position.Left
+        : Position.Top,
+      sourcePosition: layout.direction === 'horizontal'
+        ? Position.Right
+        : Position.Bottom,
+      ...(laneLayout
+        ? { style: { width: laneLayout.width, height: laneLayout.height } }
+        : {}),
       data: {
         id: node.id,
         name: node.name,
         color: getNodeColor(node.labNodeType, node.type),
         kind: node.type,
+        visualKind: node.visualKind,
         groupKind: node.groupKind,
         descendantCount: node.descendantNodeIds?.length,
         handles: node.handles,
@@ -79,21 +160,41 @@ export function useWorkflowDag(nodes: WorkflowNode[], links: WorkflowLink[]): Us
         materialHandleAccents: Object.fromEntries(
           materialTraces.handleAccentsByNode.get(node.id) ?? []
         ),
-        materialChips: materialTraces.chipsByNode.get(node.id) ?? []
+        materialChips: materialTraces.chipsByNode.get(node.id) ?? [],
+        layoutStrategy: strategy,
+        materialLaneDirection: layout.swimlanes?.direction,
+        materialLaneRange: laneLayout
+          ? { start: laneLayout.startLane, end: laneLayout.endLane }
+          : undefined,
+        materialLaneByHandle: handleLanes
+          ? Object.fromEntries(handleLanes)
+          : undefined
       }
-    }))
+    }
+  })
 
-    // 连线端点跟随布局主轴，曲线保持统一线色(通信边虚线)。
-    const flowEdges: Edge[] = edges.map((link, index) => {
-      const isComm = link.type === COMM_EDGE_TYPE
+  const flowEdges: Edge<WorkflowRoundedStepEdgeData>[] = layout.links.map(
+    (link, index) => {
+      const communication = link.type === COMM_EDGE_TYPE
       const materialAccent = materialTraces.edgeAccents.get(index)
+      const ready = !materialAccent && [
+        link.sourceHandleUuid,
+        link.targetHandleUuid
+      ].some((uuid) => {
+        const handle = uuid ? handleByUuid.get(uuid) : undefined
+        return handle ? isReadyHandle(handle) : false
+      })
+      const sourceName = nodeNames.get(link.source) ?? link.source
+      const targetName = nodeNames.get(link.target) ?? link.target
       return {
         id: `e-${link.source}-${link.target}-${index}`,
         source: link.source,
         target: link.target,
         sourceHandle: link.sourceHandleUuid || undefined,
         targetHandle: link.targetHandleUuid || undefined,
-        label: link.branch ? (link.branch === 'true' ? 'TRUE' : 'FALSE') : undefined,
+        label: link.branch
+          ? (link.branch === 'true' ? 'TRUE' : 'FALSE')
+          : undefined,
         labelStyle: {
           fill: link.branch === 'true'
             ? 'var(--unilab-color-success)'
@@ -101,8 +202,16 @@ export function useWorkflowDag(nodes: WorkflowNode[], links: WorkflowLink[]): Us
           fontSize: 10,
           fontWeight: 700
         },
-        type: 'default',
-        animated: isComm || Boolean(materialAccent),
+        type: 'workflowRoundedStep',
+        data: {
+          direction: ready
+            ? 'TB'
+            : layout.direction === 'horizontal'
+              ? 'LR'
+              : 'TB',
+          borderRadius: 8
+        },
+        animated: communication || Boolean(materialAccent),
         markerEnd: materialAccent
           ? {
               type: MarkerType.ArrowClosed,
@@ -112,32 +221,23 @@ export function useWorkflowDag(nodes: WorkflowNode[], links: WorkflowLink[]): Us
             }
           : undefined,
         ariaLabel: materialAccent
-          ? `物料流：${nodeNames.get(link.source) ?? link.source} 到 ` +
-            `${nodeNames.get(link.target) ?? link.target}`
-          : undefined,
+          ? `物料流：${sourceName} 到 ${targetName}`
+          : ready
+            ? `执行顺序：${sourceName} 到 ${targetName}`
+            : undefined,
         style: {
-          stroke: materialAccent ?? EDGE_COLOR,
-          strokeWidth: materialAccent ? 2.4 : 2,
-          strokeDasharray: isComm && !materialAccent ? '4 4' : undefined
+          stroke: materialAccent ?? STRUCTURAL_EDGE_COLOR,
+          strokeWidth: materialAccent ? 2.4 : 1.5,
+          strokeDasharray: communication && !materialAccent ? '4 4' : undefined
         },
         className: materialAccent
           ? 'wf-flow-edge--material-trace'
-          : undefined
+          : ready
+            ? 'wf-flow-edge--ready'
+            : undefined
       }
-    })
+    }
+  )
 
-    return { flowNodes, flowEdges }
-  }, [nodes, links])
-
-  // 用 ReactFlow 内置状态管理节点/边,使拖动等交互变更可回写
-  const [flowNodes, setNodes, onNodesChange] = useNodesState(computed.flowNodes)
-  const [flowEdges, setEdges, onEdgesChange] = useEdgesState(computed.flowEdges)
-
-  // 输入(重新布局结果)变化时同步到内部状态
-  useEffect(() => {
-    setNodes(computed.flowNodes)
-    setEdges(computed.flowEdges)
-  }, [computed, setNodes, setEdges])
-
-  return { nodes: flowNodes, edges: flowEdges, onNodesChange, onEdgesChange }
+  return { flowNodes, flowEdges }
 }

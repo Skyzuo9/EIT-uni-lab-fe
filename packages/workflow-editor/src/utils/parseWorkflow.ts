@@ -9,6 +9,9 @@
  * Human Review Status: [ ] Pending  [ ] Reviewed  [ ] Approved
  * ============================================================
  */
+import type { MaterialShapeSpec } from '@unilab/material'
+import type { WorkflowNodeVisualKind } from './workflowNodeVisualKind'
+
 export interface WorkflowNode {
   id: string
   // 展示名称(JSON 导出格式携带中文名;无则回退 id)
@@ -32,11 +35,15 @@ export interface WorkflowNode {
   openChildWorkflowUuid?: string
   // Resets session-only expansion when the authoritative OS graph changes.
   compositeSignature?: string
+  // OS 已发布工作流来源元数据派生的专用画布视觉。
+  visualKind?: WorkflowNodeVisualKind
   handles?: WorkflowHandlePort[]
   materialSource?: {
     mode: string
     flowRole: string
     mountUuid: string
+    resourceTemplateUuid: string
+    shape?: MaterialShapeSpec
   }
 }
 

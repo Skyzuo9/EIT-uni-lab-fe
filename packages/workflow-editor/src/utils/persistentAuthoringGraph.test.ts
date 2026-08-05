@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import type { WorkflowAuthoringGraph } from '@unilab/services'
 
 import {
+  beautifyPersistentAuthoringGraph,
   parseWorkflowAuthoringGraphImport,
   projectPersistentAuthoringGraph,
   updatePersistentAuthoringNodeName
@@ -21,6 +22,50 @@ const graph: WorkflowAuthoringGraph = {
 }
 
 describe('persistent Authoring canvas graph edits', () => {
+  /** 验证自动布局写回节点姿态且不破坏 OS 持有的其它姿态字段。 */
+  it('beautifies the graph immutably and preserves non-planar pose fields', () => {
+    const source: WorkflowAuthoringGraph = {
+      ...graph,
+      nodes: [
+        {
+          ...graph.nodes[0],
+          type: 'material_source',
+          pose: {
+            frame: 'workflow',
+            position: { x: 940, y: 720, z: 12 }
+          }
+        },
+        {
+          ...graph.nodes[1],
+          pose: { position: { x: 80, y: 40, z: 18 } }
+        }
+      ],
+      edges: [{
+        uuid: 'edge-1',
+        source_node_uuid: 'node-1',
+        target_node_uuid: 'node-2',
+        source_handle_uuid: 'source-handle',
+        target_handle_uuid: 'target-handle'
+      }]
+    }
+
+    const updated = beautifyPersistentAuthoringGraph(source)
+
+    expect(updated).not.toBe(source)
+    expect(updated.nodes[0]).toMatchObject({
+      pose: {
+        frame: 'workflow',
+        position: { x: 236, y: 16, z: 12 }
+      }
+    })
+    expect(updated.nodes[1]).toMatchObject({
+      pose: { position: { x: 180, y: 180, z: 18 } }
+    })
+    expect(source.nodes[0]).toMatchObject({
+      pose: { position: { x: 940, y: 720, z: 12 } }
+    })
+  })
+
   it('projects real Handle UUIDs into ReactFlow nodes and edges', () => {
     const projected = projectPersistentAuthoringGraph({
       ...graph,
@@ -156,6 +201,26 @@ describe('persistent Authoring canvas graph edits', () => {
 })
 
 describe('C1 persistent Composite hierarchy', () => {
+  it('projects the robot transfer visual from OS published source metadata', () => {
+    const source = compositeGraph()
+    source.node_templates = source.node_templates.map((template) =>
+      template.uuid === 'outer-template'
+        ? publishedTemplate(
+            'outer-template',
+            'workflow-child-outer',
+            'sha256:outer-contract',
+            's_z_lab_标准物料转运'
+          )
+        : template
+    )
+
+    const projected = projectPersistentAuthoringGraph(source)
+    const byId = new Map(projected.nodes.map((node) => [node.id, node]))
+
+    expect(byId.get('outer')?.visualKind).toBe('robot-transfer')
+    expect(byId.get('inner')).not.toHaveProperty('visualKind')
+  })
+
   it('uses OS parent_uuid and Published templates as the hierarchy authority', () => {
     const projected = projectPersistentAuthoringGraph(compositeGraph())
     const byId = new Map(projected.nodes.map((node) => [node.id, node]))
@@ -363,13 +428,27 @@ function compositeGraph(): WorkflowAuthoringGraph {
 function publishedTemplate(
   uuid: string,
   workflowUuid: string,
-  contractDigest: string
+  contractDigest: string,
+  sourceSymbol?: string
 ): Record<string, unknown> {
   return {
     uuid,
     type: 'workflow',
     node_type: 'workflow',
     name: `workflow:${workflowUuid}`,
+    ...(sourceSymbol
+      ? {
+          meta_data: {
+            unilab: {
+              workflow_source: {
+                symbol: sourceSymbol,
+                definition_fqid:
+                  `szlab_poly_studio.workflows.material_transfer.${sourceSymbol}`
+              }
+            }
+          }
+        }
+      : {}),
     schema: {
       'x-unilabos-workflow-contract': {
         version: 1,

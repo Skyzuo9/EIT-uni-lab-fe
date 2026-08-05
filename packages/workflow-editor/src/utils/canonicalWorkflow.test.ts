@@ -135,7 +135,54 @@ describe('Canonical workflow projection', () => {
     expect(allExpanded.nodes).toHaveLength(5)
     expect(allExpanded.links).toHaveLength(4)
   })
+
+  /**
+   * 验证原生编写分组只保留成员节点，不作为工作流（Workflow）画布节点重复展示。
+   */
+  it('hides native authoring groups without hiding their members', () => {
+    const parsed = parseCanonicalWorkflow(JSON.stringify(NATIVE_GROUP_REVISION))
+
+    const projected = projectNestedWorkflow(
+      parsed.nodes,
+      parsed.links,
+      new Set()
+    )
+
+    expect(projected.nodes.map((node) => node.id)).toEqual([
+      'prepare',
+      'finish'
+    ])
+    expect(projected.links.map(({ source, target }) => [source, target]))
+      .toEqual([['prepare', 'finish']])
+  })
 })
+
+const NATIVE_GROUP_REVISION = {
+  schema_version: '2',
+  revision_id: 'native-group-rev-1',
+  workflow_id: 'native-group-demo',
+  invocations: [
+    {
+      node_id: 'phase-group',
+      action_ref: 'os_control.group',
+      node_type: 'group',
+      control: { name: '准备阶段' }
+    },
+    { node_id: 'prepare', action_ref: 'sampling.prepare' },
+    { node_id: 'finish', action_ref: 'sampling.finish' }
+  ],
+  control_edges: [
+    { edge_id: 'e1', source: 'prepare', target: 'finish' }
+  ],
+  source_map: {
+    entries: [
+      {
+        node_id: 'phase-group',
+        compiled_node_ids: ['phase-group', 'prepare']
+      }
+    ]
+  }
+}
 
 const NESTED_REVISION = {
   schema_version: '2',

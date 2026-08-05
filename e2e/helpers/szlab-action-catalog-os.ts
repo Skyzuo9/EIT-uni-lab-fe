@@ -23,6 +23,12 @@ export const SZLAB_MATERIAL_FIXTURE_SHA =
   '60a0fc00fc6be4d09ecfa8e83e1cc876e7cc3cce'
 export const SZLAB_S06_WORKFLOW_UUID =
   '0b4e6fce-14bc-5866-a373-16ad25c7f8cf'
+export const SZLAB_COMPOSITE_MATERIAL_WORKFLOW_UUID =
+  '6d9fb3e2-4dcb-5f23-93b4-74d1b6083393'
+export const SZLAB_COMPOSITE_MATERIAL_CHILD_WORKFLOW_UUID =
+  'e7c53119-9fde-5250-9bf5-264f23d157a8'
+export const SZLAB_COMPOSITE_MATERIAL_FIXTURE_SHA =
+  'cc2bfe4757c33f4833f04d8bfce566347bc2cf74'
 
 export interface SzlabActionCatalogOs {
   url: string
@@ -47,7 +53,18 @@ export async function startSzlabMaterialWorkflowOs(): Promise<SzlabMaterialWorkf
   return startSzlabOs({
     workflowUuid: SZLAB_MATERIAL_WORKFLOW_UUID,
     fixtureSha: SZLAB_MATERIAL_FIXTURE_SHA,
-    applyCompatibility: false
+    applyCompatibility: false,
+    applyCompositeMaterial: false
+  })
+}
+
+/** 启动并按“子工作流优先”顺序应用 SZLab 复合物料工作流。 */
+export async function startSzlabCompositeMaterialWorkflowOs(): Promise<SzlabMaterialWorkflowOs> {
+  return startSzlabOs({
+    workflowUuid: SZLAB_COMPOSITE_MATERIAL_WORKFLOW_UUID,
+    fixtureSha: SZLAB_COMPOSITE_MATERIAL_FIXTURE_SHA,
+    applyCompatibility: false,
+    applyCompositeMaterial: true
   })
 }
 
@@ -70,6 +87,7 @@ async function startSzlabOs(options: {
   workflowUuid: string
   fixtureSha: string
   applyCompatibility: boolean
+  applyCompositeMaterial?: boolean
 }): Promise<SzlabMaterialWorkflowOs> {
   const osRepository = resolve(requiredEnvironment('UNILAB_A1_OS_ROOT'))
   const szlabSourceRepository = resolve(
@@ -115,7 +133,8 @@ async function startSzlabOs(options: {
       PYTHON_LAUNCHER,
       workingDirectory,
       szlabRepository,
-      String(port)
+      String(port),
+      options.applyCompositeMaterial ? '1' : '0'
     ],
     {
       cwd: osRepository,
@@ -176,6 +195,7 @@ function applyA1WorkflowInputCompatibility(repository: string): void {
 
 const PYTHON_LAUNCHER = String.raw`
 import copy
+import sqlite3
 import sys
 from pathlib import Path
 
@@ -201,6 +221,7 @@ from unilabos.workflow.store import WorkflowStore
 working_dir = Path(sys.argv[1])
 szlab_root = Path(sys.argv[2]).resolve()
 port = int(sys.argv[3])
+apply_composite_material = sys.argv[4] == "1"
 working_dir.mkdir(parents=True, exist_ok=True)
 
 package_source = WorkspaceSource(szlab_root)
@@ -253,6 +274,45 @@ workflow_service = compose_workflow_runtime(
     package_sources=(package_source,),
     package_catalogs=(package_catalog,),
 )
+if apply_composite_material:
+    def apply_workflow_source(workflow_uuid, source_path):
+        before = workflow_service.get_authoring(workflow_uuid)
+        aggregate = workflow_service.save_draft(
+            workflow_uuid,
+            python_source=source_path.read_text(encoding="utf-8"),
+            expected_draft_hash=before["draft"]["draft_hash"],
+            expected_workflow_revision=before["workflow_revision"],
+        )
+        candidate = aggregate["candidate"]
+        if candidate is None and aggregate["state"] == "applied":
+            return
+        if candidate is None:
+            raise RuntimeError(aggregate)
+        normalized_source = candidate["normalized_python_source"]
+        if aggregate["draft"]["python_source"] != normalized_source:
+            aggregate = workflow_service.save_draft(
+                workflow_uuid,
+                python_source=normalized_source,
+                expected_draft_hash=aggregate["draft"]["draft_hash"],
+                expected_workflow_revision=aggregate["workflow_revision"],
+            )
+            candidate = aggregate["candidate"]
+            if candidate is None:
+                raise RuntimeError(aggregate)
+        workflow_service.apply_authoring(
+            workflow_uuid,
+            candidate_hash=candidate["candidate_hash"],
+        )
+        source_path.write_text(normalized_source, encoding="utf-8")
+
+    apply_workflow_source(
+        "e7c53119-9fde-5250-9bf5-264f23d157a8",
+        szlab_root / "szlab_poly_studio/workflows/material_transfer.py",
+    )
+    apply_workflow_source(
+        "6d9fb3e2-4dcb-5f23-93b4-74d1b6083393",
+        szlab_root / "szlab_poly_studio/workflows/single_sample_atomic_material.py",
+    )
 from unilabos.app.scheduler.integration import setup_edge_scheduler
 
 setup_edge_scheduler(
@@ -269,6 +329,56 @@ server.setup_server(
     resource_registry_snapshot=resource_registry_snapshot,
     workflow_package_catalogs=(package_catalog,),
 )
+
+# 当前集成测试固定的 OS 运行时快照早于 Backend 同名微后端挂载；仅在该路由
+# 缺席时，用工作流（Workflow）已持久化的真实资源模板（ResourceTemplate）
+# 身份索引补齐同一读协议。产品代码不提供 fallback，且不会改写 OS 源码。
+if not any(
+    getattr(route, "path", None) == "/api/v1/resource-templates"
+    and "GET" in (getattr(route, "methods", None) or set())
+    for route in server.app.routes
+):
+    @server.app.get("/api/v1/resource-templates")
+    def e2e_list_resource_templates(
+        limit: int = 0,
+        cursor_uuid: str | None = None,
+        keyword: str = "",
+        resource_type: str = "",
+    ):
+        page_size = 20 if limit <= 0 else min(limit, 100)
+        with sqlite3.connect(working_dir / "workflow.db") as connection:
+            rows = connection.execute(
+                """
+                SELECT resource_template_uuid, source_identity
+                FROM workflow_resource_template_identity
+                WHERE (? IS NULL OR resource_template_uuid > ?)
+                ORDER BY resource_template_uuid
+                """,
+                (cursor_uuid, cursor_uuid),
+            ).fetchall()
+        items = [
+            {
+                "uuid": resource_template_uuid,
+                "name": source_identity,
+                "display_name": source_identity.rsplit(":", 1)[-1],
+                "resource_type": "resource",
+                "tags": [],
+            }
+            for resource_template_uuid, source_identity in rows
+            if (not keyword or keyword.lower() in source_identity.lower())
+            and (not resource_type or resource_type == "resource")
+        ]
+        page = items[:page_size]
+        return {
+            "code": 0,
+            "data": {
+                "items": page,
+                "has_more": len(items) > page_size,
+                "next_cursor_uuid": (
+                    page[-1]["uuid"] if len(items) > page_size else None
+                ),
+            },
+        }
 
 @server.app.post("/__e2e/catalog-bump")
 def bump_catalog():

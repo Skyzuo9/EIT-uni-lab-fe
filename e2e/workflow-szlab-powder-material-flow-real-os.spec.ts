@@ -130,6 +130,11 @@ test('SZLab S07 powder dosing projects the complete material flow', async ({
   await expect(canvasModeButton).toBeEnabled()
   await canvasModeButton.click()
   await expect(canvasModeButton).toHaveAttribute('aria-pressed', 'true')
+  const beautifyLayoutButton = panel.getByRole('button', {
+    name: '美化工作流布局',
+    exact: true
+  })
+  await expect(beautifyLayoutButton).toBeEnabled()
   await expect(panel.getByText(
     '画布模式：Python 是 OS 生成的只读投影',
     { exact: true }
@@ -212,10 +217,121 @@ test('SZLab S07 powder dosing projects the complete material flow', async ({
   )
   await expect(nodes).toHaveCount(12)
   await expect(materialSources).toHaveCount(2)
+  await expect(materialSources.locator(
+    '[data-workflow-material-source-visual]'
+  )).toHaveCount(2)
+  await expect(materialSources.locator('.wf-node__kind')).toHaveCount(0)
+  await expect(materialSources.locator(
+    '[data-workflow-material-port-variable]'
+  )).toHaveCount(0)
   await expect(materialEdges).toHaveCount(9)
   await expect(materialHandles).toHaveCount(20)
   await expect(panel.locator('.wf-node__port-summary')).toHaveCount(0)
   await expect(panel.locator('.wf-node__state--pending')).toHaveCount(0)
+
+  // 物料来源使用外置名称、六边形来源图标和唯一底边物料句柄，不回退为卡片。
+  const materialSourcePresentation = await materialSources.evaluateAll(
+    (sourceNodes) => sourceNodes.map((node) => {
+      const label = node.querySelector<HTMLElement>(
+        '.wf-node__material-source-label'
+      )
+      const visual = node.querySelector<HTMLElement>(
+        '[data-workflow-material-source-visual]'
+      )
+      const handle = visual?.querySelector<HTMLElement>(
+        '[data-workflow-handle-kind="material"]'
+      )
+      if (!label || !visual || !handle) {
+        throw new Error('物料来源缺少外置名称、六边形视觉或物料句柄')
+      }
+      const nodeStyle = getComputedStyle(node)
+      const visualStyle = getComputedStyle(visual)
+      const labelRect = label.getBoundingClientRect()
+      const visualRect = visual.getBoundingClientRect()
+      const handleRect = handle.getBoundingClientRect()
+      return {
+        borderWidth: nodeStyle.borderTopWidth,
+        backgroundColor: nodeStyle.backgroundColor,
+        boxShadow: nodeStyle.boxShadow,
+        clipPath: visualStyle.clipPath,
+        labelBeforeVisual: labelRect.bottom <= visualRect.top,
+        handleHorizontalDelta: Math.abs(
+          handleRect.left + handleRect.width / 2 -
+          (visualRect.left + visualRect.width / 2)
+        ),
+        handleEdgeDelta: Math.abs(
+          handleRect.top + handleRect.height / 2 - visualRect.bottom
+        )
+      }
+    })
+  )
+  expect(materialSourcePresentation.every((source) =>
+    source.borderWidth === '0px' &&
+    source.backgroundColor === 'rgba(0, 0, 0, 0)' &&
+    source.boxShadow === 'none' &&
+    source.clipPath !== 'none' &&
+    source.labelBeforeVisual &&
+    source.handleHorizontalDelta <= 1.5 &&
+    source.handleEdgeDelta <= 1.5
+  ), JSON.stringify(materialSourcePresentation, null, 2)).toBe(true)
+
+  // 物料来源（MaterialSource）是完整拓扑的图根；竖排布局必须把它与第一个
+  // 物料消费句柄排在同一列，而不是把六边形留在自动布局之外。
+  const materialSourceNodeUuids = new Set([
+    SOURCE_BEAKER_UUID,
+    SOURCE_POWDER_UUID
+  ])
+  const materialSourceEdges = graph.edges.filter((edge) =>
+    materialSourceNodeUuids.has(edge.source_node_uuid)
+  )
+  expect(materialSourceEdges).toHaveLength(2)
+  const materialSourceLayoutEvidence = []
+  for (const edge of materialSourceEdges) {
+    const sourceHandle = panel.locator(
+      `[data-workflow-node-uuid="${edge.source_node_uuid}"] ` +
+      `[data-workflow-handle-template-uuid="${edge.source_handle_uuid}"]`
+    )
+    const targetHandle = panel.locator(
+      `[data-workflow-node-uuid="${edge.target_node_uuid}"] ` +
+      `[data-workflow-handle-template-uuid="${edge.target_handle_uuid}"]`
+    )
+    const sourceBox = await sourceHandle.boundingBox()
+    const targetBox = await targetHandle.boundingBox()
+    if (!sourceBox || !targetBox) {
+      throw new Error('物料来源或第一个物料消费节点缺少可测量句柄')
+    }
+    const edgeIndex = graph.edges.indexOf(edge)
+    const edgePath = panel.locator(
+      `[data-testid="rf__edge-e-${edge.source_node_uuid}-${
+        edge.target_node_uuid
+      }-${edgeIndex}"] .react-flow__edge-path`
+    )
+    const [handleColor, edgeColor] = await Promise.all([
+      sourceHandle.evaluate((handle) => getComputedStyle(handle).borderColor),
+      edgePath.evaluate((path) => getComputedStyle(path).stroke)
+    ])
+    materialSourceLayoutEvidence.push({
+      sourceNodeUuid: edge.source_node_uuid,
+      horizontalDelta: Math.abs(
+        sourceBox.x + sourceBox.width / 2 -
+        (targetBox.x + targetBox.width / 2)
+      ),
+      verticalGap: targetBox.y - (sourceBox.y + sourceBox.height),
+      handleColor,
+      edgeColor
+    })
+  }
+  expect(materialSourceLayoutEvidence.every((source) =>
+    source.horizontalDelta <= 4 &&
+    source.verticalGap > 24 &&
+    source.handleColor === source.edgeColor
+  ), JSON.stringify(materialSourceLayoutEvidence, null, 2)).toBe(true)
+
+  // S07 两个来源都已选定资源模板（ResourceTemplate），应显示 Registry
+  // 注册的 2.5D shape；只有未选模板时才允许保留默认来源图标。
+  await expect(materialSources.locator(
+    '[data-material-shape-source="registry"]'
+  )).toHaveCount(2)
 
   // 同一节点内，同字段只允许存在一个物料标签。
   const materialIdentityEvidence = await nodes.evaluateAll((nodeElements) =>
@@ -290,21 +406,30 @@ test('SZLab S07 powder dosing projects the complete material flow', async ({
         '[data-workflow-material-port-variable]'
       )
       const node = handle.closest<HTMLElement>('[data-workflow-node-uuid]')
-      if (!port || !node) throw new Error('物料句柄没有对应的端口卡片')
+      const sourceVisual = handle.closest<HTMLElement>(
+        '[data-workflow-material-source-visual]'
+      )
+      if ((!port && !sourceVisual) || !node) {
+        throw new Error('物料句柄没有对应的端口或来源图标')
+      }
       const handleRect = handle.getBoundingClientRect()
-      const portRect = port.getBoundingClientRect()
+      const anchorRect = (port ?? sourceVisual as HTMLElement)
+        .getBoundingClientRect()
       const nodeRect = node.getBoundingClientRect()
       const ioType = handle.getAttribute('data-workflow-handle-io')
       return {
-        variableName: port.dataset.workflowMaterialPortVariable,
+        variableName: port?.dataset.workflowMaterialPortVariable ??
+          handle.getAttribute('data-workflow-handle-key'),
         ioType,
         horizontalDelta: Math.abs(
           handleRect.left + handleRect.width / 2 -
-          (portRect.left + portRect.width / 2)
+          (anchorRect.left + anchorRect.width / 2)
         ),
         nodeEdgeDelta: Math.abs(
           handleRect.top + handleRect.height / 2 -
-          (ioType === 'target' ? nodeRect.top : nodeRect.bottom)
+          (sourceVisual
+            ? anchorRect.bottom
+            : ioType === 'target' ? nodeRect.top : nodeRect.bottom)
         )
       }
     })
@@ -372,6 +497,12 @@ test('SZLab S07 powder dosing projects the complete material flow', async ({
     path: join(artifactDirectory, '08-run-output-tabs.png'),
     animations: 'disabled'
   })
+  await beautifyLayoutButton.click()
+  await expect(panel.getByText(
+    '布局已美化；保存草稿后将写入工作流',
+    { exact: true }
+  )).toBeVisible()
+  await expect(beautifyLayoutButton).toBeEnabled()
 
   const disabledButtons = panel.locator('button:disabled')
   expect(await disabledButtons.count()).toBeGreaterThan(0)
@@ -399,6 +530,7 @@ test('SZLab S07 powder dosing projects the complete material flow', async ({
   expect(workflowRequests).toContain(
     `GET /api/v1/workflows/${S07_WORKFLOW_UUID}/authoring`
   )
+  expect(workflowRequests).toContain('GET /api/v1/resource-templates')
   expect(browserErrors).toEqual([])
   expect(pageErrors).toEqual([])
   writeFileSync(
@@ -409,6 +541,8 @@ test('SZLab S07 powder dosing projects the complete material flow', async ({
       sourceRevision: os.szlabRevision,
       graph: { nodes: graph.nodes.length, edges: graph.edges.length },
       alignmentEvidence,
+      materialSourcePresentation,
+      materialSourceLayoutEvidence,
       materialIdentityEvidence,
       sameFieldIdentityEvidence,
       structuralEvidence,

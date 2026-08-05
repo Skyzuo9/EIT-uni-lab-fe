@@ -14,12 +14,15 @@ export interface WorkflowMaterialChip {
 
 export interface WorkflowMaterialTraceProjection {
   edgeAccents: Map<number, string>
+  edgeLineages: Map<number, string>
   handleAccentsByNode: Map<string, Map<string, string>>
+  handleLineagesByNode: Map<string, Map<string, string>>
   materialSourceAccents: Map<string, string>
   chipsByNode: Map<string, WorkflowMaterialChip[]>
+  lineages: WorkflowMaterialLineage[]
 }
 
-interface MaterialLineage {
+export interface WorkflowMaterialLineage {
   key: string
   sourceNodeUuid: string
   sourceNodeName: string
@@ -55,6 +58,13 @@ export function materialTraceAccent(identity: string): string {
   return MATERIAL_TRACE_ACCENTS[(hash >>> 0) % MATERIAL_TRACE_ACCENTS.length]
 }
 
+/**
+ * 从有类型物料占位符（ResourceSlot）边投影物料流身份、颜色与节点标签。
+ *
+ * @param nodes 当前可见工作流（Workflow）节点。
+ * @param links 当前可见工作流边；只有两端均为物料占位符的边会进入投影。
+ * @returns 可按边、句柄和来源查询的物料流（MaterialFlow）追踪投影。
+ */
 export function projectMaterialTraces(
   nodes: readonly WorkflowNode[],
   links: readonly WorkflowLink[]
@@ -100,9 +110,13 @@ export function projectMaterialTraces(
   }
 
   const edgeAccents = new Map<number, string>()
+  const edgeLineages = new Map<number, string>()
   const handleAccentsByNode = new Map<string, Map<string, string>>()
+  const handleLineagesByNode = new Map<string, Map<string, string>>()
   const materialSourceAccents = new Map<string, string>()
   const chipsByNode = new Map<string, WorkflowMaterialChip[]>()
+  const lineages: WorkflowMaterialLineage[] = []
+  const lineageKeys = new Set<string>()
   const visited = new Set<string>()
   const usedAccents = new Set<string>()
   const accentsByLineage = new Map<string, string>()
@@ -130,8 +144,12 @@ export function projectMaterialTraces(
   const traceFrom = (
     sourceNode: WorkflowNode,
     sourceHandle: WorkflowHandlePort,
-    lineage: MaterialLineage
+    lineage: WorkflowMaterialLineage
   ): void => {
+    if (!lineageKeys.has(lineage.key)) {
+      lineageKeys.add(lineage.key)
+      lineages.push(lineage)
+    }
     const queue: Array<{
       node: WorkflowNode
       handle: WorkflowHandlePort
@@ -149,13 +167,26 @@ export function projectMaterialTraces(
         current.handle.uuid,
         lineage.accent
       )
+      setHandleLineage(
+        handleLineagesByNode,
+        current.node.id,
+        current.handle.uuid,
+        lineage.key
+      )
       for (const edge of outgoingByHandle.get(currentIdentity) ?? []) {
         edgeAccents.set(edge.index, lineage.accent)
+        edgeLineages.set(edge.index, lineage.key)
         setHandleAccent(
           handleAccentsByNode,
           edge.targetNode.id,
           edge.targetHandle.uuid,
           lineage.accent
+        )
+        setHandleLineage(
+          handleLineagesByNode,
+          edge.targetNode.id,
+          edge.targetHandle.uuid,
+          lineage.key
         )
         addMaterialChip(chipsByNode, edge.targetNode.id, {
           handleUuid: edge.targetHandle.uuid,
@@ -175,6 +206,12 @@ export function projectMaterialTraces(
             nextHandle.uuid,
             lineage.accent
           )
+          setHandleLineage(
+            handleLineagesByNode,
+            edge.targetNode.id,
+            nextHandle.uuid,
+            lineage.key
+          )
           queue.push({ node: edge.targetNode, handle: nextHandle })
         }
       }
@@ -191,23 +228,57 @@ export function projectMaterialTraces(
     }
   }
 
-  // A typed ResourceSlot output can start a new material identity even when it
-  // is not an implicit pass-through from a MaterialSource root.
-  for (const edge of materialEdges) {
-    if (edgeAccents.has(edge.index)) continue
+  // 先从没有未追踪同字段输入的上游输出开始，再沿透传链向下推进。
+  // 这样即使 OS 返回的边顺序从下游到上游，也不会把同一物料拆成多个身份。
+  let untraced = materialEdges.filter((edge) => !edgeAccents.has(edge.index))
+  while (untraced.length > 0) {
+    const root = untraced.find((edge) =>
+      !hasUntracedPassThroughPredecessor(edge, untraced)
+    ) ?? untraced[0]
     traceFrom(
-      edge.sourceNode,
-      edge.sourceHandle,
-      rootLineage(edge.sourceNode, edge.sourceHandle, false, accentFor)
+      root.sourceNode,
+      root.sourceHandle,
+      rootLineage(root.sourceNode, root.sourceHandle, false, accentFor)
     )
+    untraced = materialEdges.filter((edge) => !edgeAccents.has(edge.index))
   }
 
   return {
     edgeAccents,
+    edgeLineages,
     handleAccentsByNode,
+    handleLineagesByNode,
     materialSourceAccents,
-    chipsByNode
+    chipsByNode,
+    lineages
   }
+}
+
+/**
+ * 判断一条未追踪物料边的来源输出是否仍在等待同字段上游输入。
+ *
+ * @param edge 当前候选物料边。
+ * @param untraced 尚未归属物料身份的全部物料边。
+ * @returns 存在会透传到该输出的未追踪输入边时返回真。
+ */
+function hasUntracedPassThroughPredecessor(
+  edge: MaterialEdge,
+  untraced: readonly MaterialEdge[]
+): boolean {
+  const sourceKey = edge.sourceHandle.dataKey ?? edge.sourceHandle.handleKey
+  const inputHandleUuids = new Set(
+    (edge.sourceNode.handles ?? [])
+      .filter((handle) =>
+        handle.ioType === 'target' &&
+        isResourceSlotHandle(handle) &&
+        (handle.dataKey ?? handle.handleKey) === sourceKey
+      )
+      .map((handle) => handle.uuid)
+  )
+  return untraced.some((candidate) =>
+    candidate.targetNode.id === edge.sourceNode.id &&
+    inputHandleUuids.has(candidate.targetHandle.uuid)
+  )
 }
 
 /**
@@ -229,7 +300,7 @@ function passThroughHandles(
   )
 }
 
-function isResourceSlotHandle(handle: WorkflowHandlePort): boolean {
+export function isResourceSlotHandle(handle: WorkflowHandlePort): boolean {
   if (handle.valueType === 'ResourceSlot') return true
   return isResourceSlotSchema(handle.valueSchema)
 }
@@ -248,7 +319,7 @@ function rootLineage(
   handle: WorkflowHandlePort,
   materialSource: boolean,
   accentFor: (lineageKey: string) => string
-): MaterialLineage {
+): WorkflowMaterialLineage {
   const key = materialSource ? node.id : `${node.id}:${handle.uuid}`
   return {
     key,
@@ -257,6 +328,26 @@ function rootLineage(
     sourceHandleName: handle.displayName || handle.handleKey,
     accent: accentFor(key),
   }
+}
+
+/**
+ * 记录一个句柄当前承载的物料流身份；已有身份优先，避免合流时静默改写。
+ *
+ * @param lineages 按节点和句柄组织的物料流身份索引。
+ * @param nodeUuid 工作流节点 UUID。
+ * @param handleUuid 物料占位符句柄 UUID。
+ * @param lineageKey 物料流身份键。
+ * @returns 无返回值；索引在原位置更新。
+ */
+function setHandleLineage(
+  lineages: Map<string, Map<string, string>>,
+  nodeUuid: string,
+  handleUuid: string,
+  lineageKey: string
+): void {
+  const nodeLineages = lineages.get(nodeUuid) ?? new Map<string, string>()
+  if (!nodeLineages.has(handleUuid)) nodeLineages.set(handleUuid, lineageKey)
+  lineages.set(nodeUuid, nodeLineages)
 }
 
 function setHandleAccent(

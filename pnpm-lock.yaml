@@ -630,9 +630,15 @@ importers:
       '@unilab/design-system':
         specifier: workspace:*
         version: link:../design-system
+      '@unilab/material':
+        specifier: workspace:*
+        version: link:../material
       '@unilab/services':
         specifier: workspace:*
         version: link:../services
+      elkjs:
+        specifier: ^0.10.2
+        version: 0.10.2
       reactflow:
         specifier: ^11.11.2
         version: 11.11.4(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -2930,6 +2936,9 @@ packages:
     resolution: {integrity: sha512-xmdAs5QWRkInC7TpXGNvzo/7exojubk+72jn1oJL7keNeIlw7xNglf8TGtJtkR4rWC5FJq0oXiIXPS9BcK2Irg==}
     engines: {node: '>= 12.20.55'}
     hasBin: true
+
+  elkjs@0.10.2:
+    resolution: {integrity: sha512-Yx3ORtbAFrXelYkAy2g0eYyVY8QG0XEmGdQXmy0eithKKjbWRfl3Xe884lfkszfBF6UKyIy4LwfcZ3AZc8oxFw==}
 
   emoji-regex@8.0.0:
     resolution: {integrity: sha512-MSjYzcWNOA0ewAHpz0MxpYFvwg6yjy1NG3xteoqz644VCo/RPgnr1/GGt+ic3iJTzQ8Eu3TdM14SawnVUmGE6A==}
@@ -7095,6 +7104,8 @@ snapshots:
       extract-zip: 2.0.1
     transitivePeerDependencies:
       - supports-color
+
+  elkjs@0.10.2: {}
 
   emoji-regex@8.0.0: {}
 

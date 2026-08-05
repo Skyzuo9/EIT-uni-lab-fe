@@ -145,9 +145,13 @@ export interface NestedWorkflowProjection {
 }
 
 /**
- * Keep Canonical execution flat while presenting subworkflow groups as
- * collapsible nested nodes. Edges crossing a collapsed boundary are rewired
- * to the visible group marker; internal self-edges are removed.
+ * 将平面工作流（Workflow）执行图投影为可折叠的组合工作流调用视图，并隐藏仅
+ * 表达源码范围的原生分组节点。
+ *
+ * @param nodes OS 返回的完整工作流节点；其身份与父子关系保持不变。
+ * @param links OS 返回的完整控制边与物料流（MaterialFlow）边。
+ * @param expandedGroupIds 当前由用户展开的组合工作流调用节点 UUID 集合。
+ * @returns 仅包含可见节点和重接边的投影，以及折叠和隐藏节点 UUID 集合。
  */
 export function projectNestedWorkflow(
   nodes: ReadonlyArray<WorkflowNode>,
@@ -155,6 +159,14 @@ export function projectNestedWorkflow(
   expandedGroupIds: ReadonlySet<string>
 ): NestedWorkflowProjection {
   const nodeById = new Map(nodes.map((node) => [node.id, node]))
+  const nativeGroupIds = new Set(
+    nodes
+      .filter((node) =>
+        node.type.toLowerCase() === 'group' &&
+        node.groupKind !== 'subworkflow'
+      )
+      .map((node) => node.id)
+  )
   const collapsedGroupIds = new Set(
     nodes
       .filter(
@@ -186,6 +198,9 @@ export function projectNestedWorkflow(
   const linkKeys = new Set<string>()
   for (const link of links) {
     if (!nodeById.has(link.source) || !nodeById.has(link.target)) continue
+    if (nativeGroupIds.has(link.source) || nativeGroupIds.has(link.target)) {
+      continue
+    }
     const source = representative(link.source)
     const target = representative(link.target)
     if (source === target) continue
@@ -195,7 +210,9 @@ export function projectNestedWorkflow(
     projectedLinks.push({ ...link, source, target })
   }
   return {
-    nodes: nodes.filter((node) => !hiddenNodeIds.has(node.id)),
+    nodes: nodes.filter((node) =>
+      !hiddenNodeIds.has(node.id) && !nativeGroupIds.has(node.id)
+    ),
     links: projectedLinks,
     collapsedGroupIds,
     hiddenNodeIds

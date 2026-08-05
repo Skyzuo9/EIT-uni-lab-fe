@@ -1,14 +1,39 @@
-import type { WorkflowAuthoringGraph } from '@unilab/services'
+import type {
+  WorkflowAuthoringGraph,
+  WorkflowMaterialSourceCatalogSnapshot
+} from '@unilab/services'
 
 import type {
   WorkflowLink,
   WorkflowNode,
   WorkflowStructure
 } from './parseWorkflow'
+import { layoutDag } from './dagLayout'
+import {
+  DEFAULT_WORKFLOW_DAG_LAYOUT_STRATEGY,
+  DEFAULT_WORKFLOW_MATERIAL_SWIMLANE_DIRECTION,
+  type WorkflowDagLayoutStrategy,
+  type WorkflowMaterialSwimlaneDirection
+} from './workflowDagLayoutStrategy'
+import { layoutWorkflowMaterialSwimlanes } from './workflowMaterialSwimlaneLayout'
+import {
+  workflowNodeVisualKind,
+  type WorkflowNodeVisualKind
+} from './workflowNodeVisualKind'
 
 export function projectPersistentAuthoringGraph(
-  graph: WorkflowAuthoringGraph
+  graph: WorkflowAuthoringGraph,
+  materialSourceCatalog?: Pick<
+    WorkflowMaterialSourceCatalogSnapshot,
+    'resourceTemplates'
+  > | null
 ): WorkflowStructure {
+  const resourceTemplateByUuid = new Map(
+    (materialSourceCatalog?.resourceTemplates ?? []).map((template) => [
+      template.uuid,
+      template
+    ])
+  )
   const templates = new Map(
     graph.node_templates.map((template) => [
       String(template.uuid || ''),
@@ -130,6 +155,8 @@ export function projectPersistentAuthoringGraph(
     const position = nodePosition(node.pose)
     const param = isRecord(node.param) ? node.param : {}
     const mount = isRecord(param.mount) ? param.mount : {}
+    const resourceTemplateUuid = String(param.resource_template_uuid || '')
+    const resourceTemplate = resourceTemplateByUuid.get(resourceTemplateUuid)
     return {
       id: nodeUuid,
       name: String(
@@ -151,6 +178,9 @@ export function projectPersistentAuthoringGraph(
             descendantNodeIds: descendants(nodeUuid),
             collapsedByDefault: true,
             openChildWorkflowUuid: composite.workflowUuid,
+            ...(composite.visualKind
+              ? { visualKind: composite.visualKind }
+              : {}),
             compositeSignature: [
               String(graph.workflow.uuid || ''),
               String(graph.workflow.revision ?? ''),
@@ -166,7 +196,11 @@ export function projectPersistentAuthoringGraph(
             materialSource: {
               mode: String(param.mode || ''),
               flowRole: String(param.flow_role || ''),
-              mountUuid: String(mount.uuid || '')
+              mountUuid: String(mount.uuid || ''),
+              resourceTemplateUuid,
+              ...(resourceTemplate?.shape
+                ? { shape: resourceTemplate.shape }
+                : {})
             }
           }
         : {}),
@@ -198,9 +232,71 @@ export function projectPersistentAuthoringGraph(
   }
 }
 
+/**
+ * 按完整工作流拓扑重新排列持久编写图，同时保留 OS 节点姿态中的非平面信息。
+ *
+ * @param graph OS 返回或前端候选区持有的工作流编写图。
+ * @param strategy 用户选择的工作流（Workflow）画布布局策略。
+ * @param swimlaneDirection 物料泳道策略当前选中的流向。
+ * @returns 新的工作流编写图；原图及其节点不会被修改。
+ */
+export function beautifyPersistentAuthoringGraph(
+  graph: WorkflowAuthoringGraph,
+  strategy: WorkflowDagLayoutStrategy =
+    DEFAULT_WORKFLOW_DAG_LAYOUT_STRATEGY,
+  swimlaneDirection: WorkflowMaterialSwimlaneDirection =
+    DEFAULT_WORKFLOW_MATERIAL_SWIMLANE_DIRECTION
+): WorkflowAuthoringGraph {
+  const structure = projectPersistentAuthoringGraph(graph)
+  // 六边形物料来源比动作条更高；上移一小段可保证第一条物料流明确向下。
+  const materialSourceNodeIds = new Set(
+    structure.nodes
+      .filter((node) => node.type === 'material_source')
+      .map((node) => node.id)
+  )
+  const layout = strategy === 'material-swimlanes'
+    ? layoutWorkflowMaterialSwimlanes(
+        structure.nodes,
+        structure.links,
+        swimlaneDirection
+      )
+    : layoutDag(structure.nodes, structure.links, {
+        preserveExistingPositions: false
+      })
+  const positionByNodeUuid = new Map(
+    layout.nodes.map((node) => [node.id, {
+      x: node.x,
+      y: materialSourceNodeIds.has(node.id) && layout.direction === 'vertical'
+        ? node.y - 24
+        : node.y
+    }])
+  )
+  return {
+    ...graph,
+    nodes: graph.nodes.map((node) => {
+      const nodeUuid = String(node.uuid || '')
+      const position = positionByNodeUuid.get(nodeUuid)
+      if (!position) return node
+      const pose = isRecord(node.pose) ? node.pose : {}
+      const previousPosition = isRecord(pose.position) ? pose.position : {}
+      return {
+        ...node,
+        pose: {
+          ...pose,
+          position: {
+            ...previousPosition,
+            ...position
+          }
+        }
+      }
+    })
+  }
+}
+
 interface PublishedWorkflowProjection {
   workflowUuid: string
   contractDigest: string
+  visualKind?: WorkflowNodeVisualKind
 }
 
 function publishedWorkflowProjection(
@@ -215,7 +311,20 @@ function publishedWorkflowProjection(
   const workflowUuid = nullableString(contract.workflow_uuid)
   const contractDigest = nullableString(contract.contract_digest)
   if (!workflowUuid || !contractDigest) return null
-  return { workflowUuid, contractDigest }
+  const metaData = isRecord(template.meta_data) ? template.meta_data : {}
+  const unilab = isRecord(metaData.unilab) ? metaData.unilab : {}
+  const source = isRecord(unilab.workflow_source)
+    ? unilab.workflow_source
+    : {}
+  const visualKind = workflowNodeVisualKind({
+    symbol: nullableString(source.symbol),
+    definitionFqid: nullableString(source.definition_fqid)
+  })
+  return {
+    workflowUuid,
+    contractDigest,
+    ...(visualKind ? { visualKind } : {})
+  }
 }
 
 export function updatePersistentAuthoringNodeName(
