@@ -60,9 +60,11 @@ async function composesWorkflowWithPublicMaterialService(): Promise<void> {
       resourceTemplateUuid: materialTemplateUuid
     }])
     expect(requests).toEqual([
-      '/api/v1/workflow-node-templates?page=1&page_size=100',
+      materialSourceCatalogPath,
       `/api/v1/workflow-node-templates/${frameworkTemplateUuid}`,
-      '/api/v1/materials/graph'
+      '/api/v1/materials/graph',
+      '/api/v1/resource-templates?limit=100',
+      '/api/v1/material-shapes'
     ])
     expect(countMatchingPath(requests, '/api/v1/materials/graph')).toBe(1)
     expect(hasPathPrefix(requests, '/api/v1/inventory/')).toBe(false)
