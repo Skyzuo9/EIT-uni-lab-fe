@@ -299,6 +299,13 @@ interface PublishedWorkflowProjection {
   visualKind?: WorkflowNodeVisualKind
 }
 
+/**
+ * 从目录模板读取组合工作流调用（CompositeWorkflowInvocation）的稳定投影。
+ *
+ * @param template 当前工作流节点模板；缺失时没有可投影的已发布工作流合同。
+ * @returns 合同版本有效且身份完整时返回工作流、摘要和视觉类型，否则返回空。
+ * @throws 不抛异常；非对象或非兼容合同都按不可用模板关闭失败。
+ */
 function publishedWorkflowProjection(
   template: Record<string, unknown> | undefined
 ): PublishedWorkflowProjection | null {
