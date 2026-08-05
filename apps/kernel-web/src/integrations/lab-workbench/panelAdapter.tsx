@@ -123,11 +123,15 @@ function MaterialRenderer(
         props.unified
           ? (_viewportProps) => (
               <UnifiedLabViewport
-                renderView={(viewMode, { showSites }) => (
+                renderView={(
+                  viewMode,
+                  { showSites, showMaterialTransfers }
+                ) => (
                   <SceneRenderer
                     {...props}
                     viewMode={viewMode}
                     showSites={showSites}
+                    showMaterialTransfers={showMaterialTransfers}
                   />
                 )}
               />
@@ -179,6 +183,12 @@ function WorkflowRenderer(
           hasUnsavedChanges
         )
       }}
+      onActiveWorkflowChange={(workflowUuid) => {
+        props.scope.interaction.getState().selectWorkflow(workflowUuid)
+      }}
+      onSelectedWorkflowStepChange={(workflowNodeUuid) => {
+        props.scope.interaction.getState().selectWorkflowStep(workflowNodeUuid)
+      }}
     />
   )
 }
@@ -187,6 +197,7 @@ function SceneRenderer(
   props: PanelRendererProps<LabPanelScope> & {
     viewMode?: LabViewMode
     showSites?: boolean
+    showMaterialTransfers?: boolean
   }
 ): React.JSX.Element {
   const runtime = useMaterialRuntime()
@@ -216,6 +227,7 @@ function SceneRenderer(
     >
       <SceneWorkbench
         showSites={props.showSites}
+        showMaterialTransfers={props.showMaterialTransfers}
         viewMode={props.viewMode}
       />
     </Suspense>

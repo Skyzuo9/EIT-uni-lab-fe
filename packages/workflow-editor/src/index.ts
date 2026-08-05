@@ -21,5 +21,12 @@ export type {
   WorkflowTracePort,
   WorkflowTraceRecord
 } from './traceRuntime'
+export {
+  aggregateTransferStatus,
+  projectWorkflowMaterialTransferRoutes,
+  type WorkflowMaterialTransferEndpoint,
+  type WorkflowMaterialTransferRoute,
+  type WorkflowMaterialTransferStatus
+} from './utils/workflowMaterialTransferScene'
 export * from './utils/parseWorkflow'
 export * from './utils/parseWorkflowJson'

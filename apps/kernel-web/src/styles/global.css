@@ -192,6 +192,15 @@ body {
   box-shadow: 0 1px 5px rgb(15 23 42 / 12%);
 }
 
+.lab-site-layer-toggle button.is-active.is-transfer {
+  color: var(--unilab-color-scene);
+  background: color-mix(
+    in srgb,
+    var(--unilab-color-scene-soft) 82%,
+    var(--unilab-color-bg)
+  );
+}
+
 .lab-site-layer-toggle i {
   position: relative;
   width: 18px;

@@ -4,10 +4,12 @@ export interface LabInteractionState {
   selectedMaterialIds: readonly string[]
   highlightedMaterialIds: readonly string[]
   selectedSceneObjectIds: readonly string[]
+  activeWorkflowId: string | null
   selectedWorkflowStepId: string | null
   selectMaterials: (materialIds: readonly string[]) => void
   highlightMaterials: (materialIds: readonly string[]) => void
   selectSceneObjects: (sceneObjectIds: readonly string[]) => void
+  selectWorkflow: (workflowId: string | null) => void
   selectWorkflowStep: (workflowStepId: string | null) => void
   clearInteraction: () => void
 }
@@ -16,6 +18,7 @@ const EMPTY_INTERACTION = {
   selectedMaterialIds: [] as readonly string[],
   highlightedMaterialIds: [] as readonly string[],
   selectedSceneObjectIds: [] as readonly string[],
+  activeWorkflowId: null,
   selectedWorkflowStepId: null
 }
 
@@ -42,6 +45,10 @@ export function createLabInteractionStore(): StoreApi<LabInteractionState> {
         sameIds(get().selectedSceneObjectIds, selectedSceneObjectIds)
       ) return
       set({ selectedSceneObjectIds: [...selectedSceneObjectIds] })
+    },
+    selectWorkflow: (activeWorkflowId) => {
+      if (get().activeWorkflowId === activeWorkflowId) return
+      set({ activeWorkflowId, selectedWorkflowStepId: null })
     },
     selectWorkflowStep: (selectedWorkflowStepId) => {
       if (get().selectedWorkflowStepId === selectedWorkflowStepId) return

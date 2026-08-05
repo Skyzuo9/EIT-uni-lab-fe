@@ -10,9 +10,12 @@ export type LabViewMode = '2d' | '2.5d' | '3d' | 'split'
 
 const STORAGE_KEY = 'unilab.lab.view-mode'
 const SITE_LAYER_STORAGE_KEY = 'unilab.lab.site-layer-visible'
+const MATERIAL_TRANSFER_LAYER_STORAGE_KEY =
+  'unilab.lab.material-transfer-layer-visible'
 
 export interface LabViewOptions {
   showSites: boolean
+  showMaterialTransfers: boolean
 }
 
 export interface UnifiedLabViewportProps {
@@ -29,6 +32,9 @@ export function UnifiedLabViewport({
 }: UnifiedLabViewportProps): React.JSX.Element {
   const [mode, setMode] = useState<LabViewMode>(readStoredMode)
   const [showSites, setShowSites] = useState(readStoredSiteLayer)
+  const [showMaterialTransfers, setShowMaterialTransfers] = useState(
+    readStoredMaterialTransferLayer
+  )
 
   useEffect(() => {
     globalThis.localStorage?.setItem(STORAGE_KEY, mode)
@@ -41,11 +47,19 @@ export function UnifiedLabViewport({
     )
   }, [showSites])
 
+  useEffect(() => {
+    globalThis.localStorage?.setItem(
+      MATERIAL_TRANSFER_LAYER_STORAGE_KEY,
+      String(showMaterialTransfers)
+    )
+  }, [showMaterialTransfers])
+
   return (
     <div
       className="lab-unified-viewport"
       data-lab-view-mode={mode}
       data-site-layer-visible={showSites}
+      data-material-transfer-layer-visible={showMaterialTransfers}
     >
       <div className="lab-unified-viewport__surface">
         <LabViewErrorBoundary mode={mode}>
@@ -53,6 +67,7 @@ export function UnifiedLabViewport({
             mode={mode}
             renderView={renderView}
             showSites={showSites}
+            showMaterialTransfers={showMaterialTransfers}
           />
         </LabViewErrorBoundary>
       </div>
@@ -104,6 +119,20 @@ export function UnifiedLabViewport({
             <span>库位和点位</span>
             <i aria-hidden="true" />
           </button>
+          <button
+            type="button"
+            aria-label="物料转运"
+            aria-pressed={showMaterialTransfers}
+            className={showMaterialTransfers ? 'is-active is-transfer' : undefined}
+            onClick={() => setShowMaterialTransfers((visible) => !visible)}
+            title={showMaterialTransfers
+              ? '隐藏物料转运路线'
+              : '显示物料转运路线'}
+          >
+            <TransferLayerIcon />
+            <span>物料转运</span>
+            <i aria-hidden="true" />
+          </button>
         </div>
       </div>
     </div>
@@ -113,13 +142,15 @@ export function UnifiedLabViewport({
 function LabViewSurface({
   mode,
   renderView,
-  showSites
+  showSites,
+  showMaterialTransfers
 }: {
   mode: LabViewMode
   renderView: UnifiedLabViewportProps['renderView']
   showSites: boolean
+  showMaterialTransfers: boolean
 }): React.JSX.Element {
-  return <>{renderView(mode, { showSites })}</>
+  return <>{renderView(mode, { showSites, showMaterialTransfers })}</>
 }
 
 interface LabViewErrorBoundaryProps {
@@ -203,6 +234,17 @@ function SiteLayerIcon(): React.JSX.Element {
   )
 }
 
+function TransferLayerIcon(): React.JSX.Element {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 18 16">
+      <circle cx="3" cy="12" r="1.5" />
+      <circle cx="15" cy="4" r="1.5" />
+      <path d="M4.5 12h3V7h3V4h3" />
+      <path d="m11.5 2.5 2 1.5-2 1.5" />
+    </svg>
+  )
+}
+
 function ViewModeButton({
   active,
   icon,
@@ -270,4 +312,10 @@ function readStoredMode(): LabViewMode {
 
 function readStoredSiteLayer(): boolean {
   return globalThis.localStorage?.getItem(SITE_LAYER_STORAGE_KEY) !== 'false'
+}
+
+function readStoredMaterialTransferLayer(): boolean {
+  return globalThis.localStorage?.getItem(
+    MATERIAL_TRANSFER_LAYER_STORAGE_KEY
+  ) !== 'false'
 }

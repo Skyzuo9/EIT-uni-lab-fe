@@ -21,6 +21,7 @@ import {
 
 import {
   type MaterialSceneMove,
+  type MaterialTransferSceneRoute,
   materialAggregatesToSceneGraph,
   sceneGraphToMaterialMoves
 } from './materialAggregateSceneBridge'
@@ -31,6 +32,7 @@ import {
 import { preparePascalLabPlugin } from './plugin'
 import {
   isLabDeviceNode,
+  type LabMaterialTransferLayerNode,
   isLabTableNode
 } from './schema'
 
@@ -40,6 +42,10 @@ export interface PascalLabWorkbenchProps {
   shapes?: MaterialShapeLibrary
   /** 统一控制 2D、2.5D 与 3D 中的库位/点位图层。 */
   showSites?: boolean
+  /** 工作流（Workflow）派生的只读物料（Material）转运路线。 */
+  materialTransferRoutes?: readonly MaterialTransferSceneRoute[]
+  showMaterialTransfers?: boolean
+  materialTransferProjectionError?: string | null
   viewMode?: '2d' | '2.5d' | '3d' | 'split'
   projectId?: string
   modelRuntime?: LabModelRuntime
@@ -57,6 +63,9 @@ export function PascalLabWorkbench({
   aggregates,
   shapes,
   showSites = true,
+  materialTransferRoutes = [],
+  showMaterialTransfers = true,
+  materialTransferProjectionError = null,
   viewMode = '3d',
   projectId = 'unilab-local-scene',
   modelRuntime,
@@ -71,13 +80,29 @@ export function PascalLabWorkbench({
     () =>
       materialAggregatesToSceneGraph(aggregates, {
         fitSceneRevision,
-        showSites
+        showSites,
+        showMaterialTransfers,
+        materialTransferRoutes
       }),
-    [aggregates, fitSceneRevision, showSites]
+    [
+      aggregates,
+      fitSceneRevision,
+      materialTransferRoutes,
+      showMaterialTransfers,
+      showSites
+    ]
   )
   const [saveStatus, setSaveStatus] = useState<
     'saved' | 'dirty' | 'saving'
   >('saved')
+  const transferLayer = (
+    scene.nodes.level_unilab as {
+      materialTransferLayer?: LabMaterialTransferLayerNode | null
+    } | undefined
+  )?.materialTransferLayer
+  const transferRouteCount = transferLayer?.routes.length ?? 0
+  const unresolvedTransferRouteCount =
+    transferLayer?.unresolvedRouteIds.length ?? 0
 
   const selectedSceneObjectIds = useMemo(
     () => materialIdsToSceneObjectIds(scene, selectedMaterialIds),
@@ -154,13 +179,33 @@ export function PascalLabWorkbench({
         实验室 {viewMode.toUpperCase()} · Pascal
       </span>
       <span className="pascal-lab-toolbar__status">{statusLabel}</span>
+      {showMaterialTransfers && (
+        <span
+          className="pascal-lab-toolbar__transfer-status"
+          title={materialTransferProjectionError ?? (
+            unresolvedTransferRouteCount > 0
+              ? `${unresolvedTransferRouteCount} 条路线缺少可解析的库位（Site）坐标`
+              : undefined
+          )}
+        >
+          <i aria-hidden="true" />
+          {materialTransferProjectionError
+            ? '转运投影需检查'
+            : transferRouteCount > 0
+              ? `${transferRouteCount} 条物料转运路线`
+              : materialTransferRoutes.length > 0
+                ? '暂无可定位的转运路线'
+                : '选择工作流以显示转运路线'}
+        </span>
+      )}
       {viewMode !== '2d' && (
         <div className="pascal-lab-toolbar__actions">
           <button
             type="button"
             className="pascal-lab-toolbar__button"
             onClick={() => {
-              useViewer.getState().setCameraMode('orthographic')
+              // Pascal 的正交相机会切换到内置深色地板；保留透视相机仅对齐顶视方向。
+              useViewer.getState().setCameraMode('perspective')
               requestAnimationFrame(() => {
                 emitter.emit('camera-controls:top-view')
                 setFitSceneRevision((revision) => revision + 1)

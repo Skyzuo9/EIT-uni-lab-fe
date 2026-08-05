@@ -10,6 +10,8 @@ import {
 } from 'three'
 
 import { MODEL_READY_EVENT } from './LabDeviceRenderer'
+import MaterialTransferLayerRenderer from './MaterialTransferLayerRenderer'
+import type { LabMaterialTransferLayerNode } from '../schema'
 
 interface HierarchyNode {
   id: string
@@ -19,6 +21,7 @@ interface HierarchyNode {
   position?: readonly [number, number, number]
   rotation?: number | readonly [number, number, number]
   fitSceneRevision?: number
+  materialTransferLayer?: LabMaterialTransferLayerNode | null
 }
 
 interface AdaptiveCameraControls {
@@ -140,6 +143,9 @@ export default function HierarchyRenderer({
       {node.children?.map((childId) => (
         <NodeRenderer key={`${node.id}:${childId}`} nodeId={childId as never} />
       ))}
+      {node.materialTransferLayer && (
+        <MaterialTransferLayerRenderer node={node.materialTransferLayer} />
+      )}
     </group>
   )
 }

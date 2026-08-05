@@ -23,6 +23,8 @@ export interface WorkflowPanelProps {
   resourceSlotOptionsPort?: WorkflowResourceSlotOptionsPort
   activeWorkflowStorageKey?: string
   onUnsavedChangesChange?: (hasUnsavedChanges: boolean) => void
+  onActiveWorkflowChange?: (workflowUuid: string | null) => void
+  onSelectedWorkflowStepChange?: (workflowNodeUuid: string | null) => void
 }
 
 export default function WorkflowPanel({
@@ -31,7 +33,9 @@ export default function WorkflowPanel({
   traceRuntime,
   resourceSlotOptionsPort,
   activeWorkflowStorageKey,
-  onUnsavedChangesChange
+  onUnsavedChangesChange,
+  onActiveWorkflowChange,
+  onSelectedWorkflowStepChange
 }: WorkflowPanelProps): React.JSX.Element {
   const [selectedWorkflowUuid, setSelectedWorkflowUuid] = useState<
     string | null
@@ -42,6 +46,14 @@ export default function WorkflowPanel({
     : explicitWorkflowUuid || selectedWorkflowUuid ||
       readActiveWorkflowId(activeWorkflowStorageKey)
 
+  useEffect(() => {
+    const activeWorkflowUuid = workflowUuid && isWorkflowUuid(workflowUuid)
+      ? workflowUuid
+      : null
+    onActiveWorkflowChange?.(activeWorkflowUuid)
+    return () => onActiveWorkflowChange?.(null)
+  }, [onActiveWorkflowChange, workflowUuid])
+
   if (workflowUuid && isWorkflowUuid(workflowUuid)) {
     return (
       <PersistentWorkflowAuthoringPanel
@@ -51,6 +63,7 @@ export default function WorkflowPanel({
         traceRuntime={traceRuntime}
         resourceSlotOptionsPort={resourceSlotOptionsPort}
         onUnsavedChangesChange={onUnsavedChangesChange}
+        onSelectedWorkflowStepChange={onSelectedWorkflowStepChange}
         onChooseWorkflow={explicitWorkflowUuid
           ? undefined
           : () => {

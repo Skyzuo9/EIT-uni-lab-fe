@@ -5,8 +5,10 @@ import {
 } from '@unilab/material'
 import {
   PascalLabWorkbench,
-  type MaterialSceneMove
+  type MaterialSceneMove,
+  type MaterialTransferSceneRoute
 } from '@unilab/pascal-lab-plugin'
+import { useServices } from '@unilab/services'
 import { useEffect, useMemo } from 'react'
 
 import { useWorkbench } from '../../context/WorkbenchContext'
@@ -14,6 +16,7 @@ import { useLabInteraction } from './LabInteractionProvider'
 import { useMaterialRuntime } from './MaterialRuntimeProvider'
 import type { LabViewMode } from './UnifiedLabViewport'
 import { supportsWebGl } from './webGlCapability'
+import { useWorkflowMaterialTransferProjection } from './useWorkflowMaterialTransferProjection'
 
 /**
  * 将物料（Material）图投影到 Pascal 三维场景（3D Scene）工作台。
@@ -23,12 +26,15 @@ import { supportsWebGl } from './webGlCapability'
  */
 export function SceneWorkbench({
   showSites = true,
+  showMaterialTransfers = true,
   viewMode = '3d'
 }: {
   showSites?: boolean
+  showMaterialTransfers?: boolean
   viewMode?: LabViewMode
 }): React.JSX.Element {
   const { backend } = useWorkbench()
+  const services = useServices()
   const runtime = useMaterialRuntime()
   const store = useMaterialStoreApi()
   const aggregatesById = useMaterialStore(
@@ -41,6 +47,23 @@ export function SceneWorkbench({
   )
   const highlightedMaterialIds = useLabInteraction(
     (state) => state.highlightedMaterialIds
+  )
+  const activeWorkflowId = useLabInteraction(
+    (state) => state.activeWorkflowId
+  )
+  const selectedWorkflowStepId = useLabInteraction(
+    (state) => state.selectedWorkflowStepId
+  )
+  const transferProjection = useWorkflowMaterialTransferProjection(
+    services.workflow,
+    activeWorkflowId
+  )
+  const materialTransferRoutes = useMemo<MaterialTransferSceneRoute[]>(
+    () => transferProjection.routes.map((route) => ({
+      ...route,
+      selected: route.workflowNodeUuid === selectedWorkflowStepId
+    })),
+    [selectedWorkflowStepId, transferProjection.routes]
   )
   const selectMaterials = useLabInteraction(
     (state) => state.selectMaterials
@@ -121,6 +144,11 @@ export function SceneWorkbench({
       aggregates={aggregates}
       shapes={shapeLibrary}
       showSites={showSites}
+      showMaterialTransfers={
+        showMaterialTransfers && (viewMode === '3d' || viewMode === 'split')
+      }
+      materialTransferRoutes={materialTransferRoutes}
+      materialTransferProjectionError={transferProjection.error}
       viewMode={viewMode}
       projectId={`unilab-${backend.id}-${scopeKey}`}
       editable={moveStatus.available}

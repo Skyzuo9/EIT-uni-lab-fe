@@ -209,7 +209,7 @@ describe('material template adapter', () => {
               name: 'Liquid Handler',
               create_time: '2026-07-26T00:00:00Z',
               update_time: '2026-07-26T00:00:00Z',
-              meta_data: {},
+              meta_data: { source_node_id: 'liquid-handler' },
               config: {
                 rendering: { kind: 'table' }
               },
@@ -288,6 +288,7 @@ describe('material template adapter', () => {
           name: 'Liquid Handler',
           description: undefined,
           config: expect.objectContaining({
+            sourceIdentity: 'liquid-handler',
             rendering: {
               kind: 'table',
               dimensionsMm: [1400, 180, 720]
