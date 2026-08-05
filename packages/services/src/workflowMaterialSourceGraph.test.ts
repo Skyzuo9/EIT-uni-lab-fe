@@ -11,9 +11,9 @@ const materialUuid = '52000000-0000-4000-8000-000000000001'
 const mountTemplateUuid = '61000000-0000-4000-8000-000000000001'
 // 样品资源模板 UUID 标识库位允许承载的孔板类型。
 const sampleTemplateUuid = '62000000-0000-4000-8000-000000000001'
-// 第一库位 UUID 故意使用较大的字典序，证明业务顺序不由 UUID 猜测。
+// 第一库位 UUID 故意使用较大的字典序，证明 sort_order 优先于 UUID。
 const firstSiteUuid = '71000000-0000-4000-8000-000000000009'
-// 第二库位 UUID 故意使用较小的字典序，证明公共图遍历顺序优先。
+// 第二库位 UUID 故意使用较小的字典序，证明输入遍历顺序不是业务顺序。
 const secondSiteUuid = '71000000-0000-4000-8000-000000000001'
 
 /**
@@ -24,7 +24,7 @@ const secondSiteUuid = '71000000-0000-4000-8000-000000000001'
  */
 function registerWorkflowMaterialSourceGraphTests(): void {
   it(
-    '公共物料图（MaterialGraph）按遍历顺序投影物料（Material）、挂载物料、库位占用（SiteOccupancy）与兼容资源模板（ResourceTemplate）',
+    '公共物料图（MaterialGraph）按 sort_order 与 UUID 投影物料（Material）、挂载物料、库位占用（SiteOccupancy）与兼容资源模板（ResourceTemplate）',
     projectsPublicGraphFactsInStableOrder
   )
   it('物料（Material）UUID 重复时必须失败关闭', rejectsDuplicateMaterialIdentity)
@@ -43,24 +43,32 @@ describe(
 )
 
 /**
- * 验证工作流物料来源（MaterialSource）只消费公共物料聚合，并保留公共图给出的稳定遍历顺序。
+ * 验证工作流物料来源（MaterialSource）按库位排序事实而非输入遍历顺序投影。
  *
  * @returns 不返回值；物料、资源模板、库位（Site）或库位占用（SiteOccupancy）投影不符时断言失败。
  */
 function projectsPublicGraphFactsInStableOrder(): void {
-  // 挂载物料聚合是库位（Site）的直接所有者；测试故意让库位 UUID 与遍历顺序相反。
+  // 输入先给高 sort_order 的小 UUID，再给低 sort_order 的大 UUID，证明排序闭集。
   const mountAggregate = materialAggregate(
     mountUuid,
     mountTemplateUuid,
     'Deck A',
     [
-      materialSite(firstSiteUuid, mountUuid, '库位 A', [], []),
-      materialSite(
+      materialSiteWithSortOrder(
         secondSiteUuid,
         mountUuid,
         '库位 B',
         [sampleTemplateUuid],
-        [materialUuid]
+        [materialUuid],
+        20
+      ),
+      materialSiteWithSortOrder(
+        firstSiteUuid,
+        mountUuid,
+        '库位 A',
+        [],
+        [],
+        10
       )
     ]
   )
@@ -99,21 +107,20 @@ function projectsPublicGraphFactsInStableOrder(): void {
         name: '库位 A',
         mountMaterialUuid: mountUuid,
         allowedResourceTemplateUuids: [],
-        occupiedMaterialUuid: null
+        occupiedMaterialUuid: null,
+        sortOrder: 10
       },
       {
         uuid: secondSiteUuid,
         name: '库位 B',
         mountMaterialUuid: mountUuid,
         allowedResourceTemplateUuids: [sampleTemplateUuid],
-        occupiedMaterialUuid: materialUuid
+        occupiedMaterialUuid: materialUuid,
+        sortOrder: 20
       }
     ]
   })
-  expect(siteIds(mountAggregate.sites)).toEqual([
-    firstSiteUuid,
-    secondSiteUuid
-  ])
+  expect(siteIds(mountAggregate.sites)).toEqual([secondSiteUuid, firstSiteUuid])
 }
 
 /**
@@ -359,5 +366,37 @@ function materialSite(
     allowedTemplateIds,
     occupiedMaterialIds,
     kind
+  }
+}
+
+/**
+ * 构造携带公共 `sort_order` 投影的库位（Site）测试事实。
+ *
+ * @param siteId 库位稳定 UUID。
+ * @param ownerMaterialId 直接所有者物料 UUID。
+ * @param name 库位显示名称。
+ * @param allowedTemplateIds 兼容资源模板 UUID 集合。
+ * @param occupiedMaterialIds 当前占用物料 UUID 集合。
+ * @param sortOrder 公共物料图发布的业务排序值。
+ * @returns 带排序事实的容量一库位。
+ * @throws 无。
+ */
+function materialSiteWithSortOrder(
+  siteId: string,
+  ownerMaterialId: string,
+  name: string,
+  allowedTemplateIds: readonly string[],
+  occupiedMaterialIds: readonly string[],
+  sortOrder: number
+): MaterialSite & { sortOrder: number } {
+  return {
+    ...materialSite(
+      siteId,
+      ownerMaterialId,
+      name,
+      allowedTemplateIds,
+      occupiedMaterialIds
+    ),
+    sortOrder
   }
 }

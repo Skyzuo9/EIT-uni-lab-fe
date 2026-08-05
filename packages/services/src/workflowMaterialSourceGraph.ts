@@ -110,6 +110,7 @@ export function projectWorkflowMaterialSourceGraph(
       sites.push({
         uuid: siteUuid,
         name: nonEmptyString(site.name, `库位（Site）${siteUuid} 名称`),
+        sortOrder: site.sortOrder ?? 0,
         mountMaterialUuid: ownerMaterialUuid,
         allowedResourceTemplateUuids,
         occupiedMaterialUuid
@@ -122,7 +123,7 @@ export function projectWorkflowMaterialSourceGraph(
       .sort(compareUuid)
       .map(resourceTemplateProjection),
     materials: materials.sort(compareMaterialByUuid),
-    sites
+    sites: sites.sort(compareSiteBySortOrderAndUuid)
   }
 }
 
@@ -161,6 +162,21 @@ function compareMaterialByUuid(
   right: WorkflowMaterialSourceMaterial
 ): number {
   return compareUuid(left.uuid, right.uuid)
+}
+
+/**
+ * 按库位（Site）业务顺序与稳定 UUID 比较工作流候选。
+ *
+ * @param left 左侧库位目录条目。
+ * @param right 右侧库位目录条目。
+ * @returns 先比较 `sortOrder`，相等时比较 UUID 的稳定结果。
+ * @throws 无。
+ */
+function compareSiteBySortOrderAndUuid(
+  left: WorkflowMaterialSourceSite,
+  right: WorkflowMaterialSourceSite
+): number {
+  return left.sortOrder - right.sortOrder || compareUuid(left.uuid, right.uuid)
 }
 
 /**

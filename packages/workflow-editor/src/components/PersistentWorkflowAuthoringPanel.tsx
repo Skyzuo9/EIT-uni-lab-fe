@@ -3162,7 +3162,7 @@ export function MaterialSourceInspector({
         </ul>
       )}
       <p className="persistent-authoring__selector-authority">
-        仅保存稳定 UUID；库位（Site）按公共物料图（MaterialGraph）顺序展示，候选集按 UUID 规范保存。
+        仅保存稳定 UUID；库位（Site）按 sort_order、UUID 顺序展示，候选集按 UUID 规范保存。
       </p>
     </section>
   )
@@ -3171,9 +3171,10 @@ export function MaterialSourceInspector({
 /**
  * 按名称或稳定 UUID 过滤物料来源（MaterialSource）的候选库位（Site）。
  *
- * @param sites 已按公共物料图（MaterialGraph）目录顺序排列的候选库位集合。
+ * @param sites 已按库位（Site）sort_order、UUID 排列的候选集合。
  * @param query 用户输入的名称或 UUID 查询文本。
- * @returns 保留输入目录顺序的匹配库位；空查询直接返回原集合。
+ * @returns 保留权威业务顺序的匹配库位；空查询直接返回原集合。
+ * @throws 无。
  */
 export function filterMaterialSourceSites(
   sites: MaterialSourceEditorProjection['sites'],

@@ -170,6 +170,7 @@ async function loadsMaterialSourceCatalogInPublicGraphOrder(): Promise<void> {
         {
           uuid: secondSiteUuid,
           name: 'Slot B',
+          sortOrder: 0,
           mountMaterialUuid: mountUuid,
           allowedResourceTemplateUuids: [],
           occupiedMaterialUuid: materialUuid
@@ -177,6 +178,7 @@ async function loadsMaterialSourceCatalogInPublicGraphOrder(): Promise<void> {
         {
           uuid: firstSiteUuid,
           name: 'Slot A',
+          sortOrder: 0,
           mountMaterialUuid: mountUuid,
           allowedResourceTemplateUuids: [sampleTemplateUuid],
           occupiedMaterialUuid: null

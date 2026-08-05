@@ -120,6 +120,7 @@ function editor(): MaterialSourceEditorProjection {
       {
         uuid: '70000000-0000-4000-8000-000000000001',
         name: '库位 1',
+        sortOrder: 1,
         mountMaterialUuid: '50000000-0000-4000-8000-000000000001',
         allowedResourceTemplateUuids: [
           '60000000-0000-4000-8000-000000000001'
@@ -129,6 +130,7 @@ function editor(): MaterialSourceEditorProjection {
       {
         uuid: '70000000-0000-4000-8000-000000000002',
         name: '库位 2',
+        sortOrder: 2,
         mountMaterialUuid: '50000000-0000-4000-8000-000000000001',
         allowedResourceTemplateUuids: [],
         occupiedMaterialUuid: null

@@ -259,6 +259,7 @@ function catalog(): WorkflowMaterialSourceCatalogSnapshot {
       {
         uuid: lateSiteUuid,
         name: 'Slot 2',
+        sortOrder: 2,
         mountMaterialUuid: mountUuid,
         allowedResourceTemplateUuids: [resourceTemplateUuid],
         occupiedMaterialUuid: null
@@ -266,6 +267,7 @@ function catalog(): WorkflowMaterialSourceCatalogSnapshot {
       {
         uuid: earlySiteUuid,
         name: 'Slot 1',
+        sortOrder: 1,
         mountMaterialUuid: mountUuid,
         allowedResourceTemplateUuids: [],
         occupiedMaterialUuid: fixedMaterialUuid
