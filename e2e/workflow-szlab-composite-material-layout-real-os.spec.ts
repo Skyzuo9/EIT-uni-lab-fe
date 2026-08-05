@@ -40,7 +40,8 @@ test.afterAll(async () => {
 })
 
 /**
- * 验证复杂复合物料工作流的 ready、物料输入和全部节点共同布局。
+ * 验证复杂复合物料工作流的 ready、物料输入和全部节点共同布局，并确保转运
+ * 节点只展示物料流（MaterialFlow）句柄。
  *
  * @param page 连接真实前端（Frontend）与操作系统（OS）的浏览器页面。
  * @returns 验证完成后生成截图和结构化证据文件。
@@ -97,6 +98,13 @@ test('SZLab composite material workflow uses one orthogonal visible layout', asy
   const robotTransferNodes = panel.locator(
     '.wf-node[data-workflow-node-visual-kind="robot-transfer"]'
   )
+  const robotTransferReadyHandles = robotTransferNodes.locator(
+    '[data-workflow-handle-kind="ready"]'
+  )
+  const visibleReadyHandles = panel.locator(
+    '.wf-node:not([data-workflow-node-visual-kind="robot-transfer"]) '
+      + '[data-workflow-handle-kind="ready"]'
+  )
   await expect(visibleNodes).toHaveCount(30)
   await expect(materialSources).toHaveCount(4)
   await expect(robotTransferNodes).toHaveCount(11)
@@ -104,7 +112,9 @@ test('SZLab composite material workflow uses one orthogonal visible layout', asy
     .toHaveCount(11)
   await expect(materialEdges).toHaveCount(28)
   await expect(readyEdges).toHaveCount(7)
-  await expect(readyHandles.first()).toBeVisible()
+  expect(await robotTransferReadyHandles.count()).toBeGreaterThan(0)
+  await expect(robotTransferReadyHandles.first()).toBeHidden()
+  await expect(visibleReadyHandles.first()).toBeVisible()
   await page.waitForTimeout(800)
 
   const nodeBoxes = await boundingBoxes(visibleNodes)
@@ -137,6 +147,18 @@ test('SZLab composite material workflow uses one orthogonal visible layout', asy
   ), JSON.stringify(readyHandleEvidence, null, 2)).toBe(true)
   expect(new Set(readyHandleEvidence.map((handle) => handle.io)))
     .toEqual(new Set(['target', 'source']))
+  const robotTransferReadyHandleEvidence = await robotTransferReadyHandles
+    .evaluateAll((handles) => handles.map((handle) => {
+      const style = getComputedStyle(handle)
+      return {
+        io: (handle as HTMLElement).dataset.workflowHandleIo,
+        visibility: style.visibility,
+        pointerEvents: style.pointerEvents
+      }
+    }))
+  expect(robotTransferReadyHandleEvidence.every((handle) =>
+    handle.visibility === 'hidden' && handle.pointerEvents === 'none'
+  ), JSON.stringify(robotTransferReadyHandleEvidence, null, 2)).toBe(true)
 
   const reagentNode = panel.locator(
     `.wf-node[data-workflow-node-uuid="${REAGENT_AT_S08_UUID}"]`
@@ -402,6 +424,7 @@ test('SZLab composite material workflow uses one orthogonal visible layout', asy
     material_edges: await materialEdges.count(),
     ready_edges: await readyEdges.count(),
     ready_handles: readyHandleEvidence,
+    robot_transfer_ready_handles: robotTransferReadyHandleEvidence,
     node_overlap_pairs: overlappingPairs(nodeBoxes),
     material_source_overlap_pairs: overlappingPairs(sourceBoxes),
     reagent_at_s08_has_resource_input_and_output: true,

@@ -267,3 +267,10 @@
     0 3px 5px color-mix(in srgb, var(--unilab-color-device) 32%, transparent)
   );
 }
+
+/* 转运节点暂不展示就绪依赖句柄，但保留 DOM 锚点供连线路由使用。 */
+.workflow :global(.wf-node--robot-transfer)
+  :global(.wf-node__handle--ready) {
+  visibility: hidden;
+  pointer-events: none;
+}
