@@ -14,7 +14,14 @@ export interface F07TaskInputOs {
   stop: () => Promise<void>
 }
 
-/** 启动当前产品候选的真实工作流服务和公共 v1 HTTP 接口。 */
+/**
+ * 启动当前产品候选的真实工作流服务和公共 v1 HTTP 接口。
+ *
+ * 参数：无；`UNILAB_F07_OS_ROOT` 必须指向干净的 OS 候选，Python 可由
+ * `UNILAB_OS_PYTHON` 覆盖。返回：供浏览器调用、读取日志和显式关闭的句柄。
+ * 异常：缺少候选路径、端口分配、进程启动或就绪探测失败时拒绝 Promise；凡已
+ * 创建的子进程和临时目录都在失败路径回收。
+ */
 export async function startF07TaskInputOs(): Promise<F07TaskInputOs> {
   const configuredRoot = process.env.UNILAB_F07_OS_ROOT
   if (!configuredRoot) {
@@ -23,44 +30,100 @@ export async function startF07TaskInputOs(): Promise<F07TaskInputOs> {
   const osRepository = resolve(configuredRoot)
   const python = process.env.UNILAB_OS_PYTHON ||
     '/home/changjunhan/.micromamba/envs/unilab/bin/python'
-  const directory = mkdtempSync(join(tmpdir(), 'unilab-f07-task-input-'))
   const port = await availablePort()
+  const directory = mkdtempSync(join(tmpdir(), 'unilab-f07-task-input-'))
   const url = `http://127.0.0.1:${port}`
   let output = ''
-  const child = spawn(
-    python,
-    ['-c', PYTHON_LAUNCHER, directory, String(port)],
-    {
-      cwd: osRepository,
-      env: {
-        ...process.env,
-        PYTHONPATH: osRepository,
-        PYTHONUNBUFFERED: '1'
-      },
-      stdio: ['ignore', 'pipe', 'pipe']
-    }
-  )
-  child.stdout?.on('data', (chunk) => { output += chunk.toString() })
-  child.stderr?.on('data', (chunk) => { output += chunk.toString() })
+  let child: ChildProcess
   try {
-    await waitUntilReady(url, child, () => output)
+    child = spawn(
+      python,
+      ['-c', PYTHON_LAUNCHER, directory, String(port)],
+      {
+        cwd: osRepository,
+        env: {
+          ...process.env,
+          PYTHONPATH: osRepository,
+          PYTHONUNBUFFERED: '1'
+        },
+        stdio: ['ignore', 'pipe', 'pipe']
+      }
+    )
   } catch (error) {
-    await stopChild(child)
     rmSync(directory, { recursive: true, force: true })
     throw error
+  }
+  let spawnError: Error | undefined
+  /**
+   * 保存 OS 异步启动错误，供就绪循环立即失败关闭。
+   *
+   * 参数：`error` 是 Node.js 报告的进程启动错误。返回：记录日志后无值。
+   * 异常：不抛异常。
+   */
+  const recordSpawnError = (error: Error): void => {
+    spawnError = error
+    output += `${error.stack ?? error.message}\n`
+  }
+  /**
+   * 读取 OS 异步启动错误。
+   *
+   * 参数：无。返回：尚未失败时为空，否则返回原始错误。异常：不抛异常。
+   */
+  const readSpawnError = (): Error | undefined => spawnError
+  /**
+   * 追加一个 OS 输出块。
+   *
+   * 参数：`chunk` 是标准输出或标准错误块。返回：追加后无值。异常：不抛异常。
+   */
+  const appendOutput = (chunk: Buffer): void => {
+    output += chunk.toString()
+  }
+  child.once('error', recordSpawnError)
+  child.stdout?.on('data', appendOutput)
+  child.stderr?.on('data', appendOutput)
+  try {
+    await waitUntilReady(url, child, () => output, readSpawnError)
+  } catch (error) {
+    try {
+      await stopChild(child)
+    } finally {
+      rmSync(directory, { recursive: true, force: true })
+    }
+    throw error
+  }
+  /**
+   * 返回当前 OS 累计日志。
+   *
+   * 参数：无。返回：标准输出与标准错误的累计文本。异常：不抛异常。
+   */
+  const logs = (): string => output
+  /**
+   * 停止唯一 OS 子进程并删除隔离目录。
+   *
+   * 参数：无。返回：清理完成后无值。异常：进程终止失败时拒绝 Promise，但目录
+   * 仍在 `finally` 中删除。
+   */
+  const stop = async (): Promise<void> => {
+    try {
+      await stopChild(child)
+    } finally {
+      rmSync(directory, { recursive: true, force: true })
+    }
   }
   return {
     url,
     workflowUuid: F07_WORKFLOW_UUID,
-    logs: () => output,
-    stop: async () => {
-      await stopChild(child)
-      rmSync(directory, { recursive: true, force: true })
-    }
+    logs,
+    stop
   }
 }
 
-/** 取得一个只供本测试进程独占的本机端口。 */
+/**
+ * 取得一个只供本测试进程独占的本机端口。
+ *
+ * 参数：无。返回：占位监听关闭后可供 OS 使用的回环 TCP 端口。异常：监听、
+ * 地址读取或关闭失败时拒绝 Promise。
+ */
 async function availablePort(): Promise<number> {
   return new Promise((accept, reject) => {
     const server = createServer()
@@ -77,16 +140,27 @@ async function availablePort(): Promise<number> {
   })
 }
 
-/** 等待工作流列表接口成功，进程提前退出时保留完整 OS 日志。 */
+/**
+ * 等待工作流列表接口成功，进程提前退出时保留完整 OS 日志。
+ *
+ * 参数：`url` 是 OS 根地址；`child` 是被观察进程；`logs` 返回累计日志；
+ * `spawnError` 返回异步启动错误。返回：服务就绪时无值。异常：启动错误、进程
+ * 退出或 30 秒超时时抛出包含诊断的错误。
+ */
 async function waitUntilReady(
   url: string,
   child: ChildProcess,
-  logs: () => string
+  logs: () => string,
+  spawnError: () => Error | undefined
 ): Promise<void> {
   const deadline = Date.now() + 30_000
   while (Date.now() < deadline) {
-    if (child.exitCode !== null) {
-      throw new Error(`F07 product OS exited with ${child.exitCode}\n${logs()}`)
+    const startupFailure = spawnError()
+    if (startupFailure) throw startupFailure
+    if (child.exitCode !== null || child.signalCode !== null) {
+      throw new Error(
+        `F07 product OS exited with ${child.exitCode ?? child.signalCode}\n${logs()}`
+      )
     }
     try {
       const response = await fetch(`${url}/api/v1/workflows?page=1&page_size=10`)
@@ -99,18 +173,30 @@ async function waitUntilReady(
   throw new Error(`F07 product OS did not become ready\n${logs()}`)
 }
 
-/** 温和停止本测试启动的 OS，超时后只终止该明确子进程。 */
+/**
+ * 温和停止本测试启动的 OS，超时后只终止该明确子进程。
+ *
+ * 参数：`child` 是待回收的唯一 OS 进程。返回：进程退出后无值。异常：终止
+ * 信号发送或退出等待失败时拒绝 Promise。
+ */
 async function stopChild(child: ChildProcess): Promise<void> {
-  if (child.exitCode !== null) return
-  child.kill('SIGTERM')
-  const exited = await Promise.race([
-    new Promise<boolean>((accept) => child.once('exit', () => accept(true))),
-    new Promise<boolean>((accept) => setTimeout(() => accept(false), 5_000))
-  ])
-  if (!exited && child.exitCode === null) {
-    child.kill('SIGKILL')
-    await new Promise<void>((accept) => child.once('exit', () => accept()))
-  }
+  if (
+    child.pid === undefined ||
+    child.exitCode !== null ||
+    child.signalCode !== null
+  ) return
+  await new Promise<void>((resolveStop, rejectStop) => {
+    const forceTimer = setTimeout(() => child.kill('SIGKILL'), 5_000)
+    child.once('error', (error) => {
+      clearTimeout(forceTimer)
+      rejectStop(error)
+    })
+    child.once('exit', () => {
+      clearTimeout(forceTimer)
+      resolveStop()
+    })
+    child.kill('SIGTERM')
+  })
 }
 
 const PYTHON_LAUNCHER = String.raw`
@@ -207,7 +293,12 @@ template = {
 }
 
 def handle(identity, io_type):
-    """构造当前动作的标量目标或来源连接点（Handle）模板。"""
+    """构造当前动作的标量目标或来源连接点（Handle）模板。
+
+    参数：identity 是固定连接点 UUID，io_type 是 target 或 source。返回：
+    可进入创作目录快照的连接点实体。异常：本固定夹具不抛
+    异常，非法方向会在真实目录构造时失败关闭。
+    """
     return {
         "uuid": identity,
         "workflow_node_template_uuid": TEMPLATE_UUID,
@@ -244,7 +335,11 @@ service.apply_authoring(
 
 class SnapshotProvider:
     def snapshot(self):
-        """返回本进程唯一且不可变的创作目录快照。"""
+        """返回本进程唯一且不可变的创作目录快照。
+
+        参数：除实例自身外无。返回：启动时构造的创作目录快照。异常：不抛
+        异常，且不在请求期间重新扫描或改写目录。
+        """
         return catalog
 
 app = create_workflow_app(
@@ -256,7 +351,11 @@ install_backend_resource_api(app, BackendResourceService(inventory_store))
 
 @app.get("/api/v1/health")
 def health():
-    """返回前端连接策略要求的当前 OS 健康事实。"""
+    """返回前端连接策略要求的当前 OS 健康事实。
+
+    参数：无。返回：只读健康状态对象。异常：不写工作流任务（WorkflowTask）、
+    工作流节点作业（WorkflowNodeJob）或库存事实。
+    """
     return {"status": "ok"}
 
 app.add_middleware(
