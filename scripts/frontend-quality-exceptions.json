@@ -1,5 +1,11 @@
 {
   "moduleExceptions": {
+    "apps/desktop/src/main/index.ts": {
+      "maxLines": 1100,
+      "maxFunctionComplexity": 25,
+      "reason": "桌面主进程组合入口（DesktopMainCompositionRoot）集中持有 Electron 应用生命周期、受信 IPC 注册、窗口身份校验和本地运行会话的唯一装配顺序；设备接入只在此复用同一个本地运行管理器，避免产生第二份 Edge 权威状态。",
+      "futureSplitBoundary": "为应用启动、窗口重建和 IPC sender 门禁补齐集成测试后，将本地运行、设备接入、设备卡片与认证处理器分别迁入 registerLocalRuntimeIpc.ts、registerDeviceProvisioningIpc.ts、registerDeviceCardIpc.ts 和 registerAuthIpc.ts，index.ts 仅保留生命周期编排。"
+    },
     "apps/kernel-web/src/components/LocalRuntimeLauncher.tsx": {
       "maxLines": 1300,
       "maxFunctionComplexity": 35,
@@ -41,6 +47,18 @@
       "maxFunctionComplexity": 25,
       "reason": "物料服务（MaterialService）在一个适配边界内完成物料模板、物料图（MaterialGraph）与后端不可信载荷的校验映射，集中定义错误语义可避免模板和图投影产生不一致的解析规则。",
       "futureSplitBoundary": "补齐模板载荷和物料图载荷的畸形输入矩阵测试后，将模板映射迁入 materialTemplateMapper.ts、物料图映射迁入 materialGraphMapper.ts，materials.ts 仅保留端口组合与 HTTP 调用。"
+    },
+    "packages/services/src/workflowActionCatalog.ts": {
+      "maxLines": 900,
+      "maxFunctionComplexity": 25,
+      "reason": "工作流动作目录（WorkflowActionCatalog）是节点模板游标、详情代际、动作合同和已发布工作流合同的单一关闭失败适配边界；集中校验可防止不同消费者对同一不可信 wire 载荷形成分叉解释。",
+      "futureSplitBoundary": "先为动作合同、已发布工作流合同和句柄畸形矩阵补齐独立 fixture，再将 projectPublishedWorkflow、projectHandle 与 schema 解码分别迁入 workflowPublishedCatalogCodec.ts、workflowHandleCodec.ts 和 workflowActionSchemaCodec.ts。"
+    },
+    "packages/workflow-editor/src/utils/persistentAuthoringGraph.ts": {
+      "maxLines": 500,
+      "maxFunctionComplexity": 45,
+      "reason": "工作流图投影（WorkflowGraphProjection）在一次纯函数事务中验证节点、连接、布局、输入和物料占位符（ResourceSlot）引用，当前分支复杂度对应同一份候选图的关闭失败校验顺序。",
+      "futureSplitBoundary": "补齐节点、连接和物料占位符引用错误的参数化测试后，抽取 validatePersistentNodes、validatePersistentEdges 与 validateResourceSlotBindings，projectPersistentAuthoringGraph 只组合验证结果与最终投影。"
     },
     "packages/pascal-lab-plugin/src/materialAggregateSceneBridge.ts": {
       "maxLines": 1000,
