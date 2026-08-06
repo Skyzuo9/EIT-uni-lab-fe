@@ -1,11 +1,17 @@
 # @unilab/services
 
-前端访问 local OS、新 backend 和 Cloud adapter 的统一服务边界。UI 只依赖这里的
-typed port，不感知请求最终落到哪一种部署。
+前端访问本地 OS、正式后端（Backend）和旧云端 adapter 的统一服务边界。UI 只依赖
+这里的 typed port，不感知请求最终落到哪一种部署。
+
+`BackendConfig` 是全应用唯一的后端权威（Backend Authority）选择：一次只能选择
+OS 或正式后端（Backend）中的一个完整 Profile。物料（Material）、工作流（Workflow）
+和设备投影必须全部从该 Profile 创建的同一组 services 读取；adapter 不得同时查询两个
+权威，也不得在请求失败或结果为空时自动回退到另一个权威。地址输入只修改当前 Profile，
+不是第二个数据源选择器。
 
 ## Profile 与能力矩阵
 
-Profile 是一组完整连接配置，不是单个 base URL。它至少确定 backend 类型、HTTP/WS
+Profile 是一组完整连接配置，不是单个 base URL。它至少确定后端（Backend）类型、HTTP/WS
 地址、认证、作用域和 capability matrix。应用可以通过按钮切换完整 Profile；切换后必须
 销毁旧 service/订阅并重建 Query 作用域。
 

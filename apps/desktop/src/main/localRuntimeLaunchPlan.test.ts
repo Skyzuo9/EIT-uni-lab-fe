@@ -55,7 +55,6 @@ describe('Local runtime launch plan', () => {
       'ros',
       '--app_bridges',
       'fastapi',
-      '--edge_scheduler',
       '--port',
       '18003',
       '--disable_browser',

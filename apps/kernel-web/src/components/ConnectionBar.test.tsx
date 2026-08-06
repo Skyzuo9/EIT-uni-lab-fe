@@ -52,6 +52,8 @@ describe('ConnectionBar', () => {
 
     expect(markup).toContain('Edge 已连接')
     expect(markup).toContain('data-connection-state="connected"')
+    expect(markup).toContain('aria-label="切换后端权威"')
+    expect(markup).toContain('aria-label="后端权威 API 地址"')
   })
 
   it('offers an explicit connection path while the managed Edge is idle', () => {

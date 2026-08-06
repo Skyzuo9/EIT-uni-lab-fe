@@ -164,17 +164,12 @@ export async function startF05MaterialSourceRealOs(): Promise<F05MaterialSourceR
   const port = await availablePort()
   const url = `http://127.0.0.1:${port}`
   const args = [
+    '--workspace', workspaceDirectory,
     '--graph', join(workspaceDirectory, 'graph.json'),
     '--config', join(workspaceDirectory, 'local_config.py'),
     '--working_dir', workingDirectory,
-    '--workflow_editable_package_root', workspaceDirectory,
-    '--devices', join(workspaceDirectory, 'm2b_native_e2e'),
     '--backend', 'ros',
     '--app_bridges', 'fastapi',
-    '--edge_scheduler',
-    '--edge_inventory_db', join(workingDirectory, 'inventory.db'),
-    '--edge_device_state_db', join(workingDirectory, 'device_state.db'),
-    '--edge_workflow_history_db', join(workingDirectory, 'workflow_history.db'),
     '--port', String(port),
     '--disable_browser',
     '--skip_env_check',
