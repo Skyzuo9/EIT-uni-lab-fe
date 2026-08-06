@@ -104,6 +104,59 @@ test('keeps the original log entry in the local runtime dialog', async ({
 })
 
 /**
+ * 验证首次打开日志抽屉时，无需切换页签即可识别 PLC-Sim 已有输出。
+ *
+ * @param page 已安装多来源本地运行日志替身的浏览器页面。
+ * @returns 完成日志抽屉首次快照与页签摘要验收。
+ * @throws PLC-Sim 页签仍显示“暂无”或读取失败时由 Playwright 断言报告。
+ * @safety 只读取固定日志来源，不启动、停止或修改本地运行进程。
+ */
+test('首次打开即展示未激活 PLC-Sim 页签的已有日志状态', async ({
+  page
+}) => {
+  await page.goto('/')
+  const connectionBar = page.getByRole('group', {
+    name: 'Edge 连接配置'
+  })
+  await connectionBar.getByRole('button', { name: '查看日志' }).click()
+
+  const logDrawer = page.getByRole('dialog', { name: '本地运行日志' })
+  const plcTab = logDrawer.getByRole('tab', { name: /PLC-Sim/ })
+  const edgeTab = logDrawer.getByRole('tab', { name: /Edge 运行时/ })
+  await expect(edgeTab).toHaveAttribute('aria-selected', 'true')
+  await expect(plcTab).toContainText('有输出')
+  await expect(plcTab).toHaveAttribute('data-available', 'true')
+})
+
+/**
+ * 验证未激活的 PLC-Sim 页签持续接收后台日志，并在切换后展示缓存内容。
+ *
+ * @param page 已安装延迟 PLC-Sim 输出场景的浏览器页面。
+ * @returns 完成后台更新、页签摘要和切换内容一致性验收。
+ * @throws 未激活来源停止刷新或切换后内容不一致时由 Playwright 断言报告。
+ * @safety 日志替身只改变只读快照，不改变本地运行进程状态。
+ */
+test('未激活 PLC-Sim 页签持续刷新并缓存新增日志', async ({ page }) => {
+  await page.goto('/?backgroundPlcLogs=1')
+  const connectionBar = page.getByRole('group', {
+    name: 'Edge 连接配置'
+  })
+  await connectionBar.getByRole('button', { name: '查看日志' }).click()
+
+  const logDrawer = page.getByRole('dialog', { name: '本地运行日志' })
+  const plcTab = logDrawer.getByRole('tab', { name: /PLC-Sim/ })
+  const edgeTab = logDrawer.getByRole('tab', { name: /Edge 运行时/ })
+  await expect(edgeTab).toHaveAttribute('aria-selected', 'true')
+  await expect(plcTab).toContainText('暂无')
+  await expect(plcTab).toContainText('有输出', { timeout: 5_000 })
+  await expect(edgeTab).toHaveAttribute('aria-selected', 'true')
+
+  await plcTab.click()
+  await expect(logDrawer).toContainText('PLC-Sim 后台新增输出')
+  await expect(plcTab).toHaveAttribute('aria-selected', 'true')
+})
+
+/**
  * 证明 PLC-Sim 折叠边界与常驻路径顺序在真实浏览器渲染中保持一致。
  *
  * @param page 已安装本地运行配置夹具的浏览器页面。
@@ -588,6 +641,10 @@ async function installRuntimeApi(page: Page): Promise<void> {
     const hasLogFilters = (): boolean => (
       new URLSearchParams(window.location.search).has('logFilters')
     )
+    /** 返回当前场景是否要求 PLC-Sim 在第二次后台读取时才产生输出。 */
+    const hasBackgroundPlcLogs = (): boolean => (
+      new URLSearchParams(window.location.search).has('backgroundPlcLogs')
+    )
     const hasLongRuntimePaths = (): boolean => (
       new URLSearchParams(window.location.search).has('longRuntimePaths')
     )
@@ -636,6 +693,8 @@ async function installRuntimeApi(page: Page): Promise<void> {
       }
       return scenario === 'idle' ? idleSnapshot : null
     }
+    // 该计数只描述 PLC-Sim 日志来源的读取次数，用于构造确定性的后台更新。
+    let simulatorLogReadCount = 0
     const runtimeApi = {
       selectPath: async () => null,
       getDefaultEnvironmentPath: async () => hasLongRuntimePaths()
@@ -686,11 +745,13 @@ async function installRuntimeApi(page: Page): Promise<void> {
           ]
         }
       },
+      /** 按固定来源返回当前日志增量，并为后台 PLC-Sim 场景推进只读快照。 */
       readLog: async (query: {
         kind: 'simulator' | 'bridge' | 'edge'
         cursor: { fileId: string; offset: number } | null
       }) => {
         logReadCount += 1
+        if (query.kind === 'simulator') simulatorLogReadCount += 1
         const initial = query.cursor === null
         const lineCount = initial
           ? (hasLargeLogs() || hasWrappedLargeLogs() ? 2_600 : 84)
@@ -748,6 +809,20 @@ async function installRuntimeApi(page: Page): Promise<void> {
             + '寄存器状态=' + 'A1B2C3D4'.repeat(20)
             + ' 完整日志末尾-UNILAB'
           )
+        }
+        if (query.kind === 'simulator' && hasBackgroundPlcLogs()) {
+          if (simulatorLogReadCount === 1) {
+            return {
+              kind: query.kind,
+              content: '',
+              available: false,
+              truncated: false,
+              readAt: Date.now(),
+              cursor: { fileId: 'e2e-simulator', offset: 0 },
+              reset: true
+            }
+          }
+          lines.splice(0, lines.length, 'PLC-Sim 后台新增输出')
         }
         if (query.kind === 'edge') lines.push('latest edge output')
         const offset = start + lineCount

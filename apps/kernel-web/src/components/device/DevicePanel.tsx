@@ -60,10 +60,11 @@ interface DeviceActionFeedbackState {
 }
 
 /**
- * 渲染设备目录、实时状态与单动作任务控制面板。
+ * 渲染设备目录、实时状态、动作参数与单动作任务控制面板。
  *
- * @returns 设备工作台 React 元素。
- * @throws 服务上下文缺失等装配错误由对应 Hook 原样传播。
+ * @returns 设备列表、空设备引导和当前设备动作工作区。
+ * @throws 服务上下文或数据服务异常由对应 Hook 与 React 错误边界传播。
+ * @safety 设备动作与人工解锁仍必须经过既有能力检查和确认流程。
  */
 export default function DevicePanel(): React.JSX.Element {
   const { backend, connection } = useWorkbench()
@@ -582,10 +583,20 @@ export default function DevicePanel(): React.JSX.Element {
         ) : null}
         {devices.length === 0 ? (
           <div className="device-empty device-empty--compact">
-            <strong>等待 Edge 上报设备</strong>
-            <p>
-              Edge 连接后会自动上报在线设备、动作节点及其参数 Schema。
-            </p>
+            <strong>
+              {connection === 'connected'
+                ? '当前未配置仪器设备'
+                : '等待 Edge 上报设备'}
+            </strong>
+            {connection === 'connected' ? (
+              <p>
+                Edge 核心服务已连接。安装或配置设备包和设备图后，重新启动 Edge 并刷新设备。
+              </p>
+            ) : (
+              <p>
+                Edge 连接后会自动上报在线设备、动作节点及其参数 Schema。
+              </p>
+            )}
           </div>
         ) : (
           <ul className="device-list">
@@ -647,7 +658,11 @@ export default function DevicePanel(): React.JSX.Element {
         ) : (
           <div className="device-empty device-empty--detail">
             <strong>暂无可调试设备</strong>
-            <p>请确认 Edge 已启动并连接到本地桥。</p>
+            <p>
+              {connection === 'connected'
+                ? '当前可继续使用 Edge 核心服务；配置仪器设备后请重新启动并刷新。'
+                : '请确认 Edge 已启动并连接到本地桥。'}
+            </p>
           </div>
         )}
         </main>
