@@ -27,6 +27,7 @@ describe('device action Runtime availability', () => {
       <DeviceActionAvailability
         state={{
           kind: 'unavailable',
+          reason: 'workflow_required',
           message: '该动作包含物料语义，请在工作流中运行'
         }}
         onRun={() => {}}
@@ -37,12 +38,30 @@ describe('device action Runtime availability', () => {
     expect(markup).toContain('disabled')
   })
 
+  it('does not mislabel an Action catalog failure as workflow-only', () => {
+    const markup = renderToStaticMarkup(
+      <DeviceActionAvailability
+        state={{
+          kind: 'unavailable',
+          reason: 'catalog_error',
+          message: 'Action 合同目录不可用：响应无效'
+        }}
+        onRun={() => {}}
+      />
+    )
+
+    expect(markup).toContain('动作合同不可用')
+    expect(markup).not.toContain('请在工作流中运行')
+    expect(markup).toContain('Action 合同目录不可用：响应无效')
+  })
+
   /** 验证零动作设备沿用正式运行入口，并以禁用状态解释不可执行原因。 */
   it('keeps the run entry disabled when a device reports zero actions', () => {
     const markup = renderToStaticMarkup(
       <DeviceActionAvailability
         state={{
           kind: 'unavailable',
+          reason: 'no_actions',
           message: '该设备没有可运行的动作'
         }}
         disabledRunLabel="运行此动作"

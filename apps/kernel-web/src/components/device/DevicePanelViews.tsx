@@ -307,6 +307,7 @@ export function DeviceWorkspace({
             <DeviceActionAvailability
               state={{
                 kind: 'unavailable',
+                reason: 'no_actions',
                 message: '该设备没有可运行的动作'
               }}
               disabledRunLabel="运行此动作"

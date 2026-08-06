@@ -31,30 +31,42 @@ export function deviceActionReadiness({
   if (!canRunActionTask) {
     return {
       kind: 'unavailable',
+      reason: 'workflow_required',
       message: '当前服务尚未启用正式单 Action Task，请在工作流中运行'
     }
   }
   if (connection !== 'connected' || !device.online) {
     return {
       kind: 'unavailable',
+      reason: 'device_offline',
       message: '设备或 Edge 当前离线，恢复连接后才能运行'
     }
   }
   if (catalogLoading) {
-    return { kind: 'unavailable', message: '正在读取 A1 Action 合同目录…' }
+    return {
+      kind: 'unavailable',
+      reason: 'catalog_loading',
+      message: '正在读取 A1 Action 合同目录…'
+    }
   }
   if (catalogError) {
-    return { kind: 'unavailable', message: `Action 合同目录不可用：${catalogError}` }
+    return {
+      kind: 'unavailable',
+      reason: 'catalog_error',
+      message: `Action 合同目录不可用：${catalogError}`
+    }
   }
   if (!template) {
     return {
       kind: 'unavailable',
+      reason: 'template_unmatched',
       message: 'live Action 无法唯一匹配 A1 template，请在工作流中运行'
     }
   }
   if (!supportsD1AS1(template)) {
     return {
       kind: 'unavailable',
+      reason: 'workflow_required',
       message: '该动作包含物料或 Site 语义，请在工作流中运行'
     }
   }
@@ -111,7 +123,12 @@ export function isTerminalDeviceActionTask(status: string): boolean {
 
 export type DeviceActionRunState =
   | {
-      kind: 'ready' | 'unavailable' | 'submitting'
+      kind: 'ready' | 'submitting'
+      message: string
+    }
+  | {
+      kind: 'unavailable'
+      reason: DeviceActionUnavailableReason
       message: string
     }
   | {
@@ -127,6 +144,15 @@ export type DeviceActionRunState =
       feedback?: WorkflowNodeJobFeedback[]
       error?: unknown[]
     }
+
+/** 单动作入口关闭时的稳定原因，用于避免把基础设施错误误报成工作流约束。 */
+export type DeviceActionUnavailableReason =
+  | 'workflow_required'
+  | 'device_offline'
+  | 'catalog_loading'
+  | 'catalog_error'
+  | 'template_unmatched'
+  | 'no_actions'
 
 /**
  * 吸收零动作设备禁用按钮理论上不可达的点击。
@@ -152,7 +178,7 @@ export function DeviceActionAvailability({
   state,
   onRun,
   onCancel,
-  disabledRunLabel = '请在工作流中运行'
+  disabledRunLabel
 }: {
   state: DeviceActionRunState
   onRun: () => void
@@ -184,7 +210,7 @@ export function DeviceActionAvailability({
           onClick={onRun}
         >
           {state.kind === 'unavailable'
-            ? disabledRunLabel
+            ? disabledRunLabel ?? unavailableRunLabel(state.reason)
             : state.kind === 'submitting'
               ? '正在创建正式任务…'
               : state.kind === 'error' && state.retryable
@@ -244,6 +270,24 @@ export function DeviceActionAvailability({
       ) : null}
     </>
   )
+}
+
+/** 把关闭原因投影为按钮短文案，详细诊断仍由相邻状态文本承载。 */
+function unavailableRunLabel(reason: DeviceActionUnavailableReason): string {
+  switch (reason) {
+    case 'workflow_required':
+      return '请在工作流中运行'
+    case 'device_offline':
+      return '设备离线'
+    case 'catalog_loading':
+      return '正在读取动作合同…'
+    case 'catalog_error':
+      return '动作合同不可用'
+    case 'template_unmatched':
+      return '动作合同不匹配'
+    case 'no_actions':
+      return '运行此动作'
+  }
 }
 
 function deviceActionExecutionLog(state: DeviceActionRunState): string {
