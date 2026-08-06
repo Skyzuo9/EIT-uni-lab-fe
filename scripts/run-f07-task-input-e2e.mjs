@@ -1,9 +1,10 @@
-import { spawn } from 'node:child_process'
 import { once } from 'node:events'
 import { createWriteStream, mkdirSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { resolve } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
+
+import { spawnPnpm, stopProcessTree } from './platform-process.mjs'
 
 /** 当前包装器拥有并必须在信号退出时回收的进程组。 */
 const ACTIVE_PROCESS_GROUPS = new Set()
@@ -21,16 +22,15 @@ let signalCleanupStarted = false
  * @throws `spawn` 同步拒绝参数时抛出异常；异步错误由等待函数传播。
  */
 function startLoggedCommand(
-  command,
   args,
   environment,
   log,
   detached = true
 ) {
-  const child = spawn(command, args, {
+  const child = spawnPnpm(args, {
     cwd: process.cwd(),
     env: environment,
-    detached,
+    detached: detached && process.platform !== 'win32',
     stdio: ['ignore', 'pipe', 'pipe']
   })
   child.gateOutput = ''
@@ -97,8 +97,8 @@ async function waitForCommand(child) {
  * @returns 子进程真实退出码。
  * @throws 子进程无法启动时拒绝 Promise。
  */
-async function runLoggedCommand(command, args, environment, log) {
-  return waitForCommand(startLoggedCommand(command, args, environment, log))
+async function runLoggedCommand(args, environment, log) {
+  return waitForCommand(startLoggedCommand(args, environment, log))
 }
 
 /**
@@ -157,19 +157,7 @@ async function waitForPreview(url, preview) {
  * @throws 非“进程不存在”的信号错误会传播。
  */
 async function stopProcessGroup(child) {
-  if (!child?.pid || child.exitCode !== null || child.signalCode !== null) return
-  try {
-    process.kill(-child.pid, 'SIGTERM')
-  } catch (error) {
-    if (!(error instanceof Error && 'code' in error && error.code === 'ESRCH')) {
-      throw error
-    }
-  }
-  await Promise.race([once(child, 'exit'), delay(10_000)])
-  if (child.exitCode === null && child.signalCode === null) {
-    process.kill(-child.pid, 'SIGKILL')
-    await once(child, 'exit')
-  }
+  await stopProcessTree(child)
 }
 
 /**
@@ -247,7 +235,6 @@ async function main() {
   let preview
   try {
     const buildResult = await runLoggedCommand(
-      'pnpm',
       ['build:web'],
       process.env,
       log
@@ -256,7 +243,6 @@ async function main() {
     const port = await availablePort()
     const url = `http://127.0.0.1:${port}`
     preview = startLoggedCommand(
-      'pnpm',
       [
         '--filter', '@unilab/kernel-web', 'preview',
         '--host', '127.0.0.1', '--port', String(port), '--strictPort'
@@ -267,7 +253,6 @@ async function main() {
     )
     await waitForPreview(url, preview)
     return await runLoggedCommand(
-      'pnpm',
       [
         'exec', 'playwright', 'test',
         testSpec,
