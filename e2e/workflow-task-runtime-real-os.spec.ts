@@ -26,6 +26,7 @@ test.afterAll(async () => {
   await os?.stop()
 })
 
+/** 验证原工作流（Workflow）界面经真实 OS HTTP/SSE 驱动任务、作业和命令。 */
 test('existing Workflow UI drives Task/Jobs/commands through real OS HTTP and SSE', async ({
   page
 }) => {
@@ -99,6 +100,10 @@ test('existing Workflow UI drives Task/Jobs/commands through real OS HTTP and SS
     path: join(artifactDirectory, '02-start-node-dag-and-code.png'),
     fullPage: true
   })
+  await panel.getByRole('button', {
+    name: '画布模式',
+    exact: true
+  }).click()
 
   await panel.getByRole('button', {
     name: `设置断点 ${ANALYZE_NODE_UUID}`,
@@ -114,6 +119,10 @@ test('existing Workflow UI drives Task/Jobs/commands through real OS HTTP and SS
     path: join(artifactDirectory, '03-breakpoint-dag-and-code.png'),
     fullPage: true
   })
+  await panel.getByRole('button', {
+    name: '画布模式',
+    exact: true
+  }).click()
 
   await panel.getByRole('button', {
     name: `取消断点 ${ANALYZE_NODE_UUID}`,
@@ -126,12 +135,20 @@ test('existing Workflow UI drives Task/Jobs/commands through real OS HTTP and SS
   await expect(panel.locator('.wf-flow-node--start')).toHaveCount(0)
   await expect(panel.locator('.wf-flow-node--before-start')).toHaveCount(0)
   await expect(panel.locator('.wf-flow-node--breakpoint')).toHaveCount(0)
+  await panel.getByRole('button', {
+    name: '代码模式',
+    exact: true
+  }).click()
   await expect(panel.locator('.cm-workflow-marker--start')).toHaveCount(0)
   await expect(panel.locator('.cm-workflow-marker--breakpoint')).toHaveCount(0)
   await page.screenshot({
     path: join(artifactDirectory, '04-debug-configuration-cleared.png'),
     fullPage: true
   })
+  await panel.getByRole('button', {
+    name: '画布模式',
+    exact: true
+  }).click()
 
   await panel.getByRole('button', {
     name: `设为起始点 ${ANALYZE_NODE_UUID}`,
@@ -157,6 +174,10 @@ test('existing Workflow UI drives Task/Jobs/commands through real OS HTTP and SS
   }).click()
   const created = await createResponse
   expect(created.status()).toBe(201)
+  const createdEnvelope = await created.json() as {
+    data: { uuid: string }
+  }
+  const taskUuid = createdEnvelope.data.uuid
   const createTaskBody = created.request().postDataJSON() as Record<
     string,
     unknown
@@ -169,7 +190,6 @@ test('existing Workflow UI drives Task/Jobs/commands through real OS HTTP and SS
     .locator('.is-meta')
     .filter({ hasText: /^任务/ })
   await expect(taskIdentity).toBeVisible()
-  const taskIdentityText = await taskIdentity.textContent()
   await page.screenshot({
     path: join(artifactDirectory, '05-task-created-with-jobs.png'),
     fullPage: true
@@ -223,8 +243,7 @@ test('existing Workflow UI drives Task/Jobs/commands through real OS HTTP and SS
   await expect(restoredPanel.locator('[data-node-state="canceled"]'))
     .toHaveCount(2)
   await expect(
-    restoredPanel.locator('.workflow-runtime__debug-summary')
-      .getByText(taskIdentityText || '')
+    restoredPanel.getByTitle(taskUuid, { exact: true })
   ).toBeVisible()
   await page.screenshot({
     path: join(artifactDirectory, '10-reload-restores-task.png'),

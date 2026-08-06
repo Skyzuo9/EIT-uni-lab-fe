@@ -28,10 +28,7 @@
 }
 
 @media (max-width: 720px) {
-  .workflow {
-    overflow-y: auto;
-  }
-
+  /* 由面板工作区统一滚动，避免嵌套滚动把底部属性面板移到工具栏下方。 */
   .workflow :global(.workflow__toolbar) {
     min-height: 0;
     gap: var(--unilab-space-2);

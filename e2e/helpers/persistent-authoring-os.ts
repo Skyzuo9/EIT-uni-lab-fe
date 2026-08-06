@@ -47,6 +47,9 @@ export interface PersistentAuthoringOs {
     method: string
     path: string
     status?: number
+    code?: string
+    message?: string
+    retryable?: boolean
   }) => void
   startRuntimeJob: (taskUuid: string, jobUuid: string) => Promise<void>
   commitJobFeedback: (
@@ -160,9 +163,9 @@ export async function startPersistentAuthoringOs(
     throw error
   }
 
-  const faultProxy = options.faultProxy
-    ? await startFaultProxy(upstreamUrl)
-    : null
+  // 旧确定性 OS 夹具仍发布页码形态的节点模板目录。所有浏览器用例都经此
+  // 合同代理消费当前 UUID 游标形态，避免迫使正式前端兼容已移除的旧协议。
+  const contractProxy = await startFaultProxy(upstreamUrl)
   const mutateRuntime = (payload: Record<string, unknown>): Promise<void> =>
     runRuntimeMutation({
       python,
@@ -181,7 +184,7 @@ export async function startPersistentAuthoringOs(
   })
 
   return {
-    url: faultProxy?.url ?? upstreamUrl,
+    url: contractProxy.url,
     upstreamUrl,
     workflowUuid: AUTHORING_WORKFLOW_UUID,
     secondWorkflowUuid: SECOND_AUTHORING_WORKFLOW_UUID,
@@ -196,10 +199,10 @@ export async function startPersistentAuthoringOs(
     secondSourcePath,
     logs: () => output,
     failNextRequest: (request) => {
-      if (!faultProxy) {
+      if (!options.faultProxy) {
         throw new Error('PersistentAuthoringOs fault proxy is not enabled')
       }
-      faultProxy.failNext(request)
+      contractProxy.failNext(request)
     },
     startRuntimeJob: async (taskUuid, jobUuid) => {
       await mutateRuntime({
@@ -236,7 +239,7 @@ export async function startPersistentAuthoringOs(
       await launch()
     },
     stop: async () => {
-      await faultProxy?.stop()
+      await contractProxy.stop()
       if (child) await stopChild(child)
       child = null
       removeFixtureDirectory(directory)
@@ -869,16 +872,37 @@ interface FaultProxy {
     method: string
     path: string
     status?: number
+    code?: string
+    message?: string
+    retryable?: boolean
   }) => void
   stop: () => Promise<void>
 }
 
 async function startFaultProxy(upstreamUrl: string): Promise<FaultProxy> {
-  const rules: Array<{ method: string; path: string; status: number }> = []
+  const rules: Array<{
+    method: string
+    path: string
+    status: number
+    code?: string
+    message?: string
+    retryable?: boolean
+  }> = []
   const port = await availablePort()
   const server: HttpServer = createHttpServer((incoming, outgoing) => {
     const incomingUrl = new URL(incoming.url || '/', upstreamUrl)
     const method = incoming.method || 'GET'
+    const fixtureCatalog = currentFixtureCatalogResponse(method, incomingUrl)
+    if (fixtureCatalog) {
+      incoming.resume()
+      outgoing.writeHead(200, {
+        'Access-Control-Allow-Origin': incoming.headers.origin || '*',
+        'Content-Type': 'application/json; charset=utf-8',
+        'Content-Length': Buffer.byteLength(fixtureCatalog)
+      })
+      outgoing.end(fixtureCatalog)
+      return
+    }
     const faultIndex = rules.findIndex((rule) =>
       rule.method === method && rule.path === incomingUrl.pathname
     )
@@ -887,9 +911,10 @@ async function startFaultProxy(upstreamUrl: string): Promise<FaultProxy> {
       incoming.resume()
       const body = JSON.stringify({
         error: {
-          code: 'ui1c_fault_injected',
-          message: `UI1C fault boundary rejected ${method} ${incomingUrl.pathname}`,
-          retryable: true
+          code: fault?.code ?? 'ui1c_fault_injected',
+          message: fault?.message ??
+            `UI1C fault boundary rejected ${method} ${incomingUrl.pathname}`,
+          retryable: fault?.retryable ?? true
         }
       })
       outgoing.writeHead(fault?.status ?? 503, {
@@ -908,6 +933,26 @@ async function startFaultProxy(upstreamUrl: string): Promise<FaultProxy> {
       }
       response.once('aborted', () => abortOutgoing())
       response.once('error', abortOutgoing)
+      if (
+        method === 'GET' &&
+        incomingUrl.pathname === '/api/v1/workflow-node-templates'
+      ) {
+        const chunks: Buffer[] = []
+        response.on('data', (chunk) => chunks.push(Buffer.from(chunk)))
+        response.on('end', () => {
+          const body = normalizeWorkflowNodeTemplateCatalog(
+            Buffer.concat(chunks)
+          )
+          const responseHeaders = {
+            ...response.headers,
+            'content-length': String(body.length)
+          }
+          delete responseHeaders['transfer-encoding']
+          outgoing.writeHead(response.statusCode || 502, responseHeaders)
+          outgoing.end(body)
+        })
+        return
+      }
       outgoing.writeHead(response.statusCode || 502, response.headers)
       response.pipe(outgoing)
     })
@@ -942,7 +987,10 @@ async function startFaultProxy(upstreamUrl: string): Promise<FaultProxy> {
       rules.push({
         method: request.method,
         path: request.path,
-        status: request.status ?? 503
+        status: request.status ?? 503,
+        code: request.code,
+        message: request.message,
+        retryable: request.retryable
       })
     },
     stop: () => new Promise<void>((resolveStop, rejectStop) => {
@@ -952,6 +1000,61 @@ async function startFaultProxy(upstreamUrl: string): Promise<FaultProxy> {
       })
     })
   }
+}
+
+/**
+ * 把确定性旧 OS 夹具的页码目录投影为当前 UUID 游标合同。
+ *
+ * @param body 旧夹具返回的 UTF-8 JSON 响应体。
+ * @returns 保留权威代际与项目摘要、移除页码元数据后的响应体。
+ */
+function normalizeWorkflowNodeTemplateCatalog(body: Buffer): Buffer {
+  const envelope = JSON.parse(body.toString('utf8')) as {
+    data?: Record<string, unknown>
+  }
+  if (!envelope.data || !Array.isArray(envelope.data.items)) return body
+  const {
+    total: _total,
+    page: _page,
+    page_size: _pageSize,
+    ...currentData
+  } = envelope.data
+  return Buffer.from(JSON.stringify({
+    ...envelope,
+    data: {
+      ...currentData,
+      has_more: false,
+      next_cursor_uuid: null
+    }
+  }))
+}
+
+/**
+ * 为旧确定性 OS 夹具补齐当前只读增强目录。
+ *
+ * @param method HTTP 方法。
+ * @param url 已解析的上游 URL。
+ * @returns 当前合同响应；非增强目录请求返回 null 并继续代理。
+ */
+function currentFixtureCatalogResponse(
+  method: string,
+  url: URL
+): string | null {
+  if (method !== 'GET') return null
+  if (url.pathname === '/api/v1/material-shapes') {
+    return JSON.stringify({ code: 0, data: { items: [] } })
+  }
+  if (url.pathname !== '/api/v1/resource-templates') return null
+  return JSON.stringify({
+    code: 0,
+    data: url.searchParams.has('limit')
+      ? { items: [], has_more: false, next_cursor_uuid: null }
+      : {
+          revision: `sha256:${'0'.repeat(64)}`,
+          stale: false,
+          items: []
+        }
+  })
 }
 
 async function availablePort(): Promise<number> {

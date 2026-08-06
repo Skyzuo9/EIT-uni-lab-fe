@@ -1,7 +1,7 @@
 from typing import TypedDict
 
 from m2b_native_e2e.mount import M2BMount
-from unilabos.workflow.authoring import device, workflow
+from unilabos.workflow.authoring import device, workflow_definition
 
 
 class M2BFixedExecutorResult(TypedDict):
@@ -13,7 +13,7 @@ class M2BFixedExecutorResult(TypedDict):
 mount: M2BMount = device("97539b08-24de-5003-8b2e-9eb6e983c68a")
 
 
-@workflow(
+@workflow_definition(
     workflow_uuid="65000000-0000-4000-8000-0000000002c0",
     displayname="M2B 固定执行器投影",
     description="验证实际设备物料与动作模板资源身份保持一致。",

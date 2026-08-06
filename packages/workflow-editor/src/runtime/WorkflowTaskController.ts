@@ -228,6 +228,7 @@ export class WorkflowTaskController {
         this.runtime.listWorkflowTaskJobs(taskUuid)
       ])
       if (!this.active || task.workflow_uuid !== this.workflowUuid) return
+      if (isOlderDifferentTask(this.snapshot.task, task)) return
       const sortedJobs = [...jobs].sort(
         (left, right) => left.topological_index - right.topological_index
       )
@@ -330,6 +331,19 @@ export class WorkflowTaskController {
 
 function errorMessage(value: unknown): string {
   return value instanceof Error ? value.message : String(value)
+}
+
+/**
+ * 阻止延迟的全局失效事件把面板从较新的工作流任务切回旧任务。
+ * 同一任务的任何状态更新仍然允许安装；不同任务只有创建时间严格更新时
+ * 才能接管当前投影。
+ */
+function isOlderDifferentTask(
+  current: WorkflowTask | null,
+  candidate: WorkflowTask
+): boolean {
+  if (!current || current.uuid === candidate.uuid) return false
+  return Date.parse(candidate.create_time) <= Date.parse(current.create_time)
 }
 
 function uniqueFeedback(

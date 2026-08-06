@@ -83,6 +83,7 @@ test(
   requiresPackageCandidateMaterialization
 )
 
+/** 验证 Python 导入后形成未保存草稿，并经 OS 候选版本门禁完成应用。 */
 test('imports Python into the existing persistent Authoring UI and applies the OS Candidate', async ({
   page
 }) => {
@@ -231,6 +232,8 @@ test('imports same-Workflow Authoring Graph JSON through the canvas diff gate', 
     name: '画布模式',
     exact: true
   })).toHaveAttribute('aria-pressed', 'true')
+  await expect(panel.getByRole('region', { name: '工作流代码视图' }))
+    .toHaveCount(0)
   await expect(panel.locator('.wf-node__id').filter({
     hasText: 'imported_json_node'
   })).toBeVisible()

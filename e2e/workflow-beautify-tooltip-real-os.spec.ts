@@ -50,7 +50,7 @@ test('禁用的美化布局提示不重复且完整展示', async ({ page }, tes
   )
   const panel = page.getByRole('tabpanel', { name: '工作流' })
   const beautifyButton = panel.getByRole('button', {
-    name: '美化工作流布局'
+    name: '应用减少交叉布局'
   })
   const tooltip = page.locator('.workflowDisabledButtonTooltip')
 
@@ -59,7 +59,7 @@ test('禁用的美化布局提示不重复且完整展示', async ({ page }, tes
   await beautifyButton.hover()
   await expect(tooltip).toHaveCount(1)
   await expect(tooltip).toBeVisible()
-  await expect(tooltip).toHaveText('请先完成当前 Python 编译')
+  await expect(tooltip).toHaveText('当前模式只允许查看工作流画布')
 
   const bounds = await tooltip.evaluate((element) => {
     const rect = element.getBoundingClientRect()

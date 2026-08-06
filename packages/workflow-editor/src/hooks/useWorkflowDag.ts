@@ -278,7 +278,11 @@ function buildFlowElements(
             : layout.direction === 'horizontal'
               ? 'LR'
               : 'TB',
-          borderRadius: 8
+          borderRadius: 8,
+          sourceNodeUuid: link.source,
+          targetNodeUuid: link.target,
+          sourceHandleUuid: link.sourceHandleUuid || '',
+          targetHandleUuid: link.targetHandleUuid || ''
         },
         animated: communication || Boolean(materialAccent),
         markerEnd: materialAccent

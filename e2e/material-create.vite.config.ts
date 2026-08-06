@@ -8,6 +8,11 @@ export default defineConfig({
   resolve: {
     dedupe: ['react', 'react-dom'],
     alias: {
+      react: resolve(process.cwd(), 'packages/material/node_modules/react'),
+      'react-dom': resolve(
+        process.cwd(),
+        'packages/material/node_modules/react-dom'
+      ),
       '@unilab/material': resolve(
         process.cwd(),
         'packages/material/src/index.ts'

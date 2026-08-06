@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 
 /** 已审定且默认可复现的 F05 OS 产品基线 Git 提交。 */
 export const F05_DEFAULT_OS_REVISION =
-  "f55c35391584816155aac1c132e3d5028adf79e6";
+  "cd17e040ea7bfe4070a556f5a9576d7ce42433f3";
 
 const EXACT_GIT_REVISION_PATTERN = /^[0-9a-f]{40}$/;
 

@@ -32,7 +32,7 @@ export default defineConfig({
     ? undefined
     : {
         command: materialCreateFixture
-          ? 'pnpm exec vite build --config e2e/material-create.vite.config.ts && pnpm exec vite preview --config e2e/material-create.vite.config.ts'
+          ? 'apps/kernel-web/node_modules/.bin/vite build --config e2e/material-create.vite.config.ts && apps/kernel-web/node_modules/.bin/vite preview --config e2e/material-create.vite.config.ts'
           : materialObliqueFixture
             ? 'apps/kernel-web/node_modules/.bin/vite build --config e2e/material-oblique.vite.config.ts && apps/kernel-web/node_modules/.bin/vite preview --config e2e/material-oblique.vite.config.ts'
           : 'pnpm build:web && pnpm --filter @unilab/kernel-web preview --host 127.0.0.1 --port 4173',

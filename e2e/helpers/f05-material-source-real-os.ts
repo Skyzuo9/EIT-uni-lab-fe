@@ -113,7 +113,7 @@ class ProcessOutputCollector {
 export async function startF05MaterialSourceRealOs(): Promise<F05MaterialSourceRealOs> {
   const osRepository = resolve(
     process.env.UNILAB_AUTHORING_OS_ROOT ||
-      '/home/changjunhan/Uni-Lab-Core/.worktrees/unilabos-f05-4-c1-convergence'
+      '/home/changjunhan/Uni-Lab-Core/.worktrees/unilabos-f05-4-c14-material-source-execution-responsibility'
   )
   const cli = resolve(
     process.env.UNILAB_OS_CLI ||
@@ -123,7 +123,11 @@ export async function startF05MaterialSourceRealOs(): Promise<F05MaterialSourceR
     process.cwd(),
     'e2e/fixtures/m2b-native-workspace'
   )
-  assertRequiredPaths([osRepository, cli, fixtureSource])
+  const f05WorkflowSource = resolve(
+    process.cwd(),
+    'e2e/fixtures/f05-material-source-workflow.py.fixture'
+  )
+  assertRequiredPaths([osRepository, cli, fixtureSource, f05WorkflowSource])
   // ``expectedOsRevision`` 是本轮唯一获准启动的 OS 候选提交身份。
   const expectedOsRevision = resolveExpectedF05OsRevision()
   const osRevision = readGitRevision(osRepository)
@@ -140,6 +144,16 @@ export async function startF05MaterialSourceRealOs(): Promise<F05MaterialSourceR
     recursive: true,
     filter: shouldCopyFixtureEntry
   })
+  writeFileSync(
+    join(
+      workspaceDirectory,
+      'm2b_native_e2e',
+      'workflows',
+      'material_source.py'
+    ),
+    readFileSync(f05WorkflowSource, 'utf8'),
+    'utf8'
+  )
   const python = resolve(cli, '..', 'python')
   const reservationControlScript = join(
     workspaceDirectory,

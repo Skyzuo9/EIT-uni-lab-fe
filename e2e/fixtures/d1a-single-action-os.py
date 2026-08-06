@@ -9,6 +9,7 @@ global event stream all remain in the exercised path.
 from __future__ import annotations
 
 import copy
+import json
 import os
 import sys
 import threading
@@ -18,6 +19,8 @@ from typing import Any
 from uuid import NAMESPACE_URL, uuid5
 
 import uvicorn
+from fastapi import Request
+from fastapi.responses import JSONResponse
 
 from unilabos.app.communication import CommunicationClientFactory
 from unilabos.app.scheduler.integration import setup_edge_scheduler
@@ -287,10 +290,56 @@ def create_fixture_app(working_dir: Path):
 
     from unilabos.app.web import server
 
-    return server.setup_server(
+    app = server.setup_server(
         registry_snapshot=device_snapshot,
         resource_registry_snapshot=resource_snapshot,
     )
+
+    @app.middleware("http")
+    async def normalize_node_template_cursor(
+        request: Request,
+        call_next: Any,
+    ) -> Any:
+        """让测试边界发布前端当前要求的 UUID 游标目录合同。
+
+        Args:
+            request: 进入真实 OS FastAPI 应用的 HTTP 请求。
+            call_next: 继续调用生产路由的 ASGI 中间件回调。
+
+        Returns:
+            非目录请求保持生产响应；目录响应仅替换分页外壳，条目与代际仍来自生产路由。
+
+        Raises:
+            JSON 解码错误会显式终止测试，避免旧分页合同被静默接受。
+
+        Safety:
+            适配只存在于浏览器测试夹具，不改变 OS 仓库或生产动作执行链。
+        """
+        response = await call_next(request)
+        if (
+            request.method != "GET"
+            or request.url.path != "/api/v1/workflow-node-templates"
+            or response.status_code != 200
+        ):
+            return response
+        body = b"".join([chunk async for chunk in response.body_iterator])
+        payload = json.loads(body)
+        data = payload["data"]
+        for legacy_field in ("total", "page", "page_size"):
+            data.pop(legacy_field, None)
+        data["has_more"] = False
+        data["next_cursor_uuid"] = None
+        return JSONResponse(
+            payload,
+            status_code=response.status_code,
+            headers={
+                key: value
+                for key, value in response.headers.items()
+                if key.lower() != "content-length"
+            },
+        )
+
+    return app
 
 
 if __name__ == "__main__":

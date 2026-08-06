@@ -33,7 +33,8 @@
     :global(.workflow__toolbar-actions) {
       width: 100%;
       margin-left: 0;
-      overflow-x: auto;
+      flex-wrap: wrap;
+      overflow-x: visible;
       padding-bottom: 2px;
     }
 
@@ -42,7 +43,11 @@
       grid-template-columns: 1fr;
     }
 
-    :global(.persistent-authoring__canvas-body) {
+    :global(.persistent-authoring__canvas-body),
+    :global(.persistent-authoring__canvas-body.has-inspector),
+    :global(.persistent-authoring__canvas-body.is-palette-closed),
+    :global(.persistent-authoring__canvas-body.is-code-mode),
+    :global(.persistent-authoring__canvas-body.is-palette-closed.has-inspector) {
       --persistent-inspector-height: min(42vh, 440px);
       grid-template-columns: 1fr;
       grid-template-areas: 'graph';
@@ -82,7 +87,7 @@
       right: 0;
       bottom: 0;
       left: 0;
-      grid-area: graph;
+      grid-area: auto;
       width: auto;
       height: var(--persistent-inspector-height);
       max-height: var(--persistent-inspector-height);

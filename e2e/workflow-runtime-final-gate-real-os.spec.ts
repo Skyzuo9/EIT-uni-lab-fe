@@ -139,12 +139,16 @@ test('production UI passes the retired-Run, idempotency and terminal-race gate',
   // An OS restart can rematerialize the persisted source as a fresh Candidate.
   // Re-apply that server-owned Candidate before creating the next Task; the
   // production UI must remain fail-closed while Authoring is not Applied.
-  const startButton = panel.getByRole('button', {
+  let startButton = panel.getByRole('button', {
     name: '开始运行',
     exact: true
   })
-  if (await startButton.isDisabled()) {
+  if (!await startButton.isVisible() || await startButton.isDisabled()) {
     await prepareAppliedWorkflow(panel, page)
+    startButton = panel.getByRole('button', {
+      name: '开始运行',
+      exact: true
+    })
   }
 
   await panel.getByRole('button', {

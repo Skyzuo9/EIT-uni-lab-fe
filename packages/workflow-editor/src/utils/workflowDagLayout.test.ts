@@ -38,6 +38,52 @@ describe('layoutVisibleWorkflowDag', () => {
       result.nodes.map((node) => `${node.x}:${node.y}`)
     ).size).toBe(nodes.length)
   })
+
+  /** 验证异步 ELK 布局不会覆盖物料来源与首个消费端口的同列约束。 */
+  it('aligns material sources with their first consumer ports', async () => {
+    const nodes: WorkflowNode[] = [
+      {
+        ...workflowNode('beaker-source', 'material_source'),
+        handles: [materialHandle('beaker-output', 'source')]
+      },
+      {
+        ...workflowNode('powder-source', 'material_source'),
+        handles: [materialHandle('powder-output', 'source')]
+      },
+      {
+        ...workflowNode('prepare-beaker', 'action'),
+        handles: [materialHandle('beaker-input', 'target')]
+      },
+      {
+        ...workflowNode('prepare-powder', 'action'),
+        handles: [materialHandle('powder-input', 'target')]
+      }
+    ]
+    const links: WorkflowLink[] = [
+      materialLink(
+        'beaker-source',
+        'beaker-output',
+        'prepare-beaker',
+        'beaker-input'
+      ),
+      materialLink(
+        'powder-source',
+        'powder-output',
+        'prepare-powder',
+        'powder-input'
+      )
+    ]
+
+    const result = await layoutVisibleWorkflowDag(nodes, links)
+    const byId = new Map(result.nodes.map((node) => [node.id, node]))
+
+    expect(byId.get('beaker-source')?.x).toBe(
+      (byId.get('prepare-beaker')?.x ?? 0) + 81
+    )
+    expect(byId.get('powder-source')?.x).toBe(
+      (byId.get('prepare-powder')?.x ?? 0) + 81
+    )
+  })
 })
 
 /**
@@ -54,5 +100,35 @@ function workflowNode(id: string, type: string): WorkflowNode {
     type,
     className: '',
     labNodeType: ''
+  }
+}
+
+/** 创建可参与物料流（MaterialFlow）布局的物料占位符（ResourceSlot）句柄。 */
+function materialHandle(
+  uuid: string,
+  ioType: 'source' | 'target'
+): import('./parseWorkflow').WorkflowHandlePort {
+  return {
+    uuid,
+    handleKey: 'resource',
+    displayName: '物料',
+    ioType,
+    valueType: 'ResourceSlot'
+  }
+}
+
+/** 创建带稳定句柄 UUID 的物料流（MaterialFlow）边。 */
+function materialLink(
+  source: string,
+  sourceHandleUuid: string,
+  target: string,
+  targetHandleUuid: string
+): WorkflowLink {
+  return {
+    source,
+    target,
+    type: 'material',
+    sourceHandleUuid,
+    targetHandleUuid
   }
 }

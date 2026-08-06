@@ -17,10 +17,10 @@ test("空值与脏修订值必须关闭失败", rejectsDirtyRevision);
  */
 function usesReviewedDefault(): void {
   expect(resolveExpectedF05OsRevision({})).toBe(
-    "f55c35391584816155aac1c132e3d5028adf79e6",
+    "cd17e040ea7bfe4070a556f5a9576d7ce42433f3",
   );
   expect(F05_DEFAULT_OS_REVISION).toBe(
-    "f55c35391584816155aac1c132e3d5028adf79e6",
+    "cd17e040ea7bfe4070a556f5a9576d7ce42433f3",
   );
 }
 

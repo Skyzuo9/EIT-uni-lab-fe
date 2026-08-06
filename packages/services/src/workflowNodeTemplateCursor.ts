@@ -5,7 +5,7 @@ const PAGE_LIMIT = 100
 const PAGE_BUDGET = 100
 const ITEM_BUDGET = PAGE_LIMIT * PAGE_BUDGET
 const DETAIL_REQUEST_BATCH_SIZE = 8
-const LIST_FIELDS = new Set([
+const CURSOR_LIST_FIELDS = new Set([
   'authority',
   'catalog_fingerprint',
   'items',
@@ -13,6 +13,33 @@ const LIST_FIELDS = new Set([
   'next_cursor_uuid',
   'total'
 ])
+const NUMBERED_LIST_FIELDS = new Set([
+  'authority',
+  'catalog_fingerprint',
+  'items',
+  'page',
+  'page_size',
+  'total'
+])
+
+type CatalogPagination =
+  | {
+    mode: 'cursor'
+    hasMore: boolean
+    nextCursorUuid: unknown
+  }
+  | {
+    mode: 'numbered'
+    page: number
+    pageSize: number
+    total: number
+  }
+
+interface NumberedPaginationState {
+  page: number
+  pageSize: number | null
+  total: number | null
+}
 
 /** OS 微后端可选发布的节点模板目录代际。 */
 export interface WorkflowNodeTemplateCatalogGeneration {
@@ -40,10 +67,10 @@ export interface WorkflowNodeTemplateDetailEntry {
 }
 
 /**
- * 通过后端（Backend）UUID 游标合同读取一个完整节点模板目录。
+ * 通过后端（Backend）UUID 游标或当前 OS 页码合同读取完整节点模板目录。
  *
  * @param http 节点模板 API 使用的 HTTP 客户端。
- * @param query 可选 node_type 筛选和取消信号；不接受页码字段。
+ * @param query 可选 node_type 筛选和取消信号；分页选择由响应合同决定。
  * @returns 按服务端游标顺序收集的唯一摘要，以及可选 OS 目录代际。
  * @throws 响应字段、UUID、游标推进、目录代际或预算无效时关闭失败。
  */
@@ -59,13 +86,29 @@ export async function loadWorkflowNodeTemplateCatalog(
   const cursorUuids = new Set<string>()
   let cursorUuid: string | null = null
   let generation: WorkflowNodeTemplateCatalogGeneration | null | undefined
+  let paginationMode: CatalogPagination['mode'] | null = null
+  const numberedState: NumberedPaginationState = {
+    page: 1,
+    pageSize: null,
+    total: null
+  }
 
   for (let pageCount = 0; pageCount < PAGE_BUDGET; pageCount += 1) {
-    const path = workflowNodeTemplateListPath(query.nodeType, cursorUuid)
+    const path = paginationMode === 'numbered'
+      ? workflowNodeTemplateNumberedListPath(
+        query.nodeType,
+        numberedState.page,
+        numberedState.pageSize ?? PAGE_LIMIT
+      )
+      : workflowNodeTemplateListPath(query.nodeType, cursorUuid)
     const data = catalogEnvelope(await http.request<unknown>(path, {
       signal: query.signal
     }))
-    assertListFields(data)
+    const pagination = parseListPagination(data)
+    if (paginationMode !== null && pagination.mode !== paginationMode) {
+      invalidCatalog('节点模板（WorkflowNodeTemplate）目录分页合同发生漂移')
+    }
+    paginationMode = pagination.mode
     const pageGeneration = optionalGeneration(data)
     generation = mergeGeneration(generation, pageGeneration)
     const pageItems = recordArray(data.items)
@@ -81,27 +124,90 @@ export async function loadWorkflowNodeTemplateCatalog(
       items.push(item)
     }
 
-    if (typeof data.has_more !== 'boolean') invalidCatalog(
-      '节点模板（WorkflowNodeTemplate）目录缺少 has_more'
-    )
-    if (!data.has_more) {
-      if (data.next_cursor_uuid !== null) invalidCatalog(
-        '节点模板（WorkflowNodeTemplate）末页游标必须为 null'
+    if (pagination.mode === 'cursor') {
+      const nextCursorUuid = advanceCursorPagination(
+        pagination,
+        pageItems.length,
+        cursorUuid,
+        cursorUuids
       )
+      if (nextCursorUuid === null) {
+        return { items, generation: generation ?? null }
+      }
+      cursorUuid = nextCursorUuid
+      continue
+    }
+
+    if (advanceNumberedPagination(
+      pagination,
+      numberedState,
+      pageItems.length,
+      items.length
+    )) {
       return { items, generation: generation ?? null }
     }
-    if (pageItems.length === 0) invalidCatalog(
-      '节点模板（WorkflowNodeTemplate）目录无法从空页推进'
-    )
-    const nextCursorUuid = uuidValue(data.next_cursor_uuid)
-    if (
-      nextCursorUuid === cursorUuid ||
-      cursorUuids.has(nextCursorUuid)
-    ) invalidCatalog('节点模板（WorkflowNodeTemplate）目录游标重复')
-    cursorUuids.add(nextCursorUuid)
-    cursorUuid = nextCursorUuid
   }
   return invalidCatalog('节点模板（WorkflowNodeTemplate）目录超过分页预算')
+}
+
+/** 校验 UUID 游标页并返回下一游标；null 表示目录已完整收集。 */
+function advanceCursorPagination(
+  pagination: Extract<CatalogPagination, { mode: 'cursor' }>,
+  pageItemCount: number,
+  currentCursorUuid: string | null,
+  observedCursorUuids: Set<string>
+): string | null {
+  if (!pagination.hasMore) {
+    if (pagination.nextCursorUuid !== null) invalidCatalog(
+      '节点模板（WorkflowNodeTemplate）末页游标必须为 null'
+    )
+    return null
+  }
+  if (pageItemCount === 0) invalidCatalog(
+    '节点模板（WorkflowNodeTemplate）目录无法从空页推进'
+  )
+  const nextCursorUuid = uuidValue(pagination.nextCursorUuid)
+  if (
+    nextCursorUuid === currentCursorUuid ||
+    observedCursorUuids.has(nextCursorUuid)
+  ) invalidCatalog('节点模板（WorkflowNodeTemplate）目录游标重复')
+  observedCursorUuids.add(nextCursorUuid)
+  return nextCursorUuid
+}
+
+/** 校验页码目录的稳定元数据，并在仍有后续页时推进请求页码。 */
+function advanceNumberedPagination(
+  pagination: Extract<CatalogPagination, { mode: 'numbered' }>,
+  state: NumberedPaginationState,
+  pageItemCount: number,
+  collectedItemCount: number
+): boolean {
+  if (pagination.page !== state.page) invalidCatalog(
+    '节点模板（WorkflowNodeTemplate）目录页码未按请求推进'
+  )
+  if (pagination.pageSize > PAGE_LIMIT) invalidCatalog(
+    '节点模板（WorkflowNodeTemplate）目录页大小超过项目预算'
+  )
+  if (state.pageSize === null) state.pageSize = pagination.pageSize
+  else if (pagination.pageSize !== state.pageSize) invalidCatalog(
+    '节点模板（WorkflowNodeTemplate）目录页大小发生漂移'
+  )
+  if (state.total === null) state.total = pagination.total
+  else if (pagination.total !== state.total) invalidCatalog(
+    '节点模板（WorkflowNodeTemplate）目录总数发生漂移'
+  )
+  if (state.total > ITEM_BUDGET || pageItemCount > state.pageSize) {
+    invalidCatalog('节点模板（WorkflowNodeTemplate）目录超过项目预算')
+  }
+  if (collectedItemCount > state.total) invalidCatalog(
+    '节点模板（WorkflowNodeTemplate）目录项目数超过 total'
+  )
+  if (collectedItemCount === state.total) return true
+  if (pageItemCount === 0 || pageItemCount < state.pageSize) {
+    invalidCatalog('节点模板（WorkflowNodeTemplate）目录无法从短页推进')
+  }
+  state.page += 1
+  return false
 }
 
 /**
@@ -237,6 +343,20 @@ function workflowNodeTemplateListPath(
   return `/api/v1/workflow-node-templates?${query.toString()}`
 }
 
+/** 构造当前 OS 页码合同的后续页路径。 */
+function workflowNodeTemplateNumberedListPath(
+  nodeType: string | undefined,
+  page: number,
+  pageSize: number
+): string {
+  const query = new URLSearchParams({
+    page: String(page),
+    page_size: String(pageSize)
+  })
+  if (nodeType !== undefined) query.set('node_type', nodeType.trim())
+  return `/api/v1/workflow-node-templates?${query.toString()}`
+}
+
 /**
  * 解码统一 API 响应外壳。
  *
@@ -255,30 +375,74 @@ function catalogEnvelope(raw: unknown): Record<string, unknown> {
 }
 
 /**
- * 拒绝旧页码字段和未约定的节点模板列表字段，并校验兼容总数。
+ * 识别互斥的 UUID 游标与当前 OS 页码合同，并拒绝混合或未知字段。
  *
  * @param data 列表响应 data 对象。
- * @returns 无返回值；全部字段均在后端（Backend）合同、兼容元数据或 OS 扩展中时通过。
- * @throws 出现 page/page_size、其他未知字段或无效 total 时关闭失败。
+ * @returns 已验证的分页元数据。
+ * @throws 两套字段混合、字段缺失、类型无效或出现未知字段时关闭失败。
  */
-function assertListFields(data: Record<string, unknown>): void {
+function parseListPagination(data: Record<string, unknown>): CatalogPagination {
+  const hasCursorFields = ['has_more', 'next_cursor_uuid'].some((field) =>
+    Object.prototype.hasOwnProperty.call(data, field)
+  )
+  // `total` 也可作为 UUID 游标响应的兼容统计元数据，不能单独判定为页码合同。
+  const hasNumberedFields = ['page', 'page_size'].some((field) =>
+    Object.prototype.hasOwnProperty.call(data, field)
+  )
+  if (hasCursorFields && hasNumberedFields) invalidCatalog(
+    '节点模板（WorkflowNodeTemplate）目录混合了两套分页字段'
+  )
+  const allowedFields = hasNumberedFields
+    ? NUMBERED_LIST_FIELDS
+    : CURSOR_LIST_FIELDS
   for (const field of Object.keys(data)) {
-    if (!LIST_FIELDS.has(field)) invalidCatalog(
+    if (!allowedFields.has(field)) invalidCatalog(
       `节点模板（WorkflowNodeTemplate）目录包含未约定字段 ${field}`
     )
   }
-  for (const field of ['items', 'has_more', 'next_cursor_uuid']) {
+  const requiredFields = hasNumberedFields
+    ? ['items', 'page', 'page_size', 'total']
+    : ['items', 'has_more', 'next_cursor_uuid']
+  for (const field of requiredFields) {
     if (!Object.prototype.hasOwnProperty.call(data, field)) invalidCatalog(
       `节点模板（WorkflowNodeTemplate）目录缺少 ${field}`
     )
   }
+  if (hasNumberedFields) return {
+    mode: 'numbered',
+    page: positiveInteger(data.page),
+    pageSize: positiveInteger(data.page_size),
+    total: nonNegativeInteger(data.total)
+  }
   if (Object.prototype.hasOwnProperty.call(data, 'total')) {
     // `total` 只兼容部署端的目录统计，不参与 UUID 游标推进或模板实体投影。
-    const catalogTotal = data.total
-    if (!Number.isInteger(catalogTotal) || Number(catalogTotal) < 0) {
-      invalidCatalog('节点模板（WorkflowNodeTemplate）目录 total 无效')
-    }
+    nonNegativeInteger(data.total)
   }
+  if (typeof data.has_more !== 'boolean') invalidCatalog(
+    '节点模板（WorkflowNodeTemplate）目录 has_more 必须是布尔值'
+  )
+  return {
+    mode: 'cursor',
+    hasMore: data.has_more,
+    nextCursorUuid: data.next_cursor_uuid
+  }
+}
+
+/** 解析正整数分页字段。 */
+function positiveInteger(raw: unknown): number {
+  const value = nonNegativeInteger(raw)
+  if (value < 1) invalidCatalog(
+    '节点模板（WorkflowNodeTemplate）分页字段必须为正整数'
+  )
+  return value
+}
+
+/** 解析不超过 JavaScript 安全范围的非负整数。 */
+function nonNegativeInteger(raw: unknown): number {
+  if (!Number.isSafeInteger(raw) || (raw as number) < 0) invalidCatalog(
+    '节点模板（WorkflowNodeTemplate）分页字段必须为非负安全整数'
+  )
+  return raw as number
 }
 
 /**

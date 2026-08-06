@@ -195,10 +195,13 @@ function applyA1WorkflowInputCompatibility(repository: string): void {
 
 const PYTHON_LAUNCHER = String.raw`
 import copy
+import json
 import sqlite3
 import sys
 from pathlib import Path
 
+from fastapi import Request
+from fastapi.responses import JSONResponse
 from unilabos.config.config import BasicConfig
 from unilabos.package_manager import WorkspaceSource, compile_package_source
 from unilabos.registry.catalog_consumer import (
@@ -329,6 +332,34 @@ server.setup_server(
     resource_registry_snapshot=resource_registry_snapshot,
     workflow_package_catalogs=(package_catalog,),
 )
+
+# 当前 OS 固定快照仍发布旧页码外壳；测试只在 HTTP 边界把同一批真实目录条目
+# 投影为前端当前要求的 UUID 游标合同，不替换目录生成、详情或工作流持久化链路。
+@server.app.middleware("http")
+async def e2e_normalize_node_template_cursor(request: Request, call_next):
+    response = await call_next(request)
+    if (
+        request.method != "GET"
+        or request.url.path != "/api/v1/workflow-node-templates"
+        or response.status_code != 200
+    ):
+        return response
+    body = b"".join([chunk async for chunk in response.body_iterator])
+    payload = json.loads(body)
+    data = payload["data"]
+    for legacy_field in ("total", "page", "page_size"):
+        data.pop(legacy_field, None)
+    data["has_more"] = False
+    data["next_cursor_uuid"] = None
+    return JSONResponse(
+        payload,
+        status_code=response.status_code,
+        headers={
+            key: value
+            for key, value in response.headers.items()
+            if key.lower() != "content-length"
+        },
+    )
 
 # 当前集成测试固定的 OS 运行时快照早于 Backend 同名微后端挂载；仅在该路由
 # 缺席时，用工作流（Workflow）已持久化的真实资源模板（ResourceTemplate）

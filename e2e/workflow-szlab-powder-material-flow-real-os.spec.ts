@@ -131,7 +131,7 @@ test('SZLab S07 powder dosing projects the complete material flow', async ({
   await canvasModeButton.click()
   await expect(canvasModeButton).toHaveAttribute('aria-pressed', 'true')
   const beautifyLayoutButton = panel.getByRole('button', {
-    name: '美化工作流布局',
+    name: '应用减少交叉布局',
     exact: true
   })
   await expect(beautifyLayoutButton).toBeEnabled()
@@ -215,7 +215,11 @@ test('SZLab S07 powder dosing projects the complete material flow', async ({
   const structuralHandles = panel.locator(
     '[data-workflow-handle-kind="structural"]'
   )
-  await expect(nodes).toHaveCount(12)
+  // OS 权威图包含两个仅表达 Python 源码范围的原生 group。产品画布保留其
+  // 十个可执行成员，但不把 group 重复画成可执行节点。
+  await expect(nodes).toHaveCount(10)
+  await expect(workflowNode(panel, BEAKER_GROUP_UUID)).toHaveCount(0)
+  await expect(workflowNode(panel, POWDER_GROUP_UUID)).toHaveCount(0)
   await expect(materialSources).toHaveCount(2)
   await expect(materialSources.locator(
     '[data-workflow-material-source-visual]'
@@ -300,11 +304,12 @@ test('SZLab S07 powder dosing projects the complete material flow', async ({
     if (!sourceBox || !targetBox) {
       throw new Error('物料来源或第一个物料消费节点缺少可测量句柄')
     }
-    const edgeIndex = graph.edges.indexOf(edge)
     const edgePath = panel.locator(
-      `[data-testid="rf__edge-e-${edge.source_node_uuid}-${
-        edge.target_node_uuid
-      }-${edgeIndex}"] .react-flow__edge-path`
+      `[data-workflow-edge-source-node-uuid="${edge.source_node_uuid}"]` +
+      `[data-workflow-edge-target-node-uuid="${edge.target_node_uuid}"]` +
+      `[data-workflow-edge-source-handle-uuid="${edge.source_handle_uuid}"]` +
+      `[data-workflow-edge-target-handle-uuid="${edge.target_handle_uuid}"] ` +
+      '.react-flow__edge-path'
     )
     const [handleColor, edgeColor] = await Promise.all([
       sourceHandle.evaluate((handle) => getComputedStyle(handle).borderColor),
@@ -468,14 +473,14 @@ test('SZLab S07 powder dosing projects the complete material flow', async ({
   await selectAndCapture(
     page,
     panel,
-    BEAKER_GROUP_UUID,
+    '4058067c-18e2-5b35-90eb-ddf04694c040',
     artifactDirectory,
     '03-beaker-transfer-branch.png'
   )
   await selectAndCapture(
     page,
     panel,
-    POWDER_GROUP_UUID,
+    '9f67e05d-020a-5e8d-bf86-ae812aac7c01',
     artifactDirectory,
     '04-powder-transfer-branch.png'
   )
@@ -497,9 +502,27 @@ test('SZLab S07 powder dosing projects the complete material flow', async ({
     path: join(artifactDirectory, '08-run-output-tabs.png'),
     animations: 'disabled'
   })
+  const openParameterDialog = page.getByRole('dialog', {
+    name: /^节点参数 /
+  })
+  if (await openParameterDialog.isVisible()) {
+    await openParameterDialog.getByRole('button', {
+      name: '关闭',
+      exact: true
+    }).click()
+  }
+  const openNodeEditor = panel.getByRole('complementary', {
+    name: '画布节点编辑器'
+  })
+  if (await openNodeEditor.isVisible()) {
+    await openNodeEditor.getByRole('button', {
+      name: '关闭属性面板',
+      exact: true
+    }).click()
+  }
   await beautifyLayoutButton.click()
   await expect(panel.getByText(
-    '布局已美化；保存草稿后将写入工作流',
+    '已应用减少交叉布局；保存草稿后将写入工作流',
     { exact: true }
   )).toBeVisible()
   await expect(beautifyLayoutButton).toBeEnabled()
@@ -516,7 +539,7 @@ test('SZLab S07 powder dosing projects the complete material flow', async ({
   )
   expect(disabledReasonEvidence.every((button) =>
     Boolean(button.reason) &&
-    button.reason === button.title &&
+    button.title === null &&
     button.reason === button.ariaDescription
   ), JSON.stringify(disabledReasonEvidence, null, 2)).toBe(true)
   const pauseButton = panel.getByRole('button', { name: '暂停', exact: true })
@@ -539,7 +562,12 @@ test('SZLab S07 powder dosing projects the complete material flow', async ({
       osUrl: os.url,
       workflowUuid: S07_WORKFLOW_UUID,
       sourceRevision: os.szlabRevision,
-      graph: { nodes: graph.nodes.length, edges: graph.edges.length },
+      graph: {
+        nodes: graph.nodes.length,
+        visibleNodes: 10,
+        hiddenNativeGroups: [BEAKER_GROUP_UUID, POWDER_GROUP_UUID],
+        edges: graph.edges.length
+      },
       alignmentEvidence,
       materialSourcePresentation,
       materialSourceLayoutEvidence,

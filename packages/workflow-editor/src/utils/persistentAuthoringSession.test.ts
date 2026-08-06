@@ -128,6 +128,39 @@ describe('persistent Authoring session coordination', () => {
     }))).toBe(true)
   })
 
+  it('runs a node-free Applied workflow whose outputs are resolved from inputs', () => {
+    expect(hasRunnableAppliedWorkflow(aggregate({
+      applied_graph: {
+        ...emptyGraph(),
+        workflow: {
+          meta_data: {
+            unilab: {
+              input_contract: {
+                version: 1,
+                parameters: [{
+                  name: 'sample',
+                  schema: { $slot: 'ResourceSlot' },
+                  required: true
+                }]
+              },
+              output_contract: {
+                version: 1,
+                outputs: [{
+                  name: 'sample',
+                  schema: { $slot: 'ResourceSlot' },
+                  implicit: false
+                }]
+              },
+              output_bindings: {
+                sample: { kind: 'workflow_input', parameter: 'sample' }
+              }
+            }
+          }
+        }
+      }
+    }))).toBe(true)
+  })
+
   it('serializes initial GET, writes and SSE rehydration', async () => {
     const queue = new AuthoringOperationQueue()
     const calls: string[] = []

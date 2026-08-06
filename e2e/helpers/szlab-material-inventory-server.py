@@ -5,7 +5,10 @@ from __future__ import annotations
 import argparse
 import ast
 import asyncio
+import inspect
+import os
 import re
+import shutil
 import signal
 import uuid
 from datetime import UTC, datetime
@@ -42,7 +45,10 @@ def main() -> None:
     args = parser.parse_args()
 
     root = Path(args.szlab_root).resolve()
-    source = WorkspaceSource(root)
+    source = _material_projection_source(
+        root,
+        Path(args.working_dir).resolve() / "material-package-source",
+    )
     catalog = compile_package_source(source)
     package_projection = build_package_material_projection((source,), (catalog,))
     resolved_identities = {
@@ -69,11 +75,21 @@ def main() -> None:
             for node in resource_tree_set.all_nodes
         ],
     }
+    inventory_options = {
+        "working_dir": args.working_dir,
+        "resource_templates": templates,
+        "material_shapes": package_projection.shapes,
+    }
+    if "material_model_assets" in inspect.signature(
+        InventoryService.open
+    ).parameters:
+        inventory_options["material_model_assets"] = getattr(
+            package_projection,
+            "model_assets",
+            (),
+        )
     inventory = InventoryService.open(
-        working_dir=args.working_dir,
-        resource_templates=templates,
-        material_shapes=package_projection.shapes,
-        material_model_assets=package_projection.model_assets,
+        **inventory_options,
     )
     inventory.bootstrap_resource_graph(
         build_resource_graph_import(
@@ -99,17 +115,52 @@ def main() -> None:
     uvicorn.run(app, host="127.0.0.1", port=args.port, log_level="warning")
 
 
+def _material_projection_source(root: Path, snapshot_root: Path) -> WorkspaceSource:
+    """构造只含设备与物料声明的隔离 Package Source。
+
+    场景端到端测试只验证物料（Material）投影，并通过本文件安装只读的
+    工作流（Workflow）夹具。SZLab 的产品清单可能先于所选 OS 编译器采用
+    新工作流装饰器；把这些与场景无关的声明交给旧编译器会让物料服务在
+    启动前失败。隔离源保留真实 Python/模型资产，但不复制 ``package.yaml``，
+    因而不会把工作流清单误纳入本测试的编译边界。
+    """
+
+    snapshot_root.mkdir(parents=True, exist_ok=False)
+    shutil.copy2(root / "pyproject.toml", snapshot_root / "pyproject.toml")
+    shutil.copytree(
+        root / "szlab_poly_studio",
+        snapshot_root / "szlab_poly_studio",
+        copy_function=_link_or_copy,
+    )
+    return WorkspaceSource(snapshot_root)
+
+
+def _link_or_copy(source: str, target: str) -> str:
+    """优先以硬链接建立只读测试快照，跨文件系统时退回复制。"""
+
+    try:
+        os.link(source, target)
+        return target
+    except OSError:
+        return shutil.copy2(source, target)
+
+
 def install_material_transfer_workflow_fixture(app, root: Path) -> None:
     """Expose a read-only Workflow fixture parsed from the real SZLab source."""
 
     workflow_uuid = "6d9fb3e2-4dcb-5f23-93b4-74d1b6083393"
     task_uuid = "c49f7b30-e52a-4b2a-9770-b006e77ec151"
+    workflow_root = Path(
+        os.environ.get("UNILAB_E2E_SZLAB_WORKFLOW_ROOT", str(root))
+    ).resolve()
     source_path = (
-        root
+        workflow_root
         / "szlab_poly_studio"
         / "workflows"
         / "single_sample_atomic_material.py"
     )
+    if not source_path.is_file():
+        return
     source = source_path.read_text(encoding="utf-8")
     graph = transfer_graph_from_source(source, workflow_uuid)
     now = datetime.now(UTC).isoformat().replace("+00:00", "Z")
@@ -227,6 +278,12 @@ def install_material_transfer_workflow_fixture(app, root: Path) -> None:
 
     @app.get("/api/v1/events")
     def e2e_workflow_events():
+        return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+    @app.get("/api/v1/monitor/events")
+    def e2e_monitor_events():
+        """保持物料监控 SSE 可连接，场景夹具不主动伪造状态变化。"""
+
         return StreamingResponse(event_stream(), media_type="text/event-stream")
 
     @app.websocket("/api/v1/ws/device_status")

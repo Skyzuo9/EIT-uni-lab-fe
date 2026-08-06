@@ -1,5 +1,22 @@
 import { expect, test, type Page } from '@playwright/test'
 
+import {
+  startPersistentAuthoringOs,
+  type PersistentAuthoringOs
+} from './helpers/persistent-authoring-os'
+
+let os: PersistentAuthoringOs
+
+test.describe.configure({ mode: 'serial' })
+
+test.beforeAll(async () => {
+  os = await startPersistentAuthoringOs()
+})
+
+test.afterAll(async () => {
+  await os?.stop()
+})
+
 test('工作流未修改时切换模块不显示保存提示', async ({ page }) => {
   const dialogMessages: string[] = []
   page.on('dialog', (dialog) => {
@@ -7,13 +24,13 @@ test('工作流未修改时切换模块不显示保存提示', async ({ page }) 
     void dialog.dismiss()
   })
 
-  await page.goto('/?enable=materialNav')
+  await openApplication(page)
   const navigation = page.getByRole('navigation', { name: '主导航' })
   const workflowButton = navigation.getByRole('button', { name: '工作流' })
   const materialButton = navigation.getByRole('button', { name: '物料' })
 
   await workflowButton.click()
-  await expect(page.getByText('完整控制流 DAG')).toBeVisible()
+  await expect(page.getByRole('tabpanel', { name: '工作流' })).toBeVisible()
   await materialButton.click()
 
   expect(dialogMessages).toEqual([])
@@ -27,7 +44,7 @@ test('工作流有修改时切换模块不弹窗，离开页面仍提示保存',
     void dialog.dismiss()
   })
 
-  await page.goto('/?enable=materialNav')
+  await openApplication(page)
   const navigation = page.getByRole('navigation', { name: '主导航' })
   const workflowButton = navigation.getByRole('button', { name: '工作流' })
   const materialButton = navigation.getByRole('button', { name: '物料' })
@@ -60,6 +77,27 @@ test('工作流有修改时切换模块不弹窗，离开页面仍提示保存',
     defaultPrevented: true
   })
 })
+
+async function openApplication(page: Page) {
+  const activeWorkflowStorageKey = `unilab.workflow.active.${
+    encodeURIComponent(`local-python:${os.url}`)
+  }.v1`
+  await page.addInitScript(
+    ({ storageKey, workflowUuid }) => {
+      localStorage.setItem(
+        storageKey,
+        JSON.stringify({ version: 1, workflowId: workflowUuid })
+      )
+    },
+    {
+      storageKey: activeWorkflowStorageKey,
+      workflowUuid: os.workflowUuid
+    }
+  )
+  await page.goto(
+    `/?enable=materialNav&localOsUrl=${encodeURIComponent(os.url)}`
+  )
+}
 
 async function editWorkflow(page: Page) {
   const codeViewButton = page.getByRole('button', {

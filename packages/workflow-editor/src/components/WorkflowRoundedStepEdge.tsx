@@ -13,6 +13,10 @@ import {
 export interface WorkflowRoundedStepEdgeData {
   direction: 'TB' | 'LR'
   borderRadius: number
+  sourceNodeUuid: string
+  targetNodeUuid: string
+  sourceHandleUuid: string
+  targetHandleUuid: string
 }
 
 /**
@@ -58,7 +62,12 @@ export default function WorkflowRoundedStepEdge({
     offset: WORKFLOW_SMOOTHSTEP_OFFSET
   })
   return (
-    <>
+    <g
+      data-workflow-edge-source-node-uuid={data?.sourceNodeUuid}
+      data-workflow-edge-target-node-uuid={data?.targetNodeUuid}
+      data-workflow-edge-source-handle-uuid={data?.sourceHandleUuid}
+      data-workflow-edge-target-handle-uuid={data?.targetHandleUuid}
+    >
       <BaseEdge path={path} markerEnd={markerEnd} style={style} />
       {label !== undefined && label !== null && (
         <EdgeText
@@ -72,6 +81,6 @@ export default function WorkflowRoundedStepEdge({
           labelBgBorderRadius={labelBgBorderRadius}
         />
       )}
-    </>
+    </g>
   )
 }

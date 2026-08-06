@@ -144,8 +144,9 @@ export function layoutDag(
     })
   }
 
-  const alignedNodes = separateLayerCollisions(
-    alignMaterialSourcesToFirstPorts(laidOutNodes, layoutEdges)
+  const alignedNodes = finalizeMaterialSourcePlacement(
+    laidOutNodes,
+    layoutEdges
   )
   const finalNodes = layoutContainerNodes(
     nodes,
@@ -158,6 +159,25 @@ export function layoutDag(
     links: edges,
     direction: 'vertical'
   }
+}
+
+/**
+ * 对齐物料来源（MaterialSource）与首个消费端口，并消除对齐后的同层碰撞。
+ *
+ * 同步分层布局与异步 ELK 布局必须共享这一最终化步骤，否则异步结果安装后会
+ * 覆盖来源端口的同列约束。
+ *
+ * @param nodes 已完成基础分层的工作流节点。
+ * @param edges 当前可见工作流（Workflow）边。
+ * @returns 保持节点身份与纵向层级、完成物料端口对齐的节点。
+ */
+export function finalizeMaterialSourcePlacement(
+  nodes: readonly LayoutNode[],
+  edges: readonly WorkflowLink[]
+): LayoutNode[] {
+  return separateLayerCollisions(
+    alignMaterialSourcesToFirstPorts(nodes, edges)
+  )
 }
 
 /**

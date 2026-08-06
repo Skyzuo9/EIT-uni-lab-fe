@@ -214,10 +214,12 @@ async function stopChild(child: ChildProcess): Promise<void> {
 }
 
 const PYTHON_LAUNCHER = String.raw`
+import asyncio
 import sys
 from pathlib import Path
 
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.responses import StreamingResponse
 from uvicorn import run
 
 from unilabos.app.workflow_api import create_workflow_app
@@ -403,6 +405,21 @@ def health():
     工作流节点作业（WorkflowNodeJob）或库存事实。
     """
     return {"status": "ok"}
+
+@app.get("/api/v1/monitor/events")
+async def monitor_events():
+    """提供当前固定候选尚未原生包含的物料监控 SSE 保活通道。
+
+    参数：无。返回：只发送注释帧的只读事件流。异常：客户端断开时由 ASGI
+    服务器取消生成器；不创建或修改工作流任务、库存或设备事实。
+    """
+    async def keep_alive():
+        yield ": connected\n\n"
+        while True:
+            await asyncio.sleep(15)
+            yield ": keep-alive\n\n"
+
+    return StreamingResponse(keep_alive(), media_type="text/event-stream")
 
 app.add_middleware(
     CORSMiddleware,

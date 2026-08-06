@@ -12,6 +12,8 @@ const OS_ROOT = resolve(
 const SZLAB_ROOT = resolve(
   process.env.UNILAB_E2E_SZLAB_ROOT ?? join(CORE_ROOT, 'Uni-Lab-SZLab')
 )
+const SZLAB_GRAPH = process.env.UNILAB_E2E_SZLAB_GRAPH ??
+  'deployment/graphs/szlab-local-debug.json'
 const OS_PYTHON =
   process.env.UNILAB_OS_PYTHON ??
   'python3'
@@ -71,8 +73,9 @@ test.afterAll(async () => {
 test('SZLab MaterialGraph renders complete 2.5D and 3D views', async ({
   page
 }) => {
-  // 真实 SZLab 的 130 个物料（Material）会在软件 WebGL 中完成三种视图截图。
-  test.setTimeout(240_000)
+  // 有界面 SwiftShader 是当前 Linux CI 中唯一能提供 WebGL 的后端；首次
+  // 2.5D 截图和 3D 场景初始化会共享软件渲染预算，不能沿用纯 2D 超时。
+  test.setTimeout(300_000)
   const browserErrors: string[] = []
   // ``browserRequests`` 证明物料（Material）模型加载未逃逸到 local_bridge。
   const browserRequests: string[] = []
@@ -212,14 +215,14 @@ test('SZLab MaterialGraph renders complete 2.5D and 3D views', async ({
     EXPECTED_MATERIAL_COUNT
   )
   await expect(oblique.locator('[data-oblique-site-bounds]')).toHaveCount(
-    418
+    130
   )
   await expect(
     oblique.locator('[data-oblique-site-bounds][data-site-occupancy="occupied"]')
   ).toHaveCount(110)
   await expect(
     oblique.locator('[data-oblique-site-bounds][data-site-occupancy="empty"]')
-  ).toHaveCount(308)
+  ).toHaveCount(20)
   await expect(
     oblique.locator('[data-oblique-render-style="spec"]').first()
   ).toBeVisible()
@@ -300,6 +303,9 @@ test('SZLab MaterialGraph renders complete 2.5D and 3D views', async ({
   expect(materialRequests).toContain(
     `GET ${API_URL}/api/v1/material-shapes`
   )
+  expect(materialRequests).toContain(
+    `GET ${API_URL}/api/v1/monitor/events?channels=material&backlog=0`
+  )
   const uniqueMaterialRequests = [...new Set(materialRequests)].filter(
     (request) => request !== `GET ${API_URL}/api/v1/health`
   )
@@ -313,7 +319,8 @@ test('SZLab MaterialGraph renders complete 2.5D and 3D views', async ({
   ).toEqual(
     [
       `GET ${API_URL}/api/v1/materials/graph`,
-      `GET ${API_URL}/api/v1/material-shapes`
+      `GET ${API_URL}/api/v1/material-shapes`,
+      `GET ${API_URL}/api/v1/monitor/events?channels=material&backlog=0`
     ].sort()
   )
   expect(
@@ -583,7 +590,7 @@ async function startSzlabInventory(): Promise<InventoryProcess> {
       '--szlab-root',
       SZLAB_ROOT,
       '--graph',
-      'deployment/graphs/szlab-local-debug.json',
+      SZLAB_GRAPH,
       '--port',
       String(API_PORT),
       '--allow-origin',

@@ -11,7 +11,9 @@ import {
 
 let os: SzlabMaterialWorkflowOs
 
-test.describe.configure({ mode: 'serial', timeout: 300_000 })
+// Linux CI 通过有界面 SwiftShader 提供 WebGL；五个真实 3D 验收态的逐元素
+// 截图约需六分钟，预留完整软件渲染时间而不减少视觉断言。
+test.describe.configure({ mode: 'serial', timeout: 420_000 })
 test.use({
   launchOptions: {
     args: [

@@ -44,8 +44,12 @@ function registerWorkflowNodeTemplateCursorTests(): void {
     rejectsInvalidTotalMetadata
   )
   it(
-    'fails closed for legacy page/page_size response fields',
-    rejectsLegacyPageMetadata
+    'accepts the current OS page/page_size/total contract without truncation',
+    acceptsOsPageMetadata
+  )
+  it(
+    'fails closed when cursor and page metadata are mixed',
+    rejectsMixedPaginationMetadata
   )
   it(
     'sends the explicit MaterialSource node_type without legacy page fields',
@@ -210,14 +214,40 @@ async function rejectsInvalidTotalMetadata(): Promise<void> {
 }
 
 /**
- * 验证旧 page/page_size 字段不能与 UUID 游标合同混用。
+ * 验证当前 OS 页码合同会遍历到 total，且不会把第一页误当成完整目录。
  *
- * @returns Promise 完成时表示旧分页元数据被关闭失败。
- * @throws 若旧页码字段被静默忽略则由 Vitest 断言失败。
+ * @returns Promise 完成时表示两个页码页均被读取并保持首见顺序。
+ * @throws 若页码元数据被拒绝或目录被截断则由断言报告。
  */
-async function rejectsLegacyPageMetadata(): Promise<void> {
+async function acceptsOsPageMetadata(): Promise<void> {
+  const requests: string[] = []
+  const http = fixtureHttp({
+    '/api/v1/workflow-node-templates?limit=100': numberedPage(
+      [summary(firstUuid, 'mix')], 1, 1, 2
+    ),
+    '/api/v1/workflow-node-templates?page=2&page_size=1': numberedPage(
+      [summary(secondUuid, 'heat')], 2, 1, 2
+    )
+  }, requests)
+
+  const catalog = await loadWorkflowNodeTemplateCatalog(http)
+
+  expect(catalog.items.map(readTemplateUuid)).toEqual([firstUuid, secondUuid])
+  expect(requests).toEqual([
+    '/api/v1/workflow-node-templates?limit=100',
+    '/api/v1/workflow-node-templates?page=2&page_size=1'
+  ])
+}
+
+/**
+ * 验证一个响应不能同时宣称 UUID 游标与页码分页，避免代际歧义。
+ *
+ * @returns Promise 完成时表示混合合同被关闭失败。
+ * @throws 若混合字段被静默接受则由 Vitest 断言失败。
+ */
+async function rejectsMixedPaginationMetadata(): Promise<void> {
   const response = page([summary(firstUuid, 'mix')], false, null)
-  // `data` 是测试故意污染的列表主体，页码字段属于已废弃合同。
+  // `data` 是测试故意污染的列表主体，不允许同时声明两套分页坐标。
   const data = response.data as Record<string, unknown>
   data.page = 1
   data.page_size = 100
@@ -393,6 +423,16 @@ function page(
     has_more: hasMore,
     next_cursor_uuid: nextCursorUuid
   })
+}
+
+/** 构造当前 OS 使用的页码目录响应。 */
+function numberedPage(
+  items: Record<string, unknown>[],
+  pageNumber: number,
+  pageSize: number,
+  total: number
+): Record<string, unknown> {
+  return envelope({ items, page: pageNumber, page_size: pageSize, total })
 }
 
 /**

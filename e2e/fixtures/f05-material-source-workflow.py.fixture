@@ -4,6 +4,7 @@ from unilabos.workflow.authoring import (
     material_source,
     resource_ref,
     workflow_definition,
+    workflow_output,
 )
 
 
@@ -13,9 +14,10 @@ from unilabos.workflow.authoring import (
     description="通过工作流任务级库存准入准备一块 Plate96。",
 )
 def m2b_native_material_source():
-    """声明可由浏览器改写的物料来源（MaterialSource）。
+    """声明可由浏览器改写并显式输出的物料来源（MaterialSource）。
 
-    参数：无。返回：无。异常：源码只由可信工作流编译器静态解析；无运行时
+    参数：无。返回：包含样品物料占位符（ResourceSlot）的工作流输出
+    （WorkflowOutput）。异常：源码只由可信工作流编译器静态解析；无运行时
     异常。领域变量 ``sample`` 表示本工作流唯一的业务物料传递身份。
     """
 
@@ -30,3 +32,4 @@ def m2b_native_material_source():
         slot_range=None,
         flow_role=MaterialFlowRole.CONSUMABLE,
     )
+    return workflow_output(sample=sample)

@@ -49,6 +49,13 @@ test('a device with zero actions remains selectable without crashing', async ({
       }
     })
   })
+  await page.route(`${API_URL}/api/v1/monitor/events**`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'text/event-stream',
+      body: 'retry: 60000\n\n'
+    })
+  })
   await page.route(`${API_URL}/api/v1/devices`, async (route) => {
     await route.fulfill({
       json: {

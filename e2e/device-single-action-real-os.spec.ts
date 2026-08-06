@@ -59,7 +59,7 @@ test.afterAll(async () => {
   await os?.stop()
 })
 
-test('one device Action becomes a formal Task/Job and returns through the original event UI', async ({
+test('设备动作（DeviceAction）形成正式任务（Task）与作业（Job）并回流原事件界面', async ({
   page,
   request
 }) => {
@@ -308,7 +308,9 @@ test('one device Action becomes a formal Task/Job and returns through the origin
       entry.path.includes('/workflow-node-templates/') &&
         entry.method === 'POST'
   )).toBe(false)
-  expect(websocketUrls).toEqual([])
+  expect(websocketUrls).toEqual([
+    `${os.url.replace(/^http/, 'ws')}/api/v1/ws/device_status`
+  ])
   expect(browserErrors).toEqual([])
   expect(screenshots.length).toBeGreaterThanOrEqual(5)
 

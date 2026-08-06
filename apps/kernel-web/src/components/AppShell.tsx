@@ -9,7 +9,7 @@
  * Human Review Status: [ ] Pending  [ ] Reviewed  [ ] Approved
  * ============================================================
  */
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useWorkbench } from '../context/WorkbenchContext';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -64,6 +64,7 @@ export default function AppShell(): React.JSX.Element {
   const { session, logout } = useAuth();
   const [workflowCatalogRequestRevision, setWorkflowCatalogRequestRevision] =
     useState(0);
+  const dirtyWorkflowSections = useRef<Set<WorkbenchSection>>(new Set());
   const handleNavigate = useCallback(
     (navigationId: string) => {
       const nextSection = navigationId as WorkbenchSection;
@@ -76,6 +77,29 @@ export default function AppShell(): React.JSX.Element {
       setSection(nextSection);
     },
     [section, setSection]
+  );
+  const handleWorkflowUnsavedChangesChange = useCallback((
+    sourceSection: WorkbenchSection,
+    hasUnsavedChanges: boolean
+  ) => {
+    const dirtySections = dirtyWorkflowSections.current;
+    const wasDirty = dirtySections.size > 0;
+    if (hasUnsavedChanges) dirtySections.add(sourceSection);
+    else dirtySections.delete(sourceSection);
+    const isDirty = dirtySections.size > 0;
+    if (wasDirty === isDirty) return;
+    if (isDirty) {
+      globalThis.addEventListener('beforeunload', preventUnsavedUnload);
+    } else {
+      globalThis.removeEventListener('beforeunload', preventUnsavedUnload);
+    }
+  }, []);
+
+  useEffect(
+    () => () => {
+      globalThis.removeEventListener('beforeunload', preventUnsavedUnload);
+    },
+    []
   );
 
   return (
@@ -93,22 +117,85 @@ export default function AppShell(): React.JSX.Element {
       activeNavigationId={section}
       onNavigate={handleNavigate}
     >
-      <SectionView
+      <VisitedSectionViews
         section={section}
         workflowCatalogRequestRevision={workflowCatalogRequestRevision}
+        onWorkflowUnsavedChangesChange={handleWorkflowUnsavedChangesChange}
       />
     </AppShellLayout>
+  );
+}
+
+function preventUnsavedUnload(event: BeforeUnloadEvent): void {
+  event.preventDefault();
+  event.returnValue = '';
+}
+
+// 已访问的功能面板只切换可见性，避免导航时丢失未保存的工作流草稿。
+function VisitedSectionViews({
+  section,
+  workflowCatalogRequestRevision,
+  onWorkflowUnsavedChangesChange
+}: {
+  section: WorkbenchSection;
+  workflowCatalogRequestRevision: number;
+  onWorkflowUnsavedChangesChange: (
+    section: WorkbenchSection,
+    hasUnsavedChanges: boolean
+  ) => void;
+}): React.JSX.Element {
+  const [visited, setVisited] = useState<Set<WorkbenchSection>>(
+    () => new Set([section])
+  );
+
+  useEffect(() => {
+    setVisited((current) => {
+      if (current.has(section)) return current;
+      const next = new Set(current);
+      next.add(section);
+      return next;
+    });
+  }, [section]);
+
+  return (
+    <>
+      {([...visited] as WorkbenchSection[]).map((visitedSection) => (
+        <div
+          key={visitedSection}
+          hidden={visitedSection !== section}
+          style={{ height: '100%', minHeight: 0 }}
+        >
+          <SectionView
+            section={visitedSection}
+            workflowCatalogRequestRevision={workflowCatalogRequestRevision}
+            onWorkflowUnsavedChangesChange={onWorkflowUnsavedChangesChange}
+          />
+        </div>
+      ))}
+    </>
   );
 }
 
 // 根据当前方向渲染对应面板
 function SectionView({
   section,
-  workflowCatalogRequestRevision
+  workflowCatalogRequestRevision,
+  onWorkflowUnsavedChangesChange
 }: {
   section: WorkbenchSection;
   workflowCatalogRequestRevision: number;
+  onWorkflowUnsavedChangesChange: (
+    section: WorkbenchSection,
+    hasUnsavedChanges: boolean
+  ) => void;
 }): React.JSX.Element {
+  const handleWorkflowUnsavedChangesChange = useCallback(
+    (hasUnsavedChanges: boolean) => {
+      onWorkflowUnsavedChangesChange(section, hasUnsavedChanges);
+    },
+    [onWorkflowUnsavedChangesChange, section]
+  );
+
   if (section === 'device') return <DevicePanel />;
   if (section === 'device-square') return <DeviceSquarePanel />;
   if (section === 'cards') return <DeviceCardWorkbench />;
@@ -117,6 +204,7 @@ function SectionView({
       <LabPanelWorkspace
         key="material-workspace"
         preset="lab"
+        onWorkflowUnsavedChangesChange={handleWorkflowUnsavedChangesChange}
       />
     );
   }
@@ -124,7 +212,11 @@ function SectionView({
     // 3D 场景内部依赖 Pascal/WebGPU，运行时报错时用错误边界兜底，避免整页崩溃
     return (
       <ErrorBoundary title="3D 场景加载失败">
-        <LabPanelWorkspace key="scene-workspace" preset="scene" />
+        <LabPanelWorkspace
+          key="scene-workspace"
+          preset="scene"
+          onWorkflowUnsavedChangesChange={handleWorkflowUnsavedChangesChange}
+        />
       </ErrorBoundary>
     );
   }
@@ -133,6 +225,7 @@ function SectionView({
       key="workflow-workspace"
       preset="workflow"
       workflowCatalogRequestRevision={workflowCatalogRequestRevision}
+      onWorkflowUnsavedChangesChange={handleWorkflowUnsavedChangesChange}
     />
   );
 }

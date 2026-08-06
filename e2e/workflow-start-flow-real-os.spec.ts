@@ -273,7 +273,10 @@ async function provesSingleWorkflowStartEntry({
   os.failNextRequest({
     method: 'PUT',
     path: `/api/v1/workflows/${os.runtimeWorkflowUuid}/authoring/draft`,
-    status: 409
+    status: 409,
+    code: 'draft_hash_conflict',
+    message: '工作流草稿已被远端修改',
+    retryable: false
   })
   await panel.getByRole('button', {
     name: '保存并运行',

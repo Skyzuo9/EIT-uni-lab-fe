@@ -1,10 +1,12 @@
+import { spawn, type ChildProcess } from 'node:child_process'
 import { mkdirSync, writeFileSync } from 'node:fs'
+import { createServer } from 'node:net'
 import { join, resolve } from 'node:path'
 
 import { expect, test, type APIRequestContext } from '@playwright/test'
 
-const API_URL =
-  process.env.UNILAB_E2E_DEVICE_API_URL ?? 'http://127.0.0.1:18114'
+let API_URL = ''
+let osProcess: ChildProcess | undefined
 const DEVICE_ID = 'TestAction1'
 const ACTION_NAME = 'test_hold'
 const ACTION_LABEL = '保持动作'
@@ -36,6 +38,37 @@ interface LedgerEntry {
   body?: unknown
   status?: number
 }
+
+test.beforeAll(async () => {
+  const port = await availablePort()
+  API_URL = `http://127.0.0.1:${port}`
+  const osRoot = resolve(
+    process.env.UNILAB_E2E_OS_ROOT ?? resolve(process.cwd(), '../Uni-Lab-OS')
+  )
+  const python = process.env.UNILAB_OS_PYTHON ?? 'python3'
+  const fixture = resolve(
+    process.cwd(),
+    'e2e/fixtures/device-manual-unlock-os.py'
+  )
+  osProcess = spawn(python, [fixture], {
+    cwd: osRoot,
+    env: {
+      ...process.env,
+      PYTHONPATH: osRoot,
+      PYTHONUNBUFFERED: '1',
+      UNILAB_E2E_DEVICE_API_PORT: String(port)
+    },
+    stdio: ['ignore', 'pipe', 'pipe']
+  })
+  let output = ''
+  osProcess.stdout?.on('data', (chunk) => { output += String(chunk) })
+  osProcess.stderr?.on('data', (chunk) => { output += String(chunk) })
+  await waitForFixture(osProcess, () => output)
+})
+
+test.afterAll(async () => {
+  await stopFixture(osProcess)
+})
 
 async function setupRequest(
   request: APIRequestContext,
@@ -323,3 +356,52 @@ test('操作员识别并手动解除当前 OS 动作锁', async ({
     }, null, 2)}\n`
   )
 })
+
+async function availablePort(): Promise<number> {
+  return new Promise((resolvePort, rejectPort) => {
+    const server = createServer()
+    server.once('error', rejectPort)
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address()
+      if (!address || typeof address === 'string') {
+        server.close()
+        rejectPort(new Error('无法分配人工解锁测试端口'))
+        return
+      }
+      server.close((error) => {
+        if (error) rejectPort(error)
+        else resolvePort(address.port)
+      })
+    })
+  })
+}
+
+async function waitForFixture(
+  child: ChildProcess,
+  logs: () => string
+): Promise<void> {
+  const deadline = Date.now() + 30_000
+  while (Date.now() < deadline) {
+    if (child.exitCode != null) {
+      throw new Error(`人工解锁测试 OS 已退出（${child.exitCode}）\n${logs()}`)
+    }
+    try {
+      const response = await fetch(`${API_URL}/api/v1/devices`)
+      if (response.ok) return
+    } catch {
+      // 测试 OS 仍在启动。
+    }
+    await new Promise((resolveWait) => setTimeout(resolveWait, 100))
+  }
+  throw new Error(`人工解锁测试 OS 启动超时\n${logs()}`)
+}
+
+async function stopFixture(child: ChildProcess | undefined): Promise<void> {
+  if (!child || child.exitCode != null) return
+  child.kill('SIGTERM')
+  await Promise.race([
+    new Promise<void>((resolveExit) => child.once('exit', () => resolveExit())),
+    new Promise<void>((resolveWait) => setTimeout(resolveWait, 3_000))
+  ])
+  if (child.exitCode == null) child.kill('SIGKILL')
+}

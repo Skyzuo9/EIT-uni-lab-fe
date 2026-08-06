@@ -378,6 +378,59 @@ function registerWorkflowTaskControllerTests(): void {
     })
   })
 
+  it('does not replace a newer Task with a delayed invalidation for an older Task', async () => {
+    const olderTask = workflowTask()
+    const newerTask: WorkflowTask = {
+      ...olderTask,
+      uuid: '30000000-0000-4000-8000-000000000002',
+      create_time: '2026-08-01T00:01:00Z',
+      update_time: '2026-08-01T00:01:00Z',
+      status: 'admission_blocked'
+    }
+    let onInvalidate: ((event: WorkflowRuntimeChangedEvent) => void) | null = null
+    const runtime = runtimePort({
+      subscribeWorkflowRuntime: vi.fn((listener) => {
+        onInvalidate = listener
+        return { dispose: vi.fn() }
+      }),
+      listWorkflowTasks: vi.fn(async () => ({
+        items: [olderTask], total: 1, page: 1, page_size: 1
+      })),
+      createWorkflowTask: vi.fn(async () => newerTask),
+      getWorkflowTask: vi.fn(async (taskUuid) =>
+        taskUuid === newerTask.uuid ? newerTask : olderTask
+      ),
+      listWorkflowTaskJobs: vi.fn(async (taskUuid) => [{
+        ...workflowJob(),
+        workflow_task_uuid: taskUuid
+      }])
+    })
+    const controller = new WorkflowTaskController(
+      runtime,
+      olderTask.workflow_uuid
+    )
+    await controller.start()
+    await controller.create('normal')
+    await vi.waitFor(() => {
+      expect(controller.getSnapshot().task?.uuid).toBe(newerTask.uuid)
+    })
+
+    expect(onInvalidate).not.toBeNull()
+    ;(onInvalidate as unknown as (
+      event: WorkflowRuntimeChangedEvent
+    ) => void)({
+      id: 'runtime-stale-older-task',
+      event: 'workflow.runtime.changed',
+      data: { workflow_task_uuid: olderTask.uuid }
+    })
+    await vi.waitFor(() => {
+      expect(runtime.getWorkflowTask).toHaveBeenLastCalledWith(olderTask.uuid)
+    })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(controller.getSnapshot().task).toEqual(newerTask)
+  })
+
   it('marks Runtime realtime interruption and rehydrates when SSE reconnects', async () => {
     const task = workflowTask()
     let subscriptionOptions: Parameters<

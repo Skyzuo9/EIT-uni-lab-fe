@@ -21,6 +21,7 @@ test.afterAll(async () => {
   await os?.stop()
 })
 
+/** 验证 SZLab 操作目录进入类型化工作流（Workflow）画布与参数编辑器。 */
 test('SZLab persisted Catalog reaches the original typed workflow editor', async ({
   page
 }) => {
@@ -125,7 +126,10 @@ test('SZLab persisted Catalog reaches the original typed workflow editor', async
     '画布模式：Python 是 OS 生成的只读投影',
     { exact: true }
   )).toBeVisible()
-  await page.locator('.react-flow__node-wfNode').first().click({
+  const existingNode = page.locator('.wf-node__id').filter({
+    hasText: /^stirring$/
+  }).locator('xpath=ancestor::*[@data-workflow-node-uuid]')
+  await existingNode.click({
     position: { x: 24, y: 24 }
   })
   const editor = page.getByRole('complementary', {
@@ -134,7 +138,9 @@ test('SZLab persisted Catalog reaches the original typed workflow editor', async
   await expect(editor.getByRole('region', {
     name: '操作参数摘要'
   })).toBeVisible()
-  await editor.getByRole('button', { name: '配置节点参数' }).click()
+  await editor.getByRole('button', {
+    name: '配置节点参数'
+  }).dispatchEvent('click')
   const stirringParameters = page.getByRole('dialog', {
     name: '节点参数 stirring'
   })
@@ -156,9 +162,6 @@ test('SZLab persisted Catalog reaches the original typed workflow editor', async
   await stirringParameters.getByRole('button', { name: '完成' }).click()
   await expect(stirringParameters).toBeHidden()
 
-  const existingNode = page.locator('.wf-node__id').filter({
-    hasText: /^stirring$/
-  }).locator('xpath=ancestor::*[@data-workflow-node-uuid]')
   const editedNodeUuid = await existingNode.getAttribute(
     'data-workflow-node-uuid'
   )
@@ -184,10 +187,14 @@ test('SZLab persisted Catalog reaches the original typed workflow editor', async
   const readyTarget = existingNode.locator(
     '[data-workflow-handle-key="ready"][data-workflow-handle-io="target"]'
   )
-  await expect(readySource).toHaveCSS('visibility', 'hidden')
-  await expect(readyTarget).toHaveCSS('visibility', 'hidden')
+  await expect(readySource).toBeVisible()
+  await expect(readySource).toHaveAttribute('aria-label', '执行顺序输出端口')
+  await expect(readyTarget).toBeVisible()
+  await expect(readyTarget).toHaveAttribute('aria-label', '执行顺序输入端口')
 
-  await editor.getByRole('button', { name: '配置节点参数' }).click()
+  await editor.getByRole('button', {
+    name: '配置节点参数'
+  }).dispatchEvent('click')
   await expect(stirringParameters).toBeVisible()
   await stirringParameters.getByRole('combobox', {
     name: '磁搅位置 参数来源'

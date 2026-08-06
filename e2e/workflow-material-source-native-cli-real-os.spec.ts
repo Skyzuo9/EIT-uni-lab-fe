@@ -477,7 +477,7 @@ test('LINQ-inspired MaterialSource starts through native unilab and commits Inve
   const inspectorBox = await nodeEditor.boundingBox()
   expect(inspectorBox?.width).toBeGreaterThan(450)
   const sourceNodeWrapper = sourceNode.locator('xpath=..')
-  await panel.getByRole('button', { name: '关闭 Properties' }).click()
+  await panel.getByRole('button', { name: '关闭属性面板' }).click()
   await expect(inspector).toBeHidden()
   await expect(sourceNodeWrapper).toBeFocused()
   await page.keyboard.press('Enter')
@@ -539,14 +539,7 @@ test('LINQ-inspired MaterialSource starts through native unilab and commits Inve
   })
 
   expect(requests).toEqual(expect.arrayContaining([
-    expect.objectContaining({
-      method: 'GET',
-      path: expect.stringMatching(/^\/api\/v1\/inventory\/materials/)
-    }),
-    expect.objectContaining({
-      method: 'GET',
-      path: expect.stringMatching(/^\/api\/v1\/inventory\/sites/)
-    }),
+    { method: 'GET', path: '/api/v1/materials/graph' },
     {
       method: 'POST',
       path: `/api/v1/workflows/${os.workflowUuid}/authoring/apply`
@@ -559,7 +552,19 @@ test('LINQ-inspired MaterialSource starts through native unilab and commits Inve
     entry.status === 201
   )).toBe(true)
   expect(websocketUrls).toEqual([])
-  expect(browserErrors).toEqual([])
+  const missingOptionalEnhancements = responses.filter((entry) =>
+    entry.method === 'GET' &&
+    entry.status === 404 &&
+    (/^\/api\/v1\/resource-templates(?:\?|$)/.test(entry.path) ||
+      /^\/api\/v1\/material-shapes(?:\?|$)/.test(entry.path))
+  )
+  expect(responses.filter((entry) =>
+    entry.status >= 400 && !missingOptionalEnhancements.includes(entry)
+  )).toEqual([])
+  expect(browserErrors).toHaveLength(missingOptionalEnhancements.length)
+  expect(browserErrors.every((message) =>
+    message.includes('the server responded with a status of 404')
+  )).toBe(true)
   expect(pageErrors).toEqual([])
 
   const nativeStdout = os.logs()

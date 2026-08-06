@@ -1,7 +1,11 @@
 import ELK from 'elkjs/lib/elk.bundled.js'
 
 import type { WorkflowLink, WorkflowNode } from './parseWorkflow'
-import type { LayoutNode, LayoutResult } from './dagLayout'
+import {
+  finalizeMaterialSourcePlacement,
+  type LayoutNode,
+  type LayoutResult
+} from './dagLayout'
 import {
   DEFAULT_WORKFLOW_DAG_LAYOUT_STRATEGY,
   DEFAULT_WORKFLOW_MATERIAL_SWIMLANE_DIRECTION,
@@ -146,10 +150,11 @@ function alignVisibleWorkflowLayers(
     y += Math.max(...ordered.map((item) => item.height)) + LAYER_GAP
   }
 
-  return nodes.map(({ node }) => ({
+  const layeredNodes = nodes.map(({ node }) => ({
     ...node,
     ...(positionById.get(node.id) ?? { x: 180, y: 40 })
   }))
+  return finalizeMaterialSourcePlacement(layeredNodes, links)
 }
 
 /**

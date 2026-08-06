@@ -1,11 +1,12 @@
 import { expect, test } from '@playwright/test'
 
+/** 验证云端物料（Material）上下文缺失时仍保留视图切换入口。 */
 test('物料加载上下文失败时仍保留视图切换入口', async ({ page }) => {
   await page.goto('/?enable=materialNav')
   await page.getByRole('button', { name: /物料/ }).click()
   await page
     .getByRole('combobox', { name: '切换服务配置' })
-    .selectOption({ label: 'Uni-Lab Cloud' })
+    .selectOption({ label: 'Uni-Lab 云端' })
 
   await expect(page.getByText('请选择实验室')).toBeVisible()
   const viewSwitcher = page.getByRole('group', {

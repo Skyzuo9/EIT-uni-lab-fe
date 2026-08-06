@@ -4,6 +4,7 @@ import {
   startPersistentAuthoringOs,
   type PersistentAuthoringOs
 } from './helpers/persistent-authoring-os'
+import { saveWorkflowDraftOnly } from './helpers/workflow-runtime-ui'
 
 let os: PersistentAuthoringOs
 
@@ -124,7 +125,7 @@ async function verifyCanvasDeletion(
   )).toBeVisible()
 
   const requestsBeforeSave = authoringWrites.length
-  await page.getByRole('button', { name: '保存草稿' }).click()
+  await saveWorkflowDraftOnly(page.locator('main').first())
   const diffDialog = page.getByRole('dialog', { name: '完整 Python 差异' })
   await expect(diffDialog, os.logs().slice(-6_000)).toBeVisible()
   const saveResponses = authoringWrites.slice(requestsBeforeSave)

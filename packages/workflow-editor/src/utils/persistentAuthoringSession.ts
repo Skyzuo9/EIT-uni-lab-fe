@@ -3,6 +3,7 @@ import type {
   WorkflowAuthoringChangedEvent,
   WorkflowAuthoringGraph
 } from '@unilab/services'
+import { decodeWorkflowIoMetadata } from '@unilab/services'
 
 export class AuthoringOperationQueue {
   private tail: Promise<void> = Promise.resolve()
@@ -50,12 +51,37 @@ export function hasRunnableAppliedWorkflow(
       String(template.node_type || '').trim().toLowerCase()
     ])
   )
-  return aggregate.applied_graph.nodes.some((node) => {
+  const hasExecutableNode = aggregate.applied_graph.nodes.some((node) => {
     if (node.disabled) return false
     const kind = templateKinds.get(node.workflow_node_template_uuid) ||
       String(node.type || '').trim().toLowerCase()
     return kind !== 'group'
   })
+  return hasExecutableNode || hasPureInputOutputContract(aggregate.applied_graph)
+}
+
+/**
+ * 判断零节点工作流能否只用本次运行输入解析全部输出。
+ *
+ * @param graph 已应用工作流图。
+ * @returns 合同有效、至少声明一个输出，且每个输出都绑定到已声明输入时为真。
+ * @throws 无；缺失或非法 I/O 合同按不可运行处理。
+ */
+function hasPureInputOutputContract(graph: WorkflowAuthoringGraph): boolean {
+  try {
+    const io = decodeWorkflowIoMetadata(graph.workflow.meta_data?.unilab)
+    if (io.output_contract.outputs.length === 0) return false
+    const inputNames = new Set(
+      io.input_contract.parameters.map(({ name }) => name)
+    )
+    return io.output_contract.outputs.every(({ name }) => {
+      const binding = io.output_bindings[name]
+      return binding.kind === 'workflow_input' &&
+        inputNames.has(binding.parameter)
+    })
+  } catch {
+    return false
+  }
 }
 
 export function authoringStateMessage(

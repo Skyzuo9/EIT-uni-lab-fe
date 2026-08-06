@@ -22,7 +22,11 @@ import {
   writeF05Evidence,
   type F05MaterialSourceRealOs
 } from './helpers/f05-material-source-real-os'
-import { installWorkflowPanel } from './helpers/workflow-runtime-ui'
+import {
+  applyWorkflowCandidateWithoutTask,
+  installWorkflowPanel,
+  saveWorkflowDraftOnly
+} from './helpers/workflow-runtime-ui'
 import { readFixedExecutorEvidence } from './helpers/f05-fixed-executor-contract'
 import { clickVisibleCanvasWorkflowNode } from './helpers/f05-workflow-canvas-node'
 
@@ -189,15 +193,34 @@ class BrowserEvidenceCollector {
   }
 
   /**
-   * 判断浏览器是否收到失败的 OS 公共响应。
+   * 判断浏览器是否收到非预期的 OS 公共失败响应。
    *
-   * 参数：无。返回：任一 v1 响应状态码不小于 400 时为 `true`。异常：无。
+   * 参数：无。返回：除可选物料形状能力 404 外，任一 v1 响应状态码不小于
+   * 400 时为 `true`。异常：无。
    */
-  hasFailedResponse(): boolean {
+  hasUnexpectedFailedResponse(): boolean {
     for (const entry of this.responses) {
-      if ((entry.status ?? 0) >= 400) return true
+      if ((entry.status ?? 0) < 400) continue
+      if (
+        entry.method === 'GET' && entry.path === '/api/v1/material-shapes' &&
+        entry.status === 404
+      ) continue
+      return true
     }
     return false
+  }
+
+  /**
+   * 返回排除浏览器对已验证可选 404 的通用资源加载提示后的控制台错误。
+   *
+   * 参数：无。返回：仍需导致验收失败的控制台错误。异常：无；对应 HTTP 响应
+   * 已由 `hasUnexpectedFailedResponse` 独立校验，其他失败不会被此过滤掩盖。
+   */
+  unexpectedConsoleErrors(): string[] {
+    return this.consoleErrors.filter(
+      (message) => message !==
+        'Failed to load resource: the server responded with a status of 404 (Not Found)'
+    )
   }
 }
 
@@ -343,8 +366,14 @@ async function runF05MaterialSourceAcceptance(
   )
   assertMaterialSourceResolutionJob(firstRuntime.job, existingMaterialUuid)
 
-  // 只含来源的任务成功后必须自行释放短期预留；夹具随后通过同一生产
-  // InventoryService 明确建立测试占用，使第二个任务的等待不依赖资源泄漏。
+  // 成功终态不会自动释放可能已经被真实流程使用的物料。这个夹具只有来源节点、
+  // 没有下游动作，因此先通过同一生产 InventoryService 显式清理首个任务预留，
+  // 再建立测试占用；第二个任务的等待不依赖资源泄漏或错误的成功终态假设。
+  const firstReleaseResult = os.releaseWorkflowReservation(firstTaskUuid)
+  expect(firstReleaseResult).toEqual({
+    workflow_id: firstTaskUuid,
+    released_nodes: [os.sourceNodeUuid]
+  })
   const fixtureReserveResult = os.reserveWorkflowMaterial(
     FIXTURE_HOLDER_TASK_UUID,
     existingMaterialUuid
@@ -436,9 +465,9 @@ async function runF05MaterialSourceAcceptance(
   expect(evidence.hasRequest('POST', '/api/v1/workflow-tasks')).toBe(true)
   expect(evidence.hasRequest('POST', '/api/v1/reschedule')).toBe(true)
   expect(evidence.hasPrivateInventoryRequest()).toBe(false)
-  expect(evidence.hasFailedResponse()).toBe(false)
+  expect(evidence.hasUnexpectedFailedResponse()).toBe(false)
   expect(evidence.websocketUrls).toEqual([])
-  expect(evidence.consoleErrors).toEqual([])
+  expect(evidence.unexpectedConsoleErrors()).toEqual([])
   expect(evidence.pageErrors).toEqual([])
 
   const nativeLogs = joinNativeLogs(os.nativeLogs())
@@ -508,7 +537,7 @@ function findMaterial(
  * 返回：应用成功后返回无。异常：任何 UI/服务端合同断言失败时由 Playwright 抛出。
  */
 async function saveAndApply(panel: Locator, page: Page): Promise<void> {
-  await panel.getByRole('button', { name: '保存草稿', exact: true }).click()
+  await saveWorkflowDraftOnly(panel)
   const diff = page.getByRole('dialog', { name: '完整 Python 差异' })
   await expect(diff).toBeVisible()
   await diff.getByRole('button', {
@@ -520,12 +549,14 @@ async function saveAndApply(panel: Locator, page: Page): Promise<void> {
     `/api/v1/workflows/${os.workflowUuid}/authoring/apply`
   )
   const applyResponsePromise = page.waitForResponse(applyMatcher.matches)
-  await panel.getByRole('button', { name: '应用工作流', exact: true }).click()
+  await applyWorkflowCandidateWithoutTask(panel, page)
   const applyResponse = await applyResponsePromise
   const applyEnvelope = await applyResponse.json() as PublicEnvelope<unknown>
   expect(applyResponse.status()).toBe(200)
   expect(applyEnvelope.code).toBe(0)
-  await expect(panel.getByText(/(?:工作流|源码)已应用/)).toBeVisible()
+  await expect(panel.getByText(
+    /已取消本次运行；已应用版本 \d+ 保持不变，未创建任务/
+  )).toBeVisible()
 }
 
 /**

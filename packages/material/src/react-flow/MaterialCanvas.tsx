@@ -1,4 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState
+} from 'react'
 import ReactFlow, {
   Background,
   Controls,
@@ -28,6 +34,7 @@ import {
 const NODE_TYPES = {
   material: MaterialNode
 }
+const EMPTY_MATERIAL_IDS: readonly MaterialId[] = []
 
 export interface MaterialCanvasProps {
   readStatus: CapabilityStatus
@@ -40,14 +47,20 @@ export interface MaterialCanvasProps {
   onSelectionChange?: (materialIds: readonly MaterialId[]) => void
 }
 
+/**
+ * 渲染由物料图（Material Graph）投影得到的二维画布。
+ *
+ * @param props 读取、移动、选择与高亮等画布能力。
+ * @returns 受控选择且支持物料移动的 ReactFlow 画布。
+ */
 export function MaterialCanvas({
   readStatus,
   moveStatus,
   floorplanOverlay = false,
   physicalLayout,
   showSites = true,
-  selectedMaterialIds = [],
-  highlightedMaterialIds = [],
+  selectedMaterialIds = EMPTY_MATERIAL_IDS,
+  highlightedMaterialIds = EMPTY_MATERIAL_IDS,
   onSelectionChange
 }: MaterialCanvasProps): React.JSX.Element {
   const [isEditing, setIsEditing] = useState(false)
@@ -65,6 +78,17 @@ export function MaterialCanvas({
   const loadState = useMaterialStore((state) => state.loadState)
   const error = useMaterialStore((state) => state.error)
   const canDrag = moveStatus.available && isEditing
+
+  /** 只在受控选择确实变化时通知宿主，避免 ReactFlow 空选择反馈循环。 */
+  const publishSelection = useCallback((materialIds: readonly MaterialId[]) => {
+    if (
+      materialIds.length === selectedMaterialIds.length &&
+      materialIds.every((materialId, index) =>
+        materialId === selectedMaterialIds[index]
+      )
+    ) return
+    onSelectionChange?.(materialIds)
+  }, [onSelectionChange, selectedMaterialIds])
 
   useEffect(() => {
     if (!moveStatus.available) setIsEditing(false)
@@ -196,10 +220,10 @@ export function MaterialCanvas({
           flowInstanceRef.current = instance
         }}
         onNodeClick={(_, node) => {
-          onSelectionChange?.([node.id])
+          publishSelection([node.id])
         }}
         onPaneClick={() => {
-          onSelectionChange?.([])
+          publishSelection(EMPTY_MATERIAL_IDS)
         }}
         onNodeDrag={(_, node) => {
           if (!canDrag) return
@@ -227,7 +251,7 @@ export function MaterialCanvas({
         }}
         onSelectionChange={
           ((selection) =>
-            onSelectionChange?.(
+            publishSelection(
               selection.nodes.map((node: Node) => node.id)
             )) as OnSelectionChangeFunc
         }
@@ -240,6 +264,7 @@ export function MaterialCanvas({
   )
 }
 
+/** 渲染物料图（Material Graph）加载失败的可操作提示。 */
 function MaterialLoadError({
   technicalMessage
 }: {

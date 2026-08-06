@@ -23,6 +23,7 @@ test.afterAll(async () => {
   await os?.stop()
 })
 
+/** 验证运行界面在真实 OS 故障中增量恢复反馈和一致状态。 */
 test('original Runtime UI incrementally restores feedback and coherent state through real OS failures', async ({
   page
 }) => {

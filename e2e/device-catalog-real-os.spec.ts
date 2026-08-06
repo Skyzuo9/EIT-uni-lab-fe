@@ -6,7 +6,8 @@ import { expect, test } from '@playwright/test'
 const API_URL =
   process.env.UNILAB_E2E_DEVICE_API_URL ?? 'http://127.0.0.1:8014'
 
-test('existing device UI reads the Edge-owned catalog through the real OS bridge', async ({
+/** 验证仪器设备（Device）界面通过真实 OS HTTP 接口读取 Edge 设备目录。 */
+test('existing device UI reads the Edge-owned catalog through the real OS API', async ({
   page,
   request
 }) => {
@@ -32,17 +33,28 @@ test('existing device UI reads the Edge-owned catalog through the real OS bridge
 
   const health = await request.get(`${API_URL}/api/v1/health`)
   expect(health.ok()).toBe(true)
-  expect(await health.json()).toEqual({ status: 'ok' })
+  expect(await health.json()).toMatchObject({ status: 'ok' })
   const catalog = await request.get(`${API_URL}/api/v1/devices`)
   expect(catalog.ok()).toBe(true)
   const catalogBody = (await catalog.json()) as {
-    schemaVersion?: string
-    source?: string
-    items?: unknown[]
+    code?: number
+    data?: {
+      schemaVersion?: string
+      source?: string
+      items?: Array<{
+        id?: string
+        name?: string
+        actions?: unknown[]
+      }>
+    }
   }
-  expect(catalogBody.schemaVersion).toBe('device-catalog/v1')
-  expect(catalogBody.source).toBe('edge')
-  expect(catalogBody.items?.length).toBeGreaterThan(0)
+  expect(catalogBody.code).toBe(0)
+  expect(catalogBody.data?.schemaVersion).toBe('device-catalog/v1')
+  expect(catalogBody.data?.source).toBe('edge')
+  const catalogItems = catalogBody.data?.items ?? []
+  expect(catalogItems.length).toBeGreaterThan(0)
+  const instrumentItems = catalogItems.filter((item) => item.id !== 'host_node')
+  expect(instrumentItems.length).toBeGreaterThan(0)
 
   await page.goto(
     `/?section=device&localOsUrl=${encodeURIComponent(API_URL)}`
@@ -56,9 +68,25 @@ test('existing device UI reads the Edge-owned catalog through the real OS bridge
   await expect(
     devicePanel.getByText('Edge 已连接', { exact: true })
   ).toBeVisible()
-  await expect(deviceList.getByText(/1 台设备 · Edge 实时上报/)).toBeVisible()
-  await expect(deviceList.getByText('host_node', { exact: true })).toBeVisible()
-  await expect(workspace.getByText('本地', { exact: true })).toBeVisible()
+  await expect(deviceList.getByText(
+    `${instrumentItems.length} 台设备 · Edge 实时上报`,
+    { exact: true }
+  )).toBeVisible()
+  await expect(deviceList.getByRole('button', { name: /host_node/ }))
+    .toHaveCount(0)
+  const instrumentId = instrumentItems[0]?.id
+  if (!instrumentId) throw new Error('仪器设备（Device）目录缺少可展示设备')
+  const instrumentMachineName = instrumentItems[0]?.name
+  if (!instrumentMachineName) {
+    throw new Error('仪器设备（Device）目录缺少 Edge 名称')
+  }
+  await expect(deviceList.getByRole('button', {
+    name: new RegExp(instrumentId)
+  })).toBeVisible()
+  await expect(workspace.getByText(
+    instrumentMachineName,
+    { exact: true }
+  )).toBeVisible()
   await expect(workspace.getByText('在线', { exact: true })).toBeVisible()
   await expect(
     workspace.locator('.edge-device__action-node').first()
@@ -83,15 +111,15 @@ test('existing device UI reads the Edge-owned catalog through the real OS bridge
   })
 
   const actionNodes = workspace.locator('.edge-device__action-node')
-  expect(await actionNodes.count()).toBeGreaterThan(1)
-  await actionNodes.nth(1).click()
+  expect(await actionNodes.count()).toBeGreaterThan(0)
+  await actionNodes.first().click()
   const parameterSection = workspace.locator('.edge-device__debug-section')
   await expect(
     parameterSection.getByText('动作参数预览', { exact: true })
   ).toBeVisible()
   await expect(
-    parameterSection.getByRole('button', { name: '请在工作流中运行' })
-  ).toBeDisabled()
+    parameterSection.getByRole('button', { name: '运行此动作' })
+  ).toBeEnabled()
   await parameterSection.screenshot({
     path: join(artifactDirectory, '05-action-parameter-form.png'),
     animations: 'disabled'
@@ -111,11 +139,11 @@ test('existing device UI reads the Edge-owned catalog through the real OS bridge
       { method: 'GET', path: '/api/v1/devices' }
     ])
   )
-  expect(
-    apiRequests.some(
-      (entry) => entry.path === '/api/v1/workflow-node-templates'
-    )
-  ).toBe(false)
+  // 设备展示来自 `/devices`；单动作正式任务仍需要节点模板目录中的
+  // authority、fingerprint 和模板 UUID，不能把这个身份读取误判为设备目录来源。
+  expect(apiRequests).toEqual(expect.arrayContaining([
+    { method: 'GET', path: '/api/v1/workflow-node-templates' }
+  ]))
   expect(browserErrors).toEqual([])
 
   writeFileSync(
