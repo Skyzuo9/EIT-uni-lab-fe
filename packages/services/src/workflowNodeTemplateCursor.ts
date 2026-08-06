@@ -10,7 +10,8 @@ const LIST_FIELDS = new Set([
   'catalog_fingerprint',
   'items',
   'has_more',
-  'next_cursor_uuid'
+  'next_cursor_uuid',
+  'total'
 ])
 
 /** OS 微后端可选发布的节点模板目录代际。 */
@@ -254,11 +255,11 @@ function catalogEnvelope(raw: unknown): Record<string, unknown> {
 }
 
 /**
- * 拒绝旧页码字段和未约定的节点模板列表字段。
+ * 拒绝旧页码字段和未约定的节点模板列表字段，并校验兼容总数。
  *
  * @param data 列表响应 data 对象。
- * @returns 无返回值；全部字段均在后端（Backend）合同或 OS 扩展中时通过。
- * @throws 出现 page/page_size/total 或其他未知字段时关闭失败。
+ * @returns 无返回值；全部字段均在后端（Backend）合同、兼容元数据或 OS 扩展中时通过。
+ * @throws 出现 page/page_size、其他未知字段或无效 total 时关闭失败。
  */
 function assertListFields(data: Record<string, unknown>): void {
   for (const field of Object.keys(data)) {
@@ -270,6 +271,13 @@ function assertListFields(data: Record<string, unknown>): void {
     if (!Object.prototype.hasOwnProperty.call(data, field)) invalidCatalog(
       `节点模板（WorkflowNodeTemplate）目录缺少 ${field}`
     )
+  }
+  if (Object.prototype.hasOwnProperty.call(data, 'total')) {
+    // `total` 只兼容部署端的目录统计，不参与 UUID 游标推进或模板实体投影。
+    const catalogTotal = data.total
+    if (!Number.isInteger(catalogTotal) || Number(catalogTotal) < 0) {
+      invalidCatalog('节点模板（WorkflowNodeTemplate）目录 total 无效')
+    }
   }
 }
 

@@ -36,7 +36,15 @@ function registerWorkflowNodeTemplateCursorTests(): void {
     rejectsRepeatedCursorAdvance
   )
   it(
-    'fails closed for legacy page/page_size/total response fields',
+    '接受游标目录 envelope 中的兼容 total 元数据',
+    acceptsCompatibleTotalMetadata
+  )
+  it(
+    '拒绝游标目录 envelope 中的无效 total 元数据',
+    rejectsInvalidTotalMetadata
+  )
+  it(
+    'fails closed for legacy page/page_size response fields',
     rejectsLegacyPageMetadata
   )
   it(
@@ -159,18 +167,60 @@ async function rejectsRepeatedCursorAdvance(): Promise<void> {
 }
 
 /**
- * 验证旧 page/page_size/total 字段不能与 UUID 游标合同混用。
+ * 验证服务端可在 UUID 游标目录 envelope 中附带兼容总数。
+ *
+ * @returns Promise 完成时表示 total 未污染节点模板实体且目录可正常读取。
+ * @throws 若兼容 total 仍被误判为未知字段则由 Vitest 断言失败。
+ */
+async function acceptsCompatibleTotalMetadata(): Promise<void> {
+  const response = page([summary(firstUuid, 'mix')], false, null)
+  // `data` 模拟当前部署环境在游标 envelope 上附带的合法目录总数。
+  const data = response.data as Record<string, unknown>
+  data.total = 1
+  const http = fixtureHttp({
+    '/api/v1/workflow-node-templates?limit=100': response
+  })
+
+  const catalog = await loadWorkflowNodeTemplateCatalog(http)
+
+  expect(catalog.items.map(readTemplateUuid)).toEqual([firstUuid])
+}
+
+/**
+ * 验证兼容目录总数仍须是非负整数，不能成为任意值逃生口。
+ *
+ * @returns Promise 完成时表示无效 total 被不可重试合同错误拒绝。
+ * @throws 若字符串、负数或小数 total 被静默接受则由 Vitest 断言失败。
+ */
+async function rejectsInvalidTotalMetadata(): Promise<void> {
+  for (const invalidTotal of ['1', -1, 1.5]) {
+    const response = page([summary(firstUuid, 'mix')], false, null)
+    // `data` 是被测游标 envelope；每轮只改变兼容目录总数。
+    const data = response.data as Record<string, unknown>
+    data.total = invalidTotal
+    const http = fixtureHttp({
+      '/api/v1/workflow-node-templates?limit=100': response
+    })
+
+    await expect(loadWorkflowNodeTemplateCatalog(http)).rejects.toMatchObject({
+      code: 'INVALID_API_RESPONSE',
+      retryable: false
+    })
+  }
+}
+
+/**
+ * 验证旧 page/page_size 字段不能与 UUID 游标合同混用。
  *
  * @returns Promise 完成时表示旧分页元数据被关闭失败。
  * @throws 若旧页码字段被静默忽略则由 Vitest 断言失败。
  */
 async function rejectsLegacyPageMetadata(): Promise<void> {
   const response = page([summary(firstUuid, 'mix')], false, null)
-  // `data` 是测试故意污染的列表主体，三个字段都属于已废弃合同。
+  // `data` 是测试故意污染的列表主体，页码字段属于已废弃合同。
   const data = response.data as Record<string, unknown>
   data.page = 1
   data.page_size = 100
-  data.total = 1
   const http = fixtureHttp({
     '/api/v1/workflow-node-templates?limit=100': response
   })
