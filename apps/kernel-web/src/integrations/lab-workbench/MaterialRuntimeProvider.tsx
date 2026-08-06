@@ -83,6 +83,27 @@ export function MaterialRuntimeProvider({
     )
   }, [backendEnabled, connection, store])
 
+  useEffect(() => {
+    if (
+      !store ||
+      !backendEnabled ||
+      connection !== 'connected' ||
+      !services.materials.subscribeMoves
+    ) {
+      return
+    }
+    const subscription = services.materials.subscribeMoves((event) => {
+      if (store.getState().loadState !== 'ready') return
+      try {
+        store.getState().applyRemoteMove(event)
+      } catch (error) {
+        // 当前页面图不能安全投影时保持原状，下次整页刷新再读取权威全量。
+        console.warn('物料移动事件投影失败', error)
+      }
+    })
+    return () => subscription.dispose()
+  }, [backendEnabled, connection, services.materials, store])
+
   const value = useMemo<MaterialRuntimeContextValue>(
     () => ({ store, scope, getStatus }),
     [getStatus, scope, store]

@@ -10,7 +10,11 @@ import {
   startM2bNativeCliOs,
   type M2bNativeCliOs
 } from './helpers/m2b-native-cli-os'
-import { installWorkflowPanel } from './helpers/workflow-runtime-ui'
+import {
+  applyWorkflowCandidateWithoutTask,
+  installWorkflowPanel,
+  saveWorkflowDraftOnly
+} from './helpers/workflow-runtime-ui'
 
 interface InventoryMaterial {
   uuid: string
@@ -218,7 +222,7 @@ test('LINQ-inspired MaterialSource starts through native unilab and commits Inve
   await expect(inspector.getByLabel('物料角色')).toHaveValue('reagent')
   await screenshot(page, artifactDirectory, '01-material-source-properties.png')
 
-  await panel.getByRole('button', { name: '保存草稿', exact: true }).click()
+  await saveWorkflowDraftOnly(panel)
   const diff = page.getByRole('dialog', { name: '完整 Python 差异' })
   await expect(diff).toBeVisible()
   await screenshot(page, artifactDirectory, '02-canonical-python-diff.png')
@@ -239,12 +243,8 @@ test('LINQ-inspired MaterialSource starts through native unilab and commits Inve
       `/api/v1/workflows/${os.workflowUuid}/authoring/apply`
     ) && response.request().method() === 'POST' && response.status() === 200
   )
-  await panel.getByRole('button', {
-    name: '应用工作流',
-    exact: true
-  }).click()
+  await applyWorkflowCandidateWithoutTask(panel, page)
   await applied
-  await expect(panel.getByText(/(?:工作流|源码)已应用/)).toBeVisible()
   await expect(panel.getByRole('button', {
     name: '开始运行',
     exact: true
@@ -412,7 +412,7 @@ test('LINQ-inspired MaterialSource starts through native unilab and commits Inve
   await inspector.getByLabel('库位范围').selectOption('fixed')
   await inspector.getByLabel('固定库位').selectOption(M2B_ALTERNATE_SITE_UUID)
 
-  await panel.getByRole('button', { name: '保存草稿', exact: true }).click()
+  await saveWorkflowDraftOnly(panel)
   const staticReject = panel.getByRole('alert').filter({
     hasText: 'material_source_conflict'
   })

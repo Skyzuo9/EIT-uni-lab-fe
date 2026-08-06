@@ -1,0 +1,420 @@
+/* Semantic material classes stay stable for React Flow and E2E, but only
+ * resolve inside this module's hashed scope. */
+:where(.scope, .scope *):global(.material-template-library) {
+  display: flex;
+  flex-direction: column;
+  width: 280px;
+  min-width: 240px;
+  height: min(620px, calc(100vh - 96px));
+  color: var(--unilab-color-text);
+  background: var(--unilab-color-surface);
+  border: 1px solid var(--unilab-color-border);
+  border-radius: 12px;
+  box-shadow: 0 12px 36px rgb(15 23 42 / 16%);
+  overflow: hidden;
+}
+
+:where(.scope, .scope *):global(.material-workbench) {
+  position: relative;
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+:where(.scope, .scope *):global(.material-workbench__viewport) {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+:where(.scope, .scope *):global(.material-workbench__compact-switch) {
+  display: none;
+}
+
+:where(.scope, .scope *):global(.material-workbench) :global(.material-canvas__edit-control) {
+  right: 132px;
+}
+
+:where(.scope, .scope *):global(.material-tree-sidebar) {
+  position: relative;
+  z-index: 12;
+  display: flex;
+  width: 252px;
+  min-width: 200px;
+  max-width: 520px;
+  height: 100%;
+  flex: 0 0 auto;
+  flex-direction: column;
+  color: var(--unilab-color-text);
+  background: color-mix(
+    in srgb,
+    var(--unilab-color-bg) 97%,
+    transparent
+  );
+  border-right: 1px solid var(--unilab-color-border);
+  box-shadow: 6px 0 18px rgb(15 23 42 / 5%);
+  resize: horizontal;
+  overflow: hidden;
+}
+
+:where(.scope, .scope *):global(.material-tree-sidebar) > header {
+  display: flex;
+  min-height: 54px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 12px 10px 16px;
+  border-bottom: 1px solid color-mix(
+    in srgb,
+    var(--unilab-color-border) 72%,
+    transparent
+  );
+}
+
+:where(.scope, .scope *):global(.material-tree-sidebar) > header div {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+}
+
+:where(.scope, .scope *):global(.material-tree-sidebar) > header span {
+  font-size: 13px;
+  font-weight: 650;
+}
+
+:where(.scope, .scope *):global(.material-tree-sidebar) > header strong {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--unilab-color-text-muted);
+}
+
+:where(.scope, .scope *):global(.material-tree-sidebar) > header button,
+:where(.scope, .scope *):global(.material-tree-sidebar__reopen) {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  padding: 0;
+  color: var(--unilab-color-text-muted);
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+:where(.scope, .scope *):global(.material-tree-sidebar) > header button:hover,
+:where(.scope, .scope *):global(.material-tree-sidebar__reopen):hover {
+  color: var(--unilab-color-text);
+  background: var(--unilab-color-bg-subtle);
+}
+
+:where(.scope, .scope *):global(.material-tree-sidebar) > header button:focus-visible,
+:where(.scope, .scope *):global(.material-tree-sidebar__reopen):focus-visible {
+  outline: 2px solid var(--unilab-color-focus);
+  outline-offset: 2px;
+}
+
+:where(.scope, .scope *):global(.material-tree-sidebar) > header svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.4;
+}
+
+:where(.scope, .scope *):global(.material-tree-sidebar__reopen) :global(.anticon) {
+  display: inline-flex;
+  font-size: 17px;
+  line-height: 1;
+}
+
+:where(.scope, .scope *):global(.material-tree-sidebar__reopen) :global(.anticon) svg {
+  width: 1em;
+  height: 1em;
+  fill: currentcolor;
+}
+
+:where(.scope, .scope *):global(.material-tree-sidebar__reopen) {
+  position: absolute;
+  z-index: 90;
+  top: 16px;
+  left: 8px;
+  color: var(--unilab-color-text);
+  background: transparent;
+}
+
+:where(.scope, .scope *):global(.material-workbench):has(
+    > :global(.material-tree-sidebar__reopen)
+  )
+  :global(.material-oblique-canvas__header) {
+  left: 48px;
+}
+
+:where(.scope, .scope *):global(.material-tree-sidebar__tree) {
+  flex: 1;
+  min-height: 0;
+  padding: 8px;
+  overflow: auto;
+}
+
+:where(.scope, .scope *):global(.material-tree-sidebar__tree) > p {
+  margin: 16px 8px;
+  font-size: 12px;
+  color: var(--unilab-color-text-muted);
+}
+
+:where(.scope, .scope *):global(.material-tree-sidebar__row) {
+  display: flex;
+  height: 34px;
+  align-items: center;
+  padding-right: 6px;
+  padding-left: calc(4px + var(--material-tree-depth) * 18px);
+  border-radius: 6px;
+}
+
+:where(.scope, .scope *):global(.material-tree-sidebar__row):hover {
+  background: var(--unilab-color-bg-subtle);
+}
+
+:where(.scope, .scope *):global(.material-tree-sidebar__row)[aria-selected='true'] {
+  color: var(--unilab-color-primary);
+  background: color-mix(
+    in srgb,
+    var(--unilab-color-primary) 9%,
+    var(--unilab-color-bg)
+  );
+}
+
+:where(.scope, .scope *):global(.material-tree-sidebar__grip) {
+  width: 12px;
+  color: color-mix(
+    in srgb,
+    var(--unilab-color-text-muted) 48%,
+    transparent
+  );
+  font-size: 13px;
+  line-height: 1;
+  cursor: grab;
+}
+
+:where(.scope, .scope *):global(.material-tree-sidebar__toggle),
+:where(.scope, .scope *):global(.material-tree-sidebar__toggle-spacer) {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  place-items: center;
+}
+
+:where(.scope, .scope *):global(.material-tree-sidebar__toggle) {
+  padding: 0;
+  color: var(--unilab-color-text-muted);
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+:where(.scope, .scope *):global(.material-tree-sidebar__toggle):hover {
+  background: color-mix(
+    in srgb,
+    var(--unilab-color-border) 45%,
+    transparent
+  );
+}
+
+:where(.scope, .scope *):global(.material-tree-sidebar__toggle) svg {
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.5;
+  transition: transform 120ms ease;
+}
+
+:where(.scope, .scope *):global(.material-tree-sidebar__toggle) svg:global(.is-expanded) {
+  transform: rotate(90deg);
+}
+
+:where(.scope, .scope *):global(.material-tree-sidebar__label) {
+  min-width: 0;
+  flex: 1;
+  padding: 4px 2px;
+  overflow: hidden;
+  color: inherit;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font: 500 12px/1.2 var(--unilab-font-sans);
+}
+
+:where(.scope, .scope *):global(.material-tree-sidebar__row--site) {
+  color: var(--unilab-color-text-muted);
+}
+
+:where(.scope, .scope *):global(.material-tree-sidebar__site-label) {
+  min-width: 0;
+  flex: 1;
+  padding: 4px 2px;
+  overflow: hidden;
+  font: 500 12px/1.2 var(--unilab-font-sans);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:where(.scope, .scope *):global(.material-tree-sidebar__site-status) {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  margin-left: auto;
+  border: 1px solid color-mix(in srgb, currentcolor 32%, transparent);
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px color-mix(in srgb, currentcolor 10%, transparent);
+}
+
+:where(.scope, .scope *):global(.material-tree-sidebar__site-status):global(.is-occupied) {
+  color: #dc2626;
+  background: #ef4444;
+}
+
+:where(.scope, .scope *):global(.material-tree-sidebar__site-status):global(.is-empty) {
+  color: #16a34a;
+  background: #22c55e;
+}
+
+:where(.scope, .scope *):global(.material-tree-sidebar__resize-hint) {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 3px;
+  height: 100%;
+  pointer-events: none;
+  background: transparent;
+  transition: background 120ms ease;
+}
+
+:where(.scope, .scope *):global(.material-canvas.is-sites-hidden)
+  :global(.material-flow-node__sites) {
+  display: none;
+}
+
+:where(.scope, .scope *):global(.material-tree-sidebar):hover :global(.material-tree-sidebar__resize-hint) {
+  background: color-mix(
+    in srgb,
+    var(--unilab-color-primary) 18%,
+    transparent
+  );
+}
+
+:where(.scope, .scope *):global(.material-template-launcher) {
+  position: absolute;
+  /* Pascal's floorplan overlay occupies z-index 50 inside the viewport. */
+  z-index: 90;
+  top: 52px;
+  right: 16px;
+  pointer-events: auto;
+}
+
+:where(.scope, .scope *):global(.material-template-launcher__tabs) {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: auto;
+}
+
+:where(.scope, .scope *):global(.material-template-launcher__tabs) button {
+  display: flex;
+  min-width: 112px;
+  min-height: 34px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 10px 7px 12px;
+  color: var(--unilab-color-text);
+  background: color-mix(
+    in srgb,
+    var(--unilab-color-bg) 95%,
+    transparent
+  );
+  border: 1px solid var(--unilab-color-border);
+  border-radius: 8px;
+  box-shadow: 0 3px 10px rgb(15 23 42 / 11%);
+  cursor: pointer;
+  backdrop-filter: blur(12px);
+  font: 600 12px/1 var(--unilab-font-sans);
+}
+
+:where(.scope, .scope *):global(.material-template-launcher__tabs) button:hover:not(:disabled),
+:where(.scope, .scope *):global(.material-template-launcher__tabs) button:global(.is-active) {
+  color: var(--unilab-color-primary);
+  border-color: color-mix(
+    in srgb,
+    var(--unilab-color-primary) 48%,
+    var(--unilab-color-border)
+  );
+  box-shadow: 0 5px 16px rgb(15 23 42 / 15%);
+}
+
+:where(.scope, .scope *):global(.material-template-launcher__tabs) button:disabled {
+  cursor: not-allowed;
+  opacity: .58;
+}
+
+:where(.scope, .scope *):global(.material-template-launcher__tabs) small {
+  font-size: 10px;
+  font-weight: 550;
+  color: var(--unilab-color-text-muted);
+}
+
+:where(.scope, .scope *):global(.material-template-launcher__backdrop) {
+  position: fixed;
+  z-index: 1;
+  padding: 0;
+  inset: 0;
+  pointer-events: auto;
+  background: transparent;
+  border: 0;
+}
+
+:where(.scope, .scope *):global(.material-template-launcher__panel) {
+  position: relative;
+  z-index: 2;
+  pointer-events: auto;
+}
+
+:where(.scope, .scope *):global(.material-template-launcher__panel) :global(.material-template-library) {
+  position: absolute;
+  top: 0;
+  right: 0;
+}
+
+:where(.scope, .scope *):global(.material-template-library) > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  border-bottom: 1px solid var(--unilab-color-border);
+  background: color-mix(
+    in srgb,
+    var(--unilab-color-material-soft) 64%,
+    var(--unilab-color-surface)
+  );
+}
+
+:where(.scope, .scope *):global(.material-template-library__header-actions) {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}

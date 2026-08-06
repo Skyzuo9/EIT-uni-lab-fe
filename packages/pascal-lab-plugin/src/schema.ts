@@ -152,6 +152,39 @@ export const LabTableNodeSchema = BaseNode.extend({
   graphMeta: z.record(z.string(), z.unknown()).optional()
 })
 
+export const LabMaterialTransferStatusSchema = z.enum([
+  'planned',
+  'pending',
+  'running',
+  'canceling',
+  'succeeded',
+  'failed',
+  'canceled',
+  'attention'
+])
+
+export const LabMaterialTransferRouteSchema = z.object({
+  id: z.string(),
+  workflowNodeUuid: z.string(),
+  label: z.string(),
+  sourceOwnerMaterialId: z.string(),
+  sourceSiteId: z.string(),
+  sourceSiteKey: z.string(),
+  targetOwnerMaterialId: z.string(),
+  targetSiteId: z.string(),
+  targetSiteKey: z.string(),
+  executorId: z.string(),
+  status: LabMaterialTransferStatusSchema,
+  selected: z.boolean().default(false),
+  points: z.array(Vector3Schema).min(2)
+})
+
+export const LabMaterialTransferLayerNodeSchema = BaseNode.extend({
+  type: z.literal('lab-material-transfer-layer'),
+  routes: z.array(LabMaterialTransferRouteSchema).default([]),
+  unresolvedRouteIds: z.array(z.string()).default([])
+})
+
 export type LabAttachPoint = z.infer<typeof LabAttachPointSchema>
 export type LabFloorplanSite = z.infer<typeof LabFloorplanSiteSchema>
 export type LabFloorplanSnapshot = z.infer<
@@ -160,6 +193,15 @@ export type LabFloorplanSnapshot = z.infer<
 export type LabPlacementRef = z.infer<typeof LabPlacementRefSchema>
 export type LabDeviceNode = z.infer<typeof LabDeviceNodeSchema>
 export type LabTableNode = z.infer<typeof LabTableNodeSchema>
+export type LabMaterialTransferStatus = z.infer<
+  typeof LabMaterialTransferStatusSchema
+>
+export type LabMaterialTransferRoute = z.infer<
+  typeof LabMaterialTransferRouteSchema
+>
+export type LabMaterialTransferLayerNode = z.infer<
+  typeof LabMaterialTransferLayerNodeSchema
+>
 export type LabSceneNode = LabDeviceNode | LabTableNode
 
 export function isLabDeviceNode(node: unknown): node is LabDeviceNode {
@@ -175,5 +217,15 @@ export function isLabTableNode(node: unknown): node is LabTableNode {
     typeof node === 'object' &&
     node !== null &&
     (node as { type?: unknown }).type === 'lab-table'
+  )
+}
+
+export function isLabMaterialTransferLayerNode(
+  node: unknown
+): node is LabMaterialTransferLayerNode {
+  return (
+    typeof node === 'object' &&
+    node !== null &&
+    (node as { type?: unknown }).type === 'lab-material-transfer-layer'
   )
 }

@@ -209,7 +209,7 @@ describe('material template adapter', () => {
               name: 'Liquid Handler',
               create_time: '2026-07-26T00:00:00Z',
               update_time: '2026-07-26T00:00:00Z',
-              meta_data: {},
+              meta_data: { source_node_id: 'liquid-handler' },
               config: {
                 rendering: { kind: 'table' }
               },
@@ -288,6 +288,7 @@ describe('material template adapter', () => {
           name: 'Liquid Handler',
           description: undefined,
           config: expect.objectContaining({
+            sourceIdentity: 'liquid-handler',
             rendering: {
               kind: 'table',
               dimensionsMm: [1400, 180, 720]
@@ -308,6 +309,7 @@ describe('material template adapter', () => {
             id: 'site-a1',
             ownerMaterialId: 'material-root',
             key: 'deck-A1',
+            sortOrder: 0,
             allowedTemplateIds: ['template-vessel'],
             occupiedMaterialIds: ['material-vessel'],
             poseInAnchor: {
@@ -374,6 +376,69 @@ describe('material template adapter', () => {
       '/api/v1/materials/graph',
       undefined
     )
+  })
+
+  it('maps instance.moved SSE frames to one material move notification', () => {
+    const listeners = new Map<string, (event: MessageEvent<string>) => void>()
+    const close = vi.fn()
+    const EventSourceMock = vi.fn(function (url: string) {
+      expect(url).toBe(
+        'http://127.0.0.1:18003/api/v1/monitor/events?channels=material&backlog=0'
+      )
+      return {
+        addEventListener: (
+          type: string,
+          listener: (event: MessageEvent<string>) => void
+        ) => listeners.set(type, listener),
+        removeEventListener: (type: string) => listeners.delete(type),
+        close
+      }
+    })
+    vi.stubGlobal('EventSource', EventSourceMock)
+    try {
+      const backend = getDefaultBackend('local-python')
+      const service = createMaterialService(
+        mockHttp(undefined).http,
+        backend,
+        resolveServerCapabilities(backend)
+      )
+      const onMove = vi.fn()
+
+      const subscription = service.subscribeMoves?.(onMove)
+      listeners.get('material')?.({
+        data: JSON.stringify({
+          seq: 42,
+          channel: 'material',
+          type: 'instance.moved',
+          data: {
+            aggregate_id: 'material-1',
+            version: 7,
+            payload: {
+              from_parent: 'warehouse-1',
+              from_slot: 'L1B1',
+              to_parent: 'station-7',
+              to_slot: 'S0721'
+            }
+          }
+        }),
+        lastEventId: '42'
+      } as MessageEvent<string>)
+
+      expect(onMove).toHaveBeenCalledWith({
+        id: '42',
+        materialId: 'material-1',
+        revision: 7,
+        fromParentId: 'warehouse-1',
+        fromSite: 'L1B1',
+        toParentId: 'station-7',
+        toSite: 'S0721'
+      })
+      subscription?.dispose()
+      expect(close).toHaveBeenCalledTimes(1)
+      expect(listeners.has('material')).toBe(false)
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 
   it('creates a Registry template instance through the unified command', async () => {

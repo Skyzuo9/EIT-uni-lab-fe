@@ -6,7 +6,10 @@ import {
   startPersistentAuthoringOs,
   type PersistentAuthoringOs
 } from './helpers/persistent-authoring-os'
-import { installWorkflowPanel } from './helpers/workflow-runtime-ui'
+import {
+  installWorkflowPanel,
+  prepareAppliedWorkflow
+} from './helpers/workflow-runtime-ui'
 
 let os: PersistentAuthoringOs
 
@@ -56,48 +59,13 @@ test('existing Workflow UI drives Task/Jobs/commands through real OS HTTP and SS
 
   await expect(panel.getByText('完整控制流 DAG')).toBeVisible()
   await expect(panel.getByRole('button', {
-    name: '开始运行',
-    exact: true
+    name: /^(应用并运行|开始运行)$/
   })).toBeVisible()
+  await prepareAppliedWorkflow(panel, page)
   await expect(panel.getByRole('button', {
-    name: '开始运行',
-    exact: true
-  })).toBeDisabled()
-  await panel.getByRole('button', {
     name: '画布模式',
     exact: true
-  }).click()
-  await expect(panel.getByText('画布模式：Python 是 OS 生成的只读投影'))
-    .toBeVisible()
-  await panel.getByRole('button', {
-    name: '保存草稿',
-    exact: true
-  }).click()
-  const normalizedDiff = page.getByRole('dialog', {
-    name: '完整 Python 差异'
-  })
-  await expect(normalizedDiff).toBeVisible()
-  const saveResponse = page.waitForResponse((response) => {
-    const url = new URL(response.url())
-    return response.request().method() === 'PUT' &&
-      url.pathname.endsWith('/authoring/draft')
-  })
-  await normalizedDiff.getByRole('button', {
-    name: '接受完整差异并保存',
-    exact: true
-  }).click()
-  expect((await saveResponse).status()).toBe(200)
-  const applyResponse = page.waitForResponse((response) => {
-    const url = new URL(response.url())
-    return response.request().method() === 'POST' &&
-      url.pathname.endsWith('/authoring/apply')
-  })
-  await panel.getByRole('button', {
-    name: '应用工作流',
-    exact: true
-  }).click()
-  expect((await applyResponse).status()).toBe(200)
-  await expect(panel.getByText(/工作流已应用/)).toBeVisible()
+  })).toHaveAttribute('aria-pressed', 'true')
   await expect(panel.getByRole('button', {
     name: '开始运行',
     exact: true
@@ -120,13 +88,13 @@ test('existing Workflow UI drives Task/Jobs/commands through real OS HTTP and SS
     exact: true
   }).click()
   await expect(panel.getByText(
-    '已设置 Debugger 起始点；普通 Task 不携带此配置',
+    '已设置调试器起始点；普通任务不携带此配置',
     { exact: true }
   )).toBeVisible()
   await expect(panel.locator('.wf-flow-node--start')).toHaveCount(1)
   await expect(panel.locator('.wf-flow-node--before-start')).toHaveCount(1)
-  await expect(panel.locator('.cm-workflow-marker--start')).toBeVisible()
-  await expect(panel.locator('.cm-workflow-marker--before-start')).toBeVisible()
+  await expect(panel.locator('.cm-workflow-marker--start')).toHaveCount(1)
+  await expect(panel.locator('.cm-workflow-marker--before-start')).toHaveCount(1)
   await page.screenshot({
     path: join(artifactDirectory, '02-start-node-dag-and-code.png'),
     fullPage: true
@@ -137,11 +105,11 @@ test('existing Workflow UI drives Task/Jobs/commands through real OS HTTP and SS
     exact: true
   }).click()
   await expect(panel.getByText(
-    '已设置 Debugger 断点；普通 Task 不携带此配置',
+    '已设置调试器断点；普通任务不携带此配置',
     { exact: true }
   )).toBeVisible()
   await expect(panel.locator('.wf-flow-node--breakpoint')).toHaveCount(1)
-  await expect(panel.locator('.cm-workflow-marker--breakpoint')).toBeVisible()
+  await expect(panel.locator('.cm-workflow-marker--breakpoint')).toHaveCount(1)
   await page.screenshot({
     path: join(artifactDirectory, '03-breakpoint-dag-and-code.png'),
     fullPage: true
@@ -198,7 +166,8 @@ test('existing Workflow UI drives Task/Jobs/commands through real OS HTTP and SS
   await expect(panel.locator('[data-run-status="pending"]')).toBeVisible()
   await expect(panel.locator('[data-node-state="pending"]')).toHaveCount(2)
   const taskIdentity = panel.locator('.workflow-runtime__debug-summary')
-    .getByText(/Task[0-9a-f]{8}/i)
+    .locator('.is-meta')
+    .filter({ hasText: /^任务/ })
   await expect(taskIdentity).toBeVisible()
   const taskIdentityText = await taskIdentity.textContent()
   await page.screenshot({

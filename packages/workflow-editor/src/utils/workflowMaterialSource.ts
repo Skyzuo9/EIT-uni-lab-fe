@@ -311,20 +311,43 @@ function materialSourceMounts(
   return catalog.materials.filter((material) => mountUuids.has(material.uuid))
 }
 
+/**
+ * 按公共物料图（MaterialGraph）的 sort_order、UUID 顺序筛选兼容库位（Site）。
+ *
+ * @param catalog 工作流物料来源（MaterialSource）目录快照。
+ * @param mountUuid 当前选择的挂载物料稳定 UUID。
+ * @param resourceTemplateUuid 当前选择的资源模板（ResourceTemplate）稳定 UUID。
+ * @returns 保留目录权威业务顺序的兼容库位集合。
+ * @throws 无。
+ */
 function compatibleSites(
   catalog: WorkflowMaterialSourceCatalogSnapshot,
   mountUuid: string,
   resourceTemplateUuid: string
 ): WorkflowMaterialSourceSite[] {
-  return catalog.sites.filter((site) =>
-    site.mountMaterialUuid === mountUuid &&
-    (
-      site.allowedResourceTemplateUuids.length === 0 ||
+  const sites: WorkflowMaterialSourceSite[] = []
+  for (const site of catalog.sites) {
+    const sameMount = site.mountMaterialUuid === mountUuid
+    const acceptsTemplate = site.allowedResourceTemplateUuids.length === 0 ||
       site.allowedResourceTemplateUuids.includes(resourceTemplateUuid)
-    )
-  ).sort((left, right) =>
-    left.sortOrder - right.sortOrder || left.uuid.localeCompare(right.uuid)
-  )
+    if (sameMount && acceptsTemplate) sites.push(site)
+  }
+  return sites.sort(compareMaterialSourceSites)
+}
+
+/**
+ * 按库位（Site）业务顺序和稳定 UUID 比较两个候选。
+ *
+ * @param left 左侧库位。
+ * @param right 右侧库位。
+ * @returns `sortOrder` 优先、UUID 次优先的比较结果。
+ * @throws 无。
+ */
+function compareMaterialSourceSites(
+  left: WorkflowMaterialSourceSite,
+  right: WorkflowMaterialSourceSite
+): number {
+  return left.sortOrder - right.sortOrder || left.uuid.localeCompare(right.uuid)
 }
 
 function appendStableTemplate(

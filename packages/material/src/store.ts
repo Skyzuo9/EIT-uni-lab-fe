@@ -1,6 +1,10 @@
 import { createStore, type StoreApi } from 'zustand/vanilla'
 
-import { buildMaterialGraphIndex, assertValidMaterialGraph } from './rules'
+import {
+  buildMaterialGraphIndex,
+  assertValidMaterialGraph,
+  MaterialRuleError
+} from './rules'
 import {
   authoringSnapshot,
   createMaterialHistory,
@@ -17,6 +21,7 @@ import type {
   MaterialEdgeOperation,
   MaterialGraphIndex,
   MaterialId,
+  MaterialMovedEvent,
   MaterialMutationResult,
   MaterialPlacement,
   MaterialStoreDependencies,
@@ -55,6 +60,8 @@ export interface MaterialStoreState {
   shapeLibrary: MaterialShapeLibrary
 
   loadGraph: () => Promise<void>
+  /** 将一条服务端物料移动事件增量投影到当前页面，不重新读取完整物料图。 */
+  applyRemoteMove: (event: MaterialMovedEvent) => void
   createMaterial: (input: CreateMaterialInput) => Promise<CreateMaterialResult>
   updateConfig: (
     materialId: MaterialId,
@@ -203,6 +210,98 @@ export function createMaterialStore(
           set({ loadState: 'error' })
           fail(commandId, error)
         }
+      },
+
+      applyRemoteMove: (event) => {
+        const current = get().aggregatesById
+        const moving = current[event.materialId]
+        if (!moving) {
+          throw new MaterialRuleError(
+            'MATERIAL_MOVE_SOURCE_MISSING',
+            `Unknown moved Material: ${event.materialId}`
+          )
+        }
+        const targetParent = current[event.toParentId]
+        if (!targetParent) {
+          throw new MaterialRuleError(
+            'MATERIAL_MOVE_TARGET_MISSING',
+            `Unknown target Material: ${event.toParentId}`
+          )
+        }
+
+        const next = Object.fromEntries(
+          Object.entries(current).map(([id, aggregate]) => [
+            id,
+            structuredClone(aggregate)
+          ])
+        ) as Record<MaterialId, MaterialAggregate>
+        const nextMoving = next[event.materialId]
+        const nextTarget = next[event.toParentId]
+        const targetSite = event.toSite
+          ? nextTarget.sites.find(
+              (site) =>
+                site.id === event.toSite ||
+                site.key === event.toSite ||
+                site.name === event.toSite
+            )
+          : undefined
+        if (event.toSite && !targetSite) {
+          throw new MaterialRuleError(
+            'MATERIAL_MOVE_TARGET_SITE_MISSING',
+            `Target Site ${event.toSite} does not belong to ${event.toParentId}`
+          )
+        }
+
+        for (const aggregate of Object.values(next)) {
+          aggregate.sites = aggregate.sites.map((site) => {
+            const occupiedMaterialIds = site.occupiedMaterialIds.filter(
+              (materialId) => materialId !== event.materialId
+            )
+            return occupiedMaterialIds.length === site.occupiedMaterialIds.length
+              ? site
+              : withSiteOccupancy(site, occupiedMaterialIds)
+          })
+        }
+
+        if (targetSite) {
+          const refreshedTargetSite = nextTarget.sites.find(
+            (site) => site.id === targetSite.id
+          )
+          if (!refreshedTargetSite) {
+            throw new MaterialRuleError(
+              'MATERIAL_MOVE_TARGET_SITE_MISSING',
+              `Target Site ${targetSite.id} does not belong to ${event.toParentId}`
+            )
+          }
+          nextTarget.sites = nextTarget.sites.map((site) =>
+            site.id === refreshedTargetSite.id
+              ? withSiteOccupancy(site, [
+                  ...site.occupiedMaterialIds,
+                  event.materialId
+                ])
+              : site
+          )
+          nextMoving.placement = {
+            kind: 'site',
+            parentId: event.toParentId,
+            siteId: refreshedTargetSite.id,
+            offsetPose: zeroPose()
+          }
+        } else {
+          nextMoving.placement = {
+            kind: 'parent',
+            parentId: event.toParentId,
+            anchor: { kind: 'root' },
+            localPose: zeroPose()
+          }
+        }
+        nextMoving.revision = event.revision ?? nextMoving.revision + 1
+
+        assertValidMaterialGraph(next)
+        set({
+          aggregatesById: next,
+          graphIndex: buildMaterialGraphIndex(next)
+        })
       },
 
       createMaterial: async (input) => {
@@ -417,4 +516,30 @@ function requireAggregate(
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Material operation failed'
+}
+
+/** 生成远端转运默认的零偏移位姿。 */
+function zeroPose(): LabPose {
+  return {
+    positionMm: [0, 0, 0],
+    rotationDegXYZ: [0, 0, 0]
+  }
+}
+
+/** 同步库位占用及其可选的视觉状态。 */
+function withSiteOccupancy(
+  site: MaterialAggregate['sites'][number],
+  occupiedMaterialIds: readonly MaterialId[]
+): MaterialAggregate['sites'][number] {
+  const occupied = occupiedMaterialIds.length > 0
+  return {
+    ...site,
+    occupiedMaterialIds,
+    visual: site.visual
+      ? {
+          state: occupied ? 'occupied' : 'empty',
+          fillFraction: occupied ? 1 : 0
+        }
+      : undefined
+  }
 }

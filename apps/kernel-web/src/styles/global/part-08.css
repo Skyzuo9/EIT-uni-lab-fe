@@ -1,0 +1,322 @@
+
+@media (max-width: 720px) {
+  .edge-device__identity {
+    grid-template-columns: 46px minmax(0, 1fr);
+  }
+
+  .edge-device__identity-icon {
+    width: 46px;
+    height: 46px;
+  }
+
+  .edge-device__status-badge {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .edge-device__identity-states {
+    grid-column: 2;
+    justify-content: flex-start;
+  }
+
+  .edge-device__identity-states .edge-device__status-badge {
+    grid-column: auto;
+  }
+
+  .edge-device__metrics,
+  .edge-device__parameter-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .edge-device__metric:nth-child(2) {
+    border-right: 0;
+  }
+
+  .edge-device__metric:nth-child(-n + 2) {
+    border-bottom: 1px solid var(--unilab-color-border);
+  }
+
+  .edge-device__debug-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .edge-device__debug-actions > span {
+    margin-left: 0;
+    text-align: left;
+  }
+
+  .edge-device__lock-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .edge-device__unlock-button {
+    justify-self: start;
+  }
+
+  .edge-device__unlock-dialog dl > div {
+    grid-template-columns: 1fr;
+    gap: 3px;
+  }
+}
+
+/* ============ 通用错误边界 ============ */
+.panel-error {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 32px;
+}
+
+.panel-error__title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #e03131;
+}
+
+.panel-error__message {
+  max-width: 100%;
+  margin: 0;
+  padding: 12px 14px;
+  font-family: 'SF Mono', 'Menlo', 'Consolas', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #495057;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: #f8f9fa;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+}
+
+.panel-error__retry {
+  padding: 6px 16px;
+  font-size: 13px;
+  color: #ffffff;
+  cursor: pointer;
+  background: #4dabf7;
+  border: none;
+  border-radius: 6px;
+}
+
+.panel-error__retry:hover {
+  background: #339af0;
+}
+
+.material-scene-unavailable {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  padding: var(--unilab-space-6);
+  background:
+    radial-gradient(
+      circle at 50% 18%,
+      color-mix(in srgb, var(--unilab-color-scene) 8%, transparent),
+      transparent 48%
+    ),
+    var(--unilab-color-canvas);
+}
+
+.material-scene-unavailable .material-capability {
+  width: min(460px, 100%);
+  margin: 0;
+  color: color-mix(
+    in srgb,
+    var(--unilab-color-warning) 78%,
+    var(--unilab-color-text)
+  );
+  border-color: color-mix(
+    in srgb,
+    var(--unilab-color-warning) 28%,
+    var(--unilab-color-border)
+  );
+  background: var(--unilab-color-warning-soft);
+}
+
+@media (max-width: 720px) {
+  .app-shell__header {
+    height: auto;
+    min-height: 48px;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 6px 8px;
+  }
+
+  .app-shell__brand {
+    display: flex;
+    min-height: 28px;
+    align-items: center;
+  }
+
+  .app-shell__body {
+    flex-direction: column;
+  }
+
+  .app-shell__main {
+    min-height: 0;
+    order: 1;
+  }
+
+  .app-shell__nav {
+    z-index: 20;
+    display: flex;
+    height: 56px;
+    flex: 0 0 56px;
+    flex-direction: row;
+    order: 2;
+    padding: 0;
+    border-top: 1px solid var(--unilab-color-border);
+    border-right: 0;
+    background: var(--unilab-color-surface);
+  }
+
+  .app-shell__nav-button {
+    min-width: 0;
+    flex: 1 1 25%;
+    gap: 3px;
+    padding: 5px 2px;
+  }
+
+  .app-shell__nav-button--active::before {
+    top: auto;
+    right: 12px;
+    bottom: 0;
+    left: 12px;
+    width: auto;
+    height: 3px;
+    border-radius: 3px 3px 0 0;
+  }
+
+  .app-shell__nav-icon {
+    font-size: 15px;
+  }
+
+  .app-shell__nav-icon svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  .app-shell__nav-label {
+    font-size: 10px;
+  }
+
+  .device-page {
+    flex-direction: column;
+  }
+
+  .device-page .section__list {
+    flex: 0 0 42%;
+    border-right: 0;
+    border-bottom: 1px solid var(--unilab-color-border);
+  }
+
+  .device-page .section__detail {
+    padding: var(--unilab-space-4);
+  }
+
+  .device-page.is-empty .section__list {
+    flex: 1;
+    border-bottom: 0;
+  }
+
+  .device-page.is-empty .section__detail {
+    display: none;
+  }
+
+  .section__list-head {
+    padding: 8px 10px;
+  }
+
+  .device-live {
+    font-size: 10px;
+  }
+
+  .lab-panel-workspace--lab
+    [data-split-direction='horizontal']
+    > [role='separator'],
+  .lab-panel-workspace--lab
+    [data-split-direction='horizontal']
+    > div:has([data-panel-type='workflow-dag-picker']) {
+    display: none;
+  }
+
+  .lab-panel-workspace--lab
+    [data-split-direction='horizontal']
+    > div:has([data-panel-type='layout-unified']) {
+    flex: 1 1 100% !important;
+  }
+
+  .lab-panel-workspace--lab [data-panel-tab-drop-owner] {
+    display: none;
+  }
+
+}
+
+/* ============ Impeccable：实验室面板视觉校准 ============ */
+.lab-panel-workspace [data-panel-tab-drop-owner] {
+  min-height: 38px;
+  box-sizing: border-box;
+  border-bottom: 1px solid var(--unilab-color-border);
+  background: var(--unilab-color-surface);
+}
+
+.lab-panel-workspace
+  section:has([data-panel-type='layout-unified'])
+  [data-panel-tab-drop-owner],
+.lab-panel-workspace
+  section:has([data-panel-type='layout-3d'])
+  [data-panel-tab-drop-owner],
+.lab-panel-workspace
+  section:has([data-panel-type^='workflow-'])
+  [data-panel-tab-drop-owner] {
+  background: var(--unilab-color-surface);
+}
+
+.lab-panel-workspace
+  [data-panel-tab-drop-owner]
+  > [role='tablist']
+  [role='tab'] {
+  min-height: 38px;
+  padding-inline: 12px;
+  font-size: 12px;
+}
+
+.lab-panel-workspace
+  [data-panel-tab-drop-owner]
+  > [role='tablist']
+  [role='tab'][aria-selected='true'] {
+  color: var(--unilab-panel-accent, var(--unilab-color-primary));
+}
+
+.lab-panel-workspace--lab .lab-view-mode-toggle button.is-active {
+  color: var(--unilab-color-material);
+  background: var(--unilab-color-material-soft);
+}
+
+@media (max-width: 720px) {
+  .lab-viewport-controls {
+    bottom: 10px;
+    gap: 5px;
+  }
+
+  .lab-view-mode-toggle button {
+    padding-inline: 8px;
+  }
+
+  .lab-site-layer-toggle button {
+    padding-inline: 8px;
+  }
+
+  .lab-site-layer-toggle button span {
+    display: none;
+  }
+
+  .lab-panel-workspace [data-panel-tab-drop-owner] {
+    min-height: 0;
+    border-bottom: 0;
+  }
+}

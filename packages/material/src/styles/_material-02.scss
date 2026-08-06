@@ -1,0 +1,424 @@
+
+:where(.scope, .scope *):global(.material-template-library__header-actions) > button {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  padding: 0;
+  color: var(--unilab-color-text-muted);
+  background: var(--unilab-color-surface);
+  border: 1px solid var(--unilab-color-border);
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+:where(.scope, .scope *):global(.material-template-library) > header span,
+:where(.scope, .scope *):global(.material-template-card__body) span,
+:where(.scope, .scope *):global(.material-template-library__detail) p,
+:where(.scope, .scope *):global(.material-template-library__detail) small {
+  font-size: 11px;
+  color: var(--unilab-color-text-muted);
+}
+
+:where(.scope, .scope *):global(.material-template-library) h2,
+:where(.scope, .scope *):global(.material-dialog) h3 {
+  margin: 2px 0 0;
+  font-size: 15px;
+}
+
+:where(.scope, .scope *):global(.material-template-library__count) {
+  display: grid;
+  min-width: 28px;
+  height: 28px;
+  place-items: center;
+  color: var(--unilab-color-material);
+  background: var(--unilab-color-material-soft);
+  border-radius: 999px;
+}
+
+:where(.scope, .scope *):global(.material-template-library__search) {
+  margin: 12px;
+  padding: 8px 10px;
+  color: inherit;
+  background: var(--unilab-color-surface);
+  border: 1px solid var(--unilab-color-border);
+  border-radius: var(--unilab-radius-md);
+}
+
+:where(.scope, .scope *):global(.material-template-library__stale),
+:where(.scope, .scope *):global(.material-template-library__error) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 10px 12px 0;
+  padding: 8px 10px;
+  font-size: 11px;
+  color: #8a5a05;
+  background: color-mix(in srgb, #fbbf24 13%, var(--unilab-color-bg));
+  border: 1px solid color-mix(in srgb, #f59e0b 35%, var(--unilab-color-border));
+  border-radius: var(--unilab-radius-md);
+}
+
+:where(.scope, .scope *):global(.material-template-library__stale) button,
+:where(.scope, .scope *):global(.material-template-library__error) button {
+  flex: 0 0 auto;
+  padding: 4px 7px;
+  color: inherit;
+  background: var(--unilab-color-surface);
+  border: 1px solid currentcolor;
+  border-radius: var(--unilab-radius-sm);
+  cursor: pointer;
+}
+
+:where(.scope, .scope *):global(.material-template-library__error) {
+  margin: 0;
+  color: var(--unilab-color-danger);
+  background: color-mix(
+    in srgb,
+    var(--unilab-color-danger) 7%,
+    var(--unilab-color-surface)
+  );
+}
+
+:where(.scope, .scope *):global(.material-template-library__search):focus-visible,
+:where(.scope, .scope *):global(.material-dialog__content) input:focus-visible {
+  border-color: var(--unilab-color-material);
+  outline: 2px solid var(--unilab-color-focus);
+  outline-offset: 1px;
+}
+
+:where(.scope, .scope *):global(.material-template-library__list) {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+  padding: 0 12px 12px;
+  overflow: auto;
+}
+
+:where(.scope, .scope *):global(.material-template-library__list) > p,
+:where(.scope, .scope *):global(.material-template-library__detail) > p {
+  margin: 8px 0;
+  font-size: 12px;
+  color: var(--unilab-color-text-muted);
+}
+
+:where(.scope, .scope *):global(.material-template-library__list) :global(.is-error) {
+  color: var(--unilab-color-danger);
+}
+
+:where(.scope, .scope *):global(.material-template-library__skeleton) {
+  display: grid;
+  gap: 7px;
+}
+
+:where(.scope, .scope *):global(.material-template-library__skeleton) i {
+  height: 54px;
+  background: linear-gradient(
+    90deg,
+    var(--unilab-color-surface-muted),
+    var(--unilab-color-bg),
+    var(--unilab-color-surface-muted)
+  );
+  border: 1px solid var(--unilab-color-border);
+  border-radius: var(--unilab-radius-md);
+  background-size: 220% 100%;
+  animation: material-template-loading 1.4s ease-in-out infinite;
+}
+
+@keyframes material-template-loading {
+  to {
+    background-position: -120% 0;
+  }
+}
+
+:where(.scope, .scope *):global(.material-template-card) {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  color: inherit;
+  text-align: left;
+  background: var(--unilab-color-bg);
+  border: 1px solid var(--unilab-color-border);
+  border-radius: var(--unilab-radius-md);
+  cursor: pointer;
+}
+
+:where(.scope, .scope *):global(.material-template-card):hover,
+:where(.scope, .scope *):global(.material-template-card):global(.is-selected) {
+  border-color: var(--unilab-color-material);
+  background: color-mix(
+    in srgb,
+    var(--unilab-color-material-soft) 54%,
+    var(--unilab-color-surface)
+  );
+}
+
+:where(.scope, .scope *):global(.material-template-card):focus-visible,
+:where(.scope, .scope *):global(.material-template-library__detail) button:focus-visible,
+:where(.scope, .scope *):global(.material-dialog) button:focus-visible {
+  outline: 2px solid var(--unilab-color-focus);
+  outline-offset: 2px;
+}
+
+:where(.scope, .scope *):global(.material-template-card__icon) {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  color: var(--unilab-color-material);
+}
+
+:where(.scope, .scope *):global(.material-template-card__icon) img {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+}
+
+:where(.scope, .scope *):global(.material-template-card__body) {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+:where(.scope, .scope *):global(.material-template-card__body) strong {
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:where(.scope, .scope *):global(.material-template-card__body) small {
+  width: fit-content;
+  padding: 2px 5px;
+  font-size: 10px;
+  color: #9a6700;
+  background: color-mix(in srgb, #fbbf24 15%, transparent);
+  border-radius: 999px;
+}
+
+:where(.scope, .scope *):global(.material-template-library__detail) {
+  padding: 12px 16px;
+  background: var(--unilab-color-bg);
+  border-top: 1px solid var(--unilab-color-border);
+}
+
+:where(.scope, .scope *):global(.material-template-library__key) {
+  display: block;
+  margin-top: 3px;
+  font: 10px/1.4 var(--unilab-font-mono);
+  color: var(--unilab-color-text-muted);
+}
+
+:where(.scope, .scope *):global(.material-template-library__detail) button,
+:where(.scope, .scope *):global(.material-dialog) button {
+  padding: 7px 10px;
+  color: inherit;
+  background: var(--unilab-color-bg);
+  border: 1px solid var(--unilab-color-border-strong);
+  border-radius: var(--unilab-radius-sm);
+  cursor: pointer;
+}
+
+:where(.scope, .scope *):global(.material-template-library__detail) button:disabled,
+:where(.scope, .scope *):global(.material-dialog) button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+:where(.scope, .scope *):global(.material-template-library__detail) small {
+  display: block;
+  margin-top: 6px;
+}
+
+:where(.scope, .scope *):global(.material-dialog__field-error) {
+  display: block;
+  margin-top: 5px;
+  color: var(--unilab-color-danger);
+}
+
+:where(.scope, .scope *):global(.material-capability) {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 12px;
+  padding: 10px;
+  font-size: 12px;
+  color: var(--unilab-color-text-muted);
+  background: var(--unilab-color-surface-muted);
+  border: 1px solid var(--unilab-color-border);
+  border-radius: var(--unilab-radius-md);
+}
+
+:where(.scope, .scope *):global(.material-dialog-backdrop) {
+  position: fixed;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  inset: 0;
+  background: rgb(15 23 42 / 42%);
+}
+
+:where(.scope, .scope *):global(.material-dialog) {
+  width: min(460px, calc(100vw - 32px));
+  color: var(--unilab-color-text);
+  background: var(--unilab-color-bg);
+  border: 1px solid var(--unilab-color-border);
+  border-radius: var(--unilab-radius-md);
+  box-shadow: var(--unilab-shadow-panel);
+}
+
+:where(.scope, .scope *):global(.material-dialog) > header,
+:where(.scope, .scope *):global(.material-dialog) > footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+}
+
+:where(.scope, .scope *):global(.material-dialog) > header {
+  border-bottom: 1px solid var(--unilab-color-border);
+}
+
+:where(.scope, .scope *):global(.material-dialog) > footer {
+  justify-content: flex-end;
+  gap: 8px;
+  border-top: 1px solid var(--unilab-color-border);
+}
+
+:where(.scope, .scope *):global(.material-dialog__content) {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+}
+
+:where(.scope, .scope *):global(.material-dialog__content) label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+}
+
+:where(.scope, .scope *):global(.material-dialog__content) input {
+  padding: 8px 10px;
+  color: inherit;
+  background: var(--unilab-color-bg-subtle);
+  border: 1px solid var(--unilab-color-border);
+  border-radius: var(--unilab-radius-sm);
+}
+
+:where(.scope, .scope *):global(.material-dialog__summary) {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 12px;
+  padding: 10px;
+  font-size: 12px;
+  background: var(--unilab-color-bg-subtle);
+  border-radius: var(--unilab-radius-md);
+}
+
+:where(.scope, .scope *):global(.material-dialog__summary) span {
+  color: var(--unilab-color-text-muted);
+}
+
+:where(.scope, .scope *):global(.material-dialog__notice),
+:where(.scope, .scope *):global(.material-dialog__disabled) {
+  margin: 0;
+  padding: 9px 10px;
+  font-size: 12px;
+  border-radius: var(--unilab-radius-sm);
+}
+
+:where(.scope, .scope *):global(.material-dialog__notice) {
+  color: var(--unilab-color-success);
+  background: color-mix(
+    in srgb,
+    var(--unilab-color-success) 10%,
+    transparent
+  );
+}
+
+:where(.scope, .scope *):global(.material-dialog__disabled) {
+  color: var(--unilab-color-warning);
+  background: color-mix(
+    in srgb,
+    var(--unilab-color-warning) 10%,
+    transparent
+  );
+}
+
+:where(.scope, .scope *):global(.material-dialog) button:global(.is-primary) {
+  color: #fff;
+  background: var(--unilab-color-primary);
+  border-color: var(--unilab-color-primary);
+}
+
+:where(.scope, .scope *):global(.material-canvas) {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  color: var(--unilab-color-text);
+  background:
+    radial-gradient(
+      circle at 50% 0%,
+      color-mix(in srgb, var(--unilab-color-material) 9%, transparent),
+      transparent 44%
+    ),
+    var(--unilab-color-canvas);
+}
+
+:where(.scope, .scope *):global(.material-canvas):global(.is-loading),
+:where(.scope, .scope *):global(.material-canvas):global(.is-unavailable) {
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  font-size: 12px;
+  color: var(--unilab-color-text-muted);
+}
+
+:where(.scope, .scope *):global(.material-canvas):global(.is-floorplan-overlay) {
+  background: rgb(248 250 252 / 68%);
+  backdrop-filter: blur(0.35px);
+}
+
+:where(.scope, .scope *):global(.material-canvas):global(.is-floorplan-overlay) :global(.react-flow__pane) {
+  cursor: grab;
+}
+
+:where(.scope, .scope *):global(.material-canvas):global(.is-floorplan-overlay) :global(.react-flow__pane):active {
+  cursor: grabbing;
+}
+
+:where(.scope, .scope *):global(.material-oblique-canvas) {
+  position: relative;
+  display: flex;
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  color: var(--unilab-color-text);
+  background: var(--unilab-color-canvas, #f1f5fa);
+  overflow: hidden;
+}
+
+:where(.scope, .scope *):global(.material-oblique-canvas__header) {
+  position: absolute;
+  z-index: 2;
+  top: 12px;
+  left: 12px;
+  display: flex;
+  align-items: center;
+  min-height: 38px;
+  font-size: 12px;
+  color: var(--unilab-color-text-muted);
+  background: var(--unilab-color-bg);
+  border: 1px solid var(--unilab-color-border-strong);
+  border-radius: var(--unilab-radius-md);
+}

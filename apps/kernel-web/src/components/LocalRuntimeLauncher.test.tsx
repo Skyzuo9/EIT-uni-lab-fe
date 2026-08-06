@@ -60,7 +60,28 @@ describe('LocalRuntimeLauncher', () => {
     })).toEqual({ valid: true, errors: {} })
   })
 
-  /** 证明本地调试弹窗保留独立服务控制，并按新的配置分组呈现。 */
+  /**
+   * 验证生成式 Edge 允许不配置设备图，以合法空设备模式启动核心服务。
+   *
+   * @returns 无返回值；通过 renderer 校验结果断言空设备输入合同。
+   * @throws 空设备模式仍被 graphPath 阻塞时由断言报告失败。
+   * @safety 只校验表单数据，不启动进程或访问文件系统。
+   */
+  it('allows generated Edge startup without a device graph', () => {
+    expect(validateEdgeConfig({
+      ...baseConfig,
+      graphPath: '',
+      szlabProjectPath: ''
+    })).toEqual({ valid: true, errors: {} })
+  })
+
+  /**
+   * 证明本地调试弹窗保留独立服务控制，并明确设备图为可选配置。
+   *
+   * @returns 无返回值；通过静态标记断言配置分组与启动入口。
+   * @throws 必需文案、表单字段或独立服务按钮缺失时由断言报告失败。
+   * @safety 只服务端渲染组件，不启动本地进程或访问文件系统。
+   */
   it('renders separate PLC and Edge controls with the variable-table reminder', () => {
     const markup = renderDialog(baseConfig, idleSnapshot)
     const headerMarkup = markup.match(/<header[^>]*>.*?<\/header>/s)?.[0] ?? ''
@@ -73,7 +94,8 @@ describe('LocalRuntimeLauncher', () => {
     expect(markup).toContain('领域侧 Edge（以 sz_lab 为例）')
     expect(markup).toContain('领域项目根目录（可选，以 Uni-Lab-SZLab 为例）')
     expect(markup).toContain('留空时仅加载 Uni-Lab-OS 内置设备能力')
-    expect(markup).toContain('领域设备图 JSON（以 sz_lab 为例）')
+    expect(markup).toContain('领域设备图 JSON（可选，以 sz_lab 为例）')
+    expect(markup).toContain('留空时以无仪器设备模式启动')
     expect(markup).toContain('启动 PLC')
     expect(markup).toContain('启动 Edge')
     expect(markup).toContain('使用 PLC 时，请先上传变量表')

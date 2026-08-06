@@ -116,6 +116,46 @@ export function createMaterialService(
       )
       return mapBackendMaterialGraph(response)
     },
+    subscribeMoves: (onMove) => {
+      const EventSourceConstructor = globalThis.EventSource
+      if (typeof EventSourceConstructor !== 'function') {
+        return { dispose: () => undefined }
+      }
+      const endpoint = `${backend.apiUrl.replace(/\/$/, '')}/api/v1/monitor/events?channels=material&backlog=0`
+      const source = new EventSourceConstructor(endpoint)
+      const onMaterial = (rawEvent: Event): void => {
+        const event = rawEvent as MessageEvent<string>
+        try {
+          const frame = JSON.parse(event.data) as unknown
+          if (!isRecord(frame) || frame.channel !== 'material') return
+          const data = isRecord(frame.data) ? frame.data : {}
+          if (frame.type !== 'instance.moved') return
+          const payload = isRecord(data.payload) ? data.payload : {}
+          const materialId = optionalString(data.aggregate_id)
+          const toParentId = optionalString(payload.to_parent)
+          if (!materialId || !toParentId) return
+          onMove({
+            id: event.lastEventId || String(frame.seq ?? ''),
+            materialId,
+            revision:
+              typeof data.version === 'number' ? data.version : undefined,
+            fromParentId: optionalString(payload.from_parent),
+            fromSite: optionalString(payload.from_slot),
+            toParentId,
+            toSite: optionalString(payload.to_slot)
+          })
+        } catch {
+          // 单个非法移动帧不能污染现有物料图或中断后续事件。
+        }
+      }
+      source.addEventListener('material', onMaterial)
+      return {
+        dispose: () => {
+          source.removeEventListener('material', onMaterial)
+          source.close()
+        }
+      }
+    },
     createMaterial: async (scope, input) => {
       requireCreate()
       assertSingletonScope(scope)
@@ -614,7 +654,11 @@ function mapBackendMaterialGraph(
       }
     }
 
-    const config = mapBackendMaterialConfig(material.config, position)
+    const config = mapBackendMaterialConfig(
+      material.config,
+      position,
+      material.meta_data
+    )
     return {
       material: {
         id,
@@ -648,15 +692,23 @@ function mapBackendMaterialGraph(
 
 function mapBackendMaterialConfig(
   value: unknown,
-  position: Record<string, unknown> | undefined
+  position: Record<string, unknown> | undefined,
+  metaData: unknown
 ): Record<string, unknown> {
   const config = recordValue(value)
+  const sourceIdentity = optionalString(
+    recordValue(metaData).source_node_id
+  )
+  const identifiedConfig = {
+    ...config,
+    ...(sourceIdentity ? { sourceIdentity } : {})
+  }
   const rawRendering = isRecord(config.rendering)
     ? config.rendering
     : {}
-  if (!position) return config
+  if (!position) return identifiedConfig
   return {
-    ...config,
+    ...identifiedConfig,
     rendering: {
       ...rawRendering,
       kind: optionalString(rawRendering.kind) ?? 'custom',
@@ -720,6 +772,7 @@ function mapBackendSite(value: unknown): MaterialSite {
       optionalString(metaData.key) ??
       requiredString(raw.name, 'site.name'),
     name: requiredString(raw.name, 'site.name'),
+    sortOrder: finiteGraphNumber(raw.sort_order, 'site.sort_order'),
     anchor: { kind: 'root' },
     poseInAnchor: {
       positionMm: [
@@ -913,6 +966,7 @@ function parseSite(value: unknown): MaterialSite {
     ),
     key: requiredString(raw.key, 'site.key'),
     name: requiredString(raw.name, 'site.name'),
+    sortOrder: finiteNumber(raw.sortOrder, 0),
     anchor: parseAnchor(raw.anchor),
     poseInAnchor: parsePose(raw.poseInAnchor, 'site.poseInAnchor'),
     sizeMm: parseTuple(raw.sizeMm, 'site.sizeMm'),

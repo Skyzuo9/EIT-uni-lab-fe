@@ -39,6 +39,11 @@ export function hasRunnableAppliedWorkflow(
   aggregate: WorkflowAuthoringAggregate | null
 ): boolean {
   if (!aggregate) return false
+  const io = aggregate.applied_graph.workflow.meta_data?.unilab
+  if (io?.input_contract && io.output_contract && io.output_bindings) {
+    // 只有输入/输出投影的工作流（Workflow）也可由 OS 直接求值；它不需要动作节点。
+    return true
+  }
   const templateKinds = new Map(
     aggregate.applied_graph.node_templates.map((template) => [
       template.uuid,

@@ -222,6 +222,61 @@ describe('material store', () => {
     expect(store.getState().loadState).toBe('ready')
   })
 
+  it('projects one SSE material move without reloading the full graph', async () => {
+    const source = materialAggregate('warehouse-1', {
+      sites: [materialSite('source-site', 'warehouse-1', 'L1B1', ['vessel'])]
+    })
+    const target = materialAggregate('station-7', {
+      sites: [materialSite('target-site', 'station-7', 'S0721')]
+    })
+    const vessel = materialAggregate('vessel', {
+      placement: {
+        kind: 'site',
+        parentId: 'warehouse-1',
+        siteId: 'source-site',
+        offsetPose: {
+          positionMm: [0, 0, 0],
+          rotationDegXYZ: [0, 0, 0]
+        }
+      }
+    })
+    const getGraph = vi.fn(async () => [source, target, vessel])
+    const store = createMaterialStore({
+      scope: { kind: 'singleton' },
+      graph: materialGraphPort({ getGraph }),
+      requireCapability: allowCapabilities('material.readGraph')
+    })
+    await store.getState().loadGraph()
+
+    store.getState().applyRemoteMove({
+      id: '42',
+      materialId: 'vessel',
+      fromParentId: 'warehouse-1',
+      fromSite: 'L1B1',
+      toParentId: 'station-7',
+      toSite: 'S0721'
+    })
+
+    expect(getGraph).toHaveBeenCalledTimes(1)
+    expect(store.getState().aggregatesById.vessel.placement).toEqual({
+      kind: 'site',
+      parentId: 'station-7',
+      siteId: 'target-site',
+      offsetPose: {
+        positionMm: [0, 0, 0],
+        rotationDegXYZ: [0, 0, 0]
+      }
+    })
+    expect(
+      store.getState().aggregatesById['warehouse-1'].sites[0]
+        .occupiedMaterialIds
+    ).toEqual([])
+    expect(
+      store.getState().aggregatesById['station-7'].sites[0]
+        .occupiedMaterialIds
+    ).toEqual(['vessel'])
+  })
+
   it('resets graph, previews and temporal history together', async () => {
     const initial = materialAggregate('robot')
     const moved = materialAggregate('robot', { revision: 2 })
@@ -261,6 +316,35 @@ function allowCapabilities(
   return (capability) => {
     if (!set.has(capability)) {
       throw new Error(`Unsupported capability: ${capability}`)
+    }
+  }
+}
+
+function materialSite(
+  id: string,
+  ownerMaterialId: string,
+  name: string,
+  occupiedMaterialIds: readonly string[] = []
+) {
+  return {
+    id,
+    ownerMaterialId,
+    key: name,
+    name,
+    anchor: { kind: 'root' as const },
+    poseInAnchor: {
+      positionMm: [0, 0, 0] as const,
+      rotationDegXYZ: [0, 0, 0] as const
+    },
+    sizeMm: [10, 10, 10] as const,
+    capacity: 1,
+    allowedTemplateIds: [],
+    occupiedMaterialIds,
+    visual: {
+      state: occupiedMaterialIds.length > 0
+        ? 'occupied' as const
+        : 'empty' as const,
+      fillFraction: occupiedMaterialIds.length > 0 ? 1 : 0
     }
   }
 }

@@ -5,7 +5,8 @@ import {
 } from '@unilab/material'
 import {
   PascalLabWorkbench,
-  type MaterialSceneMove
+  type MaterialSceneMove,
+  type MaterialTransferSceneRoute
 } from '@unilab/pascal-lab-plugin'
 import { useEffect, useMemo } from 'react'
 
@@ -23,9 +24,11 @@ import { supportsWebGl } from './webGlCapability'
  */
 export function SceneWorkbench({
   showSites = true,
+  showMaterialTransfers = true,
   viewMode = '3d'
 }: {
   showSites?: boolean
+  showMaterialTransfers?: boolean
   viewMode?: LabViewMode
 }): React.JSX.Element {
   const { backend } = useWorkbench()
@@ -41,6 +44,19 @@ export function SceneWorkbench({
   )
   const highlightedMaterialIds = useLabInteraction(
     (state) => state.highlightedMaterialIds
+  )
+  const workflowMaterialTransferRoutes = useLabInteraction(
+    (state) => state.activeWorkflowMaterialTransferRoutes
+  )
+  const selectedWorkflowStepId = useLabInteraction(
+    (state) => state.selectedWorkflowStepId
+  )
+  const materialTransferRoutes = useMemo<MaterialTransferSceneRoute[]>(
+    () => workflowMaterialTransferRoutes.map((route) => ({
+      ...route,
+      selected: route.workflowNodeUuid === selectedWorkflowStepId
+    })),
+    [selectedWorkflowStepId, workflowMaterialTransferRoutes]
   )
   const selectMaterials = useLabInteraction(
     (state) => state.selectMaterials
@@ -121,6 +137,11 @@ export function SceneWorkbench({
       aggregates={aggregates}
       shapes={shapeLibrary}
       showSites={showSites}
+      showMaterialTransfers={
+        showMaterialTransfers && (viewMode === '3d' || viewMode === 'split')
+      }
+      materialTransferRoutes={materialTransferRoutes}
+      materialTransferProjectionError={null}
       viewMode={viewMode}
       projectId={`unilab-${backend.id}-${scopeKey}`}
       editable={moveStatus.available}

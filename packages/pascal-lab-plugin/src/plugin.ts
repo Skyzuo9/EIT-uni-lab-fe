@@ -21,6 +21,56 @@ const hierarchyRenderer = {
   module: () => import('./renderers/HierarchyRenderer')
 }
 
+interface FloorPlacedLabNode {
+  dimensions: [number, number, number]
+  position: [number, number, number]
+  rotation: [number, number, number]
+}
+
+/** 为 Pascal 场景中的根锚点对象创建独立放置引用。 */
+function createWorldPlacementRef() {
+  return {
+    kind: 'world',
+    parentMaterialId: null,
+    siteId: null,
+    anchorKind: 'root',
+    anchorLinkName: null
+  } as const
+}
+
+/**
+ * 创建设备与工作台共享的平面移动、旋转和包围盒能力。
+ *
+ * @returns 每个节点定义独立拥有的 Pascal 能力对象。
+ */
+function createLabPlacementCapabilities<Node extends FloorPlacedLabNode>() {
+  return {
+    movable: {
+      axes: ['x', 'z'],
+      gridSnap: true
+    },
+    rotatable: {
+      axes: ['y'],
+      snapAngles: [0, Math.PI / 2, Math.PI, (Math.PI * 3) / 2]
+    },
+    selectable: { hitVolume: 'bbox' },
+    deletable: false,
+    duplicable: false,
+    groupable: false,
+    floorPlaced: {
+      footprint: (node: Node) => ({
+        dimensions: node.dimensions,
+        rotation: node.rotation,
+        position: node.position
+      })
+    },
+    dragBounds: (node: Node) => ({
+      size: node.dimensions,
+      centerY: node.dimensions[1] / 2
+    })
+  }
+}
+
 const baseDefinitions: AnyNodeDefinition[] = [
   {
     kind: 'site',
@@ -100,47 +150,12 @@ const labDeviceDefinition = {
       parentLinkName: null,
       mountPoint: null
     },
-    placementRef: {
-      kind: 'world',
-      parentMaterialId: null,
-      siteId: null,
-      anchorKind: 'root',
-      anchorLinkName: null
-    },
+    placementRef: createWorldPlacementRef(),
     parentId: null,
     visible: true,
     metadata: {}
   }),
-  capabilities: {
-    movable: {
-      axes: ['x', 'z'],
-      gridSnap: true
-    },
-    rotatable: {
-      axes: ['y'],
-      snapAngles: [
-        0,
-        Math.PI / 2,
-        Math.PI,
-        (Math.PI * 3) / 2
-      ]
-    },
-    selectable: { hitVolume: 'bbox' },
-    deletable: false,
-    duplicable: false,
-    groupable: false,
-    floorPlaced: {
-      footprint: (node: LabDeviceNode) => ({
-        dimensions: node.dimensions,
-        rotation: node.rotation,
-        position: node.position
-      })
-    },
-    dragBounds: (node: LabDeviceNode) => ({
-      size: node.dimensions,
-      centerY: node.dimensions[1] / 2
-    })
-  },
+  capabilities: createLabPlacementCapabilities<LabDeviceNode>(),
   snapProfile: 'item',
   presentation: {
     label: '实验设备',
@@ -173,47 +188,12 @@ const labTableDefinition = {
     position: [0, 0, 0],
     rotation: [0, 0, 0],
     dimensions: [1.5, 0.9, 0.75],
-    placementRef: {
-      kind: 'world',
-      parentMaterialId: null,
-      siteId: null,
-      anchorKind: 'root',
-      anchorLinkName: null
-    },
+    placementRef: createWorldPlacementRef(),
     parentId: null,
     visible: true,
     metadata: {}
   }),
-  capabilities: {
-    movable: {
-      axes: ['x', 'z'],
-      gridSnap: true
-    },
-    rotatable: {
-      axes: ['y'],
-      snapAngles: [
-        0,
-        Math.PI / 2,
-        Math.PI,
-        (Math.PI * 3) / 2
-      ]
-    },
-    selectable: { hitVolume: 'bbox' },
-    deletable: false,
-    duplicable: false,
-    groupable: false,
-    floorPlaced: {
-      footprint: (node: LabTableNode) => ({
-        dimensions: node.dimensions,
-        rotation: node.rotation,
-        position: node.position
-      })
-    },
-    dragBounds: (node: LabTableNode) => ({
-      size: node.dimensions,
-      centerY: node.dimensions[1] / 2
-    })
-  },
+  capabilities: createLabPlacementCapabilities<LabTableNode>(),
   snapProfile: 'item',
   presentation: {
     label: '工作台',
@@ -234,10 +214,7 @@ const labTableDefinition = {
 
 let preparation: Promise<void> | null = null
 
-/**
- * Idempotently register the Uni-Lab plugin and the three structural fallbacks
- * needed by the standalone npm editor package.
- */
+/** 幂等注册 Uni-Lab Pascal 插件及独立编辑器所需的结构节点。 */
 export function preparePascalLabPlugin(): Promise<void> {
   preparation ??= (async () => {
     for (const definition of baseDefinitions) {

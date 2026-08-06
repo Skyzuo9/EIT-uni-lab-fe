@@ -4,14 +4,19 @@ import type {
   WorkflowRuntimeChangedEvent,
   WorkflowRuntimePort,
   WorkflowTask,
-  WorkflowTaskCommand,
-  WorkflowTaskRuntimeEvent
+  WorkflowTaskCommand
 } from '@unilab/services'
 import { describe, expect, it, vi } from 'vitest'
 
 import { WorkflowTaskController } from './WorkflowTaskController'
 
-describe('WorkflowTaskController', () => {
+/**
+ * 注册工作流任务控制器（WorkflowTaskController）行为测试。
+ *
+ * @returns 无。
+ * @throws 任一运行合同断言失败时由 Vitest 报告。
+ */
+function registerWorkflowTaskControllerTests(): void {
   it('subscribes before discovering and installing a coherent Task/Jobs snapshot', async () => {
     const order: string[] = []
     const task = workflowTask()
@@ -129,41 +134,40 @@ describe('WorkflowTaskController', () => {
       .toEqual([1, 2])
   })
 
-  it('increments durable Task runtime events from the last journal cursor', async () => {
+  /**
+   * 参数：运行时端口只提供任务、作业、反馈与全局 SSE 合同。返回：无；
+   * 断言控制器通过这些权威接口补水且不虚构任务级事件。异常：若快照重新依赖
+   * 尚未由 K10/F09 提供的任务级运行日志，测试失败。
+   */
+  it('does not request the retired Task-scoped runtime event page', async () => {
     const task = workflowTask()
-    let latestSequence = 1
-    const eventReads: number[] = []
+    /**
+     * 返回当前任务唯一的持久作业。
+     *
+     * @returns 唯一工作流节点作业（WorkflowNodeJob）集合。
+     * @throws 无。
+     */
+    async function listWorkflowTaskJobs(): Promise<WorkflowNodeJob[]> {
+      return [workflowJob()]
+    }
     const runtime = runtimePort({
       subscribeWorkflowRuntime: vi.fn(() => ({ dispose: vi.fn() })),
       listWorkflowTasks: vi.fn(async () => ({
         items: [task], total: 1, page: 1, page_size: 1
       })),
       getWorkflowTask: vi.fn(async () => task),
-      listWorkflowTaskJobs: vi.fn(async () => [workflowJob()]),
-      listWorkflowTaskEvents: vi.fn(async (_taskUuid, query = {}) => {
-        const afterSequence = query.after_sequence ?? 0
-        eventReads.push(afterSequence)
-        return {
-          items: afterSequence === 0
-            ? [workflowRuntimeEvent(1, 'dispatched')]
-            : [workflowRuntimeEvent(2, 'succeeded')],
-          next_cursor: afterSequence === 0 ? 1 : latestSequence,
-          has_more: false
-        }
-      })
+      listWorkflowTaskJobs: vi.fn(listWorkflowTaskJobs)
     })
     const controller = new WorkflowTaskController(runtime, task.workflow_uuid)
 
     await controller.start()
-    expect(controller.getSnapshot().events.map((item) => item.sequence))
-      .toEqual([1])
-
-    latestSequence = 2
     await controller.refresh()
 
-    expect(eventReads).toEqual([0, 1])
-    expect(controller.getSnapshot().events.map((item) => item.sequence))
-      .toEqual([1, 2])
+    expect(controller.getSnapshot()).toMatchObject({
+      events: [],
+      eventError: null,
+      eventStale: false
+    })
   })
 
   it('continues feedback pagination until the OS cursor is exhausted', async () => {
@@ -484,6 +488,38 @@ describe('WorkflowTaskController', () => {
     expect(controller.getSnapshot().task?.run_mode).toBe('step')
   })
 
+  /**
+   * 验证单节点调试把目标身份提交给同一工作流任务（WorkflowTask）入口。
+   *
+   * 参数：无。返回：控制器创建与异步投影补读完成后无值。异常：请求出现第二
+   * 入口、遗漏目标或附带私有调试字段时由断言暴露。
+   */
+  async function submitsSingleNodeTarget(): Promise<void> {
+    const targetNodeUuid = '81000000-0000-4000-8000-000000000002'
+    const task = {
+      ...workflowTask(),
+      run_mode: 'single_node' as const,
+      target_node_uuid: targetNodeUuid
+    }
+    const runtime = singleNodeRuntime(task)
+    const controller = new WorkflowTaskController(runtime, task.workflow_uuid)
+    await controller.start()
+
+    await controller.create('single_node', {}, targetNodeUuid)
+
+    expect(runtime.createWorkflowTask).toHaveBeenCalledWith({
+      workflow_uuid: task.workflow_uuid,
+      run_mode: 'single_node',
+      target_node_uuid: targetNodeUuid,
+      input: {}
+    })
+  }
+
+  it(
+    '通过规范工作流任务（WorkflowTask）创建端口提交单节点目标',
+    submitsSingleNodeTarget
+  )
+
   it('finishes Task creation without waiting for the runtime projection refresh', async () => {
     // 证明工作流任务创建的成功响应独立于后续运行投影补读，避免参数抽屉无限等待。
     const task = workflowTask()
@@ -598,17 +634,71 @@ describe('WorkflowTaskController', () => {
       generation: 0
     })
   })
-})
+}
 
+describe('WorkflowTaskController', registerWorkflowTaskControllerTests)
+
+/**
+ * 把测试关心的最小运行时能力收窄为工作流运行端口。
+ *
+ * @param value 当前用例提供的运行时方法。
+ * @returns 仅供控制器测试使用的工作流运行端口。
+ * @throws 无；缺失方法会在具体用例调用时由测试失败揭示。
+ */
 function runtimePort(
   value: Partial<WorkflowRuntimePort>
 ): WorkflowRuntimePort {
-  return {
-    listWorkflowTaskEvents: vi.fn(async () => ({
-      items: [], next_cursor: 0, has_more: false
-    })),
-    ...value
-  } as WorkflowRuntimePort
+  return value as WorkflowRuntimePort
+}
+
+/**
+ * 构造单节点控制器用例的可观察运行端口。
+ *
+ * 参数：`task` 是所有读写回调返回的固定工作流任务（WorkflowTask）。返回：
+ * 创建方法保持 Vitest 调用记录的最小运行端口。异常：所有回调均为内存固定值，
+ * 不抛异常、不启动定时器，也不产生外部副作用。
+ */
+function singleNodeRuntime(task: WorkflowTask): WorkflowRuntimePort {
+  /** 参数：无。返回：释放完成后无值。异常：不抛异常。 */
+  function disposeSubscription(): void {}
+  /** 参数：监听器和选项仅满足端口签名。返回：可释放订阅。异常：不抛异常。 */
+  function subscribeRuntime(
+    _listener: Parameters<WorkflowRuntimePort['subscribeWorkflowRuntime']>[0],
+    _options?: Parameters<WorkflowRuntimePort['subscribeWorkflowRuntime']>[1]
+  ): ReturnType<WorkflowRuntimePort['subscribeWorkflowRuntime']> {
+    return { dispose: disposeSubscription }
+  }
+  /** 参数：`_query` 仅满足端口签名。返回：固定空任务页。异常：不抛异常。 */
+  async function listTasks(
+    _query?: Parameters<WorkflowRuntimePort['listWorkflowTasks']>[0]
+  ): ReturnType<WorkflowRuntimePort['listWorkflowTasks']> {
+    return { items: [], total: 0, page: 1, page_size: 1 }
+  }
+  /** 参数：`_request` 仅满足端口签名。返回：固定权威任务。异常：不抛异常。 */
+  async function createTask(
+    _request: Parameters<WorkflowRuntimePort['createWorkflowTask']>[0]
+  ): ReturnType<WorkflowRuntimePort['createWorkflowTask']> {
+    return task
+  }
+  /** 参数：`_taskUuid` 仅满足端口签名。返回：固定权威任务。异常：不抛异常。 */
+  async function getTask(
+    _taskUuid: string
+  ): ReturnType<WorkflowRuntimePort['getWorkflowTask']> {
+    return task
+  }
+  /** 参数：`_taskUuid` 仅满足端口签名。返回：固定唯一作业。异常：不抛异常。 */
+  async function listJobs(
+    _taskUuid: string
+  ): ReturnType<WorkflowRuntimePort['listWorkflowTaskJobs']> {
+    return [workflowJob()]
+  }
+  return runtimePort({
+    subscribeWorkflowRuntime: vi.fn(subscribeRuntime),
+    listWorkflowTasks: vi.fn(listTasks),
+    createWorkflowTask: vi.fn(createTask),
+    getWorkflowTask: vi.fn(getTask),
+    listWorkflowTaskJobs: vi.fn(listJobs)
+  })
 }
 
 function workflowTask(): WorkflowTask {
@@ -685,22 +775,5 @@ function workflowFeedback(
     observed_at: `2026-08-01T00:00:0${sequence}Z`,
     received_at: `2026-08-01T00:00:0${sequence}Z`,
     idempotency_key: `feedback-${sequence}`
-  }
-}
-
-function workflowRuntimeEvent(
-  sequence: number,
-  toStatus: string
-): WorkflowTaskRuntimeEvent {
-  return {
-    sequence,
-    workflow_task_uuid: workflowTask().uuid,
-    workflow_node_job_uuid: workflowJob().uuid,
-    workflow_node_uuid: workflowJob().workflow_node_uuid,
-    kind: 'job_transition',
-    from_status: toStatus === 'dispatched' ? 'pending' : 'running',
-    to_status: toStatus,
-    data: {},
-    create_time: `2026-08-01T00:00:0${sequence}Z`
   }
 }

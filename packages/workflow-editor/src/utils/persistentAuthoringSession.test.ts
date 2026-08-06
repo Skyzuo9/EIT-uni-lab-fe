@@ -74,8 +74,22 @@ describe('persistent Authoring session coordination', () => {
     ])
   })
 
-  it('does not run an empty or disabled Applied Graph', () => {
+  it('runs a direct I/O boundary but not an unconfigured or disabled graph', () => {
     expect(hasRunnableAppliedWorkflow(aggregate())).toBe(false)
+    expect(hasRunnableAppliedWorkflow(aggregate({
+      applied_graph: {
+        ...emptyGraph(),
+        workflow: {
+          meta_data: {
+            unilab: {
+              input_contract: { version: 1, parameters: [] },
+              output_contract: { version: 1, outputs: [] },
+              output_bindings: {}
+            }
+          }
+        }
+      }
+    }))).toBe(true)
     expect(hasRunnableAppliedWorkflow(aggregate({
       applied_graph: {
         ...emptyGraph(),

@@ -7,12 +7,32 @@ const panelPath = fileURLToPath(new URL(
   './PersistentWorkflowAuthoringPanel.tsx',
   import.meta.url
 ))
+const viewPath = fileURLToPath(new URL(
+  './PersistentWorkflowAuthoringView.tsx',
+  import.meta.url
+))
+const authoringHookPath = fileURLToPath(new URL(
+  '../hooks/usePersistentWorkflowAuthoring.ts',
+  import.meta.url
+))
+const catalogHookPath = fileURLToPath(new URL(
+  '../hooks/usePersistentWorkflowCatalogs.ts',
+  import.meta.url
+))
+const canvasNodeEditorHookPath = fileURLToPath(new URL(
+  '../hooks/usePersistentWorkflowCanvasNodeEditor.ts',
+  import.meta.url
+))
+const overlaysPath = fileURLToPath(new URL(
+  './PersistentWorkflowOverlays.tsx',
+  import.meta.url
+))
 const dagPath = fileURLToPath(new URL('./WorkflowDag.tsx', import.meta.url))
 
-describe('Published Workflow Catalog in the original Authoring panel', () => {
+describe('Published Workflow Catalog in the Authoring module', () => {
   /** 验证操作与子工作流继续由同一目录快照分别呈现。 */
   it('renders separate Action and child Workflow palette groups from one union snapshot', () => {
-    const source = readFileSync(panelPath, 'utf8')
+    const source = authoringSource()
     const actionPicker = paletteSection(source, '操作')
     const workflowPicker = paletteSection(source, '子工作流')
 
@@ -28,7 +48,7 @@ describe('Published Workflow Catalog in the original Authoring panel', () => {
 
   it('does not present the Published Workflow renderer owner as a device', () => {
     const workflowPicker = paletteSection(
-      readFileSync(panelPath, 'utf8'),
+      readFileSync(viewPath, 'utf8'),
       '子工作流'
     )
 
@@ -40,7 +60,7 @@ describe('Published Workflow Catalog in the original Authoring panel', () => {
   })
 
   it('enables child selection through the Published boundary insertion seam', () => {
-    const source = readFileSync(panelPath, 'utf8')
+    const source = authoringSource()
     const workflowPicker = paletteSection(source, '子工作流')
 
     expect(source).toContain('createPublishedWorkflowNode')
@@ -54,7 +74,7 @@ describe('Published Workflow Catalog in the original Authoring panel', () => {
   })
 
   it('renders OS diagnostic code and message without frontend replacement', () => {
-    const source = readFileSync(panelPath, 'utf8')
+    const source = readFileSync(viewPath, 'utf8')
 
     expect(source).toContain('<code>{diagnostic.code}</code>')
     expect(source).toContain('<span>{diagnostic.message}</span>')
@@ -79,7 +99,7 @@ describe('Published Workflow Catalog in the original Authoring panel', () => {
   })
 
   it('keeps Catalog loading behind the runtime without a Published-specific loader', () => {
-    const source = readFileSync(panelPath, 'utf8')
+    const source = authoringSource()
     const catalogMethods = [...source.matchAll(
       /runtime\.(getWorkflow[A-Za-z]+Catalog)\(/g
     )].map((match) => match[1])
@@ -104,6 +124,19 @@ function paletteSection(source: string, label: string): string {
   const end = source.indexOf('</section>', start)
   expect(end).toBeGreaterThan(start)
   return source.slice(start, end)
+}
+
+function authoringSource(): string {
+  return [
+    panelPath,
+    viewPath,
+    authoringHookPath,
+    catalogHookPath,
+    canvasNodeEditorHookPath,
+    overlaysPath
+  ]
+    .map((path) => readFileSync(path, 'utf8'))
+    .join('\n')
 }
 
 function functionBody(source: string, declaration: string): string {

@@ -71,6 +71,21 @@ class FixtureHostNode:
 
 
 def create_fixture_app():
+    """组装覆盖设备动作锁与前端启动依赖的人工解锁测试应用。
+
+    Args:
+        无显式参数，测试设备身份由模块常量固定。
+
+    Returns:
+        挂载正式设备接口与测试持锁路由的 FastAPI 应用。
+
+    Raises:
+        组合正式 OS Web 服务失败时向测试启动器传播原始异常。
+
+    Safety:
+        测试持锁路由只作用于固定设备；目录与物料空响应仅满足前端启动读取，
+        不参与人工解锁或设备锁状态结算。
+    """
     BasicConfig.communication_protocol = "websocket"
     BasicConfig.machine_name = "E2E Edge"
     BasicConfig.working_dir = ""
@@ -82,6 +97,73 @@ def create_fixture_app():
     )
 
     app = server.setup_server()
+
+    @app.get("/api/v1/workflow-node-templates")
+    def list_workflow_node_templates() -> dict[str, Any]:
+        """返回当前人工解锁场景不使用的空动作模板目录。
+
+        Args:
+            无显式参数。
+
+        Returns:
+            符合前端动作目录契约的单页空目录。
+
+        Raises:
+            不主动抛出异常。
+
+        Safety:
+            空目录不会伪造可执行动作，也不会改变正式设备锁状态。
+        """
+        return {
+            "code": 0,
+            "data": {
+                "authority": {
+                    "authority_id": "e2e-device-manual-unlock",
+                    "kind": "local",
+                },
+                "catalog_fingerprint": "sha256:" + "0" * 64,
+                "items": [],
+                "total": 0,
+                "page": 1,
+                "page_size": 100,
+            },
+        }
+
+    @app.get("/api/v1/materials/graph")
+    def get_material_graph() -> dict[str, Any]:
+        """返回人工解锁场景不使用的空物料图。
+
+        Args:
+            无显式参数。
+
+        Returns:
+            符合物料图读取契约的空节点集合。
+
+        Raises:
+            不主动抛出异常。
+
+        Safety:
+            空图只消除无关启动错误，不提供或释放任何物料、库位或设备声明。
+        """
+        return {"code": 0, "data": {"nodes": []}}
+
+    @app.get("/api/v1/material-shapes")
+    def list_material_shapes() -> dict[str, Any]:
+        """返回人工解锁场景不使用的空 2.5D 外形目录。
+
+        Args:
+            无显式参数。
+
+        Returns:
+            符合外形目录契约的空条目集合。
+
+        Raises:
+            不主动抛出异常。
+
+        Safety:
+            空目录只满足前端启动读取，不参与动作终止、设备锁或人工解锁。
+        """
+        return {"code": 0, "data": {"items": []}}
 
     @app.post(
         "/__e2e/device-actions/{device_id}/{action_name}/holders",
