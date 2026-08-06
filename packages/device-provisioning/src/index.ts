@@ -1,5 +1,61 @@
 /** 候选本地设备接入（LocalDeviceProvisioning）的跨进程稳定合同。 */
 
+export type CloudEnvironment = 'test' | 'uat' | 'production'
+
+export interface CloudEnvironmentOption {
+  readonly id: CloudEnvironment
+  readonly label: string
+  readonly host: string
+  readonly apiUrl: string
+}
+
+export const CLOUD_ENVIRONMENT_OPTIONS: readonly CloudEnvironmentOption[] = [
+  {
+    id: 'test',
+    label: '测试环境',
+    host: 'leap-lab.test.bohrium.com',
+    apiUrl: 'https://leap-lab.test.bohrium.com/api/v1'
+  },
+  {
+    id: 'uat',
+    label: 'UAT 环境',
+    host: 'leap-lab.uat.bohrium.com',
+    apiUrl: 'https://leap-lab.uat.bohrium.com/api/v1'
+  },
+  {
+    id: 'production',
+    label: '正式环境',
+    host: 'leap-lab.bohrium.com',
+    apiUrl: 'https://leap-lab.bohrium.com/api/v1'
+  }
+] as const
+
+/**
+ * 判断跨进程输入是否是受支持的固定云端环境。
+ *
+ * @param value Renderer 或持久化文件提供的未知环境值。
+ * @returns 仅在值属于测试、UAT 或正式环境时返回 true。
+ */
+export function isCloudEnvironment(value: unknown): value is CloudEnvironment {
+  return value === 'test' || value === 'uat' || value === 'production'
+}
+
+/**
+ * 读取一个固定云端环境的展示名称、主机名和 API 根地址。
+ *
+ * @param environment 已通过合同校验的云端环境身份。
+ * @returns 与环境一一对应的不可变配置；环境未知时抛出错误。
+ */
+export function cloudEnvironmentOption(
+  environment: CloudEnvironment
+): CloudEnvironmentOption {
+  const option = CLOUD_ENVIRONMENT_OPTIONS.find(
+    (candidate) => candidate.id === environment
+  )
+  if (!option) throw new Error(`不支持的云端环境：${String(environment)}`)
+  return option
+}
+
 export type LocalDeviceProvisioningStatus =
   | 'requested'
   | 'resolving'
@@ -26,6 +82,7 @@ export interface LocalDeviceProvisioningDiagnostic {
 export interface LocalDeviceProvisioning {
   schemaVersion: 'local-device-provisioning/v1'
   provisioningId: string
+  cloudEnvironment: CloudEnvironment
   templateUuid: string
   cloudDeviceName: string
   cloudDisplayName: string
@@ -51,6 +108,7 @@ export interface LocalDeviceProvisioning {
 }
 
 export interface StartLocalDeviceProvisioningInput {
+  cloudEnvironment: CloudEnvironment
   templateUuid: string
 }
 
@@ -75,7 +133,9 @@ export interface RestoreLocalDeviceProvisioningInput {
 
 export interface DevicePackageUploadRequest {
   workspacePath: string
-  configPath: string
+  cloudEnvironment: CloudEnvironment
+  ak: string
+  sk: string
 }
 
 export interface DevicePackageDownloadSummary {
@@ -111,6 +171,7 @@ export interface DevicePackageInspection {
 
 export interface DevicePackageUploadResult {
   status: 'published'
+  cloudEnvironment: CloudEnvironment
   distribution: string
   version: string
   artifactDigest: string
@@ -118,5 +179,5 @@ export interface DevicePackageUploadResult {
 }
 
 export interface DeviceProvisioningPathSelection {
-  kind: 'packageWorkspace' | 'packageUploadConfig'
+  kind: 'packageWorkspace'
 }

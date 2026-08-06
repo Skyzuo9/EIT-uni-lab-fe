@@ -1,7 +1,10 @@
-import type {
-  ConfigureLocalDeviceProvisioningInput,
-  DevicePackageUploadRequest,
-  DeviceProvisioningPathSelection
+import {
+  isCloudEnvironment,
+  type CloudEnvironment,
+  type ConfigureLocalDeviceProvisioningInput,
+  type DevicePackageUploadRequest,
+  type DeviceProvisioningPathSelection,
+  type StartLocalDeviceProvisioningInput
 } from '@unilab/device-provisioning'
 import type { DeviceSquareListQuery } from '@unilab/services'
 
@@ -36,23 +39,28 @@ export function registerDeviceProvisioningIpc(
   const approvedPaths = new ApprovedDevicePackagePaths()
   ipcMain.handle('device-provisioning:square:list', (event, payload: unknown) => {
     assertSender(event)
-    return manager.listCloudDevices(parseSquareQuery(payload))
+    const request = parseSquareListRequest(payload)
+    return manager.listCloudDevices(request.cloudEnvironment, request.query)
   })
-  ipcMain.handle('device-provisioning:square:detail', (event, value: unknown) => {
+  ipcMain.handle('device-provisioning:square:detail', (event, payload: unknown) => {
     assertSender(event)
-    return manager.getCloudDevice(requiredString(value, '设备模板 UUID'))
+    const request = parseCloudTemplateRequest(payload)
+    return manager.getCloudDevice(
+      request.cloudEnvironment,
+      request.templateUuid
+    )
   })
   ipcMain.handle('device-provisioning:list', (event) => {
     assertSender(event)
     return manager.list()
   })
-  ipcMain.handle('device-provisioning:start', (event, value: unknown) => {
+  ipcMain.handle('device-provisioning:start', (event, payload: unknown) => {
     assertSender(event)
-    return manager.start(requiredString(value, '设备模板 UUID'))
+    return manager.start(parseCloudTemplateRequest(payload))
   })
-  ipcMain.handle('device-provisioning:download', (event, value: unknown) => {
+  ipcMain.handle('device-provisioning:download', (event, payload: unknown) => {
     assertSender(event)
-    return manager.downloadOnly(requiredString(value, '设备模板 UUID'))
+    return manager.downloadOnly(parseCloudTemplateRequest(payload))
   })
   ipcMain.handle('device-provisioning:configure', (event, payload: unknown) => {
     assertSender(event)
@@ -98,16 +106,48 @@ export function registerDeviceProvisioningIpc(
     assertSender(event)
     const request = parseUploadRequest(payload)
     return manager.uploadWorkspace({
+      cloudEnvironment: request.cloudEnvironment,
       workspacePath: approvedPaths.require(
         { kind: 'packageWorkspace' },
         request.workspacePath
       ),
-      configPath: approvedPaths.require(
-        { kind: 'packageUploadConfig' },
-        request.configPath
-      )
+      ak: request.ak,
+      sk: request.sk
     })
   })
+}
+
+/**
+ * 把 Renderer 输入收敛为一个固定云端环境中的设备模板请求。
+ *
+ * @param value 未受信任的跨进程输入。
+ * @returns 仅包含环境身份和模板 UUID 的稳定请求。
+ */
+function parseCloudTemplateRequest(
+  value: unknown
+): StartLocalDeviceProvisioningInput {
+  const raw = record(value, '云端设备模板请求')
+  return {
+    cloudEnvironment: requiredCloudEnvironment(raw.cloudEnvironment),
+    templateUuid: requiredString(raw.templateUuid, '设备模板 UUID')
+  }
+}
+
+/**
+ * 把云端环境和设备广场筛选条件作为一个原子读取请求校验。
+ *
+ * @param value 未受信任的设备广场列表 IPC 载荷。
+ * @returns 固定环境与允许分页筛选字段组成的请求。
+ */
+function parseSquareListRequest(value: unknown): {
+  cloudEnvironment: CloudEnvironment
+  query: DeviceSquareListQuery
+} {
+  const raw = record(value, '设备广场列表请求')
+  return {
+    cloudEnvironment: requiredCloudEnvironment(raw.cloudEnvironment),
+    query: parseSquareQuery(raw.query)
+  }
 }
 
 /** 把 Renderer 查询收敛为公开设备广场允许的分页和筛选字段。 */
@@ -145,42 +185,51 @@ function parseConfiguration(value: unknown): ConfigureLocalDeviceProvisioningInp
   }
 }
 
-/** 校验设备包上传只携带两个已由受控系统对话框选择的本地路径。 */
+/**
+ * 校验设备包上传只携带受控 Workspace、固定环境和一次性 AK/SK。
+ *
+ * @param value 未受信任的上传 IPC 载荷。
+ * @returns 可交给 Main 编排器的一次性上传请求；错误不回显凭据值。
+ */
 function parseUploadRequest(value: unknown): DevicePackageUploadRequest {
   const raw = record(value, '设备包上传请求')
   return {
     workspacePath: requiredString(raw.workspacePath, 'Package Workspace'),
-    configPath: requiredString(raw.configPath, '上传 local_config.py')
+    cloudEnvironment: requiredCloudEnvironment(raw.cloudEnvironment),
+    ak: requiredCredential(raw.ak, 'Lab AK'),
+    sk: requiredCredential(raw.sk, 'Lab SK')
   }
 }
 
-/** 校验受控路径选择器类别，拒绝 Renderer 请求任意文件规则。 */
+/**
+ * 校验受控路径选择器类别，拒绝 Renderer 请求任意文件规则。
+ *
+ * @param value 未受信任的路径选择 IPC 载荷。
+ * @returns 只允许 Package Workspace 的选择意图。
+ */
 function parsePathSelection(value: unknown): DeviceProvisioningPathSelection {
   const raw = record(value, '设备包路径选择')
-  if (
-    raw.kind !== 'packageWorkspace'
-    && raw.kind !== 'packageUploadConfig'
-  ) {
+  if (raw.kind !== 'packageWorkspace') {
     throw new Error('设备包路径选择类别无效')
   }
   return { kind: raw.kind }
 }
 
-/** 打开固定目录或 Python 配置文件对话框并返回用户明确选择的路径。 */
+/**
+ * 打开固定 Package Workspace 目录对话框并返回用户明确选择的路径。
+ *
+ * @param parent 当前 Electron 主窗口；为空时使用无父窗口系统对话框。
+ * @param _selection 已校验且当前只有 Workspace 一种值的选择意图。
+ * @returns 用户取消时为 null，否则为系统对话框返回的目录路径。
+ */
 async function selectPackagePath(
   parent: BrowserWindow | null,
-  selection: DeviceProvisioningPathSelection
+  _selection: DeviceProvisioningPathSelection
 ): Promise<string | null> {
-  const options: Electron.OpenDialogOptions = selection.kind === 'packageWorkspace'
-    ? {
-        title: '选择 Package Workspace',
-        properties: ['openDirectory']
-      }
-    : {
-        title: '选择包含 Lab AK/SK 的 local_config.py',
-        filters: [{ name: 'Python', extensions: ['py'] }],
-        properties: ['openFile']
-      }
+  const options: Electron.OpenDialogOptions = {
+    title: '选择 Package Workspace',
+    properties: ['openDirectory']
+  }
   const result = parent
     ? await dialog.showOpenDialog(parent, options)
     : await dialog.showOpenDialog(options)
@@ -198,6 +247,31 @@ function record(value: unknown, label: string): Record<string, unknown> {
 /** 读取长度受限的必填字符串。 */
 function requiredString(value: unknown, label: string): string {
   if (typeof value !== 'string' || !value.trim() || value.length > 4_096) {
+    throw new Error(`${label}无效`)
+  }
+  return value.trim()
+}
+
+/**
+ * 读取固定云端环境身份，拒绝 Renderer 提交任意 URL。
+ *
+ * @param value 未受信任的环境值。
+ * @returns test、uat 或 production 环境身份。
+ */
+function requiredCloudEnvironment(value: unknown): CloudEnvironment {
+  if (!isCloudEnvironment(value)) throw new Error('云端环境无效')
+  return value
+}
+
+/**
+ * 读取一次性上传凭据，不在错误正文中回显任何秘密内容。
+ *
+ * @param value 未受信任的 AK 或 SK 值。
+ * @param label 仅用于错误字段名称的非秘密标签。
+ * @returns 去除首尾空白且长度受限的凭据。
+ */
+function requiredCredential(value: unknown, label: string): string {
+  if (typeof value !== 'string' || !value.trim() || value.length > 1_024) {
     throw new Error(`${label}无效`)
   }
   return value.trim()

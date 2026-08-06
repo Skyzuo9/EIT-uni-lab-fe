@@ -2,34 +2,26 @@ import type {
   DeviceProvisioningPathSelection
 } from '@unilab/device-provisioning'
 
-import { basename, resolve } from 'node:path'
+import { resolve } from 'node:path'
 
 /** Main 应用生命周期内由系统选择器批准的设备包本地路径集合。 */
 export class ApprovedDevicePackagePaths {
   private readonly workspaces = new Set<string>()
-  private readonly uploadConfigs = new Set<string>()
 
   /**
-   * 记录系统选择器刚返回的路径，并执行文件名级安全约束。
+   * 记录系统目录选择器刚返回的 Package Workspace 路径。
    *
-   * @param selection 固定目录或上传配置选择器类别。
+   * @param selection 固定 Package Workspace 选择器类别。
    * @param selectedPath Electron dialog 返回的本地路径。
    * @returns 规范化后的绝对路径。
-   * @safety 上传配置必须命名为 local_config.py，避免误选普通 Python 脚本。
+   * @safety Renderer 只能重新使用 Main 本次明确批准的目录。
    */
   approve(
     selection: DeviceProvisioningPathSelection,
     selectedPath: string
   ): string {
     const approvedPath = resolve(selectedPath)
-    if (selection.kind === 'packageWorkspace') {
-      this.workspaces.add(approvedPath)
-    } else {
-      if (basename(approvedPath) !== 'local_config.py') {
-        throw new Error('上传配置文件名必须为 local_config.py')
-      }
-      this.uploadConfigs.add(approvedPath)
-    }
+    this.workspaces.add(approvedPath)
     return approvedPath
   }
 
@@ -46,14 +38,8 @@ export class ApprovedDevicePackagePaths {
     candidate: string
   ): string {
     const approvedPath = resolve(candidate)
-    const approved = selection.kind === 'packageWorkspace'
-      ? this.workspaces
-      : this.uploadConfigs
-    if (!approved.has(approvedPath)) {
-      const label = selection.kind === 'packageWorkspace'
-        ? 'Package Workspace'
-        : '上传 local_config.py'
-      throw new Error(`${label}未经本次系统选择器批准，请重新选择`)
+    if (!this.workspaces.has(approvedPath)) {
+      throw new Error('Package Workspace 未经本次系统选择器批准，请重新选择')
     }
     return approvedPath
   }

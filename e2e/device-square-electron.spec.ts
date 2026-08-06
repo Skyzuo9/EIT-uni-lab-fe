@@ -42,6 +42,10 @@ test('browses the cloud device square through Electron Main', async () => {
     await page.getByRole('button', { name: '设备广场' }).click()
     await expect(page.getByRole('heading', { name: '设备广场与本地接入' }))
       .toBeVisible()
+    await expect(page.getByRole('combobox', { name: '云端环境' }))
+      .toHaveValue('test')
+    await expect(page.getByRole('combobox', { name: '云端环境' }).locator('option'))
+      .toHaveCount(3)
     await page.waitForTimeout(1_000)
     await page.screenshot({
       path: resolve(artifactDirectory, 'device-square-loading.png'),
@@ -73,6 +77,15 @@ test('browses the cloud device square through Electron Main', async () => {
 
     await page.getByRole('button', { name: '上传设备包' }).click()
     await expect(page.getByRole('heading', { name: '检查 Package Workspace' }))
+      .toBeVisible()
+    await expect(page.getByRole('heading', { name: '配置云端上传凭据' }))
+      .toBeVisible()
+    await expect(page.locator('strong').filter({
+      hasText: '测试环境 · leap-lab.test.bohrium.com'
+    }))
+      .toBeVisible()
+    await expect(page.getByRole('button', { name: '选择配置' })).toHaveCount(0)
+    await expect(page.getByText(/不会写入 local_config\.py、命令参数或本地接入记录/))
       .toBeVisible()
     await page.screenshot({
       path: resolve(artifactDirectory, 'device-package-upload-desktop.png'),
@@ -181,6 +194,7 @@ async function seedLegacyProvisioningRecord(configDirectory: string): Promise<vo
       items: [{
         schemaVersion: 'local-device-provisioning/v1',
         provisioningId: '7f0dbe72-22b0-4ef7-8a5a-3bcd6fa3132a',
+        cloudEnvironment: 'test',
         templateUuid: 'b806da39-9498-4936-8fcf-b5a5cd4c4ada',
         cloudDeviceName: 'legacy-dispenser',
         cloudDisplayName: '旧版分液器',

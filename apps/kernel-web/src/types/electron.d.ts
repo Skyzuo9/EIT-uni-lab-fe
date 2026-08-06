@@ -15,13 +15,15 @@ import type {
   OpenDeviceCardWorkspaceRequest
 } from '@unilab/device-card-sdk'
 import type {
+  CloudEnvironment,
   ConfigureLocalDeviceProvisioningInput,
   DevicePackageDownloadSummary,
   DevicePackageInspection,
   DevicePackageUploadRequest,
   DevicePackageUploadResult,
   DeviceProvisioningPathSelection,
-  LocalDeviceProvisioning
+  LocalDeviceProvisioning,
+  StartLocalDeviceProvisioningInput
 } from '@unilab/device-provisioning'
 import type {
   DeviceSquareDetail,
@@ -178,12 +180,20 @@ export interface DesktopRuntimeApi {
 
 export interface DesktopDeviceProvisioningApi {
   listCloudDevices: (
+    cloudEnvironment: CloudEnvironment,
     query?: DeviceSquareListQuery
   ) => Promise<DeviceSquarePage>
-  getCloudDevice: (templateUuid: string) => Promise<DeviceSquareDetail>
+  getCloudDevice: (
+    cloudEnvironment: CloudEnvironment,
+    templateUuid: string
+  ) => Promise<DeviceSquareDetail>
   list: () => Promise<LocalDeviceProvisioning[]>
-  start: (templateUuid: string) => Promise<LocalDeviceProvisioning>
-  downloadOnly: (templateUuid: string) => Promise<DevicePackageDownloadSummary>
+  start: (
+    input: StartLocalDeviceProvisioningInput
+  ) => Promise<LocalDeviceProvisioning>
+  downloadOnly: (
+    input: StartLocalDeviceProvisioningInput
+  ) => Promise<DevicePackageDownloadSummary>
   configure: (
     input: ConfigureLocalDeviceProvisioningInput
   ) => Promise<LocalDeviceProvisioning>

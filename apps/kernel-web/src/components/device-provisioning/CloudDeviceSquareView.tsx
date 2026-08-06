@@ -3,7 +3,10 @@ import type {
   DeviceSquareDetail,
   DeviceSquareItem
 } from '@unilab/services'
-import type { LocalDeviceProvisioning } from '@unilab/device-provisioning'
+import type {
+  CloudEnvironment,
+  LocalDeviceProvisioning
+} from '@unilab/device-provisioning'
 
 import type { DeviceProvisioningApi } from './deviceProvisioningUi'
 import {
@@ -15,6 +18,7 @@ import styles from './DeviceSquarePanel.module.scss'
 
 interface CloudDeviceSquareViewProps {
   api: DeviceProvisioningApi
+  cloudEnvironment: CloudEnvironment
   onProvisioningStarted: (record: LocalDeviceProvisioning) => void
 }
 
@@ -24,11 +28,13 @@ const DEVICE_SQUARE_PAGE_SIZE = 40
  * 投影云端设备广场的检索、完整分页、详情和两种下载意图。
  *
  * @param props.api Electron Preload 暴露的最小候选本地设备接入端口。
+ * @param props.cloudEnvironment 用户当前明确选择的云端部署环境。
  * @param props.onProvisioningStarted Main 创建持久接入记录后的切页回调。
  * @returns 云端目录与当前选中详情的 React 界面。
  */
 export default function CloudDeviceSquareView({
   api,
+  cloudEnvironment,
   onProvisioningStarted
 }: CloudDeviceSquareViewProps): React.JSX.Element {
   const [keyword, setKeyword] = useState('')
@@ -59,7 +65,7 @@ export default function CloudDeviceSquareView({
     setLoadingMore(false)
     setError(null)
     try {
-      const page = await api.listCloudDevices({
+      const page = await api.listCloudDevices(cloudEnvironment, {
         page: 1,
         pageSize: DEVICE_SQUARE_PAGE_SIZE,
         keyword: committedKeyword || undefined
@@ -83,7 +89,7 @@ export default function CloudDeviceSquareView({
     } finally {
       if (requestRevision.current === revision) setLoading(false)
     }
-  }, [api, committedKeyword])
+  }, [api, cloudEnvironment, committedKeyword])
 
   /**
    * 读取下一页并按模板 UUID 追加，不改变当前详情选择。
@@ -101,7 +107,7 @@ export default function CloudDeviceSquareView({
     setLoadingMore(true)
     setError(null)
     try {
-      const page = await api.listCloudDevices({
+      const page = await api.listCloudDevices(cloudEnvironment, {
         page: nextPage,
         pageSize: DEVICE_SQUARE_PAGE_SIZE,
         keyword: committedKeyword || undefined
@@ -115,7 +121,16 @@ export default function CloudDeviceSquareView({
     } finally {
       if (requestRevision.current === revision) setLoadingMore(false)
     }
-  }, [api, committedKeyword, devices.length, loadedPage, loading, loadingMore, total])
+  }, [
+    api,
+    cloudEnvironment,
+    committedKeyword,
+    devices.length,
+    loadedPage,
+    loading,
+    loadingMore,
+    total
+  ])
 
   useEffect(() => {
     void loadFirstPage()
@@ -132,7 +147,7 @@ export default function CloudDeviceSquareView({
     let active = true
     setDetailLoading(true)
     setError(null)
-    void api.getCloudDevice(selectedId)
+    void api.getCloudDevice(cloudEnvironment, selectedId)
       .then((value) => {
         if (active) setDetail(value)
       })
@@ -145,7 +160,7 @@ export default function CloudDeviceSquareView({
     return () => {
       active = false
     }
-  }, [api, selectedId])
+  }, [api, cloudEnvironment, selectedId])
 
   /**
    * 提交关键词，触发一次明确搜索，不在每个按键上请求云端。
@@ -169,7 +184,10 @@ export default function CloudDeviceSquareView({
     setError(null)
     setNotice('正在解析发布信息并下载校验设备包…')
     try {
-      const record = await api.start(detail.templateUuid)
+      const record = await api.start({
+        cloudEnvironment,
+        templateUuid: detail.templateUuid
+      })
       onProvisioningStarted(record)
       if (record.status === 'failed') {
         return
@@ -180,7 +198,7 @@ export default function CloudDeviceSquareView({
     } finally {
       setOperation(null)
     }
-  }, [api, detail, onProvisioningStarted, operation])
+  }, [api, cloudEnvironment, detail, onProvisioningStarted, operation])
 
   /**
    * 只把设备包写入 OS 受管缓存，不创建实例也不修改设备图。
@@ -193,7 +211,10 @@ export default function CloudDeviceSquareView({
     setError(null)
     setNotice('正在下载并校验设备包，不会修改当前设备图…')
     try {
-      const result = await api.downloadOnly(detail.templateUuid)
+      const result = await api.downloadOnly({
+        cloudEnvironment,
+        templateUuid: detail.templateUuid
+      })
       setNotice(
         `${result.distribution} ${result.version} 已${result.cacheHit ? '命中' : '写入'}受管缓存`
       )
@@ -203,7 +224,7 @@ export default function CloudDeviceSquareView({
     } finally {
       setOperation(null)
     }
-  }, [api, detail, operation])
+  }, [api, cloudEnvironment, detail, operation])
 
   return (
     <div className={styles.squareView}>

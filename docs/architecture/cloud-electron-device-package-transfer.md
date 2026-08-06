@@ -10,7 +10,7 @@
 >
 > 实现范围：uni-lab-fe Electron，以及 Electron 实际使用的当前 Uni-Lab-OS
 >
-> 说明：本文同时记录冻结设计与 2026-08-05 已落地实现；自动化覆盖不替代真实 Lab AK/SK、OSS 和物理仪器验收。
+> 说明：本文同时记录冻结设计与截至 2026-08-06 的已落地实现；自动化覆盖不替代真实 Lab AK/SK、OSS 和物理仪器验收。
 
 ## 1. 需求结论
 
@@ -26,6 +26,8 @@
 6. OS 将设备实例声明原子写入 Electron 当前选择的设备图 JSON。
 7. Electron 受控重启当前 Uni-Lab-OS，使设备包、注册表和设备实例一起加载。
 8. Electron 从当前 OS 的 `/api/v1/devices` 查询到该实例在线且 Action 可见后，才显示“设备可运行”。
+
+设备广场读取、仅下载、添加心愿单和上传统一绑定用户明确选择的固定云端环境：测试环境 `leap-lab.test.bohrium.com`、UAT 环境 `leap-lab.uat.bohrium.com` 或正式环境 `leap-lab.bohrium.com`。本地设备接入记录持久化来源环境，重试始终回到原环境，不跟随页面后来切换。
 
 ```text
 云端设备广场设备模板
@@ -52,8 +54,8 @@ Electron “添加心愿单”
 
 ### 2.1 浏览云端设备
 
-1. 用户在 Electron 打开“云端设备广场”。
-2. Electron 展示现有设备列表、筛选、详情、所属设备包和版本。
+1. 用户在 Electron 打开“云端设备广场”，选择测试、UAT 或正式环境。
+2. Electron 只从所选环境展示现有设备列表、筛选、详情、所属设备包和版本。
 3. Electron 首屏读取 40 条，并按 Backend 返回的 `total/page/page_size` 提供“加载更多设备”，直到当前筛选结果全部展示。
 4. 浏览使用现有公开接口，不要求 Backend 新字段。
 
@@ -61,7 +63,7 @@ Electron “添加心愿单”
 
 ### 2.2 添加心愿单并接入本地设备
 
-1. 用户点击设备详情中的“添加心愿单”。
+1. 用户在目标环境点击设备详情中的“添加心愿单”。
 2. Electron 创建一个本地设备接入作业，立即展示下载和校验进度。
 3. CLI 下载设备包并返回包内设备定义、初始化参数、依赖和摘要。
 4. Electron 展示“配置仪器”向导：
@@ -73,6 +75,7 @@ Electron “添加心愿单”
 6. 如果当前 OS 正在运行，Electron 明确提示并执行受控重启。
 7. 重启完成后，Electron 查询本地设备目录和 Action。
 8. 查询成功时，心愿单条目进入“可运行”；可重试失败保留原阶段重试入口，旧版或不兼容发布保留设备详情并明确要求发布者重新发布，不显示无效的自动重试按钮。
+9. 接入记录保存原云端环境；即使随后在顶部切换环境，该记录的下载重试仍访问原环境。
 
 预期效果：设备不仅出现在本地列表中，驱动代码、设备定义和配置都已经进入当前 OS 的实际启动链路，用户可以在 Electron 选择该设备并调用它公开的 Action。
 
@@ -98,9 +101,10 @@ Electron “添加心愿单”
 
 1. 用户选择一个本地 Package Workspace。
 2. Electron 调用 `unilab package inspect` 并展示 distribution、version、namespace、设备/资源/工作流定义和诊断。
-3. 用户确认后，Electron 调用现有 `package upload`。
-4. CLI 继续使用现有 OSS token、预签名 PUT 和 `/lab/resource`。
-5. 上传后 Electron 重新读取现有包列表/详情，确认设备广场可见性。
+3. 用户选择测试、UAT 或正式环境，输入该环境对应的 Lab AK/SK。
+4. Electron Main 通过 stdin 把一次性 AK/SK 交给当前 OS CLI；凭据不进入 argv、`local_config.py`、本地接入记录或普通日志。
+5. CLI 继续使用现有 OSS token、预签名 PUT 和 `/lab/resource`。
+6. 上传后 Electron 重新读取同一环境的现有包列表/详情，确认设备广场可见性。
 
 预期效果：用户不离开 Electron 即可上传；新包仍由现有 Electron/Cloud 设备广场查询接口展示。
 
@@ -543,19 +547,32 @@ stdin 只接受固定 Schema：
 
 CLI 必须同时校验退出码和最终 JSON。第一期不要求重新设计 NDJSON；Electron 可以按子进程阶段展示不定进度，最终状态以 JSON 和本地 OS 对账为准。
 
-### 8.3 现有上传命令保持不变
+### 8.3 上传接口不变，CLI 增加 stdin 凭据入口
 
 ```bash
 unilab package inspect --path <workspace> --json
-unilab --config <local_config.py> package upload --path <workspace> --json
+unilab --working_dir <managed-working-dir> \
+  --addr https://leap-lab.uat.bohrium.com/api/v1 \
+  package upload --path <workspace> --auth-stdin --json
 ```
 
-当前 upload 只从 `--ak/--sk` 或 `local_config.py` 取得凭据，尚不会自动注入 `unilab login` 的 `session.json`。MVP 使用受控 `local_config.py`，不把 AK/SK 放入 argv。
+stdin 是单个封闭 JSON 文档：
+
+```json
+{
+  "schema_version": "unilab-package-upload-auth/v1",
+  "ak": "<Lab AK>",
+  "sk": "<Lab SK>"
+}
+```
+
+`--auth-stdin` 是 Electron 使用的新安全入口：CLI 不加载或执行 `local_config.py`，也不把 AK/SK 放入进程参数。遗留人工调用仍可继续使用既有 `--config` / `--ak` / `--sk`，但 Electron 不再暴露该方式。云端仍只接收原有 Lab Authorization、storage token、OSS PUT 和 `/lab/resource`，因此 Cloud/Backend 无接口变化。
 
 ## 9. Electron 页面与状态展示
 
 ### 9.1 设备广场
 
+- 操作台顶部提供固定环境选择：测试、UAT、正式；Renderer 不能提交任意 Cloud URL。
 - 操作：“添加心愿单”“仅下载设备包”“查看包详情”。
 - “添加心愿单”旁明确提示：将下载驱动、配置仪器并重启本地 OS。
 - 工具栏显示云端 `total`，列表底部显示“已显示 N / total”；存在下一页时显示“加载更多设备”。
@@ -567,6 +584,7 @@ unilab --config <local_config.py> package upload --path <workspace> --json
 心愿单页面现在是本地设备接入列表，而不是收藏列表。每条显示：
 
 - 云端设备名称和模板来源；
+- 来源环境及主机名；
 - 包名、版本和摘要；
 - 本地实例 ID；
 - 当前设备图；
@@ -593,13 +611,17 @@ unilab --config <local_config.py> package upload --path <workspace> --json
 | 公开 Artifact 下载 | 公开 | CLI 使用模板 UUID并跟随 Backend `302` |
 | 本地设备接入 | 本机权限 | Main + 受控 CLI；不访问 Backend 写接口 |
 | 本地设备 Action | 当前 OS 本机接口 | 复用现有设备 Action 安全合同 |
-| OSS 上传和 `/lab/resource` | Lab AK/SK | 由现有 CLI HTTP client 使用 |
+| OSS 上传和 `/lab/resource` | Lab AK/SK | Main 通过 stdin 交给短生命周期 CLI HTTP client |
 | `copy_resource` | 云端用户/Lab 鉴权 | 本期不调用 |
 
 安全要求：
 
 - CLI executable 必须来自用户选择并验证过的 Conda 环境。
 - 所有子进程使用参数数组和 `shell: false`。
+- 云端环境只能从测试、UAT、正式三项固定映射选择，不能由 Renderer 注入 URL。
+- 上传 AK/SK 使用非持久化输入框，仅在一次 IPC/CLI 调用中使用；SK 在调用结束后立即清空。
+- AK/SK 不进入 argv、`local_config.py`、本地接入 Store、设备图、请求诊断文件或普通日志；`base64(ak:sk)` 同样按秘密处理。
+- stdin 凭据合同拒绝额外字段、空值、未知 schema 和超长值，错误正文不回显输入。
 - 下载初始 host 必须匹配受控 Backend Profile；限制重定向次数和响应大小。
 - Artifact 摘要缺失或不匹配时不得缓存或写设备图。
 - 设备图路径必须等于当前 LocalRuntime 配置的 graphPath，Renderer 不能任意指定。
@@ -680,6 +702,7 @@ unilab --config <local_config.py> package upload --path <workspace> --json
 
 ### P3：Electron 广场与接入向导（已实现）
 
+- 实现 test/UAT/production 固定环境选择，并将来源环境绑定到接入记录与重试。
 - 实现现有 Backend 设备广场 Adapter 和页面。
 - 实现基于 `total/page/page_size` 的完整分页、模板 UUID 去重和搜索请求代次隔离。
 - 实现 `LocalDeviceProvisioningManager`、本地持久化和最小 IPC。
@@ -701,7 +724,8 @@ unilab --config <local_config.py> package upload --path <workspace> --json
 ### P5：上传闭环与真实 E2E（代码已实现；真实 Cloud/OSS 待验收）
 
 - 接入现有 inspect/upload。
-- 上传后用现有设备广场接口确认可见性。
+- 用一次性 stdin AK/SK 替代 Electron 的 `local_config.py` 选择，不在 argv 或日志中暴露秘密。
+- 上传后用同一环境的现有设备广场接口确认可见性。
 - 覆盖真实 Backend、OSS、Conda、设备图和测试仪器。
 - 验证 Electron 与 Uni-Lab-Cloud 都能看到上传包。
 
@@ -715,19 +739,19 @@ unilab --config <local_config.py> package upload --path <workspace> --json
 | Package 获取模块 | 摘要、Catalog、大小限制、definition 匹配、缓存命中和临时文件清理 |
 | 设备图接入模块 | Schema、必填参数、重复 ID、原子写入、备份、恢复、删除和扩展字段保留 |
 | OS 启动集成 | cache -> sys.path -> Catalog -> registry -> driver import -> instance |
-| CLI 子进程 | stdin 配置、最终 JSON、退出码、取消和日志脱敏 |
-| Electron Main | executable allowlist、`shell: false`、作业恢复、重启门禁和对账 |
-| Electron UI | 完整分页、搜索代次隔离、下载、配置、待重启、加载中、可运行、失败和移除 |
+| CLI 子进程 | stdin 设备配置/上传凭据、最终 JSON、退出码、取消和日志脱敏 |
+| Electron Main | 三环境固定映射、executable allowlist、`shell: false`、作业恢复、重启门禁和对账 |
+| Electron UI | 环境切换、完整分页、搜索代次隔离、下载、配置、待重启、加载中、可运行、失败和移除 |
 | 跨仓 E2E | 广场 -> 添加心愿单 -> 配置 -> 重启 -> 在线 -> Action；Workspace -> 上传 -> 广场可见 |
 
 2026-08-06 当前自动化验证记录：
 
 | 命令/范围 | 结果 |
 |---|---|
-| `Uni-Lab-OS: pytest tests/package_manager -q` | 72 passed |
-| `Uni-Lab-OS: pytest tests -q` | 2622 passed、7 skipped；68 条既有弃用/收集 warning，无失败 |
+| `Uni-Lab-OS: pytest tests/package_manager -q` | 79 passed |
+| `Uni-Lab-OS: pytest tests -q` | 2629 passed、7 skipped；68 条既有弃用/收集 warning，无失败 |
 | `uni-lab-fe: pnpm typecheck` | 20 个工作区项目全部通过 |
-| `uni-lab-fe: pnpm test` | 全部带测试脚本的工作区包通过；其中 services 119、kernel-web 63、desktop 88 |
+| `uni-lab-fe: pnpm test` | 全部带测试脚本的工作区包通过；其中 services 119、kernel-web 63、desktop 92 |
 | `uni-lab-fe: pnpm build:desktop` | 生产 Main、Preload、Renderer 构建通过 |
 | `xvfb-run -a env UNILAB_E2E_ELECTRON=1 pnpm exec playwright test e2e/device-square-electron.spec.ts` | 1 passed；覆盖生产 Electron Main/IPC、45 条设备完整分页、详情保持、旧包不可重试诊断及桌面/紧凑截图 |
 
@@ -736,7 +760,7 @@ unilab --config <local_config.py> package upload --path <workspace> --json
 - `device-square-desktop.png`：加载第二页后显示 `45 / 45`，右侧设备详情保持可见。
 - `device-square-legacy-package.png`：旧包保留“旧版分液器”名称、包版本和重新发布诊断，不提供无效重试按钮。
 - `device-square-compact.png`：紧凑窗口下列表与详情保持可操作。
-- `device-package-upload-desktop.png`：现有 CLI 上传入口。
+- `device-package-upload-desktop.png`：测试/UAT/正式环境选择、一次性 Lab AK/SK 和现有 CLI 上传入口；不再选择 `local_config.py`。
 
 自动化使用兼容 Backend fixture 和虚拟设备目录，证明协议、IPC、状态机与界面链路；它不替代真实 Lab AK/SK、OSS、目标 Cloud 数据和物理仪器 Action 验收。
 
@@ -756,7 +780,8 @@ unilab --config <local_config.py> package upload --path <workspace> --json
 12. 移除设备后 graph 不再包含实例，重启后本地设备目录也不再包含它。
 13. 仅下载设备包不会修改 graph 或重启 OS。
 14. 上传仍只使用现有 storage token、OSS PUT 和 `/lab/resource`。
-15. Renderer、argv、普通日志和设备图中不出现设备秘密；MVP 对秘密字段失败关闭。
+15. 测试、UAT、正式环境的浏览、下载、接入和上传使用同一明确环境，接入重试不漂移。
+16. 上传 AK/SK 不进入 argv、`local_config.py`、持久状态、请求诊断和普通日志；非法 stdin 合同失败关闭且不回显秘密。
 
 最终验收不是“文件已经下载”，而是：
 
@@ -781,7 +806,7 @@ unilab --config <local_config.py> package upload --path <workspace> --json
 6. `/api/v1/devices` 能证明实例和 Action 已加载，但部分驱动仍需额外安全连接探测才能证明真实硬件可达。
 7. 本地设备接入不跨电脑同步。
 8. 删除实例不立即清理共享包缓存或 Python 依赖。
-9. 当前 `package upload` 不自动读取 `unilab login` 的 `session.json`。
+9. Electron 当前只使用一次性 AK/SK，不提供“记住凭据”；若以后增加，必须接入操作系统凭据库而不是明文文件。
 10. 旧 tar.gz 或缺少内嵌 PackageCatalog/摘要的历史设备包不能直接接入当前 OS，需要使用当前 CLI 重新构建上传。
 11. 当前设备图没有安全秘密引用合同，MVP 不支持需要持久账号/密码的驱动配置。
 

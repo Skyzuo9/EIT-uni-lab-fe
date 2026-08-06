@@ -1,4 +1,5 @@
 import type {
+  CloudEnvironment,
   DevicePackageInspection,
   DevicePackageUploadResult
 } from '@unilab/device-provisioning'
@@ -12,6 +13,8 @@ import {
 export interface DevicePackagePublishCliConfig {
   unilabExecutable: string
   commandWorkingDirectory: string
+  managedWorkingDirectory: string
+  backendBaseUrl: string
 }
 
 /**
@@ -23,7 +26,10 @@ export interface DevicePackagePublishCliConfig {
  * @returns distribution、版本、namespace、摘要和定义摘要。
  */
 export async function inspectDevicePackageWorkspace(
-  config: DevicePackagePublishCliConfig,
+  config: Pick<
+    DevicePackagePublishCliConfig,
+    'unilabExecutable' | 'commandWorkingDirectory'
+  >,
   workspacePath: string,
   commandRunner: DevicePackageCliCommandRunner = runCommand
 ): Promise<DevicePackageInspection> {
@@ -45,27 +51,40 @@ export async function inspectDevicePackageWorkspace(
  * 复用当前 OS 的 storage token、OSS PUT 与 `/lab/resource` 发布设备包。
  *
  * @param config Main 已校验的 Conda CLI 与工作目录。
- * @param input 受控选择的 Workspace 与仅包含 Lab AK/SK 的 local_config.py。
+ * @param input 受控 Workspace、固定云端环境和本次发布的一次性 Lab AK/SK。
  * @param commandRunner 可替换的无 shell CLI 端口。
  * @returns 云端现有上传链路返回的稳定发布身份。
  */
 export async function uploadDevicePackageWorkspace(
   config: DevicePackagePublishCliConfig,
-  input: { workspacePath: string; configPath: string },
+  input: {
+    workspacePath: string
+    cloudEnvironment: CloudEnvironment
+    ak: string
+    sk: string
+  },
   commandRunner: DevicePackageCliCommandRunner = runCommand
 ): Promise<DevicePackageUploadResult> {
   const result = await commandRunner({
     command: required(config.unilabExecutable, 'unilab 可执行文件'),
     cwd: required(config.commandWorkingDirectory, 'CLI 工作目录'),
     args: [
-      '--config',
-      required(input.configPath, '上传 local_config.py'),
+      '--working_dir',
+      required(config.managedWorkingDirectory, 'OS 受管工作目录'),
+      '--addr',
+      required(config.backendBaseUrl, '云端 API 根地址'),
       'package',
       'upload',
       '--path',
       required(input.workspacePath, 'Package Workspace'),
+      '--auth-stdin',
       '--json'
-    ]
+    ],
+    stdin: JSON.stringify({
+      schema_version: 'unilab-package-upload-auth/v1',
+      ak: required(input.ak, 'Lab AK'),
+      sk: required(input.sk, 'Lab SK')
+    })
   })
   const raw = parseFinalJson(result.stdout)
   if (raw.status !== 'published') {
@@ -77,6 +96,7 @@ export async function uploadDevicePackageWorkspace(
   }
   return {
     status: 'published',
+    cloudEnvironment: input.cloudEnvironment,
     distribution: text(raw.distribution, 'distribution'),
     version: text(raw.version, 'version'),
     artifactDigest,

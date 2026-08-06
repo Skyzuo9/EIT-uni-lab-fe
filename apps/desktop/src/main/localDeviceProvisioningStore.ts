@@ -1,4 +1,7 @@
-import type { LocalDeviceProvisioning } from '@unilab/device-provisioning'
+import {
+  isCloudEnvironment,
+  type LocalDeviceProvisioning
+} from '@unilab/device-provisioning'
 
 import { open, mkdir, readFile, rename, rm } from 'node:fs/promises'
 import { dirname } from 'node:path'
@@ -135,16 +138,26 @@ function isProvisioning(value: unknown): value is LocalDeviceProvisioning {
   return raw.schemaVersion === 'local-device-provisioning/v1'
     && typeof raw.provisioningId === 'string'
     && typeof raw.templateUuid === 'string'
+    && (raw.cloudEnvironment === undefined
+      || isCloudEnvironment(raw.cloudEnvironment))
     && typeof raw.status === 'string'
     && typeof raw.createdAt === 'string'
     && typeof raw.updatedAt === 'string'
 }
 
-/** 通过结构化克隆隔离配置 Schema、配置值和诊断的可变引用。 */
+/**
+ * 通过结构化克隆隔离配置 Schema、配置值和诊断的可变引用。
+ *
+ * @param item 已通过根合同最小校验的本地设备接入记录。
+ * @returns 与内部状态隔离的副本；历史记录会补齐固定测试环境来源。
+ */
 function cloneProvisioning(
   item: LocalDeviceProvisioning
 ): LocalDeviceProvisioning {
-  return structuredClone(item)
+  const copy = structuredClone(item)
+  // 旧记录均来自历史固定测试地址；迁移时补齐来源环境，保证后续重试不漂移。
+  if (copy.cloudEnvironment === undefined) copy.cloudEnvironment = 'test'
+  return copy
 }
 
 /** 把未知异常收窄为带 Node 文件系统错误码的对象。 */

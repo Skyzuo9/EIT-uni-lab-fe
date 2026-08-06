@@ -9,7 +9,9 @@ import type { DevicePackageCliCommandRunner } from './devicePackageCli'
 
 const config = {
   unilabExecutable: '/opt/unilab/bin/unilab',
-  commandWorkingDirectory: '/workspace/Uni-Lab-OS'
+  commandWorkingDirectory: '/workspace/Uni-Lab-OS',
+  managedWorkingDirectory: '/runtime/unilabos_data',
+  backendBaseUrl: 'https://leap-lab.uat.bohrium.com/api/v1'
 }
 
 /** 覆盖 Electron Main 对现有设备包 inspect/upload CLI 的严格投影。 */
@@ -43,8 +45,8 @@ describe('设备包发布 CLI Adapter', () => {
     })
   })
 
-  /** 验证上传复用 local_config.py 和 OS `package upload --json` 最终身份。 */
-  it('上传后解析稳定发布结果且不把配置文件内容读入 Electron', async () => {
+  /** 验证上传凭据只进入 stdin，argv 只含固定环境地址和非秘密参数。 */
+  it('通过 stdin 上传并解析稳定发布结果', async () => {
     const runner = vi.fn<DevicePackageCliCommandRunner>(async () => ({
       stdout: JSON.stringify({
         status: 'published',
@@ -57,23 +59,36 @@ describe('设备包发布 CLI Adapter', () => {
 
     await expect(uploadDevicePackageWorkspace(config, {
       workspacePath: '/workspace/package',
-      configPath: '/secure/local_config.py'
+      cloudEnvironment: 'uat',
+      ak: 'lab-access-key',
+      sk: 'lab-secret-key'
     }, runner)).resolves.toEqual({
       status: 'published',
+      cloudEnvironment: 'uat',
       distribution: 'review-lab',
       version: '1.2.0',
       artifactDigest: `sha256:${'a'.repeat(64)}`,
       visibleInSquare: false
     })
     expect(runner.mock.calls[0]?.[0]?.args).toEqual([
-      '--config',
-      '/secure/local_config.py',
+      '--working_dir',
+      '/runtime/unilabos_data',
+      '--addr',
+      'https://leap-lab.uat.bohrium.com/api/v1',
       'package',
       'upload',
       '--path',
       '/workspace/package',
+      '--auth-stdin',
       '--json'
     ])
+    expect(runner.mock.calls[0]?.[0]?.args).not.toContain('lab-access-key')
+    expect(runner.mock.calls[0]?.[0]?.args).not.toContain('lab-secret-key')
+    expect(JSON.parse(runner.mock.calls[0]?.[0]?.stdin ?? '')).toEqual({
+      schema_version: 'unilab-package-upload-auth/v1',
+      ak: 'lab-access-key',
+      sk: 'lab-secret-key'
+    })
   })
 })
 

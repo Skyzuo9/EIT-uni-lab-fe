@@ -33,13 +33,15 @@ import type {
   TraceListResult
 } from '../shared/observability'
 import type {
+  CloudEnvironment,
   ConfigureLocalDeviceProvisioningInput,
   DevicePackageDownloadSummary,
   DevicePackageInspection,
   DevicePackageUploadRequest,
   DevicePackageUploadResult,
   DeviceProvisioningPathSelection,
-  LocalDeviceProvisioning
+  LocalDeviceProvisioning,
+  StartLocalDeviceProvisioningInput
 } from '@unilab/device-provisioning'
 import type {
   DeviceSquareDetail,
@@ -254,19 +256,31 @@ const api = {
   },
   deviceProvisioning: {
     listCloudDevices: (
+      cloudEnvironment: CloudEnvironment,
       query?: DeviceSquareListQuery
     ): Promise<DeviceSquarePage> =>
-      ipcRenderer.invoke('device-provisioning:square:list', query),
-    getCloudDevice: (templateUuid: string): Promise<DeviceSquareDetail> =>
-      ipcRenderer.invoke('device-provisioning:square:detail', templateUuid),
+      ipcRenderer.invoke('device-provisioning:square:list', {
+        cloudEnvironment,
+        query
+      }),
+    getCloudDevice: (
+      cloudEnvironment: CloudEnvironment,
+      templateUuid: string
+    ): Promise<DeviceSquareDetail> =>
+      ipcRenderer.invoke('device-provisioning:square:detail', {
+        cloudEnvironment,
+        templateUuid
+      }),
     list: (): Promise<LocalDeviceProvisioning[]> =>
       ipcRenderer.invoke('device-provisioning:list'),
-    start: (templateUuid: string): Promise<LocalDeviceProvisioning> =>
-      ipcRenderer.invoke('device-provisioning:start', templateUuid),
+    start: (
+      input: StartLocalDeviceProvisioningInput
+    ): Promise<LocalDeviceProvisioning> =>
+      ipcRenderer.invoke('device-provisioning:start', input),
     downloadOnly: (
-      templateUuid: string
+      input: StartLocalDeviceProvisioningInput
     ): Promise<DevicePackageDownloadSummary> =>
-      ipcRenderer.invoke('device-provisioning:download', templateUuid),
+      ipcRenderer.invoke('device-provisioning:download', input),
     configure: (
       input: ConfigureLocalDeviceProvisioningInput
     ): Promise<LocalDeviceProvisioning> =>

@@ -55,6 +55,43 @@ describe('LocalDeviceProvisioningStore', () => {
     await expect(new LocalDeviceProvisioningStore(filePath).list())
       .rejects.toThrow('状态文件合同无效')
   })
+
+  /** 验证历史固定测试地址记录补齐环境后仍能安全重试。 */
+  it('把缺少环境的旧记录迁移为测试环境', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'unilab-provisioning-store-'))
+    temporaryDirectories.push(root)
+    const filePath = join(root, 'state.json')
+    const { cloudEnvironment: _legacyMissingField, ...legacy } = provisioning(
+      'legacy',
+      '2026-08-05T01:00:00.000Z'
+    )
+    await writeFile(filePath, JSON.stringify({
+      schemaVersion: 'local-device-provisioning-store/v1',
+      items: [legacy]
+    }))
+
+    await expect(new LocalDeviceProvisioningStore(filePath).list())
+      .resolves.toEqual([
+        expect.objectContaining({ cloudEnvironment: 'test' })
+      ])
+  })
+
+  /** 验证未知环境不会被静默改投测试环境，避免跨环境读取或重试。 */
+  it('拒绝包含未知云端环境的持久化记录', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'unilab-provisioning-store-'))
+    temporaryDirectories.push(root)
+    const filePath = join(root, 'state.json')
+    await writeFile(filePath, JSON.stringify({
+      schemaVersion: 'local-device-provisioning-store/v1',
+      items: [{
+        ...provisioning('corrupted', '2026-08-05T01:00:00.000Z'),
+        cloudEnvironment: 'unknown'
+      }]
+    }))
+
+    await expect(new LocalDeviceProvisioningStore(filePath).list())
+      .rejects.toThrow('状态文件合同无效')
+  })
 })
 
 /** 创建绑定测试临时文件的空接入存储。 */
@@ -76,6 +113,7 @@ function provisioning(
   return {
     schemaVersion: 'local-device-provisioning/v1',
     provisioningId,
+    cloudEnvironment: 'test',
     templateUuid: '50afbb58-0f53-4ad6-9f73-24cfeb90a834',
     cloudDeviceName: 'pump',
     cloudDisplayName: 'Pump',

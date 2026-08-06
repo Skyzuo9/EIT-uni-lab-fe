@@ -1,7 +1,9 @@
-import { useCallback, useState } from 'react'
-import type {
-  DevicePackageInspection,
-  DevicePackageUploadResult
+import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  cloudEnvironmentOption,
+  type CloudEnvironment,
+  type DevicePackageInspection,
+  type DevicePackageUploadResult
 } from '@unilab/device-provisioning'
 
 import type { DeviceProvisioningApi } from './deviceProvisioningUi'
@@ -10,18 +12,35 @@ import styles from './DeviceSquarePanel.module.scss'
 
 interface DevicePackageUploadViewProps {
   api: DeviceProvisioningApi
+  cloudEnvironment: CloudEnvironment
 }
 
-/** 通过 Main 受控路径选择和当前 OS CLI 完成设备包检查与发布。 */
+/**
+ * 通过 Main 受控路径、一次性 AK/SK 和当前 OS CLI 完成设备包检查与发布。
+ *
+ * @param props.api Electron Preload 暴露的最小设备包发布端口。
+ * @param props.cloudEnvironment 操作台当前选择的固定云端环境。
+ * @returns Workspace 检查、非持久凭据输入和发布结果三阶段界面。
+ */
 export default function DevicePackageUploadView({
-  api
+  api,
+  cloudEnvironment
 }: DevicePackageUploadViewProps): React.JSX.Element {
   const [workspacePath, setWorkspacePath] = useState('')
-  const [configPath, setConfigPath] = useState('')
   const [inspection, setInspection] = useState<DevicePackageInspection | null>(null)
   const [result, setResult] = useState<DevicePackageUploadResult | null>(null)
   const [working, setWorking] = useState<'inspect' | 'upload' | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const akInput = useRef<HTMLInputElement>(null)
+  const skInput = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    // 环境变化会改变凭据作用域；清空旧值，避免把上一环境的秘密误用于新目标。
+    if (akInput.current) akInput.current.value = ''
+    if (skInput.current) skInput.current.value = ''
+    setResult(null)
+    setError(null)
+  }, [cloudEnvironment])
 
   /** 用系统目录选择器批准 Workspace 后立即执行只读编译检查。 */
   const handleSelectWorkspace = useCallback(async (): Promise<void> => {
@@ -43,33 +62,37 @@ export default function DevicePackageUploadView({
     }
   }, [api, working])
 
-  /** 通过固定文件选择器批准只用于 CLI 上传的 local_config.py。 */
-  const handleSelectConfig = useCallback(async (): Promise<void> => {
-    if (working) return
-    setError(null)
-    try {
-      const selected = await api.selectPath({ kind: 'packageUploadConfig' })
-      if (selected) setConfigPath(selected)
-    } catch (reason) {
-      setError(uiErrorMessage(reason))
-    }
-  }, [api, working])
-
-  /** 在用户已经核验编译摘要后复用当前 CLI 上传并确认广场可见性。 */
+  /**
+   * 在用户核验编译摘要后，把一次性凭据经 Main/CLI stdin 发布到所选环境。
+   *
+   * @returns 发布与同环境可见性确认完成后结束；SK 始终在结束时清空。
+   */
   const handleUpload = useCallback(async (): Promise<void> => {
-    if (!inspection || !workspacePath || !configPath || working) return
+    if (!inspection || !workspacePath || working) return
+    const ak = akInput.current?.value.trim() ?? ''
+    const sk = skInput.current?.value.trim() ?? ''
+    if (!ak || !sk) {
+      setError('请输入当前云端环境对应的 Lab AK 和 SK')
+      return
+    }
     setWorking('upload')
     setError(null)
     setResult(null)
     try {
-      const uploaded = await api.uploadWorkspace({ workspacePath, configPath })
+      const uploaded = await api.uploadWorkspace({
+        workspacePath,
+        cloudEnvironment,
+        ak,
+        sk
+      })
       setResult(uploaded)
     } catch (reason) {
       setError(uiErrorMessage(reason))
     } finally {
+      if (skInput.current) skInput.current.value = ''
       setWorking(null)
     }
-  }, [api, configPath, inspection, working, workspacePath])
+  }, [api, cloudEnvironment, inspection, working, workspacePath])
 
   return (
     <div className={styles.uploadWorkspace}>
@@ -92,21 +115,41 @@ export default function DevicePackageUploadView({
       <section className={styles.uploadStep} data-disabled={!inspection}>
         <div className={styles.stepIndex}>2</div>
         <div className={styles.stepBody}>
-          <h2>选择上传凭据配置</h2>
+          <h2>配置云端上传凭据</h2>
           <p>
-            选择现有 <code>local_config.py</code>。AK/SK 只由 Main 交给 CLI 读取，不进入页面状态或命令参数日志。
+            AK/SK 仅用于本次发布，通过 Main 交给 CLI stdin；不会写入 local_config.py、命令参数或本地接入记录。
           </p>
-          <PathRow
-            value={configPath}
-            empty="尚未选择 local_config.py"
-            action="选择配置"
-            disabled={!inspection || working !== null}
-            onClick={() => void handleSelectConfig()}
-          />
+          <div className={styles.credentialTarget}>
+            发布目标：<strong>{environmentLabel(cloudEnvironment)}</strong>
+          </div>
+          <div className={styles.credentialGrid}>
+            <label>
+              <span>Lab AK</span>
+              <input
+                ref={akInput}
+                type="text"
+                autoComplete="off"
+                spellCheck={false}
+                disabled={!inspection || working !== null}
+                placeholder="请输入 Access Key"
+              />
+            </label>
+            <label>
+              <span>Lab SK</span>
+              <input
+                ref={skInput}
+                type="password"
+                autoComplete="new-password"
+                spellCheck={false}
+                disabled={!inspection || working !== null}
+                placeholder="请输入 Secret Key"
+              />
+            </label>
+          </div>
         </div>
       </section>
 
-      <section className={styles.uploadStep} data-disabled={!inspection || !configPath}>
+      <section className={styles.uploadStep} data-disabled={!inspection}>
         <div className={styles.stepIndex}>3</div>
         <div className={styles.stepBody}>
           <h2>发布到云端设备广场</h2>
@@ -120,7 +163,7 @@ export default function DevicePackageUploadView({
             <button
               type="button"
               className={styles.primaryButton}
-              disabled={!inspection || !configPath || working !== null}
+              disabled={!inspection || working !== null}
               onClick={() => void handleUpload()}
             >
               {working === 'upload' ? '正在上传并确认…' : '上传设备包'}
@@ -130,6 +173,7 @@ export default function DevicePackageUploadView({
             <div className={result.visibleInSquare ? styles.successBanner : styles.warningBanner} role="status">
               <strong>{result.distribution} {result.version} 已发布</strong>
               <span>
+                发布环境：{environmentLabel(result.cloudEnvironment)}。
                 {result.visibleInSquare
                   ? '云端设备广场已能读取该包。'
                   : '上传已完成，但短暂轮询内尚未在广场列表出现；请稍后刷新广场。'}
@@ -142,6 +186,17 @@ export default function DevicePackageUploadView({
       </section>
     </div>
   )
+}
+
+/**
+ * 把固定云端环境身份投影成上传确认区的目标名称。
+ *
+ * @param environment 用户在操作台顶部选择的云端环境。
+ * @returns 包含环境用途和主机名的中文确认文字。
+ */
+function environmentLabel(environment: CloudEnvironment): string {
+  const option = cloudEnvironmentOption(environment)
+  return `${option.label} · ${option.host}`
 }
 
 /** 展示由 Main 系统选择器批准的路径及下一步动作。 */

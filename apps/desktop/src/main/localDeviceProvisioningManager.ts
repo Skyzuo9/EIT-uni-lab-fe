@@ -1,11 +1,13 @@
 import type {
+  CloudEnvironment,
   ConfigureLocalDeviceProvisioningInput,
   DevicePackageDownloadSummary,
   DevicePackageInspection,
   DevicePackageUploadRequest,
   DevicePackageUploadResult,
   LocalDeviceProvisioning,
-  LocalDeviceProvisioningStatus
+  LocalDeviceProvisioningStatus,
+  StartLocalDeviceProvisioningInput
 } from '@unilab/device-provisioning'
 import {
   type DeviceSquareDetail,
@@ -56,14 +58,32 @@ export class LocalDeviceProvisioningManager {
     private readonly onChange: ProvisioningListener
   ) {}
 
-  /** 读取云端现有公开设备广场列表，不改变任何本地状态。 */
-  listCloudDevices(query: DeviceSquareListQuery = {}): Promise<DeviceSquarePage> {
-    return createCloudDeviceSquare().listDevices(query)
+  /**
+   * 读取所选环境的现有公开设备广场列表，不改变任何本地状态。
+   *
+   * @param environment 用户明确选择的固定云端环境。
+   * @param query 现有 Backend 接受的分页和筛选字段。
+   * @returns 所选环境返回的权威设备模板分页。
+   */
+  listCloudDevices(
+    environment: CloudEnvironment,
+    query: DeviceSquareListQuery = {}
+  ): Promise<DeviceSquarePage> {
+    return createCloudDeviceSquare(environment).listDevices(query)
   }
 
-  /** 按模板 UUID 重新读取云端设备详情，不信任 Renderer 缓存。 */
-  getCloudDevice(templateUuid: string): Promise<DeviceSquareDetail> {
-    return createCloudDeviceSquare().getDeviceDetail(templateUuid)
+  /**
+   * 按环境和模板 UUID 重新读取云端设备详情，不信任 Renderer 缓存。
+   *
+   * @param environment 用户明确选择的固定云端环境。
+   * @param templateUuid 需要重新解析的云端设备模板稳定 UUID。
+   * @returns 所选环境的设备模板详情。
+   */
+  getCloudDevice(
+    environment: CloudEnvironment,
+    templateUuid: string
+  ): Promise<DeviceSquareDetail> {
+    return createCloudDeviceSquare(environment).getDeviceDetail(templateUuid)
   }
 
   /** 读取全部本地设备接入持久事实。 */
@@ -74,16 +94,18 @@ export class LocalDeviceProvisioningManager {
   /**
    * 下载并校验云端模板设备包，但不创建接入记录、不修改设备图。
    *
-   * @param templateUuid 云端设备模板稳定 UUID。
+   * @param input 云端环境与设备模板稳定 UUID。
    * @returns 已进入当前 OS 受管缓存的设备包描述。
    */
-  downloadOnly(templateUuid: string): Promise<DevicePackageDownloadSummary> {
+  downloadOnly(
+    input: StartLocalDeviceProvisioningInput
+  ): Promise<DevicePackageDownloadSummary> {
     return this.exclusive(async () => {
       const active = this.runtime.getDeviceProvisioningRuntime()
-      const square = createCloudDeviceSquare()
-      const candidate = await square.resolvePackageCandidate(templateUuid)
+      const square = createCloudDeviceSquare(input.cloudEnvironment)
+      const candidate = await square.resolvePackageCandidate(input.templateUuid)
       return downloadDevicePackageWithCli(
-        devicePackageCliConfig(active.runtime),
+        devicePackageCliConfig(active.runtime, input.cloudEnvironment),
         candidate
       )
     })
@@ -92,17 +114,18 @@ export class LocalDeviceProvisioningManager {
   /**
    * 开始“添加心愿单”，下载可信设备包并停在待配置阶段。
    *
-   * @param templateUuid 云端设备模板稳定 UUID。
+   * @param input 云端环境与设备模板稳定 UUID。
    * @returns 已持久化且带固定配置 Schema 的接入记录。
    */
-  start(templateUuid: string): Promise<LocalDeviceProvisioning> {
+  start(input: StartLocalDeviceProvisioningInput): Promise<LocalDeviceProvisioning> {
     return this.exclusive(async () => {
       const active = this.runtime.getDeviceProvisioningRuntime()
       const now = new Date().toISOString()
       let record: LocalDeviceProvisioning = {
         schemaVersion: 'local-device-provisioning/v1',
         provisioningId: randomUUID(),
-        templateUuid,
+        cloudEnvironment: input.cloudEnvironment,
+        templateUuid: input.templateUuid,
         cloudDeviceName: '',
         cloudDisplayName: '',
         packageName: '',
@@ -128,11 +151,11 @@ export class LocalDeviceProvisioningManager {
       record = await this.save(record)
       try {
         record = await this.transition(record, 'resolving')
-        const square = createCloudDeviceSquare()
-        const detail = await square.getDeviceDetail(templateUuid)
+        const square = createCloudDeviceSquare(input.cloudEnvironment)
+        const detail = await square.getDeviceDetail(input.templateUuid)
         record = await this.saveCloudDetail(record, detail)
         const candidate = await square.resolvePackageCandidate(
-          templateUuid,
+          input.templateUuid,
           detail
         )
         record = await this.save({
@@ -145,7 +168,7 @@ export class LocalDeviceProvisioningManager {
         })
         record = await this.transition(record, 'downloading')
         const downloaded = await downloadDevicePackageWithCli(
-          devicePackageCliConfig(active.runtime),
+          devicePackageCliConfig(active.runtime, input.cloudEnvironment),
           candidate
         )
         record = await this.transition({
@@ -222,19 +245,26 @@ export class LocalDeviceProvisioningManager {
     })
   }
 
-  /** 复用现有上传 CLI 发布 Workspace，并用现有广场包列表确认可见性。 */
+  /**
+   * 复用现有上传 CLI 发布 Workspace，并用同环境广场包列表确认可见性。
+   *
+   * @param input 受控 Workspace、固定环境和一次性 AK/SK。
+   * @returns 带发布身份、目标环境及传播可见性判断的结果。
+   */
   uploadWorkspace(
     input: DevicePackageUploadRequest
   ): Promise<DevicePackageUploadResult> {
     return this.exclusive(async () => {
       const active = this.runtime.getDeviceProvisioningRuntime()
       const result = await uploadDevicePackageWorkspace({
-        unilabExecutable: active.runtime.unilabExecutable,
-        commandWorkingDirectory: active.runtime.commandWorkingDirectory
+        ...devicePackageCliConfig(active.runtime, input.cloudEnvironment)
       }, input)
       return {
         ...result,
-        visibleInSquare: await confirmPublishedDevicePackage(result.distribution)
+        visibleInSquare: await confirmPublishedDevicePackage(
+          result.distribution,
+          input.cloudEnvironment
+        )
       }
     })
   }
@@ -264,7 +294,10 @@ export class LocalDeviceProvisioningManager {
       ))
       if (conflict) throw new Error(`本地设备实例 ID 已由 ${conflict.cloudDisplayName} 使用`)
       const instanceUuid = record.instanceUuid || randomUUID()
-      const staged = await stageDeviceWithCli(devicePackageCliConfig(active.runtime), {
+      const staged = await stageDeviceWithCli(devicePackageCliConfig(
+        active.runtime,
+        record.cloudEnvironment
+      ), {
         cacheKey: record.cacheKey,
         definitionFqid: record.definitionFqid,
         instanceId: input.instanceId,
@@ -299,7 +332,10 @@ export class LocalDeviceProvisioningManager {
       record = await this.transition(record, 'removing')
       const wasRunning = this.runtime.getSnapshot().edgeRunning
       if (wasRunning) await this.runtime.stopEdge()
-      const removed = await removeDeviceWithCli(devicePackageCliConfig(active.runtime), {
+      const removed = await removeDeviceWithCli(devicePackageCliConfig(
+        active.runtime,
+        record.cloudEnvironment
+      ), {
         graphPath: record.graphPath,
         instanceId: record.instanceId,
         instanceUuid: record.instanceUuid
@@ -333,7 +369,7 @@ export class LocalDeviceProvisioningManager {
       const wasRunning = this.runtime.getSnapshot().edgeRunning
       if (wasRunning) await this.runtime.stopEdge()
       const restored = await restoreDeviceGraphWithCli(
-        devicePackageCliConfig(active.runtime),
+        devicePackageCliConfig(active.runtime, record.cloudEnvironment),
         { graphPath: record.graphPath, backupPath: record.backupPath }
       )
       record = await this.save({
@@ -391,7 +427,7 @@ export class LocalDeviceProvisioningManager {
     const active = this.assertRuntime(record)
     try {
       record = await this.transition(record, 'resolving')
-      const square = createCloudDeviceSquare()
+      const square = createCloudDeviceSquare(record.cloudEnvironment)
       const detail = await square.getDeviceDetail(record.templateUuid)
       record = await this.saveCloudDetail(record, detail)
       const candidate = await square.resolvePackageCandidate(
@@ -408,7 +444,7 @@ export class LocalDeviceProvisioningManager {
       })
       record = await this.transition(record, 'downloading')
       const downloaded = await downloadDevicePackageWithCli(
-        devicePackageCliConfig(active.runtime),
+        devicePackageCliConfig(active.runtime, record.cloudEnvironment),
         candidate
       )
       return this.transition({

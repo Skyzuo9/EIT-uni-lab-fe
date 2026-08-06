@@ -20,16 +20,20 @@ const ports = vi.hoisted(() => ({
   remove: vi.fn(),
   restore: vi.fn(),
   inspect: vi.fn(),
-  upload: vi.fn()
+  upload: vi.fn(),
+  squareEnvironments: [] as string[]
 }))
 
 vi.mock('./localDeviceProvisioningAdapters', () => ({
-  createCloudDeviceSquare: () => ({
-    listDevices: ports.listDevices,
-    getDeviceDetail: ports.getDeviceDetail,
-    resolvePackageCandidate: ports.resolvePackageCandidate,
-    listPackages: ports.listPackages
-  }),
+  createCloudDeviceSquare: (environment: string) => {
+    ports.squareEnvironments.push(environment)
+    return {
+      listDevices: ports.listDevices,
+      getDeviceDetail: ports.getDeviceDetail,
+      resolvePackageCandidate: ports.resolvePackageCandidate,
+      listPackages: ports.listPackages
+    }
+  },
   createLocalLaboratory: () => ({ getOnlineDevices: ports.getOnlineDevices }),
   devicePackageCliConfig: (runtime: unknown) => runtime,
   provisioningErrorMessage: (error: unknown) => (
@@ -71,6 +75,7 @@ const temporaryDirectories: string[] = []
 /** 重置所有测试端口并清理显式临时目录。 */
 beforeEach(() => {
   vi.clearAllMocks()
+  ports.squareEnvironments.length = 0
   ports.getDeviceDetail.mockResolvedValue(deviceDetail())
   ports.resolvePackageCandidate.mockResolvedValue(packageCandidate())
   ports.download.mockResolvedValue(downloadResult())
@@ -94,7 +99,10 @@ describe('LocalDeviceProvisioningManager', () => {
   it('把云端模板推进为本地可运行设备', async () => {
     const { manager, runtime } = await createManager()
 
-    const downloaded = await manager.start(templateUuid)
+    const downloaded = await manager.start({
+      cloudEnvironment: 'test',
+      templateUuid
+    })
     const staged = await manager.configure({
       provisioningId: downloaded.provisioningId,
       instanceId: 'local-pump-1',
@@ -104,6 +112,7 @@ describe('LocalDeviceProvisioningManager', () => {
     const ready = await manager.activate(downloaded.provisioningId)
 
     expect(downloaded.status).toBe('configuration_required')
+    expect(downloaded.cloudEnvironment).toBe('test')
     expect(staged.status).toBe('restart_required')
     expect(ready).toMatchObject({
       status: 'ready',
@@ -131,7 +140,10 @@ describe('LocalDeviceProvisioningManager', () => {
     ports.resolvePackageCandidate.mockRejectedValue(incompatible)
     const { manager } = await createManager()
 
-    const failed = await manager.start(templateUuid)
+    const failed = await manager.start({
+      cloudEnvironment: 'test',
+      templateUuid
+    })
 
     expect(failed).toMatchObject({
       status: 'failed',
@@ -154,7 +166,10 @@ describe('LocalDeviceProvisioningManager', () => {
   it('在运行中 Action 存在时失败关闭激活', async () => {
     ports.getOnlineDevices.mockResolvedValue([onlineDevice(true)])
     const { manager, runtime } = await createManager()
-    const downloaded = await manager.start(templateUuid)
+    const downloaded = await manager.start({
+      cloudEnvironment: 'test',
+      templateUuid
+    })
     await manager.configure({
       provisioningId: downloaded.provisioningId,
       instanceId: 'local-pump-1',
@@ -178,7 +193,10 @@ describe('LocalDeviceProvisioningManager', () => {
       .mockResolvedValueOnce([onlineDevice(false)])
       .mockResolvedValueOnce([])
     const { manager, runtime } = await createManager()
-    const downloaded = await manager.start(templateUuid)
+    const downloaded = await manager.start({
+      cloudEnvironment: 'test',
+      templateUuid
+    })
     await manager.configure({
       provisioningId: downloaded.provisioningId,
       instanceId: 'local-pump-1',
@@ -194,6 +212,25 @@ describe('LocalDeviceProvisioningManager', () => {
     expect(removed.status).toBe('removed')
     expect(restored.status).toBe('restart_required')
     expect(ports.getOnlineDevices).toHaveBeenCalledTimes(4)
+  })
+
+  /** 验证失败重试使用持久记录的原环境，不跟随页面后来切换。 */
+  it('把下载重试固定在原 UAT 环境', async () => {
+    ports.download
+      .mockRejectedValueOnce(new Error('temporary network error'))
+      .mockResolvedValueOnce(downloadResult())
+    const { manager } = await createManager()
+
+    const failed = await manager.start({
+      cloudEnvironment: 'uat',
+      templateUuid
+    })
+    const recovered = await manager.retry(failed.provisioningId)
+
+    expect(failed.status).toBe('failed')
+    expect(recovered.status).toBe('configuration_required')
+    expect(recovered.cloudEnvironment).toBe('uat')
+    expect(ports.squareEnvironments).toEqual(['uat', 'uat'])
   })
 })
 

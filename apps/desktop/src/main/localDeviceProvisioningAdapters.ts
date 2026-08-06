@@ -1,4 +1,5 @@
 import {
+  type CloudEnvironment,
   type LocalDeviceProvisioningStatus
 } from '@unilab/device-provisioning'
 import {
@@ -10,26 +11,32 @@ import {
 } from '@unilab/services'
 
 import {
-  cloudApiRootUrl,
-  cloudServiceBaseUrl
+  cloudApiRootUrlForEnvironment,
+  cloudServiceBaseUrlForEnvironment
 } from './authConfig'
 import { readSession } from './authManager'
 import type { DevicePackageCliConfig } from './devicePackageCli'
 
-const CLOUD_BACKEND: BackendConfig = {
-  id: 'cloud-device-square',
-  name: 'Uni-Lab 云端设备广场',
-  protocol: 'unilab/v1',
-  apiUrl: cloudServiceBaseUrl(),
-  auth: 'oauth',
-  serverKind: 'backend',
-  workspaceMode: 'laboratory'
-}
-
-/** 创建带当前 OAuth 会话读取函数的现有云端设备广场 Adapter。 */
-export function createCloudDeviceSquare(): DeviceSquareService {
+/**
+ * 创建绑定固定部署环境并带当前 OAuth 会话读取函数的云端设备广场 Adapter。
+ *
+ * @param environment 用户选择的测试、UAT 或正式环境身份。
+ * @returns 只访问该环境现有公开设备广场接口的服务端口。
+ */
+export function createCloudDeviceSquare(
+  environment: CloudEnvironment
+): DeviceSquareService {
+  const cloudBackend: BackendConfig = {
+    id: `cloud-device-square-${environment}`,
+    name: 'Uni-Lab 云端设备广场',
+    protocol: 'unilab/v1',
+    apiUrl: cloudServiceBaseUrlForEnvironment(environment),
+    auth: 'oauth',
+    serverKind: 'backend',
+    workspaceMode: 'laboratory'
+  }
   return createDeviceSquareService(createHttpClient({
-    backend: CLOUD_BACKEND,
+    backend: cloudBackend,
     getAccessToken: () => readSession()?.token ?? null,
     timeoutMs: 20_000
   }))
@@ -59,16 +66,17 @@ export function createLocalLaboratory(apiUrl: string) {
  * 把已验证 LocalRuntime 事实投影为设备包 CLI 配置。
  *
  * @param runtime Main 已成功启动并保存的 CLI 路径与工作目录。
- * @returns 绑定现有云端 Backend 地址的 CLI 配置。
+ * @param environment 本次下载或上传明确选择的云端环境。
+ * @returns 绑定所选云端 Backend 地址的 CLI 配置。
  */
 export function devicePackageCliConfig(runtime: {
   unilabExecutable: string
   commandWorkingDirectory: string
   managedWorkingDirectory: string
-}): DevicePackageCliConfig {
+}, environment: CloudEnvironment): DevicePackageCliConfig {
   return {
     ...runtime,
-    backendBaseUrl: cloudApiRootUrl()
+    backendBaseUrl: cloudApiRootUrlForEnvironment(environment)
   }
 }
 
@@ -109,13 +117,15 @@ export function provisioningRetryAction(
  * 上传后短暂重读现有包列表，确认当前 Cloud 广场能看到 distribution。
  *
  * @param distribution CLI 已确认发布成功的 Python distribution 名称。
+ * @param environment 本次发布明确选择的云端环境。
  * @returns 五次有界重读内可见时为 true；上传成功但传播未完成时为 false。
  */
 export async function confirmPublishedDevicePackage(
-  distribution: string
+  distribution: string,
+  environment: CloudEnvironment
 ): Promise<boolean> {
   for (let attempt = 0; attempt < 5; attempt += 1) {
-    const packages = await createCloudDeviceSquare().listPackages()
+    const packages = await createCloudDeviceSquare(environment).listPackages()
     if (packages.some((item) => item.name === distribution)) return true
     await new Promise((resolve) => globalThis.setTimeout(resolve, 500))
   }

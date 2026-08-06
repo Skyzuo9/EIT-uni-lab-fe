@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { LocalDeviceProvisioning } from '@unilab/device-provisioning'
+import {
+  cloudEnvironmentOption,
+  type LocalDeviceProvisioning
+} from '@unilab/device-provisioning'
 
 import DeviceConfigurationForm from './DeviceConfigurationForm'
 import {
@@ -164,14 +167,24 @@ export default function LocalDeviceWishlistView({
   )
 }
 
-/** 展示云端身份、包身份与当前接入状态，不把缓存误报为可运行。 */
+/**
+ * 展示云端环境、包身份与当前接入状态，不把缓存误报为可运行。
+ *
+ * @param record Main 持久化且已补齐来源环境的本地设备接入事实。
+ * @returns 同时包含环境来源和状态文字的头部投影。
+ */
 function ProvisioningHeader({ record }: { record: LocalDeviceProvisioning }): React.JSX.Element {
   const status = provisioningStatusView(record.status)
+  const environment = cloudEnvironmentOption(record.cloudEnvironment)
   return (
     <header className={styles.provisioningHeader}>
       <div>
         <h2>{record.displayName || record.cloudDisplayName || '本地设备接入'}</h2>
-        <p>{record.packageName ? `${record.packageName} ${record.packageVersion}` : record.templateUuid}</p>
+        <p>
+          {environment.label} · {record.packageName
+            ? `${record.packageName} ${record.packageVersion}`
+            : record.templateUuid}
+        </p>
       </div>
       <span className={styles.statusBadge} data-tone={status.tone}>
         <i /> {status.label}
@@ -181,9 +194,16 @@ function ProvisioningHeader({ record }: { record: LocalDeviceProvisioning }): Re
   )
 }
 
-/** 展示 Main 已持久化的设备图和运行对账事实。 */
+/**
+ * 展示 Main 已持久化的来源环境、设备图和运行对账事实。
+ *
+ * @param record 当前选中的本地设备接入持久事实。
+ * @returns 不含上传凭据的只读事实网格。
+ */
 function ProvisioningFacts({ record }: { record: LocalDeviceProvisioning }): React.JSX.Element {
+  const environment = cloudEnvironmentOption(record.cloudEnvironment)
   const facts = [
+    ['来源环境', `${environment.label} · ${environment.host}`],
     ['本地实例', record.instanceId || '尚未配置'],
     ['设备定义', record.definitionFqid || '正在解析'],
     ['设备图', record.graphPath || '等待当前 Runtime'],

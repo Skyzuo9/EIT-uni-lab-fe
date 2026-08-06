@@ -1,3 +1,8 @@
+import {
+  cloudEnvironmentOption,
+  type CloudEnvironment
+} from '@unilab/device-provisioning'
+
 /**
  * ============================================================
  * AI-GENERATED CODE METADATA
@@ -53,6 +58,34 @@ export function cloudServiceBaseUrl(
   const apiRoot = new URL(cloudApiRootUrl(configuredUrl))
   apiRoot.pathname = apiRoot.pathname.replace(/\/api\/v1$/u, '') || '/'
   return apiRoot.toString().replace(/\/$/u, '')
+}
+
+/**
+ * 把固定云端环境解析为 OS CLI 使用的 `/api/v1` 根地址。
+ *
+ * @param environment 用户在设备广场操作台选择的环境身份。
+ * @returns 对应测试、UAT 或正式部署的固定 API 根地址。
+ * @remarks 测试环境保留 PC_CLIENT_API_URL 覆盖，供本地兼容 Backend E2E 使用。
+ */
+export function cloudApiRootUrlForEnvironment(
+  environment: CloudEnvironment
+): string {
+  const configuredUrl = environment === 'test' && process.env.PC_CLIENT_API_URL
+    ? process.env.PC_CLIENT_API_URL
+    : cloudEnvironmentOption(environment).apiUrl
+  return cloudApiRootUrl(configuredUrl)
+}
+
+/**
+ * 把固定云端环境解析为 services 不重复追加 `/api/v1` 的 base URL。
+ *
+ * @param environment 用户在设备广场操作台选择的环境身份。
+ * @returns 对应部署的无凭据 HTTP(S) service base URL。
+ */
+export function cloudServiceBaseUrlForEnvironment(
+  environment: CloudEnvironment
+): string {
+  return cloudServiceBaseUrl(cloudApiRootUrlForEnvironment(environment))
 }
 
 /** 校验 Cloud 地址不携带凭据、query 或 fragment。 */
