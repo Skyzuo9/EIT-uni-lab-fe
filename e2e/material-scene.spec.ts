@@ -16,7 +16,11 @@ const OS_PYTHON =
   process.env.UNILAB_OS_PYTHON ??
   'python3'
 const API_PORT = Number(process.env.UNILAB_E2E_MATERIAL_PORT ?? '18144')
-const API_URL = `http://127.0.0.1:${API_PORT}`
+const API_URL =
+  process.env.UNILAB_E2E_OS_URL ?? `http://127.0.0.1:${API_PORT}`
+const EXPECTED_MATERIAL_COUNT = Number(
+  process.env.UNILAB_E2E_MATERIAL_COUNT ?? '129'
+)
 const FE_ORIGIN = process.env.UNILAB_FE_E2E_URL ?? 'http://127.0.0.1:4173'
 const ARTIFACT_ROOT = resolve(
   CORE_ROOT,
@@ -28,8 +32,8 @@ const MATERIAL_TRANSFER_WORKFLOW_UUID =
   '6d9fb3e2-4dcb-5f23-93b4-74d1b6083393'
 
 interface InventoryProcess {
-  child: ChildProcess
-  workingDirectory: string
+  child?: ChildProcess
+  workingDirectory?: string
 }
 
 let inventory: InventoryProcess
@@ -38,7 +42,9 @@ test.describe.configure({ mode: 'serial' })
 test.use({
   launchOptions: {
     args: [
+      '--enable-webgl',
       '--enable-unsafe-swiftshader',
+      '--ignore-gpu-blocklist',
       '--use-gl=angle',
       '--use-angle=swiftshader-webgl'
     ]
@@ -65,17 +71,38 @@ test.afterAll(async () => {
 test('SZLab MaterialGraph renders complete 2.5D and 3D views', async ({
   page
 }) => {
-  test.setTimeout(120_000)
+  // 真实 SZLab 的 130 个物料（Material）会在软件 WebGL 中完成三种视图截图。
+  test.setTimeout(240_000)
   const browserErrors: string[] = []
+  // ``browserRequests`` 证明物料（Material）模型加载未逃逸到 local_bridge。
+  const browserRequests: string[] = []
   const materialRequests: string[] = []
+  // ``materialModelStatuses`` 保留每个 OS 公开模型资产的 HTTP 结果。
+  const materialModelStatuses: number[] = []
   page.on('console', (message) => {
     if (message.type() === 'error') browserErrors.push(message.text())
   })
   page.on('pageerror', (error) => browserErrors.push(error.message))
   page.on('request', (request) => {
+    browserRequests.push(request.url())
     if (request.url().startsWith(`${API_URL}/api/v1/`)) {
       materialRequests.push(`${request.method()} ${request.url()}`)
     }
+  })
+  page.on('response', (response) => {
+    if (response.url().startsWith(`${API_URL}/api/v1/material-models/`)) {
+      materialModelStatuses.push(response.status())
+    }
+  })
+  await page.addInitScript(() => {
+    const modelWindow = window as unknown as {
+      __unilabModelReadyCount?: number
+    }
+    modelWindow.__unilabModelReadyCount = 0
+    window.addEventListener('unilab:pascal-model-ready', () => {
+      modelWindow.__unilabModelReadyCount =
+        (modelWindow.__unilabModelReadyCount ?? 0) + 1
+    })
   })
 
   await installMaterialOnlyLayout(page)
@@ -105,7 +132,7 @@ test('SZLab MaterialGraph renders complete 2.5D and 3D views', async ({
   }
   const graphSites =
     graphPayload.data?.nodes?.flatMap((node) => node.sites ?? []) ?? []
-  expect(graphPayload.data?.nodes).toHaveLength(129)
+  expect(graphPayload.data?.nodes).toHaveLength(EXPECTED_MATERIAL_COUNT)
   expect(graphSites).toHaveLength(418)
   expect(
     graphSites.filter((site) => site.occupied_material_uuid != null)
@@ -121,7 +148,9 @@ test('SZLab MaterialGraph renders complete 2.5D and 3D views', async ({
   await expect(
     page.getByRole('button', { name: '物料', exact: true })
   ).toBeVisible()
-  await expect(page.getByText('(129)', { exact: true })).toBeVisible()
+  await expect(
+    page.getByText(`(${EXPECTED_MATERIAL_COUNT})`, { exact: true })
+  ).toBeVisible()
   await expect(page.getByText('Edge 已连接', { exact: true })).toBeVisible()
 
   await expandMaterial(page, 'S1 连续流工作站')
@@ -179,7 +208,9 @@ test('SZLab MaterialGraph renders complete 2.5D and 3D views', async ({
   await page.getByRole('button', { name: '2.5D', exact: true }).click()
   const oblique = page.locator('[data-material-oblique-view]')
   await expect(oblique).toBeVisible()
-  await expect(oblique.locator('[data-material-id]')).toHaveCount(129)
+  await expect(oblique.locator('[data-material-id]')).toHaveCount(
+    EXPECTED_MATERIAL_COUNT
+  )
   await expect(oblique.locator('[data-oblique-site-bounds]')).toHaveCount(
     418
   )
@@ -248,11 +279,19 @@ test('SZLab MaterialGraph renders complete 2.5D and 3D views', async ({
   await expect(viewerCanvas.locator('..').locator('..')).toHaveClass(
     /bg-\[#fafafa\]/
   )
-  await expect(page.getByText('129 个物料 · 只读')).toBeVisible()
+  await expect(
+    page.getByText(`${EXPECTED_MATERIAL_COUNT} 个物料 · 只读`)
+  ).toBeVisible()
   const viewerBox = await viewer.boundingBox()
   expect(viewerBox?.width ?? 0).toBeGreaterThan(900)
   expect(viewerBox?.height ?? 0).toBeGreaterThan(500)
-  await page.waitForTimeout(1_000)
+  await page.waitForFunction(
+    () =>
+      ((window as unknown as { __unilabModelReadyCount?: number })
+        .__unilabModelReadyCount ?? 0) > 0,
+    undefined,
+    { timeout: 60_000 }
+  )
   await captureViewport(page, 'szlab-materials-3d.png')
 
   expect(materialRequests).toContain(
@@ -282,6 +321,13 @@ test('SZLab MaterialGraph renders complete 2.5D and 3D views', async ({
       request.startsWith(`GET ${API_URL}/api/v1/material-models/`)
     )
   ).toBe(true)
+  expect(materialModelStatuses.length).toBeGreaterThan(0)
+  expect(materialModelStatuses.every((status) => status === 200)).toBe(true)
+  expect(
+    browserRequests.some((request) =>
+      request.toLowerCase().includes('local_bridge')
+    )
+  ).toBe(false)
   expect(
     materialRequests.some((request) => request.includes('/api/v1/inventory/'))
   ).toBe(false)
@@ -511,7 +557,14 @@ async function captureMaterialTree(
   })
 }
 
+/**
+ * 启动物料（Material）服务夹具，或复用显式指定的真实 OS 候选。
+ * @returns 本地夹具的子进程/临时目录；复用外部 OS 时为空对象。
+ * @throws 夹具启动失败或公开物料图超时时抛出诊断错误。
+ */
 async function startSzlabInventory(): Promise<InventoryProcess> {
+  // 显式外部 URL 表示本轮直接验收真实 OS，不启动路由夹具。
+  if (process.env.UNILAB_E2E_OS_URL) return {}
   const workingDirectory = mkdtempSync(
     join(tmpdir(), 'unilab-szlab-inventory-e2e-')
   )
@@ -558,6 +611,12 @@ async function startSzlabInventory(): Promise<InventoryProcess> {
   }
 }
 
+/**
+ * 等待本地物料（Material）夹具发布完整物料图。
+ * @param child 待监视的 Python 子进程。
+ * @returns 图数量达到本次预期时完成的 Promise。
+ * @throws 子进程退出或 90 秒内未达到预期时抛出错误。
+ */
 async function waitForGraph(child: ChildProcess): Promise<void> {
   const deadline = Date.now() + 90_000
   while (Date.now() < deadline) {
@@ -570,14 +629,16 @@ async function waitForGraph(child: ChildProcess): Promise<void> {
         const body = (await response.json()) as {
           data?: { nodes?: unknown[] }
         }
-        if (body.data?.nodes?.length === 129) return
+        if (body.data?.nodes?.length === EXPECTED_MATERIAL_COUNT) return
       }
     } catch {
       // The process is still compiling PackageCatalog or binding the port.
     }
     await new Promise((resolveWait) => setTimeout(resolveWait, 100))
   }
-  throw new Error('Timed out waiting for the 129-node SZLab MaterialGraph')
+  throw new Error(
+    `Timed out waiting for the ${EXPECTED_MATERIAL_COUNT}-node SZLab MaterialGraph`
+  )
 }
 
 async function expandMaterial(page: Page, name: string): Promise<void> {
