@@ -20,6 +20,27 @@ export interface PersistentWorkflowAuthoringOptions {
   ) => void
   onSelectedWorkflowStepChange?: (workflowNodeUuid: string | null) => void
   onChooseWorkflow?: () => void
+  initialPythonImport?: WorkflowPythonImport
+  onInitialPythonImportConsumed?: () => void
+  onOpenWorkflow?: (
+    workflowUuid: string,
+    importedPython: WorkflowPythonImport
+  ) => void
+}
+
+export interface WorkflowPythonImport {
+  fileName: string
+  content: string
+}
+
+export interface WorkflowImportMismatchPrompt {
+  currentWorkflowUuid: string
+  currentWorkflowName: string | null
+  importedWorkflowUuid: string | null
+  importedWorkflowName: string | null
+  canOpenImportedWorkflow: boolean
+  importedFileName: string | null
+  importedPythonSource: string
 }
 
 export interface FullSourceDiff {

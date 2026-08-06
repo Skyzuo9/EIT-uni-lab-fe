@@ -47,6 +47,21 @@ interface PersistentWorkflowStartFlowOptions {
   setFullSourceDiff: (diff: FullSourceDiff | null) => void
   setMessage: (message: string) => void
   setError: (message: string | null) => void
+  isErrorHandled?: (error: unknown) => boolean
+}
+
+/**
+ * 把运行入口错误转换为顶部问题文案；已被专用交互接管时不重复展示。
+ *
+ * @param error 运行入口捕获的原始错误。
+ * @param isErrorHandled 判断专用界面是否已经接管错误的函数。
+ * @returns 通用错误文案；已接管时返回 null。
+ */
+export function workflowStartFailureMessage(
+  error: unknown,
+  isErrorHandled?: (error: unknown) => boolean
+): string | null {
+  return isErrorHandled?.(error) ? null : errorMessage(error)
 }
 
 /**
@@ -61,7 +76,8 @@ export function usePersistentWorkflowStartFlow({
   commands,
   setFullSourceDiff,
   setMessage,
-  setError
+  setError,
+  isErrorHandled
 }: PersistentWorkflowStartFlowOptions) {
   // flowRef 只拥有浏览器内短生命周期顺序，不拥有工作流任务（WorkflowTask）。
   const flowRef = useRef(createWorkflowStartFlow())
@@ -152,7 +168,11 @@ export function usePersistentWorkflowStartFlow({
     void execute(command)
       .catch((startError) => {
         flowRef.current.cancel()
-        setError(errorMessage(startError))
+        const failureMessage = workflowStartFailureMessage(
+          startError,
+          isErrorHandled
+        )
+        if (failureMessage) setError(failureMessage)
       })
       .finally(() => {
         setWorkflowStartBusy(false)

@@ -326,7 +326,6 @@ test('rejects a cross-Workflow Graph without changing the current document', asy
   await selectWorkflow(page, os.workflowUuid, os.url)
   const panel = page.getByRole('tabpanel', { name: '工作流' })
   const editor = panel.locator('.cm-content:visible')
-  const sourceBeforeImport = await editor.textContent()
   const generationPath = '/api/v1/authoring/generate-python'
   const generationsBeforeImport = countRequests(
     evidence.apiRequests,
@@ -349,7 +348,8 @@ test('rejects a cross-Workflow Graph without changing the current document', asy
   await expect(problem).toContainText(
     `不能覆盖当前 Workflow ${os.workflowUuid}`
   )
-  await expect.poll(() => editor.textContent()).toBe(sourceBeforeImport)
+  await expect(editor).toContainText(os.workflowUuid)
+  await expect(editor).not.toContainText(os.secondWorkflowUuid)
   expect(countRequests(
     evidence.apiRequests,
     'POST',

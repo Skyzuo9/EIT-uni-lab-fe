@@ -36,6 +36,7 @@ export function PersistentWorkflowToolbar({
     startWorkflow,
     taskInputForm,
     taskRunMode,
+    workflowImportMismatch,
     workflowStartBusy,
     workflowStartPresentation
   } = model
@@ -69,6 +70,7 @@ export function PersistentWorkflowToolbar({
         fullSourceDiff ||
         pendingMode ||
         remoteConflict ||
+        workflowImportMismatch ||
         taskInputForm
       ) return
       event.preventDefault()
@@ -85,6 +87,7 @@ export function PersistentWorkflowToolbar({
     runtimeBusy,
     saveDraft,
     taskInputForm,
+    workflowImportMismatch,
     workflowStartBusy
   ])
 
