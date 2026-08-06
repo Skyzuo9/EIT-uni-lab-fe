@@ -35,6 +35,12 @@ vi.mock('./localDeviceProvisioningAdapters', () => ({
   provisioningErrorMessage: (error: unknown) => (
     error instanceof Error ? error.message : String(error)
   ),
+  provisioningErrorRetryable: (error: unknown) => (
+    !error
+    || typeof error !== 'object'
+    || !('retryable' in error)
+    || (error as { retryable?: unknown }).retryable !== false
+  ),
   provisioningRetryAction: (stage: string | undefined) => {
     if (stage === 'configuration_required') return 'configure'
     if (stage === 'activating' || stage === 'driver_ready') return 'activate'
@@ -114,6 +120,34 @@ describe('LocalDeviceProvisioningManager', () => {
     await expect(manager.list()).resolves.toEqual([
       expect.objectContaining({ status: 'ready' })
     ])
+  })
+
+  /** 验证旧包解析失败仍保留云端身份，并禁止无意义的自动重试。 */
+  it('在旧设备包不兼容时保留设备详情与不可重试诊断', async () => {
+    const incompatible = Object.assign(
+      new Error('当前发布缺少 source_fqid，属于旧版设备包，请使用当前 CLI 重新发布'),
+      { code: 'DEVICE_PACKAGE_INCOMPATIBLE', retryable: false }
+    )
+    ports.resolvePackageCandidate.mockRejectedValue(incompatible)
+    const { manager } = await createManager()
+
+    const failed = await manager.start(templateUuid)
+
+    expect(failed).toMatchObject({
+      status: 'failed',
+      cloudDeviceName: 'pump',
+      cloudDisplayName: '蠕动泵',
+      displayName: '蠕动泵',
+      diagnostic: {
+        stage: 'resolving',
+        retryable: false
+      }
+    })
+    expect(failed.diagnostic?.message).toContain('旧版设备包')
+    expect(ports.download).not.toHaveBeenCalled()
+    await expect(manager.retry(failed.provisioningId)).rejects.toThrow(
+      '不能自动重试'
+    )
   })
 
   /** 验证任意本地 Action 忙碌时拒绝重启且不伪造 ready。 */

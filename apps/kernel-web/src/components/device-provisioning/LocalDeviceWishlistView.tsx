@@ -123,6 +123,9 @@ export default function LocalDeviceWishlistView({
           <div className={styles.errorBanner} role="alert">
             <strong>{selected.diagnostic.message}</strong>
             <span>失败阶段：{provisioningStatusView(selected.diagnostic.stage).label}</span>
+            {selected.diagnostic.retryable === false ? (
+              <span>该发布数据不能自动重试，需要发布者使用当前 CLI 重新发布设备包。</span>
+            ) : null}
           </div>
         ) : null}
         {error ? <div className={styles.errorBanner} role="alert">{error}</div> : null}
@@ -200,7 +203,15 @@ function ProvisioningFacts({ record }: { record: LocalDeviceProvisioning }): Rea
   )
 }
 
-/** 根据状态只提供安全且有意义的下一步。 */
+/**
+ * 根据状态只提供安全且有意义的下一步。
+ *
+ * @param props.record Main 持久化的候选本地设备接入事实。
+ * @param props.working 当前是否已有设备包操作在执行。
+ * @param props.onConfirm 请求展示有副作用操作的确认界面。
+ * @param props.onRetry 请求 Main 按失败阶段安全重试。
+ * @returns 与当前状态和重试合同一致的操作按钮集合。
+ */
 function RecordActions({
   record,
   working,
@@ -218,7 +229,7 @@ function RecordActions({
     && record.status !== 'canceled'
   return (
     <div className={styles.recordActions}>
-      {record.status === 'failed' ? (
+      {record.status === 'failed' && record.diagnostic?.retryable !== false ? (
         <button type="button" className={styles.secondaryButton} disabled={working} onClick={onRetry}>
           按失败阶段重试
         </button>

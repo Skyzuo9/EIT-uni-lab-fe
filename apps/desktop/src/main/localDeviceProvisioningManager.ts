@@ -32,6 +32,7 @@ import {
   confirmPublishedDevicePackage,
   devicePackageCliConfig,
   provisioningErrorMessage,
+  provisioningErrorRetryable,
   provisioningRetryAction
 } from './localDeviceProvisioningAdapters'
 import { LocalDeviceProvisioningStore } from './localDeviceProvisioningStore'
@@ -128,20 +129,19 @@ export class LocalDeviceProvisioningManager {
       try {
         record = await this.transition(record, 'resolving')
         const square = createCloudDeviceSquare()
-        const [detail, candidate] = await Promise.all([
-          square.getDeviceDetail(templateUuid),
-          square.resolvePackageCandidate(templateUuid)
-        ])
+        const detail = await square.getDeviceDetail(templateUuid)
+        record = await this.saveCloudDetail(record, detail)
+        const candidate = await square.resolvePackageCandidate(
+          templateUuid,
+          detail
+        )
         record = await this.save({
           ...record,
-          cloudDeviceName: detail.name,
-          cloudDisplayName: detail.displayName || detail.name,
           packageName: candidate.packageName,
           packageVersion: candidate.version,
           artifactDigest: candidate.artifactDigest,
           catalogDigest: candidate.catalogDigest,
-          definitionFqid: candidate.definitionFqid,
-          displayName: detail.displayName || detail.name
+          definitionFqid: candidate.definitionFqid
         })
         record = await this.transition(record, 'downloading')
         const downloaded = await downloadDevicePackageWithCli(
@@ -175,11 +175,22 @@ export class LocalDeviceProvisioningManager {
     return this.exclusive(() => this.activateInternal(provisioningId))
   }
 
-  /** 根据最后失败阶段恢复下载、写图或激活，不猜测新的配置。 */
+  /**
+   * 根据最后失败阶段恢复下载、写图或激活，不猜测新的配置。
+   *
+   * @param provisioningId 候选本地设备接入（LocalDeviceProvisioning）稳定身份。
+   * @returns 原记录或按安全阶段恢复后的最新持久事实。
+   * @throws 诊断不可重试或失败阶段没有安全恢复动作时抛出可行动错误。
+   */
   retry(provisioningId: string): Promise<LocalDeviceProvisioning> {
     return this.exclusive(async () => {
       const record = await this.requireRecord(provisioningId)
       if (record.status !== 'failed') return record
+      if (record.diagnostic?.retryable === false) {
+        throw new Error(
+          '该失败由旧版或不兼容发布数据造成，不能自动重试；请使用当前 CLI 重新发布设备包'
+        )
+      }
       const action = provisioningRetryAction(record.diagnostic?.stage)
       if (action === 'configure') return this.transition(record, 'configuration_required')
       if (action === 'activate') return this.activateInternal(provisioningId)
@@ -368,27 +379,32 @@ export class LocalDeviceProvisioningManager {
     }
   }
 
-  /** 从持久记录重新执行安全下载，不生成第二个接入身份。 */
+  /**
+   * 从持久记录重新执行安全下载，不生成第二个接入身份。
+   *
+   * @param record 绑定原接入身份、设备图和云端模板的持久记录。
+   * @returns 下载成功后的待配置记录，或包含失败诊断的同一记录。
+   */
   private async resumeDownload(
     record: LocalDeviceProvisioning
   ): Promise<LocalDeviceProvisioning> {
     const active = this.assertRuntime(record)
     try {
+      record = await this.transition(record, 'resolving')
       const square = createCloudDeviceSquare()
-      const [detail, candidate] = await Promise.all([
-        square.getDeviceDetail(record.templateUuid),
-        square.resolvePackageCandidate(record.templateUuid)
-      ])
+      const detail = await square.getDeviceDetail(record.templateUuid)
+      record = await this.saveCloudDetail(record, detail)
+      const candidate = await square.resolvePackageCandidate(
+        record.templateUuid,
+        detail
+      )
       record = await this.save({
         ...record,
-        cloudDeviceName: detail.name,
-        cloudDisplayName: detail.displayName || detail.name,
         packageName: candidate.packageName,
         packageVersion: candidate.version,
         artifactDigest: candidate.artifactDigest,
         catalogDigest: candidate.catalogDigest,
-        definitionFqid: candidate.definitionFqid,
-        displayName: record.displayName || detail.displayName || detail.name
+        definitionFqid: candidate.definitionFqid
       })
       record = await this.transition(record, 'downloading')
       const downloaded = await downloadDevicePackageWithCli(
@@ -461,6 +477,41 @@ export class LocalDeviceProvisioningManager {
     return record
   }
 
+  /**
+   * 在包兼容性校验前持久化云端展示身份和可诊断发布字段。
+   *
+   * @param record 当前候选本地设备接入（LocalDeviceProvisioning）持久事实。
+   * @param detail 已由服务校验模板 UUID 的云端设备详情。
+   * @returns 已保存名称、包摘要和定义线索的同一接入记录。
+   */
+  private saveCloudDetail(
+    record: LocalDeviceProvisioning,
+    detail: DeviceSquareDetail
+  ): Promise<LocalDeviceProvisioning> {
+    const packageInfo = detail.packageInfo
+    const sourceRegistry = detail.sourceRegistry
+    const effectiveTemplate = detail.effectiveTemplate
+    // 这些字段只用于失败诊断；是否可执行仍由严格包候选解析和 OS 校验决定。
+    const artifactDigest = textValue(
+      packageInfo.artifact_digest ?? packageInfo.sha256
+    )
+    const definitionFqid = textValue(
+      sourceRegistry.source_fqid ?? effectiveTemplate.source_fqid
+    )
+    const displayName = detail.displayName || detail.name
+    return this.save({
+      ...record,
+      cloudDeviceName: detail.name,
+      cloudDisplayName: displayName,
+      packageName: textValue(packageInfo.name),
+      packageVersion: textValue(packageInfo.version),
+      artifactDigest,
+      catalogDigest: textValue(packageInfo.catalog_digest),
+      definitionFqid,
+      displayName: record.displayName || displayName
+    })
+  }
+
   /** 原子保存记录并向 Renderer 发布完整只读投影。 */
   private async save(record: LocalDeviceProvisioning): Promise<LocalDeviceProvisioning> {
     const saved = await this.store.put({
@@ -479,7 +530,14 @@ export class LocalDeviceProvisioningManager {
     return this.save({ ...record, status, diagnostic: null })
   }
 
-  /** 把失败阶段、可行动诊断和重试语义持久化，不伪造成功状态。 */
+  /**
+   * 把失败阶段、可行动诊断和重试语义持久化，不伪造成功状态。
+   *
+   * @param record 发生失败前最后一次提交的接入事实。
+   * @param stage 发生错误时的接入阶段。
+   * @param error 服务、CLI 或本地运行时抛出的原始异常。
+   * @returns 已持久化失败阶段、正文和重试合同的同一接入记录。
+   */
   private fail(
     record: LocalDeviceProvisioning,
     stage: LocalDeviceProvisioningStatus,
@@ -491,7 +549,7 @@ export class LocalDeviceProvisioningManager {
       diagnostic: {
         stage,
         message: provisioningErrorMessage(error),
-        retryable: true,
+        retryable: provisioningErrorRetryable(error),
         recordedAt: new Date().toISOString()
       }
     })
@@ -509,4 +567,14 @@ export class LocalDeviceProvisioningManager {
     return running
   }
 
+}
+
+/**
+ * 把云端诊断字段收窄为字符串，不把对象隐式序列化进持久事实。
+ *
+ * @param value 云端详情中的未知 JSON 值。
+ * @returns 字符串原值；其他类型返回空字符串。
+ */
+function textValue(value: unknown): string {
+  return typeof value === 'string' ? value : ''
 }

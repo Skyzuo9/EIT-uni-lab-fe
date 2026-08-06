@@ -167,6 +167,7 @@
 
 .splitView {
   display: grid;
+  height: clamp(520px, calc(100vh - 260px), 720px);
   min-height: 520px;
   grid-template-columns: minmax(260px, 34%) minmax(0, 1fr);
   overflow: hidden;
@@ -217,6 +218,11 @@
 .deviceRowText strong, .wishlistRow strong { overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
 .deviceRowText small, .wishlistRow small { overflow: hidden; color: var(--unilab-color-text-muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .deviceRowText > span { display: -webkit-box; overflow: hidden; color: var(--unilab-color-text-muted); font-size: 11px; line-height: 1.4; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.deviceListFooter { display: grid; justify-items: center; gap: 8px; padding: 14px; color: var(--unilab-color-text-muted); font-size: 10px; }
+.deviceListFooter button { min-height: 32px; padding: 0 13px; border: 1px solid var(--unilab-color-border-strong); border-radius: var(--unilab-radius-control); background: var(--unilab-color-surface); color: var(--unilab-color-device); cursor: pointer; font: inherit; font-weight: 700; }
+.deviceListFooter button:hover:not(:disabled) { border-color: var(--unilab-color-device); background: var(--unilab-color-device-soft); }
+.deviceListFooter button:focus-visible { outline: 2px solid var(--unilab-color-focus); outline-offset: 2px; }
+.deviceListFooter button:disabled { cursor: not-allowed; opacity: .5; }
 
 .deviceDetail,
 .provisioningDetail { min-width: 0; padding: 24px 26px; overflow: auto; }
@@ -340,7 +346,7 @@
   .toolbar { align-items: stretch; flex-direction: column; }
   .searchForm input { width: 100%; }
   .searchForm > div { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
-  .splitView { min-height: 0; grid-template-columns: 1fr; overflow: visible; }
+  .splitView { height: auto; min-height: 0; grid-template-columns: 1fr; overflow: visible; }
   .deviceList, .wishlistList { max-height: 240px; border-right: 0; border-bottom: 1px solid var(--unilab-color-border); }
   .deviceDetail { display: flex; flex-direction: column; }
   .deviceDetail .detailTitle { order: 0; }

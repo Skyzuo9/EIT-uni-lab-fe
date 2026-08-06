@@ -130,6 +130,35 @@ describe('设备广场 service adapter', () => {
     })
   })
 
+  /** 验证旧发布身份缺失与真正的命名空间不匹配使用不同诊断。 */
+  it('把缺少 source_fqid 的旧发布识别为旧版设备包', async () => {
+    const service = createDeviceSquareService(fixtureHttp({
+      [`/api/v1/lab/square/detail/${templateUuid}`]: {
+        code: 0,
+        data: {
+          uuid: templateUuid,
+          name: 'legacy-pump',
+          package_info: {
+            name: 'legacy-lab',
+            version: '0.9.0',
+            class_namespace: 'community.review_lab',
+            artifact_digest: artifactDigest,
+            catalog_digest: `sha256:${'b'.repeat(64)}`
+          },
+          source_registry: {}
+        }
+      }
+    }))
+
+    await expect(
+      service.resolvePackageCandidate(templateUuid)
+    ).rejects.toMatchObject({
+      code: 'DEVICE_PACKAGE_INCOMPATIBLE',
+      message: expect.stringContaining('缺少 source_fqid，属于旧版设备包'),
+      retryable: false
+    })
+  })
+
   it('拒绝详情响应把请求模板替换成另一个 UUID', async () => {
     const service = createDeviceSquareService(fixtureHttp({
       [`/api/v1/lab/square/detail/${templateUuid}`]: {

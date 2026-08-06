@@ -84,7 +84,8 @@ export interface DeviceSquareService {
   listDevices: (query?: DeviceSquareListQuery) => Promise<DeviceSquarePage>
   getDeviceDetail: (templateUuid: string) => Promise<DeviceSquareDetail>
   resolvePackageCandidate: (
-    templateUuid: string
+    templateUuid: string,
+    detail?: DeviceSquareDetail
   ) => Promise<CloudDevicePackageCandidate>
   getFilterOptions: () => Promise<DeviceSquareFilterOptions>
   listPackages: () => Promise<DevicePackageSummary[]>
@@ -143,11 +144,22 @@ export function createDeviceSquareService(http: HttpClient): DeviceSquareService
     getDeviceDetail,
 
     /**
-     * 重新读取详情并冻结 CLI 下载所需的模板、definition 与摘要三元组。
+     * 使用已校验详情或重新读取详情，冻结 CLI 下载所需的包候选。
      * 缺少当前 PackageCatalog 发布字段的遗留模板会失败关闭。
+     *
+     * @param templateUuid 云端设备模板稳定 UUID。
+     * @param existingDetail 同一次 Main 操作已经读取并校验的可选详情。
+     * @returns 与模板、定义和两个摘要绑定的下载候选。
      */
-    async resolvePackageCandidate(templateUuid) {
-      const detail = await getDeviceDetail(templateUuid)
+    async resolvePackageCandidate(templateUuid, existingDetail) {
+      const detail = existingDetail ?? await getDeviceDetail(templateUuid)
+      if (detail.templateUuid !== templateUuid) {
+        throw new ServiceError({
+          code: 'INVALID_DEVICE_SQUARE_RESPONSE',
+          message: '设备广场详情 UUID 与请求不一致',
+          retryable: false
+        })
+      }
       return packageCandidateFromDetail(detail)
     },
 
@@ -202,7 +214,13 @@ export function createDeviceSquareService(http: HttpClient): DeviceSquareService
   }
 }
 
-/** 把详情中的现有 package_info/source_registry 收敛为 OS CLI 下载输入。 */
+/**
+ * 把详情中的现有 package_info/source_registry 收敛为 OS CLI 下载输入。
+ *
+ * @param detail 已按请求 UUID 校验的云端设备详情。
+ * @returns 当前 OS CLI 可以安全下载和验证的固定包候选。
+ * @throws 发布身份、摘要或目录身份缺失时抛出不可重试兼容性错误。
+ */
 function packageCandidateFromDetail(
   detail: DeviceSquareDetail
 ): CloudDevicePackageCandidate {
@@ -216,17 +234,30 @@ function packageCandidateFromDetail(
   const definitionFqid = str(
     sourceRegistry.source_fqid ?? effectiveTemplate.source_fqid
   )
+  const catalogDigest = str(packageInfo.catalog_digest)
   if (!/^community\.[a-z_][a-z0-9_]*$/.test(classNamespace)) {
     throw incompatiblePackage(detail.templateUuid, '缺少合法 class_namespace')
   }
   if (!/^sha256:[0-9a-f]{64}$/.test(artifactDigest)) {
     throw incompatiblePackage(detail.templateUuid, '缺少合法 artifact_digest')
   }
+  if (!definitionFqid) {
+    throw incompatiblePackage(
+      detail.templateUuid,
+      '当前发布缺少 source_fqid，属于旧版设备包'
+    )
+  }
   if (
     !new RegExp(`^${escapeRegExp(classNamespace)}\\.[A-Za-z0-9_]+$`, 'u')
       .test(definitionFqid)
   ) {
     throw incompatiblePackage(detail.templateUuid, 'definition FQID 与包命名空间不一致')
+  }
+  if (!/^sha256:[0-9a-f]{64}$/.test(catalogDigest)) {
+    throw incompatiblePackage(
+      detail.templateUuid,
+      '当前发布缺少合法 catalog_digest，属于旧版设备包'
+    )
   }
   return {
     templateUuid: detail.templateUuid,
@@ -235,11 +266,17 @@ function packageCandidateFromDetail(
     packageName: str(packageInfo.name),
     version: str(packageInfo.version),
     classNamespace,
-    catalogDigest: str(packageInfo.catalog_digest)
+    catalogDigest
   }
 }
 
-/** 为缺少当前设备包发布合同的旧模板构造可行动错误。 */
+/**
+ * 为缺少当前设备包发布合同的旧模板构造可行动错误。
+ *
+ * @param templateUuid 云端设备模板稳定身份。
+ * @param reason 已由解析器判定的具体不兼容原因。
+ * @returns 不可自动重试、要求发布者迁移的服务错误。
+ */
 function incompatiblePackage(templateUuid: string, reason: string): ServiceError {
   return new ServiceError({
     code: 'DEVICE_PACKAGE_INCOMPATIBLE',

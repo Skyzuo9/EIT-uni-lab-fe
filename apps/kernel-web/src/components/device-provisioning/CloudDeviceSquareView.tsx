@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type {
   DeviceSquareDetail,
   DeviceSquareItem
@@ -6,7 +6,11 @@ import type {
 import type { LocalDeviceProvisioning } from '@unilab/device-provisioning'
 
 import type { DeviceProvisioningApi } from './deviceProvisioningUi'
-import { uiErrorMessage } from './deviceProvisioningUi'
+import {
+  mergeDeviceSquareItems,
+  nextDeviceSquarePage,
+  uiErrorMessage
+} from './deviceProvisioningUi'
 import styles from './DeviceSquarePanel.module.scss'
 
 interface CloudDeviceSquareViewProps {
@@ -14,7 +18,15 @@ interface CloudDeviceSquareViewProps {
   onProvisioningStarted: (record: LocalDeviceProvisioning) => void
 }
 
-/** 云端设备广场的检索、列表、详情和两种下载意图。 */
+const DEVICE_SQUARE_PAGE_SIZE = 40
+
+/**
+ * 投影云端设备广场的检索、完整分页、详情和两种下载意图。
+ *
+ * @param props.api Electron Preload 暴露的最小候选本地设备接入端口。
+ * @param props.onProvisioningStarted Main 创建持久接入记录后的切页回调。
+ * @returns 云端目录与当前选中详情的 React 界面。
+ */
 export default function CloudDeviceSquareView({
   api,
   onProvisioningStarted
@@ -23,44 +35,94 @@ export default function CloudDeviceSquareView({
   const [committedKeyword, setCommittedKeyword] = useState('')
   const [devices, setDevices] = useState<DeviceSquareItem[]>([])
   const [total, setTotal] = useState(0)
+  const [loadedPage, setLoadedPage] = useState(0)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [detail, setDetail] = useState<DeviceSquareDetail | null>(null)
   const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
   const [detailLoading, setDetailLoading] = useState(false)
   const [operation, setOperation] = useState<'wishlist' | 'download' | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // 请求代次用于拒绝搜索、刷新或卸载后才返回的旧分页响应。
+  const requestRevision = useRef(0)
 
-  /** 从现有 Backend 广场接口读取第一页并选择第一项。 */
-  const loadDevices = useCallback(async (): Promise<void> => {
+  /**
+   * 读取第一屏并开启新的分页代次，成功后选择仍存在的设备。
+   *
+   * @returns 首屏状态提交完成后结束；旧代次响应不写入界面。
+   */
+  const loadFirstPage = useCallback(async (): Promise<void> => {
+    const revision = requestRevision.current + 1
+    requestRevision.current = revision
     setLoading(true)
+    setLoadingMore(false)
     setError(null)
     try {
       const page = await api.listCloudDevices({
         page: 1,
-        pageSize: 40,
+        pageSize: DEVICE_SQUARE_PAGE_SIZE,
         keyword: committedKeyword || undefined
       })
+      if (requestRevision.current !== revision) return
       setDevices(page.items)
       setTotal(page.total)
+      setLoadedPage(page.page)
       setSelectedId((current) => (
         current && page.items.some((item) => item.templateUuid === current)
           ? current
           : page.items[0]?.templateUuid ?? null
       ))
     } catch (reason) {
+      if (requestRevision.current !== revision) return
       setDevices([])
       setTotal(0)
+      setLoadedPage(0)
       setSelectedId(null)
       setError(uiErrorMessage(reason))
     } finally {
-      setLoading(false)
+      if (requestRevision.current === revision) setLoading(false)
     }
   }, [api, committedKeyword])
 
+  /**
+   * 读取下一页并按模板 UUID 追加，不改变当前详情选择。
+   *
+   * @returns 下一页合并或错误投影完成后结束；目录已完整时直接结束。
+   */
+  const loadMoreDevices = useCallback(async (): Promise<void> => {
+    const nextPage = nextDeviceSquarePage({
+      loadedItems: devices.length,
+      loadedPage,
+      total
+    })
+    if (nextPage === null || loading || loadingMore) return
+    const revision = requestRevision.current
+    setLoadingMore(true)
+    setError(null)
+    try {
+      const page = await api.listCloudDevices({
+        page: nextPage,
+        pageSize: DEVICE_SQUARE_PAGE_SIZE,
+        keyword: committedKeyword || undefined
+      })
+      if (requestRevision.current !== revision) return
+      setDevices((current) => mergeDeviceSquareItems(current, page.items))
+      setTotal(page.total)
+      setLoadedPage(page.page)
+    } catch (reason) {
+      if (requestRevision.current === revision) setError(uiErrorMessage(reason))
+    } finally {
+      if (requestRevision.current === revision) setLoadingMore(false)
+    }
+  }, [api, committedKeyword, devices.length, loadedPage, loading, loadingMore, total])
+
   useEffect(() => {
-    void loadDevices()
-  }, [loadDevices])
+    void loadFirstPage()
+    return () => {
+      requestRevision.current += 1
+    }
+  }, [loadFirstPage])
 
   useEffect(() => {
     if (!selectedId) {
@@ -85,13 +147,22 @@ export default function CloudDeviceSquareView({
     }
   }, [api, selectedId])
 
-  /** 提交关键词，触发一次明确搜索，不在每个按键上请求云端。 */
+  /**
+   * 提交关键词，触发一次明确搜索，不在每个按键上请求云端。
+   *
+   * @param event 搜索表单提交事件。
+   * @returns 无返回值；提交后由 effect 读取新目录。
+   */
   const handleSearch = useCallback((event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setCommittedKeyword(keyword.trim())
   }, [keyword])
 
-  /** 下载、校验并创建持久心愿单，后续由配置与激活阶段继续。 */
+  /**
+   * 下载、校验并创建持久心愿单，后续由配置与激活阶段继续。
+   *
+   * @returns Main 返回持久接入事实并完成切页通知后结束。
+   */
   const handleAddWishlist = useCallback(async (): Promise<void> => {
     if (!detail || operation) return
     setOperation('wishlist')
@@ -99,10 +170,10 @@ export default function CloudDeviceSquareView({
     setNotice('正在解析发布信息并下载校验设备包…')
     try {
       const record = await api.start(detail.templateUuid)
-      if (record.status === 'failed') {
-        throw new Error(record.diagnostic?.message || '添加心愿单失败')
-      }
       onProvisioningStarted(record)
+      if (record.status === 'failed') {
+        return
+      }
     } catch (reason) {
       setError(uiErrorMessage(reason))
       setNotice(null)
@@ -111,7 +182,11 @@ export default function CloudDeviceSquareView({
     }
   }, [api, detail, onProvisioningStarted, operation])
 
-  /** 只把设备包写入 OS 受管缓存，不创建实例也不修改设备图。 */
+  /**
+   * 只把设备包写入 OS 受管缓存，不创建实例也不修改设备图。
+   *
+   * @returns 下载结果或可行动错误完成界面投影后结束。
+   */
   const handleDownloadOnly = useCallback(async (): Promise<void> => {
     if (!detail || operation) return
     setOperation('download')
@@ -147,7 +222,7 @@ export default function CloudDeviceSquareView({
         </form>
         <div className={styles.toolbarMeta}>
           <span>共 {total} 个设备定义</span>
-          <button type="button" onClick={() => void loadDevices()} disabled={loading}>
+          <button type="button" onClick={() => void loadFirstPage()} disabled={loading}>
             {loading ? '读取中…' : '刷新'}
           </button>
         </div>
@@ -178,6 +253,24 @@ export default function CloudDeviceSquareView({
               </span>
             </button>
           ))}
+          {!loading && devices.length > 0 ? (
+            <div className={styles.deviceListFooter} role="status">
+              <span>已显示 {devices.length} / {total}</span>
+              {nextDeviceSquarePage({
+                loadedItems: devices.length,
+                loadedPage,
+                total
+              }) !== null ? (
+                <button
+                  type="button"
+                  disabled={loadingMore}
+                  onClick={() => void loadMoreDevices()}
+                >
+                  {loadingMore ? '正在加载…' : '加载更多设备'}
+                </button>
+              ) : null}
+            </div>
+          ) : null}
         </div>
 
         <article className={styles.deviceDetail} aria-live="polite">

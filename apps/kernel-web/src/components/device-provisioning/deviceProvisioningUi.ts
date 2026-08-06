@@ -23,6 +23,15 @@ export interface ConfigurationField {
   annotation: string
 }
 
+export interface DeviceSquarePageCursor {
+  /** 当前筛选条件下已进入 Renderer 投影的去重设备数。 */
+  loadedItems: number
+  /** 最近一次成功响应的 Backend 正整数页码。 */
+  loadedPage: number
+  /** Backend 对当前筛选条件返回的权威总数。 */
+  total: number
+}
+
 const STATUS_VIEW: Record<
   LocalDeviceProvisioningStatus,
   ProvisioningStatusView
@@ -37,7 +46,7 @@ const STATUS_VIEW: Record<
   activating: { label: '激活中', description: '正在受控重启本地 Edge', tone: 'working' },
   driver_ready: { label: '驱动已加载', description: '设备在线，正在核验 Action 合同', tone: 'working' },
   ready: { label: '可运行', description: '设备在线且 Action 合同可用', tone: 'ready' },
-  failed: { label: '失败', description: '查看诊断并按原阶段重试', tone: 'danger' },
+  failed: { label: '失败', description: '查看诊断并按可用方式处理', tone: 'danger' },
   canceled: { label: '已回滚', description: '设备图已恢复到接入前状态', tone: 'neutral' },
   removing: { label: '移除中', description: '正在安全移除本地设备实例', tone: 'working' },
   removed: { label: '已移除', description: '设备实例已从当前设备图移除', tone: 'neutral' }
@@ -152,6 +161,47 @@ export function suggestedInstanceId(record: LocalDeviceProvisioning): string {
     .replace(/[^a-z0-9_-]+/gu, '-')
     .replace(/^-+|-+$/gu, '')
   return `local-${normalized || 'device'}`.slice(0, 80)
+}
+
+/**
+ * 按云端模板稳定 UUID 合并分页，保留已加载顺序并用新页刷新重复项。
+ *
+ * @param current 当前 Renderer 已投影的设备卡片。
+ * @param incoming Backend 返回的新一页设备卡片。
+ * @returns 不含重复模板 UUID 的完整已加载列表。
+ */
+export function mergeDeviceSquareItems<Item extends { templateUuid: string }>(
+  current: readonly Item[],
+  incoming: readonly Item[]
+): Item[] {
+  const incomingByTemplate = new Map(
+    incoming.map((item) => [item.templateUuid, item] as const)
+  )
+  const merged = current.map(
+    (item) => incomingByTemplate.get(item.templateUuid) ?? item
+  )
+  const knownTemplateUuids = new Set(
+    current.map((item) => item.templateUuid)
+  )
+  for (const item of incoming) {
+    if (knownTemplateUuids.has(item.templateUuid)) continue
+    merged.push(item)
+    knownTemplateUuids.add(item.templateUuid)
+  }
+  return merged
+}
+
+/**
+ * 从 Backend 分页事实计算下一页，不用首屏 pageSize 猜测总量。
+ *
+ * @param cursor 已加载条数、最近成功页码和云端总数。
+ * @returns 尚有设备时返回下一页页码，目录已完整时返回 null。
+ */
+export function nextDeviceSquarePage(
+  cursor: DeviceSquarePageCursor
+): number | null {
+  if (cursor.loadedItems >= cursor.total) return null
+  return Math.max(1, cursor.loadedPage + 1)
 }
 
 /** 把跨进程 unknown 异常收敛为界面可展示正文。 */

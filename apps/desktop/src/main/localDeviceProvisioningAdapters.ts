@@ -77,6 +77,17 @@ export function provisioningErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
+/**
+ * 从跨层异常读取明确的重试合同，未知异常默认允许人工重试。
+ *
+ * @param error 服务、CLI 或本地运行时抛出的未知异常。
+ * @returns 明确标记 retryable=false 时为 false，其余情况为 true。
+ */
+export function provisioningErrorRetryable(error: unknown): boolean {
+  if (!error || typeof error !== 'object' || !('retryable' in error)) return true
+  return (error as { retryable?: unknown }).retryable !== false
+}
+
 /** 把失败阶段映射为唯一安全重试动作，不根据字段存在性猜测副作用。 */
 export function provisioningRetryAction(
   stage: LocalDeviceProvisioningStatus | undefined

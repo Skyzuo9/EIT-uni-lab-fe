@@ -2,7 +2,7 @@
 
 > 状态：Implemented；真实 Cloud/OSS 凭据与物理仪器联调待环境验收
 >
-> 日期：2026-08-05
+> 日期：2026-08-06
 >
 > 看板：LOCAL-125
 >
@@ -54,9 +54,10 @@ Electron “添加心愿单”
 
 1. 用户在 Electron 打开“云端设备广场”。
 2. Electron 展示现有设备列表、筛选、详情、所属设备包和版本。
-3. 浏览使用现有公开接口，不要求 Backend 新字段。
+3. Electron 首屏读取 40 条，并按 Backend 返回的 `total/page/page_size` 提供“加载更多设备”，直到当前筛选结果全部展示。
+4. 浏览使用现有公开接口，不要求 Backend 新字段。
 
-预期效果：Electron 展示内容与 Uni-Lab-Cloud 当前设备广场的数据来源一致。
+预期效果：Electron 展示内容与 Uni-Lab-Cloud 当前设备广场的数据来源一致；设备超过首屏时不会静默截断在前 40 条。
 
 ### 2.2 添加心愿单并接入本地设备
 
@@ -71,7 +72,7 @@ Electron “添加心愿单”
 5. 用户确认后，CLI 校验参数并原子更新设备图。
 6. 如果当前 OS 正在运行，Electron 明确提示并执行受控重启。
 7. 重启完成后，Electron 查询本地设备目录和 Action。
-8. 查询成功时，心愿单条目进入“可运行”；失败时保留诊断和重试入口。
+8. 查询成功时，心愿单条目进入“可运行”；可重试失败保留原阶段重试入口，旧版或不兼容发布保留设备详情并明确要求发布者重新发布，不显示无效的自动重试按钮。
 
 预期效果：设备不仅出现在本地列表中，驱动代码、设备定义和配置都已经进入当前 OS 的实际启动链路，用户可以在 Electron 选择该设备并调用它公开的 Action。
 
@@ -132,11 +133,11 @@ Electron “添加心愿单”
 |---|---|---|
 | Uni-Lab-Cloud | `main@6d69d27a` | 现有设备广场交互参考和回归对象，不修改 |
 | uni-lab-backend | 本地 `test@2d94a64` | 现有接口提供方，不修改 |
-| uni-lab-fe | `integration/fe-os-migration@34119e2` | Electron 页面、Main 编排和本地运行时 |
-| 当前 Uni-Lab-OS | `migration/02g4-darwin-draft-cas@cc61168` | 下载、Catalog、设备图接入和运行时加载目标 |
+| uni-lab-fe | `feature/electron-device-provisioning` | Electron 页面、Main 编排和本地运行时；含 2026-08-06 分页与旧包诊断修复 |
+| 当前 Uni-Lab-OS | `feature/electron-device-provisioning@6a9a549` | 下载、Catalog、设备图接入和运行时加载目标 |
 | old-unilab-os代码 | `dev@1331701` | 旧 CLI 行为参考，不作为第二套正式实现 |
 
-当前工作区没有 Uni-Lab-Core 的规范词汇表，因此“本地设备接入（LocalDeviceProvisioning）”在本文中是候选术语，不宣称为已接受决策（Accepted Decision）。
+已核对 `/home/changjunhan/Uni-Lab-Core/CONTEXT.md`，其中尚未收录本流程的规范术语。因此本文继续使用候选本地设备接入（LocalDeviceProvisioning），不宣称为已接受决策（Accepted Decision）。
 
 ### 4.2 可直接使用的 Backend 接口
 
@@ -154,7 +155,7 @@ Electron “添加心愿单”
 
 下载路由的参数当前实际是设备模板 UUID，不是稳定设备包发布版本 UUID。这是遗留兼容（Legacy Compatibility）。
 
-设备详情中的 `package_info` 可提供包名、版本、namespace 和摘要；`source_registry.source_fqid` 可优先标识包内设备定义。旧数据缺少 `source_fqid` 时，必须使用 PackageCatalog 和模板名称做唯一匹配；匹配不唯一时失败关闭，不能猜测驱动类。
+设备详情中的 `package_info` 可提供包名、版本、namespace 和摘要；`source_registry.source_fqid` 标识包内规范设备定义。当前实现要求 `source_fqid`、Artifact 摘要和 `catalog_digest` 同时存在并互相一致。旧数据缺少这些字段时失败关闭并标记“旧版设备包，需要使用当前 CLI 重新发布”；Electron 不根据模板名称合成 FQID，也不猜测驱动类。
 
 ### 4.3 Cloud“心愿单”接口不是本地接入接口
 
@@ -197,6 +198,9 @@ POST /api/v1/lab/square/copy_resource
 | 缓存版本可能漂移 | 设备图保存精确 `package_cache_key`，Runtime 按固定 release wheel 加载 |
 | 无可运行确认 | Main 复用 LocalRuntime stop/start，并以 `/api/v1/devices` 在线状态和 Action 数量对账 |
 | 无 Electron 上传入口 | Main 复用 `package inspect/upload --json`，路径只接受本次系统选择器批准值 |
+| 旧包失败后显示“未命名设备” | Main 先持久化已校验云端详情，再解析包兼容性；失败记录保留设备名称、包名、版本和可用摘要 |
+| Electron 只显示设备第一页 | Renderer 依据 `total/page/page_size` 逐页加载、按模板 UUID 去重，并显示“已显示 N / total” |
+| 不可兼容旧包反复重试 | `ServiceError.retryable=false` 持久化到诊断，Main 拒绝自动重试，Renderer 隐藏重试按钮 |
 
 首版仍明确采用受控重启，不承诺在线增加根设备；真实 Cloud/OSS 和物理仪器属于部署环境验收项，不是新增 Backend 开发项。
 
@@ -221,7 +225,7 @@ UI 操作保留“添加心愿单”，但代码和文档中的领域模块不�
 - 中文权威：Electron Main 负责编排和持久化；当前 OS 负责判断驱动/实例是否真正加载。
 - 中文生命周期：用户点击添加开始，到设备 `ready`、明确失败、取消或移除结束。
 - 中文持久事实：云端模板引用、包摘要、缓存引用、设备定义 FQID、实例 ID、目标设备图、脱敏配置、阶段和诊断。
-- 中文失败语义：下载/校验失败可安全重试；设备图已写但重启失败需要回滚或人工选择；物理设备连接失败不得显示 `ready`。
+- 中文失败语义：瞬时下载/运行时失败可以按阶段安全重试；缺少 `source_fqid`、Artifact 摘要或 PackageCatalog 的旧发布不可自动重试，必须重新发布；设备图已写但重启失败需要回滚或人工选择；物理设备连接失败不得显示 `ready`。
 
 ### 5.2 设备包已缓存不等于设备可运行
 
@@ -307,6 +311,8 @@ interface CloudDeviceSquarePort {
 ```
 
 生产使用现有 Backend HTTP Adapter，测试使用内存 Adapter。Renderer 不直接拼接 Backend URL。
+
+列表每次请求固定正整数页码和页大小。Renderer 保存最近成功页码与已加载条数，仅在 `loadedItems < total` 时请求下一页；分页按 `templateUuid` 合并去重。搜索或刷新会开启新的请求代次，晚到的旧筛选响应不得覆盖当前目录。
 
 ### 6.2 本地设备接入模块
 
@@ -394,6 +400,8 @@ Main:
 ```
 
 Main 必须重新请求设备详情，不能信任 Renderer 携带的 URL、摘要或 source FQID。
+
+详情校验成功后，Main 必须先保存云端设备名称、显示名、包名、版本和可用摘要，再执行包兼容性解析。这样即使旧发布缺少 `source_fqid` 或 PackageCatalog，失败记录仍然可以被用户识别；这些展示字段只用于诊断，不能替代严格包候选和 OS 校验。
 
 ### 7.2 下载、校验和配置描述
 
@@ -550,6 +558,8 @@ unilab --config <local_config.py> package upload --path <workspace> --json
 
 - 操作：“添加心愿单”“仅下载设备包”“查看包详情”。
 - “添加心愿单”旁明确提示：将下载驱动、配置仪器并重启本地 OS。
+- 工具栏显示云端 `total`，列表底部显示“已显示 N / total”；存在下一页时显示“加载更多设备”。
+- 搜索、刷新和继续加载共享同一筛选条件；分页响应按模板 UUID 去重，旧请求不能覆盖新搜索。
 - 未选择设备图、OS 项目或 Conda 环境时，先引导完成 LocalRuntime 配置。
 
 ### 9.2 本地心愿单
@@ -563,6 +573,8 @@ unilab --config <local_config.py> package upload --path <workspace> --json
 - `下载中 / 待配置 / 待重启 / 加载中 / 可运行 / 失败`；
 - 在线状态和 Action 数量；
 - 配置、重试、启动、停止接入和移除入口。
+
+包兼容性失败也必须保留已读取的云端名称和包信息，不能退化为“未命名设备/等待解析”。`diagnostic.retryable=false` 时展示重新发布说明并隐藏“按失败阶段重试”；这类失败没有可由本机重复调用消除的瞬时条件。
 
 ### 9.3 可运行设备
 
@@ -669,8 +681,10 @@ unilab --config <local_config.py> package upload --path <workspace> --json
 ### P3：Electron 广场与接入向导（已实现）
 
 - 实现现有 Backend 设备广场 Adapter 和页面。
+- 实现基于 `total/page/page_size` 的完整分页、模板 UUID 去重和搜索请求代次隔离。
 - 实现 `LocalDeviceProvisioningManager`、本地持久化和最小 IPC。
 - 实现下载进度、配置表单、实例 ID 和 graphPath 确认。
+- 在包兼容性解析前保存云端展示详情，并区分可重试失败与旧发布不可重试失败。
 - Renderer 只提交稳定意图，Main 重新解析云端详情和 CLI 路径。
 
 退出条件：点击“添加心愿单”可以走到 `restart_required`，且设备图已安全写入。
@@ -703,18 +717,26 @@ unilab --config <local_config.py> package upload --path <workspace> --json
 | OS 启动集成 | cache -> sys.path -> Catalog -> registry -> driver import -> instance |
 | CLI 子进程 | stdin 配置、最终 JSON、退出码、取消和日志脱敏 |
 | Electron Main | executable allowlist、`shell: false`、作业恢复、重启门禁和对账 |
-| Electron UI | 下载、配置、待重启、加载中、可运行、失败和移除 |
+| Electron UI | 完整分页、搜索代次隔离、下载、配置、待重启、加载中、可运行、失败和移除 |
 | 跨仓 E2E | 广场 -> 添加心愿单 -> 配置 -> 重启 -> 在线 -> Action；Workspace -> 上传 -> 广场可见 |
 
-2026-08-05 当前自动化验证记录：
+2026-08-06 当前自动化验证记录：
 
 | 命令/范围 | 结果 |
 |---|---|
 | `Uni-Lab-OS: pytest tests/package_manager -q` | 72 passed |
+| `Uni-Lab-OS: pytest tests -q` | 2622 passed、7 skipped；68 条既有弃用/收集 warning，无失败 |
 | `uni-lab-fe: pnpm typecheck` | 20 个工作区项目全部通过 |
-| `uni-lab-fe: pnpm test` | 全部带测试脚本的工作区包通过；其中 services 118、kernel-web 62、desktop 87 |
+| `uni-lab-fe: pnpm test` | 全部带测试脚本的工作区包通过；其中 services 119、kernel-web 63、desktop 88 |
 | `uni-lab-fe: pnpm build:desktop` | 生产 Main、Preload、Renderer 构建通过 |
-| `xvfb-run -a pnpm exec playwright test e2e/device-square-electron.spec.ts` | 1 passed；覆盖生产 Electron Main/IPC、现有广场 list/detail 和三种窗口截图 |
+| `xvfb-run -a env UNILAB_E2E_ELECTRON=1 pnpm exec playwright test e2e/device-square-electron.spec.ts` | 1 passed；覆盖生产 Electron Main/IPC、45 条设备完整分页、详情保持、旧包不可重试诊断及桌面/紧凑截图 |
+
+本轮截图保存在 `e2e-artifacts/device-square-electron/`：
+
+- `device-square-desktop.png`：加载第二页后显示 `45 / 45`，右侧设备详情保持可见。
+- `device-square-legacy-package.png`：旧包保留“旧版分液器”名称、包版本和重新发布诊断，不提供无效重试按钮。
+- `device-square-compact.png`：紧凑窗口下列表与详情保持可操作。
+- `device-package-upload-desktop.png`：现有 CLI 上传入口。
 
 自动化使用兼容 Backend fixture 和虚拟设备目录，证明协议、IPC、状态机与界面链路；它不替代真实 Lab AK/SK、OSS、目标 Cloud 数据和物理仪器 Action 验收。
 
@@ -723,16 +745,18 @@ unilab --config <local_config.py> package upload --path <workspace> --json
 1. 点击“添加心愿单”会实际下载并校验设备包，而不是只写元信息。
 2. Artifact 摘要错误或 Catalog 无效时不写设备图。
 3. 遗留 tar.gz 或缺 Catalog 的包标记不兼容，不尝试作为 Python 驱动加载。
-4. 必填串口/IP缺失时停在“待配置”，不启动设备。
-5. 配置通过后，设备实例声明进入用户当前选择的 graphPath。
-6. Graph 写入失败不破坏原文件。
-7. 当前存在运行中的设备 Action 时拒绝自动重启。
-8. 重启 OS 后目标设备出现在 `/api/v1/devices`，并有预期 Action。
-9. 驱动导入或连接失败时不得显示“可运行”，可修改配置后重试。
-10. 移除设备后 graph 不再包含实例，重启后本地设备目录也不再包含它。
-11. 仅下载设备包不会修改 graph 或重启 OS。
-12. 上传仍只使用现有 storage token、OSS PUT 和 `/lab/resource`。
-13. Renderer、argv、普通日志和设备图中不出现设备秘密；MVP 对秘密字段失败关闭。
+4. 旧包不兼容时仍显示云端设备名称和可用包身份，诊断为不可自动重试。
+5. 云端返回 45 条设备时，首屏 40 条可继续加载到 45 条且没有重复模板。
+6. 必填串口/IP缺失时停在“待配置”，不启动设备。
+7. 配置通过后，设备实例声明进入用户当前选择的 graphPath。
+8. Graph 写入失败不破坏原文件。
+9. 当前存在运行中的设备 Action 时拒绝自动重启。
+10. 重启 OS 后目标设备出现在 `/api/v1/devices`，并有预期 Action。
+11. 驱动导入或连接失败时不得显示“可运行”，可修改配置后重试。
+12. 移除设备后 graph 不再包含实例，重启后本地设备目录也不再包含它。
+13. 仅下载设备包不会修改 graph 或重启 OS。
+14. 上传仍只使用现有 storage token、OSS PUT 和 `/lab/resource`。
+15. Renderer、argv、普通日志和设备图中不出现设备秘密；MVP 对秘密字段失败关闭。
 
 最终验收不是“文件已经下载”，而是：
 

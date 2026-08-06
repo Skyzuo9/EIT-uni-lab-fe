@@ -1,6 +1,6 @@
 import { createServer, type Server } from 'node:http'
 import { mkdirSync } from 'node:fs'
-import { rm } from 'node:fs/promises'
+import { mkdir, rm, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 
 import { _electron as electron, expect, test } from '@playwright/test'
@@ -19,6 +19,7 @@ test('browses the cloud device square through Electron Main', async () => {
   if (!address || typeof address === 'string') throw new Error('测试 Backend 端口不可用')
   const configDirectory = resolve(artifactDirectory, 'electron-config')
   await rm(configDirectory, { recursive: true, force: true })
+  await seedLegacyProvisioningRecord(configDirectory)
   const electronApp = await electron.launch({
     args: ['--no-sandbox', resolve('apps/desktop/out/main/index.js')],
     env: {
@@ -49,8 +50,24 @@ test('browses the cloud device square through Electron Main', async () => {
     await expect(page.getByRole('heading', { name: '测试蠕动泵' })).toBeVisible()
     await expect(page.getByRole('button', { name: '添加心愿单并接入本地' }))
       .toBeVisible()
+    await expect(page.getByText('共 45 个设备定义')).toBeVisible()
+    await page.getByRole('button', { name: '加载更多设备' }).click()
+    await expect(page.getByText('已显示 45 / 45')).toBeVisible()
+    await expect(page.getByRole('heading', { name: '测试蠕动泵' })).toBeVisible()
+    await page.getByText('已显示 45 / 45').scrollIntoViewIfNeeded()
     await page.screenshot({
       path: resolve(artifactDirectory, 'device-square-desktop.png'),
+      fullPage: true
+    })
+
+    await page.getByRole('button', { name: '本地心愿单' }).click()
+    await expect(page.getByRole('heading', { name: '旧版分液器' })).toBeVisible()
+    await expect(page.getByText(/当前发布缺少 source_fqid，属于旧版设备包/))
+      .toBeVisible()
+    await expect(page.getByRole('button', { name: '按失败阶段重试' }))
+      .toHaveCount(0)
+    await page.screenshot({
+      path: resolve(artifactDirectory, 'device-square-legacy-package.png'),
       fullPage: true
     })
 
@@ -85,13 +102,19 @@ async function startDeviceSquareServer(): Promise<Server> {
     const url = new URL(request.url ?? '/', 'http://127.0.0.1')
     response.setHeader('content-type', 'application/json; charset=utf-8')
     if (url.pathname === '/api/v1/lab/square/list') {
+      const page = Number(url.searchParams.get('page') ?? '1')
+      const pageSize = Number(url.searchParams.get('page_size') ?? '40')
+      const firstIndex = (page - 1) * pageSize
       response.end(JSON.stringify({
         code: 0,
         data: {
-          total: 1,
-          page: 1,
-          page_size: 40,
-          data: [deviceSummary()]
+          total: 45,
+          page,
+          page_size: pageSize,
+          data: Array.from(
+            { length: Math.max(0, Math.min(pageSize, 45 - firstIndex)) },
+            (_, index) => paginatedDeviceSummary(firstIndex + index)
+          )
         }
       }))
       return
@@ -124,6 +147,71 @@ async function startDeviceSquareServer(): Promise<Server> {
     server.listen(0, '127.0.0.1', () => resolveListen())
   })
   return server
+}
+
+/**
+ * 生成分页设备卡片，并让第一页首项保持详情接口使用的稳定身份。
+ *
+ * @param index 云端设备目录中的零基位置。
+ * @returns 现有 Backend 列表接口的一条设备模板 JSON。
+ */
+function paginatedDeviceSummary(index: number): Record<string, unknown> {
+  if (index === 0) return deviceSummary()
+  return {
+    ...deviceSummary(),
+    uuid: `00000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+    name: `test-device-${index + 1}`,
+    display_name: `测试设备 ${index + 1}`
+  }
+}
+
+/**
+ * 在 Electron userData 中写入真实 Store 合同，投影一个已诊断的旧设备包记录。
+ *
+ * @param configDirectory 本次 E2E 隔离的 XDG 配置根目录。
+ * @returns 文件持久化完成后结束，不返回业务数据。
+ */
+async function seedLegacyProvisioningRecord(configDirectory: string): Promise<void> {
+  const userDataDirectory = resolve(configDirectory, 'Electron')
+  await mkdir(userDataDirectory, { recursive: true })
+  await writeFile(
+    resolve(userDataDirectory, 'local-device-provisioning.json'),
+    JSON.stringify({
+      schemaVersion: 'local-device-provisioning-store/v1',
+      items: [{
+        schemaVersion: 'local-device-provisioning/v1',
+        provisioningId: '7f0dbe72-22b0-4ef7-8a5a-3bcd6fa3132a',
+        templateUuid: 'b806da39-9498-4936-8fcf-b5a5cd4c4ada',
+        cloudDeviceName: 'legacy-dispenser',
+        cloudDisplayName: '旧版分液器',
+        packageName: 'legacy-lab',
+        packageVersion: '0.9.0',
+        artifactDigest,
+        catalogDigest: '',
+        definitionFqid: '',
+        cacheKey: '',
+        configurationSchema: {},
+        configuration: null,
+        instanceId: '',
+        instanceUuid: '',
+        displayName: '旧版分液器',
+        graphPath: '/runtime/device-graph.json',
+        graphFingerprint: '',
+        backupPath: '',
+        actionCount: 0,
+        status: 'failed',
+        diagnostic: {
+          stage: 'resolving',
+          message: '当前发布缺少 source_fqid，属于旧版设备包，请使用当前 CLI 重新发布',
+          retryable: false,
+          recordedAt: '2026-08-06T00:00:00.000Z'
+        },
+        createdAt: '2026-08-06T00:00:00.000Z',
+        updatedAt: '2026-08-06T00:00:00.000Z'
+      }]
+    }, null, 2) + '\n',
+    'utf8'
+  )
 }
 
 /** 生成 list/detail 共用的现有 Backend 设备模板字段。 */

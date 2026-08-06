@@ -4,6 +4,8 @@ import type { LocalDeviceProvisioning } from '@unilab/device-provisioning'
 import {
   configurationFields,
   initialConfigurationDraft,
+  mergeDeviceSquareItems,
+  nextDeviceSquarePage,
   parseConfigurationDraft,
   provisioningStatusView,
   suggestedInstanceId
@@ -67,6 +69,7 @@ describe('设备接入界面投影', () => {
     })
     expect(provisioningStatusView('failed')).toMatchObject({
       label: '失败',
+      description: '查看诊断并按可用方式处理',
       tone: 'danger'
     })
   })
@@ -77,5 +80,33 @@ describe('设备接入界面投影', () => {
       cloudDeviceName: 'Pump Controller V2',
       cloudDisplayName: '泵控制器'
     } as LocalDeviceProvisioning)).toBe('local-pump-controller-v2')
+  })
+
+  /** 验证云端设备分页按模板身份去重，并在未覆盖总数时请求下一页。 */
+  it('合并全部云端设备分页且不重复既有模板', () => {
+    const firstPage = Array.from({ length: 40 }, (_, index) => ({
+      templateUuid: `template-${index + 1}`
+    }))
+    const secondPage = [
+      { templateUuid: 'template-40' },
+      ...Array.from({ length: 5 }, (_, index) => ({
+        templateUuid: `template-${index + 41}`
+      })),
+      { templateUuid: 'template-45' }
+    ]
+
+    const merged = mergeDeviceSquareItems(firstPage, secondPage)
+
+    expect(merged).toHaveLength(45)
+    expect(nextDeviceSquarePage({
+      loadedItems: firstPage.length,
+      loadedPage: 1,
+      total: 45
+    })).toBe(2)
+    expect(nextDeviceSquarePage({
+      loadedItems: merged.length,
+      loadedPage: 2,
+      total: 45
+    })).toBeNull()
   })
 })
