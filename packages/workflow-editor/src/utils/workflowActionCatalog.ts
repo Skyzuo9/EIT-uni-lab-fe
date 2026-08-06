@@ -794,7 +794,7 @@ function typedTemplate(
     const extension = recordOrNull(
       action.schema['x-unilabos-action-contract']
     )
-    if (extension?.version === 1) return action
+    if (isSupportedTypedActionContract(extension)) return action
   }
   const workflow = catalog.workflowTemplates.find((item) =>
     item.uuid === templateUuid
@@ -806,6 +806,12 @@ function typedTemplate(
     if (extension?.version === 1) return workflow
   }
   throw new Error('类型化操作或工作流模板不存在')
+}
+
+function isSupportedTypedActionContract(
+  extension: Record<string, unknown> | null
+): boolean {
+  return extension?.version === 1 || extension?.version === 2
 }
 
 function publishedWorkflowTemplate(

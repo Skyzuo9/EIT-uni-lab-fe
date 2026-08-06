@@ -59,6 +59,33 @@ const internalSourceNodeUuid = '40000000-0000-4000-8000-000000000021'
 const fingerprint = `sha256:${'a'.repeat(64)}`
 
 describe('typed Action editor projection', () => {
+  it('projects persisted version two Action contracts in node properties', () => {
+    const versionTwoCatalog = structuredClone(catalog)
+    const extension = versionTwoCatalog.actionTemplates[0]?.schema[
+      'x-unilabos-action-contract'
+    ] as Record<string, unknown>
+    extension.version = 2
+
+    const projected = projectTypedActionEditor(
+      versionTwoCatalog,
+      graph,
+      nodeUuid,
+      []
+    )
+
+    expect(projected.templateUuid).toBe(templateUuid)
+    expect(projected.fields.map((field) => field.dataKey)).toEqual([
+      'count',
+      'temperature',
+      'note',
+      'mode',
+      'options',
+      'samples',
+      'material',
+      'site'
+    ])
+  })
+
   it('inserts one Published child invocation with only parent-owned state', () => {
     expect(boundaryModule.createPublishedWorkflowNode).toBeTypeOf('function')
     const catalogWithChild = publishedBoundaryCatalog()

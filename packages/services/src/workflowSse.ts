@@ -7,7 +7,7 @@ export interface WorkflowSseFrame {
 }
 
 interface WorkflowSseSubscriptionOptions<Event> {
-  url: string
+  transport: WorkflowSseTransport
   lastEventId?: string
   connectionErrorLabel: string
   disconnectedMessage?: string
@@ -23,65 +23,98 @@ interface WorkflowSseSubscriptionOptions<Event> {
   onEvent: (event: Event) => void
 }
 
+interface WorkflowSseTransportSubscriber {
+  lastEventId?: string
+  onOpen?: (state: {
+    lastEventId: string
+    reconnected: boolean
+  }) => void
+  onError?: (error: Error) => void
+  onDisconnected?: () => void
+  onFrame: (frame: WorkflowSseFrame) => void
+}
+
+interface WorkflowSseConnection {
+  subscribe: (subscriber: WorkflowSseTransportSubscriber) => () => void
+  dispose: () => void
+}
+
+/** 同一个 Workflow Runtime 内复用全局事件流的物理 HTTP 连接。 */
+export interface WorkflowSseTransport {
+  subscribe: (subscriber: WorkflowSseTransportSubscriber) => () => void
+  dispose: () => void
+}
+
 const RECONNECT_DELAY_MS = 3000
 const MAX_SEEN_EVENT_IDS = 512
 
 /**
- * 建立可恢复的工作流服务端事件流（SSE）订阅。
+ * 创建工作流全局事件流传输层。
  *
- * @param options 地址、游标、错误回调及事件处理器。
- * @returns 可幂等释放的订阅句柄。
+ * 无显式游标的逻辑订阅共享一条物理 SSE；携带独立恢复游标的订阅保留专用连接，
+ * 避免把两个不同的 Last-Event-ID 合并成不确定的恢复边界。
+ */
+export function createWorkflowSseTransport(url: string): WorkflowSseTransport {
+  const sharedConnection = createWorkflowSseConnection(url)
+  const dedicatedConnections = new Set<WorkflowSseConnection>()
+  let disposed = false
+
+  return {
+    subscribe: (subscriber) => {
+      if (disposed) return () => undefined
+      if (!subscriber.lastEventId) {
+        return sharedConnection.subscribe(subscriber)
+      }
+      const connection = createWorkflowSseConnection(url)
+      dedicatedConnections.add(connection)
+      const unsubscribe = connection.subscribe(subscriber)
+      return () => {
+        unsubscribe()
+        connection.dispose()
+        dedicatedConnections.delete(connection)
+      }
+    },
+    dispose: () => {
+      if (disposed) return
+      disposed = true
+      sharedConnection.dispose()
+      for (const connection of dedicatedConnections) connection.dispose()
+      dedicatedConnections.clear()
+    }
+  }
+}
+
+/**
+ * 建立可恢复的工作流服务端事件逻辑订阅。
+ *
+ * 多个逻辑订阅由同一个 transport 扇出；事件过滤、严格解析与 event ID 去重仍各自
+ * 隔离，释放单个订阅不会中断仍有消费者的物理连接。
  */
 export function createWorkflowSseSubscription<Event>(
   options: WorkflowSseSubscriptionOptions<Event>
 ): WorkflowEventSubscription {
   let disposed = false
-  let controller: AbortController | null = null
-  let reconnectTimer: ReturnType<typeof globalThis.setTimeout> | null = null
-  let cursor = options.lastEventId || ''
-  let openedConnections = 0
   const seenEventIds = new Set<string>()
-
-  /** 安排唯一一次延迟重连，避免并发断线触发重连风暴。 */
-  const scheduleReconnect = (): void => {
-    if (disposed || reconnectTimer !== null) return
-    reconnectTimer = globalThis.setTimeout(() => {
-      reconnectTimer = null
-      void connect()
-    }, RECONNECT_DELAY_MS)
-  }
-
-  /** 读取一次 SSE 连接，并在自然断开或失败后进入重连。 */
-  const connect = async (): Promise<void> => {
-    if (disposed) return
-    controller = new AbortController()
-    const activeController = controller
-    const headers = new Headers({ Accept: 'text/event-stream' })
-    if (cursor) headers.set('Last-Event-ID', cursor)
-    try {
-      const response = await globalThis.fetch(options.url, {
-        headers,
-        signal: activeController.signal
-      })
-      if (!response.ok || !response.body) {
-        throw new Error(
-          `${options.connectionErrorLabel}: ${response.status} ${
-            response.statusText
-          }`
-        )
+  const unsubscribe = options.transport.subscribe({
+    lastEventId: options.lastEventId,
+    onOpen: options.onOpen,
+    onError: (error) => {
+      options.onError?.(new Error(
+        `${options.connectionErrorLabel}: ${error.message}`
+      ))
+    },
+    onDisconnected: () => {
+      if (options.disconnectedMessage) {
+        options.onError?.(new Error(options.disconnectedMessage))
       }
-      options.onOpen?.({
-        lastEventId: cursor,
-        reconnected: openedConnections > 0
-      })
-      openedConnections += 1
-      await readSseStream(response.body, (frame) => {
-        if (frame.id) cursor = frame.id
-        if (options.acceptFrame && !options.acceptFrame(frame)) return
-        if (
-          options.dedupeBeforeParse &&
-          isDuplicateEvent(frame.id, seenEventIds)
-        ) return
+    },
+    onFrame: (frame) => {
+      if (options.acceptFrame && !options.acceptFrame(frame)) return
+      if (
+        options.dedupeBeforeParse &&
+        isDuplicateEvent(frame.id, seenEventIds)
+      ) return
+      try {
         const event = options.parseFrame(frame)
         if (event === null) return
         if (
@@ -89,54 +122,172 @@ export function createWorkflowSseSubscription<Event>(
           isDuplicateEvent(frame.id, seenEventIds)
         ) return
         options.onEvent(event)
-      }, activeController.signal)
-      if (
-        options.disconnectedMessage &&
-        !disposed &&
-        !activeController.signal.aborted
-      ) {
-        options.onError?.(new Error(options.disconnectedMessage))
+      } catch (error) {
+        options.onError?.(asError(error))
       }
-      scheduleReconnect()
-    } catch (error) {
-      if (disposed || activeController.signal.aborted) return
-      options.onError?.(asError(error))
-      scheduleReconnect()
     }
-  }
-
-  /**
-   * 浏览器恢复在线时立即重建 SSE，并沿用已经确认的持久事件游标（Cursor）。
-   *
-   * @returns 无返回值；释放后的订阅忽略在线事件。
-   */
-  const reconnectWhenOnline = (): void => {
-    if (disposed) return
-    if (reconnectTimer !== null) {
-      globalThis.clearTimeout(reconnectTimer)
-      reconnectTimer = null
-    }
-    controller?.abort()
-    void connect()
-  }
-
-  globalThis.addEventListener?.('online', reconnectWhenOnline)
+  })
 
   const subscription: WorkflowEventSubscription = {
     dispose: () => {
       if (disposed) return
       disposed = true
-      controller?.abort()
-      globalThis.removeEventListener?.('online', reconnectWhenOnline)
-      if (reconnectTimer !== null) {
-        globalThis.clearTimeout(reconnectTimer)
-      }
+      unsubscribe()
       options.subscriptions.delete(subscription)
     }
   }
   options.subscriptions.add(subscription)
-  void connect()
   return subscription
+}
+
+/** 创建一条可由多个逻辑消费者共享、在最后一个消费者离开时关闭的 SSE 连接。 */
+function createWorkflowSseConnection(url: string): WorkflowSseConnection {
+  const subscribers = new Set<WorkflowSseTransportSubscriber>()
+  let controller: AbortController | null = null
+  let reconnectTimer: ReturnType<typeof globalThis.setTimeout> | null = null
+  let cursor = ''
+  let openedConnections = 0
+  let connected = false
+  let onlineListenerInstalled = false
+  let disposed = false
+
+  /** 安排唯一一次延迟重连，避免并发断线触发重连风暴。 */
+  const scheduleReconnect = (): void => {
+    if (disposed || subscribers.size === 0 || reconnectTimer !== null) return
+    reconnectTimer = globalThis.setTimeout(() => {
+      reconnectTimer = null
+      void connect()
+    }, RECONNECT_DELAY_MS)
+  }
+
+  /** 向当前所有逻辑订阅扇出一帧，单个解析失败不会击穿共享连接。 */
+  const dispatchFrame = (frame: WorkflowSseFrame): void => {
+    if (frame.id) cursor = frame.id
+    for (const subscriber of [...subscribers]) {
+      try {
+        subscriber.onFrame(frame)
+      } catch (error) {
+        subscriber.onError?.(asError(error))
+      }
+    }
+  }
+
+  /** 读取一次物理 SSE，并在自然断开或失败后进入重连。 */
+  const connect = async (): Promise<void> => {
+    if (disposed || subscribers.size === 0 || controller !== null) return
+    const activeController = new AbortController()
+    controller = activeController
+    const headers = new Headers({ Accept: 'text/event-stream' })
+    if (cursor) headers.set('Last-Event-ID', cursor)
+    try {
+      const response = await globalThis.fetch(url, {
+        headers,
+        signal: activeController.signal
+      })
+      if (!response.ok || !response.body) {
+        throw new Error(`${response.status} ${response.statusText}`)
+      }
+      connected = true
+      const openState = {
+        lastEventId: cursor,
+        reconnected: openedConnections > 0
+      }
+      openedConnections += 1
+      for (const subscriber of [...subscribers]) {
+        subscriber.onOpen?.(openState)
+      }
+      await readSseStream(response.body, dispatchFrame, activeController.signal)
+      if (
+        !disposed &&
+        subscribers.size > 0 &&
+        !activeController.signal.aborted
+      ) {
+        for (const subscriber of [...subscribers]) {
+          subscriber.onDisconnected?.()
+        }
+      }
+    } catch (error) {
+      if (
+        !disposed &&
+        subscribers.size > 0 &&
+        !activeController.signal.aborted
+      ) {
+        for (const subscriber of [...subscribers]) {
+          subscriber.onError?.(asError(error))
+        }
+      }
+    } finally {
+      if (controller === activeController) controller = null
+      connected = false
+    }
+    if (!activeController.signal.aborted) scheduleReconnect()
+  }
+
+  /** 浏览器恢复在线时只重建这一条共享物理连接。 */
+  const reconnectWhenOnline = (): void => {
+    if (disposed || subscribers.size === 0) return
+    if (reconnectTimer !== null) {
+      globalThis.clearTimeout(reconnectTimer)
+      reconnectTimer = null
+    }
+    const previous = controller
+    controller = null
+    connected = false
+    previous?.abort()
+    void connect()
+  }
+
+  /** 安装浏览器在线监听器；没有消费者时不占用全局生命周期。 */
+  const installOnlineListener = (): void => {
+    if (onlineListenerInstalled) return
+    globalThis.addEventListener?.('online', reconnectWhenOnline)
+    onlineListenerInstalled = true
+  }
+
+  /** 在最后一个消费者离开后释放物理连接与在线监听器。 */
+  const stopWhenUnused = (): void => {
+    if (subscribers.size > 0) return
+    if (reconnectTimer !== null) {
+      globalThis.clearTimeout(reconnectTimer)
+      reconnectTimer = null
+    }
+    const previous = controller
+    controller = null
+    connected = false
+    previous?.abort()
+    if (onlineListenerInstalled) {
+      globalThis.removeEventListener?.('online', reconnectWhenOnline)
+      onlineListenerInstalled = false
+    }
+    cursor = ''
+    openedConnections = 0
+  }
+
+  return {
+    subscribe: (subscriber) => {
+      if (disposed) return () => undefined
+      if (subscribers.size === 0 && subscriber.lastEventId) {
+        cursor = subscriber.lastEventId
+      }
+      subscribers.add(subscriber)
+      installOnlineListener()
+      if (connected) {
+        subscriber.onOpen?.({ lastEventId: cursor, reconnected: false })
+      } else {
+        void connect()
+      }
+      return () => {
+        subscribers.delete(subscriber)
+        stopWhenUnused()
+      }
+    },
+    dispose: () => {
+      if (disposed) return
+      disposed = true
+      subscribers.clear()
+      stopWhenUnused()
+    }
+  }
 }
 
 /** 记录事件标识并判断该帧是否已经交付过。 */

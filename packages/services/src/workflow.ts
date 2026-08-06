@@ -33,8 +33,10 @@ import {
 import type { WorkflowRuntimePort } from './workflowPort'
 import { strictRuntimeData } from './workflowRuntimeCodec'
 import {
+  createWorkflowSseTransport,
   createWorkflowSseSubscription,
-  type WorkflowSseFrame
+  type WorkflowSseFrame,
+  type WorkflowSseTransport
 } from './workflowSse'
 import type {
   WorkflowEventSubscription,
@@ -148,6 +150,7 @@ export function createWorkflowRuntime(
   dependencies: WorkflowRuntimeDependencies = {}
 ): WorkflowRuntimePort {
   const subscriptions = new Set<WorkflowEventSubscription>()
+  const sseTransport = createWorkflowSseTransport(workflowEventsUrl(backend))
 
   /**
    * 通过组合根注入的公共物料图端口加载工作流物料来源（MaterialSource）目录。
@@ -224,7 +227,7 @@ export function createWorkflowRuntime(
       onInvalidate,
       options = {}
     ) => createWorkflowSseSubscription({
-      url: workflowEventsUrl(backend),
+      transport: sseTransport,
       lastEventId: options.lastEventId,
       connectionErrorLabel: 'Authoring SSE 连接失败',
       subscriptions,
@@ -331,7 +334,7 @@ export function createWorkflowRuntime(
       runtimeRequest(workflowNodeJobFeedbackPath(jobUuid, query)),
     subscribeWorkflowRuntime: (onInvalidate, options = {}) =>
       subscribeWorkflowRuntime(
-        backend,
+        sseTransport,
         subscriptions,
         onInvalidate,
         options
@@ -345,13 +348,13 @@ export function createWorkflowRuntime(
 
 /** 建立工作流运行（Workflow Runtime）失效事件订阅。 */
 function subscribeWorkflowRuntime(
-  backend: BackendConfig,
+  sseTransport: WorkflowSseTransport,
   subscriptions: Set<WorkflowEventSubscription>,
   onInvalidate: (event: WorkflowRuntimeInvalidationEvent) => void,
   options: WorkflowRuntimeSubscriptionOptions
 ): WorkflowEventSubscription {
   return createWorkflowSseSubscription({
-    url: workflowEventsUrl(backend),
+    transport: sseTransport,
     lastEventId: options.lastEventId,
     connectionErrorLabel: 'Workflow Runtime SSE 连接失败',
     disconnectedMessage: 'Workflow Runtime SSE 连接已断开，正在重连',

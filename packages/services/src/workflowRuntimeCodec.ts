@@ -1,7 +1,10 @@
 import { ServiceError } from './errors'
+import { workflowEnvelopeBusinessError } from './workflowEnvelope'
 
 /** 严格解包工作流运行（Workflow Runtime）接口响应。 */
 export function strictRuntimeData<Value>(raw: unknown): Value {
+  const businessError = workflowEnvelopeBusinessError(raw)
+  if (businessError) throw businessError
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
     throw invalidRuntimeResponse()
   }

@@ -1,6 +1,7 @@
 import type {
   WorkflowNodeJob,
-  WorkflowNodeJobFeedback
+  WorkflowNodeJobFeedback,
+  WorkflowTaskRuntimeEvent
 } from '@unilab/services'
 import { describe, expect, it } from 'vitest'
 
@@ -50,11 +51,70 @@ function registerWorkflowTaskOutputProjectionTests(): void {
     })
   })
 
+  it('projects the durable journal into readable dispatch and result events', () => {
+    const events: WorkflowTaskRuntimeEvent[] = [
+      {
+        sequence: 42,
+        workflow_task_uuid: 'task-1',
+        workflow_node_job_uuid: job.uuid,
+        workflow_node_uuid: job.workflow_node_uuid,
+        kind: 'job_transition',
+        from_status: 'pending',
+        to_status: 'dispatched',
+        data: { reason: 'dependencies_satisfied' },
+        create_time: '2026-08-03T06:00:01Z',
+        executor_kind: 'action',
+        attempt: 1,
+        param: job.param
+      },
+      {
+        sequence: 44,
+        workflow_task_uuid: 'task-1',
+        workflow_node_job_uuid: job.uuid,
+        workflow_node_uuid: job.workflow_node_uuid,
+        kind: 'job_transition',
+        from_status: 'dispatched',
+        to_status: 'succeeded',
+        data: {},
+        create_time: '2026-08-03T06:00:03Z',
+        executor_kind: 'action',
+        attempt: 1,
+        return_info: job.return_info,
+        error_info: []
+      }
+    ]
+
+    expect(projectWorkflowTaskEvents(events, [], [job])).toEqual([
+      expect.objectContaining({
+        key: 'runtime-42',
+        seq: 42,
+        type: 'node.dispatched',
+        nodeId: 'transfer',
+        detail: expect.objectContaining({
+          param: job.param,
+          from_status: 'pending',
+          to_status: 'dispatched'
+        })
+      }),
+      expect.objectContaining({
+        key: 'runtime-44',
+        seq: 44,
+        type: 'node.result',
+        nodeId: 'transfer',
+        detail: expect.objectContaining({
+          return_info: job.return_info,
+          from_status: 'dispatched',
+          to_status: 'succeeded'
+        })
+      })
+    ])
+  })
+
   /**
    * 参数：一个权威作业反馈与对应作业。返回：无；断言投影保留序号、节点和载荷。
-   * 异常：若输出重新依赖尚不存在的任务级事件页面，测试失败。
+   * 异常：若兼容反馈因启用任务级事件页面而丢失，测试失败。
    */
-  it('projects authoritative per-Job feedback without a Task event page', () => {
+  it('retains per-Job feedback that has no matching journal event', () => {
     const feedback: WorkflowNodeJobFeedback = {
       uuid: 'feedback-3',
       create_time: '2026-08-03T06:00:02Z',
@@ -69,7 +129,7 @@ function registerWorkflowTaskOutputProjectionTests(): void {
       idempotency_key: 'feedback-3'
     }
 
-    expect(projectWorkflowTaskEvents([feedback], [job])).toEqual([
+    expect(projectWorkflowTaskEvents([], [feedback], [job])).toEqual([
       {
         key: 'feedback-feedback-3',
         seq: 3,
