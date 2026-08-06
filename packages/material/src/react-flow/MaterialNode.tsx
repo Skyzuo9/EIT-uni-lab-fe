@@ -3,7 +3,7 @@ import type { NodeProps } from 'reactflow'
 import { useMaterialStore } from '../MaterialStoreProvider'
 import { materialScopeClassName } from '../materialStyles'
 import { isDecorativeDeckRail } from '../sitePresentation'
-import type { MaterialSite } from '../types'
+import type { MaterialAggregate, MaterialSite } from '../types'
 import {
   readDefaultMaterialNodePresentation,
   shouldRenderDefaultEquipmentCard,
@@ -35,6 +35,25 @@ export function MaterialNode({
     )
   }
 
+  return (
+    <MaterialNodePresentation
+      aggregate={aggregate}
+      selected={selected}
+    />
+  )
+}
+
+/**
+ * 把一个已解析物料（Material）聚合投影为二维节点，保持状态读取与纯展示分离。
+ */
+export function MaterialNodePresentation({
+  aggregate,
+  selected
+}: {
+  aggregate: MaterialAggregate
+  selected: boolean
+}): React.JSX.Element {
+
   const occupied = aggregate.sites.reduce(
     (total, site) => total + site.occupiedMaterialIds.length,
     0
@@ -51,6 +70,9 @@ export function MaterialNode({
   const presentation = readDefaultMaterialNodePresentation(aggregate)
   const renderDefaultEquipmentCard =
     shouldRenderDefaultEquipmentCard(aggregate, visual)
+  const hasVisibleSites = aggregate.sites.some(
+    (site) => site.visible !== false
+  )
 
   if (visual.physical || isDeck || isLabware || isStation || isTrash) {
     return (
@@ -90,7 +112,7 @@ export function MaterialNode({
             <strong>废弃物</strong>
           </div>
         )}
-        {(isDeck || isLabware) && (
+        {hasVisibleSites && (
           <div className="material-flow-node__sites">
             {isLabware ? (
               <LabwareSites
