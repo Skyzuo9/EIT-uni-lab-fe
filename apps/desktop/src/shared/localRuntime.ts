@@ -4,6 +4,28 @@ export type LocalRuntimePathKind =
   | 'szlab'
   | 'environment'
   | 'simulator'
+  | 'edgeExecutable'
+  | 'edgeWorkingDirectory'
+
+export type LocalRuntimeEdgeCommandMode = 'generated' | 'custom'
+
+export interface LocalRuntimeEnvironmentVariable {
+  name: string
+  value: string
+}
+
+export interface LocalRuntimeCustomEdgeCommand {
+  executable: string
+  workingDirectory: string
+  args: string[]
+  environment: LocalRuntimeEnvironmentVariable[]
+}
+
+export interface LocalRuntimeCommandPreview {
+  executable: string
+  args: string[]
+  cwd: string
+}
 
 export interface LocalRuntimeLaunchConfig {
   graphPath: string
@@ -11,6 +33,8 @@ export interface LocalRuntimeLaunchConfig {
   szlabProjectPath: string
   environmentPath: string
   simulatorProjectPath: string
+  edgeCommandMode: LocalRuntimeEdgeCommandMode
+  customEdgeCommand: LocalRuntimeCustomEdgeCommand
 }
 
 export type LocalRuntimeMode = 'managed' | 'development'
@@ -57,6 +81,27 @@ export interface LocalRuntimeLogEntry {
 export interface LocalRuntimeLogsSnapshot {
   readAt: number
   entries: LocalRuntimeLogEntry[]
+}
+
+export interface LocalRuntimeLogCursor {
+  fileId: string
+  offset: number
+}
+
+export interface LocalRuntimeLogQuery {
+  kind: LocalRuntimeProcessKind
+  cursor: LocalRuntimeLogCursor | null
+}
+
+export interface LocalRuntimeLogBatch extends LocalRuntimeLogEntry {
+  readAt: number
+  cursor: LocalRuntimeLogCursor | null
+  reset: boolean
+}
+
+export interface LocalRuntimeOpenLogResult {
+  opened: boolean
+  error?: string
 }
 
 export type LocalRuntimePhase =

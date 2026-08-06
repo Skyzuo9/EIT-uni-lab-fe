@@ -2,6 +2,7 @@ import {
   composePoses,
   IDENTITY_POSE,
   relativePose,
+  shouldRenderSiteBounds,
   type LabPose,
   type MaterialAggregate,
   type MaterialAnchor,
@@ -13,6 +14,7 @@ import type { SceneGraph } from '@unilab/pascal-host'
 
 import {
   LabDeviceNodeSchema,
+  LabMaterialTransferLayerNodeSchema,
   LabTableNodeSchema,
   isLabDeviceNode,
   isLabTableNode,
@@ -20,6 +22,7 @@ import {
   type LabPlacementRef
 } from './schema'
 import { inferModelFormat } from './modelFormat'
+import type { SceneCameraView } from './sceneCameraRequest'
 import {
   labLinkPoseToThree,
   labPoseToPascal,
@@ -31,6 +34,7 @@ import {
 const SITE_ID = 'site_unilab'
 const BUILDING_ID = 'building_unilab'
 const LEVEL_ID = 'level_unilab'
+const MATERIAL_TRANSFER_LAYER_ID = 'lab-material-transfer-layer-unilab'
 
 export interface MaterialSceneMove {
   materialId: MaterialId
@@ -39,7 +43,34 @@ export interface MaterialSceneMove {
 
 export interface MaterialSceneProjectionOptions {
   fitSceneRevision?: number
+  fitSceneView?: SceneCameraView
   showSites?: boolean
+  showMaterialTransfers?: boolean
+  materialTransferRoutes?: readonly MaterialTransferSceneRoute[]
+}
+
+export interface MaterialTransferSceneEndpoint {
+  ownerMaterialId: string
+  siteKey: string
+}
+
+export interface MaterialTransferSceneRoute {
+  id: string
+  workflowNodeUuid: string
+  label: string
+  source: MaterialTransferSceneEndpoint
+  target: MaterialTransferSceneEndpoint
+  executorId: string
+  status:
+    | 'planned'
+    | 'pending'
+    | 'running'
+    | 'canceling'
+    | 'succeeded'
+    | 'failed'
+    | 'canceled'
+    | 'attention'
+  selected?: boolean
 }
 
 export interface MaterialRenderingSnapshot {
@@ -94,9 +125,19 @@ export function materialAggregatesToSceneGraph(
   )
   const nodes: Record<string, unknown> = {}
   const labNodeIds: string[] = []
+  const transferLayer = options.showMaterialTransfers === false
+    ? null
+    : projectMaterialTransferSceneLayer(
+        aggregates,
+        options.materialTransferRoutes ?? []
+      )
   for (const aggregate of aggregates) {
     const id = sceneObjectIdByMaterialId[aggregate.material.id]
     const rendering = readMaterialRendering(aggregate)
+    const materialConfig = readRecord(aggregate.material.config)
+    const logicalMount =
+      materialConfig.logical_mount === true ||
+      materialConfig.logicalMount === true
     const projected = projectPlacement(
       aggregate,
       aggregatesById,
@@ -122,20 +163,21 @@ export function materialAggregatesToSceneGraph(
         worldPositionMm: worldPose.positionMm,
         worldRotationDegXYZ: worldPose.rotationDegXYZ,
         footprintMm: rendering.footprintMm,
-        sites:
-          options.showSites === false
-            ? []
-            : aggregate.sites.map((site) => ({
-                id: site.id,
-                key: site.key,
-                name: site.name,
-                kind: site.kind,
-                shape: site.shape,
-                positionMm: site.poseInAnchor.positionMm,
-                sizeMm: site.sizeMm,
-                visible: site.visible !== false,
-                visualState: site.visual?.state ?? 'empty'
-              }))
+        showSites: options.showSites !== false,
+        sites: aggregate.sites
+          .filter((site) => shouldRenderSiteBounds(aggregate, site))
+          .map((site) => ({
+            id: site.id,
+            key: site.key,
+            name: site.name,
+            kind: site.kind,
+            shape: site.shape,
+            positionMm: site.poseInAnchor.positionMm,
+            sizeMm: site.sizeMm,
+            visible: site.visible !== false,
+            occupied: site.occupiedMaterialIds.length > 0,
+            visualState: site.visual?.state ?? 'empty'
+          }))
       }
     }
 
@@ -148,6 +190,7 @@ export function materialAggregatesToSceneGraph(
       nodes[id] = LabDeviceNodeSchema.parse({
         ...common,
         type: 'lab-device',
+        renderBody: !logicalMount,
         deviceType: rendering.kind || 'custom',
         templateUuid: aggregate.material.sourceTemplateId,
         rosDeviceName: sanitizeRosName(
@@ -188,7 +231,8 @@ export function materialAggregatesToSceneGraph(
     parentId: null,
     visible: true,
     children: [BUILDING_ID],
-    fitSceneRevision: options.fitSceneRevision ?? 0
+    fitSceneRevision: options.fitSceneRevision ?? 0,
+    fitSceneView: options.fitSceneView ?? 'default'
   }
   nodes[BUILDING_ID] = {
     id: BUILDING_ID,
@@ -209,7 +253,23 @@ export function materialAggregatesToSceneGraph(
     parentId: BUILDING_ID,
     visible: true,
     level: 0,
-    children: labNodeIds
+    children: labNodeIds,
+    materialTransferLayer:
+      transferLayer && (
+        transferLayer.routes.length > 0 ||
+        transferLayer.unresolvedRouteIds.length > 0
+      )
+        ? LabMaterialTransferLayerNodeSchema.parse({
+            id: MATERIAL_TRANSFER_LAYER_ID,
+            type: 'lab-material-transfer-layer',
+            object: 'node',
+            name: '物料转运投影',
+            parentId: LEVEL_ID,
+            visible: true,
+            metadata: {},
+            ...transferLayer
+          })
+        : null
   }
 
   return {
@@ -217,6 +277,157 @@ export function materialAggregatesToSceneGraph(
     rootNodeIds: [SITE_ID],
     installedPlugins: ['unilab.lab']
   }
+}
+
+/**
+ * 将工作流（Workflow）路线的稳定物料（Material）与库位（Site）身份解析为
+ * Pascal 世界坐标。
+ *
+ * @param aggregates 操作系统（OS）物料图提供的权威只读聚合。
+ * @param routes 已发布标准转运工作流派生的逻辑路线。
+ * @returns 可渲染路线与失败关闭的未解析路线身份；不修改物料位置。
+ */
+export function projectMaterialTransferSceneLayer(
+  aggregates: readonly MaterialAggregate[],
+  routes: readonly MaterialTransferSceneRoute[]
+): {
+  routes: Array<{
+    id: string
+    workflowNodeUuid: string
+    label: string
+    sourceOwnerMaterialId: string
+    sourceSiteId: string
+    sourceSiteKey: string
+    targetOwnerMaterialId: string
+    targetSiteId: string
+    targetSiteKey: string
+    executorId: string
+    status: MaterialTransferSceneRoute['status']
+    selected: boolean
+    points: Vector3Tuple[]
+  }>
+  unresolvedRouteIds: string[]
+} {
+  const aggregatesById = new Map(
+    aggregates.flatMap((aggregate) => {
+      const config = readRecord(aggregate.material.config)
+      const identities = new Set([
+        aggregate.material.id,
+        optionalString(config.sourceIdentity)
+      ].filter((value): value is string => Boolean(value)))
+      return [...identities].map((identity) => [identity, aggregate] as const)
+    })
+  )
+  const canonicalAggregatesById = Object.fromEntries(
+    aggregates.map((aggregate) => [aggregate.material.id, aggregate])
+  )
+  const projected = []
+  const unresolvedRouteIds: string[] = []
+
+  for (const route of routes) {
+    const source = resolveTransferEndpoint(
+      route.source,
+      aggregatesById,
+      canonicalAggregatesById
+    )
+    const target = resolveTransferEndpoint(
+      route.target,
+      aggregatesById,
+      canonicalAggregatesById
+    )
+    if (!source || !target) {
+      unresolvedRouteIds.push(route.id)
+      continue
+    }
+    projected.push({
+      id: route.id,
+      workflowNodeUuid: route.workflowNodeUuid,
+      label: route.label,
+      sourceOwnerMaterialId: source.ownerMaterialId,
+      sourceSiteId: source.siteId,
+      sourceSiteKey: source.siteKey,
+      targetOwnerMaterialId: target.ownerMaterialId,
+      targetSiteId: target.siteId,
+      targetSiteKey: target.siteKey,
+      executorId: route.executorId,
+      status: route.status,
+      selected: route.selected === true,
+      points: orthogonalTransferPath(source.position, target.position)
+    })
+  }
+
+  return { routes: projected, unresolvedRouteIds }
+}
+
+export function orthogonalTransferPath(
+  source: Vector3Tuple,
+  target: Vector3Tuple
+): Vector3Tuple[] {
+  const clearanceY = Math.max(source[1], target[1]) + 0.38
+  const midpointX = (source[0] + target[0]) / 2
+  const points: Vector3Tuple[] = [
+    source,
+    [source[0], clearanceY, source[2]],
+    [midpointX, clearanceY, source[2]],
+    [midpointX, clearanceY, target[2]],
+    [target[0], clearanceY, target[2]],
+    target
+  ]
+  return points.filter((point, index) =>
+    index === 0 || !sameVector(point, points[index - 1] as Vector3Tuple)
+  )
+}
+
+/**
+ * 解析一端转运引用，且只接受稳定物料身份和库位 UUID/`key`。
+ *
+ * @param endpoint 工作流参数中的物料所有者身份和库位身份。
+ * @param aggregatesByIdentity 由物料 UUID 与后端 `sourceIdentity` 建立的索引。
+ * @param aggregatesById 用于组合父子放置坐标的规范物料 UUID 索引。
+ * @returns 可定位端点；任何身份缺失、显示名称匹配或非根锚点均返回空。
+ */
+function resolveTransferEndpoint(
+  endpoint: MaterialTransferSceneEndpoint,
+  aggregatesByIdentity: ReadonlyMap<string, MaterialAggregate>,
+  aggregatesById: Readonly<Record<MaterialId, MaterialAggregate>>
+): {
+  ownerMaterialId: string
+  siteId: string
+  siteKey: string
+  position: Vector3Tuple
+} | null {
+  const owner = aggregatesByIdentity.get(endpoint.ownerMaterialId)
+  if (!owner) return null
+  const site = owner.sites.find((candidate) =>
+    candidate.id === endpoint.siteKey ||
+    candidate.key === endpoint.siteKey
+  )
+  if (!site || site.anchor.kind !== 'root') return null
+  const centerPose = composePoses(
+    site.poseInAnchor,
+    {
+      positionMm: [
+        site.sizeMm[0] / 2,
+        site.sizeMm[1] / 2,
+        site.sizeMm[2] / 2
+      ],
+      rotationDegXYZ: [0, 0, 0]
+    }
+  )
+  const worldPose = composePoses(
+    resolveAggregateWorldPose(owner.material.id, aggregatesById),
+    centerPose
+  )
+  return {
+    ownerMaterialId: owner.material.id,
+    siteId: site.id,
+    siteKey: site.key,
+    position: labPoseToPascal(worldPose).position
+  }
+}
+
+function sameVector(left: Vector3Tuple, right: Vector3Tuple): boolean {
+  return left.every((value, index) => value === right[index])
 }
 
 export function sceneGraphToMaterialMoves(

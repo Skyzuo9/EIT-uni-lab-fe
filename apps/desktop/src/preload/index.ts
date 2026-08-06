@@ -1,10 +1,30 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type {
-  LocalRuntimeLaunchConfig,
+  DeviceCardActionRun,
+  DeviceCardAgentEnvironmentInfo,
+  DeviceCardAuthoringContext,
+  DeviceCardAuthoringProfile,
+  DeviceCardAuthoringSessionStatus,
+  DeviceCardAuthoringTargetRequest,
+  DeviceCardAuthoringTargetResponse,
+  DeviceCardBounds,
+  DeviceCardHostActionRequest,
+  DeviceCardWorkspaceStatus,
+  InstalledDeviceCard,
+  OpenDeviceCardRequest,
+  OpenDeviceCardWorkspaceRequest
+} from '@unilab/device-card-sdk'
+import type {
   DevicePackageTrustInfo,
+  LocalRuntimeLaunchConfig,
+  LocalRuntimeCommandPreview,
+  LocalRuntimeLogBatch,
+  LocalRuntimeLogQuery,
   LocalRuntimeLogsSnapshot,
   LocalRuntimeModeInfo,
+  LocalRuntimeOpenLogResult,
   LocalRuntimePathKind,
+  LocalRuntimeProcessKind,
   LocalRuntimeSnapshot
 } from '../shared/localRuntime'
 import type {
@@ -44,6 +64,11 @@ export interface SaveFilePayload {
   defaultName?: string
 }
 
+export interface SaveBinaryFilePayload {
+  content: Uint8Array
+  defaultName?: string
+}
+
 // 打开文件的入参:accept 指定对话框过滤的文件类型,缺省为 JSON
 export interface OpenFilePayload {
   accept?: 'json' | 'python'
@@ -65,15 +90,119 @@ const api = {
       ipcRenderer.invoke('file:open', payload),
     // 保存文本到本地文件(path 为 null 时弹出"另存为"),取消返回 null
     save: (payload: SaveFilePayload): Promise<SavedFile | null> =>
-      ipcRenderer.invoke('file:save', payload)
+      ipcRenderer.invoke('file:save', payload),
+    // 保存二进制文件，始终弹出"另存为"，避免 renderer 指定任意覆盖路径
+    saveBinary: (payload: SaveBinaryFilePayload): Promise<SavedFile | null> =>
+      ipcRenderer.invoke('file:saveBinary', payload)
+  },
+  deviceCards: {
+    list: (): Promise<InstalledDeviceCard[]> =>
+      ipcRenderer.invoke('device-cards:list'),
+    importCard: (): Promise<InstalledDeviceCard | null> =>
+      ipcRenderer.invoke('device-cards:import'),
+    agent: {
+      getInfo: (): Promise<DeviceCardAgentEnvironmentInfo> =>
+        ipcRenderer.invoke('device-cards:agent:getInfo'),
+      installCli: (): Promise<DeviceCardAgentEnvironmentInfo> =>
+        ipcRenderer.invoke('device-cards:agent:installCli'),
+      removeCli: (): Promise<DeviceCardAgentEnvironmentInfo> =>
+        ipcRenderer.invoke('device-cards:agent:removeCli'),
+      setBridgeEnabled: (
+        enabled: boolean
+      ): Promise<DeviceCardAgentEnvironmentInfo> =>
+        ipcRenderer.invoke('device-cards:agent:setBridgeEnabled', enabled)
+    },
+    authoring: {
+      prepare: (input: {
+        deviceId: string
+        profile: DeviceCardAuthoringProfile
+      }): Promise<DeviceCardAuthoringSessionStatus | null> =>
+        ipcRenderer.invoke('device-cards:authoring:prepare', input),
+      get: (): Promise<DeviceCardAuthoringSessionStatus | null> =>
+        ipcRenderer.invoke('device-cards:authoring:get'),
+      reveal: (path: string): Promise<void> =>
+        ipcRenderer.invoke('device-cards:authoring:reveal', path),
+      onTargetRequest: (
+        listener: (request: DeviceCardAuthoringTargetRequest) => void
+      ): (() => void) => {
+        const wrapped = (
+          _event: Electron.IpcRendererEvent,
+          request: DeviceCardAuthoringTargetRequest
+        ): void => listener(request)
+        ipcRenderer.on('device-cards:authoringTargetRequest', wrapped)
+        return () => ipcRenderer.removeListener(
+          'device-cards:authoringTargetRequest',
+          wrapped
+        )
+      },
+      resolveTargetRequest: (
+        response: DeviceCardAuthoringTargetResponse
+      ): void => ipcRenderer.send(
+        'device-cards:authoringTargetResponse',
+        response
+      )
+    },
+    workspace: {
+      get: (): Promise<DeviceCardWorkspaceStatus | null> =>
+        ipcRenderer.invoke('device-cards:workspace:get'),
+      open: (
+        context?: DeviceCardAuthoringContext
+      ): Promise<DeviceCardWorkspaceStatus | null> =>
+        ipcRenderer.invoke('device-cards:workspace:open', context),
+      close: (): Promise<void> =>
+        ipcRenderer.invoke('device-cards:workspace:close'),
+      rebuild: (): Promise<DeviceCardWorkspaceStatus> =>
+        ipcRenderer.invoke('device-cards:workspace:rebuild'),
+      install: (): Promise<InstalledDeviceCard> =>
+        ipcRenderer.invoke('device-cards:workspace:install'),
+      exportCard: (): Promise<SavedFile | null> =>
+        ipcRenderer.invoke('device-cards:workspace:export'),
+      preview: (request: OpenDeviceCardWorkspaceRequest): Promise<void> =>
+        ipcRenderer.invoke('device-cards:workspace:preview', request),
+      onStatus: (
+        listener: (status: DeviceCardWorkspaceStatus | null) => void
+      ): (() => void) => {
+        const wrapped = (
+          _event: Electron.IpcRendererEvent,
+          status: DeviceCardWorkspaceStatus | null
+        ): void => listener(status)
+        ipcRenderer.on('device-cards:workspaceStatus', wrapped)
+        return () => ipcRenderer.removeListener(
+          'device-cards:workspaceStatus',
+          wrapped
+        )
+      }
+    },
+    open: (request: OpenDeviceCardRequest): Promise<void> =>
+      ipcRenderer.invoke('device-cards:open', request),
+    updateBounds: (bounds: DeviceCardBounds): Promise<void> =>
+      ipcRenderer.invoke('device-cards:updateBounds', bounds),
+    setOccluded: (source: string, occluded: boolean): Promise<void> =>
+      ipcRenderer.invoke('device-cards:setOccluded', source, occluded),
+    updateState: (state: Record<string, unknown>): Promise<void> =>
+      ipcRenderer.invoke('device-cards:updateState', state),
+    close: (): Promise<void> => ipcRenderer.invoke('device-cards:close'),
+    resolveAction: (run: DeviceCardActionRun): Promise<void> =>
+      ipcRenderer.invoke('device-cards:resolveAction', run),
+    onActionRequest: (
+      listener: (request: DeviceCardHostActionRequest) => void
+    ): (() => void) => {
+      const wrapped = (
+        _event: Electron.IpcRendererEvent,
+        request: DeviceCardHostActionRequest
+      ): void => listener(request)
+      ipcRenderer.on('device-cards:actionRequest', wrapped)
+      return () => ipcRenderer.removeListener(
+        'device-cards:actionRequest',
+        wrapped
+      )
+    }
   },
   runtime: {
     selectPath: (kind: LocalRuntimePathKind): Promise<string | null> =>
       ipcRenderer.invoke('runtime:selectPath', kind),
     getDefaultEnvironmentPath: (): Promise<string | null> =>
       ipcRenderer.invoke('runtime:getDefaultEnvironmentPath'),
-    getSnapshot: (): Promise<LocalRuntimeSnapshot> =>
-      ipcRenderer.invoke('runtime:getSnapshot'),
     getModeInfo: (): Promise<LocalRuntimeModeInfo> =>
       ipcRenderer.invoke('runtime:getModeInfo'),
     inspectDevicePackage: (
@@ -84,7 +213,17 @@ const api = {
       config: LocalRuntimeLaunchConfig,
       expectedHash: string
     ): Promise<DevicePackageTrustInfo> =>
-      ipcRenderer.invoke('runtime:confirmDevicePackage', config, expectedHash),
+      ipcRenderer.invoke(
+        'runtime:confirmDevicePackage',
+        config,
+        expectedHash
+      ),
+    resolveGeneratedEdgeCommand: (
+      config: LocalRuntimeLaunchConfig
+    ): Promise<LocalRuntimeCommandPreview> =>
+      ipcRenderer.invoke('runtime:resolveGeneratedEdgeCommand', config),
+    getSnapshot: (): Promise<LocalRuntimeSnapshot> =>
+      ipcRenderer.invoke('runtime:getSnapshot'),
     startSimulator: (
       config: LocalRuntimeLaunchConfig
     ): Promise<LocalRuntimeSnapshot> =>
@@ -103,6 +242,12 @@ const api = {
       ipcRenderer.invoke('runtime:runAcceptance', config),
     readLogs: (): Promise<LocalRuntimeLogsSnapshot> =>
       ipcRenderer.invoke('runtime:readLogs'),
+    readLog: (query: LocalRuntimeLogQuery): Promise<LocalRuntimeLogBatch> =>
+      ipcRenderer.invoke('runtime:readLog', query),
+    openLogFile: (
+      kind: LocalRuntimeProcessKind
+    ): Promise<LocalRuntimeOpenLogResult> =>
+      ipcRenderer.invoke('runtime:openLogFile', kind),
     onSnapshot: (
       listener: (snapshot: LocalRuntimeSnapshot) => void
     ): (() => void) => {

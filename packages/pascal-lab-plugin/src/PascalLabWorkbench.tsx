@@ -1,4 +1,3 @@
-import { emitter } from '@pascal-app/core'
 import { useViewer } from '@pascal-app/viewer'
 import {
   PascalEditorHost,
@@ -21,6 +20,7 @@ import {
 
 import {
   type MaterialSceneMove,
+  type MaterialTransferSceneRoute,
   materialAggregatesToSceneGraph,
   sceneGraphToMaterialMoves
 } from './materialAggregateSceneBridge'
@@ -31,8 +31,10 @@ import {
 import { preparePascalLabPlugin } from './plugin'
 import {
   isLabDeviceNode,
+  type LabMaterialTransferLayerNode,
   isLabTableNode
 } from './schema'
+import type { SceneCameraView } from './sceneCameraRequest'
 
 export interface PascalLabWorkbenchProps {
   aggregates: readonly MaterialAggregate[]
@@ -40,6 +42,10 @@ export interface PascalLabWorkbenchProps {
   shapes?: MaterialShapeLibrary
   /** 统一控制 2D、2.5D 与 3D 中的库位/点位图层。 */
   showSites?: boolean
+  /** 工作流（Workflow）派生的只读物料（Material）转运路线。 */
+  materialTransferRoutes?: readonly MaterialTransferSceneRoute[]
+  showMaterialTransfers?: boolean
+  materialTransferProjectionError?: string | null
   viewMode?: '2d' | '2.5d' | '3d' | 'split'
   projectId?: string
   modelRuntime?: LabModelRuntime
@@ -53,10 +59,19 @@ export interface PascalLabWorkbenchProps {
   ) => void
 }
 
+/**
+ * 将物料图（Material Graph）及只读转运路线组合到 Pascal 2D/2.5D/3D 视图。
+ *
+ * @param props 物料聚合、形状、视图开关、选择和移动回调。
+ * @returns 不拥有物料位置权威的 Pascal 实验室工作台。
+ */
 export function PascalLabWorkbench({
   aggregates,
   shapes,
   showSites = true,
+  materialTransferRoutes = [],
+  showMaterialTransfers = true,
+  materialTransferProjectionError = null,
   viewMode = '3d',
   projectId = 'unilab-local-scene',
   modelRuntime,
@@ -66,18 +81,38 @@ export function PascalLabWorkbench({
   onMaterialMoves,
   onSelectionChange
 }: PascalLabWorkbenchProps): React.JSX.Element {
-  const [fitSceneRevision, setFitSceneRevision] = useState(0)
+  const [cameraRequest, setCameraRequest] = useState<{
+    revision: number
+    view: SceneCameraView
+  }>({ revision: 0, view: 'default' })
   const scene = useMemo(
     () =>
       materialAggregatesToSceneGraph(aggregates, {
-        fitSceneRevision,
-        showSites
+        fitSceneRevision: cameraRequest.revision,
+        fitSceneView: cameraRequest.view,
+        showSites,
+        showMaterialTransfers,
+        materialTransferRoutes
       }),
-    [aggregates, fitSceneRevision, showSites]
+    [
+      aggregates,
+      cameraRequest,
+      materialTransferRoutes,
+      showMaterialTransfers,
+      showSites
+    ]
   )
   const [saveStatus, setSaveStatus] = useState<
     'saved' | 'dirty' | 'saving'
   >('saved')
+  const transferLayer = (
+    scene.nodes.level_unilab as {
+      materialTransferLayer?: LabMaterialTransferLayerNode | null
+    } | undefined
+  )?.materialTransferLayer
+  const transferRouteCount = transferLayer?.routes.length ?? 0
+  const unresolvedTransferRouteCount =
+    transferLayer?.unresolvedRouteIds.length ?? 0
 
   const selectedSceneObjectIds = useMemo(
     () => materialIdsToSceneObjectIds(scene, selectedMaterialIds),
@@ -87,7 +122,6 @@ export function PascalLabWorkbench({
     () => materialIdsToSceneObjectIds(scene, highlightedMaterialIds),
     [highlightedMaterialIds, scene]
   )
-
   useEffect(() => {
     const state = useViewer.getState()
     if (!sameIds(state.selection.selectedIds, selectedSceneObjectIds)) {
@@ -155,6 +189,25 @@ export function PascalLabWorkbench({
         实验室 {viewMode.toUpperCase()} · Pascal
       </span>
       <span className="pascal-lab-toolbar__status">{statusLabel}</span>
+      {showMaterialTransfers && (
+        <span
+          className="pascal-lab-toolbar__transfer-status"
+          title={materialTransferProjectionError ?? (
+            unresolvedTransferRouteCount > 0
+              ? `${unresolvedTransferRouteCount} 条路线缺少可解析的库位（Site）坐标`
+              : undefined
+          )}
+        >
+          <i aria-hidden="true" />
+          {materialTransferProjectionError
+            ? '转运投影需检查'
+            : transferRouteCount > 0
+              ? `${transferRouteCount} 条物料转运路线`
+              : materialTransferRoutes.length > 0
+                ? '暂无可定位的转运路线'
+                : '选择工作流以显示转运路线'}
+        </span>
+      )}
       {viewMode !== '2d' && (
         <div className="pascal-lab-toolbar__actions">
           <button
@@ -163,8 +216,10 @@ export function PascalLabWorkbench({
             onClick={() => {
               useViewer.getState().setCameraMode('orthographic')
               requestAnimationFrame(() => {
-                emitter.emit('camera-controls:top-view')
-                setFitSceneRevision((revision) => revision + 1)
+                setCameraRequest(({ revision }) => ({
+                  revision: revision + 1,
+                  view: 'top'
+                }))
               })
             }}
           >
@@ -176,7 +231,10 @@ export function PascalLabWorkbench({
             onClick={() => {
               useViewer.getState().setCameraMode('perspective')
               requestAnimationFrame(() => {
-                setFitSceneRevision((revision) => revision + 1)
+                setCameraRequest(({ revision }) => ({
+                  revision: revision + 1,
+                  view: 'default'
+                }))
               })
             }}
           >
@@ -203,7 +261,8 @@ export function PascalLabWorkbench({
           prepare={prepare}
           readOnly={!editable}
           editorViewMode={pascalViewMode}
-          sceneTheme="night"
+          sceneTheme="studio"
+          showGrid
           floorplanOverlay={
             <MaterialCanvas
               floorplanOverlay

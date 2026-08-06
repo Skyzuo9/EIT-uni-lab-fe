@@ -8,8 +8,6 @@ import {
 import {
   ServiceError,
   type DeviceAction,
-  type DeviceActionInputSchema,
-  type DeviceActionTaskView,
   type WorkflowActionCatalogSnapshot,
   type WorkflowActionNodeTemplate,
   type WorkflowNodeJobFeedback,
@@ -21,28 +19,29 @@ import type { ManagedDevice } from '../../data/deviceCatalog'
 import { useDevices } from '../../hooks/useDevices'
 import {
   matchDeviceActionTemplate,
-  serializeDeviceActionInput,
-  supportsD1AS1,
-  type DeviceActionArgumentDraft
+  serializeDeviceActionInput
 } from './deviceActionRun'
 import styles from './DevicePanel.module.scss'
-
-type ArgumentDraft = DeviceActionArgumentDraft
-
-interface UnlockIntent {
-  deviceId: string
-  deviceName: string
-  actionName: string
-  actionRef: string
-  actionLabel: string
-  expectedJobId: string
-}
-
-interface UnlockOperation {
-  actionRef: string
-  state: 'pending' | 'success' | 'error'
-  message: string
-}
+import {
+  ConnectionSummary,
+  DeviceListItem,
+  DeviceWorkspace,
+  UnlockConfirmationDialog,
+  createArgumentDraft,
+  isTerminalDeviceActionTask,
+  projectDeviceActionTask,
+  readArgumentDraft,
+  writeArgumentDraft,
+  type ArgumentDraft,
+  type DeviceActionRunState,
+  type UnlockIntent,
+  type UnlockOperation
+} from './DevicePanelSupport'
+export {
+  DeviceActionAvailability,
+  DeviceLockControl,
+  UnlockConfirmationDialog
+} from './DevicePanelSupport'
 
 interface DeviceActionRunOperation {
   actionRef: string
@@ -59,6 +58,13 @@ interface DeviceActionFeedbackState {
   items: WorkflowNodeJobFeedback[]
 }
 
+/**
+ * 渲染设备目录、实时状态、动作参数与单动作任务控制面板。
+ *
+ * @returns 设备列表、空设备引导和当前设备动作工作区。
+ * @throws 服务上下文或数据服务异常由对应 Hook 与 React 错误边界传播。
+ * @safety 设备动作与人工解锁仍必须经过既有能力检查和确认流程。
+ */
 export default function DevicePanel(): React.JSX.Element {
   const { backend, connection } = useWorkbench()
   const services = useServices()
@@ -139,19 +145,22 @@ export default function DevicePanel(): React.JSX.Element {
     [actionCatalog, selectedAction]
   )
 
-  const loadActionCatalog = useCallback(async () => {
+  const loadActionCatalog = useCallback(async (signal?: AbortSignal) => {
     if (!canRunActionTask || connection !== 'connected') return
     setActionCatalogLoading(true)
     setActionCatalogError(null)
     try {
-      setActionCatalog(await services.workflow.getWorkflowActionCatalog())
+      const catalog = await services.workflow.getWorkflowActionCatalog(signal)
+      if (signal?.aborted) return
+      setActionCatalog(catalog)
     } catch (error) {
+      if (signal?.aborted) return
       setActionCatalog(null)
       setActionCatalogError(
         error instanceof Error ? error.message : 'Action 合同目录不可用'
       )
     } finally {
-      setActionCatalogLoading(false)
+      if (!signal?.aborted) setActionCatalogLoading(false)
     }
   }, [canRunActionTask, connection, services.workflow])
 
@@ -162,7 +171,9 @@ export default function DevicePanel(): React.JSX.Element {
       setActionCatalogLoading(false)
       return
     }
-    void loadActionCatalog()
+    const controller = new AbortController()
+    void loadActionCatalog(controller.signal)
+    return () => controller.abort()
   }, [backend.apiUrl, backend.id, canRunActionTask, connection, loadActionCatalog])
   useEffect(() => {
     if (!devices.length) {
@@ -355,6 +366,15 @@ export default function DevicePanel(): React.JSX.Element {
     services.workflow
   ])
 
+  /**
+   * 用冻结动作目录代际创建一个设备单动作工作流任务（WorkflowTask）。
+   *
+   * @param device 当前选择的设备。
+   * @param action 当前选择的动作。
+   * @param template 动作对应的工作流节点模板（WorkflowNodeTemplate）。
+   * @returns 提交及首次补水完成后返回无。
+   * @throws 异常在回调内投影为可见错误状态，不向事件循环传播。
+   */
   const handleRunAction = useCallback(async (
     device: ManagedDevice,
     action: DeviceAction,
@@ -366,6 +386,19 @@ export default function DevicePanel(): React.JSX.Element {
       runOperation?.state.kind === 'accepted' ||
       runOperation?.state.kind === 'running'
     ) return
+    const authorityId = actionCatalog.authorityId
+    const catalogFingerprint = actionCatalog.fingerprint
+    if (!authorityId || !catalogFingerprint) {
+      setRunOperation({
+        actionRef: action.actionRef,
+        state: {
+          kind: 'error',
+          message: '当前动作目录缺少权威标识或目录指纹，无法安全创建设备单动作任务',
+          retryable: false
+        }
+      })
+      return
+    }
     let input: Record<string, unknown>
     try {
       input = serializeDeviceActionInput(action, argumentDraft)
@@ -381,8 +414,8 @@ export default function DevicePanel(): React.JSX.Element {
       return
     }
     const signature = JSON.stringify({
-      authorityId: actionCatalog.authorityId,
-      fingerprint: actionCatalog.fingerprint,
+      authorityId,
+      fingerprint: catalogFingerprint,
       templateUuid: template.uuid,
       deviceId: device.id,
       input
@@ -398,8 +431,8 @@ export default function DevicePanel(): React.JSX.Element {
     })
     try {
       const view = await services.deviceActionTasks.createDeviceActionTask({
-        authority_id: actionCatalog.authorityId,
-        template_catalog_fingerprint: actionCatalog.fingerprint,
+        authority_id: authorityId,
+        template_catalog_fingerprint: catalogFingerprint,
         workflow_node_template_uuid: template.uuid,
         device_id: device.id,
         input,
@@ -549,10 +582,20 @@ export default function DevicePanel(): React.JSX.Element {
         ) : null}
         {devices.length === 0 ? (
           <div className="device-empty device-empty--compact">
-            <strong>等待 Edge 上报设备</strong>
-            <p>
-              Edge 连接后会自动上报在线设备、动作节点及其参数 Schema。
-            </p>
+            <strong>
+              {connection === 'connected'
+                ? '当前未配置仪器设备'
+                : '等待 Edge 上报设备'}
+            </strong>
+            {connection === 'connected' ? (
+              <p>
+                Edge 核心服务已连接。安装或配置设备包和设备图后，重新启动 Edge 并刷新设备。
+              </p>
+            ) : (
+              <p>
+                Edge 连接后会自动上报在线设备、动作节点及其参数 Schema。
+              </p>
+            )}
           </div>
         ) : (
           <ul className="device-list">
@@ -587,7 +630,8 @@ export default function DevicePanel(): React.JSX.Element {
             canRunActionTask={canRunActionTask}
             connection={connection}
             runState={
-              runOperation?.actionRef === selectedAction?.actionRef
+              runOperation !== null && selectedAction !== null &&
+              runOperation.actionRef === selectedAction.actionRef
                 ? runOperation.state
                 : null
             }
@@ -613,7 +657,11 @@ export default function DevicePanel(): React.JSX.Element {
         ) : (
           <div className="device-empty device-empty--detail">
             <strong>暂无可调试设备</strong>
-            <p>请确认 Edge 已启动并连接到本地桥。</p>
+            <p>
+              {connection === 'connected'
+                ? '当前可继续使用 Edge 核心服务；配置仪器设备后请重新启动并刷新。'
+                : '请确认 Edge 已启动并连接到本地桥。'}
+            </p>
           </div>
         )}
         </main>
@@ -630,988 +678,4 @@ export default function DevicePanel(): React.JSX.Element {
       ) : null}
     </>
   )
-}
-
-function ConnectionSummary({
-  connection,
-  backendName,
-  lastUpdated
-}: {
-  connection: 'disconnected' | 'connecting' | 'connected' | 'error'
-  backendName: string
-  lastUpdated: number | null
-}): React.JSX.Element {
-  const state =
-    connection === 'connected'
-      ? 'is-online'
-      : connection === 'connecting'
-        ? 'is-pending'
-        : 'is-offline'
-  const label =
-    connection === 'connected'
-      ? 'Edge 已连接'
-      : connection === 'connecting'
-        ? '正在连接 Edge'
-        : connection === 'error'
-          ? 'Edge 连接失败'
-          : 'Edge 未连接'
-  return (
-    <div className="edge-device__connection">
-      <span className={`edge-device__connection-state ${state}`}>
-        <span aria-hidden="true" />
-        {label}
-      </span>
-      <small>
-        {lastUpdated
-          ? `更新于 ${formatTime(lastUpdated)}`
-          : backendName}
-      </small>
-    </div>
-  )
-}
-
-function DeviceListItem({
-  device,
-  selected,
-  onSelect
-}: {
-  device: ManagedDevice
-  selected: boolean
-  onSelect: (deviceId: string) => void
-}): React.JSX.Element {
-  const lockedActionCount = device.actions.filter(
-    (action) => action.isBusy
-  ).length
-  return (
-    <li>
-      <button
-        type="button"
-        className={`device-list__item edge-device__device-item${
-          selected ? ' is-active' : ''
-        }`}
-        aria-pressed={selected}
-        onClick={() => onSelect(device.id)}
-      >
-        <span className="edge-device__device-icon">
-          <DeviceIcon device={device} />
-        </span>
-        <span className="edge-device__device-copy">
-          <span className="device-list__row">
-            <span
-              className={`device-list__status ${
-                device.online ? 'is-online' : 'is-offline'
-              }`}
-            />
-            <span className="device-list__name">{device.displayName}</span>
-            {lockedActionCount ? (
-              <span className="edge-device__list-lock">
-                已锁定
-              </span>
-            ) : null}
-          </span>
-          <span className="device-list__key">
-            {device.displayDetail} · {device.actions.length} 个动作
-            {lockedActionCount ? ` · ${lockedActionCount} 个占用` : ''}
-          </span>
-        </span>
-        <span className="edge-device__chevron" aria-hidden="true">›</span>
-      </button>
-    </li>
-  )
-}
-
-function DeviceWorkspace({
-  device,
-  selectedAction,
-  selectedActionRef,
-  argumentDraft,
-  onSelectAction,
-  onArgumentChange,
-  actionTemplate,
-  actionCatalogLoading,
-  actionCatalogError,
-  canRunActionTask,
-  connection,
-  runState,
-  activeRunActionRef,
-  onRunAction,
-  onCancelActionTask,
-  canForceUnlock,
-  unlockOperation,
-  onRequestUnlock
-}: {
-  device: ManagedDevice
-  selectedAction: DeviceAction | null
-  selectedActionRef: string | null
-  argumentDraft: ArgumentDraft
-  onSelectAction: (actionRef: string) => void
-  onArgumentChange: (name: string, value: string | boolean) => void
-  actionTemplate: WorkflowActionNodeTemplate | null
-  actionCatalogLoading: boolean
-  actionCatalogError: string | null
-  canRunActionTask: boolean
-  connection: 'disconnected' | 'connecting' | 'connected' | 'error'
-  runState: DeviceActionRunState | null
-  activeRunActionRef: string | null
-  onRunAction: (
-    action: DeviceAction,
-    template: WorkflowActionNodeTemplate
-  ) => void
-  onCancelActionTask: (taskUuid: string) => void
-  canForceUnlock: boolean
-  unlockOperation: UnlockOperation | null
-  onRequestUnlock: (device: ManagedDevice, action: DeviceAction) => void
-}): React.JSX.Element {
-  const lockedActionCount = device.actions.filter(
-    (action) => action.isBusy
-  ).length
-  return (
-    <div className="edge-device__workspace">
-      <header className="edge-device__identity">
-        <span className="edge-device__identity-icon">
-          <DeviceIcon device={device} />
-        </span>
-        <div>
-          <div className="edge-device__identity-title">
-            <h2>{device.displayName}</h2>
-          </div>
-          <p>{device.deviceKey || `${device.namespace}/${device.id}`}</p>
-        </div>
-        <div className="edge-device__identity-states">
-          {lockedActionCount ? (
-            <span className="edge-device__status-badge is-locked">
-              已锁定 · {lockedActionCount} 个动作
-            </span>
-          ) : null}
-          <span
-            className={`edge-device__status-badge ${
-              device.online ? 'is-online' : 'is-offline'
-            }`}
-          >
-            {device.online ? '在线' : '离线'}
-          </span>
-        </div>
-      </header>
-
-      <div className="edge-device__metrics" aria-label="设备目录信息">
-        <Metric
-          label="上报 Edge"
-          value={device.machineName}
-        />
-        <Metric label="命名空间" value={device.namespace || '—'} />
-        <Metric label="动作节点" value={`${device.actions.length}`} />
-        <Metric
-          label="当前状态"
-          value={lockedActionCount
-            ? `${lockedActionCount} 个动作占用`
-            : device.online ? '可编排' : '不可用'}
-          tone={lockedActionCount
-            ? 'warning'
-            : device.online ? 'success' : 'muted'}
-        />
-      </div>
-
-      <div className="edge-device__content">
-        <section className="edge-device__action-section">
-          <div className="edge-device__section-heading">
-            <div>
-              <span>动作目录</span>
-              <h3>Edge 上报的动作节点</h3>
-            </div>
-            <small>{device.actions.length} 个</small>
-          </div>
-          {device.actions.length ? (
-            <div className="edge-device__action-list">
-              {device.actions.map((action, index) => (
-                <button
-                  key={action.actionRef}
-                  type="button"
-                  className={`edge-device__action-node${
-                    action.actionRef === selectedActionRef ? ' is-active' : ''
-                  }`}
-                  aria-pressed={action.actionRef === selectedActionRef}
-                  aria-label={`${action.displayName} 动作节点`}
-                  title={action.displayName}
-                  disabled={
-                    activeRunActionRef !== null &&
-                    action.actionRef !== activeRunActionRef
-                  }
-                  onClick={() => onSelectAction(action.actionRef)}
-                >
-                  <span className="edge-device__node-index">
-                    {String(index + 1).padStart(2, '0')}
-                  </span>
-                  <span className="edge-device__node-copy">
-                    <strong>{action.displayName}</strong>
-                    <code>{action.actionRef}</code>
-                  </span>
-                  <span
-                    className={`edge-device__node-state ${
-                      action.isBusy ? 'is-busy' : 'is-ready'
-                    }`}
-                  >
-                    {action.isBusy ? '占用中' : '空闲'}
-                  </span>
-                </button>
-              ))}
-            </div>
-          ) : (
-            <div className="edge-device__no-actions">
-              Edge 已上报该设备，但没有可调试的动作节点。
-            </div>
-          )}
-        </section>
-
-        <section className="edge-device__debug-section">
-          {selectedAction ? (
-            <>
-              <div className="edge-device__section-heading">
-                <div>
-                  <span>动作参数预览</span>
-                  <h3 title={selectedAction.displayName}>
-                    {selectedAction.displayName}
-                  </h3>
-                </div>
-                <code>{selectedAction.actionName}</code>
-              </div>
-              <DeviceLockControl
-                action={selectedAction}
-                canForceUnlock={canForceUnlock}
-                operation={unlockOperation}
-                onRequestUnlock={() => {
-                  onRequestUnlock(device, selectedAction)
-                }}
-              />
-              <ActionParameterForm
-                action={selectedAction}
-                draft={argumentDraft}
-                disabled={
-                  runState?.kind === 'submitting' ||
-                  runState?.kind === 'accepted' ||
-                  runState?.kind === 'running'
-                }
-                onChange={onArgumentChange}
-              />
-              <DeviceActionAvailability
-                state={runState ?? deviceActionReadiness({
-                  action: selectedAction,
-                  device,
-                  template: actionTemplate,
-                  canRunActionTask,
-                  connection,
-                  catalogLoading: actionCatalogLoading,
-                  catalogError: actionCatalogError
-                })}
-                onRun={() => {
-                  if (actionTemplate) onRunAction(selectedAction, actionTemplate)
-                }}
-                onCancel={onCancelActionTask}
-              />
-            </>
-          ) : (
-            <div className="edge-device__no-actions">
-              选择一个动作节点后配置参数并运行。
-            </div>
-          )}
-        </section>
-      </div>
-    </div>
-  )
-}
-
-function deviceActionReadiness({
-  action,
-  device,
-  template,
-  canRunActionTask,
-  connection,
-  catalogLoading,
-  catalogError
-}: {
-  action: DeviceAction
-  device: ManagedDevice
-  template: WorkflowActionNodeTemplate | null
-  canRunActionTask: boolean
-  connection: 'disconnected' | 'connecting' | 'connected' | 'error'
-  catalogLoading: boolean
-  catalogError: string | null
-}): DeviceActionRunState {
-  if (!canRunActionTask) {
-    return {
-      kind: 'unavailable',
-      message: '当前服务尚未启用正式单 Action Task，请在工作流中运行'
-    }
-  }
-  if (connection !== 'connected' || !device.online) {
-    return {
-      kind: 'unavailable',
-      message: '设备或 Edge 当前离线，恢复连接后才能运行'
-    }
-  }
-  if (catalogLoading) {
-    return { kind: 'unavailable', message: '正在读取 A1 Action 合同目录…' }
-  }
-  if (catalogError) {
-    return { kind: 'unavailable', message: `Action 合同目录不可用：${catalogError}` }
-  }
-  if (!template) {
-    return {
-      kind: 'unavailable',
-      message: 'live Action 无法唯一匹配 A1 template，请在工作流中运行'
-    }
-  }
-  if (!supportsD1AS1(template)) {
-    return {
-      kind: 'unavailable',
-      message: '该动作包含物料或 Site 语义，请在工作流中运行'
-    }
-  }
-  return {
-    kind: 'ready',
-    message: action.isBusy
-      ? '当前动作被占用；提交后由 OS durable admission 排队'
-      : '参数将提交为正式 WorkflowTask / WorkflowNodeJob'
-  }
-}
-
-function projectDeviceActionTask(
-  view: DeviceActionTaskView,
-  feedback: WorkflowNodeJobFeedback[]
-): DeviceActionRunState {
-  const projection = {
-    taskUuid: view.task_uuid,
-    output: view.output,
-    feedback,
-    error: view.error_info
-  }
-  if (view.status === 'succeeded') {
-    return { kind: 'succeeded', message: '动作执行完成', ...projection }
-  }
-  if (view.status === 'failed' || view.status === 'timeout') {
-    return {
-      kind: 'failed',
-      message: view.status === 'timeout' ? '动作执行超时' : '动作执行失败',
-      ...projection
-    }
-  }
-  if (view.status === 'canceled') {
-    return { kind: 'canceled', message: '动作任务已取消', ...projection }
-  }
-  if (view.status === 'running' || view.status === 'canceling') {
-    return {
-      kind: 'running',
-      message: view.status === 'canceling'
-        ? '取消正在生效，等待设备终态'
-        : `设备正在执行 · Job ${view.job_status}`,
-      ...projection
-    }
-  }
-  return {
-    kind: 'accepted',
-    message: '任务已接受，正在等待设备',
-    ...projection
-  }
-}
-
-function isTerminalDeviceActionTask(status: string): boolean {
-  return ['succeeded', 'failed', 'canceled', 'timeout'].includes(status)
-}
-
-export type DeviceActionRunState =
-  | {
-      kind: 'ready' | 'unavailable' | 'submitting'
-      message: string
-    }
-  | {
-      kind: 'error'
-      message: string
-      retryable: boolean
-    }
-  | {
-      kind: 'accepted' | 'running' | 'succeeded' | 'failed' | 'canceled'
-      message: string
-      taskUuid: string
-      output?: Record<string, unknown>
-      feedback?: WorkflowNodeJobFeedback[]
-      error?: unknown[]
-    }
-
-export function DeviceActionAvailability({
-  state,
-  onRun,
-  onCancel
-}: {
-  state: DeviceActionRunState
-  onRun: () => void
-  onCancel?: (taskUuid: string) => void
-}): React.JSX.Element {
-  const [copied, setCopied] = useState(false)
-  const ready = state.kind === 'ready' || (
-    state.kind === 'error' && state.retryable
-  )
-  const terminal = state.kind === 'succeeded' ||
-    state.kind === 'failed' ||
-    state.kind === 'canceled'
-  const runnable = ready || terminal
-  const log = deviceActionExecutionLog(state)
-  useEffect(() => {
-    setCopied(false)
-  }, [log])
-  return (
-    <>
-      <div
-        className={`edge-device__debug-actions is-${state.kind}`}
-        role={state.kind === 'failed' ? 'alert' : 'status'}
-      >
-        <button
-          type="button"
-          className="edge-device__run-button"
-          disabled={!runnable}
-          onClick={onRun}
-        >
-          {state.kind === 'unavailable'
-            ? '请在工作流中运行'
-            : state.kind === 'submitting'
-              ? '正在创建正式任务…'
-              : state.kind === 'error' && state.retryable
-                ? '重试同一请求'
-                : terminal
-                  ? '再次运行'
-                  : '运行此动作'}
-        </button>
-        {'taskUuid' in state &&
-        (state.kind === 'accepted' || state.kind === 'running') &&
-        onCancel ? (
-          <button
-            type="button"
-            className="edge-device__cancel-button"
-            onClick={() => onCancel(state.taskUuid)}
-          >
-            取消任务
-          </button>
-        ) : null}
-        <span>{state.message}</span>
-      </div>
-      {'taskUuid' in state ? (
-        <div className="edge-device__execution" aria-live="polite">
-          <div className="edge-device__execution-head">
-            <span className={`edge-device__execution-state ${
-              deviceActionExecutionPresentation(state.kind).tone
-            }`}>
-              <span aria-hidden="true" />
-              {deviceActionExecutionPresentation(state.kind).label}
-            </span>
-            <span className={styles.executionTools}>
-              <code title={state.taskUuid}>
-                Task {shortIdentifier(state.taskUuid)}
-              </code>
-              {log ? (
-                <button
-                  type="button"
-                  className={styles.copyButton}
-                  data-copied={copied}
-                  onClick={() => {
-                    void navigator.clipboard.writeText(log).then(() => {
-                      setCopied(true)
-                    })
-                  }}
-                >
-                  {copied ? '已复制' : '复制'}
-                </button>
-              ) : null}
-            </span>
-          </div>
-          {log ? (
-            <pre aria-label="Action 运行日志">{log}</pre>
-          ) : (
-            <p>{deviceActionExecutionPresentation(state.kind).description}</p>
-          )}
-        </div>
-      ) : null}
-    </>
-  )
-}
-
-function deviceActionExecutionLog(state: DeviceActionRunState): string {
-  if (!('taskUuid' in state)) return ''
-  const projection: Record<string, unknown> = {}
-  if (state.feedback?.length) {
-    projection.events = state.feedback.map((item) => ({
-      sequence: item.sequence,
-      type: item.feedback_type,
-      data: item.data,
-      observed_at: item.observed_at
-    }))
-  }
-  if (state.output && Object.keys(state.output).length > 0) {
-    projection.result = state.output
-  }
-  if (state.error?.length) projection.error = state.error
-  return Object.keys(projection).length > 0
-    ? JSON.stringify(projection, null, 2)
-    : ''
-}
-
-function deviceActionExecutionPresentation(kind: DeviceActionRunState['kind']): {
-  label: string
-  description: string
-  tone: string
-} {
-  switch (kind) {
-    case 'succeeded':
-      return {
-        label: '执行成功',
-        description: '动作已由 OS 确认为成功。',
-        tone: 'is-success'
-      }
-    case 'failed':
-      return {
-        label: '执行失败',
-        description: 'OS 报告动作执行失败，请检查设备日志。',
-        tone: 'is-danger'
-      }
-    case 'canceled':
-      return {
-        label: '已停止',
-        description: 'OS 已确认动作停止。',
-        tone: 'is-muted'
-      }
-    case 'running':
-      return {
-        label: '执行中',
-        description: '动作已进入设备执行队列。',
-        tone: 'is-running'
-      }
-    default:
-      return {
-        label: '等待执行',
-        description: 'OS 已接受任务，等待动作调度。',
-        tone: 'is-pending'
-      }
-  }
-}
-
-export function DeviceLockControl({
-  action,
-  canForceUnlock,
-  operation,
-  onRequestUnlock
-}: {
-  action: DeviceAction
-  canForceUnlock: boolean
-  operation: UnlockOperation | null
-  onRequestUnlock: () => void
-}): React.JSX.Element | null {
-  const currentOperation = operation?.actionRef === action.actionRef
-    ? operation
-    : null
-  if (!action.isBusy) {
-    return currentOperation?.state === 'success' ? (
-      <div
-        className="edge-device__lock-result is-success"
-        role="status"
-      >
-        <strong>动作锁已释放</strong>
-        <span>{currentOperation.message}</span>
-      </div>
-    ) : null
-  }
-
-  const pending = currentOperation?.state === 'pending'
-  return (
-    <div className="edge-device__lock-panel" aria-label="设备动作锁状态">
-      <div className="edge-device__lock-copy">
-        <span className="edge-device__lock-icon" aria-hidden="true">
-          <LockIcon />
-        </span>
-        <div>
-          <strong>此动作被设备锁占用</strong>
-          <p>
-            {action.currentJobId
-              ? '锁持有者已确认；请先核对关联运行，再决定是否手动解锁。'
-              : '锁持有者信息缺失。为避免误释放新任务，当前只允许刷新设备状态。'}
-          </p>
-          {action.currentJobId ? (
-            <code title={action.currentJobId}>
-              Job {shortIdentifier(action.currentJobId)}
-            </code>
-          ) : null}
-        </div>
-      </div>
-      {canForceUnlock && action.currentJobId ? (
-        <button
-          type="button"
-          className="edge-device__unlock-button"
-          disabled={pending}
-          onClick={onRequestUnlock}
-        >
-          {pending ? '正在解锁…' : '手动解锁'}
-        </button>
-      ) : null}
-      {currentOperation ? (
-        <div
-          className={`edge-device__lock-result is-${currentOperation.state}`}
-          role={currentOperation.state === 'error' ? 'alert' : 'status'}
-        >
-          <span>{currentOperation.message}</span>
-        </div>
-      ) : null}
-    </div>
-  )
-}
-
-export function UnlockConfirmationDialog({
-  intent,
-  operation,
-  onCancel,
-  onConfirm
-}: {
-  intent: UnlockIntent
-  operation: UnlockOperation | null
-  onCancel: () => void
-  onConfirm: () => void
-}): React.JSX.Element {
-  const [confirmed, setConfirmed] = useState(false)
-  const confirmationRef = useRef<HTMLInputElement>(null)
-  const currentOperation = operation?.actionRef === intent.actionRef
-    ? operation
-    : null
-  const pending = currentOperation?.state === 'pending'
-
-  useEffect(() => {
-    setConfirmed(false)
-    confirmationRef.current?.focus()
-  }, [intent.actionRef, intent.expectedJobId])
-
-  return (
-    <div
-      className="edge-device__unlock-layer"
-      onKeyDown={(event) => {
-        if (event.key === 'Escape' && !pending) onCancel()
-      }}
-    >
-      <section
-        className="edge-device__unlock-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="device-unlock-title"
-        aria-describedby="device-unlock-description"
-      >
-        <header>
-          <span className="edge-device__unlock-dialog-icon" aria-hidden="true">
-            <LockIcon />
-          </span>
-          <div>
-            <h2 id="device-unlock-title">确认手动解锁</h2>
-            <p>{intent.deviceName} · {intent.actionLabel}</p>
-          </div>
-        </header>
-        <div className="edge-device__unlock-dialog-body">
-          <p id="device-unlock-description">
-            手动解锁不会证明物理动作已自然结束。OS 会请求取消当前动作，
-            并释放该 Action 的当前与排队 Job。
-          </p>
-          <div className="edge-device__unlock-warning" role="note">
-            只有在现场确认设备已经停止、无人仍在操作、相关工作流不会继续下发动作时，
-            才能继续。
-          </div>
-          <dl>
-            <div>
-              <dt>Action</dt>
-              <dd><code>{intent.actionRef}</code></dd>
-            </div>
-            <div>
-              <dt>当前 holder</dt>
-              <dd><code>{intent.expectedJobId}</code></dd>
-            </div>
-          </dl>
-          <label className="edge-device__unlock-confirmation">
-            <input
-              ref={confirmationRef}
-              type="checkbox"
-              checked={confirmed}
-              disabled={pending}
-              onChange={(event) => setConfirmed(event.target.checked)}
-            />
-            <span>我已确认设备处于安全状态，并理解此操作会取消关联 Job。</span>
-          </label>
-          {currentOperation?.state === 'error' ? (
-            <p className="edge-device__unlock-dialog-error" role="alert">
-              {currentOperation.message}。请刷新设备状态，确认 holder 后再重试。
-            </p>
-          ) : null}
-        </div>
-        <footer>
-          <button
-            type="button"
-            className="edge-device__unlock-cancel"
-            disabled={pending}
-            onClick={onCancel}
-          >
-            取消
-          </button>
-          <button
-            type="button"
-            className="edge-device__unlock-confirm"
-            disabled={!confirmed || pending}
-            onClick={onConfirm}
-          >
-            {pending ? '正在请求 OS…' : '确认并解锁'}
-          </button>
-        </footer>
-      </section>
-    </div>
-  )
-}
-
-function LockIcon(): React.JSX.Element {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <rect x="5" y="10" width="14" height="10" rx="2" />
-      <path d="M8 10V7a4 4 0 0 1 8 0v3" />
-      <path d="M12 14v2" />
-    </svg>
-  )
-}
-
-function Metric({
-  label,
-  value,
-  tone
-}: {
-  label: string
-  value: string
-  tone?: 'success' | 'warning' | 'muted'
-}): React.JSX.Element {
-  return (
-    <span className={`edge-device__metric${tone ? ` is-${tone}` : ''}`}>
-      <small>{label}</small>
-      <strong>{value}</strong>
-    </span>
-  )
-}
-
-function ActionParameterForm({
-  action,
-  draft,
-  disabled,
-  onChange
-}: {
-  action: DeviceAction
-  draft: ArgumentDraft
-  disabled: boolean
-  onChange: (name: string, value: string | boolean) => void
-}): React.JSX.Element {
-  const fields = Object.entries(action.inputSchema)
-  if (!fields.length) {
-    return (
-      <div className="edge-device__parameter-empty">
-        此动作不需要输入参数，可直接运行。
-      </div>
-    )
-  }
-  return (
-    <div className="edge-device__parameter-form">
-      {fields.map(([name, schema]) => (
-        <ActionField
-          key={name}
-          name={name}
-          schema={schema}
-          value={draft[name] ?? ''}
-          disabled={disabled}
-          onChange={onChange}
-        />
-      ))}
-    </div>
-  )
-}
-
-function ActionField({
-  name,
-  schema,
-  value,
-  disabled,
-  onChange
-}: {
-  name: string
-  schema: DeviceActionInputSchema
-  value: string | boolean
-  disabled: boolean
-  onChange: (name: string, value: string | boolean) => void
-}): React.JSX.Element {
-  const label = schema.title || name
-  if (schema.type === 'boolean') {
-    return (
-      <label className="edge-device__field edge-device__field--boolean">
-        <span>
-          {label}
-          {schema.required ? <em>必填</em> : null}
-        </span>
-        <input
-          type="checkbox"
-          checked={Boolean(value)}
-          disabled={disabled}
-          onChange={(event) => onChange(name, event.target.checked)}
-        />
-        {schema.description ? <small>{schema.description}</small> : null}
-      </label>
-    )
-  }
-  const isStructured = schema.type === 'object' || schema.type === 'array'
-  return (
-    <label className={`edge-device__field${isStructured ? ' is-wide' : ''}`}>
-      <span>
-        {label}
-        {schema.required ? <em>必填</em> : null}
-      </span>
-      {schema.enum?.length ? (
-        <select
-          value={String(value)}
-          disabled={disabled}
-          onChange={(event) => onChange(name, event.target.value)}
-        >
-          {schema.enum.map((option) => (
-            <option key={JSON.stringify(option)} value={String(option)}>
-              {String(option)}
-            </option>
-          ))}
-        </select>
-      ) : isStructured ? (
-        <textarea
-          rows={2}
-          value={String(value)}
-          disabled={disabled}
-          spellCheck={false}
-          onChange={(event) => onChange(name, event.target.value)}
-        />
-      ) : (
-        <input
-          type={
-            schema.type === 'number' || schema.type === 'integer'
-              ? 'number'
-              : 'text'
-          }
-          value={String(value)}
-          min={schema.minimum}
-          max={schema.maximum}
-          step={schema.type === 'integer' ? 1 : 'any'}
-          disabled={disabled}
-          onChange={(event) => onChange(name, event.target.value)}
-        />
-      )}
-      {schema.description ? <small>{schema.description}</small> : null}
-    </label>
-  )
-}
-
-function DeviceIcon({ device }: { device: ManagedDevice }): React.JSX.Element {
-  const text = [
-    device.id,
-    device.displayName,
-    device.machineName
-  ].join(' ').toLowerCase()
-  if (text.includes('camera') || text.includes('相机')) {
-    return (
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M4 7.5h3l1.4-2h7.2l1.4 2h3v11H4z" />
-        <circle cx="12" cy="13" r="3.4" />
-      </svg>
-    )
-  }
-  if (
-    text.includes('robot')
-    || text.includes('arm')
-    || text.includes('机械臂')
-  ) {
-    return (
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M5 19h14M8 19v-3.5l3-1.5 1.2-4.1" />
-        <circle cx="12.6" cy="8.5" r="1.7" />
-        <path d="m14 7.4 2.4-2.1 2.1 2.2-2.2 2.1M16.2 9.7l1.8 2.1" />
-      </svg>
-    )
-  }
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <rect x="4" y="5" width="16" height="14" rx="2" />
-      <path d="M8 9h8M8 13h5M17 13h.01" />
-    </svg>
-  )
-}
-
-function createArgumentDraft(
-  schema: Record<string, DeviceActionInputSchema>
-): ArgumentDraft {
-  return Object.fromEntries(
-    Object.entries(schema).map(([name, field]) => [
-      name,
-      draftValue(field)
-    ])
-  )
-}
-
-function readArgumentDraft(
-  storageKey: string | null,
-  fallback: ArgumentDraft
-): ArgumentDraft {
-  if (!storageKey || typeof globalThis.localStorage === 'undefined') {
-    return fallback
-  }
-  try {
-    const parsed = JSON.parse(
-      globalThis.localStorage.getItem(storageKey) ?? 'null'
-    ) as unknown
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      return fallback
-    }
-    const persisted = Object.fromEntries(
-      Object.entries(parsed).filter(
-        ([, value]) =>
-          typeof value === 'string' || typeof value === 'boolean'
-      )
-    ) as ArgumentDraft
-    return { ...fallback, ...persisted }
-  } catch {
-    return fallback
-  }
-}
-
-function writeArgumentDraft(
-  storageKey: string | null,
-  draft: ArgumentDraft
-): void {
-  if (!storageKey || typeof globalThis.localStorage === 'undefined') return
-  try {
-    globalThis.localStorage.setItem(storageKey, JSON.stringify(draft))
-  } catch {
-    // Storage may be unavailable in restricted browser contexts.
-  }
-}
-
-function draftValue(schema: DeviceActionInputSchema): string | boolean {
-  if (schema.type === 'boolean') return Boolean(schema.default)
-  if (schema.default !== undefined && schema.default !== null) {
-    if (schema.type === 'object' || schema.type === 'array') {
-      return JSON.stringify(schema.default, null, 2)
-    }
-    return String(schema.default)
-  }
-  if (schema.enum?.length) return String(schema.enum[0])
-  if (schema.type === 'object') return '{}'
-  if (schema.type === 'array') return '[]'
-  return ''
-}
-
-function formatTime(timestamp: number): string {
-  return new Intl.DateTimeFormat('zh-CN', {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit'
-  }).format(timestamp)
-}
-
-function shortIdentifier(value: string): string {
-  return value.length > 16
-    ? `${value.slice(0, 8)}…${value.slice(-6)}`
-    : value
 }

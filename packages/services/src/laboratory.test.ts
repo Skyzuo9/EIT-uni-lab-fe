@@ -32,6 +32,7 @@ describe('laboratory service', () => {
                     actionRef: 'pump-1.aspirate',
                     name: '吸液',
                     typeName: 'unilabos_msgs.action.Pump',
+                    riskLevel: 'dangerous',
                     inputSchema: {
                       volume: { type: 'number', default: 10 }
                     },
@@ -64,13 +65,41 @@ describe('laboratory service', () => {
             actionName: 'aspirate',
             actionRef: 'pump-1.aspirate',
             typeName: 'unilabos_msgs.action.Pump',
+            riskLevel: 'dangerous',
             isBusy: true,
             currentJobId: 'job-aspirate'
           })
         ]
       }
     ])
+    await expect(service.getDeviceCatalog()).resolves.toEqual([
+      {
+        deviceId: 'pump-1',
+        deviceTypeId: 'pump-1',
+        deviceKey: '/cell/pump-1',
+        namespace: '/cell',
+        label: '蠕动泵',
+        online: false,
+        actions: [
+          {
+            actionName: 'aspirate',
+            actionRef: 'pump-1.aspirate',
+            label: '吸液',
+            typeName: 'unilabos_msgs.action.Pump',
+            riskLevel: 'dangerous',
+            inputSchema: { volume: { type: 'number', default: 10 } },
+            outputSchema: {},
+            isBusy: true
+          }
+        ]
+      }
+    ])
     expect(requests).toEqual([
+      {
+        path: '/api/v1/devices',
+        method: undefined,
+        body: undefined
+      },
       {
         path: '/api/v1/devices',
         method: undefined,
@@ -182,6 +211,40 @@ describe('laboratory service', () => {
     })
   })
 
+  it('fails closed when Edge reports an unknown Action risk level', async () => {
+    const service = createLaboratoryService(
+      fixtureHttp({
+        '/api/v1/devices': {
+          code: 0,
+          data: {
+            schemaVersion: 'device-catalog/v1',
+            items: [{
+              id: 'heater-1',
+              deviceKey: '/devices/heater-1',
+              namespace: '/devices',
+              name: '加热器',
+              online: true,
+              actions: [{
+                id: 'heat',
+                actionRef: 'heater-1.heat',
+                name: '加热',
+                typeName: 'UniLabJsonCommand',
+                riskLevel: 'critical',
+                inputSchema: {},
+                outputSchema: {}
+              }]
+            }]
+          }
+        }
+      }),
+      getDefaultBackend('local-python')
+    )
+
+    await expect(service.getDeviceCatalog()).rejects.toMatchObject({
+      code: 'INVALID_ACTION_RISK_LEVEL'
+    })
+  })
+
   it('does not expose the retired direct Action Run transport', () => {
     const service = createLaboratoryService(
       fixtureHttp({}),
@@ -266,6 +329,37 @@ describe('laboratory service', () => {
         method: undefined,
         body: undefined
       }
+    ])
+  })
+
+  it('forwards caller cancellation to managed health and device reads', async () => {
+    const controller = new AbortController()
+    const observedSignals: Array<AbortSignal | null> = []
+    const http: HttpClient = {
+      request: async <ResponseValue>(
+        path: string,
+        init?: RequestInit
+      ): Promise<ResponseValue> => {
+        observedSignals.push(init?.signal ?? null)
+        return (path === '/api/v1/health'
+          ? { status: 'ok' }
+          : {
+              code: 0,
+              data: { schemaVersion: 'device-catalog/v1', items: [] }
+            }) as ResponseValue
+      }
+    }
+    const service = createLaboratoryService(
+      http,
+      getDefaultBackend('local-python')
+    )
+
+    await service.ping(controller.signal)
+    await service.getOnlineDevices(controller.signal)
+
+    expect(observedSignals).toEqual([
+      controller.signal,
+      controller.signal
     ])
   })
 })

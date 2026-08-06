@@ -37,6 +37,24 @@ describe('device action Runtime availability', () => {
     expect(markup).toContain('disabled')
   })
 
+  /** 验证零动作设备沿用正式运行入口，并以禁用状态解释不可执行原因。 */
+  it('keeps the run entry disabled when a device reports zero actions', () => {
+    const markup = renderToStaticMarkup(
+      <DeviceActionAvailability
+        state={{
+          kind: 'unavailable',
+          message: '该设备没有可运行的动作'
+        }}
+        disabledRunLabel="运行此动作"
+        onRun={() => {}}
+      />
+    )
+
+    expect(markup).toContain('运行此动作')
+    expect(markup).toContain('disabled')
+    expect(markup).toContain('该设备没有可运行的动作')
+  })
+
   it('separates HTTP acceptance from running and terminal result', () => {
     const pending = renderToStaticMarkup(
       <DeviceActionAvailability
@@ -118,7 +136,8 @@ describe('device Action lock controls', () => {
     currentJobId: 'job-active-1234567890',
     schema: null,
     inputSchema: {},
-    outputSchema: {}
+    outputSchema: {},
+    riskLevel: 'normal'
   }
 
   it('shows the existing holder and a discoverable manual unlock action', () => {

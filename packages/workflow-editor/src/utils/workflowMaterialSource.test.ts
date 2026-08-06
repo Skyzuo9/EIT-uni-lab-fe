@@ -12,20 +12,38 @@ import {
   updateMaterialSourceSelector
 } from './workflowMaterialSource'
 
+// 工作流 UUID 标识承载物料来源（MaterialSource）节点的测试创作图。
 const workflowUuid = '10000000-0000-4000-8000-000000000001'
+// 节点 UUID 标识测试中的唯一物料来源（MaterialSource）节点。
 const nodeUuid = '20000000-0000-4000-8000-000000000001'
+// 节点模板 UUID 标识物料来源框架节点合同。
 const templateUuid = '30000000-0000-4000-8000-000000000001'
+// 句柄模板 UUID 标识物料来源输出的物料占位符（ResourceSlot）。
 const handleUuid = '40000000-0000-4000-8000-000000000001'
+// 挂载物料 UUID 标识直接拥有候选库位（Site）的实例。
 const mountUuid = '50000000-0000-4000-8000-000000000001'
+// 固定物料 UUID 标识已有物料选择器中的具体物料（Material）。
 const fixedMaterialUuid = '50000000-0000-4000-8000-000000000002'
+// 资源模板 UUID 标识候选物料与库位兼容性使用的类型身份。
 const resourceTemplateUuid = '60000000-0000-4000-8000-000000000001'
+// 首个目录库位 UUID 字典序较小但 sort_order 较大，验证业务展示顺序。
 const lateSiteUuid = '70000000-0000-4000-8000-000000000001'
+// 第二目录库位 UUID 字典序较大但 sort_order 较小，验证排序优先级。
 const earlySiteUuid = '70000000-0000-4000-8000-000000000009'
+// 动作节点 UUID 标识消费物料占位符（ResourceSlot）的测试节点。
 const actionNodeUuid = '80000000-0000-4000-8000-000000000001'
+// 动作模板 UUID 标识测试中的类型化动作合同。
 const actionTemplateUuid = '81000000-0000-4000-8000-000000000001'
+// 动作目标句柄 UUID 标识接收物料占位符（ResourceSlot）的输入端口。
 const actionTargetHandleUuid = '82000000-0000-4000-8000-000000000001'
 
-describe('MaterialSource closed selector', () => {
+/**
+ * 注册物料来源（MaterialSource）闭合选择器测试。
+ *
+ * @returns 无。
+ * @throws 任一选择器或物料流断言失败时由 Vitest 报告。
+ */
+function registerMaterialSourceClosedSelectorTests(): void {
   it('creates a non-Action framework node with the closed selector defaults', () => {
     const created = createMaterialSourceNode(catalog(), emptyGraph(), {
       nodeUuid,
@@ -83,40 +101,10 @@ describe('MaterialSource closed selector', () => {
     })
   })
 
-  it('projects Sites in business order while canonicalizing candidate UUID persistence', () => {
-    const graph = createMaterialSourceNode(catalog(), emptyGraph(), {
-      nodeUuid,
-      name: 'assay_plate'
-    })
-    const updated = updateMaterialSourceSelector(catalog(), graph, nodeUuid, {
-      mode: 'existing',
-      resourceTemplateUuid,
-      mountUuid,
-      fixedMaterialUuid,
-      siteScope: 'candidates',
-      candidateSiteUuids: [earlySiteUuid, lateSiteUuid],
-      flowRole: 'reagent'
-    })
-    const projection = projectMaterialSourceEditor(
-      catalog(),
-      updated,
-      nodeUuid
-    )
-
-    expect(projection.sites.map((site) => site.uuid)).toEqual([
-      earlySiteUuid,
-      lateSiteUuid
-    ])
-    expect(updated.nodes[0].param).toEqual({
-      resource_template_uuid: resourceTemplateUuid,
-      mode: 'existing',
-      mount: { uuid: mountUuid },
-      material_uuid: fixedMaterialUuid,
-      site: null,
-      slot_range: [lateSiteUuid, earlySiteUuid].sort(),
-      flow_role: 'reagent'
-    })
-  })
+  it(
+    '库位（Site）保留 sort_order/UUID 业务顺序并规范化候选 UUID 持久化',
+    preservesCatalogSiteOrder
+  )
 
   it('clears fixed Material and enforces mutually exclusive Site forms for create_new', () => {
     const graph = createMaterialSourceNode(catalog(), emptyGraph(), {
@@ -220,10 +208,21 @@ describe('MaterialSource closed selector', () => {
         targetNodeUuid: '86000000-0000-4000-8000-000000000003',
         targetHandleUuid: actionTargetHandleUuid
       }
-    )).toThrow(/fan-out/i)
+    )).toThrow(/输出端口.*一个目标/i)
   })
-})
+}
 
+describe(
+  '物料来源（MaterialSource）闭合选择器',
+  registerMaterialSourceClosedSelectorTests
+)
+
+/**
+ * 构造物料来源（MaterialSource）测试使用的闭合目录快照。
+ *
+ * @returns 含框架模板、挂载物料、具体物料和两个按 sort_order 排列的库位（Site）目录。
+ * @throws 无。
+ */
 function catalog(): WorkflowMaterialSourceCatalogSnapshot {
   return {
     authorityId: 'os-local',
@@ -287,6 +286,62 @@ function catalog(): WorkflowMaterialSourceCatalogSnapshot {
       }
     ]
   }
+}
+
+/**
+ * 验证物料来源（MaterialSource）编辑投影保留公共物料图（MaterialGraph）的库位业务顺序，同时仅对持久化候选 UUID 规范排序。
+ *
+ * @returns 不返回值；展示顺序被 UUID 重排或候选 UUID 保存不稳定时断言失败。
+ */
+function preservesCatalogSiteOrder(): void {
+  const graph = createMaterialSourceNode(catalog(), emptyGraph(), {
+    nodeUuid,
+    name: 'assay_plate'
+  })
+  const updated = updateMaterialSourceSelector(catalog(), graph, nodeUuid, {
+    mode: 'existing',
+    resourceTemplateUuid,
+    mountUuid,
+    fixedMaterialUuid,
+    siteScope: 'candidates',
+    candidateSiteUuids: [earlySiteUuid, lateSiteUuid],
+    flowRole: 'reagent'
+  })
+  const projection = projectMaterialSourceEditor(
+    catalog(),
+    updated,
+    nodeUuid
+  )
+
+  expect(workflowSiteUuids(projection.sites)).toEqual([
+    earlySiteUuid,
+    lateSiteUuid
+  ])
+  expect(updated.nodes[0].param).toEqual({
+    resource_template_uuid: resourceTemplateUuid,
+    mode: 'existing',
+    mount: { uuid: mountUuid },
+    material_uuid: fixedMaterialUuid,
+    site: null,
+    slot_range: [lateSiteUuid, earlySiteUuid].sort(),
+    flow_role: 'reagent'
+  })
+}
+
+/**
+ * 提取工作流物料来源库位（Site）的稳定 UUID，并保持输入顺序。
+ *
+ * @param sites 物料来源（MaterialSource）编辑投影中的库位集合。
+ * @returns 按目录既有 sort_order、UUID 顺序排列的库位 UUID。
+ * @throws 不主动抛出异常。
+ */
+function workflowSiteUuids(
+  sites: WorkflowMaterialSourceCatalogSnapshot['sites']
+): string[] {
+  // 库位（Site）UUID 集合保存物料来源（MaterialSource）目录给出的稳定库位（Site）身份。
+  const uuids: string[] = []
+  for (const site of sites) uuids.push(site.uuid)
+  return uuids
 }
 
 function materialSourceTemplateWire(): Record<string, unknown> {

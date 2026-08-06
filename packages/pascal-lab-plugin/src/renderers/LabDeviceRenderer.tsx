@@ -4,6 +4,7 @@ import {
 } from '@pascal-app/core'
 import { useNodeEvents, useViewer } from '@pascal-app/viewer'
 import { Html } from '@react-three/drei'
+import { shouldShowMaterialLabelByDefault } from '@unilab/material/domain'
 import {
   useEffect,
   useLayoutEffect,
@@ -212,7 +213,9 @@ export default function LabDeviceRenderer({
   const isDeck = node.deviceType.includes('deck')
   const deckSurfaceProvidedByParent =
     isDeck && Boolean(node.attach.parentDeviceId)
-  const showPersistentTag = isEquipmentKind(node.deviceType)
+  const showPersistentTag = shouldShowMaterialLabelByDefault(
+    node.deviceType
+  )
 
   useRegistry(node.id, node.type, groupRef)
 
@@ -325,7 +328,7 @@ export default function LabDeviceRenderer({
         events.onPointerLeave(event)
       }}
     >
-      {!object && !deckSurfaceProvidedByParent && (
+      {node.renderBody && !object && !deckSurfaceProvidedByParent && (
         <mesh
           position={
             isDeck
@@ -357,7 +360,7 @@ export default function LabDeviceRenderer({
           />
         </mesh>
       )}
-      {object && (
+      {node.renderBody && object && (
         <group
           ref={modelGroupRef}
           rotation={isZUp ? [-Math.PI / 2, 0, 0] : undefined}
@@ -371,7 +374,10 @@ export default function LabDeviceRenderer({
         </group>
       )}
       {node.model.instances && <SiteInstanceRenderer node={node} />}
-      <SiteBoundsRenderer sites={node.floorplanSnapshot?.sites ?? []} />
+      <SiteBoundsRenderer
+        sites={node.floorplanSnapshot?.sites ?? []}
+        showSites={node.floorplanSnapshot?.showSites ?? true}
+      />
       {(showPersistentTag || isHovered || isSelected) && (
         <ModelLabel
           node={node}
@@ -379,7 +385,7 @@ export default function LabDeviceRenderer({
           selected={isSelected}
         />
       )}
-      {error && (
+      {node.renderBody && error && (
         <Html position={[0, 0.1, 0]} center distanceFactor={6}>
           <div className="pascal-model-label" title={error}>
             模型加载失败，已使用占位体
@@ -388,19 +394,4 @@ export default function LabDeviceRenderer({
       )}
     </group>
   )
-}
-
-function isEquipmentKind(deviceType: string): boolean {
-  const kind = deviceType.replaceAll('_', '-').toLowerCase()
-  return ![
-    'plate',
-    'tip-rack',
-    'tiprack',
-    'labware',
-    'container',
-    'reagent',
-    'sample',
-    'tube',
-    'trash'
-  ].some((token) => kind.includes(token))
 }

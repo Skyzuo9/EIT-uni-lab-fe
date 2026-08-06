@@ -1,125 +1,72 @@
 import type { HttpClient } from './http'
 import { ServiceError } from './errors'
+import {
+  loadWorkflowNodeTemplateCatalog,
+  loadWorkflowNodeTemplateDetails,
+  mergeWorkflowNodeTemplateCatalogs,
+} from './workflowNodeTemplateCursor'
+import type {
+  WorkflowActionEditorControl,
+  WorkflowActionHandleTemplate,
+  WorkflowActionNodeTemplate,
+  WorkflowExecutableCatalogSnapshot,
+  WorkflowPublishedNodeTemplate,
+  WorkflowPublishedSource
+} from './workflowActionCatalogTypes'
 
-export type WorkflowActionEditorControl =
-  | 'material_port'
-  | 'site_selector'
-  | 'variable_selector'
+export type {
+  WorkflowActionEditorControl,
+  WorkflowActionHandleTemplate,
+  WorkflowActionNodeTemplate,
+  WorkflowExecutableCatalogSnapshot,
+  WorkflowPublishedNodeTemplate,
+  WorkflowPublishedSource,
+  WorkflowActionCatalogSnapshot
+} from './workflowActionCatalogTypes'
 
-export interface WorkflowActionHandleTemplate {
-  uuid: string
-  workflowNodeTemplateUuid: string
-  handleKey: string
-  ioType: 'source' | 'target'
-  displayName: string
-  valueType: string
-  required: boolean
-  dataSource: string | null
-  dataKey: string | null
-  valueSchema: Record<string, unknown>
-  editorControl: WorkflowActionEditorControl
-  allowedResourceTemplateUuids: string[] | null
-  implicitPassthrough: boolean
-  structuralRole: 'ready' | null
-  wireValue?: Record<string, unknown>
-}
-
-export interface WorkflowActionNodeTemplate {
-  uuid: string
-  resourceTemplateUuid: string
-  name: string
-  displayName: string
-  actionClass: string | null
-  actionType: string
-  schema: Record<string, unknown>
-  goal: Record<string, unknown>
-  goalDefault: Record<string, unknown>
-  handles: WorkflowActionHandleTemplate[]
-  wireValue?: Record<string, unknown>
-}
-
-export interface WorkflowPublishedSource {
-  kind: 'package'
-  definitionFqid: string
-  module: string
-  symbol: string
-  packageCatalogDigest: string
-  definitionContentHash: string
-}
-
-export interface WorkflowPublishedNodeTemplate {
-  uuid: string
-  resourceTemplateUuid: string
-  name: string
-  displayName: string
-  workflowClass: string
-  workflowUuid: string
-  workflowRevision: number
-  appliedSourceHash: string
-  contractDigest: string
-  compositionAllowTransparent: boolean
-  inputOrder: string[]
-  outputOrder: string[]
-  schema: Record<string, unknown>
-  goal: Record<string, unknown>
-  goalDefault: Record<string, unknown>
-  result: Record<string, unknown>
-  source: WorkflowPublishedSource
-  handles: WorkflowActionHandleTemplate[]
-  wireValue?: Record<string, unknown>
-}
-
-export interface WorkflowExecutableCatalogSnapshot {
-  authorityId: string
-  authorityKind: 'local' | 'backend'
-  fingerprint: string
-  actionTemplates: WorkflowActionNodeTemplate[]
-  workflowTemplates: WorkflowPublishedNodeTemplate[]
-}
-
-export type WorkflowActionCatalogSnapshot = WorkflowExecutableCatalogSnapshot
-
+/**
+ * 加载动作模板与已发布工作流（PublishedWorkflow）的统一可执行目录。
+ *
+ * @param http 节点模板列表与详情共用的 HTTP 客户端。
+ * @param signal 调用方取消信号；传递到全部列表页和详情请求。
+ * @returns Backend 默认动作目录和显式 workflow 目录的闭合投影。
+ * @throws 摘要、详情、类型合同、UUID 或可选 OS 目录代际无效时关闭失败。
+ */
 export async function loadWorkflowActionCatalog(
-  http: HttpClient
+  http: HttpClient,
+  signal?: AbortSignal
 ): Promise<WorkflowExecutableCatalogSnapshot> {
-  const summaries: Record<string, unknown>[] = []
-  let authority: ReturnType<typeof authorityValue> | null = null
-  let fingerprint: string | null = null
-  let total: number | null = null
-  let page = 1
-  do {
-    const list = catalogEnvelope(await http.request<unknown>(
-      `/api/v1/workflow-node-templates?page=${page}&page_size=100`
-    ))
-    const pageAuthority = authorityValue(list.authority)
-    const pageFingerprint = fingerprintValue(list.catalog_fingerprint)
-    const pageTotal = nonNegativeInteger(list.total)
-    if (
-      positiveInteger(list.page) !== page ||
-      positiveInteger(list.page_size) > 100 ||
-      (authority && !sameAuthority(authority, pageAuthority)) ||
-      (fingerprint && fingerprint !== pageFingerprint) ||
-      (total !== null && total !== pageTotal)
-    ) {
-      invalidCatalog()
-    }
-    authority ??= pageAuthority
-    fingerprint ??= pageFingerprint
-    total ??= pageTotal
-    const items = recordArray(list.items)
-    if (summaries.length + items.length > total) invalidCatalog()
-    summaries.push(...items)
-    if (summaries.length < total && items.length === 0) invalidCatalog()
-    page += 1
-  } while (summaries.length < (total ?? 0))
-  if (!authority || !fingerprint || summaries.length !== total) {
-    invalidCatalog()
+  // `defaultCatalog` 只请求 Backend 默认可见动作类型，不能混入物料来源。
+  const defaultCatalog = await loadWorkflowNodeTemplateCatalog(http, { signal })
+  // `workflowCatalog` 显式请求已发布工作流，避免依赖服务端默认类型集合。
+  const workflowCatalog = await loadWorkflowNodeTemplateCatalog(http, {
+    nodeType: 'workflow',
+    signal
+  })
+  const catalog = mergeWorkflowNodeTemplateCatalogs(
+    defaultCatalog,
+    workflowCatalog
+  )
+  type SummaryValue = {
+    uuid: string
+    name: string
+    displayName: string
+    actionType: string
+    nodeType: string
+    resourceTemplateUuid: string
   }
-  const nodeUuids = new Set<string>()
-  const summaryValues = summaries.map((summary) => {
+
+  /**
+   * 校验节点模板列表摘要的可执行投影字段。
+   *
+   * @param summary 未信任的 Backend 列表摘要。
+   * @returns 稳定 UUID、展示字段、节点类型与资源模板身份。
+   * @throws 任一字段缺失或 UUID 无效时关闭失败。
+   */
+  function projectSummaryValue(
+    summary: Record<string, unknown>
+  ): SummaryValue {
     const uuid = uuidValue(summary.uuid)
-    if (nodeUuids.has(uuid)) invalidCatalog()
-    nodeUuids.add(uuid)
     const resource = recordValue(summary.resource_template)
     return {
       uuid,
@@ -129,22 +76,22 @@ export async function loadWorkflowActionCatalog(
       nodeType: stringValue(summary.node_type),
       resourceTemplateUuid: uuidValue(resource.uuid)
     }
-  })
+  }
 
-  const projected = await Promise.all(summaryValues.map(async (
-    summary
-  ): Promise<
+  /**
+   * 把一个列表摘要核对并投影成动作或已发布工作流模板。
+   *
+   * @param summary 已校验稳定身份和展示字段的列表摘要。
+   * @param data 已核对目录代际的节点模板详情主体。
+   * @returns 可执行模板；非可执行框架节点返回 null。
+   * @throws 详情与摘要、目录代际或类型合同不一致时关闭失败。
+   */
+  function projectSummary(
+    summary: SummaryValue,
+    data: Record<string, unknown>
+  ):
     WorkflowActionNodeTemplate | WorkflowPublishedNodeTemplate | null
-  > => {
-    const data = catalogEnvelope(await http.request<unknown>(
-      `/api/v1/workflow-node-templates/${encodeURIComponent(summary.uuid)}`
-    ))
-    if (
-      !sameAuthority(authority, authorityValue(data.authority)) ||
-      fingerprintValue(data.catalog_fingerprint) !== fingerprint
-    ) {
-      invalidCatalog()
-    }
+  {
     const template = recordValue(data.template)
     const uuid = uuidValue(template.uuid)
     const resourceTemplateUuid = uuidValue(template.resource_template_uuid)
@@ -181,19 +128,27 @@ export async function loadWorkflowActionCatalog(
       schema: actionSchema,
       goal: recordValue(template.goal),
       goalDefault: recordValue(template.goal_default),
-      handles: recordArray(data.handles).map((handle) =>
-        projectHandle(handle, uuid)
-      )
+      handles: projectHandles(recordArray(data.handles), uuid)
     }, template)
-  }))
-  const actionTemplates = projected.filter(
-    (value): value is WorkflowActionNodeTemplate =>
-      value !== null && 'actionType' in value
-  )
-  const workflowTemplates = projected.filter(
-    (value): value is WorkflowPublishedNodeTemplate =>
-      value !== null && 'workflowUuid' in value
-  )
+  }
+
+  const projected: Array<
+    WorkflowActionNodeTemplate | WorkflowPublishedNodeTemplate | null
+  > = []
+  const details = await loadWorkflowNodeTemplateDetails(http, catalog, signal)
+  for (const entry of details) {
+    projected.push(projectSummary(
+      projectSummaryValue(entry.summary),
+      entry.detail
+    ))
+  }
+  const actionTemplates: WorkflowActionNodeTemplate[] = []
+  const workflowTemplates: WorkflowPublishedNodeTemplate[] = []
+  for (const value of projected) {
+    if (value === null) continue
+    if ('actionType' in value) actionTemplates.push(value)
+    else workflowTemplates.push(value)
+  }
 
   const handleUuids = new Set<string>()
   for (const detail of [...actionTemplates, ...workflowTemplates]) {
@@ -203,12 +158,33 @@ export async function loadWorkflowActionCatalog(
     }
   }
   return {
-    authorityId: authority.authorityId,
-    authorityKind: authority.kind,
-    fingerprint,
+    ...(catalog.generation
+      ? {
+          authorityId: catalog.generation.authorityId,
+          authorityKind: catalog.generation.authorityKind,
+          fingerprint: catalog.generation.fingerprint
+        }
+      : {}),
     actionTemplates,
     workflowTemplates
   }
+}
+
+/**
+ * 把原始句柄数组投影为一个节点模板的句柄集合。
+ *
+ * @param handles 原始详情句柄数组。
+ * @param parentUuid 所有句柄必须引用的节点模板 UUID。
+ * @returns 保持服务端顺序的已校验句柄。
+ * @throws 任一句柄身份或元数据无效时关闭失败。
+ */
+function projectHandles(
+  handles: Record<string, unknown>[],
+  parentUuid: string
+): WorkflowActionHandleTemplate[] {
+  const projected: WorkflowActionHandleTemplate[] = []
+  for (const handle of handles) projected.push(projectHandle(handle, parentUuid))
+  return projected
 }
 
 interface WorkflowSchemaProjection {
@@ -225,6 +201,7 @@ interface WorkflowSchemaProjection {
   requiredInputs: Set<string>
 }
 
+/** 投影已发布工作流（PublishedWorkflow）；参数是详情、句柄、摘要与冻结合同，返回边界模板，任一对应关系非法时关闭失败。 */
 function projectPublishedWorkflow(
   template: Record<string, unknown>,
   rawHandles: Record<string, unknown>[],
@@ -305,6 +282,7 @@ function projectPublishedWorkflow(
   }, template)
 }
 
+/** 规范已发布工作流连接点顺序；参数是连接点与冻结合同，返回业务输入/输出后接 ready 的序列，缺失或重复时关闭失败。 */
 function orderPublishedHandles(
   handles: WorkflowActionHandleTemplate[],
   contract: WorkflowSchemaProjection
@@ -332,6 +310,7 @@ function orderPublishedHandles(
   return ordered
 }
 
+/** 投影单个连接点；参数是 wire 对象与父模板 UUID，返回编辑器连接点，身份、方向或元数据非法时关闭失败。 */
 function projectHandle(
   raw: Record<string, unknown>,
   parentUuid: string
@@ -372,6 +351,7 @@ function projectHandle(
   }, raw)
 }
 
+/** 保存不可枚举 wire 值；参数是投影对象和原始记录，返回同对象的只读 wire 增强，不主动抛错。 */
 function attachWireValue<T extends object>(
   value: T,
   wireValue: Record<string, unknown>
@@ -385,6 +365,7 @@ function attachWireValue<T extends object>(
   return value as T & { wireValue: Record<string, unknown> }
 }
 
+/** 解析动作合同；参数是原始 schema，返回合法动作 schema 或 null，显式扩展非法时关闭失败。 */
 function typedActionSchema(raw: unknown): Record<string, unknown> | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
   const schema = raw as Record<string, unknown>
@@ -405,6 +386,7 @@ function typedActionSchema(raw: unknown): Record<string, unknown> | null {
   return schema
 }
 
+/** 解析已发布工作流合同；参数是原始 schema，返回冻结合同投影或 null，闭合结构非法时关闭失败。 */
 function typedWorkflowSchema(raw: unknown): WorkflowSchemaProjection | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
   const schema = raw as Record<string, unknown>
@@ -464,6 +446,7 @@ function typedWorkflowSchema(raw: unknown): WorkflowSchemaProjection | null {
   }
 }
 
+/** 解析 goal/result 对象 envelope；参数是原始值，返回属性 schema 与必填键，开放或不一致结构时关闭失败。 */
 function objectEnvelope(raw: unknown): {
   properties: Record<string, Record<string, unknown>>
   required: string[]
@@ -488,6 +471,7 @@ function objectEnvelope(raw: unknown): {
   return { properties: normalized, required }
 }
 
+/** 验证全部已发布工作流连接点；参数是连接点与冻结合同，无返回值，数量、方向或 schema 不一致时关闭失败。 */
 function validatePublishedHandles(
   handles: WorkflowActionHandleTemplate[],
   contract: WorkflowSchemaProjection
@@ -523,6 +507,7 @@ function validatePublishedHandles(
   validateReadyHandle(handles[index], 'source')
 }
 
+/** 验证业务连接点；参数包含连接点、名称、方向、数据源、schema 与必填性，无返回值，不一致时关闭失败。 */
 function validateBusinessHandle(
   handle: WorkflowActionHandleTemplate,
   name: string,
@@ -548,6 +533,7 @@ function validateBusinessHandle(
   ) invalidCatalog()
 }
 
+/** 取得连接点值 schema；参数是冻结属性 schema，返回移除 default 的副本，不主动抛错。 */
 function handleValueSchema(
   schema: Record<string, unknown>
 ): Record<string, unknown> {
@@ -556,6 +542,7 @@ function handleValueSchema(
   return value
 }
 
+/** 验证 ready 结构连接点；参数是可选连接点与方向，无返回值，结构语义不精确时关闭失败。 */
 function validateReadyHandle(
   handle: WorkflowActionHandleTemplate | undefined,
   ioType: 'source' | 'target'
@@ -576,6 +563,7 @@ function validateReadyHandle(
   ) invalidCatalog()
 }
 
+/** 解析物料占位符（ResourceSlot）资源模板白名单；参数是属性 schema，返回 UUID 数组或 null，非法时关闭失败。 */
 function schemaAllowlist(schema: Record<string, unknown>): string[] | null {
   const slot = resourceSlotSchema(schema)
   if (slot) {
@@ -585,6 +573,7 @@ function schemaAllowlist(schema: Record<string, unknown>): string[] | null {
   return null
 }
 
+/** 定位嵌套物料占位符（ResourceSlot）schema；参数是属性 schema，返回命中对象或 null，不主动抛错。 */
 function resourceSlotSchema(
   schema: Record<string, unknown>
 ): Record<string, unknown> | null {
@@ -605,6 +594,7 @@ function resourceSlotSchema(
   return null
 }
 
+/** 推导工作流值类型；参数是冻结属性 schema，返回 wire type，缺失基础类型时关闭失败。 */
 function workflowValueType(schema: Record<string, unknown>): string {
   const members = Array.isArray(schema.anyOf) ? schema.anyOf : []
   const base = members.find((member) =>
@@ -616,12 +606,14 @@ function workflowValueType(schema: Record<string, unknown>): string {
   return typeof base.type === 'string' ? base.type : 'object'
 }
 
+/** 比较两个白名单；参数是可空 UUID 数组，返回顺序与内容完全一致性，不主动抛错。 */
 function sameAllowlist(left: string[] | null, right: string[] | null): boolean {
   return left === null
     ? right === null
     : right !== null && sameStrings(left, right)
 }
 
+/** 核对字符串映射键；参数是映射与期望顺序，返回键集合一致性，映射无效时关闭失败。 */
 function stringMapMatches(
   raw: Record<string, unknown>,
   order: string[]
@@ -630,6 +622,7 @@ function stringMapMatches(
     order.every((name) => raw[name] === name)
 }
 
+/** 核对默认值；参数是默认值映射与冻结合同，返回默认值合法性，结构无效时关闭失败。 */
 function defaultsMatch(
   defaults: Record<string, unknown>,
   contract: WorkflowSchemaProjection
@@ -642,27 +635,32 @@ function defaultsMatch(
   )
 }
 
+/** 解析闭合对象；参数是原始值与允许键，返回记录，出现缺失/额外键时关闭失败。 */
 function closedRecord(raw: unknown, keys: string[]): Record<string, unknown> {
   const value = recordValue(raw)
   requireKeys(value, keys)
   return value
 }
 
+/** 核对对象键集合；参数是记录与允许键，无返回值，不完全相同时关闭失败。 */
 function requireKeys(raw: Record<string, unknown>, keys: string[]): void {
   if (!sameStrings(Object.keys(raw).sort(), [...keys].sort())) invalidCatalog()
 }
 
+/** 解析唯一字符串数组；参数是原始值，返回原顺序数组，重复值时关闭失败。 */
 function uniqueStringArray(raw: unknown): string[] {
   const values = stringArray(raw)
   if (new Set(values).size !== values.length) invalidCatalog()
   return values
 }
 
+/** 比较字符串数组顺序；参数是左右数组，返回逐项一致性，不主动抛错。 */
 function sameStrings(left: string[], right: string[]): boolean {
   return left.length === right.length &&
     left.every((value, index) => value === right[index])
 }
 
+/** 比较字符串集合；参数是左右数组，返回无重复集合一致性，不主动抛错。 */
 function sameStringSet(left: string[], right: string[]): boolean {
   return left.length === right.length &&
     new Set(left).size === left.length &&
@@ -670,6 +668,7 @@ function sameStringSet(left: string[], right: string[]): boolean {
     left.every((value) => right.includes(value))
 }
 
+/** 比较 JSON 结构语义；参数是左右值，返回忽略对象键顺序的一致性，不主动抛错。 */
 function jsonEquals(left: unknown, right: unknown): boolean {
   if (left === right) return true
   if (Array.isArray(left) || Array.isArray(right)) {
@@ -690,18 +689,21 @@ function jsonEquals(left: unknown, right: unknown): boolean {
   )
 }
 
+/** 解析 sha256 摘要；参数是原始值，返回规范摘要，格式非法时关闭失败。 */
 function digestValue(raw: unknown): string {
   const value = stringValue(raw)
   if (!/^sha256:[0-9a-f]{64}$/.test(value)) invalidCatalog()
   return value
 }
 
+/** 解析绝对 Python 模块名；参数是原始值，返回模块路径，相对或非法标识时关闭失败。 */
 function absoluteModule(raw: unknown): string {
   const value = stringValue(raw)
   if (!/^[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*$/.test(value)) invalidCatalog()
   return value
 }
 
+/** 解析 Unicode Python 标识符；参数是原始值，返回符号名，语法非法时关闭失败。 */
 function identifierValue(raw: unknown): string {
   const value = stringValue(raw)
   if (!/^(?:[_\p{ID_Start}])(?:[_\p{ID_Continue}])*$/u.test(value)) {
@@ -710,42 +712,7 @@ function identifierValue(raw: unknown): string {
   return value
 }
 
-function catalogEnvelope(raw: unknown): Record<string, unknown> {
-  const envelope = recordValue(raw)
-  if (
-    envelope.code !== 0 ||
-    !Object.prototype.hasOwnProperty.call(envelope, 'data') ||
-    Object.prototype.hasOwnProperty.call(envelope, 'error')
-  ) {
-    invalidCatalog()
-  }
-  return recordValue(envelope.data)
-}
-
-function authorityValue(raw: unknown): {
-  authorityId: string
-  kind: 'local' | 'backend'
-} {
-  const authority = recordValue(raw)
-  const authorityId = stringValue(authority.authority_id)
-  const kind = stringValue(authority.kind)
-  if (kind !== 'local' && kind !== 'backend') invalidCatalog()
-  return { authorityId, kind }
-}
-
-function sameAuthority(
-  left: { authorityId: string; kind: string },
-  right: { authorityId: string; kind: string }
-): boolean {
-  return left.authorityId === right.authorityId && left.kind === right.kind
-}
-
-function fingerprintValue(raw: unknown): string {
-  const value = stringValue(raw)
-  if (!/^sha256:[0-9a-f]{64}$/.test(value)) invalidCatalog()
-  return value
-}
-
+/** 解析 UUID；参数是原始值，返回小写 UUID，格式非法时关闭失败。 */
 function uuidValue(raw: unknown): string {
   const value = stringValue(raw)
   if (
@@ -757,6 +724,7 @@ function uuidValue(raw: unknown): string {
   return value.toLowerCase()
 }
 
+/** 解析非空且唯一的 UUID 白名单；参数是原始值，返回数组或 null，空集、重复或非法 UUID 时关闭失败。 */
 function allowlistValue(raw: unknown): string[] | null {
   if (raw === null) return null
   const values = stringArray(raw).map(uuidValue)
@@ -766,16 +734,19 @@ function allowlistValue(raw: unknown): string[] | null {
   return values
 }
 
+/** 解析普通对象；参数是原始值，返回记录，null、数组或非对象时关闭失败。 */
 function recordValue(raw: unknown): Record<string, unknown> {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) invalidCatalog()
   return raw as Record<string, unknown>
 }
 
+/** 解析对象数组；参数是原始值，返回记录数组，数组或项目无效时关闭失败。 */
 function recordArray(raw: unknown): Record<string, unknown>[] {
   if (!Array.isArray(raw)) invalidCatalog()
   return raw.map(recordValue)
 }
 
+/** 解析字符串数组；参数是原始值，返回原数组，任一项目非字符串时关闭失败。 */
 function stringArray(raw: unknown): string[] {
   if (!Array.isArray(raw) || raw.some((item) => typeof item !== 'string')) {
     invalidCatalog()
@@ -783,40 +754,40 @@ function stringArray(raw: unknown): string[] {
   return raw as string[]
 }
 
+/** 解析非空字符串；参数是原始值，返回字符串，类型或长度非法时关闭失败。 */
 function stringValue(raw: unknown): string {
   if (typeof raw !== 'string' || raw.length === 0) invalidCatalog()
   return raw
 }
 
+/** 解析可空字符串；参数是原始值，返回字符串或 null，非空值非法时关闭失败。 */
 function nullableString(raw: unknown): string | null {
   if (raw === null || raw === undefined) return null
   return stringValue(raw)
 }
 
+/** 解析布尔值；参数是原始值，返回布尔值，类型非法时关闭失败。 */
 function booleanValue(raw: unknown): boolean {
   if (typeof raw !== 'boolean') invalidCatalog()
   return raw
 }
 
-function nonNegativeInteger(raw: unknown): number {
-  if (typeof raw !== 'number' || !Number.isInteger(raw) || raw < 0) {
+/** 解析正整数；参数是原始值，返回大于零整数，类型或范围非法时关闭失败。 */
+function positiveInteger(raw: unknown): number {
+  if (typeof raw !== 'number' || !Number.isInteger(raw) || raw <= 0) {
     invalidCatalog()
   }
   return raw
 }
 
-function positiveInteger(raw: unknown): number {
-  const value = nonNegativeInteger(raw)
-  if (value === 0) invalidCatalog()
-  return value
-}
-
+/** 解析 ready 结构角色；参数是原始值，返回 ready 或 null，其他值时关闭失败。 */
 function structuralRoleValue(raw: unknown): 'ready' | null {
   if (raw === undefined || raw === null) return null
   if (raw !== 'ready') invalidCatalog()
   return raw
 }
 
+/** 抛出动作目录不可重试错误；无参数，永不返回，始终抛出 INVALID_API_RESPONSE。 */
 function invalidCatalog(): never {
   throw new ServiceError({
     code: 'INVALID_API_RESPONSE',

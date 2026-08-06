@@ -22,6 +22,25 @@
   position: relative;
 }
 
+:global(.workflowDisabledButtonTooltip) {
+  position: fixed;
+  z-index: 1000;
+  width: max-content;
+  max-width: min(280px, 72vw);
+  padding: var(--unilab-space-2) var(--unilab-space-3);
+  color: var(--unilab-color-text);
+  border: 1px solid var(--unilab-color-border-strong);
+  border-radius: var(--unilab-radius-sm);
+  background: var(--unilab-color-surface);
+  box-shadow: var(--unilab-shadow-panel);
+  font: 500 11px/1.5 var(--unilab-font-sans);
+  overflow-wrap: anywhere;
+  pointer-events: none;
+  text-align: left;
+  transform: translate(-50%, calc(-100% - var(--unilab-space-2)));
+  white-space: normal;
+}
+
 .schemaForm {
   :global(.rjsf) {
     display: flex;

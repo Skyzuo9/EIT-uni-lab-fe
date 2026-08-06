@@ -23,6 +23,17 @@ describe('oblique material projection', () => {
     expect(y).toBeCloseTo(-370.710678, 6)
   })
 
+  /**
+   * 验证视角绕 Z 轴旋转后，世界 X 轴会进入斜投影的深度方向。
+   * 输入为 X=100 的世界点与 90° 视角，输出应等同于未旋转的 Y=100 投影。
+   */
+  it('rotates the plan before applying the cabinet projection', () => {
+    const [x, y] = projectObliquePoint([100, 0, 0], 90)
+
+    expect(x).toBeCloseTo(35.355339, 6)
+    expect(y).toBeCloseTo(-35.355339, 6)
+  })
+
   it('fits bounds from geometry and keeps the plan as an affine top plane', () => {
     const scene = buildMaterialObliqueScene([
       aggregate('plate', [100, 200, 30])
@@ -58,6 +69,16 @@ describe('oblique material projection', () => {
       'solid',
       'solid'
     ])
+    expect(scene.objects.map((object) => object.fidelity)).toEqual([
+      'envelope',
+      'envelope'
+    ])
+    expect(scene.diagnostics).toEqual({
+      declaredShapeCount: 0,
+      envelopeApproximationCount: 2,
+      inferredStructureCount: 0,
+      invalidObjectCount: 0
+    })
     expect(scene.objects.every((object) => object.shape === undefined)).toBe(
       true
     )
@@ -86,6 +107,7 @@ describe('oblique material projection', () => {
     const object = scene.objects[0]
 
     expect(object?.renderStyle).toBe('spec')
+    expect(object?.fidelity).toBe('declared')
     expect(object?.shape?.id).toBe('vision_cell')
     expect(object?.shape?.bundle).toBe('test-bundle')
     expect(object?.shape?.shadow).toBe('box')
@@ -200,6 +222,10 @@ describe('oblique material projection', () => {
       'powder_container'
     )
     expect(resolveShapeSpec(shapes, 'vision-cell')?.id).toBe('vision_cell')
+    expect(resolveShapeSpec(
+      shapes,
+      'community.szlab_poly_studio.resources.materials:powder_container'
+    )?.id).toBe('powder_container')
     expect(resolveShapeSpec(shapes, 'device')).toBeUndefined()
   })
 
@@ -338,6 +364,8 @@ describe('oblique material projection', () => {
 
     expect(hotel?.shelves).toHaveLength(11)
     expect(hotel?.shelves.every((shelf) => !shelf.occupied)).toBe(true)
+    expect(hotel?.fidelity).toBe('inferred')
+    expect(scene.diagnostics.inferredStructureCount).toBe(1)
   })
 
   it('hands tip-spot levels to the perforated plate generator', () => {
@@ -413,6 +441,18 @@ describe('oblique material projection', () => {
       'vial'
     ])
     expect(scene.objects.map((object) => object.sortLayer)).toEqual([0, 1, 1])
+  })
+
+  it('omits non-finite objects and reports them without breaking the scene', () => {
+    const scene = buildMaterialObliqueScene([
+      aggregate('valid', [0, 0, 0]),
+      aggregate('invalid', [Number.NaN, 0, 0])
+    ])
+
+    expect(scene.objects.map((object) => object.materialId)).toEqual([
+      'valid'
+    ])
+    expect(scene.diagnostics.invalidObjectCount).toBe(1)
   })
 })
 

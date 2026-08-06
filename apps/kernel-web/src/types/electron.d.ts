@@ -1,4 +1,19 @@
 import type { AuthSession } from './auth'
+import type {
+  DeviceCardActionRun,
+  DeviceCardAgentEnvironmentInfo,
+  DeviceCardAuthoringContext,
+  DeviceCardAuthoringProfile,
+  DeviceCardAuthoringSessionStatus,
+  DeviceCardAuthoringTargetRequest,
+  DeviceCardAuthoringTargetResponse,
+  DeviceCardBounds,
+  DeviceCardHostActionRequest,
+  DeviceCardWorkspaceStatus,
+  InstalledDeviceCard,
+  OpenDeviceCardRequest,
+  OpenDeviceCardWorkspaceRequest
+} from '@unilab/device-card-sdk'
 
 interface OpenedFile {
   path: string
@@ -15,6 +30,11 @@ interface SaveFilePayload {
   defaultName?: string
 }
 
+interface SaveBinaryFilePayload {
+  content: Uint8Array
+  defaultName?: string
+}
+
 interface OpenFilePayload {
   accept?: 'json' | 'python'
 }
@@ -25,6 +45,28 @@ export type LocalRuntimePathKind =
   | 'szlab'
   | 'environment'
   | 'simulator'
+  | 'edgeExecutable'
+  | 'edgeWorkingDirectory'
+
+export type LocalRuntimeEdgeCommandMode = 'generated' | 'custom'
+
+export interface LocalRuntimeEnvironmentVariable {
+  name: string
+  value: string
+}
+
+export interface LocalRuntimeCustomEdgeCommand {
+  executable: string
+  workingDirectory: string
+  args: string[]
+  environment: LocalRuntimeEnvironmentVariable[]
+}
+
+export interface LocalRuntimeCommandPreview {
+  executable: string
+  args: string[]
+  cwd: string
+}
 
 export interface LocalRuntimeLaunchConfig {
   graphPath: string
@@ -32,6 +74,8 @@ export interface LocalRuntimeLaunchConfig {
   szlabProjectPath: string
   environmentPath: string
   simulatorProjectPath: string
+  edgeCommandMode: LocalRuntimeEdgeCommandMode
+  customEdgeCommand: LocalRuntimeCustomEdgeCommand
 }
 
 export type LocalRuntimeMode = 'managed' | 'development'
@@ -80,6 +124,27 @@ export interface LocalRuntimeLogsSnapshot {
   entries: LocalRuntimeLogEntry[]
 }
 
+export interface LocalRuntimeLogCursor {
+  fileId: string
+  offset: number
+}
+
+export interface LocalRuntimeLogQuery {
+  kind: LocalRuntimeProcessKind
+  cursor: LocalRuntimeLogCursor | null
+}
+
+export interface LocalRuntimeLogBatch extends LocalRuntimeLogEntry {
+  readAt: number
+  cursor: LocalRuntimeLogCursor | null
+  reset: boolean
+}
+
+export interface LocalRuntimeOpenLogResult {
+  opened: boolean
+  error?: string
+}
+
 export type LocalRuntimePhase =
   | 'idle'
   | 'validating_simulator'
@@ -112,6 +177,9 @@ export interface LocalRuntimeSnapshot {
 export interface DesktopRuntimeApi {
   selectPath: (kind: LocalRuntimePathKind) => Promise<string | null>
   getDefaultEnvironmentPath: () => Promise<string | null>
+  resolveGeneratedEdgeCommand?: (
+    config: LocalRuntimeLaunchConfig
+  ) => Promise<LocalRuntimeCommandPreview>
   getSnapshot: () => Promise<LocalRuntimeSnapshot>
   getModeInfo: () => Promise<LocalRuntimeModeInfo>
   inspectDevicePackage: (
@@ -131,6 +199,10 @@ export interface DesktopRuntimeApi {
     config: LocalRuntimeLaunchConfig
   ) => Promise<LocalRuntimeSnapshot>
   readLogs: () => Promise<LocalRuntimeLogsSnapshot>
+  readLog?: (query: LocalRuntimeLogQuery) => Promise<LocalRuntimeLogBatch>
+  openLogFile?: (
+    kind: LocalRuntimeProcessKind
+  ) => Promise<LocalRuntimeOpenLogResult>
   onSnapshot: (
     listener: (snapshot: LocalRuntimeSnapshot) => void
   ) => () => void
@@ -201,6 +273,58 @@ interface DesktopApi {
   file?: {
     open: (payload?: OpenFilePayload) => Promise<OpenedFile | null>
     save: (payload: SaveFilePayload) => Promise<SavedFile | null>
+    saveBinary: (
+      payload: SaveBinaryFilePayload
+    ) => Promise<SavedFile | null>
+  }
+  deviceCards?: {
+    list: () => Promise<InstalledDeviceCard[]>
+    importCard: () => Promise<InstalledDeviceCard | null>
+    agent: {
+      getInfo: () => Promise<DeviceCardAgentEnvironmentInfo>
+      installCli: () => Promise<DeviceCardAgentEnvironmentInfo>
+      removeCli: () => Promise<DeviceCardAgentEnvironmentInfo>
+      setBridgeEnabled: (
+        enabled: boolean
+      ) => Promise<DeviceCardAgentEnvironmentInfo>
+    }
+    authoring: {
+      prepare: (input: {
+        deviceId: string
+        profile: DeviceCardAuthoringProfile
+      }) => Promise<DeviceCardAuthoringSessionStatus | null>
+      get: () => Promise<DeviceCardAuthoringSessionStatus | null>
+      reveal: (path: string) => Promise<void>
+      onTargetRequest: (
+        listener: (request: DeviceCardAuthoringTargetRequest) => void
+      ) => () => void
+      resolveTargetRequest: (
+        response: DeviceCardAuthoringTargetResponse
+      ) => void
+    }
+    workspace: {
+      get: () => Promise<DeviceCardWorkspaceStatus | null>
+      open: (
+        context?: DeviceCardAuthoringContext
+      ) => Promise<DeviceCardWorkspaceStatus | null>
+      close: () => Promise<void>
+      rebuild: () => Promise<DeviceCardWorkspaceStatus>
+      install: () => Promise<InstalledDeviceCard>
+      exportCard: () => Promise<SavedFile | null>
+      preview: (request: OpenDeviceCardWorkspaceRequest) => Promise<void>
+      onStatus: (
+        listener: (status: DeviceCardWorkspaceStatus | null) => void
+      ) => () => void
+    }
+    open: (request: OpenDeviceCardRequest) => Promise<void>
+    updateBounds: (bounds: DeviceCardBounds) => Promise<void>
+    setOccluded: (source: string, occluded: boolean) => Promise<void>
+    updateState: (state: Record<string, unknown>) => Promise<void>
+    close: () => Promise<void>
+    resolveAction: (run: DeviceCardActionRun) => Promise<void>
+    onActionRequest: (
+      listener: (request: DeviceCardHostActionRequest) => void
+    ) => () => void
   }
   runtime?: DesktopRuntimeApi
   observability?: DesktopObservabilityApi

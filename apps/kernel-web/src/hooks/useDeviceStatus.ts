@@ -4,17 +4,31 @@
  * ============================================================
  * Model: Claude Opus 4.8
  * Generation Date: 2026-07-22
- * Prompt Summary: 设备实时状态订阅 hook(在线模式下连接 /ws/device_status)
+ * Prompt Summary: 设备实时状态订阅 hook(在线模式下连接 /api/v1/ws/device_status)
  * Context: 设备方向实时状态灯,离线不连接,连接状态与更新时间对外暴露
  * Human Review Status: [ ] Pending  [ ] Reviewed  [ ] Approved
  * ============================================================
  */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import {
+  createContext,
+  createElement,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactElement,
+  type ReactNode
+} from 'react'
 import { useServices } from '@unilab/services'
 import { useWorkbench } from '../context/WorkbenchContext'
-import type { DeviceStatus } from '../data/lab'
+import type {
+  ConnectionStatus,
+  DeviceStatus,
+  WorkbenchSection
+} from '../data/lab'
 
-interface UseDeviceStatusResult {
+export interface UseDeviceStatusResult {
   // 以 deviceId 为键的实时状态表
   statusMap: Map<string, DeviceStatus>
   // WebSocket 是否已建立
@@ -23,9 +37,34 @@ interface UseDeviceStatusResult {
   lastUpdate: number | null
 }
 
-// 订阅设备实时状态:仅在线模式连接 /ws/device_status,离线返回空表
+const DeviceStatusContext = createContext<UseDeviceStatusResult | null>(null)
+
+export function DeviceStatusProvider({
+  children
+}: {
+  children: ReactNode
+}): ReactElement {
+  const value = useDeviceStatusSubscription()
+  return createElement(DeviceStatusContext.Provider, { value }, children)
+}
+
+// 订阅设备实时状态:仅在线模式连接 /api/v1/ws/device_status,离线返回空表
 export function useDeviceStatus(): UseDeviceStatusResult {
-  const { backendEnabled, connection } = useWorkbench()
+  const value = useContext(DeviceStatusContext)
+  if (!value) {
+    throw new Error('useDeviceStatus 必须在 DeviceStatusProvider 内使用。')
+  }
+  return value
+}
+
+/**
+ * 根据当前工作台切面管理旧设备状态订阅生命周期。
+ *
+ * @returns 设备状态映射、连接标志和最后更新时间。
+ * @throws 实时服务未装配或 React Hook 使用非法时原样传播。
+ */
+function useDeviceStatusSubscription(): UseDeviceStatusResult {
+  const { backendEnabled, connection, section } = useWorkbench()
   const services = useServices()
   const realtime = services.realtime
   const canSubscribeStatus = services.capabilities.devices.subscribeStatus
@@ -36,10 +75,12 @@ export function useDeviceStatus(): UseDeviceStatusResult {
   // 用 ref 保存最新状态表,避免每条推送都重建订阅
   const mapRef = useRef<Map<string, DeviceStatus>>(new Map())
 
-  const canConnect =
-    backendEnabled &&
-    connection === 'connected' &&
-    canSubscribeStatus
+  const canConnect = shouldSubscribeDeviceStatus({
+    backendEnabled,
+    connection,
+    canSubscribeStatus,
+    section
+  })
 
   useEffect(() => {
     if (!canConnect) {
@@ -52,9 +93,14 @@ export function useDeviceStatus(): UseDeviceStatusResult {
 
     const close = realtime.subscribeDeviceStatus({
       onOpen: () => setConnected(true),
-      onClose: () => setConnected(false),
+      onClose: () => {
+        mapRef.current = new Map()
+        setStatusMap(new Map())
+        setConnected(false)
+        setLastUpdate(null)
+      },
       onDeviceStatus: (statuses) => {
-        const next = new Map(mapRef.current)
+        const next = new Map<string, DeviceStatus>()
         statuses.forEach((item) => next.set(item.deviceId, item))
         mapRef.current = next
         setStatusMap(next)
@@ -72,6 +118,25 @@ export function useDeviceStatus(): UseDeviceStatusResult {
     () => ({ statusMap, connected, lastUpdate }),
     [statusMap, connected, lastUpdate]
   )
+}
+
+/**
+ * 判定当前工作台是否需要旧设备状态 WebSocket。
+ *
+ * @param input 后端开关、连接状态、能力与当前工作台切面。
+ * @returns 只有设备或设备卡片切面在能力就绪时返回 `true`。
+ * @throws 无；输入是前端已规范化的状态。
+ */
+export function shouldSubscribeDeviceStatus(input: {
+  backendEnabled: boolean
+  connection: ConnectionStatus
+  canSubscribeStatus: boolean
+  section: WorkbenchSection
+}): boolean {
+  return input.backendEnabled &&
+    input.connection === 'connected' &&
+    input.canSubscribeStatus &&
+    (input.section === 'device' || input.section === 'cards')
 }
 
 // 在状态表中按设备的多种标识(uuid/deviceKey/nodeName)查找状态

@@ -28,7 +28,8 @@
   `Scripts/unilab.exe`。Windows 子进程还会注入所选环境的 `CONDA_PREFIX`，并按
   Conda 激活顺序前置环境目录、`Library/bin` 与 `Scripts` 到 `PATH`）
 - Uni-Lab-OS 项目根目录
-- 领域项目根目录（示例：Uni-Lab-SZLab）
+- 领域项目根目录（可选，示例：Uni-Lab-SZLab）；留空时仅加载
+  Uni-Lab-OS 内置设备能力
 - 领域设备图 JSON（示例：sz_lab 设备图）
 - PLC-Sim 项目根目录（可选，内部使用 `OpcUaSim/gui/backend.py`）
 
@@ -38,11 +39,25 @@
    `127.0.0.1:18765`。
 2. 如需使用 PLC，用户在 PLC-Sim 中上传 PLC 变量表并确认完成。
 3. 领域侧 Edge：用户再单独通过 `unilab` CLI 启动 Edge。`sz_lab` 示例使用
-   ROS backend、FastAPI bridge 与 Edge Scheduler，`ROS_DOMAIN_ID=42`，HTTP
-   监听 `18003`；不再额外启动本地 Bridge 进程。
-   每次启动会在 `runtime/ideawit-e2e` 下生成独立的
-   `edge-runtime-YYYYMMDD-HHMMSS.sqlite3`，并通过 `UNILABOS_RUNTIME_DB`
-   传给 Edge。
+   ROS backend、FastAPI bridge 与 Edge Scheduler；每次启动会随机分配两位
+   `ROS_DOMAIN_ID`（`02`–`99`），HTTP
+   监听 `18003`，HostLink 使用本地调试专用端口 `18004`；不再额外启动
+   本地 Bridge 进程。挂载领域项目时运行数据目录使用
+   `runtime/plc-sim-e2e/os`；
+   未挂载领域项目时改用 OS 内置配置与
+   `Uni-Lab-OS/runtime/edge-local-debug`。启动计划不启用 `--test_mode`，也不
+   注入 `UNILABOS_RUNTIME_DB`。
+
+每条启动路径都会先使用同一份启动计划端口事实清理上一轮残留监听者：启动
+PLC-Sim 时处理领域侧 Edge HTTP、PLC-Sim Web GUI 与 OPC UA（默认分别为
+`18003`、`18765`、`4855`）；直接启动领域侧 Edge 时处理 HTTP 与 HostLink
+（默认 `18003`、`18004`）。macOS/Linux 使用 `lsof` 精确定位监听 PID，Windows
+使用 PowerShell `Get-NetTCPConnection` 与 `Stop-Process -Force`；没有监听者时
+保持幂等，清理失败则停止本轮启动并显示端口与平台诊断。
+
+就绪门与启动模式对齐：挂载领域设备包时，`GET /api/v1/devices`
+必须至少返回一个非 `host_node` 设备的 Action；仅 OS 模式则只要
+`device-catalog/v1` 目录就绪即可。
 
 PLC-Sim 与领域侧 Edge 可以分别启动和停止，也可以同时运行；一次只执行一个
 生命周期操作，防止两个按钮形成启停竞态。停止其中一个不会隐式停止另一个。
@@ -51,10 +66,28 @@ PLC-Sim 与领域侧 Edge 可以分别启动和停止，也可以同时运行；
 
 产品界面仅展示 OPC UA 与领域侧 Edge，不把 CLI 内部 bridge 暴露为独立服务。
 
+挂载领域设备包后，Edge 可切换为“自定义命令”。自定义命令仍是 Electron 托管的
+结构化进程规范：用户分别填写可执行文件、绝对工作目录、逐行参数和非敏感环境变量
+覆盖，主进程解析
+`{{unilab}}`、`{{python}}`、`{{workspace}}`、`{{graph}}`、`{{config}}`、
+`{{working_dir}}`、`{{edge_http_port}}` 和 `{{hostlink_port}}`，随后继续使用
+`shell: false` 直接启动。Conda/PYTHONPATH、随机 `ROS_DOMAIN_ID`、
+HostLink 和可观测性环境变量仍由启动器管理；用户变量不能覆盖这些名称，也不能把
+密码、令牌等敏感值保存在 renderer 的本地配置中。自定义进程仍必须满足现有
+`18003/18004` 端口和领域设备动作目录就绪门。
+
+Windows 自定义命令只接受绝对 `.exe` 路径，例如所选 Conda 环境中的
+`Scripts/unilab.exe` 或 `python.exe`。首版明确拒绝 `.cmd`、`.bat`、`.ps1`、
+`cmd.exe`、PowerShell 和自由 shell 字符串。每次启动任意自定义可执行文件前，
+Electron 主进程都会用原生对话框展示最终可执行文件、工作目录、参数与环境变量覆盖
+并要求确认。
+旧 v1/v2 本地配置迁移到 v3 后继续使用系统默认命令，不会冻结一份旧参数副本。
+
 启动前会校验项目结构、可执行文件和端口占用；任一进程启动失败或意外退出时，
 其余进程会被统一回收。所有命令均以参数数组直接启动，不经过 renderer 或任意
 shell 字符串拼接。日志分别写入 `simulator.log` 和 `edge.log`，可在应用右上角打开
-日志抽屉直接查看；日志目录与读取方式均由 Electron 按当前平台处理。
+日志抽屉查看；抽屉会去除 ANSI 控制字符，并按时间、级别、来源和正文
+结构化渲染。日志目录与读取方式均由 Electron 按当前平台处理。
 
 ## Trace 日志
 
@@ -74,7 +107,19 @@ Uni-Lab-OS 未启动、未启用 observability 或 Phoenix 暂不可用时，上
 Electron 一键启动 Edge 时会为该子进程启用 Uni-Lab-OS observability，并把用户选择的
 Conda 环境 `bin` 放到 `PATH` 首位，以便 Uni-Lab-OS 找到同一环境中的 `phoenix`。
 该环境需要预先安装 Uni-Lab-OS 的 `observability` 可选依赖；未安装时 Edge 继续启动，
-trace 状态显示为降级。
+trace 状态显示为降级。桌面端检测到当前 Edge 启动日志同时包含“未安装 Arize
+Phoenix”和 OTLP trace 路径的 `503` 后，会在本地调试界面显示不阻塞业务的修复提示；
+旧启动会话中的同类日志不会触发提示。按界面中当前 Uni-Lab-OS 路径执行：
+
+```bash
+cd /path/to/Uni-Lab-OS
+conda activate unilab
+pip install -e '.[observability]'
+```
+
+这会安装 `arize-phoenix==17.5.0`、`arize-phoenix-otel==0.16.1` 并提供
+`phoenix` 命令。安装完成后，在桌面端停止并重新启动 Edge。每台机器都要对实际用于
+Edge 的 Conda 环境执行一次；如果环境名不是 `unilab`，替换激活命令中的环境名。
 
 可选环境变量：
 

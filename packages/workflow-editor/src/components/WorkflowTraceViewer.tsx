@@ -7,6 +7,8 @@ import {
   useState
 } from 'react'
 
+import { WorkflowButton } from './WorkflowButton'
+
 import type {
   WorkflowTracePort,
   WorkflowTraceRecord
@@ -245,15 +247,16 @@ export function WorkflowTraceViewer({
             </div>
           </div>
           <div className="workflow-runtime__trace-header-actions">
-            <button
+            <WorkflowButton
               type="button"
               className="workflow-runtime__trace-refresh"
               disabled={listLoading}
+              disabledReason="正在读取 Trace 列表，请稍候"
               onClick={() => void loadTraces()}
             >
               <RefreshGlyph />
               {listLoading ? '刷新中' : '刷新'}
-            </button>
+            </WorkflowButton>
             <button
               ref={closeButtonRef}
               type="button"
@@ -272,16 +275,17 @@ export function WorkflowTraceViewer({
           role="group"
           aria-label="Trace 查看范围"
         >
-          <button
+          <WorkflowButton
             type="button"
             aria-pressed={scope === 'current'}
             disabled={!currentRunId}
+            disabledReason="当前还没有工作流运行记录"
             className={scope === 'current' ? 'is-active' : undefined}
             onClick={() => setScope('current')}
           >
             当前运行
             {currentRunId && <span>{currentTraceCount}</span>}
-          </button>
+          </WorkflowButton>
           <button
             type="button"
             aria-pressed={scope === 'recent'}

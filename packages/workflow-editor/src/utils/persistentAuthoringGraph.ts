@@ -1,14 +1,39 @@
-import type { WorkflowAuthoringGraph } from '@unilab/services'
+import type {
+  WorkflowAuthoringGraph,
+  WorkflowMaterialSourceCatalogSnapshot
+} from '@unilab/services'
 
 import type {
   WorkflowLink,
   WorkflowNode,
   WorkflowStructure
 } from './parseWorkflow'
+import { layoutDag } from './dagLayout'
+import {
+  DEFAULT_WORKFLOW_DAG_LAYOUT_STRATEGY,
+  DEFAULT_WORKFLOW_MATERIAL_SWIMLANE_DIRECTION,
+  type WorkflowDagLayoutStrategy,
+  type WorkflowMaterialSwimlaneDirection
+} from './workflowDagLayoutStrategy'
+import { layoutWorkflowMaterialSwimlanes } from './workflowMaterialSwimlaneLayout'
+import {
+  workflowNodeVisualKind,
+  type WorkflowNodeVisualKind
+} from './workflowNodeVisualKind'
 
 export function projectPersistentAuthoringGraph(
-  graph: WorkflowAuthoringGraph
+  graph: WorkflowAuthoringGraph,
+  materialSourceCatalog?: Pick<
+    WorkflowMaterialSourceCatalogSnapshot,
+    'resourceTemplates'
+  > | null
 ): WorkflowStructure {
+  const resourceTemplateByUuid = new Map(
+    (materialSourceCatalog?.resourceTemplates ?? []).map((template) => [
+      template.uuid,
+      template
+    ])
+  )
   const templates = new Map(
     graph.node_templates.map((template) => [
       String(template.uuid || ''),
@@ -21,11 +46,53 @@ export function projectPersistentAuthoringGraph(
     const ioType = String(handle.io_type || '')
     if (!templateUuid || (ioType !== 'source' && ioType !== 'target')) continue
     const handles = handlesByTemplate.get(templateUuid) ?? []
+    const metaData = isRecord(handle.meta_data) ? handle.meta_data : {}
+    const unilab = isRecord(metaData.unilab) ? metaData.unilab : {}
+    const valueSchema = isRecord(unilab.value_schema)
+      ? unilab.value_schema
+      : undefined
+    const handleKey = String(handle.handle_key || '')
+    const dataKey = typeof handle.data_key === 'string'
+      ? handle.data_key
+      : null
+    const displayName = String(handle.display_name || handleKey)
+    const schemaTitle = valueSchema
+      ? nullableString(valueSchema.title)
+      : null
+    const schemaDescription = valueSchema
+      ? nullableString(valueSchema.description)
+      : null
+    const title = nullableString(handle.title) ?? schemaTitle ?? (
+      displayName !== (dataKey || handleKey) ? displayName : null
+    )
+    const description = nullableString(handle.description) ?? schemaDescription
+    const allowlist = stringArrayOrNull(
+      unilab.allowed_resource_template_uuids
+    )
     handles.push({
       uuid: String(handle.uuid || ''),
-      handleKey: String(handle.handle_key || ''),
-      displayName: String(handle.display_name || handle.handle_key || ''),
-      ioType
+      handleKey,
+      displayName,
+      ...(title ? { title } : {}),
+      ...(description ? { description } : {}),
+      ioType,
+      ...(typeof handle.type === 'string'
+        ? { valueType: handle.type }
+        : {}),
+      ...(valueSchema ? { valueSchema } : {}),
+      ...(typeof handle.data_key === 'string' || handle.data_key === null
+        ? { dataKey: handle.data_key }
+        : {}),
+      ...(typeof unilab.editor_control === 'string' ||
+        unilab.editor_control === null
+        ? { editorControl: unilab.editor_control }
+        : {}),
+      ...(allowlist !== undefined
+        ? { allowedResourceTemplateUuids: allowlist }
+        : {}),
+      ...(typeof unilab.implicit_passthrough === 'boolean'
+        ? { implicitPassthrough: unilab.implicit_passthrough }
+        : {})
     })
     handlesByTemplate.set(templateUuid, handles)
   }
@@ -88,6 +155,8 @@ export function projectPersistentAuthoringGraph(
     const position = nodePosition(node.pose)
     const param = isRecord(node.param) ? node.param : {}
     const mount = isRecord(param.mount) ? param.mount : {}
+    const resourceTemplateUuid = String(param.resource_template_uuid || '')
+    const resourceTemplate = resourceTemplateByUuid.get(resourceTemplateUuid)
     return {
       id: nodeUuid,
       name: String(
@@ -109,6 +178,9 @@ export function projectPersistentAuthoringGraph(
             descendantNodeIds: descendants(nodeUuid),
             collapsedByDefault: true,
             openChildWorkflowUuid: composite.workflowUuid,
+            ...(composite.visualKind
+              ? { visualKind: composite.visualKind }
+              : {}),
             compositeSignature: [
               String(graph.workflow.uuid || ''),
               String(graph.workflow.revision ?? ''),
@@ -124,7 +196,11 @@ export function projectPersistentAuthoringGraph(
             materialSource: {
               mode: String(param.mode || ''),
               flowRole: String(param.flow_role || ''),
-              mountUuid: String(mount.uuid || '')
+              mountUuid: String(mount.uuid || ''),
+              resourceTemplateUuid,
+              ...(resourceTemplate?.shape
+                ? { shape: resourceTemplate.shape }
+                : {})
             }
           }
         : {}),
@@ -156,9 +232,71 @@ export function projectPersistentAuthoringGraph(
   }
 }
 
+/**
+ * 按完整工作流拓扑重新排列持久编写图，同时保留 OS 节点姿态中的非平面信息。
+ *
+ * @param graph OS 返回或前端候选区持有的工作流编写图。
+ * @param strategy 用户选择的工作流（Workflow）画布布局策略。
+ * @param swimlaneDirection 物料泳道策略当前选中的流向。
+ * @returns 新的工作流编写图；原图及其节点不会被修改。
+ */
+export function beautifyPersistentAuthoringGraph(
+  graph: WorkflowAuthoringGraph,
+  strategy: WorkflowDagLayoutStrategy =
+    DEFAULT_WORKFLOW_DAG_LAYOUT_STRATEGY,
+  swimlaneDirection: WorkflowMaterialSwimlaneDirection =
+    DEFAULT_WORKFLOW_MATERIAL_SWIMLANE_DIRECTION
+): WorkflowAuthoringGraph {
+  const structure = projectPersistentAuthoringGraph(graph)
+  // 六边形物料来源比动作条更高；上移一小段可保证第一条物料流明确向下。
+  const materialSourceNodeIds = new Set(
+    structure.nodes
+      .filter((node) => node.type === 'material_source')
+      .map((node) => node.id)
+  )
+  const layout = strategy === 'material-swimlanes'
+    ? layoutWorkflowMaterialSwimlanes(
+        structure.nodes,
+        structure.links,
+        swimlaneDirection
+      )
+    : layoutDag(structure.nodes, structure.links, {
+        preserveExistingPositions: false
+      })
+  const positionByNodeUuid = new Map(
+    layout.nodes.map((node) => [node.id, {
+      x: node.x,
+      y: materialSourceNodeIds.has(node.id) && layout.direction === 'vertical'
+        ? node.y - 24
+        : node.y
+    }])
+  )
+  return {
+    ...graph,
+    nodes: graph.nodes.map((node) => {
+      const nodeUuid = String(node.uuid || '')
+      const position = positionByNodeUuid.get(nodeUuid)
+      if (!position) return node
+      const pose = isRecord(node.pose) ? node.pose : {}
+      const previousPosition = isRecord(pose.position) ? pose.position : {}
+      return {
+        ...node,
+        pose: {
+          ...pose,
+          position: {
+            ...previousPosition,
+            ...position
+          }
+        }
+      }
+    })
+  }
+}
+
 interface PublishedWorkflowProjection {
   workflowUuid: string
   contractDigest: string
+  visualKind?: WorkflowNodeVisualKind
 }
 
 function publishedWorkflowProjection(
@@ -173,7 +311,20 @@ function publishedWorkflowProjection(
   const workflowUuid = nullableString(contract.workflow_uuid)
   const contractDigest = nullableString(contract.contract_digest)
   if (!workflowUuid || !contractDigest) return null
-  return { workflowUuid, contractDigest }
+  const metaData = isRecord(template.meta_data) ? template.meta_data : {}
+  const unilab = isRecord(metaData.unilab) ? metaData.unilab : {}
+  const source = isRecord(unilab.workflow_source)
+    ? unilab.workflow_source
+    : {}
+  const visualKind = workflowNodeVisualKind({
+    symbol: nullableString(source.symbol),
+    definitionFqid: nullableString(source.definition_fqid)
+  })
+  return {
+    workflowUuid,
+    contractDigest,
+    ...(visualKind ? { visualKind } : {})
+  }
 }
 
 export function updatePersistentAuthoringNodeName(
@@ -198,7 +349,7 @@ export function updatePersistentAuthoringNodeName(
     node.parent_uuid !== undefined &&
     node.parent_uuid !== null
   )) {
-    throw new Error('Composite internal/private Node 只读；请编辑 invocation boundary')
+    throw new Error('复合工作流的内部私有节点只读；请编辑调用边界')
   }
   return {
     ...graph,
@@ -234,7 +385,7 @@ export function parseWorkflowAuthoringGraphImport(
   }
   const importedWorkflowUuid = String(graph.workflow.uuid || '')
   if (!importedWorkflowUuid) {
-    throw new Error('导入的 Authoring Graph 缺少 workflow.uuid')
+    throw new Error('导入的工作流编辑数据缺少 workflow.uuid')
   }
   if (importedWorkflowUuid !== workflowUuid) {
     throw new Error(
@@ -282,6 +433,13 @@ function finite(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value)
     ? value
     : undefined
+}
+
+function stringArrayOrNull(value: unknown): string[] | null | undefined {
+  if (value === null) return null
+  if (!Array.isArray(value)) return undefined
+  if (!value.every((item) => typeof item === 'string')) return undefined
+  return [...value]
 }
 
 function nullableString(value: unknown): string | null {

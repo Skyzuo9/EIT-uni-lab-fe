@@ -5,7 +5,8 @@ import {
 } from '@unilab/material'
 import {
   PascalLabWorkbench,
-  type MaterialSceneMove
+  type MaterialSceneMove,
+  type MaterialTransferSceneRoute
 } from '@unilab/pascal-lab-plugin'
 import { useEffect, useMemo } from 'react'
 
@@ -13,12 +14,21 @@ import { useWorkbench } from '../../context/WorkbenchContext'
 import { useLabInteraction } from './LabInteractionProvider'
 import { useMaterialRuntime } from './MaterialRuntimeProvider'
 import type { LabViewMode } from './UnifiedLabViewport'
+import { supportsWebGl } from './webGlCapability'
 
+/**
+ * 将物料（Material）图投影到 Pascal 三维场景（3D Scene）工作台。
+ *
+ * `showSites` 控制库位（Site）图层是否可见，`viewMode` 指定统一实验室视图模式；
+ * 返回包含能力降级、模型资源解析、选择同步和移动提交能力的 React 视图。
+ */
 export function SceneWorkbench({
   showSites = true,
+  showMaterialTransfers = true,
   viewMode = '3d'
 }: {
   showSites?: boolean
+  showMaterialTransfers?: boolean
   viewMode?: LabViewMode
 }): React.JSX.Element {
   const { backend } = useWorkbench()
@@ -34,6 +44,19 @@ export function SceneWorkbench({
   )
   const highlightedMaterialIds = useLabInteraction(
     (state) => state.highlightedMaterialIds
+  )
+  const workflowMaterialTransferRoutes = useLabInteraction(
+    (state) => state.activeWorkflowMaterialTransferRoutes
+  )
+  const selectedWorkflowStepId = useLabInteraction(
+    (state) => state.selectedWorkflowStepId
+  )
+  const materialTransferRoutes = useMemo<MaterialTransferSceneRoute[]>(
+    () => workflowMaterialTransferRoutes.map((route) => ({
+      ...route,
+      selected: route.workflowNodeUuid === selectedWorkflowStepId
+    })),
+    [selectedWorkflowStepId, workflowMaterialTransferRoutes]
   )
   const selectMaterials = useLabInteraction(
     (state) => state.selectMaterials
@@ -114,6 +137,11 @@ export function SceneWorkbench({
       aggregates={aggregates}
       shapes={shapeLibrary}
       showSites={showSites}
+      showMaterialTransfers={
+        showMaterialTransfers && (viewMode === '3d' || viewMode === 'split')
+      }
+      materialTransferRoutes={materialTransferRoutes}
+      materialTransferProjectionError={null}
       viewMode={viewMode}
       projectId={`unilab-${backend.id}-${scopeKey}`}
       editable={moveStatus.available}
@@ -128,13 +156,5 @@ export function SceneWorkbench({
         selectSceneObjects(sceneObjectIds)
       }}
     />
-  )
-}
-
-function supportsWebGl(): boolean {
-  if (typeof document === 'undefined') return true
-  const canvas = document.createElement('canvas')
-  return Boolean(
-    canvas.getContext('webgl2') || canvas.getContext('webgl')
   )
 }

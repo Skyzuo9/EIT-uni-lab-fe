@@ -12,6 +12,7 @@
 import { requestData, type HttpClient } from './http'
 import { ServiceError } from './errors'
 import type { BackendConfig } from './backends'
+import type { DeviceCardActionRiskLevel } from '@unilab/device-card-sdk'
 
 export interface DeviceActionTarget {
   deviceId: string
@@ -38,6 +39,7 @@ export interface DeviceAction {
   schema: Record<string, unknown> | null
   inputSchema: Record<string, DeviceActionInputSchema>
   outputSchema: Record<string, DeviceActionInputSchema>
+  riskLevel: DeviceCardActionRiskLevel
 }
 
 export interface DeviceActionUnlockResult {
@@ -73,6 +75,29 @@ export interface DeviceStatus {
   timestamp: number
 }
 
+export interface DeviceCatalogAction {
+  actionName: string
+  actionRef: string
+  label: string
+  typeName: string
+  inputSchema: Record<string, unknown>
+  outputSchema: Record<string, unknown>
+  riskLevel: DeviceCardActionRiskLevel
+  isBusy: boolean
+}
+
+export interface DeviceCatalogItem {
+  deviceId: string
+  deviceTypeId: string
+  deviceKey: string
+  namespace: string
+  label: string
+  online: boolean
+  /** Formal Driver/Host property contract. Runtime samples never extend it. */
+  stateSchema?: Record<string, unknown>
+  actions: DeviceCatalogAction[]
+}
+
 export interface ResourceNode {
   id: string
   uuid: string
@@ -96,14 +121,17 @@ interface RuntimeActionTemplate {
   currentJobId: string | null
   inputSchema: Record<string, unknown>
   outputSchema: Record<string, unknown>
+  riskLevel: DeviceCardActionRiskLevel
 }
 
 interface RuntimeDeviceCatalogItem {
   id: string
+  deviceTypeId?: string
   deviceKey: string
   namespace: string
   name: string
   online: boolean
+  stateSchema?: Record<string, unknown>
   actions: RuntimeActionTemplate[]
 }
 
@@ -112,9 +140,9 @@ export function createLaboratoryService(
   backend: BackendConfig
 ) {
   return {
-    async ping(): Promise<boolean> {
+    async ping(signal?: AbortSignal): Promise<boolean> {
       try {
-        await http.request<unknown>('/api/v1/health')
+        await http.request<unknown>('/api/v1/health', { signal })
         return true
       } catch {
         return false
@@ -128,8 +156,17 @@ export function createLaboratoryService(
         .map((device) => ({ deviceId: device.id, label: device.id }))
     },
 
-    async getOnlineDevices(): Promise<OnlineDevice[]> {
-      return (await getRuntimeDevices(http))
+    async getDeviceCatalog(): Promise<DeviceCatalogItem[]> {
+      const raw = await requestData<Record<string, unknown>>(
+        http,
+        '/api/v1/devices'
+      )
+      const items = Array.isArray(raw.items) ? raw.items : []
+      return items.map((value) => mapDeviceCatalogItem(asRecord(value)))
+    },
+
+    async getOnlineDevices(signal?: AbortSignal): Promise<OnlineDevice[]> {
+      return (await getRuntimeDevices(http, signal))
         .sort((left, right) => left.id.localeCompare(right.id))
         .map((device) => ({
           id: device.id,
@@ -217,6 +254,42 @@ export function createLaboratoryService(
 
 export type LaboratoryService = ReturnType<typeof createLaboratoryService>
 
+function mapDeviceCatalogItem(
+  raw: Record<string, unknown>
+): DeviceCatalogItem {
+  const deviceId = str(raw.id)
+  return {
+    deviceId,
+    // 新目录提供 Driver 类型；保留旧 Edge 的实例 id 回退。
+    deviceTypeId: str(raw.deviceTypeId ?? raw.typeId ?? raw.className) || deviceId,
+    deviceKey: str(raw.deviceKey),
+    namespace: str(raw.namespace),
+    label: str(raw.name) || deviceId,
+    online: Boolean(raw.online),
+    stateSchema: Object.prototype.hasOwnProperty.call(raw, 'stateSchema')
+      ? normalizeDeviceStateSchema(raw.stateSchema)
+      : undefined,
+    actions: Array.isArray(raw.actions)
+      ? raw.actions.map((value) => {
+          const action = asRecord(value)
+          const actionRef = str(action.actionRef)
+          const separator = actionRef.lastIndexOf('.')
+          return {
+            actionName: str(action.id) ||
+              (separator >= 0 ? actionRef.slice(separator + 1) : actionRef),
+            actionRef,
+            label: str(action.name) || str(action.id),
+            typeName: str(action.typeName),
+            inputSchema: asRecord(action.inputSchema),
+            outputSchema: asRecord(action.outputSchema),
+            riskLevel: actionRiskLevel(action.riskLevel),
+            isBusy: Boolean(action.busy)
+          }
+        })
+      : []
+  }
+}
+
 function mapDeviceAction(template: RuntimeActionTemplate): DeviceAction {
   const schema = normalizeInputSchema(template.inputSchema)
   return {
@@ -229,7 +302,8 @@ function mapDeviceAction(template: RuntimeActionTemplate): DeviceAction {
     currentJobId: template.currentJobId,
     schema,
     inputSchema: mapActionSchema(schema.properties),
-    outputSchema: mapActionSchema(template.outputSchema)
+    outputSchema: mapActionSchema(template.outputSchema),
+    riskLevel: template.riskLevel
   }
 }
 
@@ -265,11 +339,13 @@ function mapResource(raw: Record<string, unknown>): ResourceNode {
 }
 
 async function getRuntimeDevices(
-  http: HttpClient
+  http: HttpClient,
+  signal?: AbortSignal
 ): Promise<RuntimeDeviceCatalogItem[]> {
   const raw = await requestData<Record<string, unknown>>(
     http,
-    '/api/v1/devices'
+    '/api/v1/devices',
+    { signal }
   )
   const items = Array.isArray(raw.items) ? raw.items : []
   return items.flatMap((value) => {
@@ -292,7 +368,8 @@ async function getRuntimeDevices(
               isBusy: Boolean(action.busy),
               currentJobId: optionalString(action.currentJobId),
               inputSchema: asRecord(action.inputSchema),
-              outputSchema: asRecord(action.outputSchema)
+              outputSchema: asRecord(action.outputSchema),
+              riskLevel: actionRiskLevel(action.riskLevel)
             }
           ]
         })
@@ -300,10 +377,14 @@ async function getRuntimeDevices(
     return [
       {
         id: deviceId,
+        deviceTypeId: optionalString(item.deviceTypeId) ?? undefined,
         deviceKey: str(item.deviceKey),
         namespace: str(item.namespace),
         name: str(item.name) || deviceId,
         online: Boolean(item.online),
+        stateSchema: Object.prototype.hasOwnProperty.call(item, 'stateSchema')
+          ? normalizeDeviceStateSchema(item.stateSchema)
+          : undefined,
         actions
       }
     ]
@@ -362,6 +443,18 @@ function optionalString(value: unknown): string | null {
   return valueString || null
 }
 
+function actionRiskLevel(value: unknown): DeviceCardActionRiskLevel {
+  if (value === undefined || value === null || value === '' || value === 'normal') {
+    return 'normal'
+  }
+  if (value === 'dangerous' || value === 'emergency') return value
+  throw new ServiceError({
+    code: 'INVALID_ACTION_RISK_LEVEL',
+    message: `Edge 返回了无效的 Action 风险等级：${String(value)}`,
+    retryable: false
+  })
+}
+
 function stringArray(value: unknown): string[] {
   return Array.isArray(value)
     ? value.map(str).filter(Boolean)
@@ -374,4 +467,19 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function asRecord(value: unknown): Record<string, unknown> {
   return isRecord(value) ? value : {}
+}
+
+function normalizeDeviceStateSchema(value: unknown): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(asRecord(value)).map(([key, definition]) => {
+      if (!isRecord(definition)) return [key, definition]
+      const source = definition.source
+      return [
+        key,
+        source === 'registry' || source === 'package-catalog'
+          ? { ...definition, source: 'driver' }
+          : { ...definition }
+      ]
+    })
+  )
 }

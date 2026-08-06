@@ -1,16 +1,41 @@
-import type { WorkflowLink, WorkflowNode } from './parseWorkflow'
+import type {
+  WorkflowHandlePort,
+  WorkflowLink,
+  WorkflowNode
+} from './parseWorkflow'
 
 export interface WorkflowMaterialChip {
   handleUuid: string
-  label: string
   sourceNodeUuid: string
+  sourceNodeName: string
+  sourceHandleName: string
   accent: string
-  shortIdentity: string
 }
 
 export interface WorkflowMaterialTraceProjection {
   edgeAccents: Map<number, string>
+  edgeLineages: Map<number, string>
+  handleAccentsByNode: Map<string, Map<string, string>>
+  handleLineagesByNode: Map<string, Map<string, string>>
+  materialSourceAccents: Map<string, string>
   chipsByNode: Map<string, WorkflowMaterialChip[]>
+  lineages: WorkflowMaterialLineage[]
+}
+
+export interface WorkflowMaterialLineage {
+  key: string
+  sourceNodeUuid: string
+  sourceNodeName: string
+  sourceHandleName: string
+  accent: string
+}
+
+interface MaterialEdge {
+  index: number
+  sourceNode: WorkflowNode
+  sourceHandle: WorkflowHandlePort
+  targetNode: WorkflowNode
+  targetHandle: WorkflowHandlePort
 }
 
 const MATERIAL_TRACE_ACCENTS = [
@@ -24,40 +49,335 @@ const MATERIAL_TRACE_ACCENTS = [
   '#7451a1'
 ] as const
 
-export function materialTraceAccent(nodeUuid: string): string {
+export function materialTraceAccent(identity: string): string {
   let hash = 2166136261
-  for (let index = 0; index < nodeUuid.length; index += 1) {
-    hash ^= nodeUuid.charCodeAt(index)
+  for (let index = 0; index < identity.length; index += 1) {
+    hash ^= identity.charCodeAt(index)
     hash = Math.imul(hash, 16777619)
   }
   return MATERIAL_TRACE_ACCENTS[(hash >>> 0) % MATERIAL_TRACE_ACCENTS.length]
 }
 
+/**
+ * 从有类型物料占位符（ResourceSlot）边投影物料流身份、颜色与节点标签。
+ *
+ * @param nodes 当前可见工作流（Workflow）节点。
+ * @param links 当前可见工作流边；只有两端均为物料占位符的边会进入投影。
+ * @returns 可按边、句柄和来源查询的物料流（MaterialFlow）追踪投影。
+ */
 export function projectMaterialTraces(
   nodes: readonly WorkflowNode[],
   links: readonly WorkflowLink[]
 ): WorkflowMaterialTraceProjection {
   const nodeById = new Map(nodes.map((node) => [node.id, node]))
-  const edgeAccents = new Map<number, string>()
-  const chipsByNode = new Map<string, WorkflowMaterialChip[]>()
-  links.forEach((link, index) => {
-    const source = nodeById.get(link.source)
+  const handleByNode = new Map(nodes.map((node) => [
+    node.id,
+    new Map((node.handles ?? []).map((handle) => [handle.uuid, handle]))
+  ]))
+  const materialEdges = links.flatMap((link, index) => {
+    const sourceNode = nodeById.get(link.source)
+    const targetNode = nodeById.get(link.target)
+    const sourceHandle = link.sourceHandleUuid
+      ? handleByNode.get(link.source)?.get(link.sourceHandleUuid)
+      : undefined
+    const targetHandle = link.targetHandleUuid
+      ? handleByNode.get(link.target)?.get(link.targetHandleUuid)
+      : undefined
     if (
-      source?.type !== 'material_source' ||
-      !link.sourceHandleUuid ||
-      !link.targetHandleUuid
-    ) return
-    const accent = materialTraceAccent(source.id)
-    edgeAccents.set(index, accent)
-    const chips = chipsByNode.get(link.target) ?? []
-    chips.push({
-      handleUuid: link.targetHandleUuid,
-      label: source.name,
-      sourceNodeUuid: source.id,
-      accent,
-      shortIdentity: source.id.replace(/-/g, '').slice(-4)
-    })
-    chipsByNode.set(link.target, chips)
+      !sourceNode ||
+      !targetNode ||
+      !sourceHandle ||
+      !targetHandle ||
+      sourceHandle.ioType !== 'source' ||
+      targetHandle.ioType !== 'target' ||
+      !isResourceSlotHandle(sourceHandle) ||
+      !isResourceSlotHandle(targetHandle)
+    ) return []
+    return [{
+      index,
+      sourceNode,
+      sourceHandle,
+      targetNode,
+      targetHandle
+    } satisfies MaterialEdge]
   })
-  return { edgeAccents, chipsByNode }
+  const outgoingByHandle = new Map<string, MaterialEdge[]>()
+  for (const edge of materialEdges) {
+    const key = handleIdentity(edge.sourceNode.id, edge.sourceHandle.uuid)
+    const outgoing = outgoingByHandle.get(key) ?? []
+    outgoing.push(edge)
+    outgoingByHandle.set(key, outgoing)
+  }
+
+  const edgeAccents = new Map<number, string>()
+  const edgeLineages = new Map<number, string>()
+  const handleAccentsByNode = new Map<string, Map<string, string>>()
+  const handleLineagesByNode = new Map<string, Map<string, string>>()
+  const materialSourceAccents = new Map<string, string>()
+  const chipsByNode = new Map<string, WorkflowMaterialChip[]>()
+  const lineages: WorkflowMaterialLineage[] = []
+  const lineageKeys = new Set<string>()
+  const visited = new Set<string>()
+  const usedAccents = new Set<string>()
+  const accentsByLineage = new Map<string, string>()
+  const accentFor = (lineageKey: string): string => {
+    const existing = accentsByLineage.get(lineageKey)
+    if (existing) return existing
+    const preferred = materialTraceAccent(lineageKey)
+    const start = MATERIAL_TRACE_ACCENTS.findIndex(
+      (accent) => accent === preferred
+    )
+    let accent = preferred
+    for (let offset = 0; offset < MATERIAL_TRACE_ACCENTS.length; offset += 1) {
+      const candidate = MATERIAL_TRACE_ACCENTS[
+        (start + offset) % MATERIAL_TRACE_ACCENTS.length
+      ]
+      if (usedAccents.has(candidate)) continue
+      accent = candidate
+      break
+    }
+    accentsByLineage.set(lineageKey, accent)
+    usedAccents.add(accent)
+    return accent
+  }
+
+  const traceFrom = (
+    sourceNode: WorkflowNode,
+    sourceHandle: WorkflowHandlePort,
+    lineage: WorkflowMaterialLineage
+  ): void => {
+    if (!lineageKeys.has(lineage.key)) {
+      lineageKeys.add(lineage.key)
+      lineages.push(lineage)
+    }
+    const queue: Array<{
+      node: WorkflowNode
+      handle: WorkflowHandlePort
+    }> = [{ node: sourceNode, handle: sourceHandle }]
+    while (queue.length > 0) {
+      const current = queue.shift()
+      if (!current) continue
+      const currentIdentity = handleIdentity(current.node.id, current.handle.uuid)
+      const visitKey = `${lineage.key}:${currentIdentity}`
+      if (visited.has(visitKey)) continue
+      visited.add(visitKey)
+      setHandleAccent(
+        handleAccentsByNode,
+        current.node.id,
+        current.handle.uuid,
+        lineage.accent
+      )
+      setHandleLineage(
+        handleLineagesByNode,
+        current.node.id,
+        current.handle.uuid,
+        lineage.key
+      )
+      for (const edge of outgoingByHandle.get(currentIdentity) ?? []) {
+        edgeAccents.set(edge.index, lineage.accent)
+        edgeLineages.set(edge.index, lineage.key)
+        setHandleAccent(
+          handleAccentsByNode,
+          edge.targetNode.id,
+          edge.targetHandle.uuid,
+          lineage.accent
+        )
+        setHandleLineage(
+          handleLineagesByNode,
+          edge.targetNode.id,
+          edge.targetHandle.uuid,
+          lineage.key
+        )
+        addMaterialChip(chipsByNode, edge.targetNode.id, {
+          handleUuid: edge.targetHandle.uuid,
+          sourceNodeUuid: lineage.sourceNodeUuid,
+          sourceNodeName: lineage.sourceNodeName,
+          sourceHandleName: lineage.sourceHandleName,
+          accent: lineage.accent,
+        })
+
+        for (const nextHandle of passThroughHandles(
+          edge.targetNode,
+          edge.targetHandle
+        )) {
+          setHandleAccent(
+            handleAccentsByNode,
+            edge.targetNode.id,
+            nextHandle.uuid,
+            lineage.accent
+          )
+          setHandleLineage(
+            handleLineagesByNode,
+            edge.targetNode.id,
+            nextHandle.uuid,
+            lineage.key
+          )
+          queue.push({ node: edge.targetNode, handle: nextHandle })
+        }
+      }
+    }
+  }
+
+  for (const node of nodes) {
+    if (node.type !== 'material_source') continue
+    for (const handle of node.handles ?? []) {
+      if (handle.ioType !== 'source' || !isResourceSlotHandle(handle)) continue
+      const lineage = rootLineage(node, handle, true, accentFor)
+      materialSourceAccents.set(node.id, lineage.accent)
+      traceFrom(node, handle, lineage)
+    }
+  }
+
+  // 先从没有未追踪同字段输入的上游输出开始，再沿透传链向下推进。
+  // 这样即使 OS 返回的边顺序从下游到上游，也不会把同一物料拆成多个身份。
+  let untraced = materialEdges.filter((edge) => !edgeAccents.has(edge.index))
+  while (untraced.length > 0) {
+    const root = untraced.find((edge) =>
+      !hasUntracedPassThroughPredecessor(edge, untraced)
+    ) ?? untraced[0]
+    traceFrom(
+      root.sourceNode,
+      root.sourceHandle,
+      rootLineage(root.sourceNode, root.sourceHandle, false, accentFor)
+    )
+    untraced = materialEdges.filter((edge) => !edgeAccents.has(edge.index))
+  }
+
+  return {
+    edgeAccents,
+    edgeLineages,
+    handleAccentsByNode,
+    handleLineagesByNode,
+    materialSourceAccents,
+    chipsByNode,
+    lineages
+  }
+}
+
+/**
+ * 判断一条未追踪物料边的来源输出是否仍在等待同字段上游输入。
+ *
+ * @param edge 当前候选物料边。
+ * @param untraced 尚未归属物料身份的全部物料边。
+ * @returns 存在会透传到该输出的未追踪输入边时返回真。
+ */
+function hasUntracedPassThroughPredecessor(
+  edge: MaterialEdge,
+  untraced: readonly MaterialEdge[]
+): boolean {
+  const sourceKey = edge.sourceHandle.dataKey ?? edge.sourceHandle.handleKey
+  const inputHandleUuids = new Set(
+    (edge.sourceNode.handles ?? [])
+      .filter((handle) =>
+        handle.ioType === 'target' &&
+        isResourceSlotHandle(handle) &&
+        (handle.dataKey ?? handle.handleKey) === sourceKey
+      )
+      .map((handle) => handle.uuid)
+  )
+  return untraced.some((candidate) =>
+    candidate.targetNode.id === edge.sourceNode.id &&
+    inputHandleUuids.has(candidate.targetHandle.uuid)
+  )
+}
+
+/**
+ * 查找与输入 Handle 共享同一字段的 ResourceSlot 输出。
+ *
+ * @param node 当前操作节点。
+ * @param targetHandle 已收到上游物料身份的输入 Handle。
+ * @returns 承载同一物料身份的同字段输出 Handle。
+ */
+function passThroughHandles(
+  node: WorkflowNode,
+  targetHandle: WorkflowHandlePort
+): WorkflowHandlePort[] {
+  const targetKey = targetHandle.dataKey ?? targetHandle.handleKey
+  return (node.handles ?? []).filter((handle) =>
+    handle.ioType === 'source' &&
+    isResourceSlotHandle(handle) &&
+    (handle.dataKey ?? handle.handleKey) === targetKey
+  )
+}
+
+export function isResourceSlotHandle(handle: WorkflowHandlePort): boolean {
+  if (handle.valueType === 'ResourceSlot') return true
+  return isResourceSlotSchema(handle.valueSchema)
+}
+
+function isResourceSlotSchema(value: unknown): boolean {
+  if (!isRecord(value)) return false
+  if (value.$slot === 'ResourceSlot') return true
+  if (!Array.isArray(value.anyOf)) return false
+  return value.anyOf.some((candidate) =>
+    isRecord(candidate) && candidate.$slot === 'ResourceSlot'
+  )
+}
+
+function rootLineage(
+  node: WorkflowNode,
+  handle: WorkflowHandlePort,
+  materialSource: boolean,
+  accentFor: (lineageKey: string) => string
+): WorkflowMaterialLineage {
+  const key = materialSource ? node.id : `${node.id}:${handle.uuid}`
+  return {
+    key,
+    sourceNodeUuid: node.id,
+    sourceNodeName: node.name,
+    sourceHandleName: handle.displayName || handle.handleKey,
+    accent: accentFor(key),
+  }
+}
+
+/**
+ * 记录一个句柄当前承载的物料流身份；已有身份优先，避免合流时静默改写。
+ *
+ * @param lineages 按节点和句柄组织的物料流身份索引。
+ * @param nodeUuid 工作流节点 UUID。
+ * @param handleUuid 物料占位符句柄 UUID。
+ * @param lineageKey 物料流身份键。
+ * @returns 无返回值；索引在原位置更新。
+ */
+function setHandleLineage(
+  lineages: Map<string, Map<string, string>>,
+  nodeUuid: string,
+  handleUuid: string,
+  lineageKey: string
+): void {
+  const nodeLineages = lineages.get(nodeUuid) ?? new Map<string, string>()
+  if (!nodeLineages.has(handleUuid)) nodeLineages.set(handleUuid, lineageKey)
+  lineages.set(nodeUuid, nodeLineages)
+}
+
+function setHandleAccent(
+  accents: Map<string, Map<string, string>>,
+  nodeUuid: string,
+  handleUuid: string,
+  accent: string
+): void {
+  const nodeAccents = accents.get(nodeUuid) ?? new Map<string, string>()
+  if (!nodeAccents.has(handleUuid)) nodeAccents.set(handleUuid, accent)
+  accents.set(nodeUuid, nodeAccents)
+}
+
+function addMaterialChip(
+  chipsByNode: Map<string, WorkflowMaterialChip[]>,
+  nodeUuid: string,
+  chip: WorkflowMaterialChip
+): void {
+  const chips = chipsByNode.get(nodeUuid) ?? []
+  if (!chips.some((candidate) =>
+    candidate.handleUuid === chip.handleUuid &&
+    candidate.sourceNodeUuid === chip.sourceNodeUuid
+  )) chips.push(chip)
+  chipsByNode.set(nodeUuid, chips)
+}
+
+function handleIdentity(nodeUuid: string, handleUuid: string): string {
+  return `${nodeUuid}:${handleUuid}`
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }

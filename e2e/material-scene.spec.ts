@@ -24,6 +24,8 @@ const ARTIFACT_ROOT = resolve(
   'materials',
   'szlab-inventory'
 )
+const MATERIAL_TRANSFER_WORKFLOW_UUID =
+  '6d9fb3e2-4dcb-5f23-93b4-74d1b6083393'
 
 interface InventoryProcess {
   child: ChildProcess
@@ -44,6 +46,7 @@ test.use({
 })
 
 test.beforeAll(async () => {
+  test.setTimeout(120_000)
   mkdirSync(ARTIFACT_ROOT, { recursive: true })
   inventory = await startSzlabInventory()
 })
@@ -55,6 +58,10 @@ test.afterAll(async () => {
   }
 })
 
+/**
+ * 验证真实 SZLab 物料图在 2D、2.5D 与 3D 间切换，并覆盖 2.5D 缩放和旋转。
+ * 输入来自真实 OS 物料图接口，输出检查对象、库位（Site）、视角状态与截图。
+ */
 test('SZLab MaterialGraph renders complete 2.5D and 3D views', async ({
   page
 }) => {
@@ -98,14 +105,14 @@ test('SZLab MaterialGraph renders complete 2.5D and 3D views', async ({
   }
   const graphSites =
     graphPayload.data?.nodes?.flatMap((node) => node.sites ?? []) ?? []
-  expect(graphPayload.data?.nodes).toHaveLength(126)
-  expect(graphSites).toHaveLength(398)
+  expect(graphPayload.data?.nodes).toHaveLength(129)
+  expect(graphSites).toHaveLength(418)
   expect(
     graphSites.filter((site) => site.occupied_material_uuid != null)
   ).toHaveLength(110)
   expect(
     graphSites.filter((site) => site.occupied_material_uuid == null)
-  ).toHaveLength(288)
+  ).toHaveLength(308)
   const shapePayload = (await shapeResponse.json()) as {
     data?: { items?: unknown[] }
   }
@@ -114,7 +121,7 @@ test('SZLab MaterialGraph renders complete 2.5D and 3D views', async ({
   await expect(
     page.getByRole('button', { name: '物料', exact: true })
   ).toBeVisible()
-  await expect(page.getByText('(126)', { exact: true })).toBeVisible()
+  await expect(page.getByText('(129)', { exact: true })).toBeVisible()
   await expect(page.getByText('Edge 已连接', { exact: true })).toBeVisible()
 
   await expandMaterial(page, 'S1 连续流工作站')
@@ -172,25 +179,60 @@ test('SZLab MaterialGraph renders complete 2.5D and 3D views', async ({
   await page.getByRole('button', { name: '2.5D', exact: true }).click()
   const oblique = page.locator('[data-material-oblique-view]')
   await expect(oblique).toBeVisible()
-  await expect(oblique.locator('[data-material-id]')).toHaveCount(126)
+  await expect(oblique.locator('[data-material-id]')).toHaveCount(129)
   await expect(oblique.locator('[data-oblique-site-bounds]')).toHaveCount(
-    398
+    418
   )
   await expect(
     oblique.locator('[data-oblique-site-bounds][data-site-occupancy="occupied"]')
   ).toHaveCount(110)
   await expect(
     oblique.locator('[data-oblique-site-bounds][data-site-occupancy="empty"]')
-  ).toHaveCount(288)
+  ).toHaveCount(308)
   await expect(
     oblique.locator('[data-oblique-render-style="spec"]').first()
   ).toBeVisible()
   await captureViewport(page, 'szlab-materials-2_5d.png')
 
+  const zoomIn = page.getByRole('button', {
+    name: '放大 2.5D 视图'
+  })
+  const fitAll = page.getByRole('button', { name: '适应全部物料' })
+  await expect(zoomIn).toBeEnabled()
+  await expect(fitAll).toBeEnabled()
+  await zoomIn.click()
+  await expect(oblique).toHaveAttribute('data-camera-zoom', '1.25')
+  await expect(
+    page.getByRole('status', { name: '当前缩放比例' })
+  ).toHaveText('125%')
+  await captureViewport(page, 'szlab-materials-2_5d-zoomed.png')
+  await fitAll.click()
+  await expect(oblique).toHaveAttribute('data-camera-zoom', '1.00')
+
+  const obliqueBounds = await oblique.boundingBox()
+  expect(obliqueBounds).not.toBeNull()
+  if (!obliqueBounds) throw new Error('2.5D 视图缺少可交互区域')
+  await page.mouse.move(
+    obliqueBounds.x + obliqueBounds.width / 2,
+    obliqueBounds.y + obliqueBounds.height / 2
+  )
+  await page.mouse.down()
+  await page.mouse.move(
+    obliqueBounds.x + obliqueBounds.width / 2 + 120,
+    obliqueBounds.y + obliqueBounds.height / 2,
+    { steps: 6 }
+  )
+  await page.mouse.up()
+  await expect(oblique).toHaveAttribute(
+    'data-camera-rotation',
+    /-?(?:[1-9]\d*(?:\.\d+)?|0\.\d*[1-9]\d*)/
+  )
+
   await siteLayerToggle.click()
   await expect(siteLayerToggle).toHaveAttribute('aria-pressed', 'false')
   await expect(oblique).toHaveAttribute('data-site-layer-visible', 'false')
   await expect(oblique.locator('[data-oblique-site-bounds]')).toHaveCount(0)
+  await captureViewport(page, 'szlab-materials-2_5d-sites-hidden.png')
 
   await page.getByRole('button', { name: '3D', exact: true }).click()
   await expect(page.locator('.lab-unified-viewport')).toHaveAttribute(
@@ -201,8 +243,12 @@ test('SZLab MaterialGraph renders complete 2.5D and 3D views', async ({
   await expect(siteLayerToggle).toHaveAttribute('aria-pressed', 'true')
   const viewer = page.locator('[data-pascal-viewer-3d]')
   await expect(viewer).toBeVisible({ timeout: 30_000 })
-  await expect(viewer.locator('canvas')).toBeVisible()
-  await expect(page.getByText('126 个物料 · 只读')).toBeVisible()
+  const viewerCanvas = viewer.locator('canvas')
+  await expect(viewerCanvas).toBeVisible()
+  await expect(viewerCanvas.locator('..').locator('..')).toHaveClass(
+    /bg-\[#fafafa\]/
+  )
+  await expect(page.getByText('129 个物料 · 只读')).toBeVisible()
   const viewerBox = await viewer.boundingBox()
   expect(viewerBox?.width ?? 0).toBeGreaterThan(900)
   expect(viewerBox?.height ?? 0).toBeGreaterThan(500)
@@ -247,6 +293,133 @@ test('SZLab MaterialGraph renders complete 2.5D and 3D views', async ({
   expect(browserErrors).toEqual([])
 })
 
+/**
+ * 使用真实 SZLab 源码派生的转运节点与真实物料图（Material Graph），验证 3D
+ * 库位（Site）锚点、执行器（Executor）标识、运行态路径和图层控制。
+ */
+test('SZLab workflow projects material transfers into the Pascal 3D scene', async ({
+  page
+}) => {
+  // SwiftShader 在 CI 中截取 3D Canvas 约需 40–50 秒；五个验收态需预留完整时间。
+  test.setTimeout(360_000)
+  const browserErrors: string[] = []
+  page.on('console', (message) => {
+    if (message.type() === 'error') browserErrors.push(message.text())
+  })
+  page.on('pageerror', (error) => browserErrors.push(error.message))
+
+  await installMaterialTransferLayout(page)
+  await page.goto(
+    `/?section=material&localOsUrl=${encodeURIComponent(API_URL)}`
+  )
+  const viewer = page.locator('[data-pascal-viewer-3d]')
+  await expect(viewer).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByText('5 条物料转运路线', { exact: true }))
+    .toBeVisible({ timeout: 30_000 })
+  const transferToggle = page.getByRole('button', {
+    name: '物料转运',
+    exact: true
+  })
+  await expect(transferToggle).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.locator('.pascal-transfer-executor')).toHaveCount(5)
+  await expect(page.locator('.pascal-transfer-executor.is-expanded'))
+    .toHaveCount(1)
+  await expect(
+    page.locator('.pascal-transfer-executor').filter({
+      hasText: 'fine_at_s07'
+    })
+  ).toBeVisible()
+  await page.waitForTimeout(1_000)
+  await captureViewport(page, 'szlab-material-transfer-01-perspective.png')
+
+  await page.getByRole('button', { name: '顶视图', exact: true }).click()
+  await page.waitForTimeout(700)
+  await captureViewport(page, 'szlab-material-transfer-02-top-view.png')
+
+  const siteToggle = page.getByRole('button', {
+    name: '库位和点位',
+    exact: true
+  })
+  await siteToggle.click()
+  await expect(siteToggle).toHaveAttribute('aria-pressed', 'false')
+  await expect(page.locator('.pascal-transfer-executor')).toHaveCount(5)
+  await captureViewport(page, 'szlab-material-transfer-03-routes-only.png')
+
+  await transferToggle.click()
+  await expect(transferToggle).toHaveAttribute('aria-pressed', 'false')
+  await expect(page.locator('.pascal-transfer-executor')).toHaveCount(0)
+  await captureViewport(page, 'szlab-material-transfer-04-layer-hidden.png')
+
+  await transferToggle.click()
+  await expect(transferToggle).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.locator('.pascal-transfer-executor')).toHaveCount(5)
+  await page.getByRole('button', { name: '适配场景', exact: true }).click()
+  await page.waitForTimeout(700)
+  await captureViewport(page, 'szlab-material-transfer-05-layer-restored.png')
+
+  expect(browserErrors).toEqual([])
+})
+
+/**
+ * 使用宽屏侧前方视角完整呈现已解析的物料（Material）转运路径、库位（Site）
+ * 锚点与执行器（Executor），验证相机旋转后仍可按全场景边界完成取景。
+ * 参数：`page` 是承载真实 SZLab 3D 场景的 Playwright 页面。
+ * 返回：无；验收产物写入侧面全景截图，并断言浏览器无错误。
+ */
+test('SZLab 物料（Material）转运呈现完整侧面全景', async ({
+  page
+}) => {
+  test.setTimeout(180_000)
+  const browserErrors: string[] = []
+  page.on('console', (message) => {
+    if (message.type() === 'error') browserErrors.push(message.text())
+  })
+  page.on('pageerror', (error) => browserErrors.push(error.message))
+
+  await page.setViewportSize({ width: 1920, height: 1080 })
+  await installMaterialTransferLayout(page)
+  await page.goto(
+    `/?section=material&localOsUrl=${encodeURIComponent(API_URL)}`
+  )
+  const viewer = page.locator('[data-pascal-viewer-3d]')
+  await expect(viewer).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByText('5 条物料转运路线', { exact: true }))
+    .toBeVisible({ timeout: 30_000 })
+  await expect(page.locator('.pascal-transfer-executor')).toHaveCount(5)
+
+  const topView = page.getByRole('button', {
+    name: '顶视图',
+    exact: true
+  })
+  await topView.click()
+  await page.waitForTimeout(500)
+  await topView.click()
+  await page.waitForTimeout(500)
+  const sceneCanvas = viewer.locator('canvas')
+  const sceneBounds = await sceneCanvas.boundingBox()
+  if (!sceneBounds) throw new Error('3D 场景缺少可交互画布')
+  await page.mouse.move(
+    sceneBounds.x + sceneBounds.width * 0.9,
+    sceneBounds.y + sceneBounds.height * 0.35
+  )
+  await page.mouse.down({ button: 'right' })
+  await page.mouse.move(
+    sceneBounds.x + sceneBounds.width * 0.62,
+    sceneBounds.y + sceneBounds.height * 0.35,
+    { steps: 12 }
+  )
+  await page.mouse.up({ button: 'right' })
+  await page.waitForTimeout(500)
+  await page.getByRole('button', { name: '适配场景', exact: true }).click()
+  await page.waitForTimeout(900)
+  await captureViewport(
+    page,
+    'szlab-material-transfer-06-side-overview.png'
+  )
+
+  expect(browserErrors).toEqual([])
+})
+
 async function installMaterialOnlyLayout(page: Page): Promise<void> {
   await page.addInitScript(() => {
     localStorage.setItem(
@@ -271,10 +444,60 @@ async function installMaterialOnlyLayout(page: Page): Promise<void> {
   })
 }
 
+async function installMaterialTransferLayout(page: Page): Promise<void> {
+  await page.addInitScript((workflowUuid) => {
+    localStorage.setItem(
+      'unilab.panel-layout.lab.v1',
+      JSON.stringify({
+        version: 1,
+        layout: {
+          id: 'material-transfer-e2e-root',
+          type: 'split',
+          direction: 'horizontal',
+          sizes: [72, 28],
+          children: [
+            {
+              id: 'material-transfer-scene-group',
+              type: 'group',
+              panels: [{
+                id: 'material-transfer-scene',
+                panelType: 'layout-unified',
+                title: 'SZLab 3D 物料转运'
+              }],
+              activePanelId: 'material-transfer-scene'
+            },
+            {
+              id: 'material-transfer-workflow-group',
+              type: 'group',
+              panels: [{
+                id: 'material-transfer-workflow',
+                panelType: 'workflow-dag',
+                title: 'SZLab 工作流',
+                config: { workflow_uuid: workflowUuid }
+              }],
+              activePanelId: 'material-transfer-workflow'
+            }
+          ]
+        }
+      })
+    )
+    localStorage.setItem('unilab.lab.view-mode', '3d')
+    localStorage.setItem('unilab.lab.site-layer-visible', 'true')
+    localStorage.setItem(
+      'unilab.lab.material-transfer-layer-visible',
+      'true'
+    )
+  }, MATERIAL_TRANSFER_WORKFLOW_UUID)
+}
+
 async function captureViewport(page: Page, fileName: string): Promise<void> {
-  await page.locator('.lab-unified-viewport').screenshot({
+  const viewport = page.locator('.lab-unified-viewport')
+  const clip = await viewport.boundingBox()
+  if (!clip) throw new Error('实验室视图不可见')
+  await page.screenshot({
     path: resolve(ARTIFACT_ROOT, fileName),
-    animations: 'disabled'
+    animations: 'disabled',
+    clip
   })
 }
 
@@ -336,7 +559,7 @@ async function startSzlabInventory(): Promise<InventoryProcess> {
 }
 
 async function waitForGraph(child: ChildProcess): Promise<void> {
-  const deadline = Date.now() + 30_000
+  const deadline = Date.now() + 90_000
   while (Date.now() < deadline) {
     if (child.exitCode != null) {
       throw new Error(`Inventory server exited with ${child.exitCode}`)
@@ -347,14 +570,14 @@ async function waitForGraph(child: ChildProcess): Promise<void> {
         const body = (await response.json()) as {
           data?: { nodes?: unknown[] }
         }
-        if (body.data?.nodes?.length === 126) return
+        if (body.data?.nodes?.length === 129) return
       }
     } catch {
       // The process is still compiling PackageCatalog or binding the port.
     }
     await new Promise((resolveWait) => setTimeout(resolveWait, 100))
   }
-  throw new Error('Timed out waiting for SZLab MaterialGraph')
+  throw new Error('Timed out waiting for the 129-node SZLab MaterialGraph')
 }
 
 async function expandMaterial(page: Page, name: string): Promise<void> {

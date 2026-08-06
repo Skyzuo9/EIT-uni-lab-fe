@@ -36,6 +36,19 @@ interface LedgerEntry {
   status?: number
 }
 
+interface DeviceCatalogEnvelope {
+  data: {
+    items: Array<{
+      id: string
+      actions: Array<{
+        actionRef: string
+        busy: boolean
+        currentJobId: string | null
+      }>
+    }>
+  }
+}
+
 let os: RunningOs
 
 test.beforeAll(async () => {
@@ -327,6 +340,122 @@ test('one device Action becomes a formal Task/Job and returns through the origin
     }, null, 2)}\n`
   )
   writeFileSync(join(artifactDirectory, 'os.log'), os.logs())
+})
+
+/**
+ * 验证单动作任务终止后完成物理结算、释放设备动作锁，并保持手动解锁幂等。
+ *
+ * @param page 连接正式单动作任务接口与全局事件流的浏览器页面。
+ * @param request 用于核对工作流任务、设备目录与手动解锁结果的 HTTP 客户端。
+ * @returns 完成终止、释放、幂等解锁和再次运行的端到端验收。
+ * @throws 终止超时、任务未安全结算、设备仍被占用或后续运行失败时由断言报告失败。
+ * @safety 只有 OS 报告工作流任务已取消且清理完成后才断言设备动作可以复用。
+ */
+test('终止单动作任务后安全释放设备锁并允许再次运行', async ({
+  page,
+  request
+}) => {
+  test.setTimeout(90_000)
+  const browserErrors: string[] = []
+  page.on('console', (message) => {
+    if (message.type() === 'error') browserErrors.push(message.text())
+  })
+  page.on('pageerror', (error) => browserErrors.push(error.message))
+
+  await page.goto(
+    `/?section=device&localOsUrl=${encodeURIComponent(os.url)}`
+  )
+  const deviceList = page.getByRole('complementary', {
+    name: 'Edge 设备列表'
+  })
+  const workspace = page.locator('.edge-device__workspace')
+  const deviceButton = deviceList.getByRole('button', {
+    name: new RegExp(DEVICE_ID)
+  })
+  await deviceButton.click()
+  const actionButton = workspace.getByRole('button', {
+    name: '单节点运行 动作节点'
+  })
+  await actionButton.click()
+  const debugSection = workspace.locator('.edge-device__debug-section')
+  const durationInput = debugSection.locator('.edge-device__field input').first()
+  await durationInput.fill('30')
+
+  const acceptedResponsePromise = page.waitForResponse((response) =>
+    response.url() === `${os.url}/api/v1/device-action-tasks` &&
+    response.request().method() === 'POST'
+  )
+  await debugSection.getByRole('button', { name: '运行此动作' }).click()
+  const acceptedResponse = await acceptedResponsePromise
+  expect(acceptedResponse.status()).toBe(201)
+  const accepted = (await acceptedResponse.json() as {
+    data: { task_uuid: string; job_uuid: string }
+  }).data
+  await expect(debugSection.getByText('执行中', { exact: true })).toBeVisible({
+    timeout: 25_000
+  })
+  await expect(actionButton).toContainText('占用中')
+
+  const cancelPath =
+    `/api/v1/workflow-tasks/${accepted.task_uuid}/commands`
+  const cancelResponsePromise = page.waitForResponse((response) =>
+    new URL(response.url()).pathname === cancelPath &&
+    response.request().method() === 'POST'
+  )
+  const cancelStartedAt = Date.now()
+  await debugSection.getByRole('button', { name: '取消任务' }).click()
+  const cancelResponse = await cancelResponsePromise
+  expect(cancelResponse.status()).toBe(201)
+  expect(Date.now() - cancelStartedAt).toBeLessThan(5_000)
+  await expect(debugSection).toContainText('取消命令已接受')
+
+  await expect(
+    debugSection.getByText('已停止', { exact: true })
+  ).toBeVisible({ timeout: 15_000 })
+  await expect(debugSection).toContainText('动作任务已取消')
+  await expect(actionButton).toContainText('空闲')
+
+  const taskResponse = await request.get(
+    `${os.url}/api/v1/device-action-tasks/${accepted.task_uuid}`
+  )
+  expect(taskResponse.ok(), await taskResponse.text()).toBe(true)
+  const task = (await taskResponse.json() as {
+    data: { status: string; cleanup_status: string }
+  }).data
+  expect(task).toMatchObject({ status: 'canceled', cleanup_status: 'settled' })
+
+  const devicesResponse = await request.get(`${os.url}/api/v1/devices`)
+  expect(devicesResponse.ok(), await devicesResponse.text()).toBe(true)
+  const devices = (await devicesResponse.json() as DeviceCatalogEnvelope).data.items
+  expect(devices.find((device) => device.id === DEVICE_ID)?.actions.find(
+    (action) => action.actionRef === `${DEVICE_ID}.${ACTION_NAME}`
+  )).toMatchObject({ busy: false, currentJobId: null })
+
+  const unlockResponse = await request.post(
+    `${os.url}/api/v1/devices/${DEVICE_ID}/actions/${ACTION_NAME}/commands`,
+    {
+      data: {
+        command: 'force_unlock',
+        expectedJobId: accepted.job_uuid,
+        reason: 'operator_confirmed_device_safe'
+      }
+    }
+  )
+  expect(unlockResponse.ok(), await unlockResponse.text()).toBe(true)
+  expect((await unlockResponse.json() as {
+    data: { status: string; currentJobId: string | null }
+  }).data).toEqual(expect.objectContaining({
+    status: 'already_unlocked',
+    currentJobId: null
+  }))
+
+  await durationInput.fill('1')
+  await debugSection.getByRole('button', { name: '再次运行' }).click()
+  await expect(
+    debugSection.getByText('执行成功', { exact: true })
+  ).toBeVisible({ timeout: 15_000 })
+  await expect(actionButton).toContainText('空闲')
+  expect(browserErrors).toEqual([])
 })
 
 async function capture(

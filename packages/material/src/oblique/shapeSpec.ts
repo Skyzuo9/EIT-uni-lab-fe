@@ -220,8 +220,9 @@ export function normalizeShapeCategory(value: string): string {
 }
 
 /**
- * 选中最合适的一条声明：精确 category 胜过子串匹配；同为子串匹配时先看
- * priority（注粉瓶要赢过通用试剂瓶），再看 token 长度。
+ * 选中最合适的一条声明：精确 category / shape id 胜过子串匹配；同为子串
+ * 匹配时先看 priority（注粉瓶要赢过通用试剂瓶），再看 token 长度。资源模板
+ * 身份可能是完整 Python FQID，因此注册 shape id 也可以作为稳定匹配词。
  */
 export function resolveShapeSpec(
   library: MaterialShapeLibrary | undefined,
@@ -235,10 +236,14 @@ export function resolveShapeSpec(
   let bestScore = -1
   for (const spec of library) {
     let score = -1
-    if (spec.categories.some((category) => category === normalized)) {
+    const shapeId = normalizeShapeCategory(spec.id)
+    if (
+      spec.categories.some((category) => category === normalized) ||
+      shapeId === normalized
+    ) {
       score = Number.MAX_SAFE_INTEGER
     } else {
-      for (const token of spec.categoryTokens) {
+      for (const token of [...spec.categoryTokens, shapeId]) {
         if (!token || !normalized.includes(token)) continue
         score = Math.max(score, spec.priority * 1000 + token.length)
       }

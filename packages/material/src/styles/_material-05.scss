@@ -1,0 +1,426 @@
+
+:where(.scope, .scope *):global(.material-canvas) :global(.material__error) {
+  position: absolute;
+  z-index: 5;
+  top: 12px;
+  left: 50%;
+  display: flex;
+  width: min(520px, calc(100% - 32px));
+  max-width: calc(100% - 32px);
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  font-size: 12px;
+  color: var(--unilab-color-danger);
+  background: var(--unilab-color-danger-soft);
+  border: 1px solid color-mix(
+    in srgb,
+    var(--unilab-color-danger) 32%,
+    var(--unilab-color-border)
+  );
+  border-radius: var(--unilab-radius-md);
+  transform: translateX(-50%);
+}
+
+:where(.scope, .scope *):global(.material-canvas) :global(.material__error) strong {
+  color: var(--unilab-color-danger);
+}
+
+:where(.scope, .scope *):global(.material-canvas) :global(.material__error) span {
+  color: color-mix(
+    in srgb,
+    var(--unilab-color-danger) 74%,
+    var(--unilab-color-text)
+  );
+  line-height: 1.5;
+}
+
+:where(.scope, .scope *):global(.material-canvas) :global(.material__error) details {
+  color: var(--unilab-color-text-muted);
+}
+
+:where(.scope, .scope *):global(.material-canvas) :global(.material__error) summary {
+  cursor: pointer;
+}
+
+:where(.scope, .scope *):global(.material-canvas) :global(.material__error) code {
+  display: block;
+  margin-top: 6px;
+  overflow-wrap: anywhere;
+  font: 10px/1.5 var(--unilab-font-mono);
+}
+
+:where(.scope, .scope *):global(.material-canvas__edit-control) {
+  position: absolute;
+  z-index: 6;
+  right: 12px;
+  top: 12px;
+  display: flex;
+  max-width: min(420px, calc(100% - 24px));
+  align-items: center;
+  gap: 8px;
+  padding: 6px;
+  color: var(--unilab-color-text-muted);
+  background: color-mix(
+    in srgb,
+    var(--unilab-color-surface) 92%,
+    transparent
+  );
+  border: 1px solid var(--unilab-color-border);
+  border-radius: var(--unilab-radius-md);
+  box-shadow: var(--unilab-shadow-control);
+  backdrop-filter: blur(10px);
+}
+
+:where(.scope, .scope *):global(.material-canvas__edit-control) button {
+  flex: 0 0 auto;
+  min-height: 30px;
+  padding: 0 12px;
+  color: var(--unilab-color-text);
+  background: var(--unilab-color-surface);
+  border: 1px solid var(--unilab-color-border-strong);
+  border-radius: var(--unilab-radius-control);
+  cursor: pointer;
+  font: 600 12px/1 var(--unilab-font-sans);
+}
+
+:where(.scope, .scope *):global(.material-canvas__edit-control) button[aria-pressed='true'] {
+  color: #fff;
+  background: var(--unilab-color-material);
+  border-color: var(--unilab-color-material);
+}
+
+:where(.scope, .scope *):global(.material-canvas__edit-control) button:focus-visible {
+  outline: 2px solid var(--unilab-color-focus);
+  outline-offset: 2px;
+}
+
+:where(.scope, .scope *):global(.material-canvas__edit-control) button:disabled {
+  cursor: not-allowed;
+  opacity: .55;
+}
+
+:where(.scope, .scope *):global(.material-canvas__edit-control) span {
+  overflow: hidden;
+  font-size: 11px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:where(.scope, .scope *):global(.material-flow-node) {
+  box-sizing: border-box;
+  width: 128px;
+  padding: 8px 10px;
+  color: var(--unilab-color-text);
+  background: color-mix(in srgb, var(--unilab-color-bg) 94%, transparent);
+  border: 1px solid var(--unilab-color-border-strong);
+  border-radius: var(--unilab-radius-md);
+  box-shadow: var(--unilab-shadow-panel);
+}
+
+:where(.scope, .scope *):global(.react-flow__node):has(:global(.material-flow-node--physical)) {
+  overflow: visible;
+}
+
+:where(.scope, .scope *):global(.material-flow-node--physical) {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  padding: 0;
+  overflow: visible;
+  background: color-mix(in srgb, var(--unilab-color-bg) 94%, transparent);
+  border-radius: 8px;
+}
+
+:where(.scope, .scope *):global(.material-flow-node--station) {
+  background: transparent;
+  border-color: color-mix(
+    in srgb,
+    var(--unilab-color-border-strong) 45%,
+    transparent
+  );
+  box-shadow: none;
+}
+
+:where(.scope, .scope *):global(.material-flow-node--equipment-card) {
+  --material-node-accent: #7c3aed;
+  --material-node-accent-soft: #f1ebff;
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+// 默认设备卡片已在中央展示名称，外层顶部的白色标签药丸属于冗余“白框”，隐藏它，
+// 只保留紫色默认卡片。
+:where(.scope, .scope *):global(.material-flow-node--equipment-card)
+  :global(.material-flow-node__physical-label) {
+  display: none;
+}
+
+:where(.scope, .scope *):global(.material-flow-node__equipment-card) {
+  position: absolute;
+  z-index: 2;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  width: min(calc(100% - 16px), 168px);
+  height: min(calc(100% - 16px), 118px);
+  overflow: hidden;
+  color: var(--unilab-color-text);
+  background:
+    linear-gradient(
+      145deg,
+      color-mix(in srgb, var(--material-node-accent-soft) 58%, #fff),
+      #fff 58%
+    );
+  border: 1px solid color-mix(
+    in srgb,
+    var(--material-node-accent) 20%,
+    var(--unilab-color-border)
+  );
+  border-radius: 9px;
+  box-shadow:
+    0 8px 22px rgb(15 23 42 / 14%),
+    inset 0 1px 0 rgb(255 255 255 / 90%);
+  grid-template-rows: 29px minmax(34px, 1fr) 25px;
+  transform: translate(-50%, -50%);
+}
+
+:where(.scope, .scope *):global(.material-flow-node__equipment-card-header) {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  gap: 4px;
+  align-items: center;
+  padding: 0 28px 0 9px;
+  background: linear-gradient(
+    180deg,
+    rgb(255 255 255 / 96%),
+    rgb(255 255 255 / 78%)
+  );
+  border-bottom: 1px solid rgb(148 163 184 / 20%);
+}
+
+:where(.scope, .scope *):global(.material-flow-node__equipment-card-header) strong {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  font-size: 10.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:where(.scope, .scope *):global(.material-flow-node__equipment-card-dots) {
+  position: absolute;
+  right: 9px;
+  display: flex;
+  gap: 2px;
+  align-items: center;
+}
+
+:where(.scope, .scope *):global(.material-flow-node__equipment-card-dots) i {
+  width: 3px;
+  height: 3px;
+  background: color-mix(
+    in srgb,
+    var(--unilab-color-text-muted) 60%,
+    transparent
+  );
+  border-radius: 50%;
+}
+
+:where(.scope, .scope *):global(.material-flow-node__equipment-card-body) {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: 3px;
+  align-items: center;
+  justify-content: center;
+  color: var(--material-node-accent);
+  background: radial-gradient(
+    circle at 50% 45%,
+    rgb(255 255 255 / 94%),
+    transparent 68%
+  );
+}
+
+:where(.scope, .scope *):global(.material-flow-node__equipment-card-body) > span:last-child {
+  font-size: 9px;
+  font-weight: 650;
+  letter-spacing: .02em;
+}
+
+:where(.scope, .scope *):global(.material-flow-node__equipment-card-icon) {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  background: color-mix(
+    in srgb,
+    var(--material-node-accent-soft) 88%,
+    #fff
+  );
+  border: 1px solid color-mix(
+    in srgb,
+    var(--material-node-accent) 18%,
+    transparent
+  );
+  border-radius: 8px;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 85%);
+  place-items: center;
+}
+
+:where(.scope, .scope *):global(.material-flow-node__equipment-card-icon) svg {
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.55;
+}
+
+:where(.scope, .scope *):global(.material-flow-node__equipment-card-footer) {
+  display: flex;
+  min-width: 0;
+  gap: 4px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px;
+  color: var(--unilab-color-text-muted);
+  background: color-mix(
+    in srgb,
+    var(--material-node-accent-soft) 35%,
+    #fff
+  );
+  border-top: 1px solid rgb(148 163 184 / 20%);
+  font-size: 7.5px;
+}
+
+:where(.scope, .scope *):global(.material-flow-node__equipment-card-footer) > span {
+  display: inline-flex;
+  min-width: 0;
+  gap: 2px;
+  align-items: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:where(.scope, .scope *):global(.material-flow-node__equipment-card-footer) svg {
+  width: 9px;
+  height: 9px;
+  flex: none;
+  fill: none;
+  stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.25;
+}
+
+:where(.scope, .scope *):global(.material-flow-node--deck) {
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--unilab-color-primary) 3%, #f8fafc),
+      #eef2f7
+    );
+  border: 2px solid color-mix(
+    in srgb,
+    var(--unilab-color-success) 65%,
+    var(--unilab-color-border)
+  );
+  border-radius: 5px;
+  box-shadow:
+    inset 0 0 0 1px rgb(255 255 255 / 70%),
+    0 8px 24px rgb(15 23 42 / 10%);
+}
+
+:where(.scope, .scope *):global(.material-flow-node--labware) {
+  overflow: visible;
+  background: linear-gradient(145deg, #f8fafc, #dbe4ee);
+  border: 1px solid #94a3b8;
+  border-radius: 6px;
+  box-shadow:
+    inset 0 0 0 2px rgb(255 255 255 / 62%),
+    0 3px 8px rgb(15 23 42 / 18%);
+}
+
+:where(.scope, .scope *):global(.material-flow-node--trash) {
+  overflow: visible;
+  color: #fff;
+  background: linear-gradient(145deg, #4b5563, #1f2937);
+  border: 1px solid #111827;
+  border-radius: 6px;
+  box-shadow: 0 3px 8px rgb(15 23 42 / 24%);
+}
+
+:where(.scope, .scope *):global(.material-flow-node__trash-mark) {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-content: center;
+  place-items: center;
+  gap: 2px;
+  font-size: 12px;
+  overflow: hidden;
+  border-radius: inherit;
+}
+
+:where(.scope, .scope *):global(.material-flow-node__trash-mark) span {
+  font-size: 22px;
+  line-height: 1;
+}
+
+:where(.scope, .scope *):global(.material-flow-node__physical-label) {
+  position: absolute;
+  z-index: 3;
+  top: -5px;
+  left: 50%;
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  max-width: max(100%, 108px);
+  padding: 3px 7px;
+  color: #0f172a;
+  white-space: nowrap;
+  background: rgb(255 255 255 / 90%);
+  border: 1px solid rgb(148 163 184 / 42%);
+  border-radius: 6px;
+  box-shadow: 0 3px 10px rgb(15 23 42 / 14%);
+  backdrop-filter: blur(6px);
+  transform: translate(-50%, -100%);
+}
+
+:where(.scope, .scope *):global(.material-flow-node--station) :global(.material-flow-node__physical-label) {
+  right: auto;
+  left: 8px;
+  transform: translate(0, -100%);
+}
+
+:where(.scope, .scope *):global(.material-flow-node--deck) :global(.material-flow-node__physical-label) {
+  right: 8px;
+  left: auto;
+  transform: translate(0, -100%);
+}
+
+:where(.scope, .scope *):global(.material-flow-node--labware) :global(.material-flow-node__physical-label),
+:where(.scope, .scope *):global(.material-flow-node--trash) :global(.material-flow-node__physical-label) {
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, calc(-100% + 4px));
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease;
+}
+
+:where(.scope, .scope *):global(.material-flow-node--labware):hover :global(.material-flow-node__physical-label),
+:where(.scope, .scope *):global(.material-flow-node--labware):global(.is-selected)
+  :global(.material-flow-node__physical-label),
+:where(.scope, .scope *):global(.material-flow-node--trash):hover :global(.material-flow-node__physical-label),
+:where(.scope, .scope *):global(.material-flow-node--trash):global(.is-selected)
+  :global(.material-flow-node__physical-label) {
+  opacity: 1;
+  transform: translate(-50%, -100%);
+}

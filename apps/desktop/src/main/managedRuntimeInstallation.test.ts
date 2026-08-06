@@ -101,7 +101,14 @@ describe('ManagedRuntimeInstallation', () => {
         osProjectPath: '',
         szlabProjectPath: join(resourcesDirectory, 'default-workspace'),
         environmentPath: '',
-        simulatorProjectPath: ''
+        simulatorProjectPath: '',
+        edgeCommandMode: 'generated',
+        customEdgeCommand: {
+          executable: '',
+          workingDirectory: '',
+          args: [],
+          environment: []
+        }
       }
     })
     expect(runner).not.toHaveBeenCalled()

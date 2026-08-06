@@ -72,7 +72,16 @@ async function readTargetAction(
     ?.actions.find((action) => action.actionRef === ACTION_REF) ?? null
 }
 
-test('operator detects and manually unlocks the current OS Action lock', async ({
+/**
+ * 验证操作员识别并安全解除当前 OS 动作锁，且不会创建新的执行任务。
+ *
+ * @param page 展示设备动作锁、确认弹窗与解锁结果的浏览器页面。
+ * @param request 构造测试持锁任务并复核正式设备目录状态的 HTTP 客户端。
+ * @returns 完成持锁、人工解锁、再次占用和最终释放的端到端验收。
+ * @throws 页面、网络契约或设备锁状态不符合预期时由 Playwright 断言报告失败。
+ * @safety 人工解锁必须携带当前 Job 身份和显式安全确认，且不得创建新的单动作任务。
+ */
+test('操作员识别并手动解除当前 OS 动作锁', async ({
   page,
   request
 }) => {
@@ -285,8 +294,15 @@ test('operator detects and manually unlocks the current OS Action lock', async (
   expect(allRequests.some(
     (entry) => entry.path.startsWith('/api/v1/runtime/runs')
   )).toBe(false)
+  expect(browserRequests).toEqual(expect.arrayContaining([
+    expect.objectContaining({
+      method: 'GET',
+      path: '/api/v1/workflow-node-templates'
+    })
+  ]))
   expect(allRequests.some(
-    (entry) => entry.path.includes('/workflow-node-templates')
+    (entry) => entry.method === 'POST' &&
+      entry.path === '/api/v1/device-action-tasks'
   )).toBe(false)
 
   writeFileSync(
@@ -300,7 +316,7 @@ test('operator detects and manually unlocks the current OS Action lock', async (
       commandBodies,
       forbiddenRoutes: {
         runtimeRuns: 0,
-        workflowNodeTemplates: 0,
+        deviceActionTaskCreates: 0,
         frontendDirectEdgeWebSocket: 0
       },
       browserErrors

@@ -119,37 +119,6 @@ describe('WorkflowTask runtime port', () => {
     )
   })
 
-  it('reads the durable Task runtime event journal with a sequence cursor', async () => {
-    const page = {
-      items: [{
-        sequence: 12,
-        workflow_task_uuid: TASK_UUID,
-        workflow_node_job_uuid: JOB_UUID,
-        workflow_node_uuid: '44444444-4444-4444-8444-444444444444',
-        kind: 'job_transition',
-        from_status: 'pending',
-        to_status: 'dispatched',
-        param: { target: 'P01' },
-        data: {},
-        create_time: '2026-08-03T06:35:43Z'
-      }],
-      next_cursor: 12,
-      has_more: false
-    }
-    const request = vi.fn().mockResolvedValue({ code: 0, data: page })
-    const runtime = taskPort(request)
-
-    await expect(runtime.listWorkflowTaskEvents(TASK_UUID, {
-      after_sequence: 10,
-      limit: 50
-    })).resolves.toEqual(page)
-
-    expect(request).toHaveBeenCalledWith(
-      `/api/v1/workflow-tasks/${TASK_UUID}/events?after_sequence=10&limit=50`,
-      undefined
-    )
-  })
-
   it('returns only the durable command record without optimistic Task refresh', async () => {
     const command = {
       uuid: '44444444-4444-4444-8444-444444444444',
@@ -242,7 +211,7 @@ describe('WorkflowTask runtime port', () => {
     const invalidations: Array<{
       id: string
       event: string
-      data: Record<string, string>
+      data: Record<string, unknown>
     }> = []
     const errors: Error[] = []
     const runtime = taskPort(vi.fn())
@@ -284,10 +253,14 @@ describe('WorkflowTask runtime port', () => {
       'event: device_action_task.changed',
       `data: ${JSON.stringify({ task_uuid: TASK_UUID })}`,
       '',
+      'id: 45',
+      'event: device.catalog.changed',
+      'data: {"catalog_revision":7}',
+      '',
       ''
     ].join('\n')))
 
-    await vi.waitFor(() => expect(invalidations).toHaveLength(3))
+    await vi.waitFor(() => expect(invalidations).toHaveLength(4))
     expect(invalidations).toEqual([
       {
         id: '42',
@@ -303,6 +276,11 @@ describe('WorkflowTask runtime port', () => {
         id: '44',
         event: 'device_action_task.changed',
         data: { task_uuid: TASK_UUID }
+      },
+      {
+        id: '45',
+        event: 'device.catalog.changed',
+        data: { catalog_revision: 7 }
       }
     ])
     expect(errors).toEqual([])

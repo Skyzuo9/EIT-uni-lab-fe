@@ -109,7 +109,14 @@ export class ManagedRuntimeInstallation {
         osProjectPath: '',
         szlabProjectPath: workspacePath,
         environmentPath: '',
-        simulatorProjectPath: ''
+        simulatorProjectPath: '',
+        edgeCommandMode: 'generated',
+        customEdgeCommand: {
+          executable: '',
+          workingDirectory: '',
+          args: [],
+          environment: []
+        }
       }
     }
   }

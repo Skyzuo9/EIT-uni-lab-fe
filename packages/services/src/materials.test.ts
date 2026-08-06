@@ -209,7 +209,7 @@ describe('material template adapter', () => {
               name: 'Liquid Handler',
               create_time: '2026-07-26T00:00:00Z',
               update_time: '2026-07-26T00:00:00Z',
-              meta_data: {},
+              meta_data: { source_node_id: 'liquid-handler' },
               config: {
                 rendering: { kind: 'table' }
               },
@@ -288,6 +288,7 @@ describe('material template adapter', () => {
           name: 'Liquid Handler',
           description: undefined,
           config: expect.objectContaining({
+            sourceIdentity: 'liquid-handler',
             rendering: {
               kind: 'table',
               dimensionsMm: [1400, 180, 720]
@@ -308,6 +309,7 @@ describe('material template adapter', () => {
             id: 'site-a1',
             ownerMaterialId: 'material-root',
             key: 'deck-A1',
+            sortOrder: 0,
             allowedTemplateIds: ['template-vessel'],
             occupiedMaterialIds: ['material-vessel'],
             poseInAnchor: {
@@ -343,6 +345,33 @@ describe('material template adapter', () => {
         revision: Date.parse('2026-07-26T00:00:01Z')
       }
     ])
+    expect(request).toHaveBeenCalledWith(
+      '/api/v1/materials/graph',
+      undefined
+    )
+  })
+
+  it('loads complete material graphs larger than the legacy Edge page limit', async () => {
+    const { http, request } = mockHttp({
+      data: {
+        nodes: Array.from(
+          { length: 126 },
+          (_, index) => rawMaterialGraphNode(index + 1)
+        )
+      }
+    })
+    const backend = getDefaultBackend('local-python')
+    const service = createMaterialService(
+      http,
+      backend,
+      resolveServerCapabilities(backend)
+    )
+
+    const aggregates = await service.getGraph({ kind: 'singleton' })
+
+    expect(aggregates).toHaveLength(126)
+    expect(aggregates.at(-1)?.material.code).toBe('szlab-material-126')
+    expect(request).toHaveBeenCalledTimes(1)
     expect(request).toHaveBeenCalledWith(
       '/api/v1/materials/graph',
       undefined
@@ -549,6 +578,26 @@ function rawTemplateSummary(): Record<string, unknown> {
       available: false,
       reason: '当前 Edge 尚未开放物料创建'
     }
+  }
+}
+
+function rawMaterialGraphNode(index: number): Record<string, unknown> {
+  const materialId = `szlab-material-${index}`
+  return {
+    material: {
+      uuid: materialId,
+      resource_template_uuid: 'template-device',
+      barcode: materialId,
+      name: `SZLab Material ${index}`,
+      create_time: '2026-07-31T00:00:00Z',
+      update_time: '2026-07-31T00:00:00Z',
+      meta_data: {},
+      config: {},
+      data: {}
+    },
+    sites: [],
+    current_site_uuid: null,
+    handles: []
   }
 }
 

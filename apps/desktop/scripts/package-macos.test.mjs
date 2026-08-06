@@ -17,7 +17,9 @@ import {
   validatePackagedMacosApp
 } from './package-macos.mjs'
 import { MAX_PACKAGED_APP_BYTES } from './package-windows.mjs'
+import { createPackagedRuntimeResources } from './runtime-payload.test-support.mjs'
 
+const DEVICE_CARD_APP_ARCHIVE_BYTES = 50 * 1024 * 1024
 const temporaryDirectories = []
 
 afterEach(() => {
@@ -65,6 +67,30 @@ describe('macOS package publication gates', () => {
     })
   })
 
+  it('accepts the current device-card app archive within budget', () => {
+    const outputDirectory = createOutputDirectory()
+    const archivePath = join(
+      outputDirectory,
+      'mac-arm64',
+      'Uni-Lab.app',
+      'Contents',
+      'Resources',
+      'app.asar'
+    )
+    const resourcesDirectory = join(archivePath, '..')
+    mkdirSync(resourcesDirectory, { recursive: true })
+    createSparseFile(archivePath, DEVICE_CARD_APP_ARCHIVE_BYTES)
+    createPackagedRuntimeResources(
+      resourcesDirectory,
+      process.arch === 'arm64' ? 'osx-arm64' : 'osx-64'
+    )
+
+    expect(validatePackagedMacosApp(outputDirectory)).toEqual({
+      path: archivePath,
+      size: DEVICE_CARD_APP_ARCHIVE_BYTES
+    })
+  })
+
   it('rejects a macOS app archive over the dependency budget', () => {
     const outputDirectory = createOutputDirectory()
     const resourcesDirectory = join(
@@ -81,7 +107,7 @@ describe('macOS package publication gates', () => {
     )
 
     expect(() => validatePackagedMacosApp(outputDirectory))
-      .toThrow(/超出 32\.0 MiB 预算/)
+      .toThrow(/超出 56\.0 MiB 预算/)
   })
 })
 

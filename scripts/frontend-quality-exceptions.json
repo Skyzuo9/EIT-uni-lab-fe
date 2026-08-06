@@ -1,0 +1,136 @@
+{
+  "moduleExceptions": {
+    "apps/desktop/src/main/index.ts": {
+      "maxLines": 1200,
+      "maxFunctionComplexity": 25,
+      "reason": "Electron 主进程组合根集中注册受信任窗口、认证、设备卡片、可观测性和本地运行时（Runtime）的 IPC 边界；这些处理器共享唯一 BrowserWindow 身份与退出清理顺序。",
+      "futureSplitBoundary": "为主窗口 sender 校验和退出清理补齐进程级测试后，将 runtime:* 处理器迁入 registerLocalRuntimeIpc.ts，将 device-cards:* 处理器迁入 registerDeviceCardIpc.ts，index.ts 只保留应用装配。"
+    },
+    "apps/kernel-web/src/components/LocalRuntimeConfigurationDialog.tsx": {
+      "maxLines": 800,
+      "maxFunctionComplexity": 50,
+      "reason": "本地运行配置弹窗（LocalRuntimeConfigurationDialog）在一个可访问表单内同步呈现开发与托管 Runtime、PLC-Sim/Edge 独立生命周期、设备包信任和验收状态，避免控制状态跨多个弹窗漂移。",
+      "futureSplitBoundary": "在托管/开发模式、PLC-Sim 与 Edge 同时运行、键盘焦点和首次信任确认的交互测试稳定后，将路径表单抽取为 LocalRuntimePathConfiguration，将进程状态与验收抽取为 LocalRuntimeAcceptanceStatus。"
+    },
+    "apps/kernel-web/src/components/LocalRuntimeLauncher.module.scss": {
+      "maxLines": 1300,
+      "maxFunctionComplexity": 25,
+      "reason": "本地运行启动器样式同时维护启动按钮、配置弹窗、结构化 Edge 命令和响应式状态语义；日志抽屉样式已迁入独立 partial，剩余选择器仍共享同一 CSS Module 导出合同。",
+      "futureSplitBoundary": "补齐标准桌面、最小宽度、托管 Runtime 和自定义命令四组截图基线后，将命令编辑器选择器迁入 LocalRuntimeEdgeCommandEditor.module.scss，将弹窗选择器迁入 LocalRuntimeConfigurationDialog.module.scss。"
+    },
+    "apps/kernel-web/src/components/LocalRuntimeLauncher.tsx": {
+      "maxLines": 1300,
+      "maxFunctionComplexity": 35,
+      "reason": "本地运行启动器（LocalRuntimeLauncher）集中维护 PLC-Sim 与领域侧 Edge 的配置持久化、权威进程快照、启停互锁及可访问对话框；本轮拆分已把日志读取、日志展示和 Edge 命令编辑迁出，保留的分支用于呈现同一运行会话的互斥状态。",
+      "futureSplitBoundary": "补齐 PLC-Sim/Edge 交叉启停、路径校验和键盘焦点的交互特征测试后，将 LocalRuntimeDialog 与 PathField/RuntimeStatus 迁入 LocalRuntimeConfigurationDialog.tsx，并将启动器副作用抽取为 useLocalRuntimeLauncherSession。"
+    },
+    "apps/kernel-web/src/components/device-cards/DeviceCardWorkbenchView.tsx": {
+      "maxLines": 500,
+      "maxFunctionComplexity": 40,
+      "reason": "设备卡片工作台视图（DeviceCardWorkbenchView）集中表达工作区、AI 助手和实时预览三种互斥界面状态；主流程复杂度已从原入口的 71 降至 39。",
+      "futureSplitBoundary": "补齐工作区诊断、AI 助手切换和实时预览的交互测试后，抽取 DeviceCardWorkspacePanel、DeviceCardAgentTools 和 DeviceCardPreview。"
+    },
+    "packages/device-card-agent-cli/src/args.ts": {
+      "maxLines": 500,
+      "maxFunctionComplexity": 30,
+      "reason": "设备卡片 Agent CLI 参数解析器在单一入口冻结子命令、必填选项和互斥标志，集中失败语义可确保外部 Agent 与 Electron Bridge 使用同一命令合同。",
+      "futureSplitBoundary": "扩充每个子命令的缺失值、重复标志和未知参数矩阵后，将 prepare、preview、install 的参数收窄分别迁入 parsePrepareArgs、parsePreviewArgs 和 parseInstallArgs。"
+    },
+    "packages/device-card-host/src/authoringAutomation.ts": {
+      "maxLines": 850,
+      "maxFunctionComplexity": 25,
+      "reason": "设备卡片创作自动化在同一会话边界内排序工作区创建、文件监听、重建、安装与预览通知，集中持有 watcher 和构建身份可避免旧构建覆盖新源码。",
+      "futureSplitBoundary": "补齐 watcher 重连、连续保存和构建失败恢复的时序测试后，将文件监听迁入 DeviceCardWorkspaceWatcher，将构建安装队列迁入 DeviceCardBuildCoordinator。"
+    },
+    "packages/workflow-editor/src/components/PersistentWorkflowAuthoringView.tsx": {
+      "maxLines": 1200,
+      "maxFunctionComplexity": 125,
+      "reason": "工作流编排视图（WorkflowAuthoringView）集中维护代码、画布、运行态和抽屉之间的原子布局与可访问性关系；原入口最大圈复杂度为 158，拆分后视图为 123，副作用已迁出。",
+      "futureSplitBoundary": "先为工具栏、工作台和运行态覆盖层补齐截图与交互特征测试，再分别抽取 PersistentWorkflowToolbar、PersistentWorkflowWorkbench 和 PersistentWorkflowRuntimeOverlay。"
+    },
+    "packages/workflow-editor/src/hooks/usePersistentWorkflowAuthoring.ts": {
+      "maxLines": 1499,
+      "maxFunctionComplexity": 80,
+      "reason": "工作流编排会话（WorkflowAuthoringSession）在同一深模块内保持双重 CAS、目录刷新重编译、草稿规范化与本地缓冲连续性的事务顺序。",
+      "futureSplitBoundary": "为冲突与重编译状态转换增加特征测试后，将画布和目录变更动作抽取到 usePersistentWorkflowCanvasActions。"
+    },
+    "packages/material/src/oblique/ObliqueMaterialObject.tsx": {
+      "maxLines": 900,
+      "maxFunctionComplexity": 65,
+      "reason": "物料斜二测对象（ObliqueMaterialObject）作为单一声明式形状解释器维护 SVG 图元的绘制顺序和遮挡语义。",
+      "futureSplitBoundary": "先用 SVG 绘制顺序快照固定开架与车床图元，再将它们抽取到 oblique-primitives/openRack.tsx 和 oblique-primitives/lathe.tsx。"
+    },
+    "packages/material/src/oblique/shapeSpec.ts": {
+      "maxLines": 700,
+      "maxFunctionComplexity": 40,
+      "reason": "物料形状规范解析器在单一边界把不可信 JSON 收窄为斜二测渲染联合类型，所有图元共享尺寸、颜色与嵌套部分的错误语义。",
+      "futureSplitBoundary": "补齐每种 shape part 的畸形输入和嵌套深度测试后，将各联合分支迁入 shape-parsers/，shapeSpec.ts 仅保留调度与公共尺寸校验。"
+    },
+    "packages/services/src/materials.ts": {
+      "maxLines": 1100,
+      "maxFunctionComplexity": 25,
+      "reason": "物料服务（MaterialService）在一个适配边界内完成物料模板、物料图（MaterialGraph）与后端不可信载荷的校验映射，集中定义错误语义可避免模板和图投影产生不一致的解析规则。",
+      "futureSplitBoundary": "补齐模板载荷和物料图载荷的畸形输入矩阵测试后，将模板映射迁入 materialTemplateMapper.ts、物料图映射迁入 materialGraphMapper.ts，materials.ts 仅保留端口组合与 HTTP 调用。"
+    },
+    "packages/pascal-lab-plugin/src/materialAggregateSceneBridge.ts": {
+      "maxLines": 1000,
+      "maxFunctionComplexity": 45,
+      "reason": "物料聚合（MaterialAggregate）到 Pascal 场景的桥接是单一权威翻译边界；集中维护稳定身份、毫米到场景坐标转换、挂载关系和只读物料转运（MaterialTransfer）投影，可以避免多个渲染入口各自猜测坐标或复制物料事实。",
+      "futureSplitBoundary": "先为渲染快照回退和未解析转运路线补齐特征测试，再抽取 materialRenderingSnapshot.ts 与 materialTransferSceneProjection.ts，保留 materialAggregateSceneBridge.ts 只负责编排 SceneGraph。"
+    },
+    "packages/workflow-editor/src/components/WorkflowIoEditor.tsx": {
+      "maxLines": 1300,
+      "maxFunctionComplexity": 25,
+      "reason": "工作流输入输出编辑器（WorkflowIoEditor）集中维护端口身份、类型约束、默认值、连接状态和可访问错误反馈，保证一次编辑提交使用同一规范化快照。",
+      "futureSplitBoundary": "补齐输入、输出、物料占位符（ResourceSlot）和连接冲突的交互矩阵后，将 WorkflowInputSection、WorkflowOutputSection 与 WorkflowIoTypeEditor 分别迁出。"
+    },
+    "packages/workflow-editor/src/components/WorkflowNodeCard.tsx": {
+      "maxLines": 650,
+      "maxFunctionComplexity": 45,
+      "reason": "工作流节点卡（WorkflowNodeCard）在一个渲染边界内组合节点类型、端口、物料转运（MaterialTransfer）、执行状态和选择态，确保画布节点拥有稳定尺寸与连接锚点。",
+      "futureSplitBoundary": "补齐节点类型、端口数量和运行状态的尺寸快照后，将状态徽标迁入 WorkflowNodeStatusBadge，将端口列表迁入 WorkflowNodePorts。"
+    },
+    "packages/workflow-editor/src/components/WorkflowOutput.tsx": {
+      "maxLines": 700,
+      "maxFunctionComplexity": 30,
+      "reason": "工作流输出（WorkflowOutput）统一呈现结构化值、文件、物料（Material）、错误和运行中占位，保持相同结果在任务面板与调试器中的语义一致。",
+      "futureSplitBoundary": "补齐每类输出载荷的展示与下载测试后，将结构化值迁入 WorkflowStructuredOutput，将文件和物料结果迁入各自 presenter。"
+    },
+    "packages/workflow-editor/src/components/WorkflowTraceViewer.tsx": {
+      "maxLines": 850,
+      "maxFunctionComplexity": 25,
+      "reason": "工作流链路查看器（WorkflowTraceViewer）在单一时间轴边界内同步筛选 span、层级、耗时和详情选择，集中投影避免列表与详情读取不同快照。",
+      "futureSplitBoundary": "补齐嵌套 span、筛选和选中态的交互测试后，将时间轴迁入 WorkflowTraceTimeline，将详情面板迁入 WorkflowTraceDetail。"
+    },
+    "packages/workflow-editor/src/components/WorkflowTransferNode.tsx": {
+      "maxLines": 500,
+      "maxFunctionComplexity": 35,
+      "reason": "工作流物料转运节点（WorkflowTransferNode）集中解释来源、目标、物料和执行投影的组合状态，使画布始终以一个原子节点展示转运事实。",
+      "futureSplitBoundary": "补齐已解析、部分解析和失败转运的节点快照后，将来源目标摘要迁入 WorkflowTransferRoute，将物料摘要迁入 WorkflowTransferMaterialBadge。"
+    },
+    "packages/workflow-editor/src/components/_workflow-stage.scss": {
+      "maxLines": 1150,
+      "maxFunctionComplexity": 25,
+      "reason": "工作流舞台样式集中维护画布节点、边、选中态、运行态和响应式布局的层叠顺序，当前共享选择器依赖同一 React Flow DOM 结构。",
+      "futureSplitBoundary": "补齐节点、边、调试覆盖层和窄屏布局的视觉回归后，将 node、edge、runtime-overlay 三组选择器迁入独立 SCSS partial。"
+    },
+    "packages/workflow-editor/src/utils/persistentAuthoringGraph.ts": {
+      "maxLines": 500,
+      "maxFunctionComplexity": 45,
+      "reason": "持久工作流编排图投影（PersistentAuthoringGraphProjection）在一次纯函数转换中共同决定节点、边、稳定身份和诊断，避免分步投影产生悬空连接。",
+      "futureSplitBoundary": "补齐缺失节点、重复端口和跨版本身份的图投影矩阵后，将节点投影与边投影分别迁入 projectPersistentNodes 和 projectPersistentEdges。"
+    },
+    "packages/workflow-editor/src/utils/workflowActionCatalog.ts": {
+      "maxLines": 1000,
+      "maxFunctionComplexity": 25,
+      "reason": "工作流动作目录（WorkflowActionCatalog）在一个翻译边界内完成后端载荷收窄、分组、参数规范和编辑器选项投影，集中维护可避免同一动作出现多种编辑合同。",
+      "futureSplitBoundary": "补齐畸形动作、分页合并和参数类型矩阵后，将载荷解码迁入 workflowActionCatalogCodec.ts，将编辑器投影迁入 workflowActionCatalogPresentation.ts。"
+    },
+    "packages/workflow-editor/src/utils/workflowTaskInputForm.ts": {
+      "maxLines": 500,
+      "maxFunctionComplexity": 45,
+      "reason": "工作流任务输入表单规范器递归校验标量、数组、对象和物料占位符（ResourceSlot）值，单一递归入口确保嵌套错误路径与提交值保持一致。",
+      "futureSplitBoundary": "补齐嵌套数组、对象、nullable 和物料占位符输入的属性测试后，将标量、集合和资源引用校验迁入独立 schema value validators。"
+    }
+  }
+}

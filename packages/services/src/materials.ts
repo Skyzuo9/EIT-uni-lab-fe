@@ -614,7 +614,11 @@ function mapBackendMaterialGraph(
       }
     }
 
-    const config = mapBackendMaterialConfig(material.config, position)
+    const config = mapBackendMaterialConfig(
+      material.config,
+      position,
+      material.meta_data
+    )
     return {
       material: {
         id,
@@ -648,15 +652,23 @@ function mapBackendMaterialGraph(
 
 function mapBackendMaterialConfig(
   value: unknown,
-  position: Record<string, unknown> | undefined
+  position: Record<string, unknown> | undefined,
+  metaData: unknown
 ): Record<string, unknown> {
   const config = recordValue(value)
+  const sourceIdentity = optionalString(
+    recordValue(metaData).source_node_id
+  )
+  const identifiedConfig = {
+    ...config,
+    ...(sourceIdentity ? { sourceIdentity } : {})
+  }
   const rawRendering = isRecord(config.rendering)
     ? config.rendering
     : {}
-  if (!position) return config
+  if (!position) return identifiedConfig
   return {
-    ...config,
+    ...identifiedConfig,
     rendering: {
       ...rawRendering,
       kind: optionalString(rawRendering.kind) ?? 'custom',
@@ -720,6 +732,7 @@ function mapBackendSite(value: unknown): MaterialSite {
       optionalString(metaData.key) ??
       requiredString(raw.name, 'site.name'),
     name: requiredString(raw.name, 'site.name'),
+    sortOrder: finiteGraphNumber(raw.sort_order, 'site.sort_order'),
     anchor: { kind: 'root' },
     poseInAnchor: {
       positionMm: [
@@ -913,6 +926,7 @@ function parseSite(value: unknown): MaterialSite {
     ),
     key: requiredString(raw.key, 'site.key'),
     name: requiredString(raw.name, 'site.name'),
+    sortOrder: finiteNumber(raw.sortOrder, 0),
     anchor: parseAnchor(raw.anchor),
     poseInAnchor: parsePose(raw.poseInAnchor, 'site.poseInAnchor'),
     sizeMm: parseTuple(raw.sizeMm, 'site.sizeMm'),

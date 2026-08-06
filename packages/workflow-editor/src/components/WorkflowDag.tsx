@@ -22,12 +22,30 @@ import type {
   NodeChange,
   ReactFlowInstance
 } from 'reactflow'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState
+} from 'react'
 import { useWorkflowDag } from '../hooks/useWorkflowDag'
 import WorkflowNodeCard from './WorkflowNodeCard'
+import WorkflowRoundedStepEdge from './WorkflowRoundedStepEdge'
+import { WorkflowButton } from './WorkflowButton'
 import type { WorkflowNodeData } from './WorkflowNodeCard'
 import type { WorkflowLink, WorkflowNode } from '../utils/parseWorkflow'
 import { projectNestedWorkflow } from '../utils/canonicalWorkflow'
+import {
+  DEFAULT_WORKFLOW_DAG_LAYOUT_STRATEGY,
+  DEFAULT_WORKFLOW_MATERIAL_SWIMLANE_DIRECTION,
+  WORKFLOW_DAG_LAYOUT_STRATEGIES,
+  WORKFLOW_MATERIAL_SWIMLANE_DIRECTIONS,
+  workflowDagLayoutStrategyLabel,
+  workflowMaterialSwimlaneDirectionLabel,
+  type WorkflowDagLayoutStrategy,
+  type WorkflowMaterialSwimlaneDirection
+} from '../utils/workflowDagLayoutStrategy'
 import {
   CANVAS_EDIT_WORKFLOW_CANVAS,
   READ_ONLY_WORKFLOW_CANVAS,
@@ -49,7 +67,11 @@ interface WorkflowDagProps {
   beforeStartNodeIds?: ReadonlySet<string>
   pausedBeforeNodeId?: string | null
   canBeautify?: boolean
-  onBeautify?: () => void
+  beautifyDisabledReason?: string
+  onBeautify?: (
+    strategy: WorkflowDagLayoutStrategy,
+    swimlaneDirection: WorkflowMaterialSwimlaneDirection
+  ) => void
   canvasMutationEnabled?: boolean
   nodePositionMutationEnabled?: boolean
   onNodePositionChange?: (
@@ -66,8 +88,14 @@ interface WorkflowDagProps {
 
 // 注册自定义节点类型(在组件外定义,避免每次渲染重建)
 const nodeTypes = { wfNode: WorkflowNodeCard }
+const edgeTypes = { workflowRoundedStep: WorkflowRoundedStepEdge }
 
-// 拓扑 DAG:只读展示,支持缩放/平移/minimap,节点为大 web 风格卡片
+/**
+ * 渲染工作流拓扑、运行状态、物料流句柄及可选的画布编辑控制。
+ *
+ * @param props 工作流节点、边、状态、编辑能力与布局回调。
+ * @returns 可缩放、可适配且遵守当前画布权限的 ReactFlow 视图。
+ */
 export default function WorkflowDag({
   nodes,
   links,
@@ -80,6 +108,7 @@ export default function WorkflowDag({
   beforeStartNodeIds = new Set(),
   pausedBeforeNodeId = null,
   canBeautify = true,
+  beautifyDisabledReason = '请先完成当前 Python 编译',
   onBeautify,
   canvasMutationEnabled = false,
   nodePositionMutationEnabled = false,
@@ -87,6 +116,14 @@ export default function WorkflowDag({
   onConnectHandles
 }: WorkflowDagProps): React.JSX.Element {
   const [isBeautifying, setIsBeautifying] = useState(false)
+  const [layoutStrategy, setLayoutStrategy] =
+    useState<WorkflowDagLayoutStrategy>(
+      DEFAULT_WORKFLOW_DAG_LAYOUT_STRATEGY
+    )
+  const [swimlaneDirection, setSwimlaneDirection] =
+    useState<WorkflowMaterialSwimlaneDirection>(
+      DEFAULT_WORKFLOW_MATERIAL_SWIMLANE_DIRECTION
+    )
   const [expandedGroupIds, setExpandedGroupIds] = useState<Set<string>>(
     () => new Set()
   )
@@ -127,7 +164,9 @@ export default function WorkflowDag({
   }, [])
   const { nodes: flowNodes, edges: flowEdges, onNodesChange, onEdgesChange } = useWorkflowDag(
     nestedProjection.nodes,
-    nestedProjection.links
+    nestedProjection.links,
+    layoutStrategy,
+    swimlaneDirection
   )
   const handleNodesChange = useCallback(
     (changes: NodeChange[]) => {
@@ -227,14 +266,14 @@ export default function WorkflowDag({
   )
   const graphSignature = useMemo(
     () => JSON.stringify({
-      nodes: nodes.map((node) => [node.id, node.x, node.y]),
-      links: links.map((link) => [
-        link.source,
-        link.target,
-        link.branch ?? null
-      ])
+      nodes: flowNodes.map((node) => [
+        node.id,
+        node.position.x,
+        node.position.y
+      ]),
+      links: flowEdges.map((edge) => [edge.source, edge.target])
     }),
-    [links, nodes]
+    [flowEdges, flowNodes]
   )
   useEffect(() => {
     let fitFrame = 0
@@ -275,7 +314,7 @@ export default function WorkflowDag({
   const handleBeautify = useCallback(() => {
     if (!canBeautify || !onBeautify) return
     setIsBeautifying(true)
-    onBeautify()
+    onBeautify(layoutStrategy, swimlaneDirection)
     if (beautifyTimerRef.current !== null) {
       globalThis.clearTimeout(beautifyTimerRef.current)
     }
@@ -283,12 +322,36 @@ export default function WorkflowDag({
       setIsBeautifying(false)
       beautifyTimerRef.current = null
     }, 480)
-  }, [canBeautify, onBeautify])
+  }, [canBeautify, layoutStrategy, onBeautify, swimlaneDirection])
+
+  /**
+   * 切换画布布局策略并立即刷新本地预览。
+   *
+   * @param event 布局策略下拉框的变更事件。
+   * @returns 无返回值；只有点击“应用布局”才会写入工作流草稿。
+   */
+  const handleLayoutStrategyChange = useCallback((
+    event: React.ChangeEvent<HTMLSelectElement>
+  ): void => {
+    setLayoutStrategy(event.target.value as WorkflowDagLayoutStrategy)
+  }, [])
+
+  /**
+   * 切换物料泳道的流向并立即刷新本地预览。
+   *
+   * @param direction 用户选择的纵向或横向物料泳道方向。
+   * @returns 无返回值；只有点击“应用布局”才会写入工作流草稿。
+   */
+  const handleSwimlaneDirectionChange = useCallback((
+    direction: WorkflowMaterialSwimlaneDirection
+  ): void => {
+    setSwimlaneDirection(direction)
+  }, [])
 
   if (flowNodes.length === 0) {
     return (
       <p className="px-3.5 py-3 text-xs text-[var(--unilab-color-text-muted)]">
-        当前 JSON 未定义节点，无法生成拓扑图
+        当前工作流未定义节点，无法生成拓扑图
       </p>
     )
   }
@@ -309,7 +372,11 @@ export default function WorkflowDag({
       }}
     >
       <ReactFlow
-        className={isBeautifying ? 'is-beautifying' : undefined}
+        className={[
+          isBeautifying ? 'is-beautifying' : '',
+          `wf-layout--${layoutStrategy}`,
+          `wf-layout-direction--${swimlaneDirection}`
+        ].filter(Boolean).join(' ')}
         nodes={runtimeNodes}
         edges={runtimeEdges}
         onNodesChange={handleNodesChange}
@@ -330,6 +397,7 @@ export default function WorkflowDag({
           })
         }}
         nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
         fitView
         fitViewOptions={{ padding: 0.16, minZoom: 0.2, maxZoom: 1 }}
         minZoom={0.2}
@@ -359,38 +427,92 @@ export default function WorkflowDag({
           onToggleBreakpoint?.(node.id)
         }}
       >
-        <Background gap={16} color="var(--unilab-color-border)" />
+        <Background
+          gap={24}
+          size={0.75}
+          color="var(--unilab-color-border-strong)"
+        />
         <Controls showInteractive={false} />
         <Panel position="top-right">
-          <button
-            type="button"
-            className="workflow-runtime__beautify"
-            disabled={!canBeautify || isBeautifying}
-            aria-label="美化工作流布局"
-            title={
-              canBeautify
-                ? '按控制流自动排列并适配画布'
-                : '请先完成当前 Python 编译'
-            }
-            onClick={handleBeautify}
+          <div
+            className="workflow-runtime__layout-tools"
+            aria-label="工作流布局工具"
           >
-            <svg
-              aria-hidden="true"
-              viewBox="0 0 24 24"
-              fill="none"
+            <select
+              className="workflow-runtime__layout-strategy"
+              aria-label="布局策略"
+              value={layoutStrategy}
+              onChange={handleLayoutStrategyChange}
             >
-              <path
-                d="M12 3l1.35 3.65L17 8l-3.65 1.35L12 13l-1.35-3.65L7 8l3.65-1.35L12 3Z"
-              />
-              <path
-                d="M18.5 13l.85 2.15L21.5 16l-2.15.85L18.5 19l-.85-2.15L15.5 16l2.15-.85L18.5 13Z"
-              />
-              <path
-                d="M6 14l.65 1.35L8 16l-1.35.65L6 18l-.65-1.35L4 16l1.35-.65L6 14Z"
-              />
-            </svg>
-            <span>{isBeautifying ? '正在美化' : '美化布局'}</span>
-          </button>
+              {WORKFLOW_DAG_LAYOUT_STRATEGIES.map((strategy) => (
+                <option key={strategy.value} value={strategy.value}>
+                  {strategy.label}
+                </option>
+              ))}
+            </select>
+            {layoutStrategy === 'material-swimlanes' && (
+              <div
+                className="workflow-runtime__swimlane-direction"
+                role="group"
+                aria-label="物料泳道方向"
+              >
+                {WORKFLOW_MATERIAL_SWIMLANE_DIRECTIONS.map((direction) => (
+                  <button
+                    key={direction.value}
+                    type="button"
+                    className={swimlaneDirection === direction.value
+                      ? 'is-active'
+                      : undefined}
+                    aria-pressed={swimlaneDirection === direction.value}
+                    title={direction.description}
+                    onClick={() => handleSwimlaneDirectionChange(
+                      direction.value
+                    )}
+                  >
+                    {direction.label}
+                  </button>
+                ))}
+              </div>
+            )}
+            <WorkflowButton
+              type="button"
+              className="workflow-runtime__beautify"
+              disabled={!canBeautify || isBeautifying}
+              disabledReason={isBeautifying
+                ? '正在应用工作流布局，请稍候'
+                : beautifyDisabledReason}
+              aria-label={layoutStrategy === 'material-swimlanes'
+                ? `应用${workflowMaterialSwimlaneDirectionLabel(
+                    swimlaneDirection
+                  )}物料泳道布局`
+                : `应用${workflowDagLayoutStrategyLabel(layoutStrategy)}布局`}
+              title={
+                canBeautify
+                  ? WORKFLOW_DAG_LAYOUT_STRATEGIES.find(
+                      (strategy) => strategy.value === layoutStrategy
+                    )?.description
+                  : beautifyDisabledReason
+              }
+              onClick={handleBeautify}
+            >
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                fill="none"
+              >
+                <path
+                  d="M12 3l1.35 3.65L17 8l-3.65 1.35L12 13l-1.35-3.65L7 8l3.65-1.35L12 3Z"
+                />
+                <path
+                  d="M18.5 13l.85 2.15L21.5 16l-2.15.85L18.5 19l-.85-2.15L15.5 16l2.15-.85L18.5 13Z"
+                />
+                <path
+                  d="M6 14l.65 1.35L8 16l-1.35.65L6 18l-.65-1.35L4 16l1.35-.65L6 14Z"
+                />
+              </svg>
+              <span>{isBeautifying ? '正在应用' : '应用布局'}</span>
+            </WorkflowButton>
+          </div>
         </Panel>
         <MiniMap
           pannable

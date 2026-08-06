@@ -1,34 +1,57 @@
 import {
-  useCallback,
   useEffect,
-  useId,
   useRef,
-  useState,
-  type ReactNode
+  useState
 } from 'react'
 import { createPortal } from 'react-dom'
 
 import type {
   DesktopRuntimeApi,
   LocalRuntimeLaunchConfig,
-  LocalRuntimeLogsSnapshot,
   LocalRuntimeMode,
   LocalRuntimeModeInfo,
   LocalRuntimePathKind,
-  LocalRuntimeProcessKind,
   LocalRuntimeSnapshot
 } from '../types/electron'
 
+import {
+  detectPhoenixObservabilityDependencyIssue,
+  LocalRuntimeLogDrawer
+} from './LocalRuntimeLogDrawer'
+import { LocalRuntimeLogLauncher } from './LocalRuntimeLogLauncher'
+import { LocalRuntimeDialog } from './LocalRuntimeConfigurationDialog'
 import styles from './LocalRuntimeLauncher.module.scss'
+import {
+  desktopRuntimeApi,
+  localRuntimeErrorMessage as errorMessage,
+  useDeviceCardSurfaceOcclusion
+} from './localRuntimeUiSupport'
 
-const STORAGE_KEY = 'unilab.local-runtime-launch-config.v2'
-const LEGACY_STORAGE_KEY = 'unilab.local-runtime-launch-config.v1'
+export {
+  detectPhoenixObservabilityDependencyIssue,
+  LocalRuntimeLogDrawer
+} from './LocalRuntimeLogDrawer'
+export { LocalRuntimeLogLauncher } from './LocalRuntimeLogLauncher'
+export { LocalRuntimeDialog } from './LocalRuntimeConfigurationDialog'
+
+const STORAGE_KEY = 'unilab.local-runtime-launch-config.v3'
+const LEGACY_STORAGE_KEYS = [
+  'unilab.local-runtime-launch-config.v2',
+  'unilab.local-runtime-launch-config.v1'
+] as const
 const EMPTY_CONFIG: LocalRuntimeLaunchConfig = {
   graphPath: '',
   osProjectPath: '',
   szlabProjectPath: '',
   environmentPath: '',
-  simulatorProjectPath: ''
+  simulatorProjectPath: '',
+  edgeCommandMode: 'generated',
+  customEdgeCommand: {
+    executable: '',
+    workingDirectory: '',
+    args: [],
+    environment: []
+  }
 }
 const IDLE_SNAPSHOT: LocalRuntimeSnapshot = {
   phase: 'idle',
@@ -42,132 +65,25 @@ const DEVELOPMENT_RUNTIME_INFO: LocalRuntimeModeInfo = {
   label: '开发环境 Runtime',
   runtimeVersion: null
 }
+const OBSERVABILITY_LOG_CHECK_INTERVAL_MS = 2_000
+const OBSERVABILITY_LOG_CHECK_LIMIT = 15
 
 interface LocalRuntimeLauncherProps {
   runtimeApi?: DesktopRuntimeApi
   onReady?: () => void
+  onStopping?: () => void | Promise<void>
 }
 
-interface LocalRuntimeLogLauncherProps {
-  runtimeApi?: DesktopRuntimeApi
-  variant?: 'toolbar' | 'dialog'
-  onOpenChange?: (open: boolean) => void
-}
-
-export function LocalRuntimeLogLauncher({
-  runtimeApi = desktopRuntimeApi(),
-  variant = 'toolbar',
-  onOpenChange
-}: LocalRuntimeLogLauncherProps): React.JSX.Element | null {
-  const instanceId = useId()
-  const drawerId = `local-runtime-log-drawer-${instanceId}`
-  const [open, setOpen] = useState(false)
-  const [snapshot, setSnapshot] =
-    useState<LocalRuntimeLogsSnapshot | null>(null)
-  const [activeKind, setActiveKind] =
-    useState<LocalRuntimeProcessKind>('edge')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const readSequenceRef = useRef(0)
-  const selectInitialLogRef = useRef(true)
-
-  const closeLogs = useCallback((): void => {
-    setOpen(false)
-    onOpenChange?.(false)
-  }, [onOpenChange])
-
-  const refresh = useCallback(async (): Promise<void> => {
-    if (!runtimeApi) return
-    const requestSequence = ++readSequenceRef.current
-    setLoading(true)
-    setError(null)
-    try {
-      const nextSnapshot = await runtimeApi.readLogs()
-      if (requestSequence !== readSequenceRef.current) return
-      setSnapshot(nextSnapshot)
-      if (selectInitialLogRef.current) {
-        const preferredEntry = nextSnapshot.entries.find(
-          (entry) => entry.kind === 'edge' && entry.available
-        ) ?? nextSnapshot.entries.find((entry) => entry.available)
-        if (preferredEntry) setActiveKind(preferredEntry.kind)
-        selectInitialLogRef.current = false
-      }
-    } catch (readError) {
-      if (requestSequence === readSequenceRef.current) {
-        setError(errorMessage(readError))
-      }
-    } finally {
-      if (requestSequence === readSequenceRef.current) {
-        setLoading(false)
-      }
-    }
-  }, [runtimeApi])
-
-  useEffect(() => {
-    if (!open) return
-    void refresh()
-    const refreshTimer = globalThis.setInterval(() => {
-      void refresh()
-    }, 2_000)
-    return () => {
-      globalThis.clearInterval(refreshTimer)
-      readSequenceRef.current += 1
-    }
-  }, [open, refresh])
-
-  useEffect(() => {
-    if (!open || typeof document === 'undefined') return
-    const handleKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') closeLogs()
-    }
-    document.addEventListener('keydown', handleKeyDown)
-    return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [closeLogs, open])
-
-  if (!runtimeApi) return null
-
-  const openLogs = (): void => {
-    selectInitialLogRef.current = true
-    setError(null)
-    setOpen(true)
-    onOpenChange?.(true)
-  }
-
-  return (
-    <>
-      <button
-        type="button"
-        className={variant === 'dialog'
-          ? `${styles.secondaryButton} ${styles.headerLogButton}`
-          : styles.launcherButton}
-        aria-expanded={open}
-        aria-controls={drawerId}
-        onClick={openLogs}
-      >
-        查看日志
-      </button>
-      {open && typeof document !== 'undefined'
-        ? createPortal(
-            <LocalRuntimeLogDrawer
-              instanceId={instanceId}
-              snapshot={snapshot}
-              activeKind={activeKind}
-              loading={loading}
-              error={error}
-              onSelect={setActiveKind}
-              onRefresh={() => void refresh()}
-              onClose={closeLogs}
-            />,
-            document.body
-          )
-        : null}
-    </>
-  )
-}
-
+/**
+ * 组合桌面端本地调试入口、配置持久化和 PLC-Sim/领域侧 Edge 启停交互。
+ *
+ * @param props Electron 本地运行接口与启停通知回调。
+ * @returns 桌面环境中的启动按钮和按需渲染的配置弹窗；Web 环境返回 null。
+ */
 export default function LocalRuntimeLauncher({
   runtimeApi = desktopRuntimeApi(),
-  onReady
+  onReady,
+  onStopping
 }: LocalRuntimeLauncherProps): React.JSX.Element | null {
   const [open, setOpen] = useState(false)
   const [config, setConfig] = useState(readStoredConfig)
@@ -176,7 +92,12 @@ export default function LocalRuntimeLauncher({
   const [localError, setLocalError] = useState<string | null>(null)
   const [simulatorSubmitted, setSimulatorSubmitted] = useState(false)
   const [edgeSubmitted, setEdgeSubmitted] = useState(false)
+  const [resolvingGeneratedEdgeCommand, setResolvingGeneratedEdgeCommand] =
+    useState(false)
   const [dialogLogsOpen, setDialogLogsOpen] = useState(false)
+  const [phoenixDependencyMissing, setPhoenixDependencyMissing] = useState(false)
+  const readyNotificationSentRef = useRef(false)
+  useDeviceCardSurfaceOcclusion('local-runtime-dialog', open)
 
   useEffect(() => {
     if (!runtimeApi) return
@@ -206,6 +127,60 @@ export default function LocalRuntimeLauncher({
       unsubscribe()
     }
   }, [runtimeApi])
+
+  useEffect(() => {
+    const edgeReady = snapshot.phase === 'ready' && snapshot.edgeRunning
+    if (!edgeReady) {
+      readyNotificationSentRef.current = false
+      return
+    }
+    if (readyNotificationSentRef.current) return
+    readyNotificationSentRef.current = true
+    onReady?.()
+  }, [onReady, snapshot.edgeRunning, snapshot.phase])
+
+  useEffect(() => {
+    const edgeReady = snapshot.phase === 'ready' && snapshot.edgeRunning
+    if (!runtimeApi || !edgeReady) {
+      setPhoenixDependencyMissing(false)
+      return
+    }
+    if (phoenixDependencyMissing) return
+
+    let active = true
+    let checksRemaining = OBSERVABILITY_LOG_CHECK_LIMIT
+    let nextCheckTimer: ReturnType<typeof globalThis.setTimeout> | undefined
+
+    const inspectEdgeLogs = async (): Promise<void> => {
+      try {
+        const logs = await runtimeApi.readLogs()
+        if (!active) return
+        const edgeLog = logs.entries.find((entry) => entry.kind === 'edge')
+        if (detectPhoenixObservabilityDependencyIssue(edgeLog?.content ?? '')) {
+          setPhoenixDependencyMissing(true)
+          return
+        }
+      } catch {
+        // 日志读取失败已有日志抽屉负责呈现；这里仅做非阻塞的依赖提示检测。
+      }
+
+      checksRemaining -= 1
+      if (active && checksRemaining > 0) {
+        nextCheckTimer = globalThis.setTimeout(
+          () => void inspectEdgeLogs(),
+          OBSERVABILITY_LOG_CHECK_INTERVAL_MS
+        )
+      }
+    }
+
+    void inspectEdgeLogs()
+    return () => {
+      active = false
+      if (nextCheckTimer !== undefined) {
+        globalThis.clearTimeout(nextCheckTimer)
+      }
+    }
+  }, [phoenixDependencyMissing, runtimeApi, snapshot.edgeRunning, snapshot.phase])
 
   useEffect(() => {
     if (
@@ -253,15 +228,40 @@ export default function LocalRuntimeLauncher({
     setOpen(false)
   }
 
+  /**
+   * 打开受控系统路径选择器，并把结果写入对应的平面路径或自定义模板字段。
+   *
+   * @param kind 共享合同声明的路径类别。
+   */
   const choosePath = async (kind: LocalRuntimePathKind): Promise<void> => {
     setLocalError(null)
     try {
       const path = await runtimeApi.selectPath(kind)
       if (!path) return
-      setConfig((current) => ({
-        ...current,
-        [pathField(kind)]: path
-      }))
+      setConfig((current) => {
+        if (kind === 'edgeExecutable') {
+          return {
+            ...current,
+            customEdgeCommand: {
+              ...current.customEdgeCommand,
+              executable: path
+            }
+          }
+        }
+        if (kind === 'edgeWorkingDirectory') {
+          return {
+            ...current,
+            customEdgeCommand: {
+              ...current.customEdgeCommand,
+              workingDirectory: path
+            }
+          }
+        }
+        return {
+          ...current,
+          [pathField(kind)]: path
+        }
+      })
     } catch (error) {
       setLocalError(errorMessage(error))
     }
@@ -292,28 +292,21 @@ export default function LocalRuntimeLauncher({
     setLocalError(null)
     if (!edgeValidation.valid) return
     try {
-      const trust = await runtimeApi.inspectDevicePackage(config)
-      if (trust.confirmationRequired) {
-        const confirmed = globalThis.confirm(devicePackageTrustPrompt(trust))
-        if (!confirmed) return
-        await runtimeApi.confirmDevicePackage(config, trust.contentHash)
+      if (config.szlabProjectPath.trim()) {
+        const trust = await runtimeApi.inspectDevicePackage(config)
+        if (trust.confirmationRequired) {
+          const confirmed = globalThis.confirm(devicePackageTrustPrompt(trust))
+          if (!confirmed) return
+          await runtimeApi.confirmDevicePackage(config, trust.contentHash)
+        }
       }
       setSnapshot(await runtimeApi.startEdge(config))
-      onReady?.()
     } catch (error) {
       setLocalError(errorMessage(error))
     }
   }
 
-  const stopEdge = async (): Promise<void> => {
-    setLocalError(null)
-    try {
-      setSnapshot(await runtimeApi.stopEdge())
-    } catch (error) {
-      setLocalError(errorMessage(error))
-    }
-  }
-
+  /** 运行设备包启动验收，并接收主进程完成清理后的最终状态。 */
   const runAcceptance = async (): Promise<void> => {
     setLocalError(null)
     try {
@@ -323,16 +316,66 @@ export default function LocalRuntimeLauncher({
     }
   }
 
+  const stopEdge = async (): Promise<void> => {
+    setLocalError(null)
+    try {
+      await onStopping?.()
+      setSnapshot(await runtimeApi.stopEdge())
+    } catch (error) {
+      onReady?.()
+      setLocalError(errorMessage(error))
+    }
+  }
+
+  /**
+   * 请求 Electron 主进程解析当前系统默认 Edge 计划，并显式复制为可编辑自定义参数。
+   *
+   * @returns 解析成功后更新配置；路径无效或旧 preload 不支持时保留用户输入并显示错误。
+   */
+  const loadGeneratedEdgeCommand = async (): Promise<void> => {
+    setEdgeSubmitted(true)
+    setLocalError(null)
+    const generatedValidation = validateEdgeConfig({
+      ...config,
+      edgeCommandMode: 'generated'
+    })
+    if (!generatedValidation.valid) return
+    if (!runtimeApi.resolveGeneratedEdgeCommand) {
+      setLocalError('当前桌面端版本不支持解析系统默认 Edge 命令')
+      return
+    }
+    setResolvingGeneratedEdgeCommand(true)
+    try {
+      const preview = await runtimeApi.resolveGeneratedEdgeCommand(config)
+      setConfig((current) => ({
+        ...current,
+        edgeCommandMode: 'custom',
+        customEdgeCommand: {
+          executable: preview.executable,
+          workingDirectory: preview.cwd,
+          args: [...preview.args],
+          environment: []
+        }
+      }))
+    } catch (error) {
+      setLocalError(errorMessage(error))
+    } finally {
+      setResolvingGeneratedEdgeCommand(false)
+    }
+  }
+
   return (
     <>
       <button
         type="button"
         className={styles.launcherButton}
         data-runtime-phase={snapshot.phase}
+        data-observability-degraded={phoenixDependencyMissing || undefined}
         onClick={() => setOpen(true)}
       >
         <span className={styles.launcherDot} aria-hidden="true" />
         {launcherLabel(snapshot)}
+        {phoenixDependencyMissing ? ' · Trace 降级' : ''}
       </button>
       {open && typeof document !== 'undefined'
         ? createPortal(
@@ -343,8 +386,10 @@ export default function LocalRuntimeLauncher({
               error={localError ?? snapshot.error ?? null}
               simulatorSubmitted={simulatorSubmitted}
               edgeSubmitted={edgeSubmitted}
+              resolvingGeneratedEdgeCommand={resolvingGeneratedEdgeCommand}
               simulatorValidation={simulatorValidation}
               edgeValidation={edgeValidation}
+              phoenixDependencyMissing={phoenixDependencyMissing}
               onChange={setConfig}
               onChoosePath={(kind) => void choosePath(kind)}
               onClose={closeDialog}
@@ -353,6 +398,7 @@ export default function LocalRuntimeLauncher({
               onStartEdge={() => void startEdge()}
               onStopEdge={() => void stopEdge()}
               onRunAcceptance={() => void runAcceptance()}
+              onLoadGeneratedEdgeCommand={loadGeneratedEdgeCommand}
               transitioning={transitioning}
               logControl={(
                 <LocalRuntimeLogLauncher
@@ -369,625 +415,15 @@ export default function LocalRuntimeLauncher({
   )
 }
 
-interface LocalRuntimeDialogProps {
-  config: LocalRuntimeLaunchConfig
-  runtimeInfo: LocalRuntimeModeInfo
-  snapshot: LocalRuntimeSnapshot
-  error: string | null
-  simulatorSubmitted: boolean
-  edgeSubmitted: boolean
-  simulatorValidation: ValidationResult
-  edgeValidation: ValidationResult
-  transitioning: boolean
-  onChange: (config: LocalRuntimeLaunchConfig) => void
-  onChoosePath: (kind: LocalRuntimePathKind) => void
-  onClose: () => void
-  onStartSimulator: () => void
-  onStopSimulator: () => void
-  onStartEdge: () => void
-  onStopEdge: () => void
-  onRunAcceptance: () => void
-  logControl?: ReactNode
-}
 
-export function LocalRuntimeDialog({
-  config,
-  runtimeInfo,
-  snapshot,
-  error,
-  simulatorSubmitted,
-  edgeSubmitted,
-  simulatorValidation,
-  edgeValidation,
-  transitioning,
-  onChange,
-  onChoosePath,
-  onClose,
-  onStartSimulator,
-  onStopSimulator,
-  onStartEdge,
-  onStopEdge,
-  onRunAcceptance,
-  logControl
-}: LocalRuntimeDialogProps): React.JSX.Element {
-  const simulatorTransitioning = isSimulatorTransitioning(snapshot)
-  const edgeTransitioning = isEdgeTransitioning(snapshot)
-  const simulatorActive = snapshot.simulatorRunning
-  const edgeActive = snapshot.bridgeRunning || snapshot.edgeRunning
-  const environmentDisabled = simulatorActive || edgeActive || transitioning
-  const simulatorDisabled = simulatorActive
-    || simulatorTransitioning
-    || edgeTransitioning
-  const edgeDisabled = edgeActive || edgeTransitioning
-
-  return (
-    <div className={styles.backdrop}>
-      <section
-        className={styles.dialog}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="local-runtime-title"
-        aria-describedby="local-runtime-description"
-      >
-        <header className={styles.header}>
-          <div>
-            <h2 id="local-runtime-title">
-              启动领域侧本地调试环境（以 sz_lab 为例）
-            </h2>
-            <p id="local-runtime-description">
-              分别启动 PLC-Sim 和领域侧 Edge，由你决定是否使用本地 PLC。
-            </p>
-          </div>
-          <div className={styles.headerActions}>
-            {logControl}
-            <button
-              type="button"
-              className={styles.closeButton}
-              aria-label="关闭本地环境配置"
-              disabled={transitioning}
-              onClick={onClose}
-            >
-              ×
-            </button>
-          </div>
-        </header>
-
-        <div className={styles.body}>
-          {runtimeInfo.mode === 'managed' ? (
-            <div className={styles.dependencyNotice} role="note">
-              <strong>{runtimeInfo.label}</strong>
-              <span>
-                {runtimeInfo.runtimeVersion
-                  ? `Uni-Lab Runtime ${runtimeInfo.runtimeVersion}，由桌面端校验和维护。`
-                  : '随安装包提供，由桌面端校验和维护。'}
-              </span>
-            </div>
-          ) : (
-            <div className={styles.fields}>
-              <PathField
-                id="runtime-environment-path"
-                label="unilab Conda 环境目录"
-                value={config.environmentPath}
-                placeholder="自动识别，或选择 Conda 环境目录"
-                buttonLabel="选择目录"
-                disabled={environmentDisabled}
-                invalid={Boolean(
-                  (simulatorSubmitted
-                    && simulatorValidation.errors.environmentPath)
-                  || (edgeSubmitted
-                    && edgeValidation.errors.environmentPath)
-                )}
-                error={simulatorSubmitted
-                  ? simulatorValidation.errors.environmentPath
-                  : edgeSubmitted
-                    ? edgeValidation.errors.environmentPath
-                    : undefined}
-                autoFocus
-                onChoose={() => onChoosePath('environment')}
-              />
-            </div>
-          )}
-
-          <div className={styles.dependencyNotice} role="note">
-            <strong>设备包由你决定是否运行</strong>
-            <span>
-              首次使用或内容变化时会显示签名状态与 SHA-256；未签名或签名无效也可在确认后启动，并写入本机审计记录。
-            </span>
-          </div>
-
-          <section
-            className={styles.serviceSection}
-            aria-labelledby="local-plc-title"
-          >
-            <header className={styles.serviceHeader}>
-              <div>
-                <h3 id="local-plc-title">PLC-Sim（可选）</h3>
-                <p>启动本地 OPC UA，监听 127.0.0.1:18765。</p>
-              </div>
-              <button
-                type="button"
-                className={simulatorActive
-                  ? styles.stopButton
-                  : styles.primaryButton}
-                disabled={simulatorTransitioning
-                  || edgeTransitioning}
-                onClick={simulatorActive
-                  ? onStopSimulator
-                  : onStartSimulator}
-              >
-                {simulatorControlLabel(snapshot, simulatorActive)}
-              </button>
-            </header>
-            <PathField
-              id="runtime-simulator-path"
-              label="PLC-Sim 源码目录或已安装可执行文件"
-              value={config.simulatorProjectPath}
-              placeholder="选择包含 OpcUaSim 的源码目录，或 PLC-Sim 可执行文件"
-              buttonLabel="选择路径"
-              disabled={simulatorDisabled}
-              invalid={simulatorSubmitted
-                && Boolean(simulatorValidation.errors.simulatorProjectPath)}
-              error={simulatorSubmitted
-                ? simulatorValidation.errors.simulatorProjectPath
-                : undefined}
-              editable
-              onValueChange={(simulatorProjectPath) => onChange({
-                ...config,
-                simulatorProjectPath
-              })}
-              onChoose={() => onChoosePath('simulator')}
-            />
-          </section>
-
-          <section
-            className={styles.serviceSection}
-            aria-labelledby="local-edge-title"
-          >
-            <header className={styles.serviceHeader}>
-              <div>
-                <h3 id="local-edge-title">
-                  领域侧 Edge（以 sz_lab 为例）
-                </h3>
-                <p>启动领域设备图、本地服务和 Edge 运行时。</p>
-              </div>
-              <button
-                type="button"
-                className={edgeActive
-                  ? styles.stopButton
-                  : styles.primaryButton}
-                disabled={edgeTransitioning || simulatorTransitioning}
-                onClick={edgeActive ? onStopEdge : onStartEdge}
-              >
-                {edgeControlLabel(snapshot, edgeActive)}
-              </button>
-            </header>
-
-            <div className={styles.dependencyNotice} role="note">
-              <strong>使用 PLC 时，请先上传变量表</strong>
-              <span>
-                先启动 PLC-Sim，在 PLC-Sim 中上传 PLC 变量表，确认完成后再启动领域侧 Edge。
-              </span>
-            </div>
-
-            <div className={styles.fields}>
-              {runtimeInfo.mode === 'development' ? (
-                <PathField
-                  id="runtime-os-path"
-                  label="Uni-Lab-OS 项目根目录"
-                  value={config.osProjectPath}
-                  placeholder="选择 Uni-Lab-OS 项目根目录"
-                  buttonLabel="选择目录"
-                  disabled={edgeDisabled}
-                  invalid={edgeSubmitted
-                    && Boolean(edgeValidation.errors.osProjectPath)}
-                  error={edgeSubmitted
-                    ? edgeValidation.errors.osProjectPath
-                    : undefined}
-                  editable
-                  onValueChange={(osProjectPath) => onChange({
-                    ...config,
-                    osProjectPath
-                  })}
-                  onChoose={() => onChoosePath('os')}
-                />
-              ) : null}
-              <PathField
-                id="runtime-szlab-path"
-                label="领域项目根目录（以 Uni-Lab-SZLab 为例）"
-                value={config.szlabProjectPath}
-                placeholder="选择领域项目根目录"
-                buttonLabel="选择目录"
-                disabled={edgeDisabled}
-                invalid={edgeSubmitted
-                  && Boolean(edgeValidation.errors.szlabProjectPath)}
-                error={edgeSubmitted
-                  ? edgeValidation.errors.szlabProjectPath
-                  : undefined}
-                editable
-                onValueChange={(szlabProjectPath) => onChange({
-                  ...config,
-                  szlabProjectPath
-                })}
-                onChoose={() => onChoosePath('szlab')}
-              />
-              <PathField
-                id="runtime-graph-path"
-                label="领域设备图 JSON（以 sz_lab 为例）"
-                value={config.graphPath}
-                placeholder="选择领域设备图，例如 szlab-ideawit-sim"
-                buttonLabel="选择文件"
-                disabled={edgeDisabled}
-                invalid={edgeSubmitted
-                  && Boolean(edgeValidation.errors.graphPath)}
-                error={edgeSubmitted
-                  ? edgeValidation.errors.graphPath
-                  : undefined}
-                onChoose={() => onChoosePath('graph')}
-              />
-            </div>
-          </section>
-
-          <RuntimeStatus snapshot={snapshot} />
-
-          <div
-            className={styles.acceptancePanel}
-            data-status={snapshot.acceptance?.status ?? 'unverified'}
-          >
-            <div>
-              <strong>
-                设备包验收：{acceptanceStatusLabel(
-                  snapshot.acceptance?.status ?? 'unverified'
-                )}
-              </strong>
-              <span>
-                {snapshot.acceptance?.message
-                  ?? '启动 PLC-Sim 与 Edge 后可手动运行；结束后默认停止本次进程。'}
-              </span>
-            </div>
-            <button
-              type="button"
-              className={styles.secondaryButton}
-              disabled={!edgeActive || transitioning}
-              onClick={onRunAcceptance}
-            >
-              运行验收（完成后清理）
-            </button>
-          </div>
-
-          {error ? (
-            <p className={styles.error} role="alert">
-              {error}
-            </p>
-          ) : null}
-        </div>
-
-        <footer className={styles.footer}>
-          <button
-            type="button"
-            className={styles.secondaryButton}
-            disabled={transitioning}
-            onClick={onClose}
-          >
-            关闭
-          </button>
-        </footer>
-      </section>
-    </div>
-  )
-}
-
-interface LocalRuntimeLogDrawerProps {
-  instanceId?: string
-  snapshot: LocalRuntimeLogsSnapshot | null
-  activeKind: LocalRuntimeProcessKind
-  loading: boolean
-  error: string | null
-  onSelect: (kind: LocalRuntimeProcessKind) => void
-  onRefresh: () => void
-  onClose: () => void
-}
-
-const LOG_TABS: Array<{
-  kind: LocalRuntimeProcessKind
-  label: string
-}> = [
-  { kind: 'simulator', label: 'PLC-Sim' },
-  { kind: 'edge', label: 'Edge 运行时' }
-]
-
-export function LocalRuntimeLogDrawer({
-  instanceId,
-  snapshot,
-  activeKind,
-  loading,
-  error,
-  onSelect,
-  onRefresh,
-  onClose
-}: LocalRuntimeLogDrawerProps): React.JSX.Element {
-  const outputRef = useRef<HTMLPreElement>(null)
-  const idSuffix = instanceId ? `-${instanceId}` : ''
-  const drawerId = `local-runtime-log-drawer${idSuffix}`
-  const titleId = `local-runtime-log-title${idSuffix}`
-  const outputId = `local-runtime-log-output${idSuffix}`
-  const activeEntry = snapshot?.entries.find(
-    (entry) => entry.kind === activeKind
-  )
-
-  useEffect(() => {
-    const output = outputRef.current
-    if (output) output.scrollTop = output.scrollHeight
-  }, [activeEntry?.content, activeKind])
-
-  return (
-    <div className={styles.logDrawerLayer}>
-      <button
-        type="button"
-        className={styles.logDrawerScrim}
-        aria-label="关闭运行日志"
-        onClick={onClose}
-      />
-      <aside
-        id={drawerId}
-        className={styles.logDrawer}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-      >
-        <header className={styles.logDrawerHeader}>
-          <div>
-            <h3 id={titleId}>本地运行日志</h3>
-            <p>直接展示最新输出，每 2 秒自动刷新。</p>
-          </div>
-          <div className={styles.logDrawerActions}>
-            <button
-              type="button"
-              className={styles.secondaryButton}
-              disabled={loading}
-              onClick={onRefresh}
-            >
-              {loading ? '刷新中…' : '刷新'}
-            </button>
-            <button
-              type="button"
-              className={styles.closeButton}
-              aria-label="关闭运行日志"
-              onClick={onClose}
-            >
-              ×
-            </button>
-          </div>
-        </header>
-
-        <div className={styles.logTabs} role="tablist" aria-label="日志来源">
-          {LOG_TABS.map((tab) => {
-            const entry = snapshot?.entries.find(
-              (candidate) => candidate.kind === tab.kind
-            )
-            const hasOutput = Boolean(entry?.available && entry.content)
-            return (
-              <button
-                key={tab.kind}
-                id={`local-runtime-log-tab-${tab.kind}${idSuffix}`}
-                type="button"
-                role="tab"
-                aria-selected={activeKind === tab.kind}
-                aria-controls={outputId}
-                data-available={hasOutput || undefined}
-                onClick={() => onSelect(tab.kind)}
-              >
-                <span>{tab.label}</span>
-                <small>
-                  {hasOutput ? '有输出' : entry?.available ? '等待输出' : '暂无'}
-                </small>
-              </button>
-            )
-          })}
-        </div>
-
-        <div
-          id={outputId}
-          className={styles.logDrawerBody}
-          role="tabpanel"
-          aria-labelledby={`local-runtime-log-tab-${activeKind}${idSuffix}`}
-          aria-busy={loading}
-        >
-          {error ? (
-            <p className={styles.logError} role="alert">
-              日志读取失败：{error}
-            </p>
-          ) : null}
-          {loading && !snapshot ? (
-            <div className={styles.logEmpty} role="status">
-              正在读取日志…
-            </div>
-          ) : activeEntry?.available && activeEntry.content ? (
-            <>
-              {activeEntry.truncated ? (
-                <p className={styles.logNotice}>
-                  日志较长，当前展示最新 128 KB。
-                </p>
-              ) : null}
-              <pre ref={outputRef} className={styles.logOutput}>
-                {activeEntry.content}
-              </pre>
-            </>
-          ) : (
-            <div className={styles.logEmpty} role="status">
-              <strong>
-                {activeEntry?.available ? '暂时没有日志输出' : '尚未生成日志'}
-              </strong>
-              <span>启动相应服务后，输出会自动显示在这里。</span>
-            </div>
-          )}
-        </div>
-      </aside>
-    </div>
-  )
-}
-
-function PathField({
-  id,
-  label,
-  value,
-  placeholder,
-  buttonLabel,
-  disabled,
-  invalid,
-  error,
-  autoFocus = false,
-  editable = false,
-  onValueChange,
-  onChoose
-}: {
-  id: string
-  label: string
-  value: string
-  placeholder: string
-  buttonLabel: string
-  disabled: boolean
-  invalid: boolean
-  error?: string
-  autoFocus?: boolean
-  editable?: boolean
-  onValueChange?: (value: string) => void
-  onChoose: () => void
-}): React.JSX.Element {
-  const errorId = `${id}-error`
-  const labelId = `${id}-label`
-  const valueId = `${id}-value`
-  const actionId = `${id}-action`
-  return (
-    <div className={styles.field}>
-      <label className={styles.fieldLabel} id={labelId} htmlFor={id}>
-        {label}
-      </label>
-      {editable ? (
-        <div
-          className={styles.pathEditor}
-          data-disabled={disabled || undefined}
-          data-invalid={invalid || undefined}
-        >
-          <input
-            id={id}
-            type="text"
-            className={styles.pathInput}
-            value={value}
-            placeholder={placeholder}
-            disabled={disabled}
-            aria-invalid={invalid || undefined}
-            aria-describedby={invalid ? errorId : undefined}
-            autoFocus={autoFocus}
-            spellCheck={false}
-            title={value || undefined}
-            onChange={(event) => onValueChange?.(event.target.value)}
-          />
-          <button
-            type="button"
-            className={styles.pathBrowse}
-            disabled={disabled}
-            aria-label={`${label}：${buttonLabel}`}
-            onClick={onChoose}
-          >
-            {buttonLabel}
-          </button>
-        </div>
-      ) : (
-        <button
-          id={id}
-          type="button"
-          className={styles.pathPicker}
-          disabled={disabled}
-          aria-labelledby={`${labelId} ${valueId} ${actionId}`}
-          aria-invalid={invalid || undefined}
-          aria-describedby={invalid ? errorId : undefined}
-          autoFocus={autoFocus}
-          title={value || undefined}
-          onClick={onChoose}
-        >
-          <span
-            id={valueId}
-            className={value ? styles.pathValue : styles.pathPlaceholder}
-          >
-            {value || placeholder}
-          </span>
-          <span className={styles.pathAction} id={actionId}>
-            {buttonLabel}
-          </span>
-        </button>
-      )}
-      {invalid && error ? (
-        <small className={styles.fieldError} id={errorId}>
-          {error}
-        </small>
-      ) : null}
-    </div>
-  )
-}
-
-function RuntimeStatus({
-  snapshot
-}: {
-  snapshot: LocalRuntimeSnapshot
-}): React.JSX.Element {
-  return (
-    <div
-      className={styles.statusPanel}
-      data-phase={snapshot.phase}
-      role="status"
-      aria-live="polite"
-    >
-      <div className={styles.statusHeader}>
-        <span className={styles.statusDot} aria-hidden="true" />
-        <strong>{snapshot.message}</strong>
-      </div>
-      <div className={styles.processGrid}>
-        <ProcessState
-          label="PLC-Sim"
-          port="18765"
-          status={simulatorRuntimeStatus(snapshot)}
-        />
-        <ProcessState
-          label="领域侧 Edge"
-          port="HTTP 18003"
-          status={edgeRuntimeStatus(snapshot)}
-        />
-      </div>
-    </div>
-  )
-}
-
-type ProcessDisplayStatus =
-  | 'idle'
-  | 'starting'
-  | 'running'
-  | 'stopping'
-  | 'failed'
-  | 'disabled'
-
-function ProcessState({
-  label,
-  port,
-  status
-}: {
-  label: string
-  port: string
-  status: ProcessDisplayStatus
-}): React.JSX.Element {
-  return (
-    <div className={styles.processItem} data-status={status}>
-      <span className={styles.processIdentity}>
-        <strong>{label}</strong>
-        <small>{port}</small>
-      </span>
-      <span className={styles.processStatus}>{processStatusLabel(status)}</span>
-    </div>
-  )
-}
+type LocalRuntimeValidationField = keyof LocalRuntimeLaunchConfig
+  | 'customEdgeExecutable'
+  | 'customEdgeWorkingDirectory'
+  | 'customEdgeEnvironment'
 
 interface ValidationResult {
   valid: boolean
-  errors: Partial<Record<keyof LocalRuntimeLaunchConfig, string>>
+  errors: Partial<Record<LocalRuntimeValidationField, string>>
 }
 
 export function validateSimulatorConfig(
@@ -999,27 +435,99 @@ export function validateSimulatorConfig(
     errors.environmentPath = '请选择 unilab Conda 环境目录'
   }
   if (!config.simulatorProjectPath.trim()) {
-    errors.simulatorProjectPath = '请选择 PLC-Sim 源码目录或已安装可执行文件'
+    errors.simulatorProjectPath = mode === 'managed'
+      ? '请选择 PLC-Sim 源码目录或已安装可执行文件'
+      : '请选择 PLC-Sim 项目根目录'
   }
   return { valid: Object.keys(errors).length === 0, errors }
 }
 
+/**
+ * 校验领域侧 Edge 启动所需路径与自定义命令的最小 renderer 输入。
+ *
+ * @param config 当前本地运行配置。
+ * @returns 各字段可直接展示的错误集合；主进程仍会执行权威文件与模板校验。
+ * @throws 不抛出异常；所有 renderer 输入问题都返回为字段错误。
+ * @safety 只检查字符串输入，不访问文件系统或启动子进程。
+ */
 export function validateEdgeConfig(
   config: LocalRuntimeLaunchConfig,
   mode: LocalRuntimeMode = 'development'
 ): ValidationResult {
   const errors: ValidationResult['errors'] = {}
-  if (!config.graphPath.trim()) errors.graphPath = '请选择设备图 JSON'
+  if (mode === 'managed' && !config.graphPath.trim()) {
+    errors.graphPath = '请选择设备图 JSON'
+  }
+  if (mode === 'managed' && !config.szlabProjectPath.trim()) {
+    errors.szlabProjectPath = '请选择领域项目根目录'
+  }
   if (mode === 'development' && !config.osProjectPath.trim()) {
     errors.osProjectPath = '请选择 Uni-Lab-OS 项目根目录'
-  }
-  if (!config.szlabProjectPath.trim()) {
-    errors.szlabProjectPath = '请选择领域项目根目录'
   }
   if (mode === 'development' && !config.environmentPath.trim()) {
     errors.environmentPath = '请选择 unilab Conda 环境目录'
   }
+  if (mode === 'development' && config.edgeCommandMode === 'custom') {
+    if (!config.szlabProjectPath.trim()) {
+      errors.szlabProjectPath = '自定义命令仅适用于已挂载领域设备包'
+    }
+    if (!config.customEdgeCommand.executable.trim()) {
+      errors.customEdgeExecutable = '请输入或选择 Edge 自定义可执行文件'
+    }
+    if (!config.customEdgeCommand.workingDirectory.trim()) {
+      errors.customEdgeWorkingDirectory = '请输入或选择 Edge 自定义工作目录'
+    }
+    const environmentError = validateCustomEdgeEnvironment(
+      config.customEdgeCommand.environment
+    )
+    if (environmentError) errors.customEdgeEnvironment = environmentError
+  }
   return { valid: Object.keys(errors).length === 0, errors }
+}
+
+/**
+ * 对环境变量编辑结果执行即时格式校验，主进程仍负责重复名和权威边界的最终判断。
+ *
+ * @param environment 用户逐行编辑后形成的环境变量名称和值。
+ * @returns 首个可行动错误；输入满足 renderer 约束时返回 undefined。
+ */
+function validateCustomEdgeEnvironment(
+  environment: LocalRuntimeLaunchConfig['customEdgeCommand']['environment']
+): string | undefined {
+  const seenNames = new Set<string>()
+  for (const entry of environment) {
+    const name = entry.name.trim()
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+      return `环境变量 ${name || '<空名称>'} 的名称格式无效`
+    }
+    const normalizedName = name.toUpperCase()
+    if (seenNames.has(normalizedName)) return `环境变量 ${name} 重复`
+    seenNames.add(normalizedName)
+    if (isLauncherManagedEnvironmentName(normalizedName)) {
+      return `环境变量 ${name} 由 Edge 启动器托管，不能覆盖`
+    }
+    if (/(?:^|_)(?:AUTH|COOKIE|KEY|PASS|PASSWORD|SECRET|TOKEN)(?:_|$)/i.test(name)) {
+      return `环境变量 ${name} 可能包含敏感信息，不能保存在本地启动配置中`
+    }
+  }
+  return undefined
+}
+
+/**
+ * 判断一个大写环境变量名是否属于启动器托管的 Conda、端口或运行事实。
+ *
+ * @param normalizedName 已转换为大写的环境变量名称。
+ * @returns 用户覆盖会破坏启动器权威边界时返回 true。
+ */
+function isLauncherManagedEnvironmentName(normalizedName: string): boolean {
+  return normalizedName === 'PATH'
+    || normalizedName === 'PYTHONPATH'
+    || normalizedName === 'PYTHONUNBUFFERED'
+    || normalizedName === 'ROS_DOMAIN_ID'
+    || normalizedName === 'UNILABOS_RUNTIME_DB'
+    || normalizedName === 'UNILABOS_HOSTLINKCONFIG_PORT'
+    || normalizedName.startsWith('CONDA_')
+    || normalizedName.startsWith('UNILABOS_OBSERVABILITYCONFIG_')
 }
 
 function launcherLabel(snapshot: LocalRuntimeSnapshot): string {
@@ -1047,14 +555,8 @@ function isTransitioning(snapshot: LocalRuntimeSnapshot): boolean {
   ].includes(snapshot.phase)
 }
 
-function acceptanceStatusLabel(
-  status: 'unverified' | 'verified' | 'failed'
-): string {
-  if (status === 'verified') return '已验证'
-  if (status === 'failed') return '失败'
-  return '未验证'
-}
 
+/** 生成首次或内容变化后的设备包本机信任确认文本。 */
 function devicePackageTrustPrompt(trust: {
   contentHash: string
   signatureStatus: 'valid' | 'invalid' | 'unsigned'
@@ -1072,28 +574,18 @@ function devicePackageTrustPrompt(trust: {
   ].join('\n')
 }
 
-function isSimulatorTransitioning(snapshot: LocalRuntimeSnapshot): boolean {
-  return [
-    'validating_simulator',
-    'starting_simulator',
-    'waiting_simulator',
-    'stopping_simulator'
-  ].includes(snapshot.phase)
-}
 
-function isEdgeTransitioning(snapshot: LocalRuntimeSnapshot): boolean {
-  return [
-    'validating_edge',
-    'starting_bridge',
-    'waiting_bridge',
-    'starting_edge',
-    'waiting_edge',
-    'stopping_edge'
-  ].includes(snapshot.phase)
-}
-
+/**
+ * 将普通路径类别映射到平面配置字段；嵌套的自定义模板路径由调用方单独处理。
+ *
+ * @param kind 除自定义可执行文件之外的受控路径类别。
+ * @returns 对应的本地运行配置字段名。
+ */
 function pathField(
-  kind: LocalRuntimePathKind
+  kind: Exclude<
+    LocalRuntimePathKind,
+    'edgeExecutable' | 'edgeWorkingDirectory'
+  >
 ): keyof LocalRuntimeLaunchConfig {
   if (kind === 'graph') return 'graphPath'
   if (kind === 'os') return 'osProjectPath'
@@ -1102,131 +594,114 @@ function pathField(
   return 'simulatorProjectPath'
 }
 
+/**
+ * 读取 renderer 本地偏好并把 v1/v2 路径配置迁移为默认生成式 Edge 启动模式。
+ *
+ * @returns 完整 v3 配置；存储缺失或损坏时返回安全默认值。
+ */
 function readStoredConfig(): LocalRuntimeLaunchConfig {
-  if (typeof globalThis.localStorage === 'undefined') return { ...EMPTY_CONFIG }
+  if (typeof globalThis.localStorage === 'undefined') {
+    return normalizeStoredLocalRuntimeConfig(null)
+  }
   try {
     const storedValue = globalThis.localStorage.getItem(STORAGE_KEY)
-      ?? globalThis.localStorage.getItem(LEGACY_STORAGE_KEY)
-    const parsed = JSON.parse(storedValue ?? 'null') as
-      Partial<LocalRuntimeLaunchConfig> | null
-    if (!parsed) return { ...EMPTY_CONFIG }
-    return {
-      graphPath: typeof parsed.graphPath === 'string' ? parsed.graphPath : '',
-      osProjectPath: typeof parsed.osProjectPath === 'string'
-        ? parsed.osProjectPath
-        : '',
-      szlabProjectPath: typeof parsed.szlabProjectPath === 'string'
-        ? parsed.szlabProjectPath
-        : '',
-      environmentPath: typeof parsed.environmentPath === 'string'
-        ? parsed.environmentPath
-        : '',
-      simulatorProjectPath: typeof parsed.simulatorProjectPath === 'string'
-        ? parsed.simulatorProjectPath
-        : ''
-    }
+      ?? LEGACY_STORAGE_KEYS
+        .map((key) => globalThis.localStorage.getItem(key))
+        .find((value) => value !== null)
+    return normalizeStoredLocalRuntimeConfig(JSON.parse(storedValue ?? 'null'))
   } catch {
-    return { ...EMPTY_CONFIG }
+    return normalizeStoredLocalRuntimeConfig(null)
+  }
+}
+/**
+ * 将未知 localStorage 值归一化为 v3 配置；旧版本没有命令字段时保持系统默认启动。
+ *
+ * @param value JSON 解析后的未知本地偏好。
+ * @returns 字段逐项收窄且嵌套对象独立复制的完整配置。
+ */
+export function normalizeStoredLocalRuntimeConfig(
+  value: unknown
+): LocalRuntimeLaunchConfig {
+  if (!value || typeof value !== 'object') {
+    return {
+      ...EMPTY_CONFIG,
+      customEdgeCommand: { ...EMPTY_CONFIG.customEdgeCommand }
+    }
+  }
+  const parsed = value as Partial<LocalRuntimeLaunchConfig>
+  const customEdgeCommand = parsed.customEdgeCommand
+  return {
+    graphPath: typeof parsed.graphPath === 'string' ? parsed.graphPath : '',
+    osProjectPath: typeof parsed.osProjectPath === 'string'
+      ? parsed.osProjectPath
+      : '',
+    szlabProjectPath: typeof parsed.szlabProjectPath === 'string'
+      ? parsed.szlabProjectPath
+      : '',
+    environmentPath: typeof parsed.environmentPath === 'string'
+      ? parsed.environmentPath
+      : '',
+    simulatorProjectPath: typeof parsed.simulatorProjectPath === 'string'
+      ? parsed.simulatorProjectPath
+      : '',
+    edgeCommandMode: parsed.edgeCommandMode === 'custom'
+      ? 'custom'
+      : 'generated',
+    customEdgeCommand: {
+      executable: typeof customEdgeCommand?.executable === 'string'
+        ? customEdgeCommand.executable
+        : '',
+      workingDirectory: typeof customEdgeCommand?.workingDirectory === 'string'
+        ? customEdgeCommand.workingDirectory
+        : parsed.edgeCommandMode === 'custom'
+          ? '{{workspace}}'
+          : '',
+      args: Array.isArray(customEdgeCommand?.args)
+        ? customEdgeCommand.args.filter(
+            (argument): argument is string => typeof argument === 'string'
+          )
+        : [],
+      environment: Array.isArray(customEdgeCommand?.environment)
+        ? customEdgeCommand.environment.flatMap((entry) => (
+            entry
+            && typeof entry === 'object'
+            && typeof entry.name === 'string'
+            && typeof entry.value === 'string'
+              ? [{ name: entry.name, value: entry.value }]
+              : []
+          ))
+        : []
+    }
   }
 }
 
+/**
+ * 仅用安装包默认值补全尚未选择的路径，保留用户已有命令与偏好。
+ *
+ * @param current 当前持久化配置。
+ * @param defaults 私有 Runtime 安装载荷声明的默认配置。
+ * @returns 路径缺省项已补齐的独立配置。
+ */
 function mergeDefaultLaunchConfig(
   current: LocalRuntimeLaunchConfig,
   defaults: LocalRuntimeLaunchConfig
 ): LocalRuntimeLaunchConfig {
-  return Object.fromEntries(
-    Object.entries(current).map(([key, value]) => [
-      key,
-      value.trim()
-        ? value
-        : defaults[key as keyof LocalRuntimeLaunchConfig]
-    ])
-  ) as unknown as LocalRuntimeLaunchConfig
-}
-
-function simulatorRuntimeStatus(
-  snapshot: LocalRuntimeSnapshot
-): ProcessDisplayStatus {
-  if (snapshot.failedProcess === 'simulator') return 'failed'
-  if (snapshot.phase === 'stopping_simulator' && snapshot.simulatorRunning) {
-    return 'stopping'
+  return {
+    ...current,
+    graphPath: current.graphPath.trim()
+      ? current.graphPath
+      : defaults.graphPath,
+    osProjectPath: current.osProjectPath.trim()
+      ? current.osProjectPath
+      : defaults.osProjectPath,
+    szlabProjectPath: current.szlabProjectPath.trim()
+      ? current.szlabProjectPath
+      : defaults.szlabProjectPath,
+    environmentPath: current.environmentPath.trim()
+      ? current.environmentPath
+      : defaults.environmentPath,
+    simulatorProjectPath: current.simulatorProjectPath.trim()
+      ? current.simulatorProjectPath
+      : defaults.simulatorProjectPath
   }
-  if (
-    snapshot.phase === 'validating_simulator'
-    || snapshot.phase === 'starting_simulator'
-    || snapshot.phase === 'waiting_simulator'
-  ) {
-    return 'starting'
-  }
-  if (snapshot.simulatorRunning) return 'running'
-  return 'idle'
-}
-
-function edgeRuntimeStatus(
-  snapshot: LocalRuntimeSnapshot
-): ProcessDisplayStatus {
-  if (
-    snapshot.failedProcess === 'bridge'
-    || snapshot.failedProcess === 'edge'
-  ) {
-    return 'failed'
-  }
-  if (
-    snapshot.phase === 'stopping_edge'
-    && (snapshot.bridgeRunning || snapshot.edgeRunning)
-  ) {
-    return 'stopping'
-  }
-  if (snapshot.phase === 'ready' && snapshot.edgeRunning) {
-    return 'running'
-  }
-  if (
-    snapshot.phase === 'starting_bridge'
-    || snapshot.phase === 'validating_edge'
-    || snapshot.phase === 'waiting_bridge'
-    || snapshot.phase === 'starting_edge'
-    || snapshot.phase === 'waiting_edge'
-    || snapshot.bridgeRunning
-    || snapshot.edgeRunning
-  ) {
-    return 'starting'
-  }
-  return 'idle'
-}
-
-function simulatorControlLabel(
-  snapshot: LocalRuntimeSnapshot,
-  active: boolean
-): string {
-  if (snapshot.phase === 'stopping_simulator') return '正在停止…'
-  if (isSimulatorTransitioning(snapshot)) return '正在启动…'
-  return active ? '停止 PLC' : '启动 PLC'
-}
-
-function edgeControlLabel(
-  snapshot: LocalRuntimeSnapshot,
-  active: boolean
-): string {
-  if (snapshot.phase === 'stopping_edge') return '正在停止…'
-  if (isEdgeTransitioning(snapshot)) return '正在启动…'
-  return active ? '停止 Edge' : '启动 Edge'
-}
-
-function processStatusLabel(status: ProcessDisplayStatus): string {
-  if (status === 'running') return '运行中'
-  if (status === 'starting') return '启动中'
-  if (status === 'stopping') return '停止中'
-  if (status === 'failed') return '异常'
-  if (status === 'disabled') return '未启用'
-  return '未启动'
-}
-
-function desktopRuntimeApi(): DesktopRuntimeApi | undefined {
-  return typeof globalThis.window === 'undefined'
-    ? undefined
-    : globalThis.window.api?.runtime
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
 }

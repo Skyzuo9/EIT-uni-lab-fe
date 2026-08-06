@@ -6,6 +6,7 @@ import React, {
   useState,
 } from "react";
 import { decodePanelDragPayload, encodePanelDragPayload } from "./dragPayload";
+import { PanelVisibilityProvider } from "./PanelVisibility";
 import { createPanelDomId } from "./rendererUtils";
 
 export const PANEL_DRAG_MIME = "application/x-unilab-panel";
@@ -64,6 +65,12 @@ function hasMime(event: DragEvent): boolean {
   return Array.from(event.dataTransfer.types).includes(PANEL_DRAG_MIME);
 }
 
+/**
+ * 渲染一组可切换面板，并向每个已挂载内容发布其真实可见性。
+ *
+ * @param props 标签、活动身份与移动/关闭命令。
+ * @returns 保持非活动标签挂载、但可被子组件识别为隐藏的面板组。
+ */
 export const PanelGroup: React.FC<PanelGroupProps> = ({
   activeTabId,
   groupId,
@@ -266,7 +273,9 @@ export const PanelGroup: React.FC<PanelGroupProps> = ({
               hidden={tab.id !== activeTabId}
               tabIndex={0}
             >
-              {tab.content}
+              <PanelVisibilityProvider active={tab.id === activeTabId}>
+                {tab.content}
+              </PanelVisibilityProvider>
             </div>
           );
         })}

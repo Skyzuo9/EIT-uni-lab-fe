@@ -1,7 +1,11 @@
 @use './workflow-foundations';
 @use './workflow-toolbar';
 @use './workflow-stage';
+@use './workflow-dag-routing';
+@use './workflow-material-source';
+@use './workflow-transfer-node';
 @use './workflow-beautify';
+@use './workflow-swimlanes';
 @use './workflow-debugger';
 @use './workflow-output';
 @use './workflow-trace';
