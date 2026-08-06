@@ -205,20 +205,6 @@ def install_material_transfer_workflow_fixture(app, root: Path) -> None:
     def e2e_material_transfer_jobs():
         return {"code": 0, "data": jobs}
 
-    @app.get(f"/api/v1/workflow-tasks/{task_uuid}/events")
-    def e2e_material_transfer_task_events(
-        after_sequence: int = 0,
-        limit: int = 100,
-    ):
-        return {
-            "code": 0,
-            "data": {
-                "items": [],
-                "next_cursor": after_sequence,
-                "has_more": False,
-            },
-        }
-
     @app.get("/api/v1/workflow-node-jobs/{job_uuid}/feedback")
     def e2e_material_transfer_job_feedback(
         job_uuid: str,

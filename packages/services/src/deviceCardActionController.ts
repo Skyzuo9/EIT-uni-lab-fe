@@ -30,16 +30,32 @@ interface ExecuteOptions {
 export class DeviceCardActionController {
   private readonly randomUuid: () => string
 
+  /**
+   * 绑定工作流运行时（WorkflowRuntime）、设备动作任务和 UUID 生成端口。
+   *
+   * @param ports 设备单点动作所需的可替换服务端口。
+   */
   constructor(private readonly ports: DeviceCardActionControllerPorts) {
     this.randomUuid = ports.randomUuid ?? (() => globalThis.crypto.randomUUID())
   }
 
+  /**
+   * 把设备卡片动作（Action）提交为正式任务并等待终态。
+   *
+   * @param request 设备卡片发出的动作参数和请求身份。
+   * @param device 当前设备目录投影。
+   * @param options 可选取消信号。
+   * @returns 兼容设备卡片的执行结果；错误被投影为 ERROR/CANCELLED。
+   * @throws 不向调用方抛出业务错误；内部失败统一转为结果对象。
+   */
   async execute(
     request: DeviceCardHostActionRequest,
     device: DeviceCatalogItem,
     options: ExecuteOptions = {}
   ): Promise<DeviceCardActionRun> {
+    // `taskUuid` 是服务端接受后用于补读和事件筛选的任务稳定身份。
     let taskUuid = ''
+    // `retryTimer/retryDelay` 只控制 REST 补读，不产生新的物理执行尝试。
     let retryTimer: ReturnType<typeof globalThis.setTimeout> | null = null
     let retryDelay = 1_000
     let terminalResolve: ((task: DeviceActionTaskView) => void) | undefined
@@ -106,6 +122,11 @@ export class DeviceCardActionController {
         (candidate) => candidate.actionName === request.action
       )!
       const catalog = await this.ports.workflow.getWorkflowActionCatalog()
+      if (!catalog.authorityId || !catalog.fingerprint) {
+        throw new Error(
+          '当前目录未提供 OS 设备单点动作所需的目录权威和指纹。'
+        )
+      }
       const matches = catalog.actionTemplates.filter((template) =>
         template.name === action.actionName &&
         template.actionType === action.typeName
@@ -151,6 +172,12 @@ export class DeviceCardActionController {
   }
 }
 
+/**
+ * 判断动作模板是否可由设备卡片安全直接执行。
+ *
+ * @param template 已校验的动作节点模板。
+ * @returns 不含物料占位符（ResourceSlot）、库位（Site）或隐式传递时为 true。
+ */
 export function supportsDeviceCardSingleAction(
   template: WorkflowActionNodeTemplate
 ): boolean {
@@ -162,6 +189,7 @@ export function supportsDeviceCardSingleAction(
   ) && !containsUnsupportedContract(template.schema)
 }
 
+/** 校验设备与动作请求；参数是请求和设备投影，无返回值，绑定、在线状态或声明不一致时抛错。 */
 function assertRunnableDeviceAction(
   request: DeviceCardHostActionRequest,
   device: DeviceCatalogItem
@@ -175,6 +203,7 @@ function assertRunnableDeviceAction(
   }
 }
 
+/** 投影动作任务结果；参数是原请求和任务视图，返回设备卡片结果，不主动抛错。 */
 function projectActionRun(
   request: DeviceCardHostActionRequest,
   task: DeviceActionTaskView
@@ -193,10 +222,12 @@ function projectActionRun(
   }
 }
 
+/** 判断动作任务终态；参数是 wire 状态，返回是否终止，不主动抛错。 */
 function isTerminalActionTask(status: string): boolean {
   return ['succeeded', 'failed', 'canceled', 'timeout'].includes(status)
 }
 
+/** 投影动作任务错误；参数是任务视图，返回用户可读错误或 undefined，不主动抛错。 */
 function actionTaskError(task: DeviceActionTaskView): string | undefined {
   if (task.status === 'succeeded') return undefined
   if (task.status === 'canceled') return '设备动作已取消。'
@@ -209,6 +240,7 @@ function actionTaskError(task: DeviceActionTaskView): string | undefined {
   return detail || '设备动作执行失败。'
 }
 
+/** 映射任务状态；参数是服务端 wire 状态，返回设备卡片状态，不主动抛错。 */
 function mapActionStatus(status: string): DeviceCardActionRun['status'] {
   if (status === 'succeeded') return 'DONE'
   if (status === 'failed') return 'ERROR'
@@ -218,6 +250,7 @@ function mapActionStatus(status: string): DeviceCardActionRun['status'] {
   return 'ACCEPTED'
 }
 
+/** 递归检查不支持的物料或库位合同；参数是 schema 值，返回是否命中，不主动抛错。 */
 function containsUnsupportedContract(value: unknown): boolean {
   if (Array.isArray(value)) return value.some(containsUnsupportedContract)
   if (!value || typeof value !== 'object') return value === 'ResourceSlot'

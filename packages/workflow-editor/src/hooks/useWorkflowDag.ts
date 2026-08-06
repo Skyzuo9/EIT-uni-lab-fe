@@ -16,6 +16,7 @@ import {
   type WorkflowMaterialSwimlaneDirection
 } from '../utils/workflowDagLayoutStrategy'
 import { layoutWorkflowMaterialSwimlanes } from '../utils/workflowMaterialSwimlaneLayout'
+import { reconcileReactFlowNodeMeasurements } from '../utils/reactFlowNodeMeasurement'
 import {
   materialTraceAccent,
   projectMaterialTraces
@@ -71,30 +72,98 @@ export function useWorkflowDag(
     fallback.flowEdges
   )
 
-  useEffect(() => {
-    setNodes(fallback.flowNodes)
+  useEffect(
+    /**
+     * 同步安装当前同步布局并保留已有有效测量。
+     *
+     * @returns 无。
+     * @throws React 状态更新异常由运行时传播。
+     */
+    () => {
+    // `currentNodes` 是流程画布引擎当前持有、可能已完成测量的节点集合。
+    setNodes(
+      /**
+       * 合并当前测量与同步布局节点。
+       *
+       * @param currentNodes 流程画布当前节点。
+       * @returns 保留可靠测量的下一版节点。
+       * @throws 无。
+       */
+      (currentNodes) => reconcileReactFlowNodeMeasurements(
+        currentNodes,
+        fallback.flowNodes
+      )
+    )
     setEdges(fallback.flowEdges)
-  }, [fallback, setEdges, setNodes])
+    },
+    [fallback, setEdges, setNodes]
+  )
 
-  useEffect(() => {
+  useEffect(
+    /**
+     * 安排异步可见工作流（Workflow）布局并管理取消标志。
+     *
+     * @returns 卸载或依赖变化时执行的取消回调。
+     * @throws 布局失败在本效果内回退同步布局。
+     */
+    () => {
     let cancelled = false
     void layoutVisibleWorkflowDag(
       nodes,
       links,
       strategy,
       swimlaneDirection
-    ).then((layout) => {
+    ).then(
+      /**
+       * 安装仍有效的异步布局结果。
+       *
+       * @param layout 异步布局器返回的节点位置。
+       * @returns 无。
+       * @throws React 状态更新异常由运行时传播。
+       */
+      (layout) => {
       if (cancelled) return
       const elements = buildFlowElements(layout, nodes, links, strategy)
-      setNodes(elements.flowNodes)
+      // `currentNodes` 是异步布局完成时仍有效的最新节点与测量集合。
+      setNodes(
+        /**
+         * 合并当前测量与异步布局节点。
+         *
+         * @param currentNodes 流程画布当前节点。
+         * @returns 保留可靠测量的异步布局节点。
+         * @throws 无。
+         */
+        (currentNodes) => reconcileReactFlowNodeMeasurements(
+          currentNodes,
+          elements.flowNodes
+        )
+      )
       setEdges(elements.flowEdges)
-    }).catch(() => {
+      }
+    ).catch(
+      /**
+       * 吞掉可恢复的 ELK 布局失败并保留同步布局。
+       *
+       * @returns 无。
+       * @throws 无。
+       */
+      () => {
       // ELK 不可用时保留已通过碰撞检测的同步分层布局。
-    })
-    return () => {
+      }
+    )
+    /**
+     * 标记本轮异步布局结果不再有效。
+     *
+     * @returns 无。
+     * @throws 无。
+     */
+    function cancelLayout(): void {
       cancelled = true
     }
-  }, [links, nodes, setEdges, setNodes, strategy, swimlaneDirection])
+    return cancelLayout
+    },
+    [links, nodes, setEdges, setNodes, strategy, swimlaneDirection]
+  )
 
   return {
     nodes: flowNodes,

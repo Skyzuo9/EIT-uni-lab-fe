@@ -15,6 +15,7 @@ import threading
 import time
 from pathlib import Path
 from typing import Any
+from uuid import NAMESPACE_URL, uuid5
 
 import uvicorn
 
@@ -28,10 +29,31 @@ from unilabos.registry.registry import Registry
 from unilabos.ros.nodes.presets.host_node import HostNode
 from unilabos.utils.type_check import serialize_result_info
 from unilabos.workflow.catalog import CatalogAuthority
-from unilabos.workflow.composition import compose_workflow_runtime
+from unilabos.workflow.composition import (
+    compose_workflow_runtime,
+    get_workflow_inventory_service,
+)
 
 DEVICE_ID = "D1ADevice1"
 ACTION_NAME = "test_hold"
+
+
+def _resource_template_uuid(source_fqid: str) -> str:
+    """为测试设备类型生成跨重启稳定的资源模板身份。
+
+    Args:
+        source_fqid: 包目录发布的完整设备类型身份。
+
+    Returns:
+        基于命名空间生成的规范资源模板 UUID。
+
+    Raises:
+        不主动抛出异常；输入由包目录编译器提供。
+
+    Safety:
+        稳定映射确保动作目录与库存中的设备物料引用同一资源模板。
+    """
+    return str(uuid5(NAMESPACE_URL, f"d1a-e2e-template:{source_fqid}"))
 
 
 def _write_package(root: Path) -> None:
@@ -175,6 +197,20 @@ class DriverBoundaryHost:
 
 
 def create_fixture_app(working_dir: Path):
+    """组装连接正式调度与库存权威的单动作端到端测试应用。
+
+    Args:
+        working_dir: 本次测试独占的运行目录，用于保存工作流与库存数据库。
+
+    Returns:
+        复用生产 HTTP 路由、调度器和设备驱动边界的 FastAPI 应用。
+
+    Raises:
+        RuntimeError: 组合根未提供库存权威时拒绝启动，避免绕过占用审计。
+
+    Safety:
+        工作流服务与库存服务来自同一次组合，终止与解锁测试不会使用伪造锁权威。
+    """
     package_root = working_dir / "package"
     _write_package(package_root)
     device_snapshot, resource_snapshot = _registry_snapshot(package_root)
@@ -205,10 +241,44 @@ def create_fixture_app(working_dir: Path):
         editable_package_roots=BasicConfig.workflow_editable_package_roots,
         registry_snapshot=device_snapshot,
         resource_registry_snapshot=resource_snapshot,
+        resource_template_identity_resolver=_resource_template_uuid,
+    )
+    inventory_service = get_workflow_inventory_service()
+    if inventory_service is None:
+        raise RuntimeError("D1A E2E inventory authority is unavailable")
+    device_source_fqid = next(iter(device_snapshot))
+    inventory_service.bootstrap_resource_graph(
+        {
+            "source_id": "d1a-e2e-device.json",
+            "fingerprint": "sha256:" + "d" * 64,
+            "materials": [
+                {
+                    "uuid": str(uuid5(NAMESPACE_URL, f"d1a-e2e:{DEVICE_ID}")),
+                    "resource_template_uuid": _resource_template_uuid(
+                        device_source_fqid
+                    ),
+                    "parent_uuid": None,
+                    "class": "Instrument",
+                    "barcode": "",
+                    "name": DEVICE_ID,
+                    "description": "D1A E2E selected executor",
+                    "meta_data": {
+                        "source": "resource-tree-set",
+                        "source_node_id": DEVICE_ID,
+                    },
+                    "config": {},
+                    "data": {},
+                    "material_kind": "device",
+                }
+            ],
+            "relative_positions": [],
+            "sites": [],
+        }
     )
     _scheduler, backend = setup_edge_scheduler(
         ws_client=client,
         host_node_getter=lambda: host,
+        inventory_service=inventory_service,
         workflow_tasks=workflow_service,
         device_state_db_path="off",
         workflow_history_db_path=str(working_dir / "workflow-history.db"),

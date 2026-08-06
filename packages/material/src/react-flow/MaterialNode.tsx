@@ -15,6 +15,14 @@ import {
   readMaterial2DVisual
 } from './visual'
 
+/**
+ * 从物料存储读取聚合并渲染 React Flow 物料节点。
+ *
+ * @param data 节点携带的物料身份。
+ * @param selected 当前节点是否被选中。
+ * @returns 物料节点；聚合缺失时返回明确的缺失占位。
+ * @throws 无；状态缺失在组件内失败关闭。
+ */
 export function MaterialNode({
   data,
   selected
@@ -45,6 +53,11 @@ export function MaterialNode({
 
 /**
  * 把一个已解析物料（Material）聚合投影为二维节点，保持状态读取与纯展示分离。
+ *
+ * @param aggregate 已由物料存储解析的物料聚合。
+ * @param selected 当前 React Flow 节点是否被选中。
+ * @returns 可渲染物理库位（Site）或默认卡片的二维节点。
+ * @throws 无；缺失或非物理展示信息会使用既有回退投影。
  */
 export function MaterialNodePresentation({
   aggregate,
@@ -53,7 +66,6 @@ export function MaterialNodePresentation({
   aggregate: MaterialAggregate
   selected: boolean
 }): React.JSX.Element {
-
   const occupied = aggregate.sites.reduce(
     (total, site) => total + site.occupiedMaterialIds.length,
     0
