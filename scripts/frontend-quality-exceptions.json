@@ -35,6 +35,12 @@
       "maxFunctionComplexity": 25,
       "reason": "物料服务（MaterialService）在一个适配边界内完成物料模板、物料图（MaterialGraph）与后端不可信载荷的校验映射，集中定义错误语义可避免模板和图投影产生不一致的解析规则。",
       "futureSplitBoundary": "补齐模板载荷和物料图载荷的畸形输入矩阵测试后，将模板映射迁入 materialTemplateMapper.ts、物料图映射迁入 materialGraphMapper.ts，materials.ts 仅保留端口组合与 HTTP 调用。"
+    },
+    "packages/pascal-lab-plugin/src/materialAggregateSceneBridge.ts": {
+      "maxLines": 1000,
+      "maxFunctionComplexity": 45,
+      "reason": "物料聚合（MaterialAggregate）到 Pascal 场景的桥接是单一权威翻译边界；集中维护稳定身份、毫米到场景坐标转换、挂载关系和只读物料转运（MaterialTransfer）投影，可以避免多个渲染入口各自猜测坐标或复制物料事实。",
+      "futureSplitBoundary": "先为渲染快照回退和未解析转运路线补齐特征测试，再抽取 materialRenderingSnapshot.ts 与 materialTransferSceneProjection.ts，保留 materialAggregateSceneBridge.ts 只负责编排 SceneGraph。"
     }
   }
 }

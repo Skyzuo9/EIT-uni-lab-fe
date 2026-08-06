@@ -1,7 +1,8 @@
 import type {
   WorkflowAuthoringGraph,
   WorkflowNodeJob,
-  WorkflowNodeJobStatus
+  WorkflowNodeJobStatus,
+  WorkflowTask
 } from '@unilab/services'
 
 import { workflowNodeVisualKind } from './workflowNodeVisualKind'
@@ -10,6 +11,7 @@ export type WorkflowMaterialTransferStatus =
   | 'planned'
   | 'pending'
   | 'running'
+  | 'canceling'
   | 'succeeded'
   | 'failed'
   | 'canceled'
@@ -97,6 +99,37 @@ export function projectWorkflowMaterialTransferRoutes(
   })
 }
 
+/**
+ * 选择与权威运行态一致的工作流（Workflow）图并生成物料转运路线。
+ *
+ * @param appliedGraph 当前已应用编写图，只提供尚无任务时的规划路线。
+ * @param task 最新工作流任务（WorkflowTask）的稳定身份与冻结快照。
+ * @param jobs 只属于该任务快照的工作流节点作业（WorkflowNodeJob）。
+ * @returns 从任务冻结快照投影的运行态路线；快照无法验证时返回当前图规划态。
+ */
+export function projectWorkflowMaterialTransferProjection(
+  appliedGraph: WorkflowAuthoringGraph,
+  task: Pick<WorkflowTask, 'workflow_uuid' | 'workflow_snapshot'> | null,
+  jobs: readonly WorkflowNodeJob[] = []
+): WorkflowMaterialTransferRoute[] {
+  const appliedWorkflowUuid = stringValue(appliedGraph.workflow.uuid)
+  const snapshot = task &&
+    task.workflow_uuid === appliedWorkflowUuid &&
+    isWorkflowAuthoringGraph(task.workflow_snapshot) &&
+    stringValue(task.workflow_snapshot.workflow.uuid) === task.workflow_uuid
+    ? task.workflow_snapshot
+    : null
+  return snapshot
+    ? projectWorkflowMaterialTransferRoutes(snapshot, jobs)
+    : projectWorkflowMaterialTransferRoutes(appliedGraph)
+}
+
+/**
+ * 聚合一个标准物料转运节点下的权威工作流节点作业（WorkflowNodeJob）状态。
+ *
+ * @param jobs 同一转运复合节点及其子节点的作业状态集合。
+ * @returns 只读路线状态；跳过不构成成功，取消请求与确认取消保持分离。
+ */
 export function aggregateTransferStatus(
   jobs: readonly Pick<WorkflowNodeJob, 'status'>[]
 ): WorkflowMaterialTransferStatus {
@@ -107,18 +140,19 @@ export function aggregateTransferStatus(
     statuses.has('execution_unknown')
   ) return 'attention'
   if (statuses.has('failed') || statuses.has('timeout')) return 'failed'
+  if (statuses.has('cancel_requested')) return 'canceling'
   if (
     statuses.has('running') ||
-    statuses.has('dispatched') ||
-    statuses.has('cancel_requested')
+    statuses.has('dispatched')
   ) return 'running'
   if (statuses.has('canceled')) return 'canceled'
   if ([...statuses].every(isSuccessfulStatus)) return 'succeeded'
   return 'pending'
 }
 
+/** 仅把权威 `succeeded` 识别为已完成；`skipped` 不能伪装为物料转运成功。 */
 function isSuccessfulStatus(status: WorkflowNodeJobStatus): boolean {
-  return status === 'succeeded' || status === 'skipped'
+  return status === 'succeeded'
 }
 
 function transferAncestor(
@@ -184,4 +218,19 @@ function optionalString(value: unknown): string | null {
 
 function stringValue(value: unknown): string {
   return optionalString(value) ?? ''
+}
+
+/**
+ * 判断工作流任务（WorkflowTask）冻结快照是否具有可投影的编写图结构。
+ *
+ * @param value 未信任的任务快照 DTO。
+ * @returns 仅当工作流身份及四个图集合存在时返回真；不修补缺失字段。
+ */
+function isWorkflowAuthoringGraph(value: unknown): value is WorkflowAuthoringGraph {
+  const graph = recordValue(value)
+  return Boolean(optionalString(recordValue(graph.workflow).uuid)) &&
+    Array.isArray(graph.nodes) &&
+    Array.isArray(graph.edges) &&
+    Array.isArray(graph.node_templates) &&
+    Array.isArray(graph.handle_templates)
 }

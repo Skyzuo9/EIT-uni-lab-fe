@@ -2,6 +2,9 @@ export {
   default as WorkflowPanel,
   type WorkflowPanelProps
 } from './components/WorkflowPanel'
+export type {
+  WorkflowPanelRuntimeProjection
+} from './workflowPanelProjection'
 export {
   WorkflowSessionProvider
 } from './components/WorkflowSessionProvider'
@@ -23,6 +26,7 @@ export type {
 } from './traceRuntime'
 export {
   aggregateTransferStatus,
+  projectWorkflowMaterialTransferProjection,
   projectWorkflowMaterialTransferRoutes,
   type WorkflowMaterialTransferEndpoint,
   type WorkflowMaterialTransferRoute,

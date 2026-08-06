@@ -22,6 +22,7 @@ import {
   type LabPlacementRef
 } from './schema'
 import { inferModelFormat } from './modelFormat'
+import type { SceneCameraView } from './sceneCameraRequest'
 import {
   labLinkPoseToThree,
   labPoseToPascal,
@@ -42,6 +43,7 @@ export interface MaterialSceneMove {
 
 export interface MaterialSceneProjectionOptions {
   fitSceneRevision?: number
+  fitSceneView?: SceneCameraView
   showSites?: boolean
   showMaterialTransfers?: boolean
   materialTransferRoutes?: readonly MaterialTransferSceneRoute[]
@@ -63,6 +65,7 @@ export interface MaterialTransferSceneRoute {
     | 'planned'
     | 'pending'
     | 'running'
+    | 'canceling'
     | 'succeeded'
     | 'failed'
     | 'canceled'
@@ -228,7 +231,8 @@ export function materialAggregatesToSceneGraph(
     parentId: null,
     visible: true,
     children: [BUILDING_ID],
-    fitSceneRevision: options.fitSceneRevision ?? 0
+    fitSceneRevision: options.fitSceneRevision ?? 0,
+    fitSceneView: options.fitSceneView ?? 'default'
   }
   nodes[BUILDING_ID] = {
     id: BUILDING_ID,
@@ -251,7 +255,10 @@ export function materialAggregatesToSceneGraph(
     level: 0,
     children: labNodeIds,
     materialTransferLayer:
-      transferLayer && transferLayer.routes.length > 0
+      transferLayer && (
+        transferLayer.routes.length > 0 ||
+        transferLayer.unresolvedRouteIds.length > 0
+      )
         ? LabMaterialTransferLayerNodeSchema.parse({
             id: MATERIAL_TRANSFER_LAYER_ID,
             type: 'lab-material-transfer-layer',
@@ -272,7 +279,14 @@ export function materialAggregatesToSceneGraph(
   }
 }
 
-/** 将工作流（Workflow）路线的库位（Site）身份解析为 Pascal 世界坐标。 */
+/**
+ * 将工作流（Workflow）路线的稳定物料（Material）与库位（Site）身份解析为
+ * Pascal 世界坐标。
+ *
+ * @param aggregates 操作系统（OS）物料图提供的权威只读聚合。
+ * @param routes 已发布标准转运工作流派生的逻辑路线。
+ * @returns 可渲染路线与失败关闭的未解析路线身份；不修改物料位置。
+ */
 export function projectMaterialTransferSceneLayer(
   aggregates: readonly MaterialAggregate[],
   routes: readonly MaterialTransferSceneRoute[]
@@ -299,11 +313,7 @@ export function projectMaterialTransferSceneLayer(
       const config = readRecord(aggregate.material.config)
       const identities = new Set([
         aggregate.material.id,
-        aggregate.material.code,
-        optionalString(config.sourceIdentity),
-        optionalString(config.sourceNodeId),
-        optionalString(config.rosDeviceName),
-        optionalString(config.ros_device_name)
+        optionalString(config.sourceIdentity)
       ].filter((value): value is string => Boolean(value)))
       return [...identities].map((identity) => [identity, aggregate] as const)
     })
@@ -368,6 +378,14 @@ export function orthogonalTransferPath(
   )
 }
 
+/**
+ * 解析一端转运引用，且只接受稳定物料身份和库位 UUID/`key`。
+ *
+ * @param endpoint 工作流参数中的物料所有者身份和库位身份。
+ * @param aggregatesByIdentity 由物料 UUID 与后端 `sourceIdentity` 建立的索引。
+ * @param aggregatesById 用于组合父子放置坐标的规范物料 UUID 索引。
+ * @returns 可定位端点；任何身份缺失、显示名称匹配或非根锚点均返回空。
+ */
 function resolveTransferEndpoint(
   endpoint: MaterialTransferSceneEndpoint,
   aggregatesByIdentity: ReadonlyMap<string, MaterialAggregate>,
@@ -382,8 +400,7 @@ function resolveTransferEndpoint(
   if (!owner) return null
   const site = owner.sites.find((candidate) =>
     candidate.id === endpoint.siteKey ||
-    candidate.key === endpoint.siteKey ||
-    candidate.name === endpoint.siteKey
+    candidate.key === endpoint.siteKey
   )
   if (!site || site.anchor.kind !== 'root') return null
   const centerPose = composePoses(

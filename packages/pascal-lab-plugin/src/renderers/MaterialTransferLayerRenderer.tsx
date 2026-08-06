@@ -17,6 +17,7 @@ const ROUTE_COLORS: Readonly<Record<LabMaterialTransferStatus, string>> = {
   planned: '#4f46e5',
   pending: '#64748b',
   running: '#f59e0b',
+  canceling: '#d97706',
   succeeded: '#16a34a',
   failed: '#dc2626',
   canceled: '#64748b',
@@ -111,7 +112,7 @@ function TransferRoute({
         <meshBasicMaterial color={color} depthTest={false} />
       </mesh>
       <RouteMotion route={route} color={color} />
-      <Html position={labelPosition} center distanceFactor={8} zIndexRange={[70, 0]}>
+      <Html position={labelPosition} center zIndexRange={[70, 0]}>
         <div
           className={`pascal-transfer-executor${showLabel ? ' is-expanded' : ''}`}
           title={`执行器：${route.executorId}；${route.sourceSiteKey} 到 ${route.targetSiteKey}`}
@@ -251,7 +252,7 @@ function SiteMarker({
         />
       </mesh>
       {hovered && (
-        <Html position={[0, 0.12, 0]} center distanceFactor={8} zIndexRange={[80, 0]}>
+        <Html position={[0, 0.12, 0]} center zIndexRange={[80, 0]}>
           <div className="pascal-transfer-site-label">库位 {label}</div>
         </Html>
       )}

@@ -11,6 +11,10 @@ export { reducePanelLayout } from "./layoutReducer";
 export { PanelDropOverlay } from "./PanelDropOverlay";
 export { PanelGroup, PANEL_DRAG_MIME } from "./PanelGroup";
 export { PanelHost } from "./PanelHost";
+export {
+  PanelVisibilityProvider,
+  usePanelVisibility,
+} from "./PanelVisibility";
 export { PanelLayoutRenderer } from "./PanelLayoutRenderer";
 export { createPanelRegistry } from "./registry";
 export {

@@ -40,7 +40,8 @@ describe('Material Aggregate / Pascal bridge', () => {
     })
 
     const scene = materialAggregatesToSceneGraph([robot], {
-      fitSceneRevision: 7
+      fitSceneRevision: 7,
+      fitSceneView: 'top'
     })
     const node = scene.nodes['lab-robot']
 
@@ -60,8 +61,10 @@ describe('Material Aggregate / Pascal bridge', () => {
     expect(node).not.toHaveProperty('config')
     const site = scene.nodes.site_unilab as {
       fitSceneRevision?: number
+      fitSceneView?: string
     }
     expect(site.fitSceneRevision).toBe(7)
+    expect(site.fitSceneView).toBe('top')
     expect(site).not.toHaveProperty('camera')
     expect(scene.nodes.level_unilab).not.toHaveProperty('camera')
     expect(sceneGraphToMaterialMoves(scene, [robot])).toEqual([])
@@ -402,6 +405,110 @@ describe('Material Aggregate / Pascal bridge', () => {
 
     expect(projected.routes).toEqual([])
     expect(projected.unresolvedRouteIds).toEqual(['route-missing-target'])
+  })
+
+  /**
+   * 验证物料转运端点只接受物料（Material）UUID 或后端发布的 `sourceIdentity`。
+   * 输入故意只匹配 ROS 展示身份；返回值必须失败关闭且不产生路线。
+   */
+  it('does not resolve a transfer owner through ROS or display aliases', () => {
+    const source = aggregate('source-material-uuid', {
+      config: { rosDeviceName: 'source-warehouse-alias' },
+      sites: [site('source-material-uuid', 'source-site', 'L1B1')]
+    })
+    const target = aggregate('target-material-uuid', {
+      sites: [site('target-material-uuid', 'target-site', 'S0721')]
+    })
+
+    const projected = projectMaterialTransferSceneLayer([source, target], [{
+      id: 'route-ros-alias',
+      workflowNodeUuid: 'node-ros-alias',
+      label: '不得按 ROS 名称匹配',
+      source: {
+        ownerMaterialId: 'source-warehouse-alias',
+        siteKey: 'L1B1'
+      },
+      target: {
+        ownerMaterialId: 'target-material-uuid',
+        siteKey: 'S0721'
+      },
+      executorId: 'robot',
+      status: 'planned'
+    }])
+
+    expect(projected.routes).toEqual([])
+    expect(projected.unresolvedRouteIds).toEqual(['route-ros-alias'])
+  })
+
+  /**
+   * 验证库位（Site）显示名称不是空间端点身份。
+   * 输入只匹配 `name` 而不匹配 UUID/`key`；返回值必须保持未解析。
+   */
+  it('does not resolve a Site through its display name', () => {
+    const sourceSite = {
+      ...site('source-material-uuid', 'source-site-uuid', 'source-site-key'),
+      name: 'L1B1'
+    }
+    const source = aggregate('source-material-uuid', { sites: [sourceSite] })
+    const target = aggregate('target-material-uuid', {
+      sites: [site('target-material-uuid', 'target-site', 'S0721')]
+    })
+
+    const projected = projectMaterialTransferSceneLayer([source, target], [{
+      id: 'route-site-name',
+      workflowNodeUuid: 'node-site-name',
+      label: '不得按库位显示名称匹配',
+      source: {
+        ownerMaterialId: 'source-material-uuid',
+        siteKey: 'L1B1'
+      },
+      target: {
+        ownerMaterialId: 'target-material-uuid',
+        siteKey: 'S0721'
+      },
+      executorId: 'robot',
+      status: 'planned'
+    }])
+
+    expect(projected.routes).toEqual([])
+    expect(projected.unresolvedRouteIds).toEqual(['route-site-name'])
+  })
+
+  /**
+   * 验证全部端点不可解析时仍保留图层摘要中的路线身份。
+   * 输入为一个缺失目标仓库的路线；场景输出应保留未解析计数而不渲染路径。
+   */
+  it('keeps unresolved route identities when no route can render', () => {
+    const source = aggregate('source-material-uuid', {
+      sites: [site('source-material-uuid', 'source-site', 'L1B1')]
+    })
+    const scene = materialAggregatesToSceneGraph([source], {
+      showMaterialTransfers: true,
+      materialTransferRoutes: [{
+        id: 'route-unresolved-only',
+        workflowNodeUuid: 'node-unresolved-only',
+        label: '缺少目标仓库',
+        source: {
+          ownerMaterialId: 'source-material-uuid',
+          siteKey: 'L1B1'
+        },
+        target: {
+          ownerMaterialId: 'missing-target',
+          siteKey: 'S0721'
+        },
+        executorId: 'robot',
+        status: 'planned'
+      }]
+    })
+    const level = scene.nodes.level_unilab as {
+      materialTransferLayer?: unknown
+    }
+
+    expect(isLabMaterialTransferLayerNode(level.materialTransferLayer)).toBe(true)
+    expect(level.materialTransferLayer).toMatchObject({
+      routes: [],
+      unresolvedRouteIds: ['route-unresolved-only']
+    })
   })
 })
 

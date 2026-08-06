@@ -5,13 +5,17 @@ import { useCallback, useEffect, useRef } from 'react'
 import {
   Box3,
   type Group,
-  type Object3D,
   Vector3
 } from 'three'
 
 import { MODEL_READY_EVENT } from './LabDeviceRenderer'
 import MaterialTransferLayerRenderer from './MaterialTransferLayerRenderer'
 import type { LabMaterialTransferLayerNode } from '../schema'
+import {
+  applySceneCameraRequest,
+  type SceneCameraControls,
+  type SceneCameraView
+} from '../sceneCameraRequest'
 
 interface HierarchyNode {
   id: string
@@ -21,21 +25,11 @@ interface HierarchyNode {
   position?: readonly [number, number, number]
   rotation?: number | readonly [number, number, number]
   fitSceneRevision?: number
+  fitSceneView?: SceneCameraView
   materialTransferLayer?: LabMaterialTransferLayerNode | null
 }
 
-interface AdaptiveCameraControls {
-  fitToBox?: (
-    boxOrObject: Box3 | Object3D,
-    smooth: boolean,
-    options?: {
-      paddingLeft?: number
-      paddingRight?: number
-      paddingTop?: number
-      paddingBottom?: number
-    }
-  ) => Promise<void> | void
-}
+type AdaptiveCameraControls = Partial<SceneCameraControls>
 
 export default function HierarchyRenderer({
   node
@@ -58,16 +52,18 @@ export default function HierarchyRenderer({
       : node.rotation
 
   const fitScene = useCallback(
-    (smooth: boolean): void => {
+    (smooth: boolean, view: SceneCameraView = 'default'): void => {
       if (
         node.type !== 'site' ||
         !controls?.fitToBox ||
+        !controls.rotatePolarTo ||
         viewportWidth <= 0 ||
         viewportHeight <= 0
       ) {
         return
       }
       const fitToBox = controls.fitToBox.bind(controls)
+      const rotatePolarTo = controls.rotatePolarTo.bind(controls)
       const root = groupRef.current
       root.updateWorldMatrix(true, true)
       const bounds = new Box3().setFromObject(root)
@@ -76,11 +72,15 @@ export default function HierarchyRenderer({
       const size = bounds.getSize(new Vector3())
       const padding = Math.max(size.x, size.y, size.z) * 0.06
       const fit = async (): Promise<void> => {
-        await fitToBox(bounds, smooth, {
-          paddingLeft: padding,
-          paddingRight: padding,
-          paddingTop: padding,
-          paddingBottom: padding
+        await applySceneCameraRequest({
+          bounds,
+          controls: {
+            fitToBox,
+            rotatePolarTo
+          },
+          padding,
+          smooth,
+          view
         })
         invalidate()
       }
@@ -112,11 +112,16 @@ export default function HierarchyRenderer({
     fitSceneRevisionRef.current = node.fitSceneRevision
     if (previousRevision === node.fitSceneRevision) return
     const timer = window.setTimeout(
-      () => fitScene(true),
+      () => fitScene(true, node.fitSceneView),
       0
     )
     return () => window.clearTimeout(timer)
-  }, [fitScene, node.fitSceneRevision, node.type])
+  }, [
+    fitScene,
+    node.fitSceneRevision,
+    node.fitSceneView,
+    node.type
+  ])
 
   useEffect(() => {
     if (node.type !== 'site') return

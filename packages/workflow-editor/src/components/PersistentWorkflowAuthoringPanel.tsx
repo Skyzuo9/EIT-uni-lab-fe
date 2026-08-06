@@ -1,6 +1,7 @@
 import type { WorkflowRuntimePort } from '@unilab/services'
 
 import type { WorkflowTracePort } from '../traceRuntime'
+import type { WorkflowPanelRuntimeProjection } from '../workflowPanelProjection'
 import {
   usePersistentWorkflowAuthoring,
   type PersistentWorkflowAuthoringOptions
@@ -22,6 +23,9 @@ interface PersistentWorkflowAuthoringPanelProps {
   traceRuntime?: WorkflowTracePort
   resourceSlotOptionsPort?: WorkflowResourceSlotOptionsPort
   onUnsavedChangesChange?: (hasUnsavedChanges: boolean) => void
+  onWorkflowRuntimeProjectionChange?: (
+    projection: WorkflowPanelRuntimeProjection | null
+  ) => void
   onSelectedWorkflowStepChange?: (workflowNodeUuid: string | null) => void
   onChooseWorkflow?: () => void
 }

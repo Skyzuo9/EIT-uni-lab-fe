@@ -1,4 +1,3 @@
-import { emitter } from '@pascal-app/core'
 import { useViewer } from '@pascal-app/viewer'
 import {
   PascalEditorHost,
@@ -35,6 +34,7 @@ import {
   type LabMaterialTransferLayerNode,
   isLabTableNode
 } from './schema'
+import type { SceneCameraView } from './sceneCameraRequest'
 
 export interface PascalLabWorkbenchProps {
   aggregates: readonly MaterialAggregate[]
@@ -59,6 +59,12 @@ export interface PascalLabWorkbenchProps {
   ) => void
 }
 
+/**
+ * 将物料图（Material Graph）及只读转运路线组合到 Pascal 2D/2.5D/3D 视图。
+ *
+ * @param props 物料聚合、形状、视图开关、选择和移动回调。
+ * @returns 不拥有物料位置权威的 Pascal 实验室工作台。
+ */
 export function PascalLabWorkbench({
   aggregates,
   shapes,
@@ -75,18 +81,22 @@ export function PascalLabWorkbench({
   onMaterialMoves,
   onSelectionChange
 }: PascalLabWorkbenchProps): React.JSX.Element {
-  const [fitSceneRevision, setFitSceneRevision] = useState(0)
+  const [cameraRequest, setCameraRequest] = useState<{
+    revision: number
+    view: SceneCameraView
+  }>({ revision: 0, view: 'default' })
   const scene = useMemo(
     () =>
       materialAggregatesToSceneGraph(aggregates, {
-        fitSceneRevision,
+        fitSceneRevision: cameraRequest.revision,
+        fitSceneView: cameraRequest.view,
         showSites,
         showMaterialTransfers,
         materialTransferRoutes
       }),
     [
       aggregates,
-      fitSceneRevision,
+      cameraRequest,
       materialTransferRoutes,
       showMaterialTransfers,
       showSites
@@ -204,11 +214,12 @@ export function PascalLabWorkbench({
             type="button"
             className="pascal-lab-toolbar__button"
             onClick={() => {
-              // Pascal 的正交相机会切换到内置深色地板；保留透视相机仅对齐顶视方向。
-              useViewer.getState().setCameraMode('perspective')
+              useViewer.getState().setCameraMode('orthographic')
               requestAnimationFrame(() => {
-                emitter.emit('camera-controls:top-view')
-                setFitSceneRevision((revision) => revision + 1)
+                setCameraRequest(({ revision }) => ({
+                  revision: revision + 1,
+                  view: 'top'
+                }))
               })
             }}
           >
@@ -220,7 +231,10 @@ export function PascalLabWorkbench({
             onClick={() => {
               useViewer.getState().setCameraMode('perspective')
               requestAnimationFrame(() => {
-                setFitSceneRevision((revision) => revision + 1)
+                setCameraRequest(({ revision }) => ({
+                  revision: revision + 1,
+                  view: 'default'
+                }))
               })
             }}
           >

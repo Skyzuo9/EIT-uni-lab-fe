@@ -6,6 +6,7 @@ import type {
 } from '@unilab/services'
 
 import type { WorkflowTracePort } from '../traceRuntime'
+import type { WorkflowPanelRuntimeProjection } from '../workflowPanelProjection'
 import type {
   WorkflowResourceSlotOptionsPort
 } from '../utils/workflowResourceSlotOptions'
@@ -22,19 +23,31 @@ export interface WorkflowPanelProps {
   traceRuntime?: WorkflowTracePort
   resourceSlotOptionsPort?: WorkflowResourceSlotOptionsPort
   activeWorkflowStorageKey?: string
+  active?: boolean
   onUnsavedChangesChange?: (hasUnsavedChanges: boolean) => void
   onActiveWorkflowChange?: (workflowUuid: string | null) => void
+  onWorkflowRuntimeProjectionChange?: (
+    projection: WorkflowPanelRuntimeProjection | null
+  ) => void
   onSelectedWorkflowStepChange?: (workflowNodeUuid: string | null) => void
 }
 
+/**
+ * 组合工作流（Workflow）目录或持久编写面板，并按宿主可见性发布跨面板投影。
+ *
+ * @param props 操作系统（OS）端口、可选固定工作流身份与宿主回调。
+ * @returns 可独立挂载的工作流面板；隐藏面板不拥有跨面板发布权。
+ */
 export default function WorkflowPanel({
   runtime,
   workflowUuid: explicitWorkflowUuid,
   traceRuntime,
   resourceSlotOptionsPort,
   activeWorkflowStorageKey,
+  active = true,
   onUnsavedChangesChange,
   onActiveWorkflowChange,
+  onWorkflowRuntimeProjectionChange,
   onSelectedWorkflowStepChange
 }: WorkflowPanelProps): React.JSX.Element {
   const [selectedWorkflowUuid, setSelectedWorkflowUuid] = useState<
@@ -50,9 +63,9 @@ export default function WorkflowPanel({
     const activeWorkflowUuid = workflowUuid && isWorkflowUuid(workflowUuid)
       ? workflowUuid
       : null
-    onActiveWorkflowChange?.(activeWorkflowUuid)
+    onActiveWorkflowChange?.(active ? activeWorkflowUuid : null)
     return () => onActiveWorkflowChange?.(null)
-  }, [onActiveWorkflowChange, workflowUuid])
+  }, [active, onActiveWorkflowChange, workflowUuid])
 
   if (workflowUuid && isWorkflowUuid(workflowUuid)) {
     return (
@@ -63,6 +76,9 @@ export default function WorkflowPanel({
         traceRuntime={traceRuntime}
         resourceSlotOptionsPort={resourceSlotOptionsPort}
         onUnsavedChangesChange={onUnsavedChangesChange}
+        onWorkflowRuntimeProjectionChange={active
+          ? onWorkflowRuntimeProjectionChange
+          : undefined}
         onSelectedWorkflowStepChange={onSelectedWorkflowStepChange}
         onChooseWorkflow={explicitWorkflowUuid
           ? undefined

@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   aggregateTransferStatus,
+  projectWorkflowMaterialTransferProjection,
   projectWorkflowMaterialTransferRoutes
 } from './workflowMaterialTransferScene'
 
@@ -77,6 +78,80 @@ describe('工作流（Workflow）3D 物料转运投影', () => {
       { status: 'succeeded' },
       { status: 'failed' }
     ])).toBe('failed')
+  })
+
+  /**
+   * 验证跳过的工作流节点作业（WorkflowNodeJob）不伪装成已经完成的物料转运。
+   * 输入是权威 `skipped` 作业状态；返回值必须保持非终态等待投影。
+   */
+  it('不把全部 skipped 作业聚合为成功转运', () => {
+    expect(aggregateTransferStatus([
+      { status: 'skipped' },
+      { status: 'skipped' }
+    ])).toBe('pending')
+  })
+
+  /**
+   * 验证取消请求仍与已确认取消分离。
+   * 输入是 `cancel_requested`；返回值应为取消中，不能播放运行中动画。
+   */
+  it('把 cancel_requested 投影为取消中而不是运行中', () => {
+    expect(aggregateTransferStatus([
+      { status: 'running' },
+      { status: 'cancel_requested' }
+    ])).toBe('canceling')
+  })
+
+  /**
+   * 验证工作流任务（WorkflowTask）的冻结快照拥有运行态路线语义。
+   * 当前已应用图已改目标库位时，历史作业只能装饰任务快照中的旧目标。
+   */
+  it('uses the WorkflowTask snapshot instead of decorating the current graph', () => {
+    const appliedGraph = transferGraph()
+    const taskGraph = transferGraph()
+    const taskNode = taskGraph.nodes[0]
+    if (!taskNode || typeof taskNode.param !== 'object' || taskNode.param === null) {
+      throw new Error('测试夹具缺少标准物料转运参数')
+    }
+    taskNode.param = {
+      ...taskNode.param,
+      target_site: 'S0720'
+    }
+
+    const routes = projectWorkflowMaterialTransferProjection(
+      appliedGraph,
+      {
+        workflow_uuid: 'workflow-1',
+        workflow_snapshot: taskGraph as unknown as Record<string, unknown>
+      },
+      [workflowJob('transfer-1', 'succeeded')]
+    )
+
+    expect(routes).toHaveLength(1)
+    expect(routes[0]).toMatchObject({
+      target: { siteKey: 'S0720' },
+      status: 'succeeded'
+    })
+  })
+
+  /**
+   * 验证无法证明属于当前工作流（Workflow）的任务快照不携带历史作业状态。
+   * 输入为不同工作流 UUID；返回当前已应用路线且保持规划态。
+   */
+  it('fails closed when a WorkflowTask snapshot belongs to another Workflow', () => {
+    const routes = projectWorkflowMaterialTransferProjection(
+      transferGraph(),
+      {
+        workflow_uuid: 'workflow-other',
+        workflow_snapshot: transferGraph() as unknown as Record<string, unknown>
+      },
+      [workflowJob('transfer-1', 'succeeded')]
+    )
+
+    expect(routes[0]).toMatchObject({
+      target: { siteKey: 'S0721' },
+      status: 'planned'
+    })
   })
 })
 
