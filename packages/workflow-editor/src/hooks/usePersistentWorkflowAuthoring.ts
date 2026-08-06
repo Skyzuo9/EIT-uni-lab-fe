@@ -43,11 +43,13 @@ import {
   AuthoringOperationQueue,
   applyMaterializedWorkflowCandidate,
   authoringProjection,
+  authoringRemoteConflict,
   authoringSaveFailureAction,
   authoringStateMessage,
   catalogConflictDecision,
   draftSaveMessage,
   isAuthoringConflict,
+  isAuthoringSnapshotDirty,
   isCurrentAuthoringInvalidation,
   isSameAuthoringVersion,
   isTemplateCatalogConflict
@@ -415,20 +417,9 @@ export function usePersistentWorkflowAuthoring({
               remotePending.current = false
               continue
             }
-            const dirtyAtInstall = current.mode === 'code'
-              ? current.codeDirty
-              : current.canvasDirty
-            if (dirtyAtInstall) {
+            if (isAuthoringSnapshotDirty(current)) {
               remotePending.current = true
-              setRemoteConflict({
-                remote: next,
-                localMode: current.mode,
-                localPython: current.editorValue,
-                localGraph: current.graph,
-                selectedNodeUuid: current.selectedNodeUuid,
-                selectedNodeName: current.selectedNodeName,
-                selectedNodeNameDirty: current.selectedNodeNameDirty
-              })
+              setRemoteConflict(authoringRemoteConflict(next, current))
               setMessage('检测到外部修改；本地内容已保留，请比较后明确处理')
               return
             }
@@ -502,24 +493,13 @@ export function usePersistentWorkflowAuthoring({
       () => runtime.getWorkflowAuthoring(workflowUuid)
     )
     const current = localState.current
-    const currentDirty = current.mode === 'code'
-      ? current.codeDirty
-      : current.canvasDirty
-    if (!currentDirty) {
+    if (!isAuthoringSnapshotDirty(current)) {
       remotePending.current = false
       installAggregate(remote, '已同步远端工作流编辑状态')
       return
     }
     remotePending.current = true
-    setRemoteConflict({
-      remote,
-      localMode: current.mode,
-      localPython: current.editorValue,
-      localGraph: current.graph,
-      selectedNodeUuid: current.selectedNodeUuid,
-      selectedNodeName: current.selectedNodeName,
-      selectedNodeNameDirty: current.selectedNodeNameDirty
-    })
+    setRemoteConflict(authoringRemoteConflict(remote, current))
     setMessage('远端状态已补读；本地内容保持不变，请比较后明确处理')
   }, [installAggregate, queue, runtime, workflowUuid])
 

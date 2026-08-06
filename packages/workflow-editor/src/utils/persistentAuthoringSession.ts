@@ -5,6 +5,53 @@ import type {
 } from '@unilab/services'
 import { decodeWorkflowIoMetadata } from '@unilab/services'
 
+export interface AuthoringLocalSnapshot {
+  mode: 'code' | 'canvas'
+  codeDirty: boolean
+  canvasDirty: boolean
+  editorValue: string
+  graph: WorkflowAuthoringGraph | null
+  selectedNodeUuid: string | null
+  selectedNodeName: string
+  selectedNodeNameDirty: boolean
+}
+
+/**
+ * 判断本地工作流创作快照是否包含尚未保存的修改。
+ *
+ * @param snapshot 当前代码或画布编辑快照。
+ * @returns 当前可写表面存在修改时为 true。
+ */
+export function isAuthoringSnapshotDirty(
+  snapshot: AuthoringLocalSnapshot
+): boolean {
+  return snapshot.mode === 'code'
+    ? snapshot.codeDirty
+    : snapshot.canvasDirty
+}
+
+/**
+ * 将本地工作流创作快照冻结为远端冲突展示所需的数据。
+ *
+ * @param remote 操作系统（OS）最新权威工作流聚合。
+ * @param local 冲突发生前保留的本地编辑快照。
+ * @returns 可供用户比较并选择重试或采用远端版本的冲突快照。
+ */
+export function authoringRemoteConflict(
+  remote: WorkflowAuthoringAggregate,
+  local: AuthoringLocalSnapshot
+) {
+  return {
+    remote,
+    localMode: local.mode,
+    localPython: local.editorValue,
+    localGraph: local.graph,
+    selectedNodeUuid: local.selectedNodeUuid,
+    selectedNodeName: local.selectedNodeName,
+    selectedNodeNameDirty: local.selectedNodeNameDirty
+  }
+}
+
 export class AuthoringOperationQueue {
   private tail: Promise<void> = Promise.resolve()
 

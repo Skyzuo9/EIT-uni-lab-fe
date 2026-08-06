@@ -8,6 +8,7 @@ import type {
 import {
   AuthoringOperationQueue,
   applyMaterializedWorkflowCandidate,
+  authoringRemoteConflict,
   authoringSaveFailureAction,
   authoringProjection,
   authoringStateMessage,
@@ -15,6 +16,7 @@ import {
   draftSaveMessage,
   hasRunnableAppliedWorkflow,
   isAuthoringConflict,
+  isAuthoringSnapshotDirty,
   isSameAuthoringVersion,
   isCurrentAuthoringInvalidation
 } from './persistentAuthoringSession'
@@ -70,6 +72,29 @@ WorkflowAuthoringAggregate => ({
 
 describe('persistent Authoring session coordination', () => {
   it('工作流身份拒绝不会重复提交已接受差异', classifiesIdentityMismatchAsNonRetryable)
+
+  it('冻结本地修改为远端冲突快照', () => {
+    const local = {
+      mode: 'canvas' as const,
+      codeDirty: false,
+      canvasDirty: true,
+      editorValue: 'result = local()\n',
+      graph: emptyGraph(),
+      selectedNodeUuid: 'node-1',
+      selectedNodeName: '本地节点',
+      selectedNodeNameDirty: true
+    }
+
+    expect(isAuthoringSnapshotDirty(local)).toBe(true)
+    expect(authoringRemoteConflict(aggregate(), local)).toMatchObject({
+      localMode: 'canvas',
+      localPython: 'result = local()\n',
+      localGraph: local.graph,
+      selectedNodeUuid: 'node-1',
+      selectedNodeName: '本地节点',
+      selectedNodeNameDirty: true
+    })
+  })
 
   it('applies the fresh Candidate issued after normalized source is saved', async () => {
     const calls: string[] = []
