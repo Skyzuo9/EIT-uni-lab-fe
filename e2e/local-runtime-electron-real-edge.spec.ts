@@ -85,7 +85,6 @@ test('starts a real Edge from a custom desktop command', async () => {
           'ros',
           '--app_bridges',
           'fastapi',
-          '--edge_scheduler',
           '--port',
           '{{edge_http_port}}',
           '--disable_browser',

@@ -84,7 +84,6 @@ export async function startM2bNativeCliOs(): Promise<M2bNativeCliOs> {
     '--working_dir', workingDirectory,
     '--backend', 'ros',
     '--app_bridges', 'fastapi',
-    '--edge_scheduler',
     '--port', String(port),
     '--disable_browser',
     '--skip_env_check',

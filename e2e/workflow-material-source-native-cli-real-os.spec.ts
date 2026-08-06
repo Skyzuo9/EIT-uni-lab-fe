@@ -569,7 +569,6 @@ test('LINQ-inspired MaterialSource starts through native unilab and commits Inve
   expect(os.command).toEqual(expect.arrayContaining([
     '--backend',
     'ros',
-    '--edge_scheduler',
     '--app_bridges',
     'fastapi'
   ]))

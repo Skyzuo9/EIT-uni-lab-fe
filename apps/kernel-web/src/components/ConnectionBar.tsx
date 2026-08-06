@@ -113,7 +113,7 @@ export default function ConnectionBar(): React.JSX.Element {
       ) : null}
       <select
         className={styles.field}
-        aria-label="切换服务配置"
+        aria-label="切换后端权威"
         value={backend.id}
         onChange={(event) => {
           setBackendEnabled(true)
@@ -128,10 +128,10 @@ export default function ConnectionBar(): React.JSX.Element {
       </select>
       <input
         className={`${styles.field} ${styles.url}`}
-        aria-label="服务 API 地址"
+        aria-label="后端权威 API 地址"
         value={draftUrl}
         spellCheck={false}
-        placeholder="服务 API 地址"
+        placeholder="后端权威 API 地址"
         aria-invalid={showRecovery || undefined}
         onChange={(event) => setDraftUrl(event.target.value)}
         onKeyDown={(event) => {

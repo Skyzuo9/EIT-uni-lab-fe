@@ -300,6 +300,9 @@ test('SZLab MaterialGraph renders complete 2.5D and 3D views', async ({
   expect(materialRequests).toContain(
     `GET ${API_URL}/api/v1/material-shapes`
   )
+  expect(materialRequests).toContain(
+    `GET ${API_URL}/api/v1/monitor/events?channels=material&backlog=0`
+  )
   const uniqueMaterialRequests = [...new Set(materialRequests)].filter(
     (request) => request !== `GET ${API_URL}/api/v1/health`
   )
@@ -313,7 +316,8 @@ test('SZLab MaterialGraph renders complete 2.5D and 3D views', async ({
   ).toEqual(
     [
       `GET ${API_URL}/api/v1/materials/graph`,
-      `GET ${API_URL}/api/v1/material-shapes`
+      `GET ${API_URL}/api/v1/material-shapes`,
+      `GET ${API_URL}/api/v1/monitor/events?channels=material&backlog=0`
     ].sort()
   )
   expect(
