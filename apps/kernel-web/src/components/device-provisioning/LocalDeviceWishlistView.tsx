@@ -124,7 +124,7 @@ export default function LocalDeviceWishlistView({
         <ProvisioningHeader record={selected} />
         {selected.diagnostic ? (
           <div className={styles.errorBanner} role="alert">
-            <strong>{selected.diagnostic.message}</strong>
+            <strong>{uiErrorMessage(selected.diagnostic.message)}</strong>
             <span>失败阶段：{provisioningStatusView(selected.diagnostic.stage).label}</span>
             {selected.diagnostic.retryable === false ? (
               <span>该发布数据不能自动重试，需要发布者使用当前 CLI 重新发布设备包。</span>

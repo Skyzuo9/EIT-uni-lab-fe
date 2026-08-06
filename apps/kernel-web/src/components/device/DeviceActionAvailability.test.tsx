@@ -38,7 +38,27 @@ describe('device action Runtime availability', () => {
     expect(markup).toContain('disabled')
   })
 
-  it('does not mislabel an Action catalog failure as workflow-only', () => {
+  /** 验证动作信息读取失败时只展示通俗说明，不泄露内部“合同”术语。 */
+  it('用通俗文案说明动作信息读取失败', () => {
+    const markup = renderToStaticMarkup(
+      <DeviceActionAvailability
+        state={{
+          kind: 'unavailable',
+          reason: 'catalog_error',
+          message: '无法读取该动作的运行信息，请刷新后重试'
+        }}
+        onRun={() => {}}
+      />
+    )
+
+    expect(markup).toContain('暂时无法运行')
+    expect(markup).not.toContain('请在工作流中运行')
+    expect(markup).not.toContain('合同')
+    expect(markup).toContain('无法读取该动作的运行信息，请刷新后重试')
+  })
+
+  /** 验证旧 OS 返回技术术语时，最终渲染边界仍转换为用户可理解的动作信息。 */
+  it('过滤上游错误中的内部术语', () => {
     const markup = renderToStaticMarkup(
       <DeviceActionAvailability
         state={{
@@ -50,9 +70,8 @@ describe('device action Runtime availability', () => {
       />
     )
 
-    expect(markup).toContain('动作合同不可用')
-    expect(markup).not.toContain('请在工作流中运行')
-    expect(markup).toContain('Action 合同目录不可用：响应无效')
+    expect(markup).not.toContain('合同')
+    expect(markup).toContain('设备动作信息不可用：响应无效')
   })
 
   /** 验证零动作设备沿用正式运行入口，并以禁用状态解释不可执行原因。 */

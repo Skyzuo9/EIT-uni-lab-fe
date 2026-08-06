@@ -32,7 +32,7 @@ export function deviceActionReadiness({
     return {
       kind: 'unavailable',
       reason: 'workflow_required',
-      message: '当前服务尚未启用正式单 Action Task，请在工作流中运行'
+      message: '当前环境暂不支持单动作运行，请在工作流中运行'
     }
   }
   if (connection !== 'connected' || !device.online) {
@@ -46,28 +46,28 @@ export function deviceActionReadiness({
     return {
       kind: 'unavailable',
       reason: 'catalog_loading',
-      message: '正在读取 A1 Action 合同目录…'
+      message: '正在读取设备动作信息…'
     }
   }
   if (catalogError) {
     return {
       kind: 'unavailable',
       reason: 'catalog_error',
-      message: `Action 合同目录不可用：${catalogError}`
+      message: '无法读取该动作的运行信息，请刷新后重试；如果仍失败，请检查 Edge 连接'
     }
   }
   if (!template) {
     return {
       kind: 'unavailable',
       reason: 'template_unmatched',
-      message: 'live Action 无法唯一匹配 A1 template，请在工作流中运行'
+      message: '没有找到与当前设备动作匹配的运行信息，请刷新后重试'
     }
   }
   if (!supportsD1AS1(template)) {
     return {
       kind: 'unavailable',
       reason: 'workflow_required',
-      message: '该动作包含物料或 Site 语义，请在工作流中运行'
+      message: '该动作会影响物料或库位，请在工作流中运行'
     }
   }
   return {
@@ -230,7 +230,7 @@ export function DeviceActionAvailability({
             取消任务
           </button>
         ) : null}
-        <span>{state.message}</span>
+        <span>{userFacingActionMessage(state.message)}</span>
       </div>
       {'taskUuid' in state ? (
         <div className="edge-device__execution" aria-live="polite">
@@ -272,6 +272,17 @@ export function DeviceActionAvailability({
   )
 }
 
+/** 把旧版本或上游错误中的内部术语转换为用户可理解的动作信息。 */
+function userFacingActionMessage(message: string): string {
+  return message
+    .replaceAll(/ ?Action 合同目录/gu, '设备动作信息')
+    .replaceAll('动作合同目录', '设备动作信息')
+    .replaceAll(/ ?Action 权威合同/gu, '动作运行信息')
+    .replaceAll(/ ?Action 合同/gu, '设备动作信息')
+    .replaceAll('动作合同', '动作信息')
+    .replaceAll('合同', '信息')
+}
+
 /** 把关闭原因投影为按钮短文案，详细诊断仍由相邻状态文本承载。 */
 function unavailableRunLabel(reason: DeviceActionUnavailableReason): string {
   switch (reason) {
@@ -280,11 +291,11 @@ function unavailableRunLabel(reason: DeviceActionUnavailableReason): string {
     case 'device_offline':
       return '设备离线'
     case 'catalog_loading':
-      return '正在读取动作合同…'
+      return '正在读取动作信息…'
     case 'catalog_error':
-      return '动作合同不可用'
+      return '暂时无法运行'
     case 'template_unmatched':
-      return '动作合同不匹配'
+      return '暂时无法运行'
     case 'no_actions':
       return '运行此动作'
   }

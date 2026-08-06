@@ -164,27 +164,27 @@ function kitAgentRules(context: DeviceCardAuthoringContext): string {
   return `# Authoring Kit Agent Rules
 
 - 当前设备类型只能是 \`${context.deviceTypeId}\`。
-- 默认工作目录是 \`card-project/\`，不要修改 Kit 根目录的合同和 SDK 快照。
+- 默认工作目录是 \`card-project/\`，不要修改 Kit 根目录的规范文件和 SDK 快照。
 - 开始编码前必须读取 \`card-project/AGENTS.md\`、
   \`card-project/CARD_SPEC.md\`、\`authoring-context.json\` 和
   \`ui-catalog.json\`。
 - 不得扩展 Authoring Context 中不存在的设备状态、Action 或媒体能力。
 - 只有 SDK 判定为正式可订阅的实时状态键才能进入状态权限和实时面板：${stateKeys.map((key) => `\`${key}\``).join('、') || '无'}。
-- Action 输入只是调用参数，Action 输出只是该次调用结果；\`action-inferred\`、\`runtime-sample\` 和 \`unresolved\` 字段不是实时状态合同。
+- Action 输入只是调用参数，Action 输出只是该次调用结果；\`action-inferred\`、\`runtime-sample\` 和 \`unresolved\` 字段不能作为实时状态。
 - 不得绕过 Electron 本地工作区检查、权威重编译或权限校验。
 `
 }
 
 function kitCardSpec(context: DeviceCardAuthoringContext): string {
   const stateKeys = deviceCardRealtimeStateKeys(context.stateSchema)
-  return `# Device Contract Snapshot
+  return `# Device Definition Snapshot
 
 设备：${context.title}
 
 - Device Type ID: \`${context.deviceTypeId}\`
 - Device Instance ID: \`${context.deviceId ?? '未绑定'}\`
-- State Contract: \`authoring-context.json#stateSchema\`
-- Action Contract: \`authoring-context.json#actions\`
+- State Fields: \`authoring-context.json#stateSchema\`
+- Action List: \`authoring-context.json#actions\`
 - UI Catalog: \`ui-catalog.json\`
 - Host Protocol: \`1\`
 
@@ -194,7 +194,7 @@ ${stateKeys.map((key) => `- \`${key}\``).join('\n') || '- 无（只能开发 Act
 
 只有上述字段可以通过 Host Bridge 订阅。Action 输入只是调用参数，
 Action 输出只是该次调用结果。\`action-inferred\`、\`runtime-sample\` 或
-\`status: unresolved\` 的兼容字段不属于实时状态合同。
+\`status: unresolved\` 的兼容字段不能作为实时状态。
 `
 }
 

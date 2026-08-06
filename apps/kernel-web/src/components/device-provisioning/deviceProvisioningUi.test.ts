@@ -8,7 +8,8 @@ import {
   nextDeviceSquarePage,
   parseConfigurationDraft,
   provisioningStatusView,
-  suggestedInstanceId
+  suggestedInstanceId,
+  uiErrorMessage
 } from './deviceProvisioningUi'
 
 /** 覆盖设备配置 Schema 和接入状态的 Renderer 纯投影。 */
@@ -65,13 +66,31 @@ describe('设备接入界面投影', () => {
     })
     expect(provisioningStatusView('ready')).toMatchObject({
       label: '可运行',
+      description: '设备已连接，可以运行',
       tone: 'ready'
     })
+    expect(provisioningStatusView('driver_ready')).toMatchObject({
+      description: '设备已连接，正在检查可运行的动作'
+    })
+    expect(JSON.stringify([
+      provisioningStatusView('ready'),
+      provisioningStatusView('driver_ready')
+    ])).not.toContain('合同')
     expect(provisioningStatusView('failed')).toMatchObject({
       label: '失败',
       description: '查看诊断并按可用方式处理',
       tone: 'danger'
     })
+  })
+
+  /** 验证设备接入收到旧版本技术错误时，不把内部术语直接展示给用户。 */
+  it('把设备接入错误转换为通俗说明', () => {
+    const message = uiErrorMessage(
+      new Error('目标设备已加载，但没有可用 Action 合同')
+    )
+
+    expect(message).toBe('目标设备已加载，但没有可用动作信息')
+    expect(message).not.toContain('合同')
   })
 
   /** 验证模板名称生成的本地建议 ID 不包含空格或标点。 */

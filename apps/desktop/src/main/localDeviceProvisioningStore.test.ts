@@ -53,7 +53,7 @@ describe('LocalDeviceProvisioningStore', () => {
     await writeFile(filePath, JSON.stringify({ schemaVersion: 'unknown', items: [] }))
 
     await expect(new LocalDeviceProvisioningStore(filePath).list())
-      .rejects.toThrow('状态文件合同无效')
+      .rejects.toThrow('状态文件格式错误')
   })
 
   /** 验证历史固定测试地址记录补齐环境后仍能安全重试。 */
@@ -90,7 +90,7 @@ describe('LocalDeviceProvisioningStore', () => {
     }))
 
     await expect(new LocalDeviceProvisioningStore(filePath).list())
-      .rejects.toThrow('状态文件合同无效')
+      .rejects.toThrow('状态文件格式错误')
   })
 })
 

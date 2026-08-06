@@ -243,7 +243,7 @@ function agentRules(context: DeviceCardAuthoringContext): string {
 - 只能读取 \`authoring-context.json\` 中声明的状态、Action 和媒体。
 - \`stateSchema\` 只表示 Host Bridge 可订阅的正式状态；Action 输入和输出绝不是设备实时状态。
 - 禁止把 \`source: action-inferred/runtime-sample\` 或 \`status: unresolved\` 的兼容字段加入状态权限或实时面板。
-- \`authoring-context.json\` 是能力合同，\`mock.json\` 是预览样本；二者都不是运行时实时状态来源。
+- \`authoring-context.json\` 说明可用能力，\`mock.json\` 是预览样本；二者都不是运行时实时状态来源。
 - 运行态只能通过 SDK 获取：原生 Web Component 使用 Host Bridge 的 \`getContext()\` 和 \`subscribeState()\`，Vue/React 使用对应的 \`useDeviceCard()\`。禁止自行连接设备接口或 WebSocket。
 - 禁止使用 Node.js、Electron、fetch、WebSocket、XMLHttpRequest、eval、Worker 和动态 import。
 - 禁止新增 npm 依赖、运行第三方脚本或注册额外全局 Custom Element。

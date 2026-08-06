@@ -85,7 +85,9 @@ export class LocalDeviceProvisioningStore {
     }
     const parsed: unknown = JSON.parse(payload)
     if (!isStoreDocument(parsed)) {
-      throw new Error('本地设备接入状态文件合同无效，已停止自动覆盖')
+      throw new Error(
+        '本地设备接入状态文件格式错误，为避免数据丢失，系统没有自动覆盖该文件'
+      )
     }
     this.items = parsed.items.map(cloneProvisioning)
   }

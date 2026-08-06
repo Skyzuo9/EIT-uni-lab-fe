@@ -469,7 +469,7 @@ export class LocalDeviceProvisioningManager {
     const device = devices.find((candidate) => candidate.id === record.instanceId)
     if (!device?.online) throw new Error('OS 已启动，但目标设备实例未在线')
     record = await this.transition(record, 'driver_ready')
-    if (!device.actions.length) throw new Error('目标设备已加载，但没有可用 Action 合同')
+    if (!device.actions.length) throw new Error('目标设备已加载，但没有发现可运行的动作')
     return this.transition({ ...record, actionCount: device.actions.length }, 'ready')
   }
 

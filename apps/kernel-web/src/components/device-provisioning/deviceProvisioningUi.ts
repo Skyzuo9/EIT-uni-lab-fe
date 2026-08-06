@@ -44,8 +44,8 @@ const STATUS_VIEW: Record<
   graph_staged: { label: '已写图', description: '设备实例已原子写入当前设备图', tone: 'working' },
   restart_required: { label: '待激活', description: '重启当前 Edge 并对账设备与 Action', tone: 'working' },
   activating: { label: '激活中', description: '正在受控重启本地 Edge', tone: 'working' },
-  driver_ready: { label: '驱动已加载', description: '设备在线，正在核验 Action 合同', tone: 'working' },
-  ready: { label: '可运行', description: '设备在线且 Action 合同可用', tone: 'ready' },
+  driver_ready: { label: '驱动已加载', description: '设备已连接，正在检查可运行的动作', tone: 'working' },
+  ready: { label: '可运行', description: '设备已连接，可以运行', tone: 'ready' },
   failed: { label: '失败', description: '查看诊断并按可用方式处理', tone: 'danger' },
   canceled: { label: '已回滚', description: '设备图已恢复到接入前状态', tone: 'neutral' },
   removing: { label: '移除中', description: '正在安全移除本地设备实例', tone: 'working' },
@@ -204,9 +204,21 @@ export function nextDeviceSquarePage(
   return Math.max(1, cursor.loadedPage + 1)
 }
 
-/** 把跨进程 unknown 异常收敛为界面可展示正文。 */
+/**
+ * 把跨进程异常收敛为不包含内部术语的界面正文。
+ *
+ * @param error Main、Backend 或本地解析器返回的未知异常。
+ * @returns 保留可行动信息、并把旧技术术语转换为“动作信息”的用户文案。
+ */
 export function uiErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
+  const message = error instanceof Error ? error.message : String(error)
+  return message
+    .replaceAll(/ ?Action 合同目录/gu, '设备动作信息')
+    .replaceAll('动作合同目录', '设备动作信息')
+    .replaceAll(/ ?Action 权威合同/gu, '动作运行信息')
+    .replaceAll(/ ?Action 合同/gu, '动作信息')
+    .replaceAll('动作合同', '动作信息')
+    .replaceAll('合同', '信息')
 }
 
 /** 把 unknown 安全收窄为普通对象；无效值按空对象处理。 */

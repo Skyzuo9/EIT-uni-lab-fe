@@ -537,7 +537,7 @@ export class DeviceCardManager {
         requestId,
         action,
         status: 'REJECTED',
-        error: '当前 OS 设备目录缺少 Action 权威合同。'
+        error: '当前设备没有找到该动作的运行信息，请刷新设备后重试。'
       }
     }
     if (!await confirmDeviceCardAction(

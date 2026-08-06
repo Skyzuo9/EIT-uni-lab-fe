@@ -157,7 +157,7 @@ export default function DevicePanel(): React.JSX.Element {
       if (signal?.aborted) return
       setActionCatalog(null)
       setActionCatalogError(
-        error instanceof Error ? error.message : 'Action 合同目录不可用'
+        error instanceof Error ? error.message : '无法读取设备动作信息'
       )
     } finally {
       if (!signal?.aborted) setActionCatalogLoading(false)
@@ -481,7 +481,7 @@ export default function DevicePanel(): React.JSX.Element {
           actionRef: action.actionRef,
           state: {
             kind: 'error',
-            message: 'Action 合同目录已更新，请复核参数后重新运行',
+            message: '动作信息已更新，请重新检查参数后运行',
             retryable: false
           }
         })

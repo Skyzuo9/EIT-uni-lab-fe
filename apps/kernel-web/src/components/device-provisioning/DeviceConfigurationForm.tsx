@@ -86,7 +86,7 @@ export default function DeviceConfigurationForm({
     <form className={styles.configurationForm} onSubmit={(event) => void handleSubmit(event)}>
       <div className={styles.formIntro}>
         <h3>配置本地设备实例</h3>
-        <p>参数由已校验设备包的初始化合同生成，静态默认值会由 OS 再次复核。</p>
+        <p>参数来自已验证的设备包，保存时系统会再次检查。</p>
       </div>
       <div className={styles.formGrid}>
         <label>
