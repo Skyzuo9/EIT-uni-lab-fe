@@ -50,9 +50,15 @@ importers:
       '@types/node':
         specifier: ^22.10.0
         version: 22.20.1
+      '@unilab/device-provisioning':
+        specifier: workspace:*
+        version: link:../../packages/device-provisioning
       '@unilab/kernel-web':
         specifier: workspace:*
         version: link:../kernel-web
+      '@unilab/services':
+        specifier: workspace:*
+        version: link:../../packages/services
       '@vitejs/plugin-react':
         specifier: ^4.3.4
         version: 4.7.0(vite@5.4.21(@types/node@22.20.1)(lightningcss@1.30.1)(sass@1.102.0))
@@ -86,6 +92,9 @@ importers:
       '@unilab/device-card-sdk':
         specifier: workspace:*
         version: link:../../packages/device-card-sdk
+      '@unilab/device-provisioning':
+        specifier: workspace:*
+        version: link:../../packages/device-provisioning
       '@unilab/material':
         specifier: workspace:*
         version: link:../../packages/material
@@ -403,6 +412,12 @@ importers:
       vitest:
         specifier: ^2.1.9
         version: 2.1.9(@types/node@22.20.1)(lightningcss@1.30.1)(sass@1.102.0)
+
+  packages/device-provisioning:
+    devDependencies:
+      typescript:
+        specifier: ^5.6.3
+        version: 5.9.3
 
   packages/material:
     dependencies:

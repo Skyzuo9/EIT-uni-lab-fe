@@ -13,6 +13,7 @@
 // 三大工作方向
 export type WorkbenchSection =
   | 'device'
+  | 'device-square'
   | 'cards'
   | 'material'
   | 'scene'

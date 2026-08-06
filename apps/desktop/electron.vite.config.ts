@@ -5,7 +5,9 @@ import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig(({ mode }) => ({
   main: {
-    plugins: [externalizeDepsPlugin()],
+    // @unilab/services 以工作区 TypeScript ESM 源码导出；必须编入 Main，
+    // 否则生产 Electron 会尝试用 CommonJS require 直接执行 src/index.ts。
+    plugins: [externalizeDepsPlugin({ exclude: ['@unilab/services'] })],
     build: {
       rollupOptions: {
         input: {

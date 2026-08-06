@@ -24,6 +24,9 @@ import {
   resolveDesktopMainLogPath
 } from './diagnosticLogSession'
 import { discoverDefaultCondaEnvironment } from './localRuntimeEnvironment'
+import { registerDeviceProvisioningIpc } from './deviceProvisioningIpc'
+import { LocalDeviceProvisioningManager } from './localDeviceProvisioningManager'
+import { LocalDeviceProvisioningStore } from './localDeviceProvisioningStore'
 import {
   LocalRuntimeManager,
   resolveLocalRuntimeLaunchPlan
@@ -380,6 +383,24 @@ app.whenReady().then(async () => {
     },
     DIAGNOSTIC_LOG_SESSION_ID
   )
+  const localDeviceProvisioningManager = new LocalDeviceProvisioningManager(
+    new LocalDeviceProvisioningStore(
+      join(app.getPath('userData'), 'local-device-provisioning.json')
+    ),
+    localRuntimeManager,
+    (items) => {
+      const window = mainWindow
+      if (window && !window.isDestroyed()) {
+        window.webContents.send('device-provisioning:changed', items)
+      }
+    }
+  )
+  registerDeviceProvisioningIpc({
+    ipcMain,
+    manager: localDeviceProvisioningManager,
+    getMainWindow: () => mainWindow,
+    assertSender: assertMainWindowSender
+  })
 
   ipcMain.handle(
     'runtime:selectPath',

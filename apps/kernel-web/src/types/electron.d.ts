@@ -14,6 +14,20 @@ import type {
   OpenDeviceCardRequest,
   OpenDeviceCardWorkspaceRequest
 } from '@unilab/device-card-sdk'
+import type {
+  ConfigureLocalDeviceProvisioningInput,
+  DevicePackageDownloadSummary,
+  DevicePackageInspection,
+  DevicePackageUploadRequest,
+  DevicePackageUploadResult,
+  DeviceProvisioningPathSelection,
+  LocalDeviceProvisioning
+} from '@unilab/device-provisioning'
+import type {
+  DeviceSquareDetail,
+  DeviceSquareListQuery,
+  DeviceSquarePage
+} from '@unilab/services'
 
 interface OpenedFile {
   path: string
@@ -162,6 +176,33 @@ export interface DesktopRuntimeApi {
   ) => () => void
 }
 
+export interface DesktopDeviceProvisioningApi {
+  listCloudDevices: (
+    query?: DeviceSquareListQuery
+  ) => Promise<DeviceSquarePage>
+  getCloudDevice: (templateUuid: string) => Promise<DeviceSquareDetail>
+  list: () => Promise<LocalDeviceProvisioning[]>
+  start: (templateUuid: string) => Promise<LocalDeviceProvisioning>
+  downloadOnly: (templateUuid: string) => Promise<DevicePackageDownloadSummary>
+  configure: (
+    input: ConfigureLocalDeviceProvisioningInput
+  ) => Promise<LocalDeviceProvisioning>
+  activate: (provisioningId: string) => Promise<LocalDeviceProvisioning>
+  retry: (provisioningId: string) => Promise<LocalDeviceProvisioning>
+  remove: (provisioningId: string) => Promise<LocalDeviceProvisioning>
+  restore: (provisioningId: string) => Promise<LocalDeviceProvisioning>
+  selectPath: (
+    selection: DeviceProvisioningPathSelection
+  ) => Promise<string | null>
+  inspectWorkspace: (workspacePath: string) => Promise<DevicePackageInspection>
+  uploadWorkspace: (
+    request: DevicePackageUploadRequest
+  ) => Promise<DevicePackageUploadResult>
+  onChanged: (
+    listener: (items: LocalDeviceProvisioning[]) => void
+  ) => () => void
+}
+
 export type ObservabilityState =
   | 'disabled'
   | 'stopped'
@@ -281,6 +322,7 @@ interface DesktopApi {
     ) => () => void
   }
   runtime?: DesktopRuntimeApi
+  deviceProvisioning?: DesktopDeviceProvisioningApi
   observability?: DesktopObservabilityApi
 }
 

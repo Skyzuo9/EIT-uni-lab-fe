@@ -32,6 +32,20 @@ import type {
   TraceListQuery,
   TraceListResult
 } from '../shared/observability'
+import type {
+  ConfigureLocalDeviceProvisioningInput,
+  DevicePackageDownloadSummary,
+  DevicePackageInspection,
+  DevicePackageUploadRequest,
+  DevicePackageUploadResult,
+  DeviceProvisioningPathSelection,
+  LocalDeviceProvisioning
+} from '@unilab/device-provisioning'
+import type {
+  DeviceSquareDetail,
+  DeviceSquareListQuery,
+  DeviceSquarePage
+} from '@unilab/services'
 
 // 登录会话结构(与主进程 authManager.AuthSession 保持一致)
 export interface AuthUserInfo {
@@ -236,6 +250,57 @@ const api = {
       ): void => listener(snapshot)
       ipcRenderer.on('runtime:snapshot', wrapped)
       return () => ipcRenderer.removeListener('runtime:snapshot', wrapped)
+    }
+  },
+  deviceProvisioning: {
+    listCloudDevices: (
+      query?: DeviceSquareListQuery
+    ): Promise<DeviceSquarePage> =>
+      ipcRenderer.invoke('device-provisioning:square:list', query),
+    getCloudDevice: (templateUuid: string): Promise<DeviceSquareDetail> =>
+      ipcRenderer.invoke('device-provisioning:square:detail', templateUuid),
+    list: (): Promise<LocalDeviceProvisioning[]> =>
+      ipcRenderer.invoke('device-provisioning:list'),
+    start: (templateUuid: string): Promise<LocalDeviceProvisioning> =>
+      ipcRenderer.invoke('device-provisioning:start', templateUuid),
+    downloadOnly: (
+      templateUuid: string
+    ): Promise<DevicePackageDownloadSummary> =>
+      ipcRenderer.invoke('device-provisioning:download', templateUuid),
+    configure: (
+      input: ConfigureLocalDeviceProvisioningInput
+    ): Promise<LocalDeviceProvisioning> =>
+      ipcRenderer.invoke('device-provisioning:configure', input),
+    activate: (provisioningId: string): Promise<LocalDeviceProvisioning> =>
+      ipcRenderer.invoke('device-provisioning:activate', provisioningId),
+    retry: (provisioningId: string): Promise<LocalDeviceProvisioning> =>
+      ipcRenderer.invoke('device-provisioning:retry', provisioningId),
+    remove: (provisioningId: string): Promise<LocalDeviceProvisioning> =>
+      ipcRenderer.invoke('device-provisioning:remove', provisioningId),
+    restore: (provisioningId: string): Promise<LocalDeviceProvisioning> =>
+      ipcRenderer.invoke('device-provisioning:restore', provisioningId),
+    selectPath: (
+      selection: DeviceProvisioningPathSelection
+    ): Promise<string | null> =>
+      ipcRenderer.invoke('device-provisioning:selectPath', selection),
+    inspectWorkspace: (workspacePath: string): Promise<DevicePackageInspection> =>
+      ipcRenderer.invoke('device-provisioning:inspect', workspacePath),
+    uploadWorkspace: (
+      request: DevicePackageUploadRequest
+    ): Promise<DevicePackageUploadResult> =>
+      ipcRenderer.invoke('device-provisioning:upload', request),
+    onChanged: (
+      listener: (items: LocalDeviceProvisioning[]) => void
+    ): (() => void) => {
+      const wrapped = (
+        _event: Electron.IpcRendererEvent,
+        items: LocalDeviceProvisioning[]
+      ): void => listener(items)
+      ipcRenderer.on('device-provisioning:changed', wrapped)
+      return () => ipcRenderer.removeListener(
+        'device-provisioning:changed',
+        wrapped
+      )
     }
   },
   observability: {

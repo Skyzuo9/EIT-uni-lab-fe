@@ -27,7 +27,9 @@
   "devDependencies": {
     "@tailwindcss/vite": "4.1.14",
     "@types/node": "^22.10.0",
+    "@unilab/device-provisioning": "workspace:*",
     "@unilab/kernel-web": "workspace:*",
+    "@unilab/services": "workspace:*",
     "@vitejs/plugin-react": "^4.3.4",
     "electron": "^33.2.0",
     "electron-builder": "^25.1.8",

@@ -265,6 +265,11 @@ body {
   --nav-soft: var(--unilab-color-device-soft);
 }
 
+.app-shell__nav-button[data-navigation-id='device-square'] {
+  --nav-accent: var(--unilab-color-device);
+  --nav-soft: var(--unilab-color-device-soft);
+}
+
 .app-shell__nav-button[data-navigation-id='material'] {
   --nav-accent: var(--unilab-color-material);
   --nav-soft: var(--unilab-color-material-soft);

@@ -20,6 +20,7 @@ import ConnectionBar from './ConnectionBar';
 import UserMenu from './auth/UserMenu';
 import ErrorBoundary from './ErrorBoundary';
 import DevicePanel from './device/DevicePanel';
+import DeviceSquarePanel from './device-provisioning/DeviceSquarePanel';
 import DeviceCardWorkbench from './device-cards/DeviceCardWorkbench';
 import { LabPanelWorkspace } from '../integrations/lab-workbench/LabPanelWorkspace';
 import type { WorkbenchSection } from '../data/lab';
@@ -34,6 +35,11 @@ const CARD_NAV_ITEM: AppShellNavigationItem = {
   label: '设备卡片',
   icon: '▣'
 };
+const DEVICE_SQUARE_NAV_ITEM: AppShellNavigationItem = {
+  id: 'device-square',
+  label: '设备广场',
+  icon: <DeviceSquareIcon />
+};
 const MATERIAL_NAV_ITEM: AppShellNavigationItem = {
   id: 'material',
   label: '物料',
@@ -46,6 +52,7 @@ const WORKFLOW_NAV_ITEM: AppShellNavigationItem = {
 };
 const NAV_ITEMS: readonly AppShellNavigationItem[] = [
   DEVICE_NAV_ITEM,
+  DEVICE_SQUARE_NAV_ITEM,
   CARD_NAV_ITEM,
   MATERIAL_NAV_ITEM,
   WORKFLOW_NAV_ITEM
@@ -89,6 +96,7 @@ function SectionView({ section }: {
   section: WorkbenchSection;
 }): React.JSX.Element {
   if (section === 'device') return <DevicePanel />;
+  if (section === 'device-square') return <DeviceSquarePanel />;
   if (section === 'cards') return <DeviceCardWorkbench />;
   if (section === 'material') {
     return (
@@ -121,6 +129,17 @@ function DeviceIcon(): React.JSX.Element {
       <rect x="5" y="6" width="6" height="4" rx="0.75" />
       <circle cx="14.25" cy="8" r="1.25" />
       <path d="M5 13.5h5.5M13 13.5h1.5" />
+    </svg>
+  );
+}
+
+// 云端设备定义进入本地设备图的入口图标
+function DeviceSquareIcon(): React.JSX.Element {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 20 20">
+      <path d="M3 6.5h14M6.5 3v3.5M13.5 3v3.5" />
+      <rect x="2.5" y="3" width="15" height="14" rx="2" />
+      <path d="M6 10h3v3H6zM11 10h3v3h-3z" />
     </svg>
   );
 }

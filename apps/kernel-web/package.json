@@ -15,6 +15,7 @@
     "@unilab/design-system": "workspace:*",
     "@unilab/device-card-authoring-kit": "workspace:*",
     "@unilab/device-card-sdk": "workspace:*",
+    "@unilab/device-provisioning": "workspace:*",
     "@unilab/material": "workspace:*",
     "@unilab/pascal-lab-plugin": "workspace:*",
     "@unilab/services": "workspace:*",

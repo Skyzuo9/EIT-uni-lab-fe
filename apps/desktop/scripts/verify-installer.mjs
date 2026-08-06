@@ -27,6 +27,18 @@ assert.equal(
   'workspace:*'
 )
 assert.equal(
+  packageConfig.devDependencies?.['@unilab/device-provisioning'],
+  'workspace:*'
+)
+assert.equal(
+  packageConfig.devDependencies?.['@unilab/services'],
+  'workspace:*'
+)
+assert.match(
+  readFileSync(join(desktopDirectory, 'electron.vite.config.ts'), 'utf8'),
+  /externalizeDepsPlugin\(\{ exclude: \['@unilab\/services'\] \}\)/
+)
+assert.equal(
   packageConfig.scripts?.['package:win'],
   'node scripts/package-windows.mjs'
 )

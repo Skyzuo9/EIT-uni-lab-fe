@@ -63,6 +63,21 @@ export interface LocalRuntimeLaunchPlan {
   ports: LocalRuntimePorts
   requiredPorts: LocalRuntimePortRequirement[]
   deviceCatalogRequirement: 'catalog' | 'domain_actions'
+  deviceProvisioning: LocalDeviceProvisioningRuntime
+}
+
+export interface LocalDeviceProvisioningRuntime {
+  graphPath: string
+  unilabExecutable: string
+  commandWorkingDirectory: string
+  managedWorkingDirectory: string
+  localConfigPath: string
+  localApiUrl: string
+}
+
+export interface ActiveLocalDeviceProvisioningRuntime {
+  launchConfig: LocalRuntimeLaunchConfig
+  runtime: LocalDeviceProvisioningRuntime
 }
 
 export interface LocalSimulatorLaunchPlan {
@@ -194,6 +209,8 @@ export class LocalRuntimeManager {
   private stopping = false
   private activeOperation: ActiveOperation | null = null
   private readonly ports: LocalRuntimePorts
+  private activeDeviceProvisioningRuntime:
+    ActiveLocalDeviceProvisioningRuntime | null = null
 
   /**
    * 创建一个应用生命周期内唯一的本地运行管理器，并冻结启动端口事实。
@@ -217,6 +234,24 @@ export class LocalRuntimeManager {
 
   getSnapshot(): LocalRuntimeSnapshot {
     return { ...this.snapshot }
+  }
+
+  /**
+   * 返回最近一次成功启动 Edge 时冻结的本地设备接入运行事实。
+   *
+   * @returns Graph、受管缓存、Conda CLI、本地 API 与可用于重启的启动配置副本。
+   * @throws 当前应用生命周期尚未成功启动 Edge 时抛出可行动错误。
+   * @safety 路径均来自主进程已经完成文件、目录与可执行文件校验的启动计划。
+   */
+  getDeviceProvisioningRuntime(): ActiveLocalDeviceProvisioningRuntime {
+    const active = this.activeDeviceProvisioningRuntime
+    if (!active) {
+      throw new Error('请先在“本地调试”中成功启动一次领域侧 Edge')
+    }
+    return {
+      launchConfig: cloneLaunchConfig(active.launchConfig),
+      runtime: { ...active.runtime }
+    }
   }
 
   /**
@@ -400,6 +435,11 @@ export class LocalRuntimeManager {
           plan.deviceCatalogRequirement
         )
       )
+
+      this.activeDeviceProvisioningRuntime = {
+        launchConfig: cloneLaunchConfig(config),
+        runtime: { ...plan.deviceProvisioning }
+      }
 
       this.publishState(
         'ready',
@@ -824,7 +864,32 @@ export async function resolveLocalRuntimeLaunchPlan(
     requiredPorts: edgeRequiredPorts(resolvedConfig.ports),
     deviceCatalogRequirement: resolvedConfig.szlabProjectPath
       ? 'domain_actions'
-      : 'catalog'
+      : 'catalog',
+    deviceProvisioning: {
+      graphPath: resolvedConfig.graphPath,
+      unilabExecutable: resolvedConfig.unilabExecutable,
+      commandWorkingDirectory: resolvedConfig.szlabProjectPath
+        || resolvedConfig.osProjectPath,
+      managedWorkingDirectory: resolvedConfig.runtimeDirectory,
+      localConfigPath: resolvedConfig.localConfigPath,
+      localApiUrl: edgeHttpUrl(resolvedConfig.ports.edgeHttp, '')
+    }
+  }
+}
+
+/** 深拷贝 Renderer 可变的本地启动配置，避免接入编排期间被调用方改写。 */
+function cloneLaunchConfig(
+  config: LocalRuntimeLaunchConfig
+): LocalRuntimeLaunchConfig {
+  return {
+    ...config,
+    customEdgeCommand: {
+      ...config.customEdgeCommand,
+      args: [...config.customEdgeCommand.args],
+      environment: config.customEdgeCommand.environment.map((entry) => ({
+        ...entry
+      }))
+    }
   }
 }
 

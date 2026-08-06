@@ -20,8 +20,60 @@ export const AUTH_CONFIG = {
   OAUTH_URL: process.env.PC_CLIENT_OAUTH_URL || 'https://platform.test.bohrium.com',
   // 登录成功后的回跳地址(前端站点),Bohrium 会在其后追加 ?token=<brmToken>
   // 对应 web goToLogin 里的 redirect: window.location.href
-  SITE_URL: process.env.PC_CLIENT_SITE_URL || 'https://leap-lab.test.bohrium.com/leap-lab'
+  SITE_URL: process.env.PC_CLIENT_SITE_URL || 'https://leap-lab.test.bohrium.com/leap-lab',
+  // Electron 云端设备广场复用的既有 Backend API 根地址。
+  API_URL: process.env.PC_CLIENT_API_URL || 'https://leap-lab.test.bohrium.com/api/v1'
 } as const
+
+/**
+ * 把配置的 Cloud 地址规范化为 CLI 需要的 `/api/v1` API 根。
+ *
+ * @param configuredUrl PC_CLIENT_API_URL 或内置测试环境地址。
+ * @returns 无凭据、query、fragment 且以 `/api/v1` 结尾的 HTTP(S) URL。
+ * @throws 配置不是受支持的 HTTP(S) URL 时失败关闭。
+ */
+export function cloudApiRootUrl(
+  configuredUrl: string = AUTH_CONFIG.API_URL
+): string {
+  const url = parseCloudUrl(configuredUrl)
+  const path = url.pathname.replace(/\/+$/u, '')
+  url.pathname = path.endsWith('/api/v1') ? path : `${path}/api/v1`
+  return url.toString().replace(/\/$/u, '')
+}
+
+/**
+ * 把 Cloud API 根投影为 services 使用的 base URL，避免重复追加 `/api/v1`。
+ *
+ * @param configuredUrl PC_CLIENT_API_URL 或内置测试环境地址。
+ * @returns 保留部署前缀但去掉末尾 `/api/v1` 的 HTTP(S) URL。
+ */
+export function cloudServiceBaseUrl(
+  configuredUrl: string = AUTH_CONFIG.API_URL
+): string {
+  const apiRoot = new URL(cloudApiRootUrl(configuredUrl))
+  apiRoot.pathname = apiRoot.pathname.replace(/\/api\/v1$/u, '') || '/'
+  return apiRoot.toString().replace(/\/$/u, '')
+}
+
+/** 校验 Cloud 地址不携带凭据、query 或 fragment。 */
+function parseCloudUrl(configuredUrl: string): URL {
+  let url: URL
+  try {
+    url = new URL(configuredUrl.trim())
+  } catch {
+    throw new Error('Cloud API 地址不是合法 URL')
+  }
+  if (
+    !['http:', 'https:'].includes(url.protocol)
+    || url.username
+    || url.password
+    || url.search
+    || url.hash
+  ) {
+    throw new Error('Cloud API 地址必须是无凭据、query 和 fragment 的 HTTP(S) URL')
+  }
+  return url
+}
 
 // web 端按 hostname 区分 test/uat/prod 对应的 cookie 名,这里全部纳入探测范围
 export const TOKEN_COOKIE_NAMES = ['brmToken', 'test-brmToken', 'uat-brmToken'] as const
