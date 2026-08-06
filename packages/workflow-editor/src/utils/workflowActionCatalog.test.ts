@@ -926,12 +926,14 @@ describe('typed Action editor projection', () => {
     })
   })
 
-  it('the original Persistent panel owns Catalog load and typed projection', () => {
-    const panelPath = fileURLToPath(new URL(
-      '../components/PersistentWorkflowAuthoringPanel.tsx',
+  it('the Persistent Authoring module owns Catalog load and typed projection', () => {
+    const source = [
+      '../hooks/usePersistentWorkflowAuthoring.ts',
+      '../components/PersistentWorkflowAuthoringView.tsx'
+    ].map((relative) => readFileSync(fileURLToPath(new URL(
+      relative,
       import.meta.url
-    ))
-    const source = readFileSync(panelPath, 'utf8')
+    )), 'utf8')).join('\n')
     const drawerSource = readFileSync(fileURLToPath(new URL(
       '../components/WorkflowActionParameterDrawer.tsx',
       import.meta.url

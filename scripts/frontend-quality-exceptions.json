@@ -1,0 +1,28 @@
+{
+  "moduleExceptions": {
+    "apps/kernel-web/src/components/device-cards/DeviceCardWorkbenchView.tsx": {
+      "maxLines": 500,
+      "maxFunctionComplexity": 40,
+      "reason": "设备卡片工作台视图（DeviceCardWorkbenchView）集中表达工作区、AI 助手和实时预览三种互斥界面状态；主流程复杂度已从原入口的 71 降至 39。",
+      "futureSplitBoundary": "补齐工作区诊断、AI 助手切换和实时预览的交互测试后，抽取 DeviceCardWorkspacePanel、DeviceCardAgentTools 和 DeviceCardPreview。"
+    },
+    "packages/workflow-editor/src/components/PersistentWorkflowAuthoringView.tsx": {
+      "maxLines": 1200,
+      "maxFunctionComplexity": 125,
+      "reason": "工作流编排视图（WorkflowAuthoringView）集中维护代码、画布、运行态和抽屉之间的原子布局与可访问性关系；原入口最大圈复杂度为 158，拆分后视图为 123，副作用已迁出。",
+      "futureSplitBoundary": "先为工具栏、工作台和运行态覆盖层补齐截图与交互特征测试，再分别抽取 PersistentWorkflowToolbar、PersistentWorkflowWorkbench 和 PersistentWorkflowRuntimeOverlay。"
+    },
+    "packages/workflow-editor/src/hooks/usePersistentWorkflowAuthoring.ts": {
+      "maxLines": 1499,
+      "maxFunctionComplexity": 80,
+      "reason": "工作流编排会话（WorkflowAuthoringSession）在同一深模块内保持双重 CAS、目录刷新重编译、草稿规范化与本地缓冲连续性的事务顺序。",
+      "futureSplitBoundary": "为冲突与重编译状态转换增加特征测试后，将画布和目录变更动作抽取到 usePersistentWorkflowCanvasActions。"
+    },
+    "packages/material/src/oblique/ObliqueMaterialObject.tsx": {
+      "maxLines": 900,
+      "maxFunctionComplexity": 65,
+      "reason": "物料斜二测对象（ObliqueMaterialObject）作为单一声明式形状解释器维护 SVG 图元的绘制顺序和遮挡语义。",
+      "futureSplitBoundary": "先用 SVG 绘制顺序快照固定开架与车床图元，再将它们抽取到 oblique-primitives/openRack.tsx 和 oblique-primitives/lathe.tsx。"
+    }
+  }
+}

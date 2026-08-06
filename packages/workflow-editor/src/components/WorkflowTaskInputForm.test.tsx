@@ -87,7 +87,7 @@ describe('WorkflowTaskInputForm Applied projection', () => {
 
   it('delegates panel submission races to the tested Task-input decision seam', () => {
     const panelSource = readFileSync(fileURLToPath(new URL(
-      './PersistentWorkflowAuthoringPanel.tsx',
+      '../hooks/usePersistentWorkflowTaskPanel.ts',
       import.meta.url
     )), 'utf8')
 

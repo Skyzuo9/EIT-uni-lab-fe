@@ -9,7 +9,7 @@ function source(relative: string): string {
 describe('Workflow ResourceSlot application boundary', () => {
   it('threads a narrow readonly options port through the existing Workflow panels', () => {
     const workflowPanel = source('./WorkflowPanel.tsx')
-    const authoringPanel = source('./PersistentWorkflowAuthoringPanel.tsx')
+    const authoringPanel = authoringSource()
 
     expect(workflowPanel).toMatch(/WorkflowResourceSlotOptionsPort/)
     expect(workflowPanel).toMatch(/resourceSlotOptionsPort/)
@@ -24,7 +24,7 @@ describe('Workflow ResourceSlot application boundary', () => {
   it('keeps workflow-editor free of Material HTTP and Material-store authority', () => {
     const production = [
       source('./WorkflowPanel.tsx'),
-      source('./PersistentWorkflowAuthoringPanel.tsx'),
+      authoringSource(),
       source('./WorkflowTaskInputForm.tsx'),
       source('../utils/workflowTaskInputForm.ts')
     ].join('\n')
@@ -47,3 +47,12 @@ describe('Workflow ResourceSlot application boundary', () => {
     expect(adapter).toMatch(/material\.name/)
   })
 })
+
+function authoringSource(): string {
+  return [
+    './PersistentWorkflowAuthoringPanel.tsx',
+    './PersistentWorkflowAuthoringView.tsx',
+    '../hooks/usePersistentWorkflowAuthoring.ts',
+    '../hooks/usePersistentWorkflowTaskPanel.ts'
+  ].map(source).join('\n')
+}

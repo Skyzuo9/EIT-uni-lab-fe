@@ -1,0 +1,424 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+}
+
+body {
+  font-family: var(--unilab-font-sans);
+  color: var(--unilab-color-text);
+  background: var(--unilab-color-bg);
+  overflow: hidden;
+}
+
+.lab-unified-viewport {
+  position: relative;
+  display: flex;
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.lab-unified-viewport__surface {
+  position: relative;
+  display: flex;
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.lab-unified-viewport__surface > * {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.lab-unified-viewport__error {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-content: center;
+  gap: 8px;
+  padding: 32px 32px 76px;
+  color: var(--unilab-color-text-muted);
+  text-align: center;
+  background: var(--unilab-color-canvas);
+}
+
+.lab-unified-viewport__error strong {
+  color: var(--unilab-color-danger);
+}
+
+.lab-unified-viewport__error details {
+  max-width: min(560px, calc(100vw - 96px));
+  color: var(--unilab-color-text-muted);
+}
+
+.lab-unified-viewport__error summary {
+  cursor: pointer;
+}
+
+.lab-unified-viewport__error code {
+  display: block;
+  margin-top: 8px;
+  overflow-wrap: anywhere;
+  text-align: left;
+  font: 10px/1.5 var(--unilab-font-mono);
+}
+
+.lab-viewport-controls {
+  position: absolute;
+  z-index: 80;
+  bottom: 18px;
+  left: 50%;
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  transform: translateX(-50%);
+}
+
+.lab-view-mode-toggle,
+.lab-site-layer-toggle {
+  display: inline-flex;
+  gap: 2px;
+  align-items: center;
+  padding: 3px;
+  background: color-mix(
+    in srgb,
+    var(--unilab-color-bg) 90%,
+    transparent
+  );
+  border: 1px solid color-mix(
+    in srgb,
+    var(--unilab-color-border-strong) 72%,
+    transparent
+  );
+  border-radius: 12px;
+  box-shadow: 0 8px 30px rgb(15 23 42 / 18%);
+  backdrop-filter: blur(14px);
+}
+
+.lab-view-mode-toggle button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 5px;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 11px;
+  font: 600 12px/1 var(--unilab-font-sans);
+  color: var(--unilab-color-text-muted);
+  background: transparent;
+  border: 0;
+  border-radius: 9px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    color 140ms ease,
+    background 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.lab-view-mode-toggle button:hover {
+  color: var(--unilab-color-text);
+}
+
+.lab-view-mode-toggle button:focus-visible,
+.lab-site-layer-toggle button:focus-visible {
+  outline: 2px solid
+    color-mix(
+      in srgb,
+      var(--unilab-color-primary) 52%,
+      transparent
+    );
+  outline-offset: 1px;
+}
+
+.lab-view-mode-toggle button.is-active {
+  color: var(--unilab-color-primary);
+  background: var(--unilab-color-bg);
+  box-shadow: 0 1px 5px rgb(15 23 42 / 14%);
+}
+
+.lab-view-mode-toggle svg,
+.lab-site-layer-toggle svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.35;
+}
+
+.lab-site-layer-toggle button {
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 10px;
+  font: 600 12px/1 var(--unilab-font-sans);
+  color: var(--unilab-color-text-muted);
+  white-space: nowrap;
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  border-radius: 9px;
+  transition:
+    color 140ms ease,
+    background 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.lab-site-layer-toggle button:hover {
+  color: var(--unilab-color-text);
+}
+
+.lab-site-layer-toggle button.is-active {
+  color: #0369a1;
+  background: color-mix(in srgb, #e0f2fe 82%, var(--unilab-color-bg));
+  box-shadow: 0 1px 5px rgb(15 23 42 / 12%);
+}
+
+.lab-site-layer-toggle button.is-active.is-transfer {
+  color: var(--unilab-color-scene);
+  background: color-mix(
+    in srgb,
+    var(--unilab-color-scene-soft) 82%,
+    var(--unilab-color-bg)
+  );
+}
+
+.lab-site-layer-toggle i {
+  position: relative;
+  width: 18px;
+  height: 10px;
+  flex: 0 0 18px;
+  background: color-mix(
+    in srgb,
+    var(--unilab-color-text-muted) 18%,
+    transparent
+  );
+  border: 1px solid
+    color-mix(
+      in srgb,
+      var(--unilab-color-text-muted) 38%,
+      transparent
+    );
+  border-radius: 999px;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease;
+}
+
+.lab-site-layer-toggle i::after {
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 6px;
+  height: 6px;
+  content: '';
+  background: var(--unilab-color-text-muted);
+  border-radius: 50%;
+  transition:
+    background 140ms ease,
+    transform 140ms ease;
+}
+
+.lab-site-layer-toggle button.is-active i {
+  background: rgb(56 189 248 / 24%);
+  border-color: rgb(14 165 233 / 46%);
+}
+
+.lab-site-layer-toggle button.is-active i::after {
+  background: #0ea5e9;
+  box-shadow: 0 0 0 2px rgb(14 165 233 / 12%);
+  transform: translateX(8px);
+}
+
+.app-shell__header {
+  flex: 0 0 auto;
+  background: var(--unilab-color-bg-subtle);
+}
+
+.app-shell__brand {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.app-shell__nav {
+  flex: 0 0 72px;
+  background: var(--unilab-color-bg-muted);
+}
+
+.app-shell__nav-button {
+  --nav-accent: var(--unilab-color-primary);
+  --nav-soft: var(--unilab-color-primary-soft);
+  position: relative;
+}
+
+.app-shell__nav-button[data-navigation-id='device'] {
+  --nav-accent: var(--unilab-color-device);
+  --nav-soft: var(--unilab-color-device-soft);
+}
+
+.app-shell__nav-button[data-navigation-id='material'] {
+  --nav-accent: var(--unilab-color-material);
+  --nav-soft: var(--unilab-color-material-soft);
+}
+
+.app-shell__nav-button[data-navigation-id='scene'] {
+  --nav-accent: var(--unilab-color-scene);
+  --nav-soft: var(--unilab-color-scene-soft);
+}
+
+.app-shell__nav-button[data-navigation-id='workflow'] {
+  --nav-accent: var(--unilab-color-workflow);
+  --nav-soft: var(--unilab-color-workflow-soft);
+}
+
+.app-shell__nav-button:hover {
+  color: var(--nav-accent);
+  background: color-mix(
+    in srgb,
+    var(--nav-soft) 66%,
+    var(--unilab-color-surface)
+  );
+}
+
+.app-shell__nav-button--active {
+  color: var(--nav-accent);
+  background: var(--nav-soft);
+}
+
+/* impeccable-disable-next-line side-tab -- persistent main-navigation state */
+.app-shell__nav-button--active::before {
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  left: 0;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--nav-accent);
+  content: '';
+}
+
+.app-shell__nav-icon {
+  display: grid;
+  place-items: center;
+}
+
+.app-shell__nav-icon svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.35;
+}
+
+.app-shell__main {
+  order: 1;
+  background: var(--unilab-color-bg);
+}
+
+/* ============ 分栏画布 ============ */
+.workbench {
+  display: flex;
+  width: 100%;
+  height: 100%;
+}
+
+.workbench--dragging {
+  cursor: col-resize;
+  user-select: none;
+}
+
+.workbench__pane {
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.workbench__divider {
+  flex: 0 0 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f3f4f6;
+  border-left: 1px solid #e5e7eb;
+  border-right: 1px solid #e5e7eb;
+  cursor: col-resize;
+}
+
+.workbench__divider:hover .workbench__grip,
+.workbench--dragging .workbench__grip {
+  background: #4dabf7;
+}
+
+.workbench__grip {
+  width: 2px;
+  height: 36px;
+  border-radius: 2px;
+  background: #d1d5db;
+  transition: background 0.15s;
+}
+
+/* ============ 登录门禁 ============ */
+.app-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  font-size: 13px;
+  color: var(--unilab-color-text-muted);
+  background: var(--unilab-color-bg);
+}
+
+.login {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  padding: var(--unilab-space-4);
+  background: var(--unilab-color-canvas);
+}
+
+.login__card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: min(360px, 100%);
+  padding: 40px 32px 32px;
+  background: var(--unilab-color-surface);
+  border: 1px solid var(--unilab-color-border);
+  border-radius: var(--unilab-radius-lg);
+}
+
+.login__brand {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--unilab-color-text);
+}
+
+.login__subtitle {
+  margin: 8px 0 28px;
+  font-size: 13px;
+  color: var(--unilab-color-text-muted);
+}
