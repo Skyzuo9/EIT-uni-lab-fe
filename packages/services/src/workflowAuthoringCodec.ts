@@ -5,16 +5,33 @@ import type {
 } from './workflowAuthoringContracts'
 import { decodeWorkflowIoMetadata } from './workflowIo'
 
-/** 严格解包工作流创作（Workflow Authoring）接口响应。 */
+/**
+ * 严格解包工作流创作（Workflow Authoring）接口响应，并保留产品 Edge 的细分错误。
+ *
+ * @param raw 未信任的响应包络。
+ * @returns 业务码为零时的权威响应数据。
+ * @throws 响应结构无效时抛 `INVALID_API_RESPONSE`；服务拒绝时保留服务端错误码与消息。
+ */
 export function strictAuthoringData<Value>(raw: unknown): Value {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
     throw invalidAuthoringResponse()
   }
   const envelope = raw as Record<string, unknown>
-  if (
-    envelope.code !== 0 ||
-    !Object.prototype.hasOwnProperty.call(envelope, 'data')
-  ) {
+  if (envelope.code !== 0) {
+    if (!Number.isInteger(envelope.code)) throw invalidAuthoringResponse()
+    const problem = authoringRecord(envelope.error)
+    if (typeof problem.msg !== 'string' || !problem.msg) {
+      throw invalidAuthoringResponse()
+    }
+    throw new ServiceError({
+      code: typeof problem.code === 'string' && problem.code
+        ? problem.code
+        : envelope.code === 3003 ? 'conflict' : 'API_REQUEST_REJECTED',
+      message: problem.msg,
+      retryable: false
+    })
+  }
+  if (!Object.prototype.hasOwnProperty.call(envelope, 'data')) {
     throw invalidAuthoringResponse()
   }
   return envelope.data as Value

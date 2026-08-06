@@ -125,6 +125,7 @@ export function isAuthoringConflict(value: unknown): boolean {
   if (!value || typeof value !== 'object') return false
   const error = value as { code?: unknown }
   return [
+    'conflict',
     'draft_hash_conflict',
     'workflow_revision_conflict',
     'candidate_hash_conflict',

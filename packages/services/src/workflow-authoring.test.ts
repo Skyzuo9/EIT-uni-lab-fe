@@ -236,6 +236,32 @@ describe('persistent workflow authoring port', () => {
     ).rejects.toMatchObject({ code: 'INVALID_API_RESPONSE' })
   })
 
+  /** 证明产品 Edge 的工作流身份拒绝不会在严格解码时丢失细分错误。 */
+  it('保留产品 Edge 返回的工作流身份拒绝', async () => {
+    const message = [
+      `导入的 Python 声明工作流 ${OTHER_WORKFLOW_UUID}，`,
+      `当前编辑的是 ${WORKFLOW_UUID}`
+    ].join('')
+    const runtime = persistentPort(vi.fn().mockResolvedValue({
+      code: 3003,
+      error: {
+        code: 'workflow_identity_mismatch',
+        msg: message
+      }
+    }))
+
+    await expect(
+      runtime.saveWorkflowAuthoringDraft(WORKFLOW_UUID, {
+        python_source: 'imported S06 source',
+        expected_draft_hash: HASH_A,
+        expected_workflow_revision: 7
+      })
+    ).rejects.toMatchObject({
+      code: 'workflow_identity_mismatch',
+      message
+    })
+  })
+
   it('resumes SSE with Last-Event-ID and de-duplicates by event ID', async () => {
     const streamController: {
       current?: ReadableStreamDefaultController<Uint8Array>

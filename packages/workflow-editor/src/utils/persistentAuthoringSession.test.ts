@@ -139,11 +139,13 @@ describe('persistent Authoring session coordination', () => {
     await expect(queue.run(async () => 'rehydrated')).resolves.toBe('rehydrated')
   })
 
-  it('does not mistake a Python Workflow identity rejection for a CAS conflict', () => {
+  /** 证明产品 Edge 通用冲突进入补读流程，而工作流身份拒绝保持独立。 */
+  it('区分产品 Edge 通用冲突与工作流身份拒绝', () => {
     expect(isAuthoringConflict({
       status: 409,
       code: 'draft_hash_conflict'
     })).toBe(true)
+    expect(isAuthoringConflict({ code: 'conflict' })).toBe(true)
     expect(isAuthoringConflict({
       status: 409,
       code: 'workflow_identity_mismatch'
