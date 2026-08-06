@@ -1013,6 +1013,7 @@ export function usePersistentWorkflowAuthoring({
   const diagnostics = aggregate?.draft?.diagnostics ?? []
   const canvasNodeEditor = usePersistentWorkflowCanvasNodeEditor({
     actionCatalog,
+    canvasMutationEnabled: policy.canvasMutationEnabled,
     codeSourceMap: taskPanel.codeSourceMap,
     diagnostics,
     effectiveMaterialSourceCatalog,
