@@ -69,6 +69,7 @@ import { usePersistentWorkflowCatalogs } from './usePersistentWorkflowCatalogs'
 import { usePersistentWorkflowStartFlow } from './usePersistentWorkflowStartFlow'
 import { usePersistentWorkflowTaskPanel } from './usePersistentWorkflowTaskPanel'
 import { useWorkflowPanelRuntimeProjection } from './useWorkflowPanelRuntimeProjection'
+import { useWorkflowCanvasDeletion } from './useWorkflowCanvasDeletion'
 
 export type { PersistentWorkflowAuthoringOptions } from './persistentWorkflowAuthoringTypes'
 
@@ -128,6 +129,20 @@ export function usePersistentWorkflowAuthoring({
     useState<string | null>(null)
   const [remoteConflict, setRemoteConflict] =
     useState<RemoteConflict | null>(null)
+  const deleteCanvasElements = useWorkflowCanvasDeletion({
+    graph,
+    enabled: policy.canvasMutationEnabled,
+    onGraphChange: setGraph,
+    onDirty: () => setCanvasDirty(true),
+    onSelectionClear: () => {
+      setSelectedNodeUuid(null)
+      setSelectedNodeName('')
+      setSelectedNodeNameDirty(false)
+      setActionParametersOpen(false)
+    },
+    onError: setError,
+    onMessage: setMessage
+  })
   const operationQueue = useRef<AuthoringOperationQueue | null>(null)
   if (operationQueue.current === null) {
     operationQueue.current = new AuthoringOperationQueue()
@@ -1172,7 +1187,7 @@ export function usePersistentWorkflowAuthoring({
     adoptRemoteConflict, aggregate, appliedIo,
     applyCandidate, beautifyCanvasLayout,
     busy, cancelFullSourceDiff, candidateIo, codeProjection,
-    diagnostics,
+    deleteCanvasElements, diagnostics,
     dirty, discardAndSwitch, editor, effectiveMaterialSourceCatalog, error,
     fileUpload, fullSourceDiff, graph, jsonProjectionEditor,
     materialSourceAuthorityBlocked, materialSourceCatalogError,
