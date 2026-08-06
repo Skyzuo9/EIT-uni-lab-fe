@@ -116,6 +116,46 @@ export function createMaterialService(
       )
       return mapBackendMaterialGraph(response)
     },
+    subscribeMoves: (onMove) => {
+      const EventSourceConstructor = globalThis.EventSource
+      if (typeof EventSourceConstructor !== 'function') {
+        return { dispose: () => undefined }
+      }
+      const endpoint = `${backend.apiUrl.replace(/\/$/, '')}/api/v1/monitor/events?channels=material&backlog=0`
+      const source = new EventSourceConstructor(endpoint)
+      const onMaterial = (rawEvent: Event): void => {
+        const event = rawEvent as MessageEvent<string>
+        try {
+          const frame = JSON.parse(event.data) as unknown
+          if (!isRecord(frame) || frame.channel !== 'material') return
+          const data = isRecord(frame.data) ? frame.data : {}
+          if (frame.type !== 'instance.moved') return
+          const payload = isRecord(data.payload) ? data.payload : {}
+          const materialId = optionalString(data.aggregate_id)
+          const toParentId = optionalString(payload.to_parent)
+          if (!materialId || !toParentId) return
+          onMove({
+            id: event.lastEventId || String(frame.seq ?? ''),
+            materialId,
+            revision:
+              typeof data.version === 'number' ? data.version : undefined,
+            fromParentId: optionalString(payload.from_parent),
+            fromSite: optionalString(payload.from_slot),
+            toParentId,
+            toSite: optionalString(payload.to_slot)
+          })
+        } catch {
+          // 单个非法移动帧不能污染现有物料图或中断后续事件。
+        }
+      }
+      source.addEventListener('material', onMaterial)
+      return {
+        dispose: () => {
+          source.removeEventListener('material', onMaterial)
+          source.close()
+        }
+      }
+    },
     createMaterial: async (scope, input) => {
       requireCreate()
       assertSingletonScope(scope)

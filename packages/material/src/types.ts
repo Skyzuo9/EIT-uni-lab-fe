@@ -329,8 +329,28 @@ export interface MaterialMutationResult {
   aggregates: readonly MaterialAggregate[]
 }
 
+export interface MaterialMovedEvent {
+  id: string
+  materialId: MaterialId
+  revision?: MaterialRevision
+  fromParentId?: MaterialId
+  fromSite?: string
+  toParentId: MaterialId
+  toSite?: string
+}
+
+export interface MaterialMoveSubscription {
+  dispose(): void
+}
+
 export interface MaterialGraphPort {
   getGraph(scope: MaterialScope): Promise<readonly MaterialAggregate[]>
+  /**
+   * 物料移动通知用于增量更新当前页面；只在页面初次加载时读取完整物料图。
+   */
+  subscribeMoves?(
+    onMove: (event: MaterialMovedEvent) => void
+  ): MaterialMoveSubscription
   /**
    * 2.5D 外形声明由设备包提供、Bridge 下发。老后端没有这个端点，所以是可选的：
    * 取不到就退回实心包围盒。
