@@ -690,6 +690,13 @@ function mapBackendMaterialGraph(
   })
 }
 
+/**
+ * 把 OS 物料（Material）配置规范化为三个视图共享的实例渲染快照。
+ * @param value OS 返回的物料配置。
+ * @param position 权威相对位置及物理外包尺寸；缺失时不编造尺寸。
+ * @param metaData 仅用于保留资源图来源身份的物料元数据。
+ * @returns 保留业务配置并补齐 `rendering.kind` 与毫米尺寸的前端配置。
+ */
 function mapBackendMaterialConfig(
   value: unknown,
   position: Record<string, unknown> | undefined,
@@ -711,7 +718,12 @@ function mapBackendMaterialConfig(
     ...identifiedConfig,
     rendering: {
       ...rawRendering,
-      kind: optionalString(rawRendering.kind) ?? 'custom',
+      kind:
+        optionalString(rawRendering.kind) ??
+        optionalString(rawRendering.type) ??
+        optionalString(config.category) ??
+        optionalString(config.type) ??
+        'custom',
       dimensionsMm: [
         finiteGraphNumber(position.width, 'relative_position.width'),
         finiteGraphNumber(position.depth, 'relative_position.depth'),

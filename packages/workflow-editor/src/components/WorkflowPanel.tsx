@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import type {
   WorkflowRuntimePort,
@@ -23,6 +23,7 @@ export interface WorkflowPanelProps {
   traceRuntime?: WorkflowTracePort
   resourceSlotOptionsPort?: WorkflowResourceSlotOptionsPort
   activeWorkflowStorageKey?: string
+  catalogRequestRevision?: number
   active?: boolean
   onUnsavedChangesChange?: (hasUnsavedChanges: boolean) => void
   onActiveWorkflowChange?: (workflowUuid: string | null) => void
@@ -44,6 +45,7 @@ export default function WorkflowPanel({
   traceRuntime,
   resourceSlotOptionsPort,
   activeWorkflowStorageKey,
+  catalogRequestRevision = 0,
   active = true,
   onUnsavedChangesChange,
   onActiveWorkflowChange,
@@ -54,10 +56,28 @@ export default function WorkflowPanel({
     string | null
   >(null)
   const [showCatalog, setShowCatalog] = useState(false)
+  const handledCatalogRequestRevision = useRef(catalogRequestRevision)
   const workflowUuid = showCatalog
     ? null
     : explicitWorkflowUuid || selectedWorkflowUuid ||
       readActiveWorkflowId(activeWorkflowStorageKey)
+
+  useEffect(() => {
+    if (
+      explicitWorkflowUuid ||
+      handledCatalogRequestRevision.current === catalogRequestRevision
+    ) {
+      return
+    }
+    handledCatalogRequestRevision.current = catalogRequestRevision
+    persistActiveWorkflowId(activeWorkflowStorageKey, '')
+    setSelectedWorkflowUuid(null)
+    setShowCatalog(true)
+  }, [
+    activeWorkflowStorageKey,
+    catalogRequestRevision,
+    explicitWorkflowUuid
+  ])
 
   useEffect(() => {
     const activeWorkflowUuid = workflowUuid && isWorkflowUuid(workflowUuid)
@@ -183,37 +203,39 @@ function WorkflowCatalog({
       )}
       {!loading && !error && workflows.length > 0 && (
         <div className="workflow-runtime__catalog-list" role="list">
-          {workflows.map((workflow) => (
-            <div key={workflow.uuid} role="listitem">
-              <button
-                type="button"
-                onClick={() => onSelect(workflow.uuid)}
-                aria-label={`打开工作流 ${workflow.name}`}
-              >
-                <span
-                  className="workflow-runtime__catalog-mark"
-                  aria-hidden="true"
+          {workflows.map((workflow) => {
+            const meta = [
+              `修订 ${workflow.revision}`,
+              ...workflow.tags
+            ].join(' · ')
+            return (
+              <div key={workflow.uuid} role="listitem">
+                <button
+                  type="button"
+                  onClick={() => onSelect(workflow.uuid)}
+                  aria-label={`打开工作流 ${workflow.name}`}
+                  title={`${workflow.name}\n${meta}`}
                 >
-                  ◇
-                </span>
-                <span className="workflow-runtime__catalog-copy">
-                  <strong>{workflow.name}</strong>
-                  <small>
-                    修订 {workflow.revision}
-                    {workflow.tags.length > 0
-                      ? ` · ${workflow.tags.join(' · ')}`
-                      : ''}
-                  </small>
-                </span>
-                <span
-                  className="workflow-runtime__catalog-open"
-                  aria-hidden="true"
-                >
-                  →
-                </span>
-              </button>
-            </div>
-          ))}
+                  <span
+                    className="workflow-runtime__catalog-mark"
+                    aria-hidden="true"
+                  >
+                    ◇
+                  </span>
+                  <span className="workflow-runtime__catalog-copy">
+                    <strong>{workflow.name}</strong>
+                    <small title={meta}>{meta}</small>
+                  </span>
+                  <span
+                    className="workflow-runtime__catalog-open"
+                    aria-hidden="true"
+                  >
+                    →
+                  </span>
+                </button>
+              </div>
+            )
+          })}
         </div>
       )}
     </div>

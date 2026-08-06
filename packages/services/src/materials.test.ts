@@ -6,7 +6,68 @@ import { UnsupportedCapabilityError } from './errors'
 import type { HttpClient } from './http'
 import { createMaterialService } from './materials'
 
+/**
+ * 验证 OS 物料（Material）图只提供资源分类时，服务适配器仍保留可视化种类。
+ * 参数：无，测试内部构造公开物料图响应。返回：完成异步断言的 Promise。
+ * 异常：分类没有投影到 `rendering.kind` 时由 Vitest 断言失败。
+ */
+async function mapsMaterialCategoryToRenderingKind(): Promise<void> {
+  const { http } = mockHttp({
+    data: {
+      nodes: [{
+        material: {
+          uuid: 'material-beaker',
+          resource_template_uuid: 'template-beaker',
+          class: 'community.szlab.beaker',
+          barcode: '',
+          name: '500 mL 烧杯',
+          create_time: '2026-08-06T00:00:00Z',
+          update_time: '2026-08-06T00:00:00Z',
+          meta_data: {},
+          config: { category: 'beaker' },
+          data: {}
+        },
+        relative_position: rawBackendPosition(
+          'position-beaker',
+          'material-beaker',
+          [0, 0, 0],
+          [86, 86, 120]
+        ),
+        sites: [],
+        current_site_uuid: null,
+        handles: []
+      }]
+    }
+  })
+  const backend = getDefaultBackend('local-python')
+  const service = createMaterialService(
+    http,
+    backend,
+    resolveServerCapabilities(backend)
+  )
+
+  await expect(
+    service.getGraph({ kind: 'singleton' })
+  ).resolves.toEqual([
+    expect.objectContaining({
+      material: expect.objectContaining({
+        config: expect.objectContaining({
+          rendering: {
+            kind: 'beaker',
+            dimensionsMm: [86, 120, 86]
+          }
+        })
+      })
+    })
+  ])
+}
+
 describe('material template adapter', () => {
+  it(
+    'uses the material category when the rendering kind is absent',
+    mapsMaterialCategoryToRenderingKind
+  )
+
   it('reads the complete Edge catalog without a fake laboratory ID', async () => {
     const { http, request } = mockHttp({
       data: {
