@@ -1,5 +1,11 @@
 {
   "moduleExceptions": {
+    "apps/kernel-web/src/components/LocalRuntimeLauncher.tsx": {
+      "maxLines": 1300,
+      "maxFunctionComplexity": 35,
+      "reason": "本地运行启动器（LocalRuntimeLauncher）集中维护 PLC-Sim 与领域侧 Edge 的配置持久化、权威进程快照、启停互锁及可访问对话框；本轮拆分已把日志读取、日志展示和 Edge 命令编辑迁出，保留的分支用于呈现同一运行会话的互斥状态。",
+      "futureSplitBoundary": "补齐 PLC-Sim/Edge 交叉启停、路径校验和键盘焦点的交互特征测试后，将 LocalRuntimeDialog 与 PathField/RuntimeStatus 迁入 LocalRuntimeConfigurationDialog.tsx，并将启动器副作用抽取为 useLocalRuntimeLauncherSession。"
+    },
     "apps/kernel-web/src/components/device-cards/DeviceCardWorkbenchView.tsx": {
       "maxLines": 500,
       "maxFunctionComplexity": 40,
@@ -23,6 +29,12 @@
       "maxFunctionComplexity": 65,
       "reason": "物料斜二测对象（ObliqueMaterialObject）作为单一声明式形状解释器维护 SVG 图元的绘制顺序和遮挡语义。",
       "futureSplitBoundary": "先用 SVG 绘制顺序快照固定开架与车床图元，再将它们抽取到 oblique-primitives/openRack.tsx 和 oblique-primitives/lathe.tsx。"
+    },
+    "packages/services/src/materials.ts": {
+      "maxLines": 1100,
+      "maxFunctionComplexity": 25,
+      "reason": "物料服务（MaterialService）在一个适配边界内完成物料模板、物料图（MaterialGraph）与后端不可信载荷的校验映射，集中定义错误语义可避免模板和图投影产生不一致的解析规则。",
+      "futureSplitBoundary": "补齐模板载荷和物料图载荷的畸形输入矩阵测试后，将模板映射迁入 materialTemplateMapper.ts、物料图映射迁入 materialGraphMapper.ts，materials.ts 仅保留端口组合与 HTTP 调用。"
     }
   }
 }
