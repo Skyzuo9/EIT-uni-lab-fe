@@ -105,8 +105,9 @@ export async function loadWorkflowActionCatalog(
     ) {
       invalidCatalog()
     }
-    const rawSchema = template.schema
-    const actionSchema = typedActionSchema(rawSchema)
+    const rawSchema = templateSchemaValue(template.schema)
+    const actionSchema = typedActionSchema(rawSchema) ??
+      persistedActionContractSchema(template)
     const workflowSchema = typedWorkflowSchema(rawSchema)
     if (actionSchema && workflowSchema) invalidCatalog()
     if (workflowSchema) {
@@ -323,7 +324,37 @@ function projectHandle(
   const ioType = stringValue(raw.io_type)
   if (ioType !== 'source' && ioType !== 'target') invalidCatalog()
   if (typeof raw.required !== 'boolean') invalidCatalog()
-  const unilab = recordValue(recordValue(raw.meta_data).unilab)
+  const handleKey = stringValue(raw.handle_key)
+  const valueType = stringValue(raw.type)
+  const dataSource = nullableString(raw.data_source)
+  const dataKey = nullableString(raw.data_key)
+  const metaData = recordValue(raw.meta_data)
+  if (
+    handleKey === 'ready' &&
+    valueType === 'default' &&
+    raw.required === false &&
+    dataSource === null &&
+    dataKey === null &&
+    Object.keys(metaData).length === 0
+  ) {
+    return attachWireValue({
+      uuid,
+      workflowNodeTemplateUuid,
+      handleKey,
+      ioType,
+      displayName: stringValue(raw.display_name),
+      valueType,
+      required: false,
+      dataSource: null,
+      dataKey: null,
+      valueSchema: {},
+      editorControl: 'variable_selector',
+      allowedResourceTemplateUuids: null,
+      implicitPassthrough: false,
+      structuralRole: 'ready'
+    }, raw)
+  }
+  const unilab = recordValue(metaData.unilab)
   const control = stringValue(unilab.editor_control)
   if (
     control !== 'material_port' &&
@@ -336,13 +367,13 @@ function projectHandle(
   return attachWireValue({
     uuid,
     workflowNodeTemplateUuid,
-    handleKey: stringValue(raw.handle_key),
+    handleKey,
     ioType,
     displayName: stringValue(raw.display_name),
-    valueType: stringValue(raw.type),
+    valueType,
     required: raw.required,
-    dataSource: nullableString(raw.data_source),
-    dataKey: nullableString(raw.data_key),
+    dataSource,
+    dataKey,
     valueSchema: recordValue(unilab.value_schema),
     editorControl: control,
     allowedResourceTemplateUuids: allowlist,
@@ -374,7 +405,7 @@ function typedActionSchema(raw: unknown): Record<string, unknown> | null {
     'x-unilabos-action-contract'
   )) return null
   const extension = recordValue(schema['x-unilabos-action-contract'])
-  if (extension.version !== 1) invalidCatalog()
+  if (extension.version !== 1 && extension.version !== 2) invalidCatalog()
   const inputOrder = stringArray(extension.input_order)
   const outputOrder = stringArray(extension.output_order)
   if (
@@ -384,6 +415,31 @@ function typedActionSchema(raw: unknown): Record<string, unknown> | null {
     invalidCatalog()
   }
   return schema
+}
+
+/**
+ * 从数据库节点模板保留元数据读取第 2 版动作合同（Action Contract）。
+ *
+ * @param template 未信任的节点模板详情。
+ * @returns 合法动作合同；没有保留合同的框架或旧模板返回 null。
+ * @throws 显式保留合同存在但形状、版本或顺序非法时关闭失败。
+ */
+function persistedActionContractSchema(
+  template: Record<string, unknown>
+): Record<string, unknown> | null {
+  const metaData = template.meta_data
+  if (!metaData || typeof metaData !== 'object' || Array.isArray(metaData)) {
+    return null
+  }
+  const unilab = (metaData as Record<string, unknown>).unilab
+  if (!unilab || typeof unilab !== 'object' || Array.isArray(unilab)) {
+    return null
+  }
+  const contract = (unilab as Record<string, unknown>).action_contract_schema
+  if (contract === undefined || contract === null) return null
+  const parsed = typedActionSchema(templateSchemaValue(contract))
+  if (!parsed) invalidCatalog()
+  return parsed
 }
 
 /** 解析已发布工作流合同；参数是原始 schema，返回冻结合同投影或 null，闭合结构非法时关闭失败。 */
@@ -547,20 +603,31 @@ function validateReadyHandle(
   handle: WorkflowActionHandleTemplate | undefined,
   ioType: 'source' | 'target'
 ): void {
-  if (
-    !handle ||
-    handle.handleKey !== 'ready' ||
-    handle.ioType !== ioType ||
-    handle.dataSource !== 'dependency' ||
-    handle.dataKey !== 'ready' ||
-    handle.valueType !== 'boolean' ||
-    handle.required ||
-    handle.editorControl !== 'variable_selector' ||
-    handle.allowedResourceTemplateUuids !== null ||
-    handle.implicitPassthrough ||
-    handle.structuralRole !== 'ready' ||
-    !jsonEquals(handle.valueSchema, { type: 'boolean' })
-  ) invalidCatalog()
+  const common = Boolean(
+    handle &&
+    handle.handleKey === 'ready' &&
+    handle.ioType === ioType &&
+    !handle.required &&
+    handle.editorControl === 'variable_selector' &&
+    handle.allowedResourceTemplateUuids === null &&
+    !handle.implicitPassthrough &&
+    handle.structuralRole === 'ready'
+  )
+  const legacy = Boolean(
+    handle &&
+    handle.dataSource === 'dependency' &&
+    handle.dataKey === 'ready' &&
+    handle.valueType === 'boolean' &&
+    jsonEquals(handle.valueSchema, { type: 'boolean' })
+  )
+  const canonical = Boolean(
+    handle &&
+    handle.dataSource === null &&
+    handle.dataKey === null &&
+    handle.valueType === 'default' &&
+    jsonEquals(handle.valueSchema, {})
+  )
+  if (!common || (!legacy && !canonical)) invalidCatalog()
 }
 
 /** 解析物料占位符（ResourceSlot）资源模板白名单；参数是属性 schema，返回 UUID 数组或 null，非法时关闭失败。 */
@@ -726,7 +793,7 @@ function uuidValue(raw: unknown): string {
 
 /** 解析非空且唯一的 UUID 白名单；参数是原始值，返回数组或 null，空集、重复或非法 UUID 时关闭失败。 */
 function allowlistValue(raw: unknown): string[] | null {
-  if (raw === null) return null
+  if (raw === null || raw === undefined) return null
   const values = stringArray(raw).map(uuidValue)
   if (values.length === 0 || new Set(values).size !== values.length) {
     invalidCatalog()
@@ -738,6 +805,22 @@ function allowlistValue(raw: unknown): string[] | null {
 function recordValue(raw: unknown): Record<string, unknown> {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) invalidCatalog()
   return raw as Record<string, unknown>
+}
+
+/**
+ * 解析节点模板详情中的对象或数据库 JSON 文本 Schema。
+ *
+ * @param raw 未信任的模板 Schema wire 值。
+ * @returns 原对象或从 JSON 文本解码的对象；空值等非合同值保持原样供类型判别。
+ * @throws JSON 文本畸形或解码结果不是对象时关闭失败。
+ */
+function templateSchemaValue(raw: unknown): unknown {
+  if (typeof raw !== 'string') return raw
+  try {
+    return recordValue(JSON.parse(raw) as unknown)
+  } catch {
+    return invalidCatalog()
+  }
 }
 
 /** 解析对象数组；参数是原始值，返回记录数组，数组或项目无效时关闭失败。 */

@@ -70,6 +70,10 @@ function registerActionCatalogTests(): void {
     verifiesActionSnapshot
   )
   it(
+    'loads the persisted version 2 Action contract and canonical ready Handles',
+    acceptsPersistedVersionTwoActionContract
+  )
+  it(
     'reads every page and excludes non-Action framework templates',
     verifiesCursorTraversalAndFrameworkExclusion
   )
@@ -262,6 +266,68 @@ async function verifiesActionSnapshot(): Promise<void> {
     defaultCatalogPath,
     workflowCatalogPath,
     `/api/v1/workflow-node-templates/${nodeUuid}`
+  ])
+}
+
+/**
+ * 证明数据库读投影可从保留元数据恢复第 2 版动作合同（Action Contract）。
+ *
+ * @returns 测试完成后的 Promise。
+ * @throws JSON 文本目标 Schema、保留合同或规范 ready 连接点（Handle）被遗漏、
+ * 错误放宽或拒绝时使测试失败。
+ */
+async function acceptsPersistedVersionTwoActionContract(): Promise<void> {
+  const responses = catalogResponses()
+  const detail = detailData(responses)
+  const template = (responses[
+    `/api/v1/workflow-node-templates/${nodeUuid}`
+  ] as Envelope).data as { template: Record<string, unknown> }
+  const contract = template.template.schema as Record<string, unknown>
+  const extension = contract['x-unilabos-action-contract'] as Record<
+    string,
+    unknown
+  >
+  extension.version = 2
+  template.template.meta_data = {
+    unilab: { action_contract_schema: contract }
+  }
+  const properties = contract.properties as Record<string, Record<string, unknown>>
+  template.template.schema = JSON.stringify(properties.goal)
+  detail.handles.push(
+    {
+      uuid: '30000000-0000-4000-8000-000000000003',
+      workflow_node_template_uuid: nodeUuid,
+      handle_key: 'ready',
+      io_type: 'target',
+      display_name: 'ready',
+      type: 'default',
+      required: false,
+      meta_data: {}
+    },
+    {
+      uuid: '30000000-0000-4000-8000-000000000004',
+      workflow_node_template_uuid: nodeUuid,
+      handle_key: 'ready',
+      io_type: 'source',
+      display_name: 'ready',
+      type: 'default',
+      required: false,
+      meta_data: {}
+    }
+  )
+  const runtime = createWorkflowRuntime(
+    fixtureHttp(responses),
+    getDefaultBackend('local-python')
+  )
+
+  const catalog = await runtime.getWorkflowActionCatalog()
+
+  expect(catalog.actionTemplates).toHaveLength(1)
+  expect(catalog.actionTemplates[0]?.schema)
+    .toMatchObject({ 'x-unilabos-action-contract': { version: 2 } })
+  expect(catalog.actionTemplates[0]?.handles.slice(-2)).toEqual([
+    expect.objectContaining({ handleKey: 'ready', ioType: 'target' }),
+    expect.objectContaining({ handleKey: 'ready', ioType: 'source' })
   ])
 }
 

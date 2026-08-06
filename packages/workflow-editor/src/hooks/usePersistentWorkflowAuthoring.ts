@@ -3,6 +3,7 @@ import type {
   WorkflowActionCatalogSnapshot,
   WorkflowAuthoringAggregate,
   WorkflowAuthoringApplyResponse,
+  WorkflowAuthoringChangedEvent,
   WorkflowAuthoringGraph,
   WorkflowAuthoringTransformResult
 } from '@unilab/services'
@@ -375,82 +376,111 @@ export function usePersistentWorkflowAuthoring({
     }
   }, [installAggregate, queue, runtime, workflowUuid])
 
-  useEffect(() => {
-    let active = true
-    let refreshInFlight = false
-    let refreshPending = false
+  useEffect(
+    /**
+     * 维持工作流创作（Authoring）失效订阅，并在重连后补读 REST 权威状态。
+     *
+     * @returns 卸载时释放 SSE 与阻止在途结果安装的清理函数。
+     */
+    function synchronizeAuthoringAuthority(): () => void {
+      let active = true
+      let refreshInFlight = false
+      let refreshPending = false
+      let lastRefreshError: string | null = null
 
-    const refreshFromAuthority = async (): Promise<void> => {
-      if (refreshInFlight) {
-        refreshPending = true
-        return
-      }
-      refreshInFlight = true
-      try {
-        do {
-          refreshPending = false
-          const next = await queue.run(
-            () => runtime.getWorkflowAuthoring(workflowUuid)
-          )
-          if (!active) return
-          const current = localState.current
-          if (isSameAuthoringVersion(next, current.aggregate)) {
+      /** 合并并串行执行一次 REST 权威状态刷新。 */
+      const refreshFromAuthority = async (): Promise<void> => {
+        if (refreshInFlight) {
+          refreshPending = true
+          return
+        }
+        refreshInFlight = true
+        try {
+          do {
+            refreshPending = false
+            const next = await queue.run(
+              () => runtime.getWorkflowAuthoring(workflowUuid)
+            )
+            if (!active) return
+            if (lastRefreshError !== null) {
+              const recoveredError = lastRefreshError
+              lastRefreshError = null
+              setError((current) =>
+                current === recoveredError ? null : current
+              )
+            }
+            const current = localState.current
+            if (isSameAuthoringVersion(next, current.aggregate)) {
+              remotePending.current = false
+              continue
+            }
+            const dirtyAtInstall = current.mode === 'code'
+              ? current.codeDirty
+              : current.canvasDirty
+            if (dirtyAtInstall) {
+              remotePending.current = true
+              setRemoteConflict({
+                remote: next,
+                localMode: current.mode,
+                localPython: current.editorValue,
+                localGraph: current.graph,
+                selectedNodeUuid: current.selectedNodeUuid,
+                selectedNodeName: current.selectedNodeName,
+                selectedNodeNameDirty: current.selectedNodeNameDirty
+              })
+              setMessage('检测到外部修改；本地内容已保留，请比较后明确处理')
+              return
+            }
             remotePending.current = false
-            continue
+            installAggregate(next, '已同步外部修改')
+          } while (active && refreshPending)
+        } catch (refreshError) {
+          if (active) {
+            lastRefreshError = errorMessage(refreshError)
+            setError(lastRefreshError)
           }
-          const dirtyAtInstall = current.mode === 'code'
-            ? current.codeDirty
-            : current.canvasDirty
-          if (dirtyAtInstall) {
-            remotePending.current = true
-            setRemoteConflict({
-              remote: next,
-              localMode: current.mode,
-              localPython: current.editorValue,
-              localGraph: current.graph,
-              selectedNodeUuid: current.selectedNodeUuid,
-              selectedNodeName: current.selectedNodeName,
-              selectedNodeNameDirty: current.selectedNodeNameDirty
-            })
-            setMessage('检测到外部修改；本地内容已保留，请比较后明确处理')
-            return
-          }
-          remotePending.current = false
-          installAggregate(next, '已同步外部修改')
-        } while (active && refreshPending)
-      } catch (refreshError) {
-        if (active) setError(errorMessage(refreshError))
-      } finally {
-        refreshInFlight = false
+        } finally {
+          refreshInFlight = false
+        }
       }
-    }
 
-    const subscription = runtime.subscribeWorkflowAuthoring(
-      workflowUuid,
-      (event) => {
+      /** 把匹配当前工作流的 SSE 失效通知转换为一次 REST 权威刷新。 */
+      const handleAuthoringInvalidation = (
+        event: WorkflowAuthoringChangedEvent
+      ): void => {
         const current = localState.current
         if (isCurrentAuthoringInvalidation(event, current.aggregate)) return
         remotePending.current = true
         void refreshFromAuthority()
-      },
-      {
-        onOpen: () => {
-          setError((current) =>
-            current?.startsWith('工作流编辑实时同步中断：')
-              ? null
-              : current
-          )
-        },
-        onError: (streamError) => {
-          setError(`工作流编辑实时同步中断：${streamError.message}`)
-        }
       }
-    )
-    return () => {
-      active = false
-      subscription.dispose()
-    }
-  }, [installAggregate, queue, runtime, workflowUuid])
+
+      const subscription = runtime.subscribeWorkflowAuthoring(
+        workflowUuid,
+        handleAuthoringInvalidation,
+        {
+          onOpen: ({ reconnected }) => {
+            setError((current) =>
+              current?.startsWith('工作流创作实时同步中断：')
+                ? null
+                : current
+            )
+            if (reconnected) {
+              remotePending.current = true
+              void refreshFromAuthority()
+            }
+          },
+          onError: (streamError) => {
+            setError(`工作流创作实时同步中断：${streamError.message}`)
+          }
+        }
+      )
+      return () => {
+        active = false
+        subscription.dispose()
+      }
+    },
+    [installAggregate, queue, runtime, workflowUuid]
+  )
 
   const run = useCallback(async (
     operation: () => Promise<void>

@@ -308,7 +308,170 @@ describe('persistent workflow authoring port', () => {
     expect((init.signal as AbortSignal).aborted).toBe(true)
     runtime.dispose()
   })
+
+  /**
+   * 验证浏览器恢复在线会立即替换半开的工作流创作（Authoring）失效流，并携带最后持久游标。
+   *
+   * 参数：无。返回：断言完成后无值。
+   * 异常：未重连、旧流未中止或恢复游标错误时由断言报告失败。
+   */
+  const verifyAuthoringReconnectOnBrowserOnline = async (): Promise<void> => {
+    const networkEvents = new EventTarget()
+    /**
+     * 注册测试内的浏览器网络生命周期监听器。
+     *
+     * 参数：`type` 是事件类型，`listener` 是监听器。返回：无。异常：测试事件
+     * 目标拒绝监听器时原样传播。
+     */
+    const addNetworkListener = (
+      type: string,
+      listener: EventListenerOrEventListenerObject
+    ): void => networkEvents.addEventListener(type, listener)
+    /**
+     * 移除测试内的浏览器网络生命周期监听器。
+     *
+     * 参数：`type` 是事件类型，`listener` 是原监听器。返回：无。异常：无。
+     */
+    const removeNetworkListener = (
+      type: string,
+      listener: EventListenerOrEventListenerObject
+    ): void => networkEvents.removeEventListener(type, listener)
+    const addNetworkEventListener = vi.fn(addNetworkListener)
+    const removeNetworkEventListener = vi.fn(removeNetworkListener)
+    vi.stubGlobal('addEventListener', addNetworkEventListener)
+    vi.stubGlobal('removeEventListener', removeNetworkEventListener)
+
+    const initial = controlledSseResponse()
+    const reconnected = controlledSseResponse()
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(initial.response)
+      .mockResolvedValueOnce(reconnected.response)
+    vi.stubGlobal('fetch', fetcher)
+    const invalidations: AuthoringChangedEvent[] = []
+    const opens: Array<{ lastEventId: string; reconnected: boolean }> = []
+    /**
+     * 收集工作流创作（Authoring）失效通知。
+     *
+     * 参数：`event` 是已解码的小型失效通知。返回：无。异常：无。
+     */
+    const recordInvalidation = (event: AuthoringChangedEvent): void => {
+      invalidations.push(event)
+    }
+    /**
+     * 收集每次 SSE 打开时的恢复状态。
+     *
+     * 参数：`state` 含发起连接时的游标和重连标志。返回：无。异常：无。
+     */
+    const recordOpen = (state: {
+      lastEventId: string
+      reconnected: boolean
+    }): void => {
+      opens.push(state)
+    }
+    const runtime = persistentPort(vi.fn())
+    const subscription = runtime.subscribeWorkflowAuthoring(
+      WORKFLOW_UUID,
+      recordInvalidation,
+      { onOpen: recordOpen }
+    )
+
+    /**
+     * 断言初始 SSE 请求已经发出。
+     *
+     * 参数：无。返回：断言完成后无值。异常：请求数不为一时由断言抛出。
+     */
+    const expectInitialSseRequest = (): void => {
+      expect(fetcher).toHaveBeenCalledOnce()
+    }
+    await vi.waitFor(expectInitialSseRequest)
+    initial.controller.enqueue(new TextEncoder().encode([
+      'id: 46',
+      'event: workflow.authoring.changed',
+      `data: ${JSON.stringify(changedData(WORKFLOW_UUID, HASH_A, HASH_B))}`,
+      '',
+      ''
+    ].join('\n')))
+    /**
+     * 断言初始流的失效通知已经消费。
+     *
+     * 参数：无。返回：断言完成后无值。异常：通知数不为一时由断言抛出。
+     */
+    const expectInitialInvalidation = (): void => {
+      expect(invalidations).toHaveLength(1)
+    }
+    await vi.waitFor(expectInitialInvalidation)
+
+    networkEvents.dispatchEvent(new Event('online'))
+    /**
+     * 断言浏览器上线后立即发出第二个 SSE 请求。
+     *
+     * 参数：无。返回：断言完成后无值。异常：请求数不为二时由断言抛出。
+     */
+    const expectReconnectRequest = (): void => {
+      expect(fetcher).toHaveBeenCalledTimes(2)
+    }
+    await vi.waitFor(expectReconnectRequest)
+
+    const [, initialInit] = fetcher.mock.calls[0] as [string, RequestInit]
+    const [, reconnectInit] = fetcher.mock.calls[1] as [string, RequestInit]
+    expect((initialInit.signal as AbortSignal).aborted).toBe(true)
+    expect(new Headers(reconnectInit.headers).get('Last-Event-ID')).toBe('46')
+    expect(opens).toEqual([
+      { lastEventId: '', reconnected: false },
+      { lastEventId: '46', reconnected: true }
+    ])
+
+    subscription.dispose()
+    expect((reconnectInit.signal as AbortSignal).aborted).toBe(true)
+    expect(removeNetworkEventListener).toHaveBeenCalledWith(
+      'online',
+      expect.any(Function)
+    )
+    networkEvents.dispatchEvent(new Event('online'))
+    expect(fetcher).toHaveBeenCalledTimes(2)
+    runtime.dispose()
+  }
+
+  it(
+    '浏览器恢复在线时立即携带持久游标重连工作流创作（Authoring）SSE',
+    verifyAuthoringReconnectOnBrowserOnline
+  )
 })
+
+/** 测试可控的服务器发送事件（SSE）响应与字节流控制器。 */
+interface ControlledSseResponse {
+  response: Response
+  controller: ReadableStreamDefaultController<Uint8Array>
+}
+
+/**
+ * 创建可由测试推进、保持打开的 SSE 响应。
+ *
+ * 参数：无。返回：响应与其字节流控制器。
+ * 异常：运行环境缺少 Web Streams 时由构造器抛出。
+ */
+function controlledSseResponse(): ControlledSseResponse {
+  let controller: ReadableStreamDefaultController<Uint8Array> | undefined
+  /**
+   * 保存新建流的控制器，供测试写入 SSE 帧。
+   *
+   * 参数：`value` 是 Web Streams 创建的控制器。返回：无。异常：无。
+   */
+  const captureController = (
+    value: ReadableStreamDefaultController<Uint8Array>
+  ): void => {
+    controller = value
+  }
+  const stream = new ReadableStream<Uint8Array>({ start: captureController })
+  if (!controller) throw new Error('SSE test stream controller was not installed')
+  return {
+    response: new Response(stream, {
+      status: 200,
+      headers: { 'Content-Type': 'text/event-stream' }
+    }),
+    controller
+  }
+}
 
 function persistentPort(
   request: ReturnType<typeof vi.fn>

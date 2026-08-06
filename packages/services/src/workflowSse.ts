@@ -105,11 +105,29 @@ export function createWorkflowSseSubscription<Event>(
     }
   }
 
+  /**
+   * 浏览器恢复在线时立即重建 SSE，并沿用已经确认的持久事件游标（Cursor）。
+   *
+   * @returns 无返回值；释放后的订阅忽略在线事件。
+   */
+  const reconnectWhenOnline = (): void => {
+    if (disposed) return
+    if (reconnectTimer !== null) {
+      globalThis.clearTimeout(reconnectTimer)
+      reconnectTimer = null
+    }
+    controller?.abort()
+    void connect()
+  }
+
+  globalThis.addEventListener?.('online', reconnectWhenOnline)
+
   const subscription: WorkflowEventSubscription = {
     dispose: () => {
       if (disposed) return
       disposed = true
       controller?.abort()
+      globalThis.removeEventListener?.('online', reconnectWhenOnline)
       if (reconnectTimer !== null) {
         globalThis.clearTimeout(reconnectTimer)
       }

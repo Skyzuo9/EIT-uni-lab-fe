@@ -3,31 +3,67 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 import {
-  startPersistentAuthoringOs,
-  type PersistentAuthoringOs
-} from './helpers/persistent-authoring-os'
+  readCleanGitRevision,
+  startF06CompositeRealOs,
+  type F06CompositeRealOs,
+  type GitRevisionEvidence
+} from './helpers/f06-composite-real-os'
 
-let os: PersistentAuthoringOs
+let os: F06CompositeRealOs
+let frontendRevision: GitRevisionEvidence
+/** 本轮固定点、浏览器和进程日志证据的唯一输出目录。 */
+const ARTIFACT_DIRECTORY = resolve(
+  process.env.UNILAB_C1_E2E_ARTIFACT_DIR ||
+    '../e2e-artifacts/c1-composite-authoring'
+)
 
 test.describe.configure({ mode: 'serial' })
 
-test.beforeAll(async () => {
-  os = await startPersistentAuthoringOs({ compositeFixture: true })
-})
+/**
+ * 锁定当前前端（FE）候选并启动当前 OS 的真实 HTTP 夹具。
+ *
+ * @returns 两个源码身份均干净且 OS 公共接口就绪后返回无。
+ * @throws 任一工作树脏或 OS 启动失败时关闭本轮验收。
+ */
+async function startCompositeFixture(): Promise<void> {
+  mkdirSync(ARTIFACT_DIRECTORY, { recursive: true })
+  frontendRevision = readCleanGitRevision(process.cwd(), '前端（FE）')
+  os = await startF06CompositeRealOs()
+}
 
-test.afterAll(async () => {
-  await os?.stop()
-})
+/**
+ * 保存 OS 控制台并关闭隔离进程。
+ *
+ * @returns 日志落盘且 OS 退出后返回无。
+ * @throws 日志写入或进程停止失败时由 Playwright 报告。
+ */
+async function stopCompositeFixture(): Promise<void> {
+  if (!os) return
+  try {
+    writeFileSync(
+      resolve(ARTIFACT_DIRECTORY, 'os-console.log'),
+      os.logs(),
+      'utf8'
+    )
+  } finally {
+    await os.stop()
+  }
+}
 
+test.beforeAll(startCompositeFixture)
+test.afterAll(stopCompositeFixture)
+
+/**
+ * 验证已发布子工作流在前端保持单一调用边界，并仅在会话内展开 OS 私有内部图。
+ *
+ * @param page Playwright 浏览器页面；测试通过当前候选真实 OS HTTP 接口读取图。
+ * @returns Promise 完成时表示折叠、展开、重载和零写入断言全部通过。
+ * @throws OS、目录、浏览器交互或证据写入失败时由 Playwright 报告。
+ */
 test('Published child stays a boundary while its OS-owned graph expands locally', async ({
   page
 }) => {
   test.setTimeout(120_000)
-  const artifactDirectory = resolve(
-    process.env.UNILAB_C1_E2E_ARTIFACT_DIR ||
-      '../e2e-artifacts/c1-composite-authoring'
-  )
-  mkdirSync(artifactDirectory, { recursive: true })
 
   const authoringPath =
     `/api/v1/workflows/${os.compositeParentWorkflowUuid}/authoring`
@@ -35,24 +71,132 @@ test('Published child stays a boundary while its OS-owned graph expands locally'
   const before = await readEnvelope<AuthoringAggregate>(authoringUrl)
   expect(before.state).toBe('applied')
   writeFileSync(
-    resolve(artifactDirectory, 'authoring-before.json'),
+    resolve(ARTIFACT_DIRECTORY, 'authoring-before.json'),
     `${JSON.stringify(before, null, 2)}\n`,
     'utf8'
   )
   const catalogList = await readRawJson(
     `${os.url}/api/v1/workflow-node-templates?page=1&page_size=100`
   )
-  const catalogItems = ((catalogList as CatalogEnvelope).data.items ?? [])
+  const workflowCatalogList = await readRawJson(
+    `${os.url}/api/v1/workflow-node-templates?node_type=workflow&page_size=100`
+  )
+  const catalogItems = uniqueCatalogItems([
+    ...((catalogList as CatalogEnvelope).data.items ?? []),
+    ...((workflowCatalogList as CatalogEnvelope).data.items ?? [])
+  ])
   const catalogDetails = await Promise.all(catalogItems.map((item) =>
     readRawJson(
       `${os.url}/api/v1/workflow-node-templates/${encodeURIComponent(item.uuid)}`
     )
   ))
   writeFileSync(
-    resolve(artifactDirectory, 'catalog-wire.json'),
-    `${JSON.stringify({ list: catalogList, details: catalogDetails }, null, 2)}\n`,
+    resolve(ARTIFACT_DIRECTORY, 'catalog-wire.json'),
+    `${JSON.stringify({
+      default_list: catalogList,
+      workflow_list: workflowCatalogList,
+      details: catalogDetails
+    }, null, 2)}\n`,
     'utf8'
   )
+  const compiled = await readEnvelope<AuthoringTransformResult>(
+    `${os.url}/api/v1/authoring/compile`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        workflow_uuid: os.compositeParentWorkflowUuid,
+        revision: before.workflow_revision,
+        source_uri: before.draft?.source_uri,
+        python_source: before.draft?.python_source,
+        applied_graph: before.applied_graph
+      })
+    }
+  )
+  writeFileSync(
+    resolve(ARTIFACT_DIRECTORY, 'compile-fixed-point.json'),
+    `${JSON.stringify(compiled, null, 2)}\n`,
+    'utf8'
+  )
+  const recompiled = await readEnvelope<AuthoringTransformResult>(
+    `${os.url}/api/v1/authoring/compile`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        workflow_uuid: os.compositeParentWorkflowUuid,
+        revision: before.workflow_revision,
+        source_uri: before.draft?.source_uri,
+        python_source: compiled.normalized_python_source,
+        applied_graph: before.applied_graph
+      })
+    }
+  )
+  writeFileSync(
+    resolve(ARTIFACT_DIRECTORY, 'recompile-fixed-point.json'),
+    `${JSON.stringify(recompiled, null, 2)}\n`,
+    'utf8'
+  )
+  const generated = await readEnvelope<AuthoringTransformResult>(
+    `${os.url}/api/v1/authoring/generate-python`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        workflow_uuid: os.compositeParentWorkflowUuid,
+        revision: before.workflow_revision,
+        source_uri: before.draft?.source_uri,
+        graph: before.applied_graph
+      })
+    }
+  )
+  writeFileSync(
+    resolve(ARTIFACT_DIRECTORY, 'generate-fixed-point.json'),
+    `${JSON.stringify(generated, null, 2)}\n`,
+    'utf8'
+  )
+  const generatedRecompiled = await readEnvelope<AuthoringTransformResult>(
+    `${os.url}/api/v1/authoring/compile`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        workflow_uuid: os.compositeParentWorkflowUuid,
+        revision: before.workflow_revision,
+        source_uri: before.draft?.source_uri,
+        python_source: generated.normalized_python_source,
+        applied_graph: generated.graph
+      })
+    }
+  )
+  writeFileSync(
+    resolve(ARTIFACT_DIRECTORY, 'generate-recompile-fixed-point.json'),
+    `${JSON.stringify(generatedRecompiled, null, 2)}\n`,
+    'utf8'
+  )
+  for (const result of [compiled, recompiled, generated, generatedRecompiled]) {
+    expect(result.diagnostics.filter((item) => item.severity === 'error'))
+      .toEqual([])
+    expect(result.graph).not.toBeNull()
+    expect(result.normalized_python_source).not.toBeNull()
+  }
+  const compiledGraph = requiredTransformGraph(compiled, 'compile')
+  const recompiledGraph = requiredTransformGraph(recompiled, 'recompile')
+  const generatedGraph = requiredTransformGraph(generated, 'generate')
+  const generatedRecompiledGraph = requiredTransformGraph(
+    generatedRecompiled,
+    'generate-recompile'
+  )
+  expect(recompiled.normalized_python_source)
+    .toBe(compiled.normalized_python_source)
+  expect(canonicalAuthoringGraph(recompiledGraph))
+    .toEqual(canonicalAuthoringGraph(compiledGraph))
+  expect(generatedRecompiled.normalized_python_source)
+    .toBe(generated.normalized_python_source)
+  expect(canonicalAuthoringGraph(generatedGraph))
+    .toEqual(canonicalAuthoringGraph(before.applied_graph))
+  expect(canonicalAuthoringGraph(generatedRecompiledGraph))
+    .toEqual(canonicalAuthoringGraph(before.applied_graph))
   const invocation = before.applied_graph.nodes.find(
     (node) => node.uuid === os.compositeInvocationUuid
   )
@@ -117,8 +261,15 @@ test('Published child stays a boundary while its OS-owned graph expands locally'
     `/?section=workflow&localOsUrl=${encodeURIComponent(os.url)}`
   )
   await expect(page.getByText('完整控制流 DAG')).toBeVisible()
-  await expect(page.getByLabel('Action 模板')).toBeVisible()
-  await expect(page.getByLabel('子工作流模板')).toBeVisible()
+  await page.getByRole('button', { name: '画布模式' }).click()
+  const actionPalette = page.getByLabel('动作（Action）模板')
+  const workflowPalette = page.getByLabel('子工作流（Workflow）模板')
+  await expect(actionPalette).toBeVisible()
+  await expect(actionPalette.getByText('输送', { exact: true })).toBeVisible()
+  await expect(workflowPalette).toBeVisible()
+  await expect(workflowPalette.getByText('F06 Published child', {
+    exact: true
+  })).toBeVisible()
   await expect(page.getByText('Workflow Action Catalog 返回了无效响应'))
     .toHaveCount(0)
   const invocationCard = page.locator(
@@ -130,7 +281,7 @@ test('Published child stays a boundary while its OS-owned graph expands locally'
   await expect(invocationCard).toBeVisible()
   await expect(internalCard).toHaveCount(0)
   await page.screenshot({
-    path: resolve(artifactDirectory, '01-collapsed.png'),
+    path: resolve(ARTIFACT_DIRECTORY, '01-collapsed.png'),
     fullPage: true
   })
 
@@ -140,13 +291,17 @@ test('Published child stays a boundary while its OS-owned graph expands locally'
   }).click()
   await expect(internalCard).toBeVisible()
   await page.screenshot({
-    path: resolve(artifactDirectory, '02-expanded.png'),
+    path: resolve(ARTIFACT_DIRECTORY, '02-expanded.png'),
     fullPage: true
   })
   await invocationCard.getByRole('button', {
     name: /折叠子工作流/
   }).click()
   await expect(internalCard).toHaveCount(0)
+  await invocationCard.getByRole('button', {
+    name: /展开子工作流/
+  }).click()
+  await expect(internalCard).toBeVisible()
 
   const toggleRequests = [...requests]
   expect(toggleRequests.filter(isAuthoringMutation)).toEqual([])
@@ -160,7 +315,7 @@ test('Published child stays a boundary while its OS-owned graph expands locally'
   await expect(invocationCard).toBeVisible()
   await expect(internalCard).toHaveCount(0)
   await page.screenshot({
-    path: resolve(artifactDirectory, '03-reload-collapsed.png'),
+    path: resolve(ARTIFACT_DIRECTORY, '03-reload-collapsed.png'),
     fullPage: true
   })
 
@@ -171,9 +326,13 @@ test('Published child stays a boundary while its OS-owned graph expands locally'
   expect(after.workflow_revision).toBe(before.workflow_revision)
 
   writeFileSync(
-    resolve(artifactDirectory, 'network-graph-ledger.json'),
+    resolve(ARTIFACT_DIRECTORY, 'network-graph-ledger.json'),
     `${JSON.stringify({
       schema_version: 1,
+      source_revisions: {
+        frontend: frontendRevision,
+        os: os.osRevision
+      },
       workflow_uuid: os.compositeParentWorkflowUuid,
       workflow_revision: before.workflow_revision,
       invocation_uuid: os.compositeInvocationUuid,
@@ -191,6 +350,8 @@ test('Published child stays a boundary while its OS-owned graph expands locally'
       application_error_count: applicationErrors.length,
       page_error_count: browserErrors.length,
       reload_reset_to_collapsed: true,
+      compile_recompile_fixed_point: true,
+      graph_python_graph_fixed_point: true,
       graph_unchanged: true,
       python_unchanged: true
     }, null, 2)}\n`,
@@ -201,9 +362,15 @@ test('Published child stays a boundary while its OS-owned graph expands locally'
 interface AuthoringAggregate {
   state: string
   workflow_revision: number
-  draft: { python_source: string } | null
+  draft: { python_source: string; source_uri: string } | null
   candidate: { graph: AuthoringGraph } | null
   applied_graph: AuthoringGraph
+}
+
+interface AuthoringTransformResult {
+  diagnostics: Array<{ severity: string; code: string; message: string }>
+  graph: AuthoringGraph | null
+  normalized_python_source: string | null
 }
 
 interface AuthoringGraph {
@@ -226,6 +393,106 @@ interface CatalogEnvelope {
   data: {
     items?: Array<{ uuid: string }>
   }
+}
+
+/**
+ * 提取变换结果中的非空工作流图（Workflow Graph）。
+ *
+ * @param result 当前编译或生成结果。
+ * @param stage 失败消息中的变换阶段名称。
+ * @returns 已由公共接口返回的非空图。
+ * @throws 结果没有图时抛出明确的固定点证据错误。
+ */
+function requiredTransformGraph(
+  result: AuthoringTransformResult,
+  stage: string
+): AuthoringGraph {
+  if (result.graph === null) {
+    throw new Error(`${stage} 没有返回固定点工作流图`)
+  }
+  return result.graph
+}
+
+/**
+ * 规范化创作图中无语义的目录数组顺序和空工作流描述。
+ *
+ * @param graph 待比较的公共创作图。
+ * @returns 可直接深比较的独立规范图，不修改输入。
+ * @throws `structuredClone` 无法复制异常输入时传播该异常。
+ */
+function canonicalAuthoringGraph(graph: AuthoringGraph): AuthoringGraph {
+  const normalized = structuredClone(graph)
+  const workflow = normalized.workflow
+  if (isRecord(workflow) && workflow.description === undefined) {
+    workflow.description = null
+  }
+  for (const key of [
+    'nodes',
+    'edges',
+    'node_templates',
+    'handle_templates'
+  ]) {
+    const values = normalized[key]
+    if (Array.isArray(values)) {
+      normalized[key] = [...values].sort(compareGraphEntity)
+    }
+  }
+  return normalized
+}
+
+/**
+ * 按稳定 UUID（缺失时按完整 JSON）比较两个图实体。
+ *
+ * @param left 左侧未信任图实体。
+ * @param right 右侧未信任图实体。
+ * @returns 负数、零或正数，供数组稳定排序。
+ * @throws 实体含不可序列化循环时由 `JSON.stringify` 抛出异常。
+ */
+function compareGraphEntity(left: unknown, right: unknown): number {
+  return graphEntityIdentity(left).localeCompare(graphEntityIdentity(right))
+}
+
+/**
+ * 读取图实体的稳定比较身份。
+ *
+ * @param value 未信任图实体。
+ * @returns 优先使用 UUID，否则使用完整 JSON 文本。
+ * @throws 实体含不可序列化循环时由 `JSON.stringify` 抛出异常。
+ */
+function graphEntityIdentity(value: unknown): string {
+  if (isRecord(value) && typeof value.uuid === 'string') return value.uuid
+  return JSON.stringify(value)
+}
+
+/**
+ * 判断未知值是否为非空普通记录。
+ *
+ * @param value 待判断值。
+ * @returns 值可按字符串键读取时为真。
+ * @throws 不抛异常。
+ */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/**
+ * 以模板 UUID 合并默认目录和 workflow 专用目录摘要。
+ *
+ * @param items 两个公共目录按读取顺序拼接的摘要。
+ * @returns 首次出现顺序稳定、UUID 唯一的摘要数组。
+ * @throws 不抛异常。
+ */
+function uniqueCatalogItems(
+  items: Array<{ uuid: string }>
+): Array<{ uuid: string }> {
+  const seen = new Set<string>()
+  const unique: Array<{ uuid: string }> = []
+  for (const item of items) {
+    if (seen.has(item.uuid)) continue
+    seen.add(item.uuid)
+    unique.push(item)
+  }
+  return unique
 }
 
 function isAuthoringMutation(entry: RequestLedgerEntry): boolean {

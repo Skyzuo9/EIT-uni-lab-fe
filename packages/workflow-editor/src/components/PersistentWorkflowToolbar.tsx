@@ -30,6 +30,8 @@ export function PersistentWorkflowToolbar({
     requestMode,
     runtimeBusy,
     saveDraft,
+    selectSingleNodeMode,
+    singleNodeTargetMissing,
     setTaskRunMode,
     startWorkflow,
     taskInputForm,
@@ -241,6 +243,16 @@ export function PersistentWorkflowToolbar({
             >
               单步模式
             </WorkflowButton>
+            <WorkflowButton
+              type="button"
+              className={taskRunMode === 'single_node' ? 'is-active' : ''}
+              aria-pressed={taskRunMode === 'single_node'}
+              disabled={runningEntryBusy}
+              disabledReason="正在处理工作流任务，暂时不能切换运行模式"
+              onClick={selectSingleNodeMode}
+            >
+              单节点调试
+            </WorkflowButton>
           </div>
           <WorkflowButton
             type="button"
@@ -248,12 +260,15 @@ export function PersistentWorkflowToolbar({
             disabled={
               busy ||
               runningEntryBusy ||
+              singleNodeTargetMissing ||
               workflowStartPresentation.disabled
             }
             disabledReason={busy
               ? '正在处理工作流编写操作，请稍候'
               : runningEntryBusy
                 ? '正在处理上一项工作流任务操作，请稍候'
+                : singleNodeTargetMissing
+                  ? '请先在画布节点上设置起始点'
                 : workflowStartPresentation.disabledReason ??
                   '工作流尚未就绪'}
             title={aggregate
@@ -262,7 +277,11 @@ export function PersistentWorkflowToolbar({
               : '工作流尚未就绪'}
             onClick={startWorkflow}
           >
-            {runningEntryBusy ? '处理中…' : workflowStartPresentation.label}
+            {runningEntryBusy
+              ? '处理中…'
+              : taskRunMode === 'single_node'
+                ? '开始单节点调试'
+                : workflowStartPresentation.label}
           </WorkflowButton>
         </div>
       </div>

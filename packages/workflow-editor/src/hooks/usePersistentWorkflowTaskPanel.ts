@@ -87,7 +87,7 @@ export function usePersistentWorkflowTaskPanel({
     ) ?? null
   )
   const [taskRunMode, setTaskRunMode] =
-    useState<Exclude<WorkflowTaskRunMode, 'single_node'>>('normal')
+    useState<WorkflowTaskRunMode>('normal')
   const [runtimeBusy, setRuntimeBusy] = useState(false)
   const [taskInputAuthority, setTaskInputAuthority] =
     useState<WorkflowAuthoringAggregate | null>(null)
@@ -120,6 +120,8 @@ export function usePersistentWorkflowTaskPanel({
     () => hasRunnableAppliedWorkflow(aggregate),
     [aggregate]
   )
+  const singleNodeTargetMissing =
+    taskRunMode === 'single_node' && !debugExecutionScope.startNodeId
   const task = taskRuntime.snapshot.task
   const taskJobs = taskRuntime.snapshot.jobs
   const taskOutputNodes = useMemo(
@@ -285,6 +287,9 @@ export function usePersistentWorkflowTaskPanel({
     authority: WorkflowAuthoringAggregate
   ): Promise<void> => {
     setTaskInputProblem(null)
+    if (singleNodeTargetMissing) {
+      throw new Error('单节点调试前请先在画布节点上设置起始点')
+    }
     if (!hasRunnableAppliedWorkflow(authority)) {
       throw new Error('已应用版本不包含可执行节点，不能创建工作流任务')
     }
@@ -300,10 +305,19 @@ export function usePersistentWorkflowTaskPanel({
       )
     }
     setMessage(
+      (taskRunMode === 'single_node'
+        ? `目标节点 ${debugExecutionScope.startNodeId}；`
+        : '') +
       `本次运行使用已应用版本 ${authority.workflow_revision}；` +
       '未填写且没有默认值的字段将保持省略'
     )
-  }, [resourceSlotOptionsPort, setMessage])
+  }, [
+    debugExecutionScope.startNodeId,
+    resourceSlotOptionsPort,
+    setMessage,
+    singleNodeTargetMissing,
+    taskRunMode
+  ])
 
   /**
    * 从操作系统（OS）补读最新工作流创作权威后打开任务输入。
@@ -312,6 +326,10 @@ export function usePersistentWorkflowTaskPanel({
    */
   const openTaskInputForm = (): void => {
     setTaskInputProblem(null)
+    if (singleNodeTargetMissing) {
+      setError('单节点调试前请先在画布节点上设置起始点')
+      return
+    }
     if (!hasRunnableAppliedWorkflow(aggregate)) {
       setError('当前工作流候选尚未应用；请先应用包含可执行节点的工作流')
       return
@@ -368,7 +386,13 @@ export function usePersistentWorkflowTaskPanel({
           readApplied: () => queue.run(
             () => runtime.getWorkflowAuthoring(workflowUuid)
           ),
-          createTask: (input) => taskRuntime.create(taskRunMode, input)
+          createTask: (input) => taskRuntime.create(
+            taskRunMode,
+            input,
+            taskRunMode === 'single_node'
+              ? debugExecutionScope.startNodeId ?? undefined
+              : undefined
+          )
         })
         if (result.kind === 'reproject_before_create') {
           setTaskInputAuthority(result.authority)
@@ -396,6 +420,20 @@ export function usePersistentWorkflowTaskPanel({
     })
   }
 
+  /**
+   * 选择单节点调试（single_node），并提示当前目标是否已经就绪。
+   *
+   * @returns 无返回值；只修改本地运行意图，不创建工作流任务（WorkflowTask）。
+   */
+  const selectSingleNodeMode = (): void => {
+    setTaskRunMode('single_node')
+    setMessage(
+      debugExecutionScope.startNodeId
+        ? '单节点调试将只创建起始点对应的正式作业'
+        : '请在画布节点上设置起始点，再启动单节点调试'
+    )
+  }
+
   return {
     appliedWorkflowRunnable,
     codeSourceMap,
@@ -408,6 +446,7 @@ export function usePersistentWorkflowTaskPanel({
     outputExpanded,
     outputTab,
     resourceSlotOptions,
+    selectSingleNodeMode,
     runRuntime,
     runtimeBusy,
     selectedJobNodeUuid,
@@ -432,6 +471,7 @@ export function usePersistentWorkflowTaskPanel({
     taskNodeStates,
     taskOutputNodes,
     taskRunMode,
+    singleNodeTargetMissing,
     taskRuntime,
     taskRuntimeEvents,
     toggleDebugBreakpoint,

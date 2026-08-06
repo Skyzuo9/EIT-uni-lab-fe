@@ -488,6 +488,38 @@ function registerWorkflowTaskControllerTests(): void {
     expect(controller.getSnapshot().task?.run_mode).toBe('step')
   })
 
+  /**
+   * 验证单节点调试把目标身份提交给同一工作流任务（WorkflowTask）入口。
+   *
+   * 参数：无。返回：控制器创建与异步投影补读完成后无值。异常：请求出现第二
+   * 入口、遗漏目标或附带私有调试字段时由断言暴露。
+   */
+  async function submitsSingleNodeTarget(): Promise<void> {
+    const targetNodeUuid = '81000000-0000-4000-8000-000000000002'
+    const task = {
+      ...workflowTask(),
+      run_mode: 'single_node' as const,
+      target_node_uuid: targetNodeUuid
+    }
+    const runtime = singleNodeRuntime(task)
+    const controller = new WorkflowTaskController(runtime, task.workflow_uuid)
+    await controller.start()
+
+    await controller.create('single_node', {}, targetNodeUuid)
+
+    expect(runtime.createWorkflowTask).toHaveBeenCalledWith({
+      workflow_uuid: task.workflow_uuid,
+      run_mode: 'single_node',
+      target_node_uuid: targetNodeUuid,
+      input: {}
+    })
+  }
+
+  it(
+    '通过规范工作流任务（WorkflowTask）创建端口提交单节点目标',
+    submitsSingleNodeTarget
+  )
+
   it('finishes Task creation without waiting for the runtime projection refresh', async () => {
     // 证明工作流任务创建的成功响应独立于后续运行投影补读，避免参数抽屉无限等待。
     const task = workflowTask()
@@ -617,6 +649,56 @@ function runtimePort(
   value: Partial<WorkflowRuntimePort>
 ): WorkflowRuntimePort {
   return value as WorkflowRuntimePort
+}
+
+/**
+ * 构造单节点控制器用例的可观察运行端口。
+ *
+ * 参数：`task` 是所有读写回调返回的固定工作流任务（WorkflowTask）。返回：
+ * 创建方法保持 Vitest 调用记录的最小运行端口。异常：所有回调均为内存固定值，
+ * 不抛异常、不启动定时器，也不产生外部副作用。
+ */
+function singleNodeRuntime(task: WorkflowTask): WorkflowRuntimePort {
+  /** 参数：无。返回：释放完成后无值。异常：不抛异常。 */
+  function disposeSubscription(): void {}
+  /** 参数：监听器和选项仅满足端口签名。返回：可释放订阅。异常：不抛异常。 */
+  function subscribeRuntime(
+    _listener: Parameters<WorkflowRuntimePort['subscribeWorkflowRuntime']>[0],
+    _options?: Parameters<WorkflowRuntimePort['subscribeWorkflowRuntime']>[1]
+  ): ReturnType<WorkflowRuntimePort['subscribeWorkflowRuntime']> {
+    return { dispose: disposeSubscription }
+  }
+  /** 参数：`_query` 仅满足端口签名。返回：固定空任务页。异常：不抛异常。 */
+  async function listTasks(
+    _query?: Parameters<WorkflowRuntimePort['listWorkflowTasks']>[0]
+  ): ReturnType<WorkflowRuntimePort['listWorkflowTasks']> {
+    return { items: [], total: 0, page: 1, page_size: 1 }
+  }
+  /** 参数：`_request` 仅满足端口签名。返回：固定权威任务。异常：不抛异常。 */
+  async function createTask(
+    _request: Parameters<WorkflowRuntimePort['createWorkflowTask']>[0]
+  ): ReturnType<WorkflowRuntimePort['createWorkflowTask']> {
+    return task
+  }
+  /** 参数：`_taskUuid` 仅满足端口签名。返回：固定权威任务。异常：不抛异常。 */
+  async function getTask(
+    _taskUuid: string
+  ): ReturnType<WorkflowRuntimePort['getWorkflowTask']> {
+    return task
+  }
+  /** 参数：`_taskUuid` 仅满足端口签名。返回：固定唯一作业。异常：不抛异常。 */
+  async function listJobs(
+    _taskUuid: string
+  ): ReturnType<WorkflowRuntimePort['listWorkflowTaskJobs']> {
+    return [workflowJob()]
+  }
+  return runtimePort({
+    subscribeWorkflowRuntime: vi.fn(subscribeRuntime),
+    listWorkflowTasks: vi.fn(listTasks),
+    createWorkflowTask: vi.fn(createTask),
+    getWorkflowTask: vi.fn(getTask),
+    listWorkflowTaskJobs: vi.fn(listJobs)
+  })
 }
 
 function workflowTask(): WorkflowTask {
