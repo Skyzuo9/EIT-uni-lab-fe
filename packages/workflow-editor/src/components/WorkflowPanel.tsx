@@ -203,37 +203,39 @@ function WorkflowCatalog({
       )}
       {!loading && !error && workflows.length > 0 && (
         <div className="workflow-runtime__catalog-list" role="list">
-          {workflows.map((workflow) => (
-            <div key={workflow.uuid} role="listitem">
-              <button
-                type="button"
-                onClick={() => onSelect(workflow.uuid)}
-                aria-label={`打开工作流 ${workflow.name}`}
-              >
-                <span
-                  className="workflow-runtime__catalog-mark"
-                  aria-hidden="true"
+          {workflows.map((workflow) => {
+            const meta = [
+              `修订 ${workflow.revision}`,
+              ...workflow.tags
+            ].join(' · ')
+            return (
+              <div key={workflow.uuid} role="listitem">
+                <button
+                  type="button"
+                  onClick={() => onSelect(workflow.uuid)}
+                  aria-label={`打开工作流 ${workflow.name}`}
+                  title={`${workflow.name}\n${meta}`}
                 >
-                  ◇
-                </span>
-                <span className="workflow-runtime__catalog-copy">
-                  <strong>{workflow.name}</strong>
-                  <small>
-                    修订 {workflow.revision}
-                    {workflow.tags.length > 0
-                      ? ` · ${workflow.tags.join(' · ')}`
-                      : ''}
-                  </small>
-                </span>
-                <span
-                  className="workflow-runtime__catalog-open"
-                  aria-hidden="true"
-                >
-                  →
-                </span>
-              </button>
-            </div>
-          ))}
+                  <span
+                    className="workflow-runtime__catalog-mark"
+                    aria-hidden="true"
+                  >
+                    ◇
+                  </span>
+                  <span className="workflow-runtime__catalog-copy">
+                    <strong>{workflow.name}</strong>
+                    <small title={meta}>{meta}</small>
+                  </span>
+                  <span
+                    className="workflow-runtime__catalog-open"
+                    aria-hidden="true"
+                  >
+                    →
+                  </span>
+                </button>
+              </div>
+            )
+          })}
         </div>
       )}
     </div>
