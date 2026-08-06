@@ -28,6 +28,7 @@ import {
   errorMessage,
   parseTypedFieldValue
 } from '../utils/persistentAuthoringProjection'
+import { useWorkflowCanvasDeletion } from './useWorkflowCanvasDeletion'
 
 interface WorkflowCodeSourceEntry {
   workflow_node_uuid: string
@@ -36,6 +37,7 @@ interface WorkflowCodeSourceEntry {
 
 interface PersistentWorkflowCanvasNodeEditorOptions {
   actionCatalog: WorkflowActionCatalogSnapshot | null
+  canvasMutationEnabled: boolean
   codeSourceMap: readonly WorkflowCodeSourceEntry[]
   diagnostics: readonly WorkflowAuthoringDiagnostic[]
   effectiveMaterialSourceCatalog: WorkflowMaterialSourceCatalogSnapshot | null
@@ -69,6 +71,7 @@ export function usePersistentWorkflowCanvasNodeEditor(
 ) {
   const {
     actionCatalog,
+    canvasMutationEnabled,
     codeSourceMap,
     diagnostics,
     effectiveMaterialSourceCatalog,
@@ -87,6 +90,21 @@ export function usePersistentWorkflowCanvasNodeEditor(
     setSelectedNodeNameDirty,
     setSelectedNodeUuid
   } = options
+
+  const deleteCanvasElements = useWorkflowCanvasDeletion({
+    graph,
+    enabled: canvasMutationEnabled,
+    onGraphChange: setGraph,
+    onDirty: () => setCanvasDirty(true),
+    onSelectionClear: () => {
+      setSelectedNodeUuid(null)
+      setSelectedNodeName('')
+      setSelectedNodeNameDirty(false)
+      setActionParametersOpen(false)
+    },
+    onError: setError,
+    onMessage: setMessage
+  })
 
   /** 选择画布节点，并把代码编辑器定位到对应源码行。 */
   const selectCanvasNode = (nodeUuid: string): void => {
@@ -385,6 +403,7 @@ export function usePersistentWorkflowCanvasNodeEditor(
     addTypedActionNode,
     bindTypedFieldToWorkflowInput,
     connectTypedHandles,
+    deleteCanvasElements,
     selectCanvasNode,
     selectedActionEditor,
     selectedActionProjection,
