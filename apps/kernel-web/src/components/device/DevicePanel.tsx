@@ -58,6 +58,13 @@ interface DeviceActionFeedbackState {
   items: WorkflowNodeJobFeedback[]
 }
 
+/**
+ * 渲染设备目录、实时状态、动作参数与单动作任务控制面板。
+ *
+ * @returns 设备列表、空设备引导和当前设备动作工作区。
+ * @throws 服务上下文或数据服务异常由对应 Hook 与 React 错误边界传播。
+ * @safety 设备动作与人工解锁仍必须经过既有能力检查和确认流程。
+ */
 export default function DevicePanel(): React.JSX.Element {
   const { backend, connection } = useWorkbench()
   const services = useServices()
@@ -359,6 +366,15 @@ export default function DevicePanel(): React.JSX.Element {
     services.workflow
   ])
 
+  /**
+   * 用冻结动作目录代际创建一个设备单动作工作流任务（WorkflowTask）。
+   *
+   * @param device 当前选择的设备。
+   * @param action 当前选择的动作。
+   * @param template 动作对应的工作流节点模板（WorkflowNodeTemplate）。
+   * @returns 提交及首次补水完成后返回无。
+   * @throws 异常在回调内投影为可见错误状态，不向事件循环传播。
+   */
   const handleRunAction = useCallback(async (
     device: ManagedDevice,
     action: DeviceAction,
@@ -370,6 +386,19 @@ export default function DevicePanel(): React.JSX.Element {
       runOperation?.state.kind === 'accepted' ||
       runOperation?.state.kind === 'running'
     ) return
+    const authorityId = actionCatalog.authorityId
+    const catalogFingerprint = actionCatalog.fingerprint
+    if (!authorityId || !catalogFingerprint) {
+      setRunOperation({
+        actionRef: action.actionRef,
+        state: {
+          kind: 'error',
+          message: '当前动作目录缺少权威标识或目录指纹，无法安全创建设备单动作任务',
+          retryable: false
+        }
+      })
+      return
+    }
     let input: Record<string, unknown>
     try {
       input = serializeDeviceActionInput(action, argumentDraft)
@@ -385,8 +414,8 @@ export default function DevicePanel(): React.JSX.Element {
       return
     }
     const signature = JSON.stringify({
-      authorityId: actionCatalog.authorityId,
-      fingerprint: actionCatalog.fingerprint,
+      authorityId,
+      fingerprint: catalogFingerprint,
       templateUuid: template.uuid,
       deviceId: device.id,
       input
@@ -402,8 +431,8 @@ export default function DevicePanel(): React.JSX.Element {
     })
     try {
       const view = await services.deviceActionTasks.createDeviceActionTask({
-        authority_id: actionCatalog.authorityId,
-        template_catalog_fingerprint: actionCatalog.fingerprint,
+        authority_id: authorityId,
+        template_catalog_fingerprint: catalogFingerprint,
         workflow_node_template_uuid: template.uuid,
         device_id: device.id,
         input,
@@ -553,10 +582,20 @@ export default function DevicePanel(): React.JSX.Element {
         ) : null}
         {devices.length === 0 ? (
           <div className="device-empty device-empty--compact">
-            <strong>等待 Edge 上报设备</strong>
-            <p>
-              Edge 连接后会自动上报在线设备、动作节点及其参数 Schema。
-            </p>
+            <strong>
+              {connection === 'connected'
+                ? '当前未配置仪器设备'
+                : '等待 Edge 上报设备'}
+            </strong>
+            {connection === 'connected' ? (
+              <p>
+                Edge 核心服务已连接。安装或配置设备包和设备图后，重新启动 Edge 并刷新设备。
+              </p>
+            ) : (
+              <p>
+                Edge 连接后会自动上报在线设备、动作节点及其参数 Schema。
+              </p>
+            )}
           </div>
         ) : (
           <ul className="device-list">
@@ -618,7 +657,11 @@ export default function DevicePanel(): React.JSX.Element {
         ) : (
           <div className="device-empty device-empty--detail">
             <strong>暂无可调试设备</strong>
-            <p>请确认 Edge 已启动并连接到本地桥。</p>
+            <p>
+              {connection === 'connected'
+                ? '当前可继续使用 Edge 核心服务；配置仪器设备后请重新启动并刷新。'
+                : '请确认 Edge 已启动并连接到本地桥。'}
+            </p>
           </div>
         )}
         </main>

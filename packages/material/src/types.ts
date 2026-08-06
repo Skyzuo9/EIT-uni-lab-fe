@@ -105,6 +105,8 @@ export interface MaterialSite {
   ownerMaterialId: MaterialId
   key: string
   name: string
+  /** 公共物料图发布的业务展示顺序；旧的内存夹具缺失时由消费者使用零回退。 */
+  sortOrder?: number
   anchor: MaterialAnchor
   poseInAnchor: LabPose
   sizeMm: Vector3Tuple

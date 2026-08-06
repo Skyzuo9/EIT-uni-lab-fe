@@ -309,6 +309,7 @@ describe('material template adapter', () => {
             id: 'site-a1',
             ownerMaterialId: 'material-root',
             key: 'deck-A1',
+            sortOrder: 0,
             allowedTemplateIds: ['template-vessel'],
             occupiedMaterialIds: ['material-vessel'],
             poseInAnchor: {

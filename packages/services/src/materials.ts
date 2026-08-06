@@ -732,6 +732,7 @@ function mapBackendSite(value: unknown): MaterialSite {
       optionalString(metaData.key) ??
       requiredString(raw.name, 'site.name'),
     name: requiredString(raw.name, 'site.name'),
+    sortOrder: finiteGraphNumber(raw.sort_order, 'site.sort_order'),
     anchor: { kind: 'root' },
     poseInAnchor: {
       positionMm: [
@@ -925,6 +926,7 @@ function parseSite(value: unknown): MaterialSite {
     ),
     key: requiredString(raw.key, 'site.key'),
     name: requiredString(raw.name, 'site.name'),
+    sortOrder: finiteNumber(raw.sortOrder, 0),
     anchor: parseAnchor(raw.anchor),
     poseInAnchor: parsePose(raw.poseInAnchor, 'site.poseInAnchor'),
     sizeMm: parseTuple(raw.sizeMm, 'site.sizeMm'),

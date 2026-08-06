@@ -101,7 +101,7 @@ export class WorkflowTaskController {
   }
 
   /**
-   * 创建工作流任务，并在成功响应后异步补读任务、作业、事件与反馈投影。
+   * 创建工作流任务，并在成功响应后异步补读任务、作业与反馈投影。
    * @param runMode 本次工作流任务使用的正常或单步运行模式。
    * @param input 已按工作流输入合同校验的可选任务输入。
    * @returns OS 创建接口返回的权威工作流任务；返回不等待后续读投影完成。
@@ -183,6 +183,12 @@ export class WorkflowTaskController {
     }
   }
 
+  /**
+   * 通过全局 SSE 给出的失效身份补读权威任务与作业投影。
+   * @param requestedTaskUuid 待补读的任务身份；为 null 时先发现当前工作流任务。
+   * @returns 无；补读完成后安装一致的任务/作业快照。
+   * @throws REST 异常不会向调用方传播，而会保留上一份快照并标记投影陈旧。
+   */
   private async hydrate(requestedTaskUuid: string | null): Promise<void> {
     try {
       let taskUuid = requestedTaskUuid
@@ -225,57 +231,21 @@ export class WorkflowTaskController {
         loading: false,
         task,
         jobs: sortedJobs,
-        ...(taskChanged ? { events: [], feedback: [] } : {}),
+        // K10/F09 提供持久任务日志前，事件视图保持空值且不探测已退休接口。
+        events: [],
+        eventError: null,
+        eventStale: false,
+        ...(taskChanged ? { feedback: [] } : {}),
         projectionError: null,
         projectionStale: false,
         generation: this.snapshot.generation + 1
       })
-      await this.hydrateEvents(task.uuid)
       await this.hydrateFeedback(task.uuid, sortedJobs)
     } catch (error) {
       this.install({
         loading: false,
         projectionError: errorMessage(error),
         projectionStale: this.snapshot.task !== null
-      })
-    }
-  }
-
-  private async hydrateEvents(taskUuid: string): Promise<void> {
-    let events = this.snapshot.task?.uuid === taskUuid
-      ? [...this.snapshot.events]
-      : []
-    try {
-      let cursor = events.reduce(
-        (maximum, item) => Math.max(maximum, item.sequence),
-        0
-      )
-      while (true) {
-        const page = await this.runtime.listWorkflowTaskEvents(taskUuid, {
-          after_sequence: cursor,
-          limit: 100
-        })
-        events.push(...page.items)
-        const nextCursor = Math.max(
-          page.next_cursor,
-          ...page.items.map((item) => item.sequence)
-        )
-        if (page.has_more && nextCursor <= cursor) {
-          throw new Error('Workflow runtime event cursor 未向前推进')
-        }
-        cursor = Math.max(cursor, nextCursor)
-        if (!page.has_more) break
-      }
-      this.install({
-        events: uniqueRuntimeEvents(events),
-        eventStale: false,
-        eventError: null
-      })
-    } catch (error) {
-      this.install({
-        events: uniqueRuntimeEvents(events),
-        eventStale: true,
-        eventError: errorMessage(error)
       })
     }
   }
@@ -351,19 +321,6 @@ export class WorkflowTaskController {
     this.snapshot = next
     for (const listener of this.listeners) listener()
   }
-}
-
-function uniqueRuntimeEvents(
-  items: readonly WorkflowTaskRuntimeEvent[]
-): WorkflowTaskRuntimeEvent[] {
-  const sequences = new Set<number>()
-  return [...items]
-    .sort((left, right) => left.sequence - right.sequence)
-    .filter((item) => {
-      if (sequences.has(item.sequence)) return false
-      sequences.add(item.sequence)
-      return true
-    })
 }
 
 function errorMessage(value: unknown): string {
