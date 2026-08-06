@@ -156,6 +156,7 @@ export const LabMaterialTransferStatusSchema = z.enum([
   'planned',
   'pending',
   'running',
+  'canceling',
   'succeeded',
   'failed',
   'canceled',

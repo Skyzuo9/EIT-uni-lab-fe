@@ -84,6 +84,7 @@ import type {
   WorkflowCodeProjection
 } from './persistentWorkflowAuthoringTypes'
 import { usePersistentWorkflowTaskPanel } from './usePersistentWorkflowTaskPanel'
+import { useWorkflowPanelRuntimeProjection } from './useWorkflowPanelRuntimeProjection'
 
 export type { PersistentWorkflowAuthoringOptions } from './persistentWorkflowAuthoringTypes'
 
@@ -93,6 +94,7 @@ export function usePersistentWorkflowAuthoring({
   traceRuntime,
   resourceSlotOptionsPort,
   onUnsavedChangesChange,
+  onWorkflowRuntimeProjectionChange,
   onSelectedWorkflowStepChange,
   onChooseWorkflow
 }: PersistentWorkflowAuthoringOptions) {
@@ -379,6 +381,11 @@ export function usePersistentWorkflowAuthoring({
     resourceSlotOptionsPort,
     setMessage,
     setError
+  })
+  useWorkflowPanelRuntimeProjection({
+    aggregate,
+    runtimeSnapshot: taskPanel.taskRuntime.snapshot,
+    onProjectionChange: onWorkflowRuntimeProjectionChange
   })
 
   useEffect(() => {

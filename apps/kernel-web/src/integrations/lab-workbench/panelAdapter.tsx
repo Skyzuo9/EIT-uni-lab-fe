@@ -1,13 +1,16 @@
 import {
   lazy,
   Suspense,
-  useMemo
+  useCallback,
+  useMemo,
+  useRef
 } from 'react'
 import {
   CANONICAL_PANEL_MANIFEST,
   createPanelCapabilityUnavailable,
   createPanelRegistry,
   parsePanelLayoutDocument,
+  usePanelVisibility,
   type PanelAppAdapter,
   type PanelRendererProps,
   type PanelStoragePort
@@ -19,6 +22,7 @@ import {
 import { useServices, type Services } from '@unilab/services'
 import {
   WorkflowPanel,
+  type WorkflowPanelRuntimeProjection,
   type WorkflowResourceSlotOptionsPort
 } from '@unilab/workflow-editor'
 import { useStore } from 'zustand'
@@ -146,6 +150,11 @@ function WorkflowRenderer(
   props: PanelRendererProps<LabPanelScope>
 ): React.JSX.Element {
   const materialRuntime = useMaterialRuntime()
+  const panelVisible = usePanelVisibility()
+  const panelId = props.panelInstance.id
+  const workflowProjectionRef = useRef<WorkflowPanelRuntimeProjection | null>(
+    null
+  )
   const resourceSlotOptionsPort = useMemo<WorkflowResourceSlotOptionsPort>(
     () => ({
       list: async () => {
@@ -164,11 +173,52 @@ function WorkflowRenderer(
     }),
     [materialRuntime.scope, props.scope.services.materials]
   )
+  /** 发布当前可见工作流（Workflow）的稳定身份，并恢复该面板最后一份路线投影。 */
+  const publishActiveWorkflow = useCallback(
+    (workflowUuid: string | null): void => {
+      const interaction = props.scope.interaction.getState()
+      if (workflowUuid) {
+        interaction.activateWorkflowPanel(panelId, workflowUuid)
+        if (workflowProjectionRef.current) {
+          interaction.publishWorkflowRuntime(
+            panelId,
+            workflowProjectionRef.current
+          )
+        }
+      } else {
+        interaction.deactivateWorkflowPanel(panelId)
+      }
+    },
+    [panelId, props.scope.interaction]
+  )
+  /** 缓存并发布工作流面板拥有的任务身份、代次和只读物料转运路线。 */
+  const publishWorkflowRuntime = useCallback(
+    (projection: WorkflowPanelRuntimeProjection | null): void => {
+      workflowProjectionRef.current = projection
+      if (!projection) return
+      props.scope.interaction.getState().publishWorkflowRuntime(
+        panelId,
+        projection
+      )
+    },
+    [panelId, props.scope.interaction]
+  )
+  /** 发布当前面板选中的工作流节点身份；非所有者更新由交互 Store 拒绝。 */
+  const publishSelectedWorkflowStep = useCallback(
+    (workflowNodeUuid: string | null): void => {
+      props.scope.interaction.getState().selectWorkflowStep(
+        panelId,
+        workflowNodeUuid
+      )
+    },
+    [panelId, props.scope.interaction]
+  )
   return (
     <WorkflowPanel
       runtime={props.scope.services.workflow}
       resourceSlotOptionsPort={resourceSlotOptionsPort}
       workflowUuid={workflowUuidFromPanelConfig(props.config) ?? undefined}
+      active={panelVisible}
       traceRuntime={globalThis.window?.api?.observability}
       activeWorkflowStorageKey={`unilab.workflow.active.${
         encodeURIComponent(
@@ -183,12 +233,9 @@ function WorkflowRenderer(
           hasUnsavedChanges
         )
       }}
-      onActiveWorkflowChange={(workflowUuid) => {
-        props.scope.interaction.getState().selectWorkflow(workflowUuid)
-      }}
-      onSelectedWorkflowStepChange={(workflowNodeUuid) => {
-        props.scope.interaction.getState().selectWorkflowStep(workflowNodeUuid)
-      }}
+      onActiveWorkflowChange={publishActiveWorkflow}
+      onWorkflowRuntimeProjectionChange={publishWorkflowRuntime}
+      onSelectedWorkflowStepChange={publishSelectedWorkflowStep}
     />
   )
 }
