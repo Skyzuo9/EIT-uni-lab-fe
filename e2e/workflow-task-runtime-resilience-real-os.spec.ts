@@ -270,10 +270,8 @@ test('original Runtime UI incrementally restores feedback and coherent state thr
     request.path.includes('/api/v1/runtime/runs') ||
     request.path.includes('/ws')
   )).toBe(false)
-  expect(websocketUrls.length).toBeGreaterThan(0)
-  expect(websocketUrls.every((url) =>
-    new URL(url).pathname === '/api/v1/ws/device_status'
-  )).toBe(true)
+  // 设备状态订阅已按页面作用域收敛；工作流（Workflow）页面不得建立设备 WebSocket。
+  expect(websocketUrls).toEqual([])
 
   const expectedNetworkDiagnostics = browserErrors.filter((message) =>
     message.startsWith('Failed to load resource:')
