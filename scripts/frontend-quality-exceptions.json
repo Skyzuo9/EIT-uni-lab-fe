@@ -23,6 +23,12 @@
       "maxFunctionComplexity": 65,
       "reason": "物料斜二测对象（ObliqueMaterialObject）作为单一声明式形状解释器维护 SVG 图元的绘制顺序和遮挡语义。",
       "futureSplitBoundary": "先用 SVG 绘制顺序快照固定开架与车床图元，再将它们抽取到 oblique-primitives/openRack.tsx 和 oblique-primitives/lathe.tsx。"
+    },
+    "packages/pascal-lab-plugin/src/materialAggregateSceneBridge.ts": {
+      "maxLines": 1000,
+      "maxFunctionComplexity": 45,
+      "reason": "物料聚合（MaterialAggregate）到 Pascal 场景的桥接是单一权威翻译边界；集中维护稳定身份、毫米到场景坐标转换、挂载关系和只读物料转运（MaterialTransfer）投影，可以避免多个渲染入口各自猜测坐标或复制物料事实。",
+      "futureSplitBoundary": "先为渲染快照回退和未解析转运路线补齐特征测试，再抽取 materialRenderingSnapshot.ts 与 materialTransferSceneProjection.ts，保留 materialAggregateSceneBridge.ts 只负责编排 SceneGraph。"
     }
   }
 }
