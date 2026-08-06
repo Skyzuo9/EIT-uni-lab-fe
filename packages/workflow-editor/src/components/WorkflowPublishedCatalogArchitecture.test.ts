@@ -15,6 +15,18 @@ const authoringHookPath = fileURLToPath(new URL(
   '../hooks/usePersistentWorkflowAuthoring.ts',
   import.meta.url
 ))
+const catalogHookPath = fileURLToPath(new URL(
+  '../hooks/usePersistentWorkflowCatalogs.ts',
+  import.meta.url
+))
+const canvasNodeEditorHookPath = fileURLToPath(new URL(
+  '../hooks/usePersistentWorkflowCanvasNodeEditor.ts',
+  import.meta.url
+))
+const overlaysPath = fileURLToPath(new URL(
+  './PersistentWorkflowOverlays.tsx',
+  import.meta.url
+))
 const dagPath = fileURLToPath(new URL('./WorkflowDag.tsx', import.meta.url))
 
 describe('Published Workflow Catalog in the Authoring module', () => {
@@ -115,7 +127,14 @@ function paletteSection(source: string, label: string): string {
 }
 
 function authoringSource(): string {
-  return [panelPath, viewPath, authoringHookPath]
+  return [
+    panelPath,
+    viewPath,
+    authoringHookPath,
+    catalogHookPath,
+    canvasNodeEditorHookPath,
+    overlaysPath
+  ]
     .map((path) => readFileSync(path, 'utf8'))
     .join('\n')
 }

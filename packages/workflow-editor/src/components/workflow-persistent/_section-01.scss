@@ -44,15 +44,85 @@
     background: var(--unilab-color-surface);
   }
 
-  :global(.persistent-authoring__apply) {
-    color: var(--unilab-color-primary);
-    border-color: color-mix(
-      in srgb,
-      var(--unilab-color-primary) 32%,
-      var(--unilab-color-border)
-    );
-    background: var(--unilab-color-primary-soft);
+  :global(.persistent-authoring__more) {
+    position: relative;
+  }
+
+  :global(.persistent-authoring__more) > summary {
+    display: inline-flex;
+    height: 34px;
+    align-items: center;
+    padding: 0 10px;
+    color: var(--unilab-color-text-muted);
+    border: 1px solid var(--unilab-color-border-strong);
+    border-radius: var(--unilab-radius-control);
+    background: var(--unilab-color-surface);
+    font-size: 12px;
     font-weight: 600;
+    cursor: pointer;
+    list-style: none;
+  }
+
+  :global(.persistent-authoring__more) > summary::-webkit-details-marker {
+    display: none;
+  }
+
+  :global(.persistent-authoring__more) > summary::after {
+    margin-inline-start: 6px;
+    color: var(--unilab-color-text-subtle);
+    content: '⌄';
+  }
+
+  :global(.persistent-authoring__more[open]) > summary {
+    color: var(--unilab-color-primary);
+    border-color: var(--unilab-color-focus);
+    background: var(--unilab-color-primary-soft);
+  }
+
+  :global(.persistent-authoring__more-menu) {
+    position: absolute;
+    z-index: 40;
+    top: calc(100% + 6px);
+    right: 0;
+    min-width: 188px;
+    padding: 6px;
+    border: 1px solid var(--unilab-color-border);
+    border-radius: var(--unilab-radius-md);
+    background: var(--unilab-color-surface);
+    box-shadow: var(--unilab-shadow-panel);
+  }
+
+  :global(.persistent-authoring__more-menu) button {
+    display: flex;
+    width: 100%;
+    min-height: 36px;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--unilab-space-4);
+    padding: 0 9px;
+    color: var(--unilab-color-text);
+    border: 0;
+    border-radius: var(--unilab-radius-control);
+    background: transparent;
+    font: inherit;
+    cursor: pointer;
+  }
+
+  :global(.persistent-authoring__more-menu) button:hover:not(:disabled) {
+    color: var(--unilab-color-primary);
+    background: var(--unilab-color-primary-soft);
+  }
+
+  :global(.persistent-authoring__more-menu) button:disabled {
+    color: var(--unilab-color-text-subtle);
+    cursor: not-allowed;
+  }
+
+  :global(.persistent-authoring__more-menu) kbd {
+    color: var(--unilab-color-text-subtle);
+    font-family: var(--unilab-font-mono);
+    font-size: 10px;
+    font-weight: 500;
   }
 
   :global(.persistent-authoring__workbench) {

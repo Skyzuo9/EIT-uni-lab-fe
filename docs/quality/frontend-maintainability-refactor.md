@@ -12,7 +12,7 @@
 ### 工作流（Workflow）
 
 - `packages/services/src/workflow.ts` 保留稳定公开出口，合同、路径、编解码、SSE 和端口实现分别进入独立模块。
-- `PersistentWorkflowAuthoringPanel.tsx` 变为 40 行组合入口；状态编排进入 hook，展示进入 view，物料来源（MaterialSource）检查器和只读投影进入独立模块。
+- `PersistentWorkflowAuthoringPanel.tsx` 保持薄组合入口；工具栏、覆盖层、目录、画布节点编辑与运行入口状态机分别进入独立模块，主 hook 只保留跨步骤事务编排。
 - 工作流任务（WorkflowTask）面板状态从主 hook 分离，但仍由同一个编写会话统一控制，避免产生第二份工作流（Workflow）事实源。
 
 ### 设备（Device）
@@ -56,11 +56,11 @@
 | `apps/kernel-web/src/components/device/DevicePanel.tsx` | 638 | 单动作持久任务、反馈序列化和人工解锁必须由同一控制器保持顺序。 | 增加任务重入/解锁失败测试后，提取 `useDeviceActionTask`。 |
 | `packages/material/src/oblique/MaterialObliqueCanvas.tsx` | 551 | 根画布统一负责相机、拖拽和 z-order，避免各物体实现分裂的坐标语义。 | 增加视口手势回归测试后，提取 `useObliqueViewportGestures`。 |
 | `packages/material/src/oblique/ObliqueMaterialObject.tsx` | 866 | 这是一个集中 SVG 形状解释器；绘制顺序直接决定遮挡语义。 | 增加 SVG paint-order 快照后，提取 open-rack 与 lathe 图元模块。 |
-| `packages/workflow-editor/src/components/PersistentWorkflowAuthoringView.tsx` | 1,159 | 代码、画布、运行栏和抽屉构成一个可访问性布局原子，当前拆开会重复焦点/ARIA 关系。 | 完成截图与键盘交互基线后，拆成 toolbar、workbench、runtime overlays。 |
-| `packages/workflow-editor/src/hooks/usePersistentWorkflowAuthoring.ts` | 1,436 | 双 CAS、目录刷新、重新编译和草稿保存存在共享顺序约束，属于关键深模块（Deep Module）。 | 增加冲突/重编译时序特征测试后，提取 `usePersistentWorkflowCanvasActions` 和 catalog mutations。 |
+| `packages/workflow-editor/src/components/PersistentWorkflowAuthoringView.tsx` | 612 | 主视图仅保留代码、画布与运行栏的同屏布局；工具栏和抽屉/冲突覆盖层已拆出。 | 为工作台补齐独立视觉回归后，可继续抽取 `PersistentWorkflowWorkbench`。 |
+| `packages/workflow-editor/src/hooks/usePersistentWorkflowAuthoring.ts` | 1,163 | 双 CAS、外部失效补读、草稿规范化和候选应用共享严格事务顺序，属于关键深模块（Deep Module）；目录、节点编辑和运行入口状态机已拆出。 | 增加外部失效/冲突重试状态机测试后，提取 `usePersistentWorkflowAuthoritySync`。 |
 | `packages/workflow-editor/src/utils/workflowActionCatalog.test.ts` | 1,604 | 历史测试文件已超过硬限制；本轮只做 12 行最小接缝变更，使断言读取拆分后的组合模块，没有增加测试责任。 | 下一次修改前按合同域拆为 port、schema、material-flow、catalog refresh 四组测试。 |
 
-其中 800–1,499 行的三个生产文件是有明确接口收益和后续拆分边界的关键深模块（Deep Module）；没有新增或继续扩张任何大于等于 1,500 行的生产文件。
+其中 800–1,499 行的两个生产文件是有明确接口收益和后续拆分边界的关键深模块（Deep Module）；没有新增或继续扩张任何大于等于 1,500 行的生产文件。
 
 ## 差分质量门禁
 

@@ -4,6 +4,10 @@ import {
   startSzlabActionCatalogOs,
   type SzlabActionCatalogOs
 } from './helpers/szlab-action-catalog-os'
+import {
+  applyWorkflowCandidateWithoutTask,
+  saveWorkflowDraftOnly
+} from './helpers/workflow-runtime-ui'
 
 let os: SzlabActionCatalogOs
 
@@ -205,7 +209,7 @@ test('SZLab persisted Catalog reaches the original typed workflow editor', async
   await stirringParameters.getByRole('button', { name: '完成' }).click()
   await expect(stirringParameters).toBeHidden()
 
-  await page.getByRole('button', { name: '保存草稿' }).click()
+  await saveWorkflowDraftOnly(page.locator('body'))
   const diffDialog = page.getByRole('dialog', { name: '完整 Python 差异' })
   await expect(diffDialog, os.logs().slice(-5_000)).toBeVisible()
   const firstDraftWrite = page.waitForResponse((response) =>
@@ -243,7 +247,7 @@ test('SZLab persisted Catalog reaches the original typed workflow editor', async
       `/api/v1/workflows/${os.workflowUuid}/authoring/apply`
     ) && response.status() === 409
   )
-  await page.getByRole('button', { name: '应用工作流' }).click()
+  await page.getByRole('button', { name: '应用并运行' }).click()
   expect((await conflictResponse).status()).toBe(409)
   await expect.poll(() => requests.filter(
     (path) => path === '/api/v1/workflow-node-templates'
@@ -253,7 +257,7 @@ test('SZLab persisted Catalog reaches the original typed workflow editor', async
   )).toBeVisible()
   await page.getByRole('button', { name: '关闭' }).first().click()
 
-  await page.getByRole('button', { name: '保存草稿' }).click()
+  await saveWorkflowDraftOnly(page.locator('body'))
   await expect(diffDialog).toBeVisible()
   const refreshedDraftWrite = page.waitForResponse((response) =>
     response.url().endsWith(
@@ -276,9 +280,8 @@ test('SZLab persisted Catalog reaches the original typed workflow editor', async
       `/api/v1/workflows/${os.workflowUuid}/authoring/apply`
     ) && response.status() === 200
   )
-  await page.getByRole('button', { name: '应用工作流' }).click()
+  await applyWorkflowCandidateWithoutTask(page.locator('body'), page)
   await applySuccess
-  await expect(page.getByText(/工作流已应用|源码已应用/)).toBeVisible()
 
   const aggregateApplied = await readEnvelope<AuthoringAggregate>(
     `${os.url}/api/v1/workflows/${os.workflowUuid}/authoring`

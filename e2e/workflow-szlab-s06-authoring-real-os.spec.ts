@@ -7,6 +7,7 @@ import {
   startSzlabS06AuthoringOs,
   type SzlabMaterialWorkflowOs
 } from './helpers/szlab-action-catalog-os'
+import { saveWorkflowDraftOnly } from './helpers/workflow-runtime-ui'
 
 let os: SzlabMaterialWorkflowOs
 
@@ -112,15 +113,12 @@ test('S06 Python and JSON projections switch and keep the three-node topology', 
   await expect(panel.locator('.cm-content:visible'))
     .toContainText('S06 Python/JSON 切换回归')
 
-  await panel.getByRole('button', {
-    name: '保存草稿',
-    exact: true
-  }).click()
+  await saveWorkflowDraftOnly(panel)
   const normalizationDiff = page.getByRole('dialog', {
     name: '完整 Python 差异'
   })
   const applyButton = panel.getByRole('button', {
-    name: '应用工作流',
+    name: '应用并运行',
     exact: true
   })
   await expect.poll(async () => (

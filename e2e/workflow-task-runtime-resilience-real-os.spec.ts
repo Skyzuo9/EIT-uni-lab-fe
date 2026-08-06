@@ -135,8 +135,12 @@ test('original Runtime UI incrementally restores feedback and coherent state thr
   await expect(panel.getByRole('tab', { name: /Feedback/ })).toHaveCount(0)
   await eventStreamTab.click()
   const feedbackPanel = panel.locator('#workflow-output-panel-events')
-  await expect(feedbackPanel.getByText('progress', { exact: true })).toBeVisible()
-  await openEventRaw(feedbackPanel, 1)
+  await expect(feedbackPanel.getByText('动作反馈', { exact: true })).toBeVisible()
+  const feedbackEvents = feedbackPanel.locator(
+    '[data-event-kind="node.feedback"]'
+  )
+  await expect(feedbackEvents).toHaveCount(1)
+  await openLatestFeedbackRaw(feedbackPanel)
   await expect(feedbackPanel.getByText(/temperature_c.*23\.5/)).toBeVisible()
   await page.screenshot({
     path: join(artifactDirectory, '01-first-feedback-visible.png'),
@@ -150,10 +154,8 @@ test('original Runtime UI incrementally restores feedback and coherent state thr
     observed_at: '2026-08-01T05:00:02Z',
     idempotency_key: 'ui1c-feedback-2'
   }])
-  await expect(eventStreamTab).toContainText('2')
-  await expect(feedbackPanel.getByText('#1', { exact: true })).toBeVisible()
-  await expect(feedbackPanel.getByText('#2', { exact: true })).toBeVisible()
-  await openEventRaw(feedbackPanel, 2)
+  await expect(feedbackEvents).toHaveCount(2)
+  await openLatestFeedbackRaw(feedbackPanel)
   await expect(feedbackPanel.getByText(/temperature_c.*24\.25/)).toBeVisible()
   await expect.poll(() => runtimeRequests.some((request) =>
     request.includes(`/workflow-node-jobs/${firstJobUuid}/feedback?`) &&
@@ -186,7 +188,7 @@ test('original Runtime UI incrementally restores feedback and coherent state thr
     exact: true
   })).toBeVisible()
   await expect(panel.locator('[data-node-state="running"]')).toHaveCount(1)
-  await expect(eventStreamTab).toContainText('2')
+  await expect(feedbackEvents).toHaveCount(2)
   await page.screenshot({
     path: join(artifactDirectory, '03-partial-read-keeps-coherent-state.png'),
     fullPage: true
@@ -200,9 +202,8 @@ test('original Runtime UI incrementally restores feedback and coherent state thr
   await expect(retryProjectionButton).toBeFocused()
   await page.keyboard.press('Enter')
   await expect(runtimeProblem).toBeHidden()
-  await expect(eventStreamTab).toContainText('3')
-  await expect(feedbackPanel.getByText('#3', { exact: true })).toBeVisible()
-  await openEventRaw(feedbackPanel, 3)
+  await expect(feedbackEvents).toHaveCount(3)
+  await openLatestFeedbackRaw(feedbackPanel)
   await expect(feedbackPanel.getByText(/temperature_c.*24\.75/)).toBeVisible()
   await page.screenshot({
     path: join(artifactDirectory, '04-partial-read-recovered.png'),
@@ -239,7 +240,7 @@ test('original Runtime UI incrementally restores feedback and coherent state thr
   })
 
   await expect(panel.getByText('等待状态核对', { exact: true })).toBeVisible()
-  await panel.getByRole('tab', { name: /Job 状态/ }).click()
+  await panel.getByRole('tab', { name: /节点任务状态/ }).click()
   await expect(panel.locator('[data-node-state="execution_unknown"]')).toHaveCount(1)
   await expect(panel.getByText('执行状态未知', { exact: true })).toBeVisible()
   await page.screenshot({
@@ -251,10 +252,9 @@ test('original Runtime UI incrementally restores feedback and coherent state thr
   await expect(panel.getByText('等待状态核对', { exact: true })).toBeVisible()
   await expect(panel.locator('[data-node-state="execution_unknown"]')).toHaveCount(1)
   await panel.getByRole('tab', { name: /事件流/ }).click()
-  await expect(panel.getByRole('tab', { name: /事件流/ })).toContainText('3')
-  await expect(feedbackPanel.getByText('#1', { exact: true })).toBeVisible()
-  await expect(feedbackPanel.getByText('#2', { exact: true })).toBeVisible()
-  await expect(feedbackPanel.getByText('#3', { exact: true })).toBeVisible()
+  await expect(feedbackEvents).toHaveCount(3)
+  await expect(feedbackPanel.getByText('动作反馈', { exact: true }))
+    .toHaveCount(3)
   await page.screenshot({
     path: join(artifactDirectory, '08-reload-restores-feedback.png'),
     fullPage: true
@@ -270,7 +270,10 @@ test('original Runtime UI incrementally restores feedback and coherent state thr
     request.path.includes('/api/v1/runtime/runs') ||
     request.path.includes('/ws')
   )).toBe(false)
-  expect(websocketUrls).toEqual([])
+  expect(websocketUrls.length).toBeGreaterThan(0)
+  expect(websocketUrls.every((url) =>
+    new URL(url).pathname === '/api/v1/ws/device_status'
+  )).toBe(true)
 
   const expectedNetworkDiagnostics = browserErrors.filter((message) =>
     message.startsWith('Failed to load resource:')
@@ -297,13 +300,10 @@ test('original Runtime UI incrementally restores feedback and coherent state thr
   expect(applicationErrors).toEqual([])
 })
 
-async function openEventRaw(
-  panel: import('@playwright/test').Locator,
-  sequence: number
+async function openLatestFeedbackRaw(
+  panel: import('@playwright/test').Locator
 ): Promise<void> {
-  const event = panel.locator('.workflow-runtime__events > div').filter({
-    has: panel.getByText(`#${sequence}`, { exact: true })
-  })
+  const event = panel.locator('[data-event-kind="node.feedback"]').first()
   const details = event.locator('.workflow-runtime__event-raw')
   if (await details.getAttribute('open') === null) {
     await details.locator('summary').click()

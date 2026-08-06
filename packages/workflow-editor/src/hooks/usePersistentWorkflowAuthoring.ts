@@ -2,9 +2,9 @@ import { useCodeMirror } from '@unilab/code-editor'
 import type {
   WorkflowActionCatalogSnapshot,
   WorkflowAuthoringAggregate,
+  WorkflowAuthoringApplyResponse,
   WorkflowAuthoringGraph,
-  WorkflowAuthoringTransformResult,
-  WorkflowMaterialSourceCatalogSnapshot
+  WorkflowAuthoringTransformResult
 } from '@unilab/services'
 import {
   useCallback,
@@ -28,24 +28,7 @@ import {
   projectPersistentAuthoringGraph,
   updatePersistentAuthoringNodeName
 } from '../utils/persistentAuthoringGraph'
-import {
-  bindTypedActionWorkflowInput,
-  createPublishedWorkflowNode,
-  createTypedActionNode,
-  connectTypedActionEdge,
-  projectTypedActionEditor,
-  rehydrateTypedActionGraph,
-  updateTypedActionLiteral,
-  type TypedActionFieldProjection
-} from '../utils/workflowActionCatalog'
-import {
-  connectMaterialSourceToTypedActionEdge,
-  createMaterialSourceNode,
-  projectMaterialSourceEditor,
-  updateMaterialSourceSelector,
-  type MaterialSourceEditorProjection,
-  type MaterialSourceSelectorUpdate
-} from '../utils/workflowMaterialSource'
+import { rehydrateTypedActionGraph } from '../utils/workflowActionCatalog'
 import {
   projectMaterialTraces
 } from '../utils/workflowMaterialTrace'
@@ -70,10 +53,7 @@ import {
 import {
   authoritativePython,
   errorMessage,
-  isRecordValue,
-  parseTypedFieldValue,
   rebaseGraphIdentity,
-  shortTemplateLabel,
   workflowGraphJsonProjection,
   workflowIoMetadata
 } from '../utils/persistentAuthoringProjection'
@@ -83,6 +63,9 @@ import type {
   RemoteConflict,
   WorkflowCodeProjection
 } from './persistentWorkflowAuthoringTypes'
+import { usePersistentWorkflowCanvasNodeEditor } from './usePersistentWorkflowCanvasNodeEditor'
+import { usePersistentWorkflowCatalogs } from './usePersistentWorkflowCatalogs'
+import { usePersistentWorkflowStartFlow } from './usePersistentWorkflowStartFlow'
 import { usePersistentWorkflowTaskPanel } from './usePersistentWorkflowTaskPanel'
 import { useWorkflowPanelRuntimeProjection } from './useWorkflowPanelRuntimeProjection'
 
@@ -112,14 +95,6 @@ export function usePersistentWorkflowAuthoring({
   )
   const jsonProjectionEditor = useCodeMirror('', 'json', '', true)
   const [graph, setGraph] = useState<WorkflowAuthoringGraph | null>(null)
-  const [actionCatalog, setActionCatalog] =
-    useState<WorkflowActionCatalogSnapshot | null>(null)
-  const [materialSourceCatalog, setMaterialSourceCatalog] =
-    useState<WorkflowMaterialSourceCatalogSnapshot | null>(null)
-  const [materialSourceCatalogLoading, setMaterialSourceCatalogLoading] =
-    useState(true)
-  const [materialSourceCatalogError, setMaterialSourceCatalogError] =
-    useState<string | null>(null)
   const [canvasDirty, setCanvasDirty] = useState(false)
   const [selectedNodeUuid, setSelectedNodeUuid] = useState<string | null>(null)
 
@@ -134,6 +109,16 @@ export function usePersistentWorkflowAuthoring({
   const [nodePaletteOpen, setNodePaletteOpen] = useState(true)
   const [message, setMessage] = useState('正在读取 OS 工作流编辑状态…')
   const [error, setError] = useState<string | null>(null)
+  const {
+    actionCatalog,
+    effectiveMaterialSourceCatalog,
+    materialSourceAuthorityBlocked,
+    materialSourceCatalog,
+    materialSourceCatalogError,
+    materialSourceCatalogLoading,
+    refreshMaterialSourceCatalog,
+    refreshWorkflowCatalogsAfterConflict
+  } = usePersistentWorkflowCatalogs({ runtime, graph, setError })
   const [busy, setBusy] = useState(false)
   const [pendingMode, setPendingMode] = useState<WorkflowEditMode | null>(null)
   const [fullSourceDiff, setFullSourceDiff] =
@@ -300,73 +285,6 @@ export function usePersistentWorkflowAuthoring({
     () => projectMaterialTraces(structure.nodes, structure.links),
     [structure.links, structure.nodes]
   )
-  const effectiveMaterialSourceCatalog = useMemo(() => {
-    if (!materialSourceCatalog) return null
-    const templateLabels = new Map(
-      materialSourceCatalog.resourceTemplates.map((template) => [
-        template.uuid,
-        template.displayName
-      ])
-    )
-    for (const node of graph?.nodes ?? []) {
-      if (node.type !== 'material_source' || !isRecordValue(node.param)) continue
-      const templateUuid = node.param.resource_template_uuid
-      if (typeof templateUuid === 'string' && templateUuid) {
-        templateLabels.set(
-          templateUuid,
-          templateLabels.get(templateUuid) ?? shortTemplateLabel(templateUuid)
-        )
-      }
-    }
-    for (const template of [
-      ...(actionCatalog?.actionTemplates ?? []),
-      ...(actionCatalog?.workflowTemplates ?? [])
-    ]) {
-      for (const handle of template.handles) {
-        for (const templateUuid of handle.allowedResourceTemplateUuids ?? []) {
-          templateLabels.set(
-            templateUuid,
-            templateLabels.get(templateUuid) ?? shortTemplateLabel(templateUuid)
-          )
-        }
-      }
-    }
-    return {
-      ...materialSourceCatalog,
-      resourceTemplates: [...templateLabels.entries()]
-        .map(([uuid, displayName]) => ({ uuid, displayName }))
-        .sort((left, right) => left.uuid.localeCompare(right.uuid))
-    }
-  }, [actionCatalog, graph, materialSourceCatalog])
-  const materialSourceAuthorityBlocked = useMemo(() => {
-    const sourceNodes = graph?.nodes.filter(
-      (node) => node.type === 'material_source'
-    ) ?? []
-    if (sourceNodes.length === 0) return false
-    if (
-      materialSourceCatalogLoading ||
-      materialSourceCatalogError ||
-      !effectiveMaterialSourceCatalog ||
-      !graph
-    ) return true
-    return sourceNodes.some((node) => {
-      if (typeof node.uuid !== 'string' || !node.uuid) return true
-      try {
-        return projectMaterialSourceEditor(
-          effectiveMaterialSourceCatalog,
-          graph,
-          node.uuid
-        ).staleReferences.length > 0
-      } catch {
-        return true
-      }
-    })
-  }, [
-    effectiveMaterialSourceCatalog,
-    graph,
-    materialSourceCatalogError,
-    materialSourceCatalogLoading
-  ])
   const dirty = mode === 'code'
     ? editor.isDirty
     : canvasDirty || selectedNodeNameDirty
@@ -432,68 +350,6 @@ export function usePersistentWorkflowAuthoring({
       selectedNodeNameDirty: false
     }
   }, [editor.replaceContent])
-
-  useEffect(() => {
-    let active = true
-    setActionCatalog(null)
-    void runtime.getWorkflowActionCatalog()
-      .then((catalog) => {
-        if (active) setActionCatalog(catalog)
-      })
-      .catch((catalogError) => {
-        if (active) {
-          setActionCatalog(null)
-          setError(errorMessage(catalogError))
-        }
-      })
-    return () => {
-      active = false
-    }
-  }, [runtime])
-
-  const refreshMaterialSourceCatalog = useCallback(async (): Promise<void> => {
-    setMaterialSourceCatalogLoading(true)
-    setMaterialSourceCatalogError(null)
-    try {
-      setMaterialSourceCatalog(
-        await runtime.getWorkflowMaterialSourceCatalog()
-      )
-    } catch (catalogError) {
-      setMaterialSourceCatalog(null)
-      setMaterialSourceCatalogError(errorMessage(catalogError))
-    } finally {
-      setMaterialSourceCatalogLoading(false)
-    }
-  }, [runtime])
-
-  const refreshWorkflowCatalogsAfterConflict = useCallback(async (): Promise<{
-    action: WorkflowActionCatalogSnapshot
-    materialSource: WorkflowMaterialSourceCatalogSnapshot
-  }> => {
-    setActionCatalog(null)
-    setMaterialSourceCatalog(null)
-    setMaterialSourceCatalogLoading(true)
-    setMaterialSourceCatalogError(null)
-    try {
-      const [action, materialSource] = await Promise.all([
-        runtime.getWorkflowActionCatalog(),
-        runtime.getWorkflowMaterialSourceCatalog()
-      ])
-      setActionCatalog(action)
-      setMaterialSourceCatalog(materialSource)
-      return { action, materialSource }
-    } catch (catalogError) {
-      const message = errorMessage(catalogError)
-      setMaterialSourceCatalogError(message)
-      throw catalogError
-    } finally {
-      setMaterialSourceCatalogLoading(false)
-    }
-  }, [runtime])
-
-  useEffect(() => {
-    void refreshMaterialSourceCatalog()
-  }, [refreshMaterialSourceCatalog])
 
   useEffect(() => {
     let active = true
@@ -586,7 +442,7 @@ export function usePersistentWorkflowAuthoring({
           )
         },
         onError: (streamError) => {
-          setError(`Authoring 实时同步中断：${streamError.message}`)
+          setError(`工作流编辑实时同步中断：${streamError.message}`)
         }
       }
     )
@@ -897,6 +753,7 @@ export function usePersistentWorkflowAuthoring({
 
   const acceptFullSourceDiff = (): void => {
     if (!fullSourceDiff || busy) return
+    if (workflowStart.acceptWorkflowStartReview()) return
     const diff = fullSourceDiff
     const decision = workflowCanvasDraftSaveDecision({
       baselinePython: diff.before,
@@ -955,6 +812,16 @@ export function usePersistentWorkflowAuthoring({
     })
   }
 
+  /**
+   * 关闭完整源码差异；若它属于运行入口，同时取消尚未应用的运行意图。
+   *
+   * @returns 无返回值；已经保存或应用的操作系统（OS）权威事实不会撤销。
+   */
+  const cancelFullSourceDiff = (): void => {
+    workflowStart.cancelWorkflowStartReview()
+    setFullSourceDiff(null)
+  }
+
   const retryLocalAfterConflict = (): void => {
     if (!remoteConflict) return
     const conflict = remoteConflict
@@ -1003,6 +870,73 @@ export function usePersistentWorkflowAuthoring({
   }
 
   /**
+   * 只使用操作系统（OS）签发的候选哈希应用工作流创作候选。
+   *
+   * @param candidateHash 当前候选的稳定内容身份。
+   * @returns 应用结果与最新工作流创作权威聚合。
+   */
+  const applyCandidateByHash = async (
+    candidateHash: string
+  ): Promise<WorkflowAuthoringApplyResponse> => {
+    try {
+      const applied = await queue.run(
+        () => runtime.applyWorkflowAuthoring(
+          workflowUuid,
+          { candidate_hash: candidateHash }
+        )
+      )
+      installAggregate(
+        applied.authoring,
+        applied.apply_result.kind === 'graph'
+          ? `工作流已应用，当前版本为 ${applied.apply_result.workflow_revision}`
+          : '源码已应用，工作流图未发生变化'
+      )
+      return applied
+    } catch (applyError) {
+      if (!isAuthoringConflict(applyError)) throw applyError
+      let catalogRecovery: {
+        catalog: WorkflowActionCatalogSnapshot
+        localGraph: WorkflowAuthoringGraph
+      } | null = null
+      if (isTemplateCatalogConflict(applyError)) {
+        const refreshedCatalog = (
+          await refreshWorkflowCatalogsAfterConflict()
+        ).action
+        const currentGraph = localState.current.graph
+        if (currentGraph) {
+          catalogRecovery = {
+            catalog: refreshedCatalog,
+            localGraph: currentGraph
+          }
+        }
+      }
+      remotePending.current = true
+      const refreshed = await queue.run(
+        () => runtime.getWorkflowAuthoring(workflowUuid)
+      )
+      remotePending.current = false
+      installAggregate(refreshed, '预览已变化，已刷新最新工作流编辑状态')
+      if (catalogRecovery) {
+        const rehydrated = rehydrateTypedActionGraph(
+          catalogRecovery.catalog,
+          catalogRecovery.localGraph
+        )
+        setGraph(rehydrated)
+        setCanvasDirty(true)
+        localState.current = {
+          ...localState.current,
+          graph: rehydrated,
+          canvasDirty: true
+        }
+        setMessage(
+          '操作目录与工作流编辑数据已刷新；本地画布已按稳定 UUID 恢复'
+        )
+      }
+      throw applyError
+    }
+  }
+
+  /**
    * 应用服务器签发的工作流创作候选；若规范化源码尚未物化，则先打开完整差异确认。
    * 只有工作流源码与候选规范化源码完全一致时，才向 OS 提交候选哈希。
    *
@@ -1039,376 +973,164 @@ export function usePersistentWorkflowAuthoring({
     // 候选哈希是 OS 签发的单次应用身份，只能在源码物化门禁通过后提交。
     const candidateHash = candidate.candidate_hash
     void run(async () => {
-      try {
-        const applied = await queue.run(
-          () => runtime.applyWorkflowAuthoring(
-            workflowUuid,
-            { candidate_hash: candidateHash }
-          )
-        )
-        installAggregate(
-          applied.authoring,
-          applied.apply_result.kind === 'graph'
-            ? `工作流已应用，当前版本为 ${applied.apply_result.workflow_revision}`
-            : '源码已应用，工作流图未发生变化'
-        )
-      } catch (applyError) {
-        if (!isAuthoringConflict(applyError)) throw applyError
-        let catalogRecovery: {
-          catalog: WorkflowActionCatalogSnapshot
-          localGraph: WorkflowAuthoringGraph
-        } | null = null
-        if (isTemplateCatalogConflict(applyError)) {
-          const refreshedCatalog = (
-            await refreshWorkflowCatalogsAfterConflict()
-          ).action
-          const currentGraph = localState.current.graph
-          if (currentGraph) {
-            catalogRecovery = {
-              catalog: refreshedCatalog,
-              localGraph: currentGraph
-            }
-          }
-        }
-        remotePending.current = true
-        const refreshed = await queue.run(
-          () => runtime.getWorkflowAuthoring(workflowUuid)
-        )
-        remotePending.current = false
-        installAggregate(refreshed, '预览已变化，已刷新最新工作流编辑状态')
-        if (catalogRecovery) {
-          const rehydrated = rehydrateTypedActionGraph(
-            catalogRecovery.catalog,
-            catalogRecovery.localGraph
-          )
-          setGraph(rehydrated)
-          setCanvasDirty(true)
-          localState.current = {
-            ...localState.current,
-            graph: rehydrated,
-            canvasDirty: true
-          }
-          setMessage(
-            '操作目录与工作流编辑数据已刷新；本地画布已按稳定 UUID 恢复'
-          )
-        }
-        throw applyError
-      }
+      await applyCandidateByHash(candidateHash)
     })
-  }
-
-  const selectCanvasNode = (nodeUuid: string): void => {
-    if (selectedNodeNameDirty && nodeUuid !== selectedNodeUuid) {
-      setError('请先保存当前节点名称修改，再选择其他节点')
-      return
-    }
-    const node = graph?.nodes.find((item) => item.uuid === nodeUuid)
-    if (!node) return
-    setSelectedNodeUuid(nodeUuid)
-    setSelectedNodeName(String(node.name || ''))
-    setSelectedNodeNameDirty(false)
-    setActionParametersOpen(node.type !== 'material_source')
-    const sourceLine = taskPanel.codeSourceMap.find(
-      (entry) => entry.workflow_node_uuid === nodeUuid
-    )?.start_line
-    if (sourceLine) editor.revealLine(sourceLine)
   }
 
   const projectionKind = aggregate
     ? authoringProjection(aggregate).kind
     : null
   const diagnostics = aggregate?.draft?.diagnostics ?? []
-  const selectedGraphNode = graph?.nodes.find(
-    (node) => node.uuid === selectedNodeUuid
-  )
-  const selectedIsMaterialSource = selectedGraphNode?.type === 'material_source'
-  const selectedActionProjection = useMemo(() => {
-    if (
-      !actionCatalog ||
-      !graph ||
-      !selectedNodeUuid ||
-      selectedIsMaterialSource
-    ) {
-      return { editor: null, error: null }
-    }
-    try {
-      return {
-        editor: projectTypedActionEditor(
-          actionCatalog,
-          graph,
-          selectedNodeUuid,
-          diagnostics
-        ),
-        error: null
-      }
-    } catch (projectionError) {
-      return { editor: null, error: errorMessage(projectionError) }
-    }
-  }, [
+  const canvasNodeEditor = usePersistentWorkflowCanvasNodeEditor({
     actionCatalog,
+    codeSourceMap: taskPanel.codeSourceMap,
     diagnostics,
-    graph,
-    selectedIsMaterialSource,
-    selectedNodeUuid
-  ])
-  const selectedActionEditor = selectedActionProjection.editor
-  const selectedActionTemplate = actionCatalog?.actionTemplates.find(
-    (template) => template.uuid === selectedActionEditor?.templateUuid
-  ) ?? null
-  const selectedNodeIsInternal = graph?.nodes.some((node) =>
-    node.uuid === selectedNodeUuid &&
-    node.parent_uuid !== undefined &&
-    node.parent_uuid !== null
-  ) ?? false
-  const selectedMaterialSourceProjection = useMemo(() => {
-    if (
-      !effectiveMaterialSourceCatalog ||
-      !graph ||
-      !selectedNodeUuid ||
-      !selectedIsMaterialSource
-    ) return { editor: null, error: null }
-    try {
-      return {
-        editor: projectMaterialSourceEditor(
-          effectiveMaterialSourceCatalog,
-          graph,
-          selectedNodeUuid
-        ),
-        error: null
-      }
-    } catch (projectionError) {
-      return { editor: null, error: errorMessage(projectionError) }
-    }
-  }, [
-    graph,
     effectiveMaterialSourceCatalog,
-    selectedIsMaterialSource,
-    selectedNodeUuid
-  ])
-  const selectedMaterialSourceEditor = selectedMaterialSourceProjection.editor
+    graph,
+    materialSourceAuthorityBlocked,
+    materialSourceCatalog,
+    revealLine: editor.revealLine,
+    selectedNodeNameDirty,
+    selectedNodeUuid,
+    setActionParametersOpen,
+    setCanvasDirty,
+    setError,
+    setGraph,
+    setMessage,
+    setSelectedNodeName,
+    setSelectedNodeNameDirty,
+    setSelectedNodeUuid
+  })
 
-  const addTypedActionNode = (templateUuid: string): void => {
-    if (!actionCatalog || !graph) return
-    const template = actionCatalog.actionTemplates.find(
-      (item) => item.uuid === templateUuid
-    )
-    if (!template) return
-    const stem = template.name.replace(/[^A-Za-z0-9_]/g, '_') || 'action'
-    let name = stem
-    let suffix = 2
-    while (graph.nodes.some((item) => item.name === name)) {
-      name = `${stem}_${suffix}`
-      suffix += 1
-    }
-    try {
-      const next = createTypedActionNode(actionCatalog, graph, {
-        nodeUuid: globalThis.crypto.randomUUID(),
-        templateUuid,
-        name
-      })
-      setGraph(next)
-      setCanvasDirty(true)
-      setMessage('已从真实操作模板创建节点；保存前将生成完整 Python')
-    } catch (createError) {
-      setError(errorMessage(createError))
-    }
-  }
-
-  const addPublishedWorkflowNode = (templateUuid: string): void => {
-    if (!actionCatalog || !graph) return
-    const template = actionCatalog.workflowTemplates.find(
-      (item) => item.uuid === templateUuid
-    )
-    if (!template) return
-    const stem = template.source.symbol.replace(/[^A-Za-z0-9_]/g, '_') ||
-      'workflow'
-    let name = stem
-    let suffix = 2
-    while (graph.nodes.some((item) => item.name === name)) {
-      name = `${stem}_${suffix}`
-      suffix += 1
-    }
-    try {
-      const next = createPublishedWorkflowNode(actionCatalog, graph, {
-        nodeUuid: globalThis.crypto.randomUUID(),
-        templateUuid,
-        name
-      })
-      setGraph(next)
-      setCanvasDirty(true)
-      setMessage(
-        '已插入已发布工作流边界；内部展开与映射由 OS 生成'
-      )
-    } catch (createError) {
-      setError(errorMessage(createError))
-    }
-  }
-
-  const addMaterialSourceNode = (): void => {
-    if (
-      !effectiveMaterialSourceCatalog ||
-      !graph ||
-      materialSourceAuthorityBlocked
-    ) return
-    let name = 'material_source'
-    let suffix = 2
-    while (graph.nodes.some((item) => item.name === name)) {
-      name = `material_source_${suffix}`
-      suffix += 1
-    }
-    try {
-      const nodeUuid = globalThis.crypto.randomUUID()
-      const next = createMaterialSourceNode(effectiveMaterialSourceCatalog, graph, {
-        nodeUuid,
-        name
-      })
-      setGraph(next)
-      setCanvasDirty(true)
-      setSelectedNodeUuid(nodeUuid)
-      setSelectedNodeName(name)
-      setSelectedNodeNameDirty(false)
-      setMessage('已添加物料来源；请在属性面板中完成受控选择')
-    } catch (createError) {
-      setError(errorMessage(createError))
-    }
-  }
-
-  const updateMaterialSource = (
-    editorProjection: MaterialSourceEditorProjection,
-    patch: Partial<MaterialSourceSelectorUpdate>
-  ): void => {
-    if (
-      !effectiveMaterialSourceCatalog ||
-      !graph ||
-      !selectedNodeUuid ||
-      materialSourceAuthorityBlocked
-    ) return
-    const changingTemplate = patch.resourceTemplateUuid !== undefined &&
-      patch.resourceTemplateUuid !== editorProjection.resourceTemplateUuid
-    const changingMount = patch.mountUuid !== undefined &&
-      patch.mountUuid !== editorProjection.mountUuid
-    const next: MaterialSourceSelectorUpdate = {
-      mode: patch.mode ?? editorProjection.mode,
-      resourceTemplateUuid: patch.resourceTemplateUuid ??
-        editorProjection.resourceTemplateUuid,
-      mountUuid: patch.mountUuid ?? editorProjection.mountUuid,
-      fixedMaterialUuid: patch.fixedMaterialUuid !== undefined
-        ? patch.fixedMaterialUuid
-        : changingTemplate
-          ? null
-          : editorProjection.fixedMaterialUuid,
-      siteScope: patch.siteScope ?? (
-        changingTemplate || changingMount ? 'all' : editorProjection.siteScope
-      ),
-      fixedSiteUuid: patch.fixedSiteUuid !== undefined
-        ? patch.fixedSiteUuid
-        : changingTemplate || changingMount
-          ? null
-          : editorProjection.fixedSiteUuid,
-      candidateSiteUuids: patch.candidateSiteUuids ?? (
-        changingTemplate || changingMount
-          ? []
-          : editorProjection.candidateSiteUuids
-      ),
-      flowRole: patch.flowRole ?? editorProjection.flowRole
-    }
-    try {
-      const updated = updateMaterialSourceSelector(
-        effectiveMaterialSourceCatalog,
-        graph,
-        selectedNodeUuid,
-        next
-      )
-      setGraph(updated)
-      setCanvasDirty(true)
-      setError(null)
-      setMessage('物料来源选择已更新；保存前将生成完整 Python')
-    } catch (updateError) {
-      setError(errorMessage(updateError))
-    }
-  }
-  const updateTypedField = (handleUuid: string, value: unknown): void => {
-    if (!actionCatalog || !graph || !selectedNodeUuid) return
-    try {
-      const next = updateTypedActionLiteral(
-        actionCatalog,
-        graph,
-        selectedNodeUuid,
-        handleUuid,
-        value
-      )
-      setGraph(next)
-      setCanvasDirty(true)
-      setMessage('操作参数已更新；保存前将生成完整 Python')
-    } catch (updateError) {
-      setError(errorMessage(updateError))
-    }
-  }
-
-  const updateTypedFieldFromRaw = (
-    field: TypedActionFieldProjection,
-    raw: string
-  ): void => {
-    try {
-      updateTypedField(field.handleUuid, parseTypedFieldValue(field, raw))
-    } catch (parseError) {
-      setError(errorMessage(parseError))
-    }
-  }
-
-  const bindTypedFieldToWorkflowInput = (
-    handleUuid: string,
-    parameter: string
-  ): void => {
-    if (!actionCatalog || !graph || !selectedNodeUuid) return
-    try {
-      const next = bindTypedActionWorkflowInput(
-        actionCatalog,
-        graph,
-        selectedNodeUuid,
-        handleUuid,
-        parameter
-      )
-      setGraph(next)
-      setCanvasDirty(true)
-      setMessage('操作参数已绑定工作流入参；保存前将生成完整 Python')
-    } catch (bindingError) {
-      setError(errorMessage(bindingError))
-    }
-  }
-
-  const connectTypedHandles = (connection: {
-    sourceNodeUuid: string
-    sourceHandleUuid: string
-    targetNodeUuid: string
-    targetHandleUuid: string
-  }): void => {
-    if (!actionCatalog || !graph) return
-    try {
-      const sourceNode = graph.nodes.find(
-        (node) => node.uuid === connection.sourceNodeUuid
-      )
-      let next: WorkflowAuthoringGraph
-      if (sourceNode?.type === 'material_source') {
-        if (!materialSourceCatalog) {
-          throw new Error('物料来源目录尚未就绪')
+  const workflowStart = usePersistentWorkflowStartFlow({
+    context: {
+      aggregate,
+      dirty,
+      blockedReason: materialSourceAuthorityBlocked
+        ? '物料来源目录或引用已失效，请先刷新'
+        : null,
+      editMode: mode
+    },
+    hasRemoteInvalidation: () => remotePending.current,
+    commands: {
+      /**
+       * 保存当前可写工作流源码（Workflow Source），或为画布生成完整差异。
+       *
+       * @returns 已保存权威聚合，或等待用户确认的完整源码差异。
+       */
+      saveDraft: async () => {
+        if (!aggregate) throw new Error('工作流编辑数据尚未就绪')
+        if (mode === 'code') {
+          try {
+            const saved = await queue.run(
+              () => runtime.saveWorkflowAuthoringDraft(
+                workflowUuid,
+                {
+                  python_source: editor.value,
+                  expected_draft_hash: aggregate.draft?.draft_hash ?? null,
+                  expected_workflow_revision: aggregate.workflow_revision
+                }
+              )
+            )
+            remotePending.current = false
+            installAggregate(saved, draftSaveMessage(saved))
+            return { kind: 'saved' as const, aggregate: saved, editMode: mode }
+          } catch (saveError) {
+            if (!isAuthoringConflict(saveError)) throw saveError
+            remotePending.current = true
+            await readRemoteConflict()
+            throw saveError
+          }
         }
-        next = connectMaterialSourceToTypedActionEdge(
-          actionCatalog,
-          materialSourceCatalog,
-          graph,
-          connection
-        )
-      } else {
-        next = connectTypedActionEdge(actionCatalog, graph, connection)
+        if (!graph) throw new Error('当前画布数据尚未就绪')
+        const sourceGraph = selectedNodeNameDirty && selectedNodeUuid
+          ? updatePersistentAuthoringNodeName(
+              graph,
+              selectedNodeUuid,
+              selectedNodeName
+            )
+          : graph
+        if (sourceGraph !== graph) {
+          setGraph(sourceGraph)
+          setCanvasDirty(true)
+          setSelectedNodeNameDirty(false)
+        }
+        const generated = await generateCanvasPython(sourceGraph)
+        const generatedPython = generated.normalized_python_source
+        if (!generatedPython) throw new Error('OS 未返回完整规范化 Python')
+        return {
+          kind: 'review' as const,
+          review: {
+            before: authoritativePython(aggregate),
+            after: generatedPython,
+            expectedDraftHash: aggregate.draft?.draft_hash ?? null,
+            expectedWorkflowRevision: aggregate.workflow_revision,
+            reason: 'canvas_save' as const,
+            resumeMode: 'canvas' as const
+          }
+        }
+      },
+
+      /**
+       * 使用用户接受的完整源码与双 CAS 坐标保存工作流源码（Workflow Source）。
+       *
+       * @param command 状态机冻结的源码、修订和恢复模式。
+       * @returns 保存后的权威聚合与恢复编辑模式。
+       */
+      saveReviewedSource: async (command) => {
+        try {
+          const saved = await queue.run(
+            () => runtime.saveWorkflowAuthoringDraft(
+              workflowUuid,
+              {
+                python_source: command.pythonSource,
+                expected_draft_hash: command.expectedDraftHash,
+                expected_workflow_revision: command.expectedWorkflowRevision
+              }
+            )
+          )
+          remotePending.current = false
+          setFullSourceDiff(null)
+          installAggregate(saved, draftSaveMessage(saved))
+          if (command.reason === 'source_normalization') {
+            setPendingPythonImport(null)
+          }
+          setMode(command.resumeMode)
+          return { aggregate: saved, editMode: command.resumeMode }
+        } catch (saveError) {
+          if (!isAuthoringConflict(saveError)) throw saveError
+          remotePending.current = true
+          const refreshed = await queue.run(
+            () => runtime.getWorkflowAuthoring(workflowUuid)
+          )
+          setFullSourceDiff({
+            before: authoritativePython(refreshed),
+            after: command.pythonSource,
+            expectedDraftHash: refreshed.draft?.draft_hash ?? null,
+            expectedWorkflowRevision: refreshed.workflow_revision,
+            reason: 'conflict_retry',
+            resumeMode: command.resumeMode,
+            applyAfterSave: false
+          })
+          setMessage(
+            '运行前检测到外部修改；本地完整源码已保留，请比较后明确处理'
+          )
+          throw saveError
+        }
+      },
+      applyCandidate: applyCandidateByHash,
+      readApplied: () => queue.run(
+        () => runtime.getWorkflowAuthoring(workflowUuid)
+      ),
+      openTaskInput: taskPanel.openTaskInputFormForAuthority,
+      resolveRemoteConflict: () => {
+        void run(readRemoteConflict)
       }
-      setGraph(next)
-      setCanvasDirty(true)
-      setMessage('已使用真实端口创建连线；保存前将生成完整 Python')
-    } catch (connectError) {
-      setError(errorMessage(connectError))
-    }
-  }
+    },
+    setFullSourceDiff,
+    setMessage,
+    setError
+  })
 
   const appliedIo = aggregate
     ? workflowIoMetadata(aggregate.applied_graph)
@@ -1417,27 +1139,25 @@ export function usePersistentWorkflowAuthoring({
 
   return {
     acceptFullSourceDiff, actionCatalog, actionParametersOpen,
-    addMaterialSourceNode, addPublishedWorkflowNode, addTypedActionNode,
     adoptRemoteConflict, aggregate, appliedIo,
-    applyCandidate, beautifyCanvasLayout, bindTypedFieldToWorkflowInput,
-    busy, candidateIo, codeProjection, connectTypedHandles, diagnostics,
+    applyCandidate, beautifyCanvasLayout,
+    busy, cancelFullSourceDiff, candidateIo, codeProjection,
+    diagnostics,
     dirty, discardAndSwitch, editor, effectiveMaterialSourceCatalog, error,
     fileUpload, fullSourceDiff, graph, jsonProjectionEditor,
     materialSourceAuthorityBlocked, materialSourceCatalogError,
     materialSourceCatalogLoading, materialTraces, message, mode,
     nodePaletteOpen, onChooseWorkflow, pendingMode, policy, projectionKind,
     refreshMaterialSourceCatalog, remoteConflict, requestMode,
-    retryLocalAfterConflict, runtime, saveDraft, selectCanvasNode,
-    selectedActionEditor,
-    selectedActionProjection, selectedActionTemplate, selectedIsMaterialSource,
-    selectedMaterialSourceEditor, selectedMaterialSourceProjection,
-    selectedNodeIsInternal, selectedNodeName, selectedNodeUuid,
+    retryLocalAfterConflict, runtime, saveDraft,
+    selectedNodeName, selectedNodeUuid,
     setActionParametersOpen, setCanvasDirty, setCodeProjection, setError,
     setFullSourceDiff, setGraph, setMessage, setNodePaletteOpen,
     setPendingMode, setRemoteConflict, setSelectedNodeName,
     setSelectedNodeNameDirty, setSelectedNodeUuid, setWorkflowIoOpen, structure,
-    traceRuntime, updateMaterialSource, updateTypedField,
-    updateTypedFieldFromRaw, workflowIoOpen, workflowUuid,
-    ...taskPanel
+    traceRuntime, workflowIoOpen, workflowUuid,
+    ...canvasNodeEditor,
+    ...taskPanel,
+    ...workflowStart
   }
 }

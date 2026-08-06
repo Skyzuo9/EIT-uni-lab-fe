@@ -277,6 +277,41 @@ export function usePersistentWorkflowTaskPanel({
     )
   }
 
+  /**
+   * 使用精确补读的已应用工作流图（Applied Workflow Graph）建立任务输入。
+   *
+   * @param authority 与应用结果修订一致的工作流创作权威聚合。
+   * @returns 输入表单与物料占位符（ResourceSlot）选项加载完成后的 Promise。
+   */
+  const openTaskInputFormForAuthority = useCallback(async (
+    authority: WorkflowAuthoringAggregate
+  ): Promise<void> => {
+    setTaskInputProblem(null)
+    if (!hasRunnableAppliedWorkflow(authority)) {
+      throw new Error('已应用版本不包含可执行节点，不能创建工作流任务')
+    }
+    const nextForm = createWorkflowTaskInputForm(authority)
+    setTaskInputAuthority(authority)
+    setTaskInputForm(nextForm)
+    setResourceSlotOptions(undefined)
+    if (nextForm.fields.some(({ descriptor }) =>
+      containsResourceSlotInput(descriptor.schema)
+    )) {
+      setResourceSlotOptions(
+        await loadWorkflowResourceSlotOptions(resourceSlotOptionsPort)
+      )
+    }
+    setMessage(
+      `本次运行使用已应用版本 ${authority.workflow_revision}；` +
+      '未填写且没有默认值的字段将保持省略'
+    )
+  }, [resourceSlotOptionsPort, setMessage])
+
+  /**
+   * 从操作系统（OS）补读最新工作流创作权威后打开任务输入。
+   *
+   * @returns 无返回值；读取或投影失败时通过界面错误呈现。
+   */
   const openTaskInputForm = (): void => {
     setTaskInputProblem(null)
     if (!hasRunnableAppliedWorkflow(aggregate)) {
@@ -288,31 +323,31 @@ export function usePersistentWorkflowTaskPanel({
         const latest = await queue.run(
           () => runtime.getWorkflowAuthoring(workflowUuid)
         )
-        if (!hasRunnableAppliedWorkflow(latest)) {
-          throw new Error(
-            '当前工作流候选尚未应用；已应用版本不包含可执行节点'
-          )
-        }
-        const nextForm = createWorkflowTaskInputForm(latest)
-        setTaskInputAuthority(latest)
-        setTaskInputForm(nextForm)
-        setResourceSlotOptions(undefined)
-        if (nextForm.fields.some(({ descriptor }) =>
-          containsResourceSlotInput(descriptor.schema)
-        )) {
-          setResourceSlotOptions(
-            await loadWorkflowResourceSlotOptions(resourceSlotOptionsPort)
-          )
-        }
-        setMessage(
-          `本次运行使用已应用版本 ${latest.workflow_revision}；` +
-          '未填写且没有默认值的字段将保持省略'
-        )
+        await openTaskInputFormForAuthority(latest)
       } catch (openError) {
         setError(errorMessage(openError))
         throw openError
       }
     })
+  }
+
+  /**
+   * 关闭任务输入，但不回滚已应用工作流图（Applied Workflow Graph）。
+   *
+   * @returns 无返回值；不会创建工作流任务（WorkflowTask）或发送设备动作。
+   */
+  const closeTaskInputForm = (): void => {
+    if (runtimeBusy) return
+    const retainedRevision = taskInputAuthority?.workflow_revision
+    setTaskInputAuthority(null)
+    setTaskInputForm(null)
+    setTaskInputProblem(null)
+    setResourceSlotOptions(undefined)
+    if (retainedRevision !== undefined) {
+      setMessage(
+        `已取消本次运行；已应用版本 ${retainedRevision} 保持不变，未创建任务`
+      )
+    }
   }
 
   const updateTaskInput = (
@@ -369,7 +404,9 @@ export function usePersistentWorkflowTaskPanel({
     completedTaskJobCount,
     debugBreakpoints,
     debugExecutionScope,
+    closeTaskInputForm,
     openTaskInputForm,
+    openTaskInputFormForAuthority,
     outputExpanded,
     outputTab,
     resourceSlotOptions,
