@@ -121,6 +121,12 @@ export function isSameAuthoringVersion(
       (right.candidate?.candidate_hash ?? null)
 }
 
+/**
+ * 判断工作流创作（Workflow Authoring）保存失败是否需要补读远端版本。
+ *
+ * @param value 服务层返回的未信任错误。
+ * @returns 仅当错误码表示并发版本冲突时返回 true。
+ */
 export function isAuthoringConflict(value: unknown): boolean {
   if (!value || typeof value !== 'object') return false
   const error = value as { code?: unknown }
@@ -131,6 +137,28 @@ export function isAuthoringConflict(value: unknown): boolean {
     'candidate_hash_conflict',
     'template_catalog_conflict'
   ].includes(String(error.code || ''))
+}
+
+export type AuthoringSaveFailureAction =
+  | 'close_diff_and_report'
+  | 'read_remote_conflict'
+  | 'report'
+
+/**
+ * 决定工作流源码（Workflow Source）保存失败后的前端动作。
+ *
+ * @param value 服务层返回的未信任错误。
+ * @returns 身份拒绝关闭差异并报告；并发冲突补读远端；其他错误直接报告。
+ */
+export function authoringSaveFailureAction(
+  value: unknown
+): AuthoringSaveFailureAction {
+  if (!value || typeof value !== 'object') return 'report'
+  const code = String((value as { code?: unknown }).code || '')
+  if (code === 'workflow_identity_mismatch') {
+    return 'close_diff_and_report'
+  }
+  return isAuthoringConflict(value) ? 'read_remote_conflict' : 'report'
 }
 
 export function isTemplateCatalogConflict(value: unknown): boolean {

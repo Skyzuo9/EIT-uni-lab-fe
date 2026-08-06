@@ -43,6 +43,7 @@ import {
   AuthoringOperationQueue,
   applyMaterializedWorkflowCandidate,
   authoringProjection,
+  authoringSaveFailureAction,
   authoringStateMessage,
   catalogConflictDecision,
   draftSaveMessage,
@@ -781,6 +782,11 @@ export function usePersistentWorkflowAuthoring({
     })
   }
 
+  /**
+   * 接受完整工作流源码（Workflow Source）差异并执行一次保存或应用。
+   *
+   * @returns 无返回值；异步失败由统一运行包装器转为用户可见错误。
+   */
   const acceptFullSourceDiff = (): void => {
     if (!fullSourceDiff || busy) return
     if (workflowStart.acceptWorkflowStartReview()) return
@@ -834,7 +840,12 @@ export function usePersistentWorkflowAuthoring({
         }
         setMode(diff.resumeMode)
       } catch (saveError) {
-        if (!isAuthoringConflict(saveError)) throw saveError
+        const failureAction = authoringSaveFailureAction(saveError)
+        if (failureAction === 'close_diff_and_report') {
+          setFullSourceDiff(null)
+          throw saveError
+        }
+        if (failureAction === 'report') throw saveError
         setFullSourceDiff(null)
         remotePending.current = true
         await readRemoteConflict()

@@ -17,24 +17,71 @@ export function strictAuthoringData<Value>(raw: unknown): Value {
     throw invalidAuthoringResponse()
   }
   const envelope = raw as Record<string, unknown>
-  if (envelope.code !== 0) {
-    if (!Number.isInteger(envelope.code)) throw invalidAuthoringResponse()
-    const problem = authoringRecord(envelope.error)
-    if (typeof problem.msg !== 'string' || !problem.msg) {
-      throw invalidAuthoringResponse()
-    }
-    throw new ServiceError({
-      code: typeof problem.code === 'string' && problem.code
-        ? problem.code
-        : envelope.code === 3003 ? 'conflict' : 'API_REQUEST_REJECTED',
-      message: problem.msg,
-      retryable: false
-    })
-  }
-  if (!Object.prototype.hasOwnProperty.call(envelope, 'data')) {
+  if (!Number.isInteger(envelope.code)) {
     throw invalidAuthoringResponse()
   }
+  if (envelope.code !== 0) throw authoringEnvelopeError(envelope)
+  if (
+    !Object.prototype.hasOwnProperty.call(envelope, 'data') ||
+    Object.prototype.hasOwnProperty.call(envelope, 'error')
+  ) throw invalidAuthoringResponse()
   return envelope.data as Value
+}
+
+/**
+ * 将产品 Edge 的工作流创作（Workflow Authoring）错误封装转换为稳定服务错误。
+ *
+ * @param envelope 已确认携带非零整数业务码的响应封装。
+ * @returns 保留窄错误码、可行动消息和等价 HTTP 状态的服务错误。
+ * @throws 响应同时携带成功数据或缺少错误对象时抛无效响应错误。
+ */
+function authoringEnvelopeError(
+  envelope: Record<string, unknown>
+): ServiceError {
+  if (Object.prototype.hasOwnProperty.call(envelope, 'data')) {
+    throw invalidAuthoringResponse()
+  }
+  const error = authoringRecord(envelope.error)
+  const businessCode = envelope.code as number
+  const narrowCode = nonEmptyAuthoringString(error.code)
+  const message = nonEmptyAuthoringString(error.message) ||
+    nonEmptyAuthoringString(error.msg) ||
+    nonEmptyAuthoringString(envelope.message) ||
+    `工作流编辑操作失败（业务码 ${businessCode}）`
+  return new ServiceError({
+    code: narrowCode || (
+      businessCode === 3003
+        ? 'conflict'
+        : 'API_REQUEST_REJECTED'
+    ),
+    message,
+    status: authoringBusinessStatus(businessCode),
+    retryable: false
+  })
+}
+
+/**
+ * 将产品 Edge 业务码映射为等价 HTTP 状态，供统一错误交互判断。
+ *
+ * @param businessCode 产品 Edge 返回的整数业务码。
+ * @returns 已知业务码的等价 HTTP 状态；未知业务码不伪造状态。
+ */
+function authoringBusinessStatus(businessCode: number): number | undefined {
+  if (businessCode === 1000) return 400
+  if (businessCode === 3002) return 404
+  if (businessCode === 3003) return 409
+  if (businessCode === 5001) return 503
+  return undefined
+}
+
+/**
+ * 读取错误封装中的非空字符串字段。
+ *
+ * @param value 未信任的响应字段。
+ * @returns 去除首尾空白后的非空字符串；其他值返回空字符串。
+ */
+function nonEmptyAuthoringString(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : ''
 }
 
 /** 校验并返回持久工作流创作聚合（Workflow Authoring Aggregate）。 */

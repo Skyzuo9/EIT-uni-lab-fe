@@ -8,6 +8,7 @@ import type {
 import {
   AuthoringOperationQueue,
   applyMaterializedWorkflowCandidate,
+  authoringSaveFailureAction,
   authoringProjection,
   authoringStateMessage,
   diagnosticRange,
@@ -17,6 +18,26 @@ import {
   isSameAuthoringVersion,
   isCurrentAuthoringInvalidation
 } from './persistentAuthoringSession'
+
+/**
+ * 证明工作流身份不一致会终止差异重试，而普通并发冲突仍补读远端状态。
+ *
+ * @returns 无返回值；断言两类失败进入互斥的前端处理动作。
+ */
+function classifiesIdentityMismatchAsNonRetryable(): void {
+  expect(authoringSaveFailureAction({
+    code: 'workflow_identity_mismatch'
+  })).toBe('close_diff_and_report')
+  expect(authoringSaveFailureAction({
+    code: 'draft_hash_conflict'
+  })).toBe('read_remote_conflict')
+  expect(authoringSaveFailureAction({
+    code: 'conflict'
+  })).toBe('read_remote_conflict')
+  expect(authoringSaveFailureAction({
+    code: 'HTTP_REQUEST_FAILED'
+  })).toBe('report')
+}
 
 const aggregate = (overrides: Partial<WorkflowAuthoringAggregate> = {}):
 WorkflowAuthoringAggregate => ({
@@ -48,6 +69,8 @@ WorkflowAuthoringAggregate => ({
 })
 
 describe('persistent Authoring session coordination', () => {
+  it('工作流身份拒绝不会重复提交已接受差异', classifiesIdentityMismatchAsNonRetryable)
+
   it('applies the fresh Candidate issued after normalized source is saved', async () => {
     const calls: string[] = []
     const saved = aggregate({
