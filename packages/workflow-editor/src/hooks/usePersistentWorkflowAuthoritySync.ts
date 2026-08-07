@@ -14,7 +14,6 @@ import {
 
 import {
   authoringProjection,
-  authoringRemoteConflict,
   authoringStateMessage,
   isAuthoringSnapshotDirty,
   isCurrentAuthoringInvalidation,
@@ -210,10 +209,9 @@ export function usePersistentWorkflowAuthoritySync({
               continue
             }
             if (isAuthoringSnapshotDirty(current)) {
-              remotePending.current = true
-              setRemoteConflict(authoringRemoteConflict(next, current))
-              setMessage('检测到外部修改；本地内容已保留，请比较后明确处理')
-              return
+              // 本地未保存内容优先：忽略远端变更提示，保存时以当前编辑器覆盖。
+              remotePending.current = false
+              continue
             }
             remotePending.current = false
             installAggregate(next, '已同步外部修改')
@@ -291,9 +289,10 @@ export function usePersistentWorkflowAuthoritySync({
       installAggregate(remote, '已同步远端工作流编辑状态')
       return
     }
-    remotePending.current = true
-    setRemoteConflict(authoringRemoteConflict(remote, current))
-    setMessage('远端状态已补读；本地内容保持不变，请比较后明确处理')
+    // 有本地修改时仍以当前编辑器为准，不弹出远端冲突对话框。
+    remotePending.current = false
+    setRemoteConflict(null)
+    setMessage('检测到远端变化；已忽略，保存时将以当前内容覆盖')
   }, [
     installAggregate,
     localState,
