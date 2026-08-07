@@ -85,7 +85,9 @@ describe('Published Workflow Catalog in the Authoring module', () => {
     const source = readFileSync(dagPath, 'utf8')
     const toggle = functionBody(source, 'const toggleGroup')
 
-    expect(source).toContain('projectNestedWorkflow(nodes, links, expandedGroupIds)')
+    expect(source).toMatch(
+      /projectNestedWorkflow\([\s\S]*?materialRoleProjection\.nodes,[\s\S]*?materialRoleProjection\.links,[\s\S]*?expandedGroupIds/
+    )
     expect(source).toMatch(
       /groupSignature[\s\S]*?node\.compositeSignature/
     )

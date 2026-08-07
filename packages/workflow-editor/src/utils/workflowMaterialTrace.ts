@@ -27,7 +27,20 @@ export interface WorkflowMaterialLineage {
   sourceNodeUuid: string
   sourceNodeName: string
   sourceHandleName: string
+  materialRole: string
   accent: string
+}
+
+export interface WorkflowMaterialRoleOption {
+  value: string
+  label: string
+  accent: string
+  lineageCount: number
+}
+
+export interface WorkflowMaterialRoleProjection {
+  nodes: WorkflowNode[]
+  links: WorkflowLink[]
 }
 
 interface MaterialEdge {
@@ -38,24 +51,108 @@ interface MaterialEdge {
   targetHandle: WorkflowHandlePort
 }
 
-const MATERIAL_TRACE_ACCENTS = [
-  '#6657c7',
-  '#8056a8',
-  '#4f69b8',
-  '#785aa6',
-  '#5364a3',
-  '#6d5a9d',
-  '#465fa8',
-  '#7451a1'
-] as const
-
 export function materialTraceAccent(identity: string): string {
   let hash = 2166136261
   for (let index = 0; index < identity.length; index += 1) {
     hash ^= identity.charCodeAt(index)
     hash = Math.imul(hash, 16777619)
   }
-  return MATERIAL_TRACE_ACCENTS[(hash >>> 0) % MATERIAL_TRACE_ACCENTS.length]
+  const unsigned = hash >>> 0
+  return hslToHex(
+    unsigned % 360,
+    62 + ((unsigned >>> 9) % 15),
+    43 + ((unsigned >>> 17) % 10)
+  )
+}
+
+/** 返回物料角色的稳定中文标签；未知角色保留原值以支持 OS 扩展。 */
+export function workflowMaterialRoleLabel(materialRole: string): string {
+  return {
+    primary_sample: '主样品',
+    aliquot_sample: '分装样品',
+    reagent: '试剂',
+    consumable: '耗材',
+    derived: '过程产物',
+    unclassified: '未分类'
+  }[materialRole] || materialRole
+}
+
+/**
+ * 汇总当前图实际出现的物料角色，并保留每个角色首条谱系的色标作为筛选提示。
+ */
+export function workflowMaterialRoleOptions(
+  projection: WorkflowMaterialTraceProjection
+): WorkflowMaterialRoleOption[] {
+  const options = new Map<string, WorkflowMaterialRoleOption>()
+  for (const lineage of projection.lineages) {
+    const current = options.get(lineage.materialRole)
+    options.set(lineage.materialRole, current
+      ? { ...current, lineageCount: current.lineageCount + 1 }
+      : {
+          value: lineage.materialRole,
+          label: workflowMaterialRoleLabel(lineage.materialRole),
+          accent: lineage.accent,
+          lineageCount: 1
+        })
+  }
+  return [...options.values()]
+}
+
+/**
+ * 只保留承载指定物料角色的节点、该角色的物料边，以及可见节点之间的结构边。
+ * 过滤仅作用于画布投影，不修改 OS 权威工作流图。
+ */
+export function filterWorkflowByMaterialRole(
+  nodes: readonly WorkflowNode[],
+  links: readonly WorkflowLink[],
+  materialRole: string | null,
+  projection = projectMaterialTraces(nodes, links)
+): WorkflowMaterialRoleProjection {
+  if (!materialRole) return { nodes: [...nodes], links: [...links] }
+  const lineageKeys = new Set(
+    projection.lineages
+      .filter((lineage) => lineage.materialRole === materialRole)
+      .map((lineage) => lineage.key)
+  )
+  if (lineageKeys.size === 0) return { nodes: [], links: [] }
+
+  const visibleNodeIds = new Set<string>()
+  for (const lineage of projection.lineages) {
+    if (lineageKeys.has(lineage.key)) {
+      visibleNodeIds.add(lineage.sourceNodeUuid)
+    }
+  }
+  for (const [nodeUuid, handles] of projection.handleLineagesByNode) {
+    if ([...handles.values()].some((key) => lineageKeys.has(key))) {
+      visibleNodeIds.add(nodeUuid)
+    }
+  }
+  links.forEach((link, index) => {
+    const lineageKey = projection.edgeLineages.get(index)
+    if (!lineageKey || !lineageKeys.has(lineageKey)) return
+    visibleNodeIds.add(link.source)
+    visibleNodeIds.add(link.target)
+  })
+
+  const nodeById = new Map(nodes.map((node) => [node.id, node]))
+  for (const nodeUuid of [...visibleNodeIds]) {
+    let parentUuid = nodeById.get(nodeUuid)?.parentGroupId
+    while (parentUuid) {
+      if (visibleNodeIds.has(parentUuid)) break
+      visibleNodeIds.add(parentUuid)
+      parentUuid = nodeById.get(parentUuid)?.parentGroupId
+    }
+  }
+
+  return {
+    nodes: nodes.filter((node) => visibleNodeIds.has(node.id)),
+    links: links.filter((link, index) => {
+      const lineageKey = projection.edgeLineages.get(index)
+      return lineageKey
+        ? lineageKeys.has(lineageKey)
+        : visibleNodeIds.has(link.source) && visibleNodeIds.has(link.target)
+    })
+  }
 }
 
 /**
@@ -123,18 +220,11 @@ export function projectMaterialTraces(
   const accentFor = (lineageKey: string): string => {
     const existing = accentsByLineage.get(lineageKey)
     if (existing) return existing
-    const preferred = materialTraceAccent(lineageKey)
-    const start = MATERIAL_TRACE_ACCENTS.findIndex(
-      (accent) => accent === preferred
-    )
-    let accent = preferred
-    for (let offset = 0; offset < MATERIAL_TRACE_ACCENTS.length; offset += 1) {
-      const candidate = MATERIAL_TRACE_ACCENTS[
-        (start + offset) % MATERIAL_TRACE_ACCENTS.length
-      ]
-      if (usedAccents.has(candidate)) continue
-      accent = candidate
-      break
+    let accent = materialTraceAccent(lineageKey)
+    let offset = 1
+    while (usedAccents.has(accent)) {
+      accent = materialTraceAccent(`${lineageKey}#${offset}`)
+      offset += 1
     }
     accentsByLineage.set(lineageKey, accent)
     usedAccents.add(accent)
@@ -326,8 +416,34 @@ function rootLineage(
     sourceNodeUuid: node.id,
     sourceNodeName: node.name,
     sourceHandleName: handle.displayName || handle.handleKey,
+    materialRole: materialSource
+      ? node.materialSource?.flowRole || 'unclassified'
+      : 'derived',
     accent: accentFor(key),
   }
+}
+
+function hslToHex(hue: number, saturation: number, lightness: number): string {
+  const saturationRatio = saturation / 100
+  const lightnessRatio = lightness / 100
+  const chroma = (1 - Math.abs(2 * lightnessRatio - 1)) * saturationRatio
+  const segment = hue / 60
+  const secondary = chroma * (1 - Math.abs((segment % 2) - 1))
+  const [red, green, blue] = segment < 1
+    ? [chroma, secondary, 0]
+    : segment < 2
+      ? [secondary, chroma, 0]
+      : segment < 3
+        ? [0, chroma, secondary]
+        : segment < 4
+          ? [0, secondary, chroma]
+          : segment < 5
+            ? [secondary, 0, chroma]
+            : [chroma, 0, secondary]
+  const match = lightnessRatio - chroma / 2
+  return `#${[red, green, blue].map((channel) =>
+    Math.round((channel + match) * 255).toString(16).padStart(2, '0')
+  ).join('')}`
 }
 
 /**

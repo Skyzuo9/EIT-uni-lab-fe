@@ -14,6 +14,7 @@ export interface LabInteractionState {
   activeWorkflowRuntimeGeneration: number
   activeWorkflowMaterialTransferRoutes:
     readonly WorkflowMaterialTransferRoute[]
+  activeWorkflowMaterialRoleFilter: string | null
   selectedWorkflowStepId: string | null
   selectMaterials: (materialIds: readonly string[]) => void
   highlightMaterials: (materialIds: readonly string[]) => void
@@ -28,6 +29,10 @@ export interface LabInteractionState {
     panelId: string,
     workflowStepId: string | null
   ) => void
+  setWorkflowMaterialRoleFilter: (
+    panelId: string,
+    materialRole: string | null
+  ) => void
   clearInteraction: () => void
 }
 
@@ -41,6 +46,7 @@ const EMPTY_INTERACTION = {
   activeWorkflowRuntimeGeneration: 0,
   activeWorkflowMaterialTransferRoutes:
     [] as readonly WorkflowMaterialTransferRoute[],
+  activeWorkflowMaterialRoleFilter: null,
   selectedWorkflowStepId: null
 }
 
@@ -82,6 +88,7 @@ export function createLabInteractionStore(): StoreApi<LabInteractionState> {
         activeWorkflowTaskId: null,
         activeWorkflowRuntimeGeneration: 0,
         activeWorkflowMaterialTransferRoutes: [],
+        activeWorkflowMaterialRoleFilter: null,
         selectedWorkflowStepId: null
       })
     },
@@ -94,6 +101,7 @@ export function createLabInteractionStore(): StoreApi<LabInteractionState> {
         activeWorkflowTaskId: null,
         activeWorkflowRuntimeGeneration: 0,
         activeWorkflowMaterialTransferRoutes: [],
+        activeWorkflowMaterialRoleFilter: null,
         selectedWorkflowStepId: null
       })
     },
@@ -104,6 +112,7 @@ export function createLabInteractionStore(): StoreApi<LabInteractionState> {
     ) => {
       const current = get()
       if (current.activeWorkflowPanelId !== panelId) return
+      if (current.activeWorkflowId !== projection.workflowUuid) return
       const activeWorkflowTaskId = projection.taskUuid
       const activeWorkflowRuntimeGeneration = projection.generation
       if (
@@ -124,6 +133,18 @@ export function createLabInteractionStore(): StoreApi<LabInteractionState> {
       if (get().activeWorkflowPanelId !== panelId) return
       if (get().selectedWorkflowStepId === selectedWorkflowStepId) return
       set({ selectedWorkflowStepId })
+    },
+    /** 发布当前工作流面板的物料角色筛选意图，并拒绝非所有者面板更新。 */
+    setWorkflowMaterialRoleFilter: (
+      panelId,
+      activeWorkflowMaterialRoleFilter
+    ) => {
+      if (get().activeWorkflowPanelId !== panelId) return
+      if (
+        get().activeWorkflowMaterialRoleFilter ===
+          activeWorkflowMaterialRoleFilter
+      ) return
+      set({ activeWorkflowMaterialRoleFilter })
     },
     clearInteraction: () => set(EMPTY_INTERACTION)
   }))

@@ -18,8 +18,18 @@ export interface LabViewOptions {
   showMaterialTransfers: boolean
 }
 
+export interface LabMaterialRoleFilterOption {
+  value: string
+  label: string
+  accent: string
+  lineageCount: number
+}
+
 export interface UnifiedLabViewportProps {
   renderView: (mode: LabViewMode, options: LabViewOptions) => ReactNode
+  materialRoleFilter?: string | null
+  materialRoleOptions?: readonly LabMaterialRoleFilterOption[]
+  onMaterialRoleFilterChange?: (materialRole: string | null) => void
 }
 
 /**
@@ -28,7 +38,10 @@ export interface UnifiedLabViewportProps {
  * Pascal/WebGL tree stays mounted underneath.
  */
 export function UnifiedLabViewport({
-  renderView
+  renderView,
+  materialRoleFilter = null,
+  materialRoleOptions = [],
+  onMaterialRoleFilterChange
 }: UnifiedLabViewportProps): React.JSX.Element {
   const [mode, setMode] = useState<LabViewMode>(readStoredMode)
   const [showSites, setShowSites] = useState(readStoredSiteLayer)
@@ -134,8 +147,63 @@ export function UnifiedLabViewport({
             <i aria-hidden="true" />
           </button>
         </div>
+        {materialRoleOptions.length > 0 && onMaterialRoleFilterChange && (
+          <details className="lab-material-role-filter">
+            <summary aria-label={`按物料角色筛选：${
+              materialRoleOptions.find((option) =>
+                option.value === materialRoleFilter
+              )?.label ?? '全部'
+            }`}>
+              <FilterIcon />
+              <span>
+                {materialRoleOptions.find((option) =>
+                  option.value === materialRoleFilter
+                )?.label ?? '全部物料'}
+              </span>
+            </summary>
+            <div role="radiogroup" aria-label="物料画布角色">
+              <button
+                type="button"
+                role="radio"
+                aria-checked={!materialRoleFilter}
+                className={!materialRoleFilter ? 'is-active' : undefined}
+                onClick={() => onMaterialRoleFilterChange(null)}
+              >
+                <i className="is-all" aria-hidden="true" />
+                <span>全部物料</span>
+              </button>
+              {materialRoleOptions.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={materialRoleFilter === option.value}
+                  className={materialRoleFilter === option.value
+                    ? 'is-active'
+                    : undefined}
+                  onClick={() => onMaterialRoleFilterChange(option.value)}
+                >
+                  <i
+                    aria-hidden="true"
+                    style={{ backgroundColor: option.accent }}
+                  />
+                  <span>{option.label}</span>
+                  <small>{option.lineageCount}</small>
+                </button>
+              ))}
+            </div>
+          </details>
+        )}
       </div>
     </div>
+  )
+}
+
+function FilterIcon(): React.JSX.Element {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 20 20">
+      <path d="M3 4h14l-5.4 6.2v4.4l-3.2 1.8v-6.2L3 4Z" />
+    </svg>
   )
 }
 

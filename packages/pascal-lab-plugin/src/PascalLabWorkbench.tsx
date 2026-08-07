@@ -5,7 +5,8 @@ import {
 } from '@unilab/pascal-host'
 import {
   MaterialCanvas,
-  MaterialObliqueCanvas
+  MaterialObliqueCanvas,
+  type MaterialTransferOverlayRoute
 } from '@unilab/material'
 import type {
   MaterialAggregate,
@@ -35,6 +36,7 @@ import {
   isLabTableNode
 } from './schema'
 import type { SceneCameraView } from './sceneCameraRequest'
+import { pascalPoseToLab } from './units'
 
 export interface PascalLabWorkbenchProps {
   aggregates: readonly MaterialAggregate[]
@@ -113,6 +115,24 @@ export function PascalLabWorkbench({
   const transferRouteCount = transferLayer?.routes.length ?? 0
   const unresolvedTransferRouteCount =
     transferLayer?.unresolvedRouteIds.length ?? 0
+  const materialTransferOverlayRoutes = useMemo<
+    MaterialTransferOverlayRoute[]
+  >(
+    () => (transferLayer?.routes ?? []).map((route) => ({
+      id: route.id,
+      label: route.label,
+      sourceMaterialId: route.sourceOwnerMaterialId,
+      targetMaterialId: route.targetOwnerMaterialId,
+      sourceLabel: route.sourceAnchorLabel,
+      targetLabel: route.targetAnchorLabel,
+      status: route.status,
+      accent: route.accent,
+      pointsMm: route.points.map((point) =>
+        pascalPoseToLab(point, [0, 0, 0]).positionMm
+      )
+    })),
+    [transferLayer]
+  )
 
   const selectedSceneObjectIds = useMemo(
     () => materialIdsToSceneObjectIds(scene, selectedMaterialIds),
@@ -268,6 +288,9 @@ export function PascalLabWorkbench({
               floorplanOverlay
               physicalLayout
               showSites={showSites}
+              materialTransferRoutes={
+                showMaterialTransfers ? materialTransferOverlayRoutes : []
+              }
               readStatus={{ available: true }}
               moveStatus={{
                 available: editable,
@@ -299,6 +322,9 @@ export function PascalLabWorkbench({
             aggregates={aggregates}
             shapes={shapes}
             showSites={showSites}
+            materialTransferRoutes={
+              showMaterialTransfers ? materialTransferOverlayRoutes : []
+            }
             selectedMaterialIds={selectedMaterialIds}
             highlightedMaterialIds={highlightedMaterialIds}
             onSelectionChange={(materialIds) => {

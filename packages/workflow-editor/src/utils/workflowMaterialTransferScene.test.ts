@@ -9,6 +9,7 @@ import {
   projectWorkflowMaterialTransferProjection,
   projectWorkflowMaterialTransferRoutes
 } from './workflowMaterialTransferScene'
+import { materialTraceAccent } from './workflowMaterialTrace'
 
 describe('工作流（Workflow）3D 物料转运投影', () => {
   it('只从已发布标准转运复合节点读取库位（Site）关系', () => {
@@ -27,8 +28,44 @@ describe('工作流（Workflow）3D 物料转运投影', () => {
         siteKey: 'S0721'
       },
       executorId: 'szlab_mixer_robot',
-      status: 'planned'
+      status: 'planned',
+      materialRole: 'unclassified',
+      materialLineageKey: 'unclassified:transfer-1',
+      accent: materialTraceAccent('unclassified:transfer-1')
     }])
+  })
+
+  it('uses the incoming material lineage role and accent on a transfer route', () => {
+    const graph = transferGraph()
+    graph.nodes.unshift({
+      uuid: 'sample-source',
+      name: '主样品',
+      type: 'material_source',
+      workflow_node_template_uuid: 'source-template',
+      param: { flow_role: 'primary_sample' }
+    })
+    graph.node_templates.push({
+      uuid: 'source-template',
+      name: 'material_source',
+      type: 'material_source'
+    })
+    graph.handle_templates.push(
+      resourceSlotHandle('source-handle', 'source-template', 'source'),
+      resourceSlotHandle('target-handle', 'transfer-template', 'target')
+    )
+    graph.edges.push({
+      uuid: 'material-edge',
+      source_node_uuid: 'sample-source',
+      source_handle_uuid: 'source-handle',
+      target_node_uuid: 'transfer-1',
+      target_handle_uuid: 'target-handle'
+    })
+
+    expect(projectWorkflowMaterialTransferRoutes(graph)[0]).toMatchObject({
+      materialRole: 'primary_sample',
+      materialLineageKey: 'sample-source',
+      accent: materialTraceAccent('sample-source')
+    })
   })
 
   it('忽略名称相似但没有已发布来源身份的节点', () => {
@@ -153,6 +190,62 @@ describe('工作流（Workflow）3D 物料转运投影', () => {
       status: 'planned'
     })
   })
+
+  it('follows the newly selected applied revision instead of an older task snapshot', () => {
+    const appliedGraph = transferGraph()
+    appliedGraph.workflow.revision = 5
+    const previousTaskGraph = transferGraph()
+    previousTaskGraph.workflow.revision = 4
+    const previousNode = previousTaskGraph.nodes[0]
+    if (
+      !previousNode ||
+      typeof previousNode.param !== 'object' ||
+      previousNode.param === null
+    ) throw new Error('测试夹具缺少历史物料转运参数')
+    previousNode.param = {
+      ...previousNode.param,
+      target_site: 'S0720'
+    }
+
+    const routes = projectWorkflowMaterialTransferProjection(
+      appliedGraph,
+      {
+        workflow_uuid: 'workflow-1',
+        workflow_snapshot: previousTaskGraph as unknown as Record<string, unknown>
+      },
+      [workflowJob('transfer-1', 'succeeded')]
+    )
+
+    expect(routes[0]).toMatchObject({
+      target: { siteKey: 'S0721' },
+      status: 'planned'
+    })
+  })
+
+  it('keeps a warehouse-level planned route when concrete Sites are unassigned', () => {
+    const graph = transferGraph()
+    const node = graph.nodes[0]
+    if (!node || typeof node.param !== 'object' || node.param === null) {
+      throw new Error('测试夹具缺少标准物料转运参数')
+    }
+    node.param = {
+      ...node.param,
+      source_site: null,
+      target_site: null
+    }
+
+    expect(projectWorkflowMaterialTransferRoutes(graph)[0]).toMatchObject({
+      source: {
+        ownerMaterialId: 's3_unused_beaker',
+        siteKey: null
+      },
+      target: {
+        ownerMaterialId: 's07_process_warehouse',
+        siteKey: null
+      },
+      status: 'planned'
+    })
+  })
 })
 
 function transferGraph(): WorkflowAuthoringGraph {
@@ -209,5 +302,27 @@ function workflowJob(
     return_info: {},
     control_data: {},
     error_info: []
+  }
+}
+
+function resourceSlotHandle(
+  uuid: string,
+  workflowNodeTemplateUuid: string,
+  ioType: 'source' | 'target'
+): Record<string, unknown> {
+  return {
+    uuid,
+    workflow_node_template_uuid: workflowNodeTemplateUuid,
+    handle_key: 'resource',
+    display_name: '物料',
+    io_type: ioType,
+    type: 'ResourceSlot',
+    data_key: 'resource',
+    meta_data: {
+      unilab: {
+        value_schema: { $slot: 'ResourceSlot' },
+        editor_control: 'material_port'
+      }
+    }
   }
 }

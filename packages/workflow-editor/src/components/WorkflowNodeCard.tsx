@@ -38,6 +38,7 @@ const ROBOT_TRANSFER_READY_ANCHOR = {
 export interface WorkflowNodeData {
   id: string
   name: string
+  description?: string
   color: string
   kind?: string
   visualKind?: WorkflowNodeVisualKind
@@ -154,6 +155,10 @@ export default function WorkflowNodeCard({
       data-workflow-layout-direction={data.materialLaneDirection}
       data-workflow-material-port-count={materialPorts.length}
       data-workflow-multi-material={materialPorts.length > 1 ? 'true' : undefined}
+      data-workflow-node-description={data.description}
+      aria-label={data.description
+        ? `${data.name || data.id}：${data.description}`
+        : data.name || data.id}
     >
       {renderStructuralHandles(
         targetHandles,
@@ -189,7 +194,7 @@ export default function WorkflowNodeCard({
         <span className="wf-node__identity">
           <span
             className="wf-node__id"
-            title={data.name || data.id}
+            title={workflowNodeHoverText(data)}
           >
             {data.name || data.id}
           </span>
@@ -265,6 +270,13 @@ export default function WorkflowNodeCard({
       )}
     </div>
   )
+}
+
+/** 返回节点 hover 的人类说明；缺少说明时才回退展示名称。 */
+export function workflowNodeHoverText(
+  data: Pick<WorkflowNodeData, 'id' | 'name' | 'description'>
+): string {
+  return data.description?.trim() || data.name || data.id
 }
 
 /**

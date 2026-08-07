@@ -43,13 +43,17 @@ export default function WorkflowMaterialSourceNode({
       data-workflow-node-kind="material_source"
       data-workflow-layout-strategy={data.layoutStrategy}
       data-workflow-layout-direction={data.materialLaneDirection}
+      data-workflow-node-description={data.description}
+      aria-label={data.description
+        ? `${data.name || data.id}：${data.description}`
+        : data.name || data.id}
       style={{ '--wf-material-accent': data.traceAccent } as CSSProperties}
     >
       {structuralTargetHandles}
       <span className="wf-node__material-source-label">
         <strong
           data-workflow-material-source-name
-          title={data.name || data.id}
+          title={data.description?.trim() || data.name || data.id}
         >
           {data.name || data.id}
         </strong>

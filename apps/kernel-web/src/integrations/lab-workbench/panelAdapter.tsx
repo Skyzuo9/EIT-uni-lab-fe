@@ -22,6 +22,7 @@ import {
 import { useServices, type Services } from '@unilab/services'
 import {
   WorkflowPanel,
+  workflowMaterialRoleLabel,
   type WorkflowPanelRuntimeProjection,
   type WorkflowResourceSlotOptionsPort
 } from '@unilab/workflow-editor'
@@ -91,6 +92,43 @@ function MaterialRenderer(
     props.scope.interaction,
     (state) => state.highlightedMaterialIds
   )
+  const workflowMaterialTransferRoutes = useStore(
+    props.scope.interaction,
+    (state) => state.activeWorkflowMaterialTransferRoutes
+  )
+  const materialRoleFilter = useStore(
+    props.scope.interaction,
+    (state) => state.activeWorkflowMaterialRoleFilter
+  )
+  const activeWorkflowPanelId = useStore(
+    props.scope.interaction,
+    (state) => state.activeWorkflowPanelId
+  )
+  const materialRoleOptions = useMemo(() => {
+    const options = new Map<string, {
+      value: string
+      label: string
+      accent: string
+      lineageKeys: Set<string>
+    }>()
+    for (const route of workflowMaterialTransferRoutes) {
+      const current = options.get(route.materialRole)
+      if (current) {
+        current.lineageKeys.add(route.materialLineageKey)
+      } else {
+        options.set(route.materialRole, {
+          value: route.materialRole,
+          label: workflowMaterialRoleLabel(route.materialRole),
+          accent: route.accent,
+          lineageKeys: new Set([route.materialLineageKey])
+        })
+      }
+    }
+    return [...options.values()].map(({ lineageKeys, ...option }) => ({
+      ...option,
+      lineageCount: lineageKeys.size
+    }))
+  }, [workflowMaterialTransferRoutes])
 
   if (!runtime.store || !runtime.scope) {
     const unavailableNotice = (
@@ -128,6 +166,16 @@ function MaterialRenderer(
         props.unified
           ? (_viewportProps) => (
               <UnifiedLabViewport
+                materialRoleFilter={materialRoleFilter}
+                materialRoleOptions={materialRoleOptions}
+                onMaterialRoleFilterChange={(materialRole) => {
+                  if (!activeWorkflowPanelId) return
+                  props.scope.interaction.getState()
+                    .setWorkflowMaterialRoleFilter(
+                      activeWorkflowPanelId,
+                      materialRole
+                    )
+                }}
                 renderView={(
                   viewMode,
                   { showSites, showMaterialTransfers }
@@ -153,6 +201,10 @@ function WorkflowRenderer(
   const materialRuntime = useMaterialRuntime()
   const panelVisible = usePanelVisibility()
   const panelId = props.panelInstance.id
+  const materialRoleFilter = useStore(
+    props.scope.interaction,
+    (state) => state.activeWorkflowMaterialRoleFilter
+  )
   const workflowProjectionRef = useRef<WorkflowPanelRuntimeProjection | null>(
     null
   )
@@ -180,7 +232,7 @@ function WorkflowRenderer(
       const interaction = props.scope.interaction.getState()
       if (workflowUuid) {
         interaction.activateWorkflowPanel(panelId, workflowUuid)
-        if (workflowProjectionRef.current) {
+        if (workflowProjectionRef.current?.workflowUuid === workflowUuid) {
           interaction.publishWorkflowRuntime(
             panelId,
             workflowProjectionRef.current
@@ -214,6 +266,16 @@ function WorkflowRenderer(
     },
     [panelId, props.scope.interaction]
   )
+  /** 发布物料角色筛选，使工作流画布与物料场景使用同一可见性意图。 */
+  const publishMaterialRoleFilter = useCallback(
+    (materialRole: string | null): void => {
+      props.scope.interaction.getState().setWorkflowMaterialRoleFilter(
+        panelId,
+        materialRole
+      )
+    },
+    [panelId, props.scope.interaction]
+  )
   return (
     <WorkflowPanel
       runtime={props.scope.services.workflow}
@@ -238,6 +300,8 @@ function WorkflowRenderer(
       onActiveWorkflowChange={publishActiveWorkflow}
       onWorkflowRuntimeProjectionChange={publishWorkflowRuntime}
       onSelectedWorkflowStepChange={publishSelectedWorkflowStep}
+      materialRoleFilter={materialRoleFilter}
+      onMaterialRoleFilterChange={publishMaterialRoleFilter}
     />
   )
 }

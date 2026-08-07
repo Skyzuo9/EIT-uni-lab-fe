@@ -139,6 +139,30 @@ describe('MaterialObliqueCanvas', () => {
     expect(markup).toContain('data-site-key="CARRIER01"')
     expect(markup).not.toContain('data-site-key="TIP01"')
   })
+
+  it('renders workflow transfer routes in the same 2.5D projection', () => {
+    const markup = renderToStaticMarkup(
+      <MaterialObliqueCanvas
+        aggregates={[materialAggregate('source'), materialAggregate('target')]}
+        materialTransferRoutes={[{
+          id: 'route-1',
+          label: '烧杯转运',
+          sourceMaterialId: 'source',
+          targetMaterialId: 'target',
+          sourceLabel: '源仓',
+          targetLabel: 'S0721',
+          status: 'planned',
+          accent: '#7c3aed',
+          pointsMm: [[0, 0, 100], [400, 0, 100]]
+        }]}
+      />
+    )
+
+    expect(markup).toContain('data-material-transfer-route="route-1"')
+    expect(markup).toContain('aria-label="烧杯转运：源仓 到 S0721"')
+    expect(markup).toContain('stroke="#7c3aed"')
+    expect(markup).toContain('stroke-dasharray="10 8"')
+  })
 })
 
 function aggregate(

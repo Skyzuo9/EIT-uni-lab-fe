@@ -35,6 +35,10 @@ export default function WorkflowTransferNode({
       data-workflow-node-visual-kind="robot-transfer"
       data-workflow-layout-strategy={data.layoutStrategy}
       data-workflow-layout-direction={data.materialLaneDirection}
+      data-workflow-node-description={data.description}
+      aria-label={data.description
+        ? `${data.name || data.id}：${data.description}`
+        : data.name || data.id}
       style={{ '--wf-material-accent': materialPort.accent } as CSSProperties}
     >
       {structuralTargetHandles}
@@ -78,7 +82,9 @@ export default function WorkflowTransferNode({
         )}
       </span>
       <span className="wf-node__robot-transfer-copy">
-        <strong title={data.name || data.id}>{data.name || data.id}</strong>
+        <strong title={data.description?.trim() || data.name || data.id}>
+          {data.name || data.id}
+        </strong>
         <small title={materialPort.description}>
           {materialPort.label} · 机械臂转运
         </small>

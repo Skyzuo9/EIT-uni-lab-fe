@@ -4,6 +4,7 @@ import {
   isReadyHandle,
   workflowMaterialPortCards,
   workflowNodeAllowsDebugMarkers,
+  workflowNodeHoverText,
   workflowNodeKindLabel,
   workflowNodeShowsState,
   workflowNodeStateLabel
@@ -24,6 +25,14 @@ describe('MaterialSource node semantics', () => {
 })
 
 describe('Action node presentation', () => {
+  it('uses the OS action description as the node hover explanation', () => {
+    expect(workflowNodeHoverText({
+      id: 'dose-node',
+      name: 'S07 双粉桶注粉',
+      description: '使用粗、精注粉桶向同一烧杯投粉'
+    })).toBe('使用粗、精注粉桶向同一烧杯投粉')
+  })
+
   it('recognizes the ready boolean port as execution order', () => {
     expect(isReadyHandle({
       uuid: 'ready-target',

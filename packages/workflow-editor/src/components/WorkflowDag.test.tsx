@@ -135,10 +135,59 @@ describe('WorkflowDag deletion interaction', () => {
   })
 })
 
+describe('WorkflowDag material role filter', () => {
+  it('exposes labeled role choices without relying on color alone', () => {
+    const markup = renderToStaticMarkup(
+      <WorkflowDag
+        nodes={[
+          materialSourceNode('sample-source', '主样品', 'primary_sample'),
+          materialSourceNode('reagent-source', '试剂', 'reagent')
+        ]}
+        links={[]}
+        onNodeSelect={vi.fn()}
+      />
+    )
+
+    expect(markup).toContain('aria-label="按物料角色筛选：全部"')
+    expect(markup).toContain('role="radiogroup"')
+    expect(markup).toContain('主样品')
+    expect(markup).toContain('试剂')
+    expect(markup).toContain('全部物料')
+  })
+})
+
 const workflowNode: WorkflowNode = {
   id: 'node-1',
   name: '示例动作',
   type: 'action',
   className: 'ExampleDevice',
   labNodeType: 'Device'
+}
+
+function materialSourceNode(
+  id: string,
+  name: string,
+  flowRole: string
+): WorkflowNode {
+  return {
+    id,
+    name,
+    type: 'material_source',
+    className: 'MaterialSource',
+    labNodeType: 'MaterialSource',
+    handles: [{
+      uuid: `${id}-resource`,
+      handleKey: 'resource',
+      displayName: '物料',
+      ioType: 'source',
+      valueType: 'ResourceSlot',
+      valueSchema: { $slot: 'ResourceSlot' }
+    }],
+    materialSource: {
+      mode: 'existing',
+      flowRole,
+      mountUuid: 'mount-1',
+      resourceTemplateUuid: 'resource-template-1'
+    }
+  }
 }

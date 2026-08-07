@@ -361,6 +361,9 @@ describe('Material Aggregate / Pascal bridge', () => {
       sourceSiteId: 'source-site',
       targetSiteId: 'target-site',
       status: 'running',
+      materialRole: 'unclassified',
+      materialLineageKey: 'route-1',
+      accent: '#6657c7',
       selected: true
     })
     expect(projected.routes[0]?.points).toHaveLength(6)
@@ -381,6 +384,56 @@ describe('Material Aggregate / Pascal bridge', () => {
     const layer = level.materialTransferLayer
     expect(isLabMaterialTransferLayerNode(layer)).toBe(true)
     expect(level.children).not.toContain('lab-material-transfer-layer-unilab')
+  })
+
+  it('anchors an unassigned transfer endpoint at its warehouse', () => {
+    const source = aggregate('source-warehouse', {
+      placement: {
+        kind: 'world',
+        pose: {
+          positionMm: [200, 300, 400],
+          rotationDegXYZ: [0, 0, 0]
+        }
+      }
+    })
+    const target = aggregate('target-warehouse', {
+      placement: {
+        kind: 'world',
+        pose: {
+          positionMm: [900, 600, 0],
+          rotationDegXYZ: [0, 0, 0]
+        }
+      },
+      sites: [site('target-warehouse', 'target-site', 'S0721')]
+    })
+
+    const projected = projectMaterialTransferSceneLayer([source, target], [{
+      id: 'route-warehouse-source',
+      workflowNodeUuid: 'node-warehouse-source',
+      label: '未分配源库位',
+      source: {
+        ownerMaterialId: 'source-warehouse',
+        siteKey: null
+      },
+      target: {
+        ownerMaterialId: 'target-warehouse',
+        siteKey: 'S0721'
+      },
+      executorId: 'robot',
+      status: 'planned'
+    }])
+
+    expect(projected.unresolvedRouteIds).toEqual([])
+    expect(projected.routes[0]).toMatchObject({
+      sourceAnchorKind: 'warehouse',
+      sourceAnchorId: 'source-warehouse',
+      sourceOwnerMaterialId: 'source-warehouse',
+      sourceSiteId: null,
+      sourceSiteKey: null,
+      targetAnchorKind: 'site',
+      targetAnchorId: 'target-site'
+    })
+    expectTupleCloseTo(projected.routes[0]?.points[0] ?? [], [0.2, 0.4, -0.3])
   })
 
   it('rejects a transfer route when either Site identity is unresolved', () => {

@@ -22,6 +22,47 @@ const graph: WorkflowAuthoringGraph = {
 }
 
 describe('persistent Authoring canvas graph edits', () => {
+  it('projects localized action presentation while preserving an explicit custom title', () => {
+    const projected = projectPersistentAuthoringGraph({
+      ...graph,
+      nodes: [
+        {
+          uuid: 'dose-node',
+          name: 'dose_powder_with_two_materials',
+          action_name: 'dose_powder_with_two_materials',
+          description: '使用粗、精注粉桶向同一烧杯投粉',
+          workflow_node_template_uuid: 'dose-template',
+          param: {}
+        },
+        {
+          uuid: 'custom-dose-node',
+          name: '定制投粉步骤',
+          action_name: 'dose_powder_with_two_materials',
+          workflow_node_template_uuid: 'dose-template',
+          param: {}
+        }
+      ],
+      node_templates: [{
+        uuid: 'dose-template',
+        name: 'dose_powder_with_two_materials',
+        display_name: 'S07 双粉桶注粉',
+        description: '使用已装入 S07 的粗、精注粉桶向同一烧杯投粉（物料感知）',
+        type: 'UniLabJsonCommand',
+        node_type: 'ILab'
+      }],
+      handle_templates: []
+    })
+
+    expect(projected.nodes[0]).toMatchObject({
+      name: 'S07 双粉桶注粉',
+      description: '使用粗、精注粉桶向同一烧杯投粉'
+    })
+    expect(projected.nodes[1]).toMatchObject({
+      name: '定制投粉步骤',
+      description: '使用已装入 S07 的粗、精注粉桶向同一烧杯投粉（物料感知）'
+    })
+  })
+
   /** 验证自动布局写回节点姿态且不破坏 OS 持有的其它姿态字段。 */
   it('beautifies the graph immutably and preserves non-planar pose fields', () => {
     const source: WorkflowAuthoringGraph = {

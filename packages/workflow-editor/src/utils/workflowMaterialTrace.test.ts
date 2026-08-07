@@ -6,8 +6,10 @@ import type {
   WorkflowNode
 } from './parseWorkflow'
 import {
+  filterWorkflowByMaterialRole,
   materialTraceAccent,
-  projectMaterialTraces
+  projectMaterialTraces,
+  workflowMaterialRoleOptions
 } from './workflowMaterialTrace'
 
 const sourceUuid = '20000000-0000-4000-8000-000000000001'
@@ -87,7 +89,13 @@ describe('Material trace projection', () => {
     const reagentInput = resourceSlotHandle('reagent-input', 'reagent', 'target')
     const nodes: WorkflowNode[] = [
       workflowNode(sourceUuid, '样品板', 'material_source', [sampleOutput]),
-      workflowNode(reagentUuid, '试剂槽', 'material_source', [reagentOutput]),
+      workflowNode(
+        reagentUuid,
+        '试剂槽',
+        'material_source',
+        [reagentOutput],
+        'reagent'
+      ),
       workflowNode(firstActionUuid, '混合', 'action', [sampleInput, reagentInput])
     ]
     const links = [
@@ -124,6 +132,32 @@ describe('Material trace projection', () => {
         sourceNodeName: '试剂槽'
       })
     ])
+    expect(workflowMaterialRoleOptions(projection)).toEqual([
+      {
+        value: 'primary_sample',
+        label: '主样品',
+        accent: materialTraceAccent(sourceUuid),
+        lineageCount: 1
+      },
+      {
+        value: 'reagent',
+        label: '试剂',
+        accent: materialTraceAccent(reagentUuid),
+        lineageCount: 1
+      }
+    ])
+
+    const filtered = filterWorkflowByMaterialRole(
+      nodes,
+      links,
+      'primary_sample',
+      projection
+    )
+    expect(filtered.nodes.map((node) => node.id)).toEqual([
+      sourceUuid,
+      firstActionUuid
+    ])
+    expect(filtered.links).toEqual([links[0]])
   })
 
   it('starts a new material trace at an explicit ResourceSlot producer', () => {
@@ -190,7 +224,7 @@ describe('Material trace projection', () => {
     )
   })
 
-  it('keeps adjacent material identities distinct when stable hashes collide', () => {
+  it('gives adjacent material identities distinct categorical accents', () => {
     const middleUuid = '20000000-0000-4000-8000-000000000009'
     const sharedOutputUuid = '40000000-0000-4000-8000-000000000005'
     const firstOutput = resourceSlotHandle(
@@ -222,7 +256,7 @@ describe('Material trace projection', () => {
       link(middleUuid, middleOutput.uuid, secondActionUuid, lastInput.uuid)
     ]
 
-    expect(materialTraceAccent(`${sourceUuid}:${sharedOutputUuid}`)).toBe(
+    expect(materialTraceAccent(`${sourceUuid}:${sharedOutputUuid}`)).not.toBe(
       materialTraceAccent(`${middleUuid}:${sharedOutputUuid}`)
     )
     const projection = projectMaterialTraces(nodes, links)
@@ -306,7 +340,8 @@ function workflowNode(
   id: string,
   name: string,
   type: string,
-  handles?: WorkflowHandlePort[]
+  handles?: WorkflowHandlePort[],
+  materialRole = 'primary_sample'
 ): WorkflowNode {
   return {
     id,
@@ -314,7 +349,17 @@ function workflowNode(
     type,
     className: type,
     labNodeType: type,
-    handles
+    handles,
+    ...(type === 'material_source'
+      ? {
+          materialSource: {
+            mode: 'existing',
+            flowRole: materialRole,
+            mountUuid: 'mount-1',
+            resourceTemplateUuid: 'resource-template-1'
+          }
+        }
+      : {})
   }
 }
 

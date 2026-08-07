@@ -165,6 +165,45 @@
   cursor: grabbing;
 }
 
+:where(.scope, .scope *):global(.material-oblique-transfer-layer) {
+  pointer-events: none;
+}
+
+:where(.scope, .scope *):global(.material-oblique-transfer-route__halo) {
+  stroke: rgb(255 255 255 / 88%);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 7;
+  vector-effect: non-scaling-stroke;
+}
+
+:where(.scope, .scope *):global(.material-oblique-transfer-route) {
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.5;
+  vector-effect: non-scaling-stroke;
+}
+
+:where(.scope, .scope *):global(.material-oblique-transfer-route__endpoint) {
+  stroke: rgb(255 255 255 / 92%);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+/*
+ * 句柄只为 React Flow 的转运边提供仓库节点几何锚点；路线本身负责全部视觉。
+ */
+:where(.scope, .scope *):global(.material-transfer-handle) {
+  width: 1px;
+  min-width: 1px;
+  height: 1px;
+  min-height: 1px;
+  border: 0;
+  background: transparent;
+  opacity: 0;
+  pointer-events: none;
+}
+
 :where(.scope, .scope *):global(.material-oblique-canvas__empty) {
   display: grid;
   width: 100%;

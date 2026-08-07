@@ -8,7 +8,9 @@ import {
 import ReactFlow, {
   Background,
   Controls,
+  MarkerType,
   MiniMap,
+  type Edge,
   type Node,
   type OnSelectionChangeFunc,
   type ReactFlowInstance
@@ -23,6 +25,7 @@ import {
   useMaterialStoreApi
 } from '../MaterialStoreProvider'
 import type { MaterialId } from '../types'
+import type { MaterialTransferOverlayRoute } from '../materialTransferOverlay'
 import { MaterialNode } from './MaterialNode'
 import {
   flowPositionToPlacement,
@@ -42,6 +45,7 @@ export interface MaterialCanvasProps {
   floorplanOverlay?: boolean
   physicalLayout?: boolean
   showSites?: boolean
+  materialTransferRoutes?: readonly MaterialTransferOverlayRoute[]
   selectedMaterialIds?: readonly MaterialId[]
   highlightedMaterialIds?: readonly MaterialId[]
   onSelectionChange?: (materialIds: readonly MaterialId[]) => void
@@ -59,6 +63,7 @@ export function MaterialCanvas({
   floorplanOverlay = false,
   physicalLayout,
   showSites = true,
+  materialTransferRoutes = [],
   selectedMaterialIds = EMPTY_MATERIAL_IDS,
   highlightedMaterialIds = EMPTY_MATERIAL_IDS,
   onSelectionChange
@@ -119,6 +124,10 @@ export function MaterialCanvas({
     ]
   )
   const nodeSetKey = nodes.map((node) => node.id).sort().join('|')
+  const transferEdges = useMemo(
+    () => projectMaterialTransferFlowEdges(materialTransferRoutes, nodes),
+    [materialTransferRoutes, nodes]
+  )
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -208,7 +217,7 @@ export function MaterialCanvas({
       </div>
       <ReactFlow
         nodes={nodes}
-        edges={[]}
+        edges={transferEdges}
         nodeTypes={NODE_TYPES}
         fitView
         fitViewOptions={{ padding: 0.12, maxZoom: 1.25 }}
@@ -262,6 +271,46 @@ export function MaterialCanvas({
       </ReactFlow>
     </section>
   )
+}
+
+/** 将已解析路线连接到 2D 画布中的规范 warehouse/material 节点。 */
+export function projectMaterialTransferFlowEdges(
+  routes: readonly MaterialTransferOverlayRoute[],
+  nodes: readonly Pick<MaterialFlowNode, 'id'>[]
+): Edge[] {
+  const nodeIds = new Set(nodes.map((node) => node.id))
+  return routes.flatMap((route) => {
+    if (
+      !nodeIds.has(route.sourceMaterialId) ||
+      !nodeIds.has(route.targetMaterialId)
+    ) return []
+    return [{
+      id: `material-transfer-${route.id}`,
+      source: route.sourceMaterialId,
+      sourceHandle: 'material-transfer-source',
+      target: route.targetMaterialId,
+      targetHandle: 'material-transfer-target',
+      type: 'smoothstep',
+      className: 'material-transfer-edge',
+      label: `${route.sourceLabel} → ${route.targetLabel}`,
+      ariaLabel: `${route.label}：${route.sourceLabel} 到 ${route.targetLabel}`,
+      animated: route.status === 'running',
+      focusable: true,
+      markerEnd: {
+        type: MarkerType.ArrowClosed,
+        color: route.accent
+      },
+      style: {
+        stroke: route.accent,
+        strokeDasharray:
+          route.status === 'planned' || route.status === 'pending'
+            ? '8 6'
+            : undefined,
+        strokeWidth: 2
+      },
+      zIndex: 20
+    } satisfies Edge]
+  })
 }
 
 /** 渲染物料图（Material Graph）加载失败的可操作提示。 */

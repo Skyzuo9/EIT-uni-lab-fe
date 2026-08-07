@@ -65,7 +65,7 @@ function TransferRoute({
   hovered: boolean
   onHover: (routeId: string | null) => void
 }): React.JSX.Element {
-  const color = ROUTE_COLORS[route.status]
+  const color = route.accent || ROUTE_COLORS[route.status]
   const labelPosition = pointAlongPolyline(route.points, 0.52)
   const arrow = routeArrow(route.points)
   const showLabel = hovered || route.selected || route.status === 'running'
@@ -75,7 +75,9 @@ function TransferRoute({
       userData={{
         workflowNodeUuid: route.workflowNodeUuid,
         executorId: route.executorId,
-        status: route.status
+        status: route.status,
+        materialRole: route.materialRole,
+        materialLineageKey: route.materialLineageKey
       }}
       onPointerOver={(event) => {
         event.stopPropagation()
@@ -115,13 +117,13 @@ function TransferRoute({
       <Html position={labelPosition} center zIndexRange={[70, 0]}>
         <div
           className={`pascal-transfer-executor${showLabel ? ' is-expanded' : ''}`}
-          title={`执行器：${route.executorId}；${route.sourceSiteKey} 到 ${route.targetSiteKey}`}
+          title={`执行器：${route.executorId}；物料角色：${route.materialRole}；${route.sourceAnchorLabel} 到 ${route.targetAnchorLabel}`}
         >
           <RobotArmIcon />
           {showLabel && (
             <span>
               <strong>{route.label}</strong>
-              <small>{route.sourceSiteKey} → {route.targetSiteKey}</small>
+              <small>{route.sourceAnchorLabel} → {route.targetAnchorLabel}</small>
             </span>
           )}
         </div>
@@ -338,13 +340,13 @@ function uniqueMarkers(routes: readonly LabMaterialTransferRoute[]): Array<{
   for (const route of routes) {
     const endpoints = [
       {
-        id: `${route.sourceOwnerMaterialId}:${route.sourceSiteId}`,
-        label: route.sourceSiteKey,
+        id: `${route.sourceOwnerMaterialId}:${route.sourceAnchorKind}:${route.sourceAnchorId}`,
+        label: route.sourceAnchorLabel,
         position: route.points[0]
       },
       {
-        id: `${route.targetOwnerMaterialId}:${route.targetSiteId}`,
-        label: route.targetSiteKey,
+        id: `${route.targetOwnerMaterialId}:${route.targetAnchorKind}:${route.targetAnchorId}`,
+        label: route.targetAnchorLabel,
         position: route.points[route.points.length - 1]
       }
     ]

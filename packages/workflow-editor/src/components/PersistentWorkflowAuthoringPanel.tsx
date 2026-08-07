@@ -27,6 +27,8 @@ interface PersistentWorkflowAuthoringPanelProps {
     projection: WorkflowPanelRuntimeProjection | null
   ) => void
   onSelectedWorkflowStepChange?: (workflowNodeUuid: string | null) => void
+  materialRoleFilter?: string | null
+  onMaterialRoleFilterChange?: (materialRole: string | null) => void
   onChooseWorkflow?: () => void
 }
 
@@ -39,5 +41,11 @@ export function PersistentWorkflowAuthoringPanel(
   const model = usePersistentWorkflowAuthoring(
     props satisfies PersistentWorkflowAuthoringOptions
   )
-  return <PersistentWorkflowAuthoringView model={model} />
+  return (
+    <PersistentWorkflowAuthoringView
+      model={model}
+      materialRoleFilter={props.materialRoleFilter}
+      onMaterialRoleFilterChange={props.onMaterialRoleFilterChange}
+    />
+  )
 }

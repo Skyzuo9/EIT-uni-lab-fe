@@ -215,6 +215,7 @@ function buildFlowElements(
       data: {
         id: node.id,
         name: node.name,
+        description: node.description,
         color: getNodeColor(node.labNodeType, node.type),
         kind: node.type,
         visualKind: node.visualKind,

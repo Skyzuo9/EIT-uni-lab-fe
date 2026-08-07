@@ -37,6 +37,11 @@ import type { WorkflowNodeData } from './WorkflowNodeCard'
 import type { WorkflowLink, WorkflowNode } from '../utils/parseWorkflow'
 import { projectNestedWorkflow } from '../utils/canonicalWorkflow'
 import {
+  filterWorkflowByMaterialRole,
+  projectMaterialTraces,
+  workflowMaterialRoleOptions
+} from '../utils/workflowMaterialTrace'
+import {
   DEFAULT_WORKFLOW_DAG_LAYOUT_STRATEGY,
   DEFAULT_WORKFLOW_MATERIAL_SWIMLANE_DIRECTION,
   WORKFLOW_DAG_LAYOUT_STRATEGIES,
@@ -88,6 +93,8 @@ interface WorkflowDagProps {
     nodeUuids: string[]
     edgeUuids: string[]
   }) => void
+  materialRoleFilter?: string | null
+  onMaterialRoleFilterChange?: (materialRole: string | null) => void
 }
 
 // 注册自定义节点类型(在组件外定义,避免每次渲染重建)
@@ -118,7 +125,9 @@ export default function WorkflowDag({
   nodePositionMutationEnabled = false,
   onNodePositionChange,
   onConnectHandles,
-  onDeleteRequest
+  onDeleteRequest,
+  materialRoleFilter,
+  onMaterialRoleFilterChange
 }: WorkflowDagProps): React.JSX.Element {
   const [isBeautifying, setIsBeautifying] = useState(false)
   const [layoutStrategy, setLayoutStrategy] =
@@ -132,6 +141,12 @@ export default function WorkflowDag({
   const [expandedGroupIds, setExpandedGroupIds] = useState<Set<string>>(
     () => new Set()
   )
+  const [localMaterialRoleFilter, setLocalMaterialRoleFilter] = useState<
+    string | null
+  >(null)
+  const activeMaterialRoleFilter = materialRoleFilter === undefined
+    ? localMaterialRoleFilter
+    : materialRoleFilter
   const containerRef = useRef<HTMLDivElement | null>(null)
   const flowInstanceRef = useRef<ReactFlowInstance | null>(null)
   const beautifyTimerRef = useRef<
@@ -155,10 +170,52 @@ export default function WorkflowDag({
     },
     []
   )
-  const nestedProjection = useMemo(
-    () => projectNestedWorkflow(nodes, links, expandedGroupIds),
-    [expandedGroupIds, links, nodes]
+  const materialTraceProjection = useMemo(
+    () => projectMaterialTraces(nodes, links),
+    [links, nodes]
   )
+  const materialRoleOptions = useMemo(
+    () => workflowMaterialRoleOptions(materialTraceProjection),
+    [materialTraceProjection]
+  )
+  const materialRoleProjection = useMemo(
+    () => filterWorkflowByMaterialRole(
+      nodes,
+      links,
+      activeMaterialRoleFilter,
+      materialTraceProjection
+    ),
+    [
+      activeMaterialRoleFilter,
+      links,
+      materialTraceProjection,
+      nodes
+    ]
+  )
+  const nestedProjection = useMemo(
+    () => projectNestedWorkflow(
+      materialRoleProjection.nodes,
+      materialRoleProjection.links,
+      expandedGroupIds
+    ),
+    [expandedGroupIds, materialRoleProjection]
+  )
+  useEffect(() => {
+    if (
+      !activeMaterialRoleFilter ||
+      materialRoleOptions.length === 0 ||
+      materialRoleOptions.some((option) =>
+        option.value === activeMaterialRoleFilter
+      )
+    ) return
+    if (materialRoleFilter === undefined) setLocalMaterialRoleFilter(null)
+    onMaterialRoleFilterChange?.(null)
+  }, [
+    activeMaterialRoleFilter,
+    materialRoleFilter,
+    materialRoleOptions,
+    onMaterialRoleFilterChange
+  ])
   const toggleGroup = useCallback((nodeId: string) => {
     setExpandedGroupIds((current) => {
       const next = new Set(current)
@@ -399,6 +456,15 @@ export default function WorkflowDag({
     setSwimlaneDirection(direction)
   }, [])
 
+  const handleMaterialRoleFilterChange = useCallback((
+    nextMaterialRole: string | null
+  ): void => {
+    if (materialRoleFilter === undefined) {
+      setLocalMaterialRoleFilter(nextMaterialRole)
+    }
+    onMaterialRoleFilterChange?.(nextMaterialRole)
+  }, [materialRoleFilter, onMaterialRoleFilterChange])
+
   if (flowNodes.length === 0) {
     return (
       <p className="px-3.5 py-3 text-xs text-[var(--unilab-color-text-muted)]">
@@ -512,6 +578,66 @@ export default function WorkflowDag({
                 <span aria-hidden="true">⌫</span>
                 删除选中项
               </WorkflowButton>
+            )}
+            {materialRoleOptions.length > 0 && (
+              <details className="workflow-runtime__material-role-filter">
+                <summary
+                  aria-label={`按物料角色筛选：${
+                    materialRoleOptions.find((option) =>
+                      option.value === activeMaterialRoleFilter
+                    )?.label ?? '全部'
+                  }`}
+                >
+                  <svg aria-hidden="true" viewBox="0 0 20 20">
+                    <path d="M3 4h14l-5.4 6.2v4.4l-3.2 1.8v-6.2L3 4Z" />
+                  </svg>
+                  <span>
+                    {materialRoleOptions.find((option) =>
+                      option.value === activeMaterialRoleFilter
+                    )?.label ?? '全部物料'}
+                  </span>
+                </summary>
+                <div
+                  className="workflow-runtime__material-role-menu"
+                  role="radiogroup"
+                  aria-label="物料角色"
+                >
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={!activeMaterialRoleFilter}
+                    className={!activeMaterialRoleFilter
+                      ? 'is-active'
+                      : undefined}
+                    onClick={() => handleMaterialRoleFilterChange(null)}
+                  >
+                    <span className="is-all" aria-hidden="true" />
+                    <span>全部物料</span>
+                  </button>
+                  {materialRoleOptions.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      role="radio"
+                      aria-checked={activeMaterialRoleFilter === option.value}
+                      className={activeMaterialRoleFilter === option.value
+                        ? 'is-active'
+                        : undefined}
+                      onClick={() => handleMaterialRoleFilterChange(
+                        option.value
+                      )}
+                    >
+                      <span
+                        className="workflow-runtime__material-role-swatch"
+                        aria-hidden="true"
+                        style={{ backgroundColor: option.accent }}
+                      />
+                      <span>{option.label}</span>
+                      <small>{option.lineageCount}</small>
+                    </button>
+                  ))}
+                </div>
+              </details>
             )}
             <select
               className="workflow-runtime__layout-strategy"

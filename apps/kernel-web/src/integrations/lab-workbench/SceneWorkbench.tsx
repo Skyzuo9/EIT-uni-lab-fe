@@ -51,12 +51,23 @@ export function SceneWorkbench({
   const selectedWorkflowStepId = useLabInteraction(
     (state) => state.selectedWorkflowStepId
   )
+  const materialRoleFilter = useLabInteraction(
+    (state) => state.activeWorkflowMaterialRoleFilter
+  )
   const materialTransferRoutes = useMemo<MaterialTransferSceneRoute[]>(
-    () => workflowMaterialTransferRoutes.map((route) => ({
-      ...route,
-      selected: route.workflowNodeUuid === selectedWorkflowStepId
-    })),
-    [selectedWorkflowStepId, workflowMaterialTransferRoutes]
+    () => workflowMaterialTransferRoutes
+      .filter((route) =>
+        !materialRoleFilter || route.materialRole === materialRoleFilter
+      )
+      .map((route) => ({
+        ...route,
+        selected: route.workflowNodeUuid === selectedWorkflowStepId
+      })),
+    [
+      materialRoleFilter,
+      selectedWorkflowStepId,
+      workflowMaterialTransferRoutes
+    ]
   )
   const selectMaterials = useLabInteraction(
     (state) => state.selectMaterials
@@ -137,9 +148,7 @@ export function SceneWorkbench({
       aggregates={aggregates}
       shapes={shapeLibrary}
       showSites={showSites}
-      showMaterialTransfers={
-        showMaterialTransfers && (viewMode === '3d' || viewMode === 'split')
-      }
+      showMaterialTransfers={showMaterialTransfers}
       materialTransferRoutes={materialTransferRoutes}
       materialTransferProjectionError={null}
       viewMode={viewMode}

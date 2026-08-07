@@ -127,12 +127,26 @@ function projectNodeIdentity(
   node: AuthoringNode,
   template: AuthoringNodeTemplate | undefined,
   type: string
-): Pick<WorkflowNode, 'id' | 'name' | 'type' | 'className' | 'labNodeType'> {
+): Pick<
+  WorkflowNode,
+  'id' | 'name' | 'description' | 'type' | 'className' | 'labNodeType'
+> {
+  const nodeName = nullableString(node.name)
+  const actionName = nullableString(node.action_name)
+  const templateName = nullableString(template?.name)
+  const templateDisplayName = nullableString(template?.display_name)
+  const nodeUsesTechnicalDefault = Boolean(
+    nodeName && (nodeName === actionName || nodeName === templateName)
+  )
+  const displayName = nodeUsesTechnicalDefault
+    ? templateDisplayName ?? nodeName
+    : nodeName ?? templateDisplayName ?? templateName
+  const description = nullableString(node.description) ??
+    nullableString(template?.description)
   return {
     id: String(node.uuid),
-    name: String(
-      node.name || template?.display_name || template?.name || node.uuid
-    ),
+    name: displayName ?? String(node.uuid),
+    ...(description ? { description } : {}),
     type,
     className: String(
       node.action_type || node.action_name || template?.class || type

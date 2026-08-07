@@ -19,10 +19,12 @@ import type {
   MaterialAggregate,
   MaterialId
 } from '../types'
+import type { MaterialTransferOverlayRoute } from '../materialTransferOverlay'
 import { shouldShowMaterialLabelByDefault } from '../labelPresentation'
 import { materialScopeClassName } from '../materialStyles'
 import {
   buildMaterialObliqueScene,
+  projectObliquePoint,
   type MaterialObliqueObject,
 } from './projection'
 import type {
@@ -55,6 +57,7 @@ export interface MaterialObliqueCanvasProps {
    */
   shapes?: MaterialShapeLibrary
   showSites?: boolean
+  materialTransferRoutes?: readonly MaterialTransferOverlayRoute[]
   selectedMaterialIds?: readonly MaterialId[]
   highlightedMaterialIds?: readonly MaterialId[]
   onSelectionChange?: (materialIds: readonly MaterialId[]) => void
@@ -84,6 +87,7 @@ export function MaterialObliqueCanvas({
   aggregates,
   shapes,
   showSites = true,
+  materialTransferRoutes = [],
   selectedMaterialIds = [],
   highlightedMaterialIds = [],
   onSelectionChange
@@ -92,6 +96,15 @@ export function MaterialObliqueCanvas({
   const scene = useMemo(
     () => buildMaterialObliqueScene(aggregates, shapes, rotationDeg),
     [aggregates, rotationDeg, shapes]
+  )
+  const projectedTransferRoutes = useMemo(
+    () => materialTransferRoutes.map((route) => ({
+      ...route,
+      points: route.pointsMm.map((point) =>
+        projectObliquePoint(point, rotationDeg)
+      )
+    })),
+    [materialTransferRoutes, rotationDeg]
   )
   const [hoveredMaterialId, setHoveredMaterialId] =
     useState<MaterialId | null>(null)
@@ -543,9 +556,87 @@ export function MaterialObliqueCanvas({
               />
             )
           })}
+          <MaterialTransferOverlay routes={projectedTransferRoutes} />
         </svg>
       )}
       <CanvasLegend />
     </div>
+  )
+}
+
+function MaterialTransferOverlay({
+  routes
+}: {
+  routes: readonly (MaterialTransferOverlayRoute & {
+    points: readonly (readonly [number, number])[]
+  })[]
+}): React.JSX.Element | null {
+  if (routes.length === 0) return null
+  return (
+    <g className="material-oblique-transfer-layer">
+      <defs>
+        {routes.map((route, index) => (
+          <marker
+            key={route.id}
+            id={`material-oblique-transfer-arrow-${index}`}
+            markerHeight="7"
+            markerWidth="7"
+            orient="auto-start-reverse"
+            refX="6"
+            refY="3.5"
+            viewBox="0 0 7 7"
+          >
+            <path d="M0 0 7 3.5 0 7Z" fill={route.accent} />
+          </marker>
+        ))}
+      </defs>
+      {routes.map((route, index) => {
+        const first = route.points[0]
+        const last = route.points[route.points.length - 1]
+        if (!first || !last || route.points.length < 2) return null
+        return (
+          <g
+            key={route.id}
+            aria-label={`${route.label}：${route.sourceLabel} 到 ${route.targetLabel}`}
+            data-material-transfer-route={route.id}
+            data-transfer-status={route.status}
+            role="img"
+          >
+            <title>{`${route.label} · ${route.sourceLabel} → ${route.targetLabel}`}</title>
+            <polyline
+              className="material-oblique-transfer-route__halo"
+              fill="none"
+              points={route.points.map((point) => point.join(',')).join(' ')}
+            />
+            <polyline
+              className="material-oblique-transfer-route"
+              fill="none"
+              markerEnd={`url(#material-oblique-transfer-arrow-${index})`}
+              points={route.points.map((point) => point.join(',')).join(' ')}
+              stroke={route.accent}
+              strokeDasharray={
+                route.status === 'planned' || route.status === 'pending'
+                  ? '10 8'
+                  : undefined
+              }
+            />
+            <circle
+              className="material-oblique-transfer-route__endpoint"
+              cx={first[0]}
+              cy={first[1]}
+              fill={route.accent}
+              r="5"
+            />
+            <circle
+              className="material-oblique-transfer-route__endpoint"
+              cx={last[0]}
+              cy={last[1]}
+              fill={route.accent}
+              r="5"
+            />
+          </g>
+        )
+      })}
+    </g>
   )
 }

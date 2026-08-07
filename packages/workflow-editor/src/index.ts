@@ -32,5 +32,9 @@ export {
   type WorkflowMaterialTransferRoute,
   type WorkflowMaterialTransferStatus
 } from './utils/workflowMaterialTransferScene'
+export {
+  workflowMaterialRoleLabel,
+  type WorkflowMaterialRoleOption
+} from './utils/workflowMaterialTrace'
 export * from './utils/parseWorkflow'
 export * from './utils/parseWorkflowJson'

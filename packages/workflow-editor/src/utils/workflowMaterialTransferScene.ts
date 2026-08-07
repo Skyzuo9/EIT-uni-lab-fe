@@ -6,6 +6,12 @@ import type {
 } from '@unilab/services'
 
 import { workflowNodeVisualKind } from './workflowNodeVisualKind'
+import { projectPersistentAuthoringGraph } from './persistentAuthoringGraph'
+import {
+  materialTraceAccent,
+  projectMaterialTraces,
+  type WorkflowMaterialLineage
+} from './workflowMaterialTrace'
 
 export type WorkflowMaterialTransferStatus =
   | 'planned'
@@ -19,7 +25,7 @@ export type WorkflowMaterialTransferStatus =
 
 export interface WorkflowMaterialTransferEndpoint {
   ownerMaterialId: string
-  siteKey: string
+  siteKey: string | null
 }
 
 export interface WorkflowMaterialTransferRoute {
@@ -30,6 +36,9 @@ export interface WorkflowMaterialTransferRoute {
   target: WorkflowMaterialTransferEndpoint
   executorId: string
   status: WorkflowMaterialTransferStatus
+  materialRole: string
+  materialLineageKey: string
+  accent: string
 }
 
 /**
@@ -50,6 +59,7 @@ export function projectWorkflowMaterialTransferRoutes(
     graph.nodes.map((node) => [stringValue(node.uuid), node])
   )
   const jobsByRoute = new Map<string, WorkflowNodeJob[]>()
+  const materialLineageByNode = workflowMaterialLineageByNode(graph)
 
   for (const job of jobs) {
     const routeNodeUuid = transferAncestor(
@@ -72,19 +82,18 @@ export function projectWorkflowMaterialTransferRoutes(
     const sourceSite = optionalString(param.source_site)
     const targetSite = optionalString(param.target_site)
     const executorId = optionalString(param.target_device)
-    if (
-      !workflowNodeUuid ||
-      !sourceOwner ||
-      !targetOwner ||
-      !sourceSite ||
-      !targetSite ||
-      !executorId
-    ) return []
+    if (!workflowNodeUuid || !sourceOwner || !targetOwner || !executorId) {
+      return []
+    }
+    const lineage = materialLineageByNode.get(workflowNodeUuid)
+    const materialLineageKey = lineage?.key ??
+      `unclassified:${workflowNodeUuid}`
 
     return [{
       id: `workflow-transfer-${workflowNodeUuid}`,
       workflowNodeUuid,
-      label: optionalString(node.name) ?? `${sourceSite} → ${targetSite}`,
+      label: optionalString(node.name) ??
+        `${sourceSite ?? sourceOwner} → ${targetSite ?? targetOwner}`,
       source: {
         ownerMaterialId: sourceOwner,
         siteKey: sourceSite
@@ -94,9 +103,34 @@ export function projectWorkflowMaterialTransferRoutes(
         siteKey: targetSite
       },
       executorId,
-      status: aggregateTransferStatus(jobsByRoute.get(workflowNodeUuid) ?? [])
+      status: aggregateTransferStatus(jobsByRoute.get(workflowNodeUuid) ?? []),
+      materialRole: lineage?.materialRole ?? 'unclassified',
+      materialLineageKey,
+      accent: lineage?.accent ?? materialTraceAccent(materialLineageKey)
     }]
   })
+}
+
+/**
+ * 把标准转运节点关联到进入该节点的物料谱系；每个转运节点只承载首个稳定输入谱系。
+ */
+function workflowMaterialLineageByNode(
+  graph: WorkflowAuthoringGraph
+): Map<string, WorkflowMaterialLineage> {
+  const structure = projectPersistentAuthoringGraph(graph)
+  const projection = projectMaterialTraces(structure.nodes, structure.links)
+  const lineageByKey = new Map(
+    projection.lineages.map((lineage) => [lineage.key, lineage])
+  )
+  const lineageByNode = new Map<string, WorkflowMaterialLineage>()
+  structure.links.forEach((link, index) => {
+    const lineageKey = projection.edgeLineages.get(index)
+    const lineage = lineageKey ? lineageByKey.get(lineageKey) : undefined
+    if (lineage && !lineageByNode.has(link.target)) {
+      lineageByNode.set(link.target, lineage)
+    }
+  })
+  return lineageByNode
 }
 
 /**
@@ -116,12 +150,33 @@ export function projectWorkflowMaterialTransferProjection(
   const snapshot = task &&
     task.workflow_uuid === appliedWorkflowUuid &&
     isWorkflowAuthoringGraph(task.workflow_snapshot) &&
-    stringValue(task.workflow_snapshot.workflow.uuid) === task.workflow_uuid
+    stringValue(task.workflow_snapshot.workflow.uuid) === task.workflow_uuid &&
+    sameWorkflowRevision(appliedGraph, task.workflow_snapshot)
     ? task.workflow_snapshot
     : null
   return snapshot
     ? projectWorkflowMaterialTransferRoutes(snapshot, jobs)
     : projectWorkflowMaterialTransferRoutes(appliedGraph)
+}
+
+/**
+ * 只有任务冻结图与当前已应用模板属于同一修订时，才允许历史作业状态装饰路线。
+ * 两端都没有修订字段时保留旧后端兼容；只要一端声明修订就要求严格相等。
+ */
+function sameWorkflowRevision(
+  appliedGraph: WorkflowAuthoringGraph,
+  snapshot: WorkflowAuthoringGraph
+): boolean {
+  const appliedRevision = workflowRevision(appliedGraph)
+  const snapshotRevision = workflowRevision(snapshot)
+  if (appliedRevision === null && snapshotRevision === null) return true
+  return appliedRevision !== null && appliedRevision === snapshotRevision
+}
+
+function workflowRevision(graph: WorkflowAuthoringGraph): string | null {
+  const value = graph.workflow.revision
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value)
+  return optionalString(value)
 }
 
 /**

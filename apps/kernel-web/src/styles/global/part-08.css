@@ -315,6 +315,10 @@
     display: none;
   }
 
+  .lab-material-role-filter > summary span {
+    display: none;
+  }
+
   .lab-panel-workspace [data-panel-tab-drop-owner] {
     min-height: 0;
     border-bottom: 0;

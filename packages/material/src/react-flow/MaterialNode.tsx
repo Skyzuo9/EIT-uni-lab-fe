@@ -1,4 +1,8 @@
-import type { NodeProps } from 'reactflow'
+import {
+  Handle,
+  Position,
+  type NodeProps
+} from 'reactflow'
 
 import { useMaterialStore } from '../MaterialStoreProvider'
 import { materialScopeClassName } from '../materialStyles'
@@ -44,10 +48,24 @@ export function MaterialNode({
   }
 
   return (
-    <MaterialNodePresentation
-      aggregate={aggregate}
-      selected={selected}
-    />
+    <>
+      <Handle
+        id="material-transfer-target"
+        className="material-transfer-handle"
+        position={Position.Left}
+        type="target"
+      />
+      <MaterialNodePresentation
+        aggregate={aggregate}
+        selected={selected}
+      />
+      <Handle
+        id="material-transfer-source"
+        className="material-transfer-handle"
+        position={Position.Right}
+        type="source"
+      />
+    </>
   )
 }
 

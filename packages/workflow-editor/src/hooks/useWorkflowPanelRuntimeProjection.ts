@@ -39,7 +39,12 @@ export function useWorkflowPanelRuntimeProjection(options: {
   )
 
   useEffect(() => {
+    if (!aggregate) {
+      onProjectionChange?.(null)
+      return
+    }
     onProjectionChange?.({
+      workflowUuid: aggregate.workflow_uuid,
       taskUuid: runtimeSnapshot.task?.uuid ?? null,
       generation: runtimeSnapshot.generation,
       materialTransferRoutes
@@ -47,6 +52,7 @@ export function useWorkflowPanelRuntimeProjection(options: {
     return () => onProjectionChange?.(null)
   }, [
     materialTransferRoutes,
+    aggregate,
     onProjectionChange,
     runtimeSnapshot.generation,
     runtimeSnapshot.task?.uuid

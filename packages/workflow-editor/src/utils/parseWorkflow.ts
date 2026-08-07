@@ -16,6 +16,8 @@ export interface WorkflowNode {
   id: string
   // 展示名称(JSON 导出格式携带中文名;无则回退 id)
   name: string
+  // OS 节点或模板发布的完整操作说明；画布 hover 使用，不参与执行身份。
+  description?: string
   type: string
   className: string
   // 大 web 语义节点类型(Sample/Labware/Reagent/Transport/Device),决定分色
