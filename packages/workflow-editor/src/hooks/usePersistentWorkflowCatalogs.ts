@@ -6,7 +6,10 @@ import type {
 } from '@unilab/services'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
-import { projectMaterialSourceEditor } from '../utils/workflowMaterialSource'
+import {
+  rehydrateWorkflowMaterialSourceAuthority,
+  workflowMaterialSourceAuthorityBlockedReason
+} from '../utils/workflowMaterialSourceAuthority'
 import {
   errorMessage,
   isRecordValue,
@@ -71,6 +74,34 @@ export function usePersistentWorkflowCatalogs({
     } catch (catalogError) {
       setMaterialSourceCatalog(null)
       setMaterialSourceCatalogError(errorMessage(catalogError))
+    } finally {
+      setMaterialSourceCatalogLoading(false)
+    }
+  }, [runtime])
+
+  /**
+   * 在工作流（Workflow）应用或运行前重读物料来源权威并校验目标图。
+   *
+   * @param authorityGraph 即将应用或运行的候选/已应用工作流图。
+   * @returns 引用均有效时为 null；否则返回具体节点和失效引用。
+   */
+  const rehydrateMaterialSourceAuthority = useCallback(async (
+    authorityGraph: WorkflowAuthoringGraph
+  ): Promise<string | null> => {
+    setMaterialSourceCatalogLoading(true)
+    setMaterialSourceCatalogError(null)
+    try {
+      const result = await rehydrateWorkflowMaterialSourceAuthority(
+        runtime,
+        authorityGraph
+      )
+      setMaterialSourceCatalog(result.catalog)
+      return result.blockedReason
+    } catch (catalogError) {
+      const message = errorMessage(catalogError)
+      setMaterialSourceCatalog(null)
+      setMaterialSourceCatalogError(message)
+      throw catalogError
     } finally {
       setMaterialSourceCatalogLoading(false)
     }
@@ -163,18 +194,10 @@ export function usePersistentWorkflowCatalogs({
       !effectiveMaterialSourceCatalog ||
       !graph
     ) return true
-    return sourceNodes.some((node) => {
-      if (typeof node.uuid !== 'string' || !node.uuid) return true
-      try {
-        return projectMaterialSourceEditor(
-          effectiveMaterialSourceCatalog,
-          graph,
-          node.uuid
-        ).staleReferences.length > 0
-      } catch {
-        return true
-      }
-    })
+    return workflowMaterialSourceAuthorityBlockedReason(
+      effectiveMaterialSourceCatalog,
+      graph
+    ) !== null
   }, [
     effectiveMaterialSourceCatalog,
     graph,
@@ -189,6 +212,7 @@ export function usePersistentWorkflowCatalogs({
     materialSourceCatalog,
     materialSourceCatalogError,
     materialSourceCatalogLoading,
+    rehydrateMaterialSourceAuthority,
     refreshMaterialSourceCatalog,
     refreshWorkflowCatalogsAfterConflict
   }
