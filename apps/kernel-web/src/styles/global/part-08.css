@@ -235,25 +235,6 @@
     font-size: 10px;
   }
 
-  .lab-panel-workspace--lab
-    [data-split-direction='horizontal']
-    > [role='separator'],
-  .lab-panel-workspace--lab
-    [data-split-direction='horizontal']
-    > div:has([data-panel-type='workflow-dag-picker']) {
-    display: none;
-  }
-
-  .lab-panel-workspace--lab
-    [data-split-direction='horizontal']
-    > div:has([data-panel-type='layout-unified']) {
-    flex: 1 1 100% !important;
-  }
-
-  .lab-panel-workspace--lab [data-panel-tab-drop-owner] {
-    display: none;
-  }
-
 }
 
 /* ============ Impeccable：实验室面板视觉校准 ============ */
