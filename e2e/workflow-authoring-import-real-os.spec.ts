@@ -9,7 +9,7 @@ import {
 } from './helpers/persistent-authoring-os'
 import {
   applyWorkflowCandidateWithoutTask,
-  saveWorkflowDraftOnly
+  waitForTaskInputDrawerClosed
 } from './helpers/workflow-runtime-ui'
 
 let os: PersistentAuthoringOs
@@ -55,7 +55,7 @@ async function requiresPackageCandidateMaterialization({
   )
 
   await panel.getByRole('button', {
-    name: '应用并运行',
+    name: '应用此版本',
     exact: true
   }).click()
 
@@ -83,7 +83,7 @@ test(
   requiresPackageCandidateMaterialization
 )
 
-/** 验证 Python 导入后形成未保存草稿，并经 OS 候选版本门禁完成应用。 */
+/** 验证 Python 导入后自动保存草稿，并经 OS 候选版本门禁完成应用。 */
 test('imports Python into the existing persistent Authoring UI and applies the OS Candidate', async ({
   page
 }) => {
@@ -101,6 +101,13 @@ test('imports Python into the existing persistent Authoring UI and applies the O
   const sourceBeforeImport = readFileSync(os.sourcePath, 'utf8')
   const importedSource = sourceBeforeImport.replace('= 3,', '= 7,')
   expect(importedSource).not.toBe(sourceBeforeImport)
+  const draftPath =
+    `/api/v1/workflows/${os.workflowUuid}/authoring/draft`
+  const draftPutsBeforeImport = countRequests(
+    evidence.apiRequests,
+    'PUT',
+    draftPath
+  )
 
   const fileChooser = page.waitForEvent('filechooser')
   await panel.getByRole('button', {
@@ -116,12 +123,19 @@ test('imports Python into the existing persistent Authoring UI and applies the O
   const editor = panel.locator('.cm-content:visible')
   await expect(editor).toContainText('= 7,')
   await expect(panel.getByText(
-    'imported-workflow.py 已导入为未保存的 Python 草稿',
-    { exact: true }
+    /imported-workflow\.py 已导入；草稿已保存/
   )).toBeVisible()
-  await expect(panel.getByText('● 未保存', { exact: true })).toBeVisible()
+  await expect.poll(
+    () => countRequests(evidence.apiRequests, 'PUT', draftPath)
+  ).toBe(draftPutsBeforeImport + 1)
+  await expect(panel.getByText('● 未保存', { exact: true })).toHaveCount(0)
+  await expect(panel.getByText('仅保存草稿', { exact: true })).toHaveCount(0)
   await expect(panel.getByRole('button', {
-    name: '保存并运行',
+    name: '应用此版本',
+    exact: true
+  })).toBeEnabled()
+  await expect(panel.getByRole('button', {
+    name: '开始运行',
     exact: true
   })).toBeEnabled()
   await panel.screenshot({
@@ -129,7 +143,10 @@ test('imports Python into the existing persistent Authoring UI and applies the O
     animations: 'disabled'
   })
 
-  await saveWorkflowDraftOnly(panel)
+  await panel.getByRole('button', {
+    name: '开始运行',
+    exact: true
+  }).click()
   const normalizationDiff = page.getByRole('dialog', {
     name: '完整 Python 差异'
   })
@@ -142,31 +159,26 @@ test('imports Python into the existing persistent Authoring UI and applies the O
     animations: 'disabled'
   })
   await normalizationDiff.getByRole('button', {
-    name: '接受完整差异并保存'
+    name: '接受完整差异并保存',
+    exact: true
   }).click()
-  await expect(panel.getByText(
-    '草稿已保存，有尚未应用的工作流修改',
-    { exact: true }
-  )).toBeVisible()
+  const taskInput = page.getByLabel('工作流运行输入表单')
+  await expect(taskInput).toBeVisible()
+  await taskInput.getByRole('button', { name: '取消', exact: true }).click()
+  await waitForTaskInputDrawerClosed(page)
   await expect(panel.getByRole('button', {
-    name: '应用并运行',
+    name: '开始运行',
     exact: true
   })).toBeEnabled()
   await panel.screenshot({
-    path: join(artifactDirectory, '03-python-candidate-saved.png'),
-    animations: 'disabled'
-  })
-
-  await applyWorkflowCandidateWithoutTask(panel, page)
-  await panel.screenshot({
-    path: join(artifactDirectory, '04-python-candidate-applied.png'),
+    path: join(artifactDirectory, '03-python-candidate-applied.png'),
     animations: 'disabled'
   })
   expect(evidence.browserErrors).toEqual([])
   writeNetworkLedger('python-network-ledger.json', evidence)
 })
 
-test('imports same-Workflow Authoring Graph JSON through the canvas diff gate', async ({
+test('imports same-Workflow Authoring Graph JSON and saves it automatically', async ({
   page,
   request
 }) => {
@@ -217,6 +229,9 @@ test('imports same-Workflow Authoring Graph JSON through the canvas diff gate', 
 
   await selectWorkflow(page, os.workflowUuid, os.url)
   const panel = page.getByRole('tabpanel', { name: '工作流' })
+  const draftPath =
+    `/api/v1/workflows/${os.workflowUuid}/authoring/draft`
+  const draftPutsBeforeImport = countRequests(apiRequests, 'PUT', draftPath)
   const fileChooser = page.waitForEvent('filechooser')
   await panel.getByRole('button', {
     name: '导入 JSON',
@@ -238,39 +253,15 @@ test('imports same-Workflow Authoring Graph JSON through the canvas diff gate', 
     hasText: 'imported_json_node'
   })).toBeVisible()
   await expect(panel.getByText(
-    'authoring-graph.json 已导入到画布；保存前将检查完整 Python 差异',
-    { exact: true }
-  )).toBeVisible()
-  await panel.screenshot({
-    path: join(artifactDirectory, '05-json-graph-imported.png'),
-    animations: 'disabled'
-  })
-
-  const draftPath =
-    `/api/v1/workflows/${os.workflowUuid}/authoring/draft`
-  const draftPutsBeforeSave = countRequests(apiRequests, 'PUT', draftPath)
-  await saveWorkflowDraftOnly(panel)
-  const fullDiff = page.getByRole('dialog', { name: '完整 Python 差异' })
-  await expect(fullDiff.getByText('画布保存检查', { exact: true }))
-    .toBeVisible()
-  expect(countRequests(apiRequests, 'PUT', draftPath)).toBe(draftPutsBeforeSave)
-  await fullDiff.screenshot({
-    path: join(artifactDirectory, '06-json-full-python-diff.png'),
-    animations: 'disabled'
-  })
-
-  await fullDiff.getByRole('button', {
-    name: '接受完整差异并保存'
-  }).click()
-  await expect(panel.getByText(
-    '草稿已保存，有尚未应用的工作流修改',
-    { exact: true }
+    /authoring-graph\.json 已导入；草稿已保存/
   )).toBeVisible()
   await expect.poll(
     () => countRequests(apiRequests, 'PUT', draftPath)
-  ).toBe(draftPutsBeforeSave + 1)
+  ).toBe(draftPutsBeforeImport + 1)
+  await expect(panel.getByText('● 未保存', { exact: true })).toHaveCount(0)
+  await expect(panel.getByText('仅保存草稿', { exact: true })).toHaveCount(0)
   await panel.screenshot({
-    path: join(artifactDirectory, '07-json-candidate-saved.png'),
+    path: join(artifactDirectory, '04-json-graph-imported-and-saved.png'),
     animations: 'disabled'
   })
 
@@ -283,7 +274,7 @@ test('imports same-Workflow Authoring Graph JSON through the canvas diff gate', 
     candidate_hash: expect.stringMatching(/^sha256:/)
   })
   await panel.screenshot({
-    path: join(artifactDirectory, '08-json-candidate-applied.png'),
+    path: join(artifactDirectory, '05-json-candidate-applied.png'),
     animations: 'disabled'
   })
 
@@ -359,7 +350,7 @@ test('rejects a cross-Workflow Graph without changing the current document', asy
     generationPath
   )).toBe(generationsBeforeImport)
   await panel.screenshot({
-    path: join(artifactDirectory, '09-cross-workflow-json-rejected.png'),
+    path: join(artifactDirectory, '06-cross-workflow-json-rejected.png'),
     animations: 'disabled'
   })
 

@@ -101,13 +101,14 @@ function provesDirtyWorkflowStartsWithSave(): void {
   }
 
   expect(flow.snapshot(context)).toMatchObject({
-    label: '保存并运行',
+    label: '开始运行',
+    applyDisabled: false,
     disabled: false,
     phase: 'idle'
   })
   expect(flow.start(context)).toEqual({ kind: 'save_draft' })
   expect(flow.snapshot(context)).toMatchObject({
-    label: '保存并运行',
+    label: '开始运行',
     disabled: true,
     phase: 'saving'
   })
@@ -128,7 +129,8 @@ function provesSavedCandidateStartsWithApply(): void {
   }
 
   expect(flow.snapshot(context)).toMatchObject({
-    label: '应用并运行',
+    label: '开始运行',
+    applyDisabled: false,
     disabled: false
   })
   expect(flow.start(context)).toEqual({
@@ -152,6 +154,13 @@ function provesCleanWorkflowReadsAppliedRevision(): void {
     editMode: 'canvas' as const
   }
 
+  expect(flow.snapshot(context)).toMatchObject({
+    label: '开始运行',
+    applyDisabled: true,
+    applyDisabledReason: '当前已是应用版本',
+    disabled: false
+  })
+
   expect(flow.start(context)).toEqual({
     kind: 'read_applied',
     expectedRevision: 7
@@ -160,7 +169,71 @@ function provesCleanWorkflowReadsAppliedRevision(): void {
 }
 
 /**
- * 证明一次保存并运行严格经过候选应用与精确修订补读后才开放任务输入。
+ * 证明独立应用意图在候选应用后终止，不读取任务输入。
+ *
+ * @returns 无返回值；断言链路以已应用权威结束。
+ */
+function provesApplyOnlyStopsBeforeTaskInput(): void {
+  const flow = createWorkflowStartFlow()
+  const context = {
+    aggregate: applicableCandidateAggregate(),
+    dirty: false,
+    blockedReason: null,
+    editMode: 'code' as const
+  }
+
+  expect(flow.start(context, 'apply')).toEqual({
+    kind: 'apply_candidate',
+    candidateHash: 'sha256:candidate'
+  })
+  const appliedAuthority = authoringAggregate({ workflow_revision: 8 })
+  expect(flow.resume({
+    kind: 'candidate_applied',
+    response: {
+      apply_result: {
+        kind: 'graph',
+        previous_workflow_revision: 7,
+        workflow_revision: 8,
+        applied_candidate_hash: 'sha256:candidate',
+        applied_source_hash: 'sha256:source',
+        warnings: []
+      },
+      authoring: appliedAuthority
+    }
+  })).toEqual({
+    kind: 'application_complete',
+    authority: appliedAuthority
+  })
+  expect(flow.snapshot({ ...context, aggregate: appliedAuthority }))
+    .toMatchObject({ phase: 'idle', intent: null, applyDisabled: true })
+}
+
+/**
+ * 证明已应用版本不能重复应用，但仍可以开始运行。
+ *
+ * @returns 无返回值；断言应用与运行的可用性彼此独立。
+ */
+function provesAppliedVersionOnlyDisablesApply(): void {
+  const flow = createWorkflowStartFlow()
+  const context = {
+    aggregate: authoringAggregate(),
+    dirty: false,
+    blockedReason: null,
+    editMode: 'code' as const
+  }
+
+  expect(flow.start(context, 'apply')).toEqual({
+    kind: 'blocked',
+    message: '当前已是应用版本'
+  })
+  expect(flow.start(context, 'run')).toEqual({
+    kind: 'read_applied',
+    expectedRevision: 7
+  })
+}
+
+/**
+ * 证明开始运行会严格经过保存、候选应用与精确修订补读后才开放任务输入。
  *
  * @returns 无返回值；断言工作流源码、候选和已应用修订的权威顺序。
  */
@@ -274,7 +347,7 @@ function provesInvalidDraftStopsBeforeApply(): void {
     dirty: false,
     aggregate: authoringAggregate({ state: 'draft_invalid' })
   })).toMatchObject({
-    label: '保存并运行',
+    label: '开始运行',
     disabled: true,
     disabledReason: '工作流草稿存在错误，请修改后再运行'
   })
@@ -322,6 +395,8 @@ describe('WorkflowStartFlow', () => {
   it('未保存修改从保存工作流源码开始', provesDirtyWorkflowStartsWithSave)
   it('已保存候选直接进入应用阶段', provesSavedCandidateStartsWithApply)
   it('无修改时先确认已应用修订', provesCleanWorkflowReadsAppliedRevision)
+  it('独立应用不打开任务输入', provesApplyOnlyStopsBeforeTaskInput)
+  it('已应用版本仅禁用重复应用', provesAppliedVersionOnlyDisablesApply)
   it('任务输入前严格保存应用并补读修订', provesSaveApplyReadSequenceBeforeInput)
   it('规范化差异必须明确确认后保存', provesNormalizedSourceNeedsExplicitReview)
   it('无有效候选时停止在应用之前', provesInvalidDraftStopsBeforeApply)

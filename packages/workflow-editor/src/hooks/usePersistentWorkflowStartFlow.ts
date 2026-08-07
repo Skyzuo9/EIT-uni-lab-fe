@@ -8,6 +8,7 @@ import {
   createWorkflowStartFlow,
   type WorkflowStartCommand,
   type WorkflowStartContext,
+  type WorkflowStartIntent,
   type WorkflowStartSourceReview
 } from '../runtime/WorkflowStartFlow'
 import { errorMessage } from '../utils/persistentAuthoringProjection'
@@ -105,8 +106,12 @@ export function usePersistentWorkflowStartFlow({
       setFullSourceDiff({ ...command.review, applyAfterSave: false })
       setMessage(
         command.review.reason === 'source_normalization'
-          ? '草稿已保存；请确认 OS 规范化后的完整 Python，再继续运行'
-          : '请确认画布生成的完整 Python，再继续运行'
+          ? `草稿已保存；请确认 OS 规范化后的完整 Python，再继续${
+              command.intent === 'apply' ? '应用' : '运行'
+            }`
+          : `请确认画布生成的完整 Python，再继续${
+              command.intent === 'apply' ? '应用' : '运行'
+            }`
       )
       return
     }
@@ -150,6 +155,11 @@ export function usePersistentWorkflowStartFlow({
       }))
       return
     }
+    if (command.kind === 'application_complete') {
+      flowRef.current.cancel()
+      refreshPresentation()
+      return
+    }
     await commands.openTaskInput(command.authority)
     flowRef.current.cancel()
     refreshPresentation()
@@ -185,20 +195,30 @@ export function usePersistentWorkflowStartFlow({
    *
    * @returns 无返回值；存在远端失效时只进入冲突处理，不运行旧修订。
    */
-  const startWorkflow = (): void => {
+  const startIntent = (intent: WorkflowStartIntent): void => {
     if (hasRemoteInvalidation()) {
       flowRef.current.cancel()
       commands.resolveRemoteConflict()
       refreshPresentation()
       return
     }
-    const command = flowRef.current.start(context)
+    const command = flowRef.current.start(context, intent)
     if (command.kind === 'blocked') {
       setError(command.message)
       refreshPresentation()
       return
     }
     run(command)
+  }
+
+  /** 保存、校验并应用当前版本，不打开任务输入。 */
+  const applyWorkflowVersion = (): void => {
+    startIntent('apply')
+  }
+
+  /** 开始运行；必要时先自动应用当前版本。 */
+  const startWorkflow = (): void => {
+    startIntent('run')
   }
 
   /**
@@ -221,17 +241,23 @@ export function usePersistentWorkflowStartFlow({
    * @returns 已处理时为 true；普通仅保存差异返回 false。
    */
   const cancelWorkflowStartReview = (): boolean => {
-    if (flowRef.current.snapshot(context).phase !== 'awaiting_source_review') {
+    const snapshot = flowRef.current.snapshot(context)
+    if (snapshot.phase !== 'awaiting_source_review') {
       return false
     }
     flowRef.current.cancel()
     refreshPresentation()
-    setMessage('已取消本次运行；已保存的工作流源码保持不变')
+    setMessage(
+      snapshot.intent === 'apply'
+        ? '已取消本次应用；已保存的工作流源码保持不变'
+        : '已取消本次运行；已保存的工作流源码保持不变'
+    )
     return true
   }
 
   return {
     acceptWorkflowStartReview,
+    applyWorkflowVersion,
     cancelWorkflowStartReview,
     startWorkflow,
     workflowStartBusy,

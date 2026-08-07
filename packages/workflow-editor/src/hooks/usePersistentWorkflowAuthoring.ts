@@ -284,6 +284,7 @@ export function usePersistentWorkflowAuthoring({
   } = useWorkflowImportFlow({
     runtime,
     workflowUuid,
+    queue,
     aggregate,
     initialPythonImport,
     onInitialPythonImportConsumed,

@@ -11,6 +11,8 @@ export type WorkflowStartPhase =
   | 'reading_applied'
   | 'opening_input'
 
+export type WorkflowStartIntent = 'apply' | 'run'
+
 export interface WorkflowStartContext {
   aggregate: WorkflowAuthoringAggregate | null
   dirty: boolean
@@ -20,9 +22,12 @@ export interface WorkflowStartContext {
 
 export interface WorkflowStartSnapshot {
   phase: WorkflowStartPhase
-  label: '保存并运行' | '应用并运行' | '开始运行'
+  intent: WorkflowStartIntent | null
+  label: '开始运行'
   disabled: boolean
   disabledReason: string | null
+  applyDisabled: boolean
+  applyDisabledReason: string | null
 }
 
 export interface WorkflowStartSourceReview {
@@ -36,7 +41,11 @@ export interface WorkflowStartSourceReview {
 
 export type WorkflowStartCommand =
   | { kind: 'save_draft' }
-  | { kind: 'review_source'; review: WorkflowStartSourceReview }
+  | {
+      kind: 'review_source'
+      review: WorkflowStartSourceReview
+      intent: WorkflowStartIntent
+    }
   | {
       kind: 'save_reviewed_source'
       pythonSource: string
@@ -46,6 +55,10 @@ export type WorkflowStartCommand =
       reason: WorkflowStartSourceReview['reason']
     }
   | { kind: 'apply_candidate'; candidateHash: string }
+  | {
+      kind: 'application_complete'
+      authority: WorkflowAuthoringAggregate
+    }
   | { kind: 'read_applied'; expectedRevision: number }
   | {
       kind: 'open_task_input'
@@ -75,7 +88,10 @@ export type WorkflowStartEvent =
 
 export interface WorkflowStartFlow {
   snapshot(context: WorkflowStartContext): WorkflowStartSnapshot
-  start(context: WorkflowStartContext): WorkflowStartCommand
+  start(
+    context: WorkflowStartContext,
+    intent?: WorkflowStartIntent
+  ): WorkflowStartCommand
   resume(event: WorkflowStartEvent): WorkflowStartCommand
   cancel(): void
 }
@@ -92,6 +108,16 @@ export function createWorkflowStartFlow(): WorkflowStartFlow {
   let expectedRevision: number | null = null
   // pendingReview 保存用户正在确认的完整源码差异及其双 CAS 坐标。
   let pendingReview: WorkflowStartSourceReview | null = null
+  // intent 只区分“应用此版本”与“开始运行”的链路终点。
+  let intent: WorkflowStartIntent | null = null
+
+  /** 清理一次短生命周期编排状态。 */
+  const reset = (): void => {
+    phase = 'idle'
+    expectedRevision = null
+    pendingReview = null
+    intent = null
+  }
 
   /**
    * 判断当前权威状态是否必须重新保存并编译工作流源码（Workflow Source）。
@@ -138,14 +164,14 @@ export function createWorkflowStartFlow(): WorkflowStartFlow {
   ): WorkflowStartCommand => {
     const candidate = authority.candidate
     if (!candidate) {
-      phase = 'idle'
+      reset()
       return {
         kind: 'blocked',
         message: '工作流源码未生成可应用候选，请修复诊断后重试'
       }
     }
     if (!authority.draft) {
-      phase = 'idle'
+      reset()
       return {
         kind: 'blocked',
         message: '当前候选缺少可确认的工作流源码，请刷新后重试'
@@ -165,7 +191,8 @@ export function createWorkflowStartFlow(): WorkflowStartFlow {
       phase = 'awaiting_source_review'
       return {
         kind: 'review_source',
-        review: pendingReview
+        review: pendingReview,
+        intent: intent ?? 'run'
       }
     }
     phase = 'applying'
@@ -188,16 +215,19 @@ export function createWorkflowStartFlow(): WorkflowStartFlow {
         : context.blockedReason ?? authoringBlockedReason(context) ?? (
             context.aggregate ? null : '工作流尚未加载完成'
           )
+      const applyDisabledReason = disabledReason ?? (
+        !needsDraftSave(context) && !context.aggregate?.candidate
+          ? '当前已是应用版本'
+          : null
+      )
       return {
         phase,
-        label: needsDraftSave(context) ||
-          context.aggregate?.state === 'draft_invalid'
-          ? '保存并运行'
-          : context.aggregate?.candidate
-            ? '应用并运行'
-            : '开始运行',
+        intent,
+        label: '开始运行',
         disabled: disabledReason !== null,
-        disabledReason
+        disabledReason,
+        applyDisabled: applyDisabledReason !== null,
+        applyDisabledReason
       }
     },
 
@@ -207,14 +237,23 @@ export function createWorkflowStartFlow(): WorkflowStartFlow {
      * @param context 当前工作流创作权威与本地修改状态。
      * @returns 调用方下一步必须执行的公开命令。
      */
-    start(context): WorkflowStartCommand {
+    start(
+      context,
+      requestedIntent: WorkflowStartIntent = 'run'
+    ): WorkflowStartCommand {
       const snapshot = this.snapshot(context)
-      if (snapshot.disabled) {
+      const disabled = requestedIntent === 'apply'
+        ? snapshot.applyDisabled
+        : snapshot.disabled
+      if (disabled) {
         return {
           kind: 'blocked',
-          message: snapshot.disabledReason ?? '当前不能开始运行'
+          message: requestedIntent === 'apply'
+            ? snapshot.applyDisabledReason ?? '当前不能应用此版本'
+            : snapshot.disabledReason ?? '当前不能开始运行'
         }
       }
+      intent = requestedIntent
       if (needsDraftSave(context)) {
         phase = 'saving'
         return { kind: 'save_draft' }
@@ -226,6 +265,10 @@ export function createWorkflowStartFlow(): WorkflowStartFlow {
       const candidate = authority.candidate
       if (candidate) {
         return continueFromSaved(authority, context.editMode)
+      }
+      if (requestedIntent === 'apply') {
+        reset()
+        return { kind: 'blocked', message: '当前已是应用版本' }
       }
       phase = 'reading_applied'
       expectedRevision = authority.workflow_revision
@@ -248,7 +291,11 @@ export function createWorkflowStartFlow(): WorkflowStartFlow {
       if (event.kind === 'source_review_required' && phase === 'saving') {
         pendingReview = event.review
         phase = 'awaiting_source_review'
-        return { kind: 'review_source', review: event.review }
+        return {
+          kind: 'review_source',
+          review: event.review,
+          intent: intent ?? 'run'
+        }
       }
       if (
         event.kind === 'source_review_accepted' &&
@@ -268,6 +315,11 @@ export function createWorkflowStartFlow(): WorkflowStartFlow {
         }
       }
       if (event.kind === 'candidate_applied' && phase === 'applying') {
+        if (intent === 'apply') {
+          const authority = event.response.authoring
+          reset()
+          return { kind: 'application_complete', authority }
+        }
         expectedRevision = event.response.apply_result.workflow_revision
         phase = 'reading_applied'
         return {
@@ -304,9 +356,7 @@ export function createWorkflowStartFlow(): WorkflowStartFlow {
      * @returns 无返回值；状态恢复为空闲，下一次点击重新读取权威事实。
      */
     cancel(): void {
-      phase = 'idle'
-      expectedRevision = null
-      pendingReview = null
+      reset()
     }
   }
 }

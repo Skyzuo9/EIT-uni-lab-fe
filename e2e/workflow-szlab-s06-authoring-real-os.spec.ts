@@ -118,7 +118,7 @@ test('S06 Python and JSON projections switch and keep the three-node topology', 
     name: '完整 Python 差异'
   })
   const applyButton = panel.getByRole('button', {
-    name: '应用并运行',
+    name: '应用此版本',
     exact: true
   })
   await expect.poll(async () => (

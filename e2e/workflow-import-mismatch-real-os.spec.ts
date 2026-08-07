@@ -7,7 +7,6 @@ import {
   startPersistentAuthoringOs,
   type PersistentAuthoringOs
 } from './helpers/persistent-authoring-os'
-import { saveWorkflowDraftOnly } from './helpers/workflow-runtime-ui'
 
 const artifactDirectory = resolve(
   process.env.UNILAB_E2E_ARTIFACT_DIR ||
@@ -47,16 +46,7 @@ test('shows one actionable dialog and hands imported Python to its workflow', as
   const importedSource = `${readFileSync(os.secondSourcePath, 'utf8')}
 # imported handoff regression
 `
-  const fileChooser = page.waitForEvent('filechooser')
-  await panel.getByRole('button', {
-    name: '导入 Python',
-    exact: true
-  }).click()
-  await (await fileChooser).setFiles({
-    name: 'another-workflow.py',
-    mimeType: 'text/x-python',
-    buffer: Buffer.from(importedSource)
-  })
+  await expect(panel.getByText('仅保存草稿', { exact: true })).toHaveCount(0)
   await page.route(
     `${os.url}/api/v1/workflows/${os.workflowUuid}/authoring/draft`,
     async (route) => {
@@ -72,7 +62,16 @@ test('shows one actionable dialog and hands imported Python to its workflow', as
       })
     }
   )
-  await saveWorkflowDraftOnly(panel)
+  const fileChooser = page.waitForEvent('filechooser')
+  await panel.getByRole('button', {
+    name: '导入 Python',
+    exact: true
+  }).click()
+  await (await fileChooser).setFiles({
+    name: 'another-workflow.py',
+    mimeType: 'text/x-python',
+    buffer: Buffer.from(importedSource)
+  })
 
   const dialog = page.getByRole('dialog', {
     name: '这个文件属于另一个工作流'
@@ -103,8 +102,7 @@ test('shows one actionable dialog and hands imported Python to its workflow', as
     name: /^打开「.+」并继续$/
   }).click()
   await expect(panel.getByText(
-    'another-workflow.py 已导入为未保存的 Python 草稿',
-    { exact: true }
+    /another-workflow\.py 已导入；草稿已保存/
   )).toBeVisible()
   const targetEditor = panel.locator('.cm-content:visible')
   await targetEditor.click()

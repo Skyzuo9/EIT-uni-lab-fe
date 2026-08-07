@@ -1,10 +1,11 @@
-import { forwardRef, useState } from 'react'
+import { forwardRef, useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { ButtonHTMLAttributes, PointerEventHandler } from 'react'
 
 export interface WorkflowButtonProps
   extends ButtonHTMLAttributes<HTMLButtonElement> {
   disabledReason: string
+  tooltip?: string
 }
 
 interface TooltipPosition {
@@ -32,18 +33,25 @@ export const WorkflowButton = forwardRef<
     onPointerEnter,
     onPointerLeave,
     title,
+    tooltip,
     ...props
   },
   ref
 ): React.JSX.Element {
   const unavailableReason = disabled ? disabledReason : undefined
+  const tooltipText = unavailableReason && tooltip
+    ? `${unavailableReason}。${tooltip}`
+    : unavailableReason ?? tooltip
   const [tooltipPosition, setTooltipPosition] =
     useState<TooltipPosition | null>(null)
+
+  // 按钮在操作后立即禁用时，清理旧的悬浮位置，避免提示残留。
+  useEffect(() => setTooltipPosition(null), [disabled])
 
   /** 在视口顶层展示禁用原因，避免被工作流画布和运行区裁剪。 */
   const handlePointerEnter: PointerEventHandler<HTMLButtonElement> = (event) => {
     onPointerEnter?.(event)
-    if (!unavailableReason) return
+    if (!tooltipText) return
     const bounds = event.currentTarget.getBoundingClientRect()
     const viewportWidth = globalThis.window.innerWidth
     const tooltipWidth = Math.min(
@@ -76,20 +84,20 @@ export const WorkflowButton = forwardRef<
         {...props}
         ref={ref}
         disabled={disabled}
-        aria-description={unavailableReason}
+        aria-description={tooltipText}
         data-disabled-reason={unavailableReason}
         onPointerEnter={handlePointerEnter}
         onPointerLeave={handlePointerLeave}
-        title={disabled ? undefined : title}
+        title={disabled || tooltip ? undefined : title}
       />
-      {tooltipPosition && unavailableReason && typeof document !== 'undefined'
+      {tooltipPosition && tooltipText && typeof document !== 'undefined'
         ? createPortal(
             <span
               className="workflowDisabledButtonTooltip"
               role="tooltip"
               style={tooltipPosition}
             >
-              {unavailableReason}
+              {tooltipText}
             </span>,
             document.body
           )

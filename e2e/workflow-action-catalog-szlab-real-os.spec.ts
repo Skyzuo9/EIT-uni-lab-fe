@@ -254,7 +254,7 @@ test('SZLab persisted Catalog reaches the original typed workflow editor', async
       `/api/v1/workflows/${os.workflowUuid}/authoring/apply`
     ) && response.status() === 409
   )
-  await page.getByRole('button', { name: '应用并运行' }).click()
+  await page.getByRole('button', { name: '应用此版本' }).click()
   expect((await conflictResponse).status()).toBe(409)
   await expect.poll(() => requests.filter(
     (path) => path === '/api/v1/workflow-node-templates'

@@ -8,7 +8,7 @@ interface PersistentWorkflowToolbarProps {
 }
 
 /**
- * 展示工作流（Workflow）编辑模式、导入、仅保存和单一运行入口。
+ * 展示工作流（Workflow）编辑模式、导入和单一运行入口。
  *
  * @param props 工作流创作会话投影。
  * @returns 保持既有可访问性分组的工具栏。
@@ -16,15 +16,18 @@ interface PersistentWorkflowToolbarProps {
 export function PersistentWorkflowToolbar({
   model
 }: PersistentWorkflowToolbarProps): React.JSX.Element {
-  const moreMenuRef = useSaveDraftShortcut(model)
+  const toolbarRef = useRef<HTMLElement | null>(null)
+  useSaveDraftShortcut(model, toolbarRef)
 
   return (
-    <header className="workflow__toolbar persistent-authoring__toolbar">
+    <header
+      ref={toolbarRef}
+      className="workflow__toolbar persistent-authoring__toolbar"
+    >
       <WorkflowToolbarContext model={model} />
       <WorkflowEditingModeSwitch model={model} />
       <div className="workflow__toolbar-actions">
         <WorkflowImportActions model={model} />
-        <WorkflowMoreMenu model={model} menuRef={moreMenuRef} />
         <WorkflowRunActions model={model} />
       </div>
     </header>
@@ -33,8 +36,9 @@ export function PersistentWorkflowToolbar({
 
 /** 注册工作流源码（Workflow Source）的键盘保存入口。 */
 function useSaveDraftShortcut(
-  model: PersistentWorkflowAuthoringModel
-): React.RefObject<HTMLDetailsElement | null> {
+  model: PersistentWorkflowAuthoringModel,
+  toolbarRef: React.RefObject<HTMLElement | null>
+): void {
   const {
     aggregate,
     busy,
@@ -47,18 +51,23 @@ function useSaveDraftShortcut(
     workflowImportMismatch,
     workflowStartBusy
   } = model
-  const moreMenuRef = useRef<HTMLDetailsElement | null>(null)
-
   useEffect(() => {
     /** 将 Ctrl/Cmd+S 委托给工作流源码保存命令。 */
     const handleSaveShortcut = (event: KeyboardEvent): void => {
       const isSaveShortcut = event.key.toLowerCase() === 's' &&
         (event.ctrlKey || event.metaKey)
+      const panel = toolbarRef.current?.closest(
+        '[data-panel-type="workflow-dag"]'
+      )
+      const eventTarget = event.target
+      const belongsToPanel = panel && eventTarget instanceof Node
+        ? panel.contains(eventTarget)
+        : false
       const saveBlocked = busy || runtimeBusy || workflowStartBusy ||
         !aggregate || Boolean(fullSourceDiff) || Boolean(pendingMode) ||
         Boolean(remoteConflict) || Boolean(workflowImportMismatch) ||
         Boolean(taskInputForm)
-      if (!isSaveShortcut || saveBlocked) return
+      if (!isSaveShortcut || !belongsToPanel || saveBlocked) return
       event.preventDefault()
       saveDraft()
     }
@@ -76,8 +85,6 @@ function useSaveDraftShortcut(
     workflowImportMismatch,
     workflowStartBusy
   ])
-
-  return moreMenuRef
 }
 
 /** 展示工作流（Workflow）标题与会话消息。 */
@@ -200,46 +207,6 @@ function WorkflowImportActions({
   )
 }
 
-/** 展示低频工作流（Workflow）操作。 */
-function WorkflowMoreMenu({
-  model,
-  menuRef
-}: PersistentWorkflowToolbarProps & {
-  menuRef: React.RefObject<HTMLDetailsElement | null>
-}): React.JSX.Element {
-  const runningEntryBusy = model.runtimeBusy || model.workflowStartBusy
-
-  /** 保存草稿并关闭更多菜单。 */
-  const saveDraftFromMoreMenu = (): void => {
-    menuRef.current?.removeAttribute('open')
-    model.saveDraft()
-  }
-
-  return (
-    <details ref={menuRef} className="persistent-authoring__more">
-      <summary aria-label="更多工作流操作">更多</summary>
-      <div
-        className="persistent-authoring__more-menu"
-        role="menu"
-        aria-label="更多工作流操作"
-      >
-        <WorkflowButton
-          type="button"
-          role="menuitem"
-          disabled={model.busy || runningEntryBusy || !model.aggregate}
-          disabledReason={model.busy || runningEntryBusy
-            ? '正在处理工作流，请稍后仅保存草稿'
-            : '工作流尚未加载完成'}
-          onClick={saveDraftFromMoreMenu}
-        >
-          <span>仅保存草稿</span>
-          <kbd>Ctrl+S</kbd>
-        </WorkflowButton>
-      </div>
-    </details>
-  )
-}
-
 /** 展示工作流任务（WorkflowTask）的运行模式与启动入口。 */
 function WorkflowRunActions({
   model
@@ -248,6 +215,12 @@ function WorkflowRunActions({
   const startDisabled = model.busy || runningEntryBusy ||
     model.singleNodeTargetMissing || model.workflowStartPresentation.disabled
   const disabledReason = workflowStartDisabledReason(model, runningEntryBusy)
+  const applyDisabled = model.busy || runningEntryBusy ||
+    model.workflowStartPresentation.applyDisabled
+  const applyDisabledReason = workflowApplyDisabledReason(
+    model,
+    runningEntryBusy
+  )
 
   return (
     <div
@@ -258,12 +231,21 @@ function WorkflowRunActions({
       <WorkflowRunModeSwitch model={model} busy={runningEntryBusy} />
       <WorkflowButton
         type="button"
+        className="workflow-runtime__apply"
+        disabled={applyDisabled}
+        disabledReason={applyDisabledReason}
+        tooltip="保存并校验当前修改，将其设为后续运行使用的版本；不会立即运行设备。"
+        onClick={model.applyWorkflowVersion}
+      >
+        应用此版本
+      </WorkflowButton>
+      <WorkflowButton
+        type="button"
         className="workflow-runtime__primary"
         disabled={startDisabled}
         disabledReason={disabledReason}
         title={model.aggregate
-          ? `${model.workflowStartPresentation.label}；当前已应用版本 ` +
-            `${model.aggregate.workflow_revision}`
+          ? '开始运行；若当前版本尚未应用，将自动应用后运行'
           : '工作流尚未就绪'}
         onClick={model.startWorkflow}
       >
@@ -271,7 +253,7 @@ function WorkflowRunActions({
           ? '处理中…'
           : model.taskRunMode === 'single_node'
             ? '开始单节点调试'
-            : model.workflowStartPresentation.label}
+            : '开始运行'}
       </WorkflowButton>
     </div>
   )
@@ -331,4 +313,15 @@ function workflowStartDisabledReason(
   if (runningEntryBusy) return '正在处理上一项工作流任务操作，请稍候'
   if (model.singleNodeTargetMissing) return '请先在画布节点上设置起始点'
   return model.workflowStartPresentation.disabledReason ?? '工作流尚未就绪'
+}
+
+/** 解释“应用此版本”为何不可用。 */
+function workflowApplyDisabledReason(
+  model: PersistentWorkflowAuthoringModel,
+  runningEntryBusy: boolean
+): string {
+  if (model.busy) return '正在处理工作流编写操作，请稍候'
+  if (runningEntryBusy) return '正在处理上一项工作流操作，请稍候'
+  return model.workflowStartPresentation.applyDisabledReason ??
+    '当前不能应用此版本'
 }

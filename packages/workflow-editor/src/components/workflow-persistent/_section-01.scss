@@ -33,6 +33,37 @@
     box-shadow: none;
   }
 
+  :global(.workflow-runtime__apply) {
+    height: 36px;
+    padding: 0 13px;
+    color: var(--unilab-color-primary);
+    border: 1px solid var(--unilab-color-focus);
+    border-radius: var(--unilab-radius-control);
+    background: var(--unilab-color-surface);
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+    transition:
+      border-color var(--unilab-motion-fast),
+      color var(--unilab-motion-fast),
+      background var(--unilab-motion-fast),
+      box-shadow var(--unilab-motion-fast);
+  }
+
+  :global(.workflow-runtime__apply):hover:not(:disabled) {
+    border-color: var(--unilab-color-primary);
+    background: var(--unilab-color-primary-soft);
+    box-shadow: var(--unilab-shadow-control);
+  }
+
+  :global(.workflow-runtime__apply):disabled {
+    color: var(--unilab-color-text-subtle);
+    border-color: var(--unilab-color-border);
+    cursor: not-allowed;
+    opacity: .68;
+  }
+
   :global(.persistent-authoring__toolbar-group) > :global(.workflow__upload) {
     border-color: transparent;
     background: transparent;
@@ -42,87 +73,6 @@
     > :global(.workflow__upload):hover:not(:disabled) {
     border-color: var(--unilab-color-border);
     background: var(--unilab-color-surface);
-  }
-
-  :global(.persistent-authoring__more) {
-    position: relative;
-  }
-
-  :global(.persistent-authoring__more) > summary {
-    display: inline-flex;
-    height: 34px;
-    align-items: center;
-    padding: 0 10px;
-    color: var(--unilab-color-text-muted);
-    border: 1px solid var(--unilab-color-border-strong);
-    border-radius: var(--unilab-radius-control);
-    background: var(--unilab-color-surface);
-    font-size: 12px;
-    font-weight: 600;
-    cursor: pointer;
-    list-style: none;
-  }
-
-  :global(.persistent-authoring__more) > summary::-webkit-details-marker {
-    display: none;
-  }
-
-  :global(.persistent-authoring__more) > summary::after {
-    margin-inline-start: 6px;
-    color: var(--unilab-color-text-subtle);
-    content: '⌄';
-  }
-
-  :global(.persistent-authoring__more[open]) > summary {
-    color: var(--unilab-color-primary);
-    border-color: var(--unilab-color-focus);
-    background: var(--unilab-color-primary-soft);
-  }
-
-  :global(.persistent-authoring__more-menu) {
-    position: absolute;
-    z-index: 40;
-    top: calc(100% + 6px);
-    right: 0;
-    min-width: 188px;
-    padding: 6px;
-    border: 1px solid var(--unilab-color-border);
-    border-radius: var(--unilab-radius-md);
-    background: var(--unilab-color-surface);
-    box-shadow: var(--unilab-shadow-panel);
-  }
-
-  :global(.persistent-authoring__more-menu) button {
-    display: flex;
-    width: 100%;
-    min-height: 36px;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--unilab-space-4);
-    padding: 0 9px;
-    color: var(--unilab-color-text);
-    border: 0;
-    border-radius: var(--unilab-radius-control);
-    background: transparent;
-    font: inherit;
-    cursor: pointer;
-  }
-
-  :global(.persistent-authoring__more-menu) button:hover:not(:disabled) {
-    color: var(--unilab-color-primary);
-    background: var(--unilab-color-primary-soft);
-  }
-
-  :global(.persistent-authoring__more-menu) button:disabled {
-    color: var(--unilab-color-text-subtle);
-    cursor: not-allowed;
-  }
-
-  :global(.persistent-authoring__more-menu) kbd {
-    color: var(--unilab-color-text-subtle);
-    font-family: var(--unilab-font-mono);
-    font-size: 10px;
-    font-weight: 500;
   }
 
   :global(.persistent-authoring__workbench) {
