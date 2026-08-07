@@ -190,7 +190,7 @@ export function DevicePanelView(props: DevicePanelViewProps): React.JSX.Element 
               <p>
                 {connection === 'connected'
                   ? '当前可继续使用 Edge 核心服务；配置仪器设备后请重新启动并刷新。'
-                  : '请确认 Edge 已启动并连接到本地桥。'}
+                  : '请确认 Edge 已启动。'}
               </p>
             </div>
           )}
