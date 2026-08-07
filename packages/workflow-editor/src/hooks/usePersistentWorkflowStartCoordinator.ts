@@ -47,6 +47,9 @@ interface PersistentWorkflowStartCoordinatorOptions {
   applyCandidateByHash: (
     candidateHash: string
   ) => Promise<WorkflowAuthoringApplyResponse>
+  rehydrateMaterialSourceAuthority: (
+    graph: WorkflowAuthoringGraph
+  ) => Promise<string | null>
   installAggregate: (
     aggregate: WorkflowAuthoringAggregate,
     message: string
@@ -90,6 +93,7 @@ export function usePersistentWorkflowStartCoordinator({
   remotePending,
   generateCanvasPython,
   applyCandidateByHash,
+  rehydrateMaterialSourceAuthority,
   installAggregate,
   presentWorkflowImportMismatch,
   openTaskInput,
@@ -220,11 +224,32 @@ export function usePersistentWorkflowStartCoordinator({
           throw saveError
         }
       },
-      applyCandidate: applyCandidateByHash,
+      applyCandidate: async (candidateHash) => {
+        const authority = await queue.run(
+          () => runtime.getWorkflowAuthoring(workflowUuid)
+        )
+        const candidate = authority.candidate
+        if (
+          candidate &&
+          candidate.candidate_hash === candidateHash
+        ) {
+          const blockedReason = await rehydrateMaterialSourceAuthority(
+            candidate.graph
+          )
+          if (blockedReason) throw new Error(blockedReason)
+        }
+        return applyCandidateByHash(candidateHash)
+      },
       readApplied: () => queue.run(
         () => runtime.getWorkflowAuthoring(workflowUuid)
       ),
-      openTaskInput,
+      openTaskInput: async (authority) => {
+        const blockedReason = await rehydrateMaterialSourceAuthority(
+          authority.applied_graph
+        )
+        if (blockedReason) throw new Error(blockedReason)
+        await openTaskInput(authority)
+      },
       resolveRemoteConflict: () => {
         remotePending.current = false
       }

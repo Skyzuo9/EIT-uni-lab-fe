@@ -105,6 +105,7 @@ export function usePersistentWorkflowAuthoring({
     materialSourceCatalog,
     materialSourceCatalogError,
     materialSourceCatalogLoading,
+    rehydrateMaterialSourceAuthority,
     refreshMaterialSourceCatalog,
     refreshWorkflowCatalogsAfterConflict
   } = usePersistentWorkflowCatalogs({ runtime, graph, setError })
@@ -396,9 +397,7 @@ export function usePersistentWorkflowAuthoring({
     aggregate,
     mode,
     dirty,
-    blockedReason: materialSourceAuthorityBlocked
-      ? '物料来源目录或引用已失效，请先刷新'
-      : null,
+    blockedReason: null,
     graph,
     editorValue: editor.value,
     selectedNodeUuid,
@@ -407,6 +406,7 @@ export function usePersistentWorkflowAuthoring({
     remotePending,
     generateCanvasPython,
     applyCandidateByHash: draftPersistence.applyCandidateByHash,
+    rehydrateMaterialSourceAuthority,
     installAggregate,
     presentWorkflowImportMismatch,
     openTaskInput: taskPanel.openTaskInputFormForAuthority,
