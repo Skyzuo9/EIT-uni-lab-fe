@@ -212,6 +212,49 @@ export function isAuthoringConflict(value: unknown): boolean {
   ].includes(String(error.code || ''))
 }
 
+/**
+ * 以当前编辑器源码为准写入草稿：先补读最新 CAS token，冲突时再重试覆盖。
+ *
+ * @param input 保存函数与冲突后补读权威聚合；传入的 expected* 仅作 refresh 失败前的回退坐标。
+ * @returns 最终写入成功后的权威聚合。
+ */
+export async function saveAuthoringDraftLocalWins(input: {
+  save: (
+    expectedDraftHash: string | null,
+    expectedWorkflowRevision: number
+  ) => Promise<WorkflowAuthoringAggregate>
+  refresh: () => Promise<WorkflowAuthoringAggregate>
+  expectedDraftHash: string | null
+  expectedWorkflowRevision: number
+  /** 含首次在内的最大尝试次数；默认 3，以消化 Edge 监视带来的连续 CAS 竞态。 */
+  maxAttempts?: number
+}): Promise<WorkflowAuthoringAggregate> {
+  const maxAttempts = Math.max(1, input.maxAttempts ?? 3)
+  let draftHash = input.expectedDraftHash
+  let revision = input.expectedWorkflowRevision
+  try {
+    const remote = await input.refresh()
+    draftHash = remote.draft?.draft_hash ?? null
+    revision = remote.workflow_revision
+  } catch {
+    // 补读失败时退回调用方冻结的坐标，仍尝试覆盖写入。
+  }
+  let lastError: unknown = null
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    try {
+      return await input.save(draftHash, revision)
+    } catch (saveError) {
+      lastError = saveError
+      if (!isAuthoringConflict(saveError)) throw saveError
+      if (attempt + 1 >= maxAttempts) break
+      const remote = await input.refresh()
+      draftHash = remote.draft?.draft_hash ?? null
+      revision = remote.workflow_revision
+    }
+  }
+  throw lastError
+}
+
 export type AuthoringSaveFailureAction =
   | 'close_diff_and_report'
   | 'read_remote_conflict'

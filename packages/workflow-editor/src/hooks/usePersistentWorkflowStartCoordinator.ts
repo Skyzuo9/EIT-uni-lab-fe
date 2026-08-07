@@ -16,7 +16,7 @@ import {
 } from '../utils/persistentAuthoringGraph'
 import {
   draftSaveMessage,
-  isAuthoringConflict,
+  saveAuthoringDraftLocalWins,
   type AuthoringOperationQueue
 } from '../utils/persistentAuthoringSession'
 import {
@@ -51,7 +51,6 @@ interface PersistentWorkflowStartCoordinatorOptions {
     aggregate: WorkflowAuthoringAggregate,
     message: string
   ) => void
-  readRemoteConflict: () => Promise<void>
   presentWorkflowImportMismatch: (
     saveError: unknown,
     pythonSource: string
@@ -92,7 +91,6 @@ export function usePersistentWorkflowStartCoordinator({
   generateCanvasPython,
   applyCandidateByHash,
   installAggregate,
-  readRemoteConflict,
   presentWorkflowImportMismatch,
   openTaskInput,
   run,
@@ -113,7 +111,7 @@ export function usePersistentWorkflowStartCoordinator({
       blockedReason,
       editMode: mode
     },
-    hasRemoteInvalidation: () => remotePending.current,
+    hasRemoteInvalidation: () => false,
     commands: {
       /**
        * 保存当前可写工作流源码（Workflow Source），或为画布生成完整差异。
@@ -124,16 +122,23 @@ export function usePersistentWorkflowStartCoordinator({
         if (!aggregate) throw new Error('工作流编辑数据尚未就绪')
         if (mode === 'code') {
           try {
-            const saved = await queue.run(
-              () => runtime.saveWorkflowAuthoringDraft(
-                workflowUuid,
-                {
-                  python_source: editorValue,
-                  expected_draft_hash: aggregate.draft?.draft_hash ?? null,
-                  expected_workflow_revision: aggregate.workflow_revision
-                }
+            const saved = await saveAuthoringDraftLocalWins({
+              expectedDraftHash: aggregate.draft?.draft_hash ?? null,
+              expectedWorkflowRevision: aggregate.workflow_revision,
+              save: (draftHash, revision) => queue.run(
+                () => runtime.saveWorkflowAuthoringDraft(
+                  workflowUuid,
+                  {
+                    python_source: editorValue,
+                    expected_draft_hash: draftHash,
+                    expected_workflow_revision: revision
+                  }
+                )
+              ),
+              refresh: () => queue.run(
+                () => runtime.getWorkflowAuthoring(workflowUuid)
               )
-            )
+            })
             remotePending.current = false
             installAggregate(saved, draftSaveMessage(saved))
             return { kind: 'saved' as const, aggregate: saved, editMode: mode }
@@ -142,9 +147,6 @@ export function usePersistentWorkflowStartCoordinator({
               saveError,
               editorValue
             )) throw saveError
-            if (!isAuthoringConflict(saveError)) throw saveError
-            remotePending.current = true
-            await readRemoteConflict()
             throw saveError
           }
         }
@@ -185,16 +187,23 @@ export function usePersistentWorkflowStartCoordinator({
        */
       saveReviewedSource: async (command) => {
         try {
-          const saved = await queue.run(
-            () => runtime.saveWorkflowAuthoringDraft(
-              workflowUuid,
-              {
-                python_source: command.pythonSource,
-                expected_draft_hash: command.expectedDraftHash,
-                expected_workflow_revision: command.expectedWorkflowRevision
-              }
+          const saved = await saveAuthoringDraftLocalWins({
+            expectedDraftHash: command.expectedDraftHash,
+            expectedWorkflowRevision: command.expectedWorkflowRevision,
+            save: (draftHash, revision) => queue.run(
+              () => runtime.saveWorkflowAuthoringDraft(
+                workflowUuid,
+                {
+                  python_source: command.pythonSource,
+                  expected_draft_hash: draftHash,
+                  expected_workflow_revision: revision
+                }
+              )
+            ),
+            refresh: () => queue.run(
+              () => runtime.getWorkflowAuthoring(workflowUuid)
             )
-          )
+          })
           remotePending.current = false
           setFullSourceDiff(null)
           installAggregate(saved, draftSaveMessage(saved))
@@ -208,23 +217,6 @@ export function usePersistentWorkflowStartCoordinator({
             saveError,
             command.pythonSource
           )) throw saveError
-          if (!isAuthoringConflict(saveError)) throw saveError
-          remotePending.current = true
-          const refreshed = await queue.run(
-            () => runtime.getWorkflowAuthoring(workflowUuid)
-          )
-          setFullSourceDiff({
-            before: authoritativePython(refreshed),
-            after: command.pythonSource,
-            expectedDraftHash: refreshed.draft?.draft_hash ?? null,
-            expectedWorkflowRevision: refreshed.workflow_revision,
-            reason: 'conflict_retry',
-            resumeMode: command.resumeMode,
-            applyAfterSave: false
-          })
-          setMessage(
-            '运行前检测到外部修改；本地完整源码已保留，请比较后明确处理'
-          )
           throw saveError
         }
       },
@@ -234,7 +226,7 @@ export function usePersistentWorkflowStartCoordinator({
       ),
       openTaskInput,
       resolveRemoteConflict: () => {
-        void run(readRemoteConflict)
+        remotePending.current = false
       }
     },
     setFullSourceDiff,

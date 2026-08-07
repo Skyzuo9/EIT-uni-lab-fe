@@ -21,6 +21,7 @@ import {
   draftSaveMessage,
   isAuthoringConflict,
   isTemplateCatalogConflict,
+  saveAuthoringDraftLocalWins,
   type AuthoringLocalSnapshot,
   type AuthoringOperationQueue
 } from '../utils/persistentAuthoringSession'
@@ -65,7 +66,6 @@ interface PersistentWorkflowDraftPersistenceOptions {
     aggregate: WorkflowAuthoringAggregate,
     message: string
   ) => void
-  readRemoteConflict: () => Promise<void>
   presentWorkflowImportMismatch: (
     saveError: unknown,
     pythonSource: string
@@ -110,7 +110,6 @@ export function usePersistentWorkflowDraftPersistence({
   generateCanvasPython,
   run,
   installAggregate,
-  readRemoteConflict,
   presentWorkflowImportMismatch,
   refreshWorkflowCatalogsAfterConflict,
   setGraph,
@@ -131,22 +130,29 @@ export function usePersistentWorkflowDraftPersistence({
   const saveDraft = (): void => {
     if (!aggregate) return
     if (remotePending.current) {
-      void run(readRemoteConflict)
-      return
+      remotePending.current = false
     }
     if (mode === 'code') {
       void run(async () => {
         try {
-          const saved = await queue.run(
-            () => runtime.saveWorkflowAuthoringDraft(
-              workflowUuid,
-              {
-                python_source: editorValue,
-                expected_draft_hash: aggregate.draft?.draft_hash ?? null,
-                expected_workflow_revision: aggregate.workflow_revision
-              }
+          const saved = await saveAuthoringDraftLocalWins({
+            expectedDraftHash: aggregate.draft?.draft_hash ?? null,
+            expectedWorkflowRevision: aggregate.workflow_revision,
+            save: (draftHash, revision) => queue.run(
+              () => runtime.saveWorkflowAuthoringDraft(
+                workflowUuid,
+                {
+                  python_source: editorValue,
+                  expected_draft_hash: draftHash,
+                  expected_workflow_revision: revision
+                }
+              )
+            ),
+            refresh: () => queue.run(
+              () => runtime.getWorkflowAuthoring(workflowUuid)
             )
-          )
+          })
+          remotePending.current = false
           installAggregate(saved, draftSaveMessage(saved))
           const materialization = saved.candidate && saved.draft
             ? workflowCandidateMaterializationDecision({
@@ -177,9 +183,7 @@ export function usePersistentWorkflowDraftPersistence({
             saveError,
             editorValue
           )) return
-          if (!isAuthoringConflict(saveError)) throw saveError
-          remotePending.current = true
-          await readRemoteConflict()
+          throw saveError
         }
       })
       return
@@ -234,17 +238,24 @@ export function usePersistentWorkflowDraftPersistence({
     if (decision.kind !== 'write_complete_draft') return
     void run(async () => {
       try {
-        /** 使用冻结的双 CAS 坐标保存用户已接受的规范化源码。 */
-        const saveNormalizedDraft = () => queue.run(
-          () => runtime.saveWorkflowAuthoringDraft(
-            workflowUuid,
-            {
-              python_source: decision.python_source,
-              expected_draft_hash: diff.expectedDraftHash,
-              expected_workflow_revision: diff.expectedWorkflowRevision
-            }
+        /** 使用冻结坐标保存；若 CAS 冲突则以当前内容覆盖远端。 */
+        const saveNormalizedDraft = () => saveAuthoringDraftLocalWins({
+          expectedDraftHash: diff.expectedDraftHash,
+          expectedWorkflowRevision: diff.expectedWorkflowRevision,
+          save: (draftHash, revision) => queue.run(
+            () => runtime.saveWorkflowAuthoringDraft(
+              workflowUuid,
+              {
+                python_source: decision.python_source,
+                expected_draft_hash: draftHash,
+                expected_workflow_revision: revision
+              }
+            )
+          ),
+          refresh: () => queue.run(
+            () => runtime.getWorkflowAuthoring(workflowUuid)
           )
-        )
+        })
         if (diff.applyAfterSave) {
           const { applied } = await applyMaterializedWorkflowCandidate({
             save: saveNormalizedDraft,
@@ -285,10 +296,12 @@ export function usePersistentWorkflowDraftPersistence({
           )) return
           throw saveError
         }
-        if (failureAction === 'report') throw saveError
-        setFullSourceDiff(null)
-        remotePending.current = true
-        await readRemoteConflict()
+        if (failureAction === 'read_remote_conflict') {
+          // 本地覆盖已在 saveAuthoringDraftLocalWins 内完成一轮；仍失败则直接报告。
+          setFullSourceDiff(null)
+          throw saveError
+        }
+        throw saveError
       }
     })
   }

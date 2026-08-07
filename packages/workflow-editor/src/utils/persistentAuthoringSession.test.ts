@@ -18,7 +18,8 @@ import {
   isAuthoringConflict,
   isAuthoringSnapshotDirty,
   isSameAuthoringVersion,
-  isCurrentAuthoringInvalidation
+  isCurrentAuthoringInvalidation,
+  saveAuthoringDraftLocalWins
 } from './persistentAuthoringSession'
 
 /**
@@ -231,6 +232,92 @@ describe('persistent Authoring session coordination', () => {
       status: 409,
       code: 'workflow_identity_mismatch'
     })).toBe(false)
+  })
+
+  it('CAS 冲突时补读最新 token 并以本地源码覆盖', async () => {
+    const remote = aggregate({
+      draft: {
+        ...aggregate().draft!,
+        draft_hash: 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+      },
+      workflow_revision: 8
+    })
+    const saved = aggregate({
+      draft: {
+        ...aggregate().draft!,
+        draft_hash: 'sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc'
+      },
+      workflow_revision: 9
+    })
+    const calls: Array<{ draftHash: string | null; revision: number }> = []
+    let refreshCount = 0
+    const result = await saveAuthoringDraftLocalWins({
+      expectedDraftHash: 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      expectedWorkflowRevision: 7,
+      save: async (draftHash, revision) => {
+        calls.push({ draftHash, revision })
+        return saved
+      },
+      refresh: async () => {
+        refreshCount += 1
+        return remote
+      }
+    })
+    expect(result).toBe(saved)
+    expect(refreshCount).toBe(1)
+    expect(calls).toEqual([
+      {
+        draftHash: remote.draft?.draft_hash ?? null,
+        revision: 8
+      }
+    ])
+  })
+
+  it('连续 CAS 竞态时会多次补读后再覆盖', async () => {
+    const tokens = [
+      {
+        draft_hash: 'sha256:1111111111111111111111111111111111111111111111111111111111111111',
+        revision: 2
+      },
+      {
+        draft_hash: 'sha256:2222222222222222222222222222222222222222222222222222222222222222',
+        revision: 3
+      },
+      {
+        draft_hash: 'sha256:3333333333333333333333333333333333333333333333333333333333333333',
+        revision: 4
+      }
+    ]
+    let refreshCount = 0
+    const saved = aggregate({ workflow_revision: 5 })
+    const calls: number[] = []
+    const result = await saveAuthoringDraftLocalWins({
+      expectedDraftHash: null,
+      expectedWorkflowRevision: 1,
+      maxAttempts: 3,
+      save: async (_draftHash, revision) => {
+        calls.push(revision)
+        if (calls.length < 3) {
+          throw { code: 'draft_hash_conflict' }
+        }
+        return saved
+      },
+      refresh: async () => {
+        const token = tokens[refreshCount]
+        refreshCount += 1
+        return aggregate({
+          draft: {
+            ...aggregate().draft!,
+            draft_hash: token.draft_hash
+          },
+          workflow_revision: token.revision
+        })
+      }
+    })
+    expect(result).toBe(saved)
+    // 首次补读 + 两次冲突后补读
+    expect(calls).toEqual([2, 3, 4])
+    expect(refreshCount).toBe(3)
   })
 
   it('uses the frozen state messages and distinguishes Candidate from Applied Graph', () => {

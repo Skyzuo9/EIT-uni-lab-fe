@@ -143,7 +143,7 @@ export function usePersistentWorkflowAuthoring({
     selectedNodeNameDirty
   }
 
-  const { installAggregate, readRemoteConflict } =
+  const { installAggregate } =
     usePersistentWorkflowAuthoritySync({
       runtime,
       workflowUuid,
@@ -350,7 +350,6 @@ export function usePersistentWorkflowAuthoring({
     generateCanvasPython,
     run,
     installAggregate,
-    readRemoteConflict,
     presentWorkflowImportMismatch,
     refreshWorkflowCatalogsAfterConflict,
     setGraph,
@@ -409,7 +408,6 @@ export function usePersistentWorkflowAuthoring({
     generateCanvasPython,
     applyCandidateByHash: draftPersistence.applyCandidateByHash,
     installAggregate,
-    readRemoteConflict,
     presentWorkflowImportMismatch,
     openTaskInput: taskPanel.openTaskInputFormForAuthority,
     run,
