@@ -687,18 +687,18 @@ export function LocalRuntimeDialog({
               {error}
             </p>
           ) : null}
-        </div>
 
-        <footer className={styles.footer}>
-          <button
-            type="button"
-            className={styles.secondaryButton}
-            disabled={transitioning}
-            onClick={onClose}
-          >
-            关闭
-          </button>
-        </footer>
+          <footer className={styles.footer}>
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              disabled={transitioning}
+              onClick={onClose}
+            >
+              关闭
+            </button>
+          </footer>
+        </div>
       </section>
     </div>
   )

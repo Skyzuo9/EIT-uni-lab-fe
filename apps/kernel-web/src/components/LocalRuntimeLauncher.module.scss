@@ -1064,10 +1064,11 @@
 
 .footer {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   justify-content: flex-end;
   gap: var(--unilab-space-2);
-  padding: 14px 24px 18px;
+  padding-block-start: 14px;
   border-top: 1px solid var(--unilab-color-border);
 }
 
@@ -1160,7 +1161,6 @@
 
   .footer {
     flex-wrap: wrap;
-    padding-inline: 16px;
   }
 
   .serviceHeader {

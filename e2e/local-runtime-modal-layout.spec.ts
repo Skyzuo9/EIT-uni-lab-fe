@@ -91,11 +91,11 @@ test.beforeEach(async ({ page }) => {
 })
 
 /**
- * 验证长配置只滚动弹窗正文，标题和主操作始终留在视口内。
+ * 验证长配置只滚动弹窗正文，标题和主操作始终留在视口内，底部操作不覆盖正文。
  *
  * @param page 已安装空闲本地运行时替身的浏览器页面。
- * @returns 完成滚动容器、头部位置和正文可滚动性验收。
- * @throws 对话框整体仍是滚动容器或头部随正文移动时由断言报告。
+ * @returns 完成滚动容器、头部位置、正文可滚动性和底部操作区流式布局验收。
+ * @throws 对话框整体仍是滚动容器、头部随正文移动或底部操作区固定遮挡正文时由断言报告。
  * @safety 只操作浏览器替身和滚动位置，不启动真实本地运行进程。
  */
 test('本地调试器长配置滚动时固定头部', async ({ page }) => {
@@ -119,10 +119,12 @@ test('本地调试器长配置滚动时固定头部', async ({ page }) => {
 
   const scrollResult = await runtimeDialog.evaluate((dialog) => {
     const header = dialog.querySelector('header')
+    const footer = dialog.querySelector('footer')
     const simulatorPath = dialog.querySelector('#runtime-simulator-path')
     if (!(header instanceof HTMLElement)
+      || !(footer instanceof HTMLElement)
       || !(simulatorPath instanceof HTMLElement)) {
-      throw new Error('本地调试器弹窗缺少头部或 PLC-Sim 路径字段')
+      throw new Error('本地调试器弹窗缺少头部、底部操作区或 PLC-Sim 路径字段')
     }
 
     let scrollContainer: HTMLElement | null = simulatorPath.parentElement
@@ -141,13 +143,23 @@ test('本地调试器长配置滚动时固定头部', async ({ page }) => {
     }
 
     const headerTopBefore = header.getBoundingClientRect().top
+    const footerTopBefore = footer.getBoundingClientRect().top
     scrollContainer.scrollTop = scrollContainer.scrollHeight
     const headerTopAfter = header.getBoundingClientRect().top
+    const scrollContainerRect = scrollContainer.getBoundingClientRect()
+    const footerRect = footer.getBoundingClientRect()
+    const simulatorPathRect = simulatorPath.getBoundingClientRect()
     return {
       headerTopBefore,
       headerTopAfter,
+      footerTopBefore,
       scrollTop: scrollContainer.scrollTop,
-      containerIsDialog: scrollContainer === dialog
+      containerIsDialog: scrollContainer === dialog,
+      bodyContainsFooter: scrollContainer.contains(footer),
+      scrollContainerBottom: scrollContainerRect.bottom,
+      footerTop: footerRect.top,
+      footerBottom: footerRect.bottom,
+      simulatorPathBottom: simulatorPathRect.bottom
     }
   })
 
@@ -156,6 +168,14 @@ test('本地调试器长配置滚动时固定头部', async ({ page }) => {
   expect(Math.abs(
     scrollResult.headerTopAfter - scrollResult.headerTopBefore
   )).toBeLessThan(1)
+  expect(scrollResult.bodyContainsFooter).toBe(true)
+  expect(scrollResult.footerTop).toBeLessThan(scrollResult.footerTopBefore)
+  expect(scrollResult.simulatorPathBottom).toBeLessThanOrEqual(
+    scrollResult.footerTop
+  )
+  expect(scrollResult.footerBottom).toBeLessThanOrEqual(
+    scrollResult.scrollContainerBottom + 1
+  )
   await expect(runtimeHeader).toBeInViewport()
   await expect(
     runtimeHeader.getByRole('button', { name: '启动 Edge' })
@@ -168,6 +188,49 @@ test('本地调试器长配置滚动时固定头部', async ({ page }) => {
     runtimeHeader.getByRole('button', { name: '启动 Edge' })
   ).toBeInViewport()
   await capture(page, '04-local-runtime-narrow-scrolled.png')
+
+  const narrowBottomResult = await runtimeDialog.evaluate((dialog) => {
+    const footer = dialog.querySelector('footer')
+    const graphHint = Array.from(dialog.querySelectorAll('p')).find((paragraph) => (
+      paragraph.textContent?.includes('留空时以无仪器设备模式启动')
+    ))
+    const simulatorPath = dialog.querySelector('#runtime-simulator-path')
+    if (!(footer instanceof HTMLElement)
+      || !(graphHint instanceof HTMLElement)
+      || !(simulatorPath instanceof HTMLElement)) {
+      throw new Error('本地调试器弹窗缺少底部操作区、设备图说明或 PLC-Sim 路径字段')
+    }
+    let scrollContainer: HTMLElement | null = simulatorPath.parentElement
+    while (scrollContainer && scrollContainer !== document.body) {
+      const style = window.getComputedStyle(scrollContainer)
+      if (
+        scrollContainer.scrollHeight > scrollContainer.clientHeight
+        && /(auto|scroll)/.test(style.overflowY)
+      ) {
+        scrollContainer.scrollTop = scrollContainer.scrollHeight
+        const footerRect = footer.getBoundingClientRect()
+        const graphHintRect = graphHint.getBoundingClientRect()
+        const scrollContainerRect = scrollContainer.getBoundingClientRect()
+        return {
+          graphHintBottom: graphHintRect.bottom,
+          footerTop: footerRect.top,
+          footerBottom: footerRect.bottom,
+          scrollContainerBottom: scrollContainerRect.bottom
+        }
+      }
+      scrollContainer = scrollContainer.parentElement
+    }
+    throw new Error('本地调试器长配置缺少可滚动正文')
+  })
+  expect(narrowBottomResult.graphHintBottom).toBeLessThanOrEqual(
+    narrowBottomResult.footerTop
+  )
+  expect(narrowBottomResult.footerBottom).toBeLessThanOrEqual(
+    narrowBottomResult.scrollContainerBottom + 1
+  )
+  await expect(runtimeHeader).toBeInViewport()
+  await expect(runtimeDialog.locator('footer')).toBeInViewport()
+  await capture(page, '05-local-runtime-narrow-bottom.png')
 
   await runtimeDialog.evaluate((dialog) => {
     const simulatorPath = dialog.querySelector('#runtime-simulator-path')
@@ -188,7 +251,7 @@ test('本地调试器长配置滚动时固定头部', async ({ page }) => {
     }
     throw new Error('本地调试器长配置缺少可滚动正文')
   })
-  await capture(page, '05-local-runtime-narrow-top.png')
+  await capture(page, '06-local-runtime-narrow-top.png')
 })
 
 /**
