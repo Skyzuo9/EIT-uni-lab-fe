@@ -66,6 +66,14 @@ describe('Local runtime launch plan', () => {
     expect(plan.edge.env['UNILABOS_OBSERVABILITYCONFIG_PROJECT_NAME']).toBe(
       'uni-lab-electron'
     )
+    expect(plan.edge.env['UNILABOS_OTEL_ENABLED']).toBe('true')
+    expect(plan.edge.env['OTEL_EXPORTER_OTLP_ENDPOINT']).toBe(
+      'http://127.0.0.1:4318'
+    )
+    expect(plan.edge.env['OTEL_EXPORTER_OTLP_PROTOCOL']).toBe('http/protobuf')
+    expect(plan.edge.env['OTEL_EXPORTER_OTLP_INSECURE']).toBe('true')
+    expect(plan.edge.env['OTEL_SERVICE_NAME']).toBe('uni-lab-edge-local')
+    expect(plan.edge.env['OTEL_DEPLOYMENT_ENVIRONMENT']).toBe('development')
     expect(plan.edge.env['UNILABOS_HOSTLINKCONFIG_PORT']).toBe('18004')
     expect(plan.edge.env['PYTHONUNBUFFERED']).toBe('1')
     expect(plan.edge.env['PATH']?.split(delimiter)[0]).toBe(

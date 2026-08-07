@@ -1,7 +1,7 @@
 SHELL := /bin/zsh
 
 PNPM := corepack pnpm
-SIGNOZ_OTLP_HTTP_ENDPOINT ?= http://115.190.137.109:30158
+SIGNOZ_OTLP_HTTP_ENDPOINT ?= http://127.0.0.1:4318
 
 .PHONY: help check-env install dev
 

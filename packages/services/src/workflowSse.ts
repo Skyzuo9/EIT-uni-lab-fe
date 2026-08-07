@@ -1,4 +1,10 @@
 import type { WorkflowEventSubscription } from './workflowTaskContracts'
+import {
+  createHttpRequestTrace,
+  finishHttpRequestTrace,
+  reportHttpRequestTrace,
+  type HttpRequestTraceReporter
+} from './http'
 
 export interface WorkflowSseFrame {
   id: string
@@ -54,8 +60,11 @@ const MAX_SEEN_EVENT_IDS = 512
  * 无显式游标的逻辑订阅共享一条物理 SSE；携带独立恢复游标的订阅保留专用连接，
  * 避免把两个不同的 Last-Event-ID 合并成不确定的恢复边界。
  */
-export function createWorkflowSseTransport(url: string): WorkflowSseTransport {
-  const sharedConnection = createWorkflowSseConnection(url)
+export function createWorkflowSseTransport(
+  url: string,
+  traceRequest?: HttpRequestTraceReporter
+): WorkflowSseTransport {
+  const sharedConnection = createWorkflowSseConnection(url, traceRequest)
   const dedicatedConnections = new Set<WorkflowSseConnection>()
   let disposed = false
 
@@ -65,7 +74,7 @@ export function createWorkflowSseTransport(url: string): WorkflowSseTransport {
       if (!subscriber.lastEventId) {
         return sharedConnection.subscribe(subscriber)
       }
-      const connection = createWorkflowSseConnection(url)
+      const connection = createWorkflowSseConnection(url, traceRequest)
       dedicatedConnections.add(connection)
       const unsubscribe = connection.subscribe(subscriber)
       return () => {
@@ -141,7 +150,10 @@ export function createWorkflowSseSubscription<Event>(
 }
 
 /** 创建一条可由多个逻辑消费者共享、在最后一个消费者离开时关闭的 SSE 连接。 */
-function createWorkflowSseConnection(url: string): WorkflowSseConnection {
+function createWorkflowSseConnection(
+  url: string,
+  traceRequest?: HttpRequestTraceReporter
+): WorkflowSseConnection {
   const subscribers = new Set<WorkflowSseTransportSubscriber>()
   let controller: AbortController | null = null
   let reconnectTimer: ReturnType<typeof globalThis.setTimeout> | null = null
@@ -179,6 +191,9 @@ function createWorkflowSseConnection(url: string): WorkflowSseConnection {
     controller = activeController
     const headers = new Headers({ Accept: 'text/event-stream' })
     if (cursor) headers.set('Last-Event-ID', cursor)
+    const requestTrace = createHttpRequestTrace(url, 'GET', 'sse')
+    headers.set('traceparent', requestTrace.traceparent)
+    let traceReported = false
     try {
       const response = await globalThis.fetch(url, {
         headers,
@@ -187,6 +202,12 @@ function createWorkflowSseConnection(url: string): WorkflowSseConnection {
       if (!response.ok || !response.body) {
         throw new Error(`${response.status} ${response.statusText}`)
       }
+      reportHttpRequestTrace(traceRequest, finishHttpRequestTrace(
+        requestTrace,
+        'open',
+        response.status
+      ))
+      traceReported = true
       connected = true
       const openState = {
         lastEventId: cursor,
@@ -207,6 +228,13 @@ function createWorkflowSseConnection(url: string): WorkflowSseConnection {
         }
       }
     } catch (error) {
+      if (!traceReported) {
+        reportHttpRequestTrace(traceRequest, finishHttpRequestTrace(
+          requestTrace,
+          activeController.signal.aborted ? 'cancelled' : 'error'
+        ))
+        traceReported = true
+      }
       if (
         !disposed &&
         subscribers.size > 0 &&

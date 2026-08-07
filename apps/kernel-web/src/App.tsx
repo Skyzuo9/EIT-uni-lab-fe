@@ -1,6 +1,7 @@
 /** [AI] Model: Claude Opus 4.8 | 2026-07-31 | 应用根:可选登录 + 统一外壳 + 模式 Provider */
 import { useCallback, type ReactNode } from 'react'
 import { ServicesProvider } from '@unilab/services'
+import type { HttpRequestTraceEvent } from '@unilab/services'
 import { WorkflowSessionProvider } from '@unilab/workflow-editor'
 import {
   WorkbenchProvider,
@@ -55,9 +56,16 @@ function ActiveServices({ children }: { children: ReactNode }): React.JSX.Elemen
   const { backend } = useWorkbench()
   const { session } = useAuth()
   const getAccessToken = useCallback(() => session?.token ?? null, [session?.token])
+  const traceRequest = useCallback((event: HttpRequestTraceEvent) => {
+    return globalThis.window?.api?.observability?.recordHttpRequest?.(event)
+  }, [])
 
   return (
-    <ServicesProvider backend={backend} getAccessToken={getAccessToken}>
+    <ServicesProvider
+      backend={backend}
+      getAccessToken={getAccessToken}
+      traceRequest={traceRequest}
+    >
       <DeviceStatusProvider>
         <DeviceCardAuthoringTargetConnector />
         {children}

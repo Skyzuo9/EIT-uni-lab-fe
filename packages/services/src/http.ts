@@ -23,6 +23,35 @@ export interface CreateHttpClientOptions {
   fetcher?: typeof fetch
   getAccessToken?: () => string | null | Promise<string | null>
   timeoutMs?: number
+  traceRequest?: HttpRequestTraceReporter
+}
+
+export type HttpRequestTransport = 'http' | 'sse' | 'websocket'
+export type HttpRequestTraceReporter = (
+  event: HttpRequestTraceEvent
+) => void | Promise<void>
+
+export interface HttpRequestTraceEvent {
+  transport: HttpRequestTransport
+  method: string
+  path: string
+  traceId: string
+  spanId: string
+  traceparent: string
+  startedAtUnixMs: number
+  durationMs: number
+  statusCode?: number
+  outcome: 'ok' | 'error' | 'cancelled' | 'open'
+}
+
+export interface ActiveHttpRequestTrace {
+  transport: HttpRequestTransport
+  method: string
+  path: string
+  traceId: string
+  spanId: string
+  traceparent: string
+  startedAtUnixMs: number
 }
 
 export function createHttpClient(options: CreateHttpClientOptions): HttpClient {
@@ -39,13 +68,25 @@ export function createHttpClient(options: CreateHttpClientOptions): HttpClient {
       const token = await options.getAccessToken?.()
       const headers = new Headers(init.headers)
       if (token) headers.set('Authorization', token)
+      const requestUrl = endpoint(options.backend.apiUrl, path)
+      const requestTrace = options.backend.serverKind === 'edge'
+        ? createHttpRequestTrace(
+            requestUrl,
+            init.method ?? 'GET',
+            'http'
+          )
+        : undefined
+      if (requestTrace) headers.set('traceparent', requestTrace.traceparent)
+      let statusCode: number | undefined
+      let outcome: HttpRequestTraceEvent['outcome'] = 'error'
 
       try {
-        const response = await fetcher(endpoint(options.backend.apiUrl, path), {
+        const response = await fetcher(requestUrl, {
           ...init,
           headers,
           signal: init.signal ?? controller.signal
         })
+        statusCode = response.status
         if (!response.ok) {
           let problem: unknown
           try {
@@ -78,7 +119,9 @@ export function createHttpClient(options: CreateHttpClientOptions): HttpClient {
                 : response.status >= 500
           })
         }
-        return (await response.json()) as ResponseValue
+        const result = (await response.json()) as ResponseValue
+        outcome = 'ok'
+        return result
       } catch (error) {
         if (error instanceof ServiceError) throw error
         const isAbort = error instanceof DOMException && error.name === 'AbortError'
@@ -89,9 +132,72 @@ export function createHttpClient(options: CreateHttpClientOptions): HttpClient {
         })
       } finally {
         globalThis.clearTimeout(timeout)
+        if (requestTrace) {
+          reportHttpRequestTrace(options.traceRequest, finishHttpRequestTrace(
+            requestTrace,
+            outcome,
+            statusCode
+          ))
+        }
       }
     }
   }
+}
+
+export function createHttpRequestTrace(
+  url: string,
+  method: string,
+  transport: HttpRequestTransport
+): ActiveHttpRequestTrace {
+  const traceId = randomHex(16)
+  const spanId = randomHex(8)
+  return {
+    transport,
+    method: method.toUpperCase(),
+    path: new URL(url).pathname,
+    traceId,
+    spanId,
+    traceparent: `00-${traceId}-${spanId}-01`,
+    startedAtUnixMs: Date.now()
+  }
+}
+
+export function finishHttpRequestTrace(
+  trace: ActiveHttpRequestTrace,
+  outcome: HttpRequestTraceEvent['outcome'],
+  statusCode?: number
+): HttpRequestTraceEvent {
+  return {
+    ...trace,
+    durationMs: Math.max(0, Date.now() - trace.startedAtUnixMs),
+    ...(statusCode === undefined ? {} : { statusCode }),
+    outcome
+  }
+}
+
+export function reportHttpRequestTrace(
+  reporter: HttpRequestTraceReporter | undefined,
+  event: HttpRequestTraceEvent
+): void {
+  if (!reporter) return
+  try {
+    void Promise.resolve(reporter(event)).catch(() => undefined)
+  } catch {
+    // 可观测性必须 fail-open，不得改变业务请求结果。
+  }
+}
+
+function randomHex(byteLength: number): string {
+  const bytes = new Uint8Array(byteLength)
+  if (globalThis.crypto?.getRandomValues) {
+    globalThis.crypto.getRandomValues(bytes)
+  } else {
+    for (let index = 0; index < bytes.length; index += 1) {
+      bytes[index] = Math.floor(Math.random() * 256)
+    }
+  }
+  if (bytes.every((value) => value === 0)) bytes[bytes.length - 1] = 1
+  return Array.from(bytes, (value) => value.toString(16).padStart(2, '0')).join('')
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

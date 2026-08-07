@@ -4,6 +4,7 @@ import {
   type NodeTracerProvider,
   type Tracer
 } from '@arizeai/phoenix-otel'
+import type { HttpRequestTraceEvent } from '@unilab/services'
 import { request as httpRequest } from 'node:http'
 import { request as httpsRequest } from 'node:https'
 import { isIP } from 'node:net'
@@ -56,6 +57,8 @@ export interface ElectronObservabilityOptions {
 interface ElectronObservabilityDependencies {
   traceAdapter?: ElectronTraceAdapter
   logAdapter?: ElectronLogAdapter
+  requestSpanAdapter?: ElectronRequestSpanAdapter
+  otlpJsonTransport?: OtlpJsonTransport
   fetch?: typeof fetch
 }
 
@@ -71,6 +74,22 @@ interface ElectronLogAdapter {
   record(
     message: string,
     severity: ElectronLogSeverity,
+    attributes: Record<string, TraceAttributeValue>,
+    context?: ElectronLogContext
+  ): void
+  flush(): Promise<void>
+  shutdown(): Promise<void>
+}
+
+interface ElectronLogContext {
+  traceId: string
+  spanId: string
+  flags: number
+}
+
+interface ElectronRequestSpanAdapter {
+  record(
+    event: HttpRequestTraceEvent,
     attributes: Record<string, TraceAttributeValue>
   ): void
   flush(): Promise<void>
@@ -95,6 +114,7 @@ const SECRET_QUERY_PARAMETER =
 const TRACE_ID = /^[0-9a-fA-F]{32}$/
 const MAX_ATTRIBUTE_LENGTH = 1_024
 const MAX_QUERY_RESPONSE_BYTES = 4 * 1024 * 1024
+const DEFAULT_LOCAL_SIGNOZ_OTLP_HTTP_ENDPOINT = 'http://127.0.0.1:4318'
 
 export function resolveElectronObservabilityOptions({
   environment = process.env,
@@ -122,7 +142,8 @@ export function resolveElectronObservabilityOptions({
     environment['UNILABOS_TRACE_PROJECT'] ?? 'uni-lab-electron'
   const baseUrl = normalizeLoopbackBaseUrl(configuredBaseUrl)
   const configuredOtlpHttpEndpoint =
-    environment['UNILABOS_OTLP_HTTP_ENDPOINT'] ?? `${baseUrl}/otlp`
+    environment['UNILABOS_OTLP_HTTP_ENDPOINT']
+      ?? DEFAULT_LOCAL_SIGNOZ_OTLP_HTTP_ENDPOINT
 
   return {
     enabled: !isDisabled(environment['UNILABOS_TRACE_ENABLED']),
@@ -152,17 +173,16 @@ export function createElectronObservability(
   dependencies: ElectronObservabilityDependencies = {}
 ): ElectronObservability {
   const fetchImplementation = dependencies.fetch ?? globalThis.fetch
-  const otlpJsonTransport = postOtlpJson
+  const otlpJsonTransport = dependencies.otlpJsonTransport ?? postOtlpJson
   let adapter = dependencies.traceAdapter
   let logAdapter = dependencies.logAdapter
+  let requestSpanAdapter = dependencies.requestSpanAdapter
   if (!adapter) {
     if (!options.enabled) {
       adapter = new NoopTraceAdapter()
     } else {
       try {
-        adapter = options.otlpHttpEndpoint === `${options.baseUrl}/otlp`
-          ? new PhoenixTraceAdapter(options)
-          : new NoopTraceAdapter()
+        adapter = new PhoenixTraceAdapter(options)
       } catch (error) {
         options.log(
           `Trace 初始化失败，已降级为本地日志：${safeErrorMessage(error)}`
@@ -176,10 +196,16 @@ export function createElectronObservability(
       ? new OtlpHttpLogAdapter(options, otlpJsonTransport)
       : new NoopLogAdapter()
   }
+  if (!requestSpanAdapter) {
+    requestSpanAdapter = options.enabled
+      ? new OtlpHttpRequestSpanAdapter(options, otlpJsonTransport)
+      : new NoopRequestSpanAdapter()
+  }
   return new ElectronObservability(
     options,
     new FailOpenTraceAdapter(adapter),
     logAdapter,
+    requestSpanAdapter,
     fetchImplementation
   )
 }
@@ -192,6 +218,7 @@ export class ElectronObservability {
     private readonly options: ElectronObservabilityOptions,
     private readonly adapter: ElectronTraceAdapter,
     private readonly logAdapter: ElectronLogAdapter,
+    private readonly requestSpanAdapter: ElectronRequestSpanAdapter,
     private readonly fetchImplementation: typeof fetch
   ) {
     this.commonAttributes = {
@@ -278,6 +305,36 @@ export class ElectronObservability {
     )
   }
 
+  recordHttpRequestTrace(value: unknown): void {
+    if (this.closed) return
+    const event = parseHttpRequestTraceEvent(value)
+    const attributes: Record<string, TraceAttributeValue> = {
+      'http.request.method': event.method,
+      'url.path': event.path,
+      'network.protocol.name': event.transport,
+      'event.duration_ms': event.durationMs,
+      'request.outcome': event.outcome,
+      ...(event.statusCode === undefined
+        ? {}
+        : { 'http.response.status_code': event.statusCode })
+    }
+    try {
+      this.requestSpanAdapter.record(event, attributes)
+    } catch {
+      // 请求追踪必须 fail-open，不能影响 renderer 的网络请求。
+    }
+    this.safelyRecordLog(
+      `electron.${event.transport}.client`,
+      event.outcome === 'error' ? 'ERROR' : 'INFO',
+      {
+        'event.kind': 'span',
+        'span.kind': 'client',
+        ...attributes
+      },
+      { traceId: event.traceId, spanId: event.spanId, flags: 1 }
+    )
+  }
+
   async getStatus(): Promise<ObservabilityStatus> {
     return this.request<ObservabilityStatus>('status')
   }
@@ -346,24 +403,27 @@ export class ElectronObservability {
   private async flushAdapters(): Promise<void> {
     await settleAdapterOperations([
       Promise.resolve().then(() => this.adapter.flush()),
-      Promise.resolve().then(() => this.logAdapter.flush())
+      Promise.resolve().then(() => this.logAdapter.flush()),
+      Promise.resolve().then(() => this.requestSpanAdapter.flush())
     ])
   }
 
   private async shutdownAdapters(): Promise<void> {
     await settleAdapterOperations([
       Promise.resolve().then(() => this.adapter.shutdown()),
-      Promise.resolve().then(() => this.logAdapter.shutdown())
+      Promise.resolve().then(() => this.logAdapter.shutdown()),
+      Promise.resolve().then(() => this.requestSpanAdapter.shutdown())
     ])
   }
 
   private safelyRecordLog(
     message: string,
     severity: ElectronLogSeverity,
-    attributes: Record<string, TraceAttributeValue>
+    attributes: Record<string, TraceAttributeValue>,
+    context?: ElectronLogContext
   ): void {
     try {
-      this.logAdapter.record(message, severity, attributes)
+      this.logAdapter.record(message, severity, attributes, context)
     } catch {
       // 遥测必须保持 fail-open，不能影响 Electron 业务事件。
     }
@@ -566,6 +626,9 @@ interface QueuedLogRecord {
     key: string
     value: Record<string, string | number | boolean>
   }>
+  traceId?: string
+  spanId?: string
+  flags?: number
 }
 
 class OtlpHttpLogAdapter implements ElectronLogAdapter {
@@ -585,7 +648,8 @@ class OtlpHttpLogAdapter implements ElectronLogAdapter {
   record(
     message: string,
     severity: ElectronLogSeverity,
-    attributes: Record<string, TraceAttributeValue>
+    attributes: Record<string, TraceAttributeValue>,
+    context?: ElectronLogContext
   ): void {
     if (this.closed) return
     if (this.queue.length >= 2_048) this.queue.shift()
@@ -594,7 +658,12 @@ class OtlpHttpLogAdapter implements ElectronLogAdapter {
       severityNumber: severityNumber(severity),
       severityText: severity,
       body: { stringValue: message },
-      attributes: otlpAttributes(attributes)
+      attributes: otlpAttributes(attributes),
+      ...(context ? {
+        traceId: context.traceId,
+        spanId: context.spanId,
+        flags: context.flags
+      } : {})
     })
     if (this.queue.length >= 256) {
       void this.flush().catch(() => undefined)
@@ -669,6 +738,145 @@ class NoopLogAdapter implements ElectronLogAdapter {
   record(): void {}
   flush(): Promise<void> { return Promise.resolve() }
   shutdown(): Promise<void> { return Promise.resolve() }
+}
+
+interface QueuedRequestSpan {
+  traceId: string
+  spanId: string
+  name: string
+  kind: number
+  startTimeUnixNano: string
+  endTimeUnixNano: string
+  attributes: ReturnType<typeof otlpAttributes>
+  status: { code: number }
+}
+
+class OtlpHttpRequestSpanAdapter implements ElectronRequestSpanAdapter {
+  private readonly endpoint: string
+  private readonly queue: QueuedRequestSpan[] = []
+  private scheduledFlush: ReturnType<typeof setTimeout> | undefined
+  private activeFlush: Promise<void> | undefined
+  private closed = false
+
+  constructor(
+    private readonly options: ElectronObservabilityOptions,
+    private readonly transport: OtlpJsonTransport
+  ) {
+    this.endpoint = appendOtlpSignalPath(options.otlpHttpEndpoint, 'traces')
+  }
+
+  record(
+    event: HttpRequestTraceEvent,
+    attributes: Record<string, TraceAttributeValue>
+  ): void {
+    if (this.closed) return
+    if (this.queue.length >= 2_048) this.queue.shift()
+    const startTimeUnixNano = unixMillisecondsToNanoseconds(
+      event.startedAtUnixMs
+    )
+    const endTimeUnixNano = (
+      BigInt(startTimeUnixNano)
+      + durationMillisecondsToNanoseconds(event.durationMs)
+    ).toString()
+    this.queue.push({
+      traceId: event.traceId,
+      spanId: event.spanId,
+      name: `electron.${event.transport}.client`,
+      kind: 3,
+      startTimeUnixNano,
+      endTimeUnixNano,
+      attributes: otlpAttributes(attributes),
+      status: {
+        code: event.outcome === 'error'
+          ? 2
+          : event.outcome === 'cancelled' ? 0 : 1
+      }
+    })
+    if (this.queue.length >= 256) {
+      void this.flush().catch(() => undefined)
+      return
+    }
+    this.scheduleFlush()
+  }
+
+  flush(): Promise<void> {
+    if (this.scheduledFlush) {
+      clearTimeout(this.scheduledFlush)
+      this.scheduledFlush = undefined
+    }
+    if (!this.activeFlush) {
+      this.activeFlush = this.exportQueuedSpans().finally(() => {
+        this.activeFlush = undefined
+        if (this.queue.length > 0 && !this.closed) this.scheduleFlush()
+      })
+    }
+    return this.activeFlush.then(() => {
+      if (this.queue.length === 0) return undefined
+      return this.flush()
+    })
+  }
+
+  async shutdown(): Promise<void> {
+    if (this.closed) return
+    this.closed = true
+    await this.flush()
+  }
+
+  private async exportQueuedSpans(): Promise<void> {
+    const spans = this.queue.splice(0, this.queue.length)
+    if (spans.length === 0) return
+    try {
+      await this.transport(
+        this.endpoint,
+        JSON.stringify({
+          resourceSpans: [{
+            resource: { attributes: otlpResourceAttributes(this.options) },
+            scopeSpans: [{
+              scope: {
+                name: 'uni-lab-electron.renderer-transport',
+                version: this.options.appVersion
+              },
+              spans
+            }]
+          }]
+        }),
+        this.options.requestTimeoutMs
+      )
+    } catch (error) {
+      this.queue.unshift(...spans)
+      if (this.queue.length > 2_048) {
+        this.queue.splice(0, this.queue.length - 2_048)
+      }
+      throw error
+    }
+  }
+
+  private scheduleFlush(): void {
+    if (this.scheduledFlush) return
+    this.scheduledFlush = setTimeout(() => {
+      this.scheduledFlush = undefined
+      void this.flush().catch(() => undefined)
+    }, 1_000)
+    this.scheduledFlush.unref?.()
+  }
+}
+
+class NoopRequestSpanAdapter implements ElectronRequestSpanAdapter {
+  record(): void {}
+  flush(): Promise<void> { return Promise.resolve() }
+  shutdown(): Promise<void> { return Promise.resolve() }
+}
+
+function unixMillisecondsToNanoseconds(value: number): string {
+  const milliseconds = Math.trunc(value)
+  const fractionalNanoseconds = Math.trunc((value - milliseconds) * 1_000_000)
+  return (
+    BigInt(milliseconds) * 1_000_000n + BigInt(fractionalNanoseconds)
+  ).toString()
+}
+
+function durationMillisecondsToNanoseconds(value: number): bigint {
+  return BigInt(Math.max(0, Math.trunc(value * 1_000_000)))
 }
 
 function severityNumber(severity: ElectronLogSeverity): number {
@@ -978,6 +1186,95 @@ function normalizeOtlpHttpEndpoint(value: string): string {
   url.hash = ''
   url.pathname = url.pathname.replace(/\/+$/, '')
   return url.toString().replace(/\/$/, '')
+}
+
+export function parseHttpRequestTraceEvent(value: unknown): HttpRequestTraceEvent {
+  const event = objectValue(value, 'HTTP Trace 事件格式不正确')
+  rejectUnknownKeys(event, [
+    'transport',
+    'method',
+    'path',
+    'traceId',
+    'spanId',
+    'traceparent',
+    'startedAtUnixMs',
+    'durationMs',
+    'statusCode',
+    'outcome'
+  ])
+  const transport = event.transport
+  const method = event.method
+  const path = event.path
+  const traceId = event.traceId
+  const spanId = event.spanId
+  const traceparent = event.traceparent
+  const outcome = event.outcome
+  if (!['http', 'sse', 'websocket'].includes(String(transport))) {
+    throw new Error('HTTP Trace transport 不正确')
+  }
+  if (typeof method !== 'string' || !/^[A-Z]{1,16}$/.test(method)) {
+    throw new Error('HTTP Trace method 不正确')
+  }
+  if (
+    typeof path !== 'string' ||
+    !path.startsWith('/') ||
+    path.length > 2048 ||
+    path.includes('?') ||
+    path.includes('#')
+  ) {
+    throw new Error('HTTP Trace path 不正确')
+  }
+  if (
+    typeof traceId !== 'string' ||
+    !/^[0-9a-f]{32}$/.test(traceId) ||
+    /^0+$/.test(traceId)
+  ) {
+    throw new Error('HTTP Trace traceId 不正确')
+  }
+  if (
+    typeof spanId !== 'string' ||
+    !/^[0-9a-f]{16}$/.test(spanId) ||
+    /^0+$/.test(spanId)
+  ) {
+    throw new Error('HTTP Trace spanId 不正确')
+  }
+  if (traceparent !== `00-${traceId}-${spanId}-01`) {
+    throw new Error('HTTP Trace traceparent 不正确')
+  }
+  if (!['ok', 'error', 'cancelled', 'open'].includes(String(outcome))) {
+    throw new Error('HTTP Trace outcome 不正确')
+  }
+  const startedAtUnixMs = finiteNumber(event.startedAtUnixMs, 'startedAtUnixMs')
+  const durationMs = finiteNumber(event.durationMs, 'durationMs')
+  if (startedAtUnixMs < 0 || durationMs < 0 || durationMs > 86_400_000) {
+    throw new Error('HTTP Trace 时间不正确')
+  }
+  let statusCode: number | undefined
+  if (event.statusCode !== undefined) {
+    statusCode = finiteNumber(event.statusCode, 'statusCode')
+    if (!Number.isInteger(statusCode) || statusCode < 100 || statusCode > 599) {
+      throw new Error('HTTP Trace statusCode 不正确')
+    }
+  }
+  return {
+    transport: transport as HttpRequestTraceEvent['transport'],
+    method,
+    path,
+    traceId,
+    spanId,
+    traceparent,
+    startedAtUnixMs,
+    durationMs,
+    ...(statusCode === undefined ? {} : { statusCode }),
+    outcome: outcome as HttpRequestTraceEvent['outcome']
+  }
+}
+
+function finiteNumber(value: unknown, field: string): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new Error(`HTTP Trace ${field} 不正确`)
+  }
+  return value
 }
 
 function normalizeProjectName(value: string): string {

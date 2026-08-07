@@ -49,6 +49,7 @@ export interface CreateServicesOptions {
   backend: BackendConfig
   fetcher?: CreateHttpClientOptions['fetcher']
   getAccessToken?: CreateHttpClientOptions['getAccessToken']
+  traceRequest?: CreateHttpClientOptions['traceRequest']
 }
 
 /**
@@ -61,7 +62,7 @@ export function createServices(options: CreateServicesOptions): Services {
   // HTTP 客户端是当前服务端配置下所有公开 API 适配器共享的传输边界。
   const http = createHttpClient(options)
   // 实时服务拥有会话级连接，必须由 Services.dispose 统一释放。
-  const realtime = createRealtimeService(options.backend)
+  const realtime = createRealtimeService(options.backend, options.traceRequest)
   // 能力快照决定物料服务是否允许读取公共物料图（MaterialGraph）。
   const capabilities = resolveServerCapabilities(options.backend)
   // 物料服务（Material Service）是公共物料图 wire 解码与访问的唯一实例。
@@ -72,7 +73,8 @@ export function createServices(options: CreateServicesOptions): Services {
   )
   // 工作流运行时（Workflow Runtime）复用同一个物料服务实例，不再建立私有库存适配器。
   const workflow = createWorkflowRuntime(http, options.backend, {
-    materialGraph: materials
+    materialGraph: materials,
+    traceRequest: options.traceRequest
   })
 
   return {

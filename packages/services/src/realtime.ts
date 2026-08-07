@@ -11,6 +11,12 @@
  */
 import type { BackendConfig } from './backends'
 import type { DeviceStatus } from './laboratory'
+import {
+  createHttpRequestTrace,
+  finishHttpRequestTrace,
+  reportHttpRequestTrace,
+  type HttpRequestTraceReporter
+} from './http'
 
 interface DeviceStatusMessage {
   type: string
@@ -41,7 +47,8 @@ export function toDeviceStatusUrl(baseUrl: string): string {
 // 建立设备状态订阅连接,返回关闭函数
 export function connectDeviceStatus(
   baseUrl: string,
-  handlers: DeviceStatusHandlers
+  handlers: DeviceStatusHandlers,
+  traceRequest?: HttpRequestTraceReporter
 ): () => void {
   let closedByCaller = false
   let socket: WebSocket | null = null
@@ -58,15 +65,35 @@ export function connectDeviceStatus(
   const openSocket = (): void => {
     if (closedByCaller) return
     try {
-      const nextSocket = new WebSocket(toDeviceStatusUrl(baseUrl))
+      const socketUrl = toDeviceStatusUrl(baseUrl)
+      const requestTrace = createHttpRequestTrace(socketUrl, 'GET', 'websocket')
+      const tracedUrl = new URL(socketUrl)
+      tracedUrl.searchParams.set('traceparent', requestTrace.traceparent)
+      let traceReported = false
+      const nextSocket = new WebSocket(tracedUrl)
       socket = nextSocket
-      nextSocket.onopen = () => handlers.onOpen?.()
+      nextSocket.onopen = () => {
+        reportHttpRequestTrace(traceRequest, finishHttpRequestTrace(
+          requestTrace,
+          'open',
+          101
+        ))
+        traceReported = true
+        handlers.onOpen?.()
+      }
       nextSocket.onmessage = (event) => {
         const parsed = parseMessage(event.data)
         if (!parsed || parsed.type !== 'device_status') return
         handlers.onDeviceStatus(mapStatuses(parsed.data))
       }
       nextSocket.onerror = () => {
+        if (!traceReported) {
+          reportHttpRequestTrace(traceRequest, finishHttpRequestTrace(
+            requestTrace,
+            'error'
+          ))
+          traceReported = true
+        }
         handlers.onError?.('设备状态 WebSocket 连接出错')
       }
       nextSocket.onclose = () => {
@@ -100,13 +127,20 @@ export interface RealtimeService {
   dispose: () => void
 }
 
-export function createRealtimeService(backend: BackendConfig): RealtimeService {
+export function createRealtimeService(
+  backend: BackendConfig,
+  traceRequest?: HttpRequestTraceReporter
+): RealtimeService {
   const disposers = new Set<() => void>()
   const realtimeBaseUrl = backend.realtimeUrl || backend.apiUrl
 
   return {
     subscribeDeviceStatus: (handlers) => {
-      const close = connectDeviceStatus(realtimeBaseUrl, handlers)
+      const close = connectDeviceStatus(
+        realtimeBaseUrl,
+        handlers,
+        backend.serverKind === 'edge' ? traceRequest : undefined
+      )
       disposers.add(close)
       return () => {
         close()

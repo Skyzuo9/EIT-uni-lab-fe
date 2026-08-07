@@ -12,11 +12,13 @@ import {
 
 import type { BackendConfig } from './backends'
 import { createServices, type Services } from './createServices'
+import type { HttpRequestTraceReporter } from './http'
 
 interface ServicesProviderProps {
   backend: BackendConfig
   children: ReactNode
   getAccessToken?: () => string | null | Promise<string | null>
+  traceRequest?: HttpRequestTraceReporter
 }
 
 interface ServicesContextValue {
@@ -29,15 +31,16 @@ const ServicesContext = createContext<ServicesContextValue | null>(null)
 export function ServicesProvider({
   backend,
   children,
-  getAccessToken
+  getAccessToken,
+  traceRequest
 }: ServicesProviderProps): React.JSX.Element {
   const value = useMemo<ServicesContextValue>(() => {
-    const services = createServices({ backend, getAccessToken })
+    const services = createServices({ backend, getAccessToken, traceRequest })
     return {
       services,
       queryClient: new QueryClient()
     }
-  }, [backend, getAccessToken])
+  }, [backend, getAccessToken, traceRequest])
 
   useEffect(() => {
     return () => {

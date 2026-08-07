@@ -215,6 +215,21 @@ function edgeSpec(config: ResolvedRuntimeConfig): LocalRuntimeSpawnSpec {
       ...userExtendedEnvironment,
       UNILABOS_OBSERVABILITYCONFIG_ENABLED: 'true',
       UNILABOS_OBSERVABILITYCONFIG_PROJECT_NAME: 'uni-lab-electron',
+      UNILABOS_OTEL_ENABLED:
+        userExtendedEnvironment['UNILABOS_OTEL_ENABLED'] ?? 'true',
+      OTEL_EXPORTER_OTLP_ENDPOINT:
+        userExtendedEnvironment['OTEL_EXPORTER_OTLP_ENDPOINT']
+          ?? 'http://127.0.0.1:4318',
+      OTEL_EXPORTER_OTLP_PROTOCOL:
+        userExtendedEnvironment['OTEL_EXPORTER_OTLP_PROTOCOL']
+          ?? 'http/protobuf',
+      OTEL_EXPORTER_OTLP_INSECURE:
+        userExtendedEnvironment['OTEL_EXPORTER_OTLP_INSECURE'] ?? 'true',
+      OTEL_SERVICE_NAME:
+        userExtendedEnvironment['OTEL_SERVICE_NAME'] ?? 'uni-lab-edge-local',
+      OTEL_DEPLOYMENT_ENVIRONMENT:
+        userExtendedEnvironment['OTEL_DEPLOYMENT_ENVIRONMENT']
+          ?? 'development',
       UNILABOS_HOSTLINKCONFIG_PORT: String(config.ports.hostLink),
       ROS_DOMAIN_ID: randomEdgeRosDomainId()
     }

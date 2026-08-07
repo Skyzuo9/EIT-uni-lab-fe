@@ -3,6 +3,7 @@ import type { MaterialGraphPort } from '@unilab/material'
 import type { BackendConfig } from './backends'
 import { ServiceError } from './errors'
 import type { HttpClient } from './http'
+import type { HttpRequestTraceReporter } from './http'
 import {
   loadWorkflowActionCatalog
 } from './workflowActionCatalog'
@@ -133,6 +134,7 @@ export type {
 export interface WorkflowRuntimeDependencies {
   /** 公共物料图端口是工作流物料来源（MaterialSource）目录唯一允许使用的物料读边界。 */
   materialGraph?: Pick<MaterialGraphPort, 'getGraph'>
+  traceRequest?: HttpRequestTraceReporter
 }
 
 /**
@@ -150,7 +152,10 @@ export function createWorkflowRuntime(
   dependencies: WorkflowRuntimeDependencies = {}
 ): WorkflowRuntimePort {
   const subscriptions = new Set<WorkflowEventSubscription>()
-  const sseTransport = createWorkflowSseTransport(workflowEventsUrl(backend))
+  const sseTransport = createWorkflowSseTransport(
+    workflowEventsUrl(backend),
+    backend.serverKind === 'edge' ? dependencies.traceRequest : undefined
+  )
 
   /**
    * 通过组合根注入的公共物料图端口加载工作流物料来源（MaterialSource）目录。

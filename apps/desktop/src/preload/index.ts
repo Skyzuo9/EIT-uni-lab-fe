@@ -46,7 +46,8 @@ import type {
 import type {
   DeviceSquareDetail,
   DeviceSquareListQuery,
-  DeviceSquarePage
+  DeviceSquarePage,
+  HttpRequestTraceEvent
 } from '@unilab/services'
 
 // 登录会话结构(与主进程 authManager.AuthSession 保持一致)
@@ -326,7 +327,9 @@ const api = {
       traceId: string,
       query?: TraceDetailQuery
     ): Promise<TraceDetailResult> =>
-      ipcRenderer.invoke('observability:getTrace', traceId, query)
+      ipcRenderer.invoke('observability:getTrace', traceId, query),
+    recordHttpRequest: (event: HttpRequestTraceEvent): Promise<void> =>
+      ipcRenderer.invoke('observability:recordHttpRequest', event)
   }
 }
 

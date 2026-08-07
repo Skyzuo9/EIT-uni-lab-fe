@@ -526,6 +526,10 @@ app.whenReady().then(async () => {
       )
     }
   )
+  ipcMain.handle('observability:recordHttpRequest', (event, payload: unknown) => {
+    assertMainWindowSender(event)
+    electronObservability.recordHttpRequestTrace(payload)
+  })
 
   // 读取当前登录会话(启动/刷新时使用)
   ipcMain.handle('auth:getSession', () => readSession())

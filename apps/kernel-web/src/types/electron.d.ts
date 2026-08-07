@@ -28,7 +28,8 @@ import type {
 import type {
   DeviceSquareDetail,
   DeviceSquareListQuery,
-  DeviceSquarePage
+  DeviceSquarePage,
+  HttpRequestTraceEvent
 } from '@unilab/services'
 
 interface OpenedFile {
@@ -266,6 +267,7 @@ export interface DesktopObservabilityApi {
     traceId: string,
     query?: TraceDetailQuery
   ) => Promise<TraceDetailResult>
+  recordHttpRequest?: (event: HttpRequestTraceEvent) => Promise<void>
 }
 
 interface DesktopApi {

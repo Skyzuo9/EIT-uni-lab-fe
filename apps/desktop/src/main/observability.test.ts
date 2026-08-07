@@ -1,9 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createServer } from 'node:http'
-import type { AddressInfo } from 'node:net'
 
 import {
   createElectronObservability,
+  parseHttpRequestTraceEvent,
   resolveElectronObservabilityOptions,
   type ElectronObservabilityOptions,
   type ElectronTraceAdapter
@@ -53,7 +52,7 @@ class RecordingTraceAdapter implements ElectronTraceAdapter {
 }
 
 describe('ElectronObservability', () => {
-  it('uses the loopback Uni-Lab-OS observability endpoint by default', () => {
+  it('exports packaged telemetry to the local SigNoz collector by default', () => {
     const options = resolveElectronObservabilityOptions({
       environment: {},
       appVersion: '1.2.3',
@@ -68,11 +67,24 @@ describe('ElectronObservability', () => {
     expect(options).toMatchObject({
       enabled: true,
       baseUrl: DEFAULT_OBSERVABILITY_BASE_URL,
+      otlpHttpEndpoint: 'http://127.0.0.1:4318',
       projectName: 'uni-lab-electron',
       environment: 'production',
       requestTimeoutMs: 5_000,
       shutdownTimeoutMs: 3_000
     })
+  })
+
+  it('exports development telemetry to the local SigNoz collector by default', () => {
+    const options = resolveElectronObservabilityOptions({
+      environment: {},
+      appVersion: '1.2.3',
+      isPackaged: false,
+      homeDirectory: '/Users/lab',
+      log: () => undefined
+    })
+
+    expect(options.otlpHttpEndpoint).toBe('http://127.0.0.1:4318')
   })
 
   it('rejects non-loopback endpoints before constructing the exporter', () => {
@@ -97,10 +109,10 @@ describe('ElectronObservability', () => {
     })).toThrow('仅允许本机访问')
   })
 
-  it('accepts a public OTLP HTTP endpoint independently from local trace queries', () => {
+  it('normalizes an explicit local OTLP HTTP endpoint', () => {
     const options = resolveElectronObservabilityOptions({
       environment: {
-        UNILABOS_OTLP_HTTP_ENDPOINT: 'http://115.190.137.109:30158/'
+        UNILABOS_OTLP_HTTP_ENDPOINT: 'http://127.0.0.1:4318/'
       },
       appVersion: '1.2.3',
       isPackaged: false,
@@ -109,7 +121,7 @@ describe('ElectronObservability', () => {
     })
 
     expect(options.baseUrl).toBe(DEFAULT_OBSERVABILITY_BASE_URL)
-    expect(options.otlpHttpEndpoint).toBe('http://115.190.137.109:30158')
+    expect(options.otlpHttpEndpoint).toBe('http://127.0.0.1:4318')
   })
 
   it('sanitizes sensitive values and records failures without changing behavior', async () => {
@@ -215,6 +227,20 @@ describe('ElectronObservability', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
+  it('rejects malformed renderer HTTP trace events', () => {
+    expect(() => parseHttpRequestTraceEvent({
+      transport: 'http',
+      method: 'GET',
+      path: '/api/v1/health?token=secret',
+      traceId: 'a'.repeat(32),
+      spanId: 'b'.repeat(16),
+      traceparent: `00-${'a'.repeat(32)}-${'b'.repeat(16)}-01`,
+      startedAtUnixMs: Date.now(),
+      durationMs: 1,
+      outcome: 'ok'
+    })).toThrow('path 不正确')
+  })
+
   it('flushes and shuts down the adapter once', async () => {
     const adapter = new RecordingTraceAdapter()
     const observability = createElectronObservability(baseOptions(), {
@@ -232,59 +258,71 @@ describe('ElectronObservability', () => {
 
   it('exports traces and logs directly to an OTLP HTTP collector', async () => {
     const requests: Array<{
-      body: Buffer
-      contentType: string | undefined
-      url: string | undefined
+      body: string
+      endpoint: string
     }> = []
-    const server = createServer((request, response) => {
-      const chunks: Buffer[] = []
-      request.on('data', (chunk: Buffer) => chunks.push(chunk))
-      request.on('end', () => {
-        requests.push({
-          body: Buffer.concat(chunks),
-          contentType: request.headers['content-type'],
-          url: request.url
-        })
-        response.writeHead(200, { 'content-type': 'application/x-protobuf' })
-        response.end()
-      })
-    })
-    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
-    const address = server.address() as AddressInfo
     const observability = createElectronObservability(baseOptions({
-      otlpHttpEndpoint: `http://127.0.0.1:${address.port}`,
-      shutdownTimeoutMs: 5_000
-    }))
+      otlpHttpEndpoint: 'http://127.0.0.1:4318'
+    }), {
+      traceAdapter: new RecordingTraceAdapter(),
+      otlpJsonTransport: async (endpoint, body) => {
+        requests.push({ endpoint, body })
+      }
+    })
 
-    try {
-      observability.record('electron.integration.smoke', {
-        'smoke.result': 'ok'
-      })
-      observability.log('Electron OTLP log smoke', 'INFO', {
-        'smoke.result': 'ok'
-      })
-      await observability.flush()
-      await observability.shutdown()
-    } finally {
-      await new Promise<void>((resolve, reject) => server.close((error) => {
-        if (error) reject(error)
-        else resolve()
-      }))
-    }
+    observability.log('Electron OTLP log smoke', 'INFO', {
+      'smoke.result': 'ok'
+    })
+    observability.recordHttpRequestTrace({
+      transport: 'http',
+      method: 'POST',
+      path: '/api/v1/workflows',
+      traceId: 'a'.repeat(32),
+      spanId: 'b'.repeat(16),
+      traceparent: `00-${'a'.repeat(32)}-${'b'.repeat(16)}-01`,
+      startedAtUnixMs: Date.now() - 12,
+      durationMs: 12,
+      statusCode: 201,
+      outcome: 'ok'
+    })
+    await observability.flush()
+    await observability.shutdown()
 
-    expect(requests).toHaveLength(1)
-    const logRequest = requests.find((request) => request.url === '/v1/logs')
-    expect(logRequest?.contentType).toContain('application/json')
+    expect(requests).toHaveLength(2)
+    const jsonTraceRequest = requests.find(
+      (request) => request.endpoint === 'http://127.0.0.1:4318/v1/traces'
+    )
+    const requestSpan = JSON.parse(
+      jsonTraceRequest?.body ?? '{}'
+    ).resourceSpans[0].scopeSpans[0].spans[0]
+    expect(requestSpan).toMatchObject({
+      traceId: 'a'.repeat(32),
+      spanId: 'b'.repeat(16),
+      name: 'electron.http.client',
+      kind: 3,
+      status: { code: 1 }
+    })
+    expect(BigInt(requestSpan.endTimeUnixNano)).toBeGreaterThan(
+      BigInt(requestSpan.startTimeUnixNano)
+    )
+    const logRequest = requests.find(
+      (request) => request.endpoint === 'http://127.0.0.1:4318/v1/logs'
+    )
     const logRecords = JSON.parse(
-      logRequest?.body.toString('utf8') ?? '{}'
+      logRequest?.body ?? '{}'
     ).resourceLogs[0].scopeLogs[0].logRecords
     expect(logRecords).toHaveLength(2)
     expect(logRecords.map((record: { body: { stringValue: string } }) => (
       record.body.stringValue
     ))).toEqual([
-      'electron.integration.smoke',
-      'Electron OTLP log smoke'
+      'Electron OTLP log smoke',
+      'electron.http.client'
     ])
+    expect(logRecords[1]).toMatchObject({
+      traceId: 'a'.repeat(32),
+      spanId: 'b'.repeat(16),
+      flags: 1
+    })
   })
 })
 
