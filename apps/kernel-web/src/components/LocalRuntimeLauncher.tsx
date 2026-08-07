@@ -680,14 +680,11 @@ export function LocalRuntimeDialog({
             </div>
           </section>
 
+        </div>
+
+        <div className={styles.statusDock}>
           <RuntimeStatus snapshot={snapshot} />
-
-          {error ? (
-            <p className={styles.error} role="alert">
-              {error}
-            </p>
-          ) : null}
-
+          {error ? <p className={styles.error} role="alert">{error}</p> : null}
           <footer className={styles.footer}>
             <button
               type="button"

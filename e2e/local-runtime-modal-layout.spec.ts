@@ -91,11 +91,11 @@ test.beforeEach(async ({ page }) => {
 })
 
 /**
- * 验证长配置只滚动弹窗正文，标题和主操作始终留在视口内，底部操作不覆盖正文。
+ * 验证长配置只滚动弹窗正文，标题、主操作和双服务状态始终留在视口内。
  *
  * @param page 已安装空闲本地运行时替身的浏览器页面。
- * @returns 完成滚动容器、头部位置、正文可滚动性和底部操作区流式布局验收。
- * @throws 对话框整体仍是滚动容器、头部随正文移动或底部操作区固定遮挡正文时由断言报告。
+ * @returns 完成滚动容器、固定头部、固定状态区和无覆盖底部布局验收。
+ * @throws 对话框整体仍滚动、固定区不可见或固定区覆盖正文时由断言报告。
  * @safety 只操作浏览器替身和滚动位置，不启动真实本地运行进程。
  */
 test('本地调试器长配置滚动时固定头部', async ({ page }) => {
@@ -109,9 +109,14 @@ test('本地调试器长配置滚动时固定头部', async ({ page }) => {
     name: '领域侧 Edge（以 sz_lab 为例）'
   })
   const runtimeHeader = runtimeDialog.locator('header').first()
+  const runtimeStatus = runtimeDialog.locator('[role="status"][data-phase]')
+  const processStates = runtimeStatus.locator('[data-status]')
   const plcDetails = runtimeDialog.locator('details').filter({
     hasText: 'PLC-Sim（可选）'
   }).first()
+  await expect(processStates).toHaveCount(2)
+  await expect(processStates.nth(0)).toBeInViewport()
+  await expect(processStates.nth(1)).toBeInViewport()
   await capture(page, '01-local-runtime-desktop-collapsed.png')
   await plcDetails.locator('summary').click()
   await expect(plcDetails).toHaveAttribute('open', '')
@@ -120,11 +125,13 @@ test('本地调试器长配置滚动时固定头部', async ({ page }) => {
   const scrollResult = await runtimeDialog.evaluate((dialog) => {
     const header = dialog.querySelector('header')
     const footer = dialog.querySelector('footer')
+    const runtimeStatus = dialog.querySelector('[role="status"][data-phase]')
     const simulatorPath = dialog.querySelector('#runtime-simulator-path')
     if (!(header instanceof HTMLElement)
       || !(footer instanceof HTMLElement)
+      || !(runtimeStatus instanceof HTMLElement)
       || !(simulatorPath instanceof HTMLElement)) {
-      throw new Error('本地调试器弹窗缺少头部、底部操作区或 PLC-Sim 路径字段')
+      throw new Error('本地调试器弹窗缺少头部、状态区、底部操作区或 PLC-Sim 路径字段')
     }
 
     let scrollContainer: HTMLElement | null = simulatorPath.parentElement
@@ -144,21 +151,26 @@ test('本地调试器长配置滚动时固定头部', async ({ page }) => {
 
     const headerTopBefore = header.getBoundingClientRect().top
     const footerTopBefore = footer.getBoundingClientRect().top
+    const statusTopBefore = runtimeStatus.getBoundingClientRect().top
     scrollContainer.scrollTop = scrollContainer.scrollHeight
     const headerTopAfter = header.getBoundingClientRect().top
     const scrollContainerRect = scrollContainer.getBoundingClientRect()
     const footerRect = footer.getBoundingClientRect()
+    const statusRect = runtimeStatus.getBoundingClientRect()
     const simulatorPathRect = simulatorPath.getBoundingClientRect()
     return {
       headerTopBefore,
       headerTopAfter,
       footerTopBefore,
+      statusTopBefore,
       scrollTop: scrollContainer.scrollTop,
       containerIsDialog: scrollContainer === dialog,
       bodyContainsFooter: scrollContainer.contains(footer),
+      bodyContainsStatus: scrollContainer.contains(runtimeStatus),
       scrollContainerBottom: scrollContainerRect.bottom,
       footerTop: footerRect.top,
       footerBottom: footerRect.bottom,
+      statusTop: statusRect.top,
       simulatorPathBottom: simulatorPathRect.bottom
     }
   })
@@ -168,13 +180,19 @@ test('本地调试器长配置滚动时固定头部', async ({ page }) => {
   expect(Math.abs(
     scrollResult.headerTopAfter - scrollResult.headerTopBefore
   )).toBeLessThan(1)
-  expect(scrollResult.bodyContainsFooter).toBe(true)
-  expect(scrollResult.footerTop).toBeLessThan(scrollResult.footerTopBefore)
+  expect(scrollResult.bodyContainsFooter).toBe(false)
+  expect(scrollResult.bodyContainsStatus).toBe(false)
+  expect(Math.abs(
+    scrollResult.statusTop - scrollResult.statusTopBefore
+  )).toBeLessThan(1)
+  expect(Math.abs(
+    scrollResult.footerTop - scrollResult.footerTopBefore
+  )).toBeLessThan(1)
   expect(scrollResult.simulatorPathBottom).toBeLessThanOrEqual(
-    scrollResult.footerTop
+    scrollResult.scrollContainerBottom
   )
-  expect(scrollResult.footerBottom).toBeLessThanOrEqual(
-    scrollResult.scrollContainerBottom + 1
+  expect(scrollResult.scrollContainerBottom).toBeLessThanOrEqual(
+    scrollResult.statusTop
   )
   await expect(runtimeHeader).toBeInViewport()
   await expect(
@@ -191,14 +209,16 @@ test('本地调试器长配置滚动时固定头部', async ({ page }) => {
 
   const narrowBottomResult = await runtimeDialog.evaluate((dialog) => {
     const footer = dialog.querySelector('footer')
+    const runtimeStatus = dialog.querySelector('[role="status"][data-phase]')
     const graphHint = Array.from(dialog.querySelectorAll('p')).find((paragraph) => (
       paragraph.textContent?.includes('留空时以无仪器设备模式启动')
     ))
     const simulatorPath = dialog.querySelector('#runtime-simulator-path')
     if (!(footer instanceof HTMLElement)
+      || !(runtimeStatus instanceof HTMLElement)
       || !(graphHint instanceof HTMLElement)
       || !(simulatorPath instanceof HTMLElement)) {
-      throw new Error('本地调试器弹窗缺少底部操作区、设备图说明或 PLC-Sim 路径字段')
+      throw new Error('本地调试器弹窗缺少状态区、底部操作区、设备图说明或 PLC-Sim 路径字段')
     }
     let scrollContainer: HTMLElement | null = simulatorPath.parentElement
     while (scrollContainer && scrollContainer !== document.body) {
@@ -209,12 +229,14 @@ test('本地调试器长配置滚动时固定头部', async ({ page }) => {
       ) {
         scrollContainer.scrollTop = scrollContainer.scrollHeight
         const footerRect = footer.getBoundingClientRect()
+        const statusRect = runtimeStatus.getBoundingClientRect()
         const graphHintRect = graphHint.getBoundingClientRect()
         const scrollContainerRect = scrollContainer.getBoundingClientRect()
         return {
           graphHintBottom: graphHintRect.bottom,
           footerTop: footerRect.top,
           footerBottom: footerRect.bottom,
+          statusTop: statusRect.top,
           scrollContainerBottom: scrollContainerRect.bottom
         }
       }
@@ -223,13 +245,15 @@ test('本地调试器长配置滚动时固定头部', async ({ page }) => {
     throw new Error('本地调试器长配置缺少可滚动正文')
   })
   expect(narrowBottomResult.graphHintBottom).toBeLessThanOrEqual(
-    narrowBottomResult.footerTop
+    narrowBottomResult.scrollContainerBottom
   )
-  expect(narrowBottomResult.footerBottom).toBeLessThanOrEqual(
-    narrowBottomResult.scrollContainerBottom + 1
+  expect(narrowBottomResult.scrollContainerBottom).toBeLessThanOrEqual(
+    narrowBottomResult.statusTop
   )
   await expect(runtimeHeader).toBeInViewport()
   await expect(runtimeDialog.locator('footer')).toBeInViewport()
+  await expect(processStates.nth(0)).toBeInViewport()
+  await expect(processStates.nth(1)).toBeInViewport()
   await capture(page, '05-local-runtime-narrow-bottom.png')
 
   await runtimeDialog.evaluate((dialog) => {

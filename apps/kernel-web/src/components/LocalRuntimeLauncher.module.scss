@@ -169,6 +169,15 @@
   scrollbar-gutter: stable;
 }
 
+.statusDock {
+  display: grid;
+  flex: 0 0 auto;
+  gap: 12px;
+  padding: 12px 24px 16px;
+  border-top: 1px solid var(--unilab-color-border);
+  background: var(--unilab-color-surface);
+}
+
 .serviceSection {
   display: grid;
   gap: 12px;
@@ -1068,8 +1077,7 @@
   align-items: center;
   justify-content: flex-end;
   gap: var(--unilab-space-2);
-  padding-block-start: 14px;
-  border-top: 1px solid var(--unilab-color-border);
+  padding-block-start: 0;
 }
 
 .secondaryButton,
@@ -1141,7 +1149,8 @@
   }
 
   .header,
-  .body {
+  .body,
+  .statusDock {
     padding-inline: 16px;
   }
 
