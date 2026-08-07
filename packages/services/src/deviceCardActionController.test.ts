@@ -17,10 +17,11 @@ const TASK_UUID = '10000000-0000-4000-8000-000000000001'
 const JOB_UUID = '10000000-0000-4000-8000-000000000002'
 const TEMPLATE_UUID = '10000000-0000-4000-8000-000000000003'
 const RESOURCE_UUID = '10000000-0000-4000-8000-000000000004'
+const MATERIAL_UUID = '10000000-0000-4000-8000-000000000006'
 const FINGERPRINT = `sha256:${'a'.repeat(64)}`
 
 describe('DeviceCardActionController', () => {
-  it('subscribes before create and rehydrates only after matching SSE invalidation', async () => {
+  it('submits the device material and rehydrates after the standard runtime event', async () => {
     vi.useFakeTimers()
     const order: string[] = []
     const invalidation = {
@@ -61,8 +62,21 @@ describe('DeviceCardActionController', () => {
 
     invalidation.current?.({
       id: '9',
-      event: 'device_action_task.changed',
-      data: { task_uuid: TASK_UUID }
+      event: 'workflow.runtime.changed',
+      data: { workflow_task_uuid: TASK_UUID }
+    })
+    expect(tasks.createDeviceActionTask).toHaveBeenCalledWith({
+      material_uuid: MATERIAL_UUID,
+      workflow_node_template_uuid: TEMPLATE_UUID,
+      param: { duration_seconds: 3 },
+      execution_policy: {},
+      idempotency_key: '10000000-0000-4000-8000-000000000005',
+      description: '设备卡片单动作运行',
+      meta_data: {
+        source: 'device-card',
+        device_id: 'D1ADevice1',
+        action_name: 'test_hold'
+      }
     })
 
     await expect(result).resolves.toMatchObject({
@@ -115,6 +129,7 @@ function request(): DeviceCardHostActionRequest {
 function device(): DeviceCatalogItem {
   return {
     deviceId: 'D1ADevice1',
+    materialUuid: MATERIAL_UUID,
     deviceTypeId: 'd1a.simulator',
     deviceKey: '/devices/D1ADevice1',
     namespace: '/devices',
@@ -139,24 +154,13 @@ function task(status: string): ReturnType<DeviceActionTaskRuntimePort['getDevice
   return {
     task_uuid: TASK_UUID,
     job_uuid: JOB_UUID,
-    authority_id: 'os-local',
-    template_catalog_fingerprint: FINGERPRINT,
-    workflow_node_template_uuid: TEMPLATE_UUID,
-    name: 'test_hold',
-    display_name: '单节点运行',
-    device_id: 'D1ADevice1',
     status,
     control_status: 'active',
     cleanup_status: status === 'succeeded' ? 'settled' : 'none',
-    input: { duration_seconds: 3 },
     output: status === 'succeeded' ? { completed: true } : {},
     error_info: [],
     job_status: status,
-    feedback_cursor: status === 'succeeded' ? 1 : 0,
-    create_time: '2026-08-04T00:00:00Z',
-    update_time: '2026-08-04T00:00:01Z',
-    started_at: status === 'accepted' ? null : '2026-08-04T00:00:00Z',
-    finished_at: status === 'succeeded' ? '2026-08-04T00:00:01Z' : null
+    feedback_cursor: status === 'succeeded' ? 1 : 0
   }
 }
 

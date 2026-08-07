@@ -21,6 +21,7 @@ export interface DeviceActionTarget {
 
 export interface OnlineDevice {
   id: string
+  materialUuid: string
   deviceKey: string
   namespace: string
   machineName: string
@@ -88,6 +89,7 @@ export interface DeviceCatalogAction {
 
 export interface DeviceCatalogItem {
   deviceId: string
+  materialUuid: string
   deviceTypeId: string
   deviceKey: string
   namespace: string
@@ -126,6 +128,7 @@ interface RuntimeActionTemplate {
 
 interface RuntimeDeviceCatalogItem {
   id: string
+  materialUuid: string
   deviceTypeId?: string
   deviceKey: string
   namespace: string
@@ -170,6 +173,7 @@ export function createLaboratoryService(
         .sort((left, right) => left.id.localeCompare(right.id))
         .map((device) => ({
           id: device.id,
+          materialUuid: device.materialUuid,
           deviceKey: device.deviceKey,
           namespace: device.namespace,
           machineName: device.name,
@@ -260,6 +264,7 @@ function mapDeviceCatalogItem(
   const deviceId = str(raw.id)
   return {
     deviceId,
+    materialUuid: str(raw.materialUuid),
     // 新目录提供 Driver 类型；保留旧 Edge 的实例 id 回退。
     deviceTypeId: str(raw.deviceTypeId ?? raw.typeId ?? raw.className) || deviceId,
     deviceKey: str(raw.deviceKey),
@@ -377,6 +382,7 @@ async function getRuntimeDevices(
     return [
       {
         id: deviceId,
+        materialUuid: str(item.materialUuid),
         deviceTypeId: optionalString(item.deviceTypeId) ?? undefined,
         deviceKey: str(item.deviceKey),
         namespace: str(item.namespace),

@@ -130,8 +130,9 @@ export function startDeviceActionTaskRecovery(
   const removeFocusListener = environment.onFocus(rehydrateAll)
   const runtimeSubscription = options.subscribe(
     (event) => {
-      if (event.event !== 'device_action_task.changed') return
-      const state = active.get(event.data.task_uuid)
+      const taskUuid = runtimeEventTaskUuid(event)
+      if (!taskUuid) return
+      const state = active.get(taskUuid)
       if (state) requestRead(state)
     },
     {
@@ -153,6 +154,17 @@ export function startDeviceActionTaskRecovery(
       active.clear()
     }
   }
+}
+
+/** 从新旧运行失效通知中读取工作流任务（WorkflowTask）UUID。 */
+function runtimeEventTaskUuid(
+  event: WorkflowRuntimeInvalidationEvent
+): string | null {
+  if (event.event === 'workflow.runtime.changed') {
+    return event.data.workflow_task_uuid
+  }
+  if (event.event === 'device_action_task.changed') return event.data.task_uuid
+  return null
 }
 
 /** 创建浏览器页面可见性与焦点恢复端口。 */
