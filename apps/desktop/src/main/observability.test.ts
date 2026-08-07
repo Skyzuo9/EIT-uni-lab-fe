@@ -97,6 +97,21 @@ describe('ElectronObservability', () => {
     })).toThrow('仅允许本机访问')
   })
 
+  it('accepts a public OTLP HTTP endpoint independently from local trace queries', () => {
+    const options = resolveElectronObservabilityOptions({
+      environment: {
+        UNILABOS_OTLP_HTTP_ENDPOINT: 'http://115.190.137.109:30158/'
+      },
+      appVersion: '1.2.3',
+      isPackaged: false,
+      homeDirectory: '/Users/lab',
+      log: () => undefined
+    })
+
+    expect(options.baseUrl).toBe(DEFAULT_OBSERVABILITY_BASE_URL)
+    expect(options.otlpHttpEndpoint).toBe('http://115.190.137.109:30158')
+  })
+
   it('sanitizes sensitive values and records failures without changing behavior', async () => {
     const adapter = new RecordingTraceAdapter()
     const observability = createElectronObservability(baseOptions(), {
@@ -130,6 +145,24 @@ describe('ElectronObservability', () => {
       '无法读取 $HOME/projects/secret.json'
     )
     expect(adapter.spans[0]?.error?.stack).toBeUndefined()
+  })
+
+  it('runs the business operation once when the trace adapter fails', async () => {
+    const failingAdapter: ElectronTraceAdapter = {
+      run: async () => { throw new Error('trace unavailable') },
+      record: () => { throw new Error('trace unavailable') },
+      flush: async () => undefined,
+      shutdown: async () => undefined
+    }
+    const operation = vi.fn(async () => 'ok')
+    const observability = createElectronObservability(baseOptions(), {
+      traceAdapter: failingAdapter,
+      fetch: unexpectedFetch
+    })
+
+    await expect(observability.run('electron.fail-open', {}, operation)).resolves.toBe('ok')
+    expect(operation).toHaveBeenCalledOnce()
+    expect(() => observability.record('electron.fail-open')).not.toThrow()
   })
 
   it('queries trace lists through the Uni-Lab-OS interface', async () => {
@@ -197,7 +230,7 @@ describe('ElectronObservability', () => {
     expect(adapter.shutdownCount).toBe(1)
   })
 
-  it('exports OTLP protobuf to the Uni-Lab-OS proxy path', async () => {
+  it('exports traces and logs directly to an OTLP HTTP collector', async () => {
     const requests: Array<{
       body: Buffer
       contentType: string | undefined
@@ -219,12 +252,15 @@ describe('ElectronObservability', () => {
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
     const address = server.address() as AddressInfo
     const observability = createElectronObservability(baseOptions({
-      baseUrl: `http://127.0.0.1:${address.port}/api/v1/observability`,
+      otlpHttpEndpoint: `http://127.0.0.1:${address.port}`,
       shutdownTimeoutMs: 5_000
     }))
 
     try {
       observability.record('electron.integration.smoke', {
+        'smoke.result': 'ok'
+      })
+      observability.log('Electron OTLP log smoke', 'INFO', {
         'smoke.result': 'ok'
       })
       await observability.flush()
@@ -237,11 +273,18 @@ describe('ElectronObservability', () => {
     }
 
     expect(requests).toHaveLength(1)
-    expect(requests[0]?.url).toBe(
-      '/api/v1/observability/otlp/v1/traces'
-    )
-    expect(requests[0]?.contentType).toBe('application/x-protobuf')
-    expect(requests[0]?.body.byteLength).toBeGreaterThan(0)
+    const logRequest = requests.find((request) => request.url === '/v1/logs')
+    expect(logRequest?.contentType).toContain('application/json')
+    const logRecords = JSON.parse(
+      logRequest?.body.toString('utf8') ?? '{}'
+    ).resourceLogs[0].scopeLogs[0].logRecords
+    expect(logRecords).toHaveLength(2)
+    expect(logRecords.map((record: { body: { stringValue: string } }) => (
+      record.body.stringValue
+    ))).toEqual([
+      'electron.integration.smoke',
+      'Electron OTLP log smoke'
+    ])
   })
 })
 
@@ -251,6 +294,7 @@ function baseOptions(
   return {
     enabled: true,
     baseUrl: DEFAULT_OBSERVABILITY_BASE_URL,
+    otlpHttpEndpoint: `${DEFAULT_OBSERVABILITY_BASE_URL}/otlp`,
     projectName: 'uni-lab-electron',
     appVersion: '1.2.3',
     environment: 'development',

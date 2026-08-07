@@ -66,6 +66,7 @@ const LOG_PATH = resolveDesktopMainLogPath(
   homedir(),
   DIAGNOSTIC_LOG_SESSION_ID
 )
+let remoteLogSink: ((message: string) => void) | undefined
 
 /**
  * 追加一条带 UTC 时间的 Electron 主进程诊断信息。
@@ -81,10 +82,16 @@ function logLine(message: string): void {
   } catch {
     // 忽略日志写入失败
   }
+  try {
+    remoteLogSink?.(message)
+  } catch {
+    // 遥测必须保持 fail-open，不能影响主进程及本地文件日志。
+  }
 }
 
 const isDev = !app.isPackaged
 const electronObservability = createMainObservability()
+remoteLogSink = (message) => electronObservability.log(message)
 
 function configurePackagedDeviceCardBuilder(): void {
   if (!app.isPackaged) return

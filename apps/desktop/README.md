@@ -87,7 +87,7 @@ shell 字符串拼接。日志分别写入 `simulator.log` 和 `edge.log`，可�
 日志抽屉查看；抽屉会去除 ANSI 控制字符，并按时间、级别、来源和正文
 结构化渲染。日志目录与读取方式均由 Electron 按当前平台处理。
 
-## Trace 日志
+## SigNoz Trace 与日志
 
 Electron main 使用 `@arizeai/phoenix-otel` 将应用生命周期、renderer 异常、登录和
 本地运行时启停等关键操作作为 OpenTelemetry span 上报到 Uni-Lab-OS。默认 OTLP
@@ -96,6 +96,22 @@ Electron main 使用 `@arizeai/phoenix-otel` 将应用生命周期、renderer �
 ```text
 http://127.0.0.1:18003/api/v1/observability/otlp/v1/traces
 ```
+
+设置 `UNILABOS_OTLP_HTTP_ENDPOINT` 后，Electron 会绕过本地 Uni-Lab-OS 代理，把主进程
+诊断日志以及生命周期、异常、本地运行时启停等 trace 事件作为结构化 LogRecord 直接
+发送到 collector 的 `/v1/logs`，事件以 `event.kind=span` 标识。当前 SigNoz 公网
+collector 对 Node OTLP trace 请求不返回响应，因此公网模式不创建 Electron 原生 spans；
+默认本机代理模式仍使用 Phoenix exporter 产生完整 spans。
+例如连接公网 SigNoz OTLP/HTTP NodePort：
+
+```bash
+export UNILABOS_OTLP_HTTP_ENDPOINT=http://115.190.137.109:30158
+pnpm dev:desktop
+```
+
+仓库根目录的 `make dev` 已为当前开发环境配置该地址，同时让 Electron 一键启动的
+Uni-Lab-OS 使用 `http/protobuf` 连接同一个 endpoint，使 Edge 的 traces 与 Python
+日志进入同一个 SigNoz。地址可通过 `SIGNOZ_OTLP_HTTP_ENDPOINT` 覆盖。
 
 Uni-Lab-OS 未启动、未启用 observability 或 Phoenix 暂不可用时，上报自动降级，
 不得阻断 Electron 启动和业务操作。原有 `~/lab-pc-client.log` 文件日志继续保留。
@@ -122,6 +138,7 @@ Edge 的 Conda 环境执行一次；如果环境名不是 `unilab`，替换激�
 可选环境变量：
 
 - `UNILABOS_TRACE_ENABLED=0`：关闭 Electron trace 上报。
+- `UNILABOS_OTLP_HTTP_ENDPOINT`：Electron traces/logs 的 OTLP/HTTP collector 根地址。
 - `UNILABOS_OBSERVABILITY_URL`：覆盖 Uni-Lab-OS observability 根地址，仅接受无凭据
   的 loopback HTTP 地址。
 - `UNILABOS_TRACE_PROJECT`：覆盖 Phoenix project，默认 `uni-lab-electron`。
