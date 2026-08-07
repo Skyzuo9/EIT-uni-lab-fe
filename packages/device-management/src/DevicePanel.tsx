@@ -377,7 +377,7 @@ export default function DevicePanel({
   ])
 
   /**
-   * 用冻结动作目录代际创建一个设备单动作工作流任务（WorkflowTask）。
+   * 用稳定设备物料身份创建一个设备单动作工作流任务（WorkflowTask）。
    *
    * @param device 当前选择的设备。
    * @param action 当前选择的动作。
@@ -396,14 +396,12 @@ export default function DevicePanel({
       runOperation?.state.kind === 'accepted' ||
       runOperation?.state.kind === 'running'
     ) return
-    const authorityId = actionCatalog.authorityId
-    const catalogFingerprint = actionCatalog.fingerprint
-    if (!authorityId || !catalogFingerprint) {
+    if (!device.materialUuid) {
       setRunOperation({
         actionRef: action.actionRef,
         state: {
           kind: 'error',
-          message: '当前动作目录缺少权威标识或目录指纹，无法安全创建设备单动作任务',
+          message: '当前设备缺少运行标识，请刷新设备列表后重试',
           retryable: false
         }
       })
@@ -424,10 +422,9 @@ export default function DevicePanel({
       return
     }
     const signature = JSON.stringify({
-      authorityId,
-      fingerprint: catalogFingerprint,
+      fingerprint: actionCatalog.fingerprint,
       templateUuid: template.uuid,
-      deviceId: device.id,
+      materialUuid: device.materialUuid,
       input
     })
     const previous = runAttemptRef.current
@@ -441,13 +438,17 @@ export default function DevicePanel({
     })
     try {
       const view = await services.deviceActionTasks.createDeviceActionTask({
-        authority_id: authorityId,
-        template_catalog_fingerprint: catalogFingerprint,
+        material_uuid: device.materialUuid,
         workflow_node_template_uuid: template.uuid,
-        device_id: device.id,
-        input,
+        param: input,
+        execution_policy: {},
         idempotency_key: idempotencyKey,
-        description: '设备页单动作运行'
+        description: '设备页单动作运行',
+        meta_data: {
+          source: 'device-panel',
+          device_id: device.id,
+          action_name: action.actionName
+        }
       })
       runAttemptRef.current = null
       feedbackByTaskRef.current.set(view.task_uuid, { cursor: 0, items: [] })

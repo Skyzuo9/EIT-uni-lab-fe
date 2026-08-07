@@ -7,46 +7,49 @@ const TASK_UUID = '10000000-0000-4000-8000-000000000001'
 const JOB_UUID = '10000000-0000-4000-8000-000000000002'
 const TEMPLATE_UUID = '10000000-0000-4000-8000-000000000003'
 const IDEMPOTENCY_KEY = '10000000-0000-4000-8000-000000000004'
-const FINGERPRINT = `sha256:${'a'.repeat(64)}`
+const MATERIAL_UUID = '10000000-0000-4000-8000-000000000005'
 
 describe('device Action Task service', () => {
-  it('posts the frozen public identity and never manufactures Action/source identities', async () => {
+  /** 验证设备单动作通过 dev-wt 当前公开入口提交，不再请求已退役路径。 */
+  it('posts the Backend-shaped device Action Run request', async () => {
     const requests: Array<{ path: string; method?: string; body?: string }> = []
     const runtime = createDeviceActionTaskRuntime(fixtureHttp({
-      '/api/v1/device-action-tasks': successEnvelope(taskView())
+      '/api/v1/device-action-runs': successEnvelope(actionRunResult())
     }, requests))
 
     await expect(runtime.createDeviceActionTask({
-      authority_id: 'os-local',
-      template_catalog_fingerprint: FINGERPRINT,
+      material_uuid: MATERIAL_UUID,
       workflow_node_template_uuid: TEMPLATE_UUID,
-      device_id: 'robot-1',
-      input: { duration_seconds: 5 },
+      param: { duration_seconds: 5 },
+      execution_policy: {},
       idempotency_key: IDEMPOTENCY_KEY,
-      description: '设备页单动作运行'
+      description: '设备页单动作运行',
+      meta_data: {}
     })).resolves.toEqual(taskView())
 
     expect(requests).toEqual([{
-      path: '/api/v1/device-action-tasks',
+      path: '/api/v1/device-action-runs',
       method: 'POST',
       body: JSON.stringify({
-        authority_id: 'os-local',
-        template_catalog_fingerprint: FINGERPRINT,
+        material_uuid: MATERIAL_UUID,
         workflow_node_template_uuid: TEMPLATE_UUID,
-        device_id: 'robot-1',
-        input: { duration_seconds: 5 },
+        param: { duration_seconds: 5 },
+        execution_policy: {},
         idempotency_key: IDEMPOTENCY_KEY,
-        description: '设备页单动作运行'
+        description: '设备页单动作运行',
+        meta_data: {}
       })
     }])
-    expect(requests[0]?.body).not.toContain('action_name')
-    expect(requests[0]?.body).not.toContain('workflow_uuid')
+    expect(requests[0]?.body).not.toContain('authority_id')
+    expect(requests[0]?.body).not.toContain('device_id')
   })
 
-  it('rehydrates through the dedicated sanitized REST projection', async () => {
+  /** 验证刷新后通过标准任务与作业资源恢复设备单动作状态。 */
+  it('rehydrates through the standard task and job resources', async () => {
     const requests: Array<{ path: string; method?: string; body?: string }> = []
     const runtime = createDeviceActionTaskRuntime(fixtureHttp({
-      [`/api/v1/device-action-tasks/${TASK_UUID}`]: successEnvelope(taskView())
+      [`/api/v1/workflow-tasks/${TASK_UUID}`]: successEnvelope(actionTask()),
+      [`/api/v1/workflow-tasks/${TASK_UUID}/jobs`]: successEnvelope([actionJob()])
     }, requests))
 
     const view = await runtime.getDeviceActionTask(TASK_UUID)
@@ -58,52 +61,56 @@ describe('device Action Task service', () => {
       'source_revision',
       'source'
     ]))
-    expect(requests).toEqual([{
-      path: `/api/v1/device-action-tasks/${TASK_UUID}`,
-      method: undefined,
-      body: undefined
-    }])
+    expect(requests).toEqual([
+      {
+        path: `/api/v1/workflow-tasks/${TASK_UUID}`,
+        method: undefined,
+        body: undefined
+      },
+      {
+        path: `/api/v1/workflow-tasks/${TASK_UUID}/jobs`,
+        method: undefined,
+        body: undefined
+      }
+    ])
   })
 
   it.each([
-    ['template_catalog_conflict', 409],
-    ['idempotency_conflict', 409],
-    ['device_action_mismatch', 409],
-    ['unsupported_contract', 422],
-    ['admission_unavailable', 503]
-  ])('preserves actionable %s errors', async (code, status) => {
+    [1000, false, '引用的设备不存在或不可用'],
+    [5001, true, '本地设备运行信息尚未就绪']
+  ])('preserves Backend error %s as an actionable message', async (
+    businessCode,
+    retryable,
+    message
+  ) => {
     const runtime = createDeviceActionTaskRuntime(fixtureHttp({
-      '/api/v1/device-action-tasks': {
-        code: status,
-        error: { code, message: `error: ${code}` }
+      '/api/v1/device-action-runs': {
+        code: businessCode,
+        error: { msg: message }
       }
     }))
 
     await expect(runtime.createDeviceActionTask({
-      authority_id: 'os-local',
-      template_catalog_fingerprint: FINGERPRINT,
+      material_uuid: MATERIAL_UUID,
       workflow_node_template_uuid: TEMPLATE_UUID,
-      device_id: 'robot-1',
-      input: {},
+      param: {},
       idempotency_key: IDEMPOTENCY_KEY
     })).rejects.toMatchObject({
-      code,
-      status,
-      message: `error: ${code}`
+      code: `DEVICE_ACTION_RUN_REJECTED_${businessCode}`,
+      retryable,
+      message
     })
   })
 
   it('rejects a permissive bare response instead of hiding contract drift', async () => {
     const runtime = createDeviceActionTaskRuntime(fixtureHttp({
-      '/api/v1/device-action-tasks': taskView()
+      '/api/v1/device-action-runs': actionRunResult()
     }))
 
     await expect(runtime.createDeviceActionTask({
-      authority_id: 'os-local',
-      template_catalog_fingerprint: FINGERPRINT,
+      material_uuid: MATERIAL_UUID,
       workflow_node_template_uuid: TEMPLATE_UUID,
-      device_id: 'robot-1',
-      input: {},
+      param: {},
       idempotency_key: IDEMPOTENCY_KEY
     })).rejects.toMatchObject({
       code: 'INVALID_DEVICE_ACTION_TASK_RESPONSE'
@@ -115,20 +122,51 @@ function taskView(): Record<string, unknown> {
   return {
     task_uuid: TASK_UUID,
     job_uuid: JOB_UUID,
-    authority_id: 'os-local',
-    template_catalog_fingerprint: FINGERPRINT,
-    workflow_node_template_uuid: TEMPLATE_UUID,
-    name: 'move',
-    display_name: '移动',
-    device_id: 'robot-1',
     status: 'pending',
     control_status: 'active',
     cleanup_status: 'none',
-    input: { duration_seconds: 5 },
     output: {},
     error_info: [],
     job_status: 'pending',
-    feedback_cursor: 0,
+    feedback_cursor: 0
+  }
+}
+
+/** 构造 dev-wt 当前设备单动作创建接口的标准任务与作业结果。 */
+function actionRunResult(): Record<string, unknown> {
+  return {
+    task: actionTask(),
+    job: actionJob(),
+    created: true
+  }
+}
+
+/** 构造标准工作流任务（WorkflowTask）资源。 */
+function actionTask(): Record<string, unknown> {
+  return {
+    uuid: TASK_UUID,
+    status: 'pending',
+    control_status: 'active',
+    cleanup_status: 'none',
+    output: {},
+    error_info: [],
+    create_time: '2026-08-02T00:00:00Z',
+    update_time: '2026-08-02T00:00:00Z',
+    started_at: null,
+    finished_at: null
+  }
+}
+
+/** 构造设备单动作对应的唯一工作流节点作业（WorkflowNodeJob）。 */
+function actionJob(): Record<string, unknown> {
+  return {
+    uuid: JOB_UUID,
+    workflow_task_uuid: TASK_UUID,
+    status: 'pending',
+    param: { duration_seconds: 5 },
+    return_info: {},
+    error_info: [],
+    feedback_sequence: 0,
     create_time: '2026-08-02T00:00:00Z',
     update_time: '2026-08-02T00:00:00Z',
     started_at: null,
