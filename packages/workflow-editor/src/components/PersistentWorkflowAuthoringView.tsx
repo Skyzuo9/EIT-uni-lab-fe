@@ -1,6 +1,10 @@
 import { CodeEditor } from '@unilab/code-editor'
 
 import { diagnosticRange } from '../utils/persistentAuthoringSession'
+import {
+  canRetryWorkflowRuntimeRead,
+  workflowRuntimeProblemHeading
+} from '../utils/workflowRuntimeProblem'
 import { workflowTaskControlStatusLabel, workflowTaskStatusLabel, workflowTaskVisualStatus } from '../utils/workflowTaskPresentation'
 import { workflowTaskMetadata } from '../utils/workflowTaskPanelProjection'
 import WorkflowDag from './WorkflowDag'
@@ -118,7 +122,9 @@ export function PersistentWorkflowAuthoringView({
       )}
       {taskRuntime.snapshot.error && (
         <div className="workflow-runtime__problem" role="alert">
-          <strong>运行状态读取失败</strong>
+          <strong>
+            {workflowRuntimeProblemHeading(taskRuntime.snapshot.actionError)}
+          </strong>
           <span>
             {taskRuntime.snapshot.projectionStale
               ? `上一次一致状态已保留：${taskRuntime.snapshot.error}`
@@ -126,14 +132,16 @@ export function PersistentWorkflowAuthoringView({
                 ? `已确认的反馈事件已保留：${taskRuntime.snapshot.error}`
                 : taskRuntime.snapshot.error}
           </span>
-          <WorkflowButton
-            type="button"
-            disabled={runtimeBusy}
-            disabledReason="正在补读工作流任务状态，请稍候"
-            onClick={() => runRuntime(() => taskRuntime.refresh())}
-          >
-            重试状态读取
-          </WorkflowButton>
+          {canRetryWorkflowRuntimeRead(taskRuntime.snapshot.actionError) && (
+            <WorkflowButton
+              type="button"
+              disabled={runtimeBusy}
+              disabledReason="正在补读工作流任务状态，请稍候"
+              onClick={() => runRuntime(() => taskRuntime.refresh())}
+            >
+              重试状态读取
+            </WorkflowButton>
+          )}
           <button type="button" onClick={taskRuntime.clearError}>关闭</button>
         </div>
       )}
