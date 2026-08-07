@@ -11,6 +11,14 @@ const viewPath = fileURLToPath(new URL(
   './PersistentWorkflowAuthoringView.tsx',
   import.meta.url
 ))
+const nodePalettePath = fileURLToPath(new URL(
+  './PersistentWorkflowNodePalette.tsx',
+  import.meta.url
+))
+const statusBannersPath = fileURLToPath(new URL(
+  './PersistentWorkflowStatusBanners.tsx',
+  import.meta.url
+))
 const authoringHookPath = fileURLToPath(new URL(
   '../hooks/usePersistentWorkflowAuthoring.ts',
   import.meta.url
@@ -48,7 +56,7 @@ describe('Published Workflow Catalog in the Authoring module', () => {
 
   it('does not present the Published Workflow renderer owner as a device', () => {
     const workflowPicker = paletteSection(
-      readFileSync(viewPath, 'utf8'),
+      readFileSync(nodePalettePath, 'utf8'),
       '子工作流'
     )
 
@@ -68,13 +76,13 @@ describe('Published Workflow Catalog in the Authoring module', () => {
       /disabled=\{[\s\S]*?busy[\s\S]*?canvasMutationEnabled[\s\S]*?graph[\s\S]*?\}/
     )
     expect(workflowPicker).toMatch(
-      /onClick=\{\(\) => addPublishedWorkflowNode\(template\.uuid\)\}/
+      /onClick=\{\(\) => model\.addPublishedWorkflowNode\(template\.uuid\)\}/
     )
     expect(source).toContain('globalThis.crypto.randomUUID()')
   })
 
   it('renders OS diagnostic code and message without frontend replacement', () => {
-    const source = readFileSync(viewPath, 'utf8')
+    const source = readFileSync(statusBannersPath, 'utf8')
 
     expect(source).toContain('<code>{diagnostic.code}</code>')
     expect(source).toContain('<span>{diagnostic.message}</span>')
@@ -130,6 +138,7 @@ function authoringSource(): string {
   return [
     panelPath,
     viewPath,
+    nodePalettePath,
     authoringHookPath,
     catalogHookPath,
     canvasNodeEditorHookPath,

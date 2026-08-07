@@ -1,0 +1,399 @@
+.workflow :global(.wf-node--material-source) {
+  min-width: 166px;
+  border-color: color-mix(
+    in srgb,
+    var(--wf-material-accent) 48%,
+    var(--unilab-color-border)
+  );
+  background: color-mix(
+    in srgb,
+    var(--wf-material-accent) 4%,
+    var(--unilab-color-surface)
+  );
+}
+
+.workflow :global(.wf-node--material-source)::before {
+  background: var(--wf-material-accent);
+}
+
+.workflow:global(.workflow-runtime) :global(.wf-node--material-source) :global(.wf-node__body) {
+  min-height: 126px;
+  align-items: center;
+  padding: 13px 12px 16px;
+  text-align: center;
+}
+
+.workflow :global(.wf-node__material-glyph) {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  margin-bottom: 2px;
+  place-items: center;
+  color: var(--wf-material-accent);
+  background: color-mix(
+    in srgb,
+    var(--wf-material-accent) 14%,
+    var(--unilab-color-surface)
+  );
+  clip-path: polygon(25% 4%, 75% 4%, 100% 50%, 75% 96%, 25% 96%, 0 50%);
+  font-size: 19px;
+}
+
+.workflow :global(.wf-node--material-source) :global(.wf-node__kind) {
+  width: max-content;
+  padding: 2px 6px;
+  color: var(--wf-material-accent);
+  border-radius: var(--unilab-radius-sm);
+  background: color-mix(
+    in srgb,
+    var(--wf-material-accent) 12%,
+    var(--unilab-color-surface)
+  );
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .08em;
+}
+
+.workflow :global(.wf-node--material-source) :global(.wf-node__footer) {
+  justify-content: center;
+  border-top-color: color-mix(
+    in srgb,
+    var(--wf-material-accent) 20%,
+    var(--unilab-color-border)
+  );
+}
+
+.workflow :global(.wf-node__material-summary) {
+  display: grid;
+  gap: 2px;
+  color: var(--unilab-color-text-muted);
+  font-size: 9px;
+}
+
+.workflow :global(.wf-node__material-summary) small {
+  font: 8px var(--unilab-font-mono, monospace);
+}
+
+.workflow :global(.wf-node--material-source) :global(.wf-node__handle) {
+  border-color: var(--wf-material-accent);
+}
+
+.workflow :global(.wf-node__handle--material),
+.workflow :global(.wf-node__handle--material):global(.connecting),
+.workflow :global(.wf-node__handle--material):global(.connected) {
+  border-color: var(--wf-material-accent);
+  background: color-mix(
+    in srgb,
+    var(--wf-material-accent) 12%,
+    var(--unilab-color-surface)
+  );
+}
+
+.workflow :global(.wf-node__handle--material):hover {
+  border-color: var(--wf-material-accent);
+}
+
+.workflow :global(.wf-node__material-ports) {
+  display: inline-flex;
+  min-width: 0;
+  align-items: stretch;
+  align-self: stretch;
+  flex: 0 0 auto;
+  gap: 5px;
+}
+
+.workflow :global(.wf-node__material-port) {
+  position: relative;
+  display: inline-flex;
+  min-width: 58px;
+  max-width: 116px;
+  align-items: center;
+  justify-content: center;
+}
+
+.workflow :global(.wf-node__material-port-label) {
+  display: block;
+  width: 100%;
+  height: 30px;
+  overflow: hidden;
+  padding: 0 9px;
+  color: var(--unilab-color-text);
+  border: 1px solid color-mix(
+    in srgb,
+    var(--wf-material-accent) 34%,
+    var(--unilab-color-border)
+  );
+  border-radius: var(--unilab-radius-sm);
+  background: color-mix(
+    in srgb,
+    var(--wf-material-accent) 8%,
+    var(--unilab-color-surface)
+  );
+  box-shadow: inset 0 2px 0 color-mix(
+    in srgb,
+    var(--wf-material-accent) 62%,
+    transparent
+  );
+  font: 650 10px/28px var(--unilab-font-sans);
+  text-align: center;
+  text-overflow: ellipsis;
+  transition:
+    border-color var(--unilab-motion-fast) ease,
+    background var(--unilab-motion-fast) ease;
+  white-space: nowrap;
+}
+
+.workflow :global(.wf-node__material-port:hover) :global(.wf-node__material-port-label) {
+  border-color: color-mix(
+    in srgb,
+    var(--wf-material-accent) 58%,
+    var(--unilab-color-border-strong)
+  );
+  background: color-mix(
+    in srgb,
+    var(--wf-material-accent) 13%,
+    var(--unilab-color-surface)
+  );
+}
+
+.workflow :global(.wf-node__material-port[data-workflow-material-port-description])::after {
+  position: absolute;
+  z-index: 12;
+  top: calc(50% + 23px);
+  left: 50%;
+  width: max-content;
+  max-width: 220px;
+  padding: 6px 8px;
+  color: var(--unilab-color-text);
+  border: 1px solid var(--unilab-color-border-strong);
+  border-radius: var(--unilab-radius-sm);
+  background: var(--unilab-color-surface);
+  box-shadow: 0 6px 16px rgb(15 23 42 / 12%);
+  content: attr(data-workflow-material-port-description);
+  font: 500 10px/15px var(--unilab-font-sans);
+  opacity: 0;
+  pointer-events: none;
+  text-align: left;
+  transform: translateX(-50%) translateY(-2px);
+  transition:
+    opacity var(--unilab-motion-fast) ease,
+    transform var(--unilab-motion-fast) ease;
+  white-space: normal;
+}
+
+.workflow :global(.wf-node__material-port[data-workflow-material-port-description]):hover::after {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+.workflow :global(.wf-node__material-port) > :global(.wf-node__handle) {
+  z-index: 4;
+  left: 50%;
+  margin: 0;
+}
+
+.workflow :global(.wf-node--action-strip)
+  :global(.wf-node__material-port)
+  > :global(.wf-node__handle--target) {
+  top: -7px;
+  transform: translate(-50%, -50%);
+}
+
+.workflow :global(.wf-node--action-strip)
+  :global(.wf-node__material-port)
+  > :global(.wf-node__handle--source) {
+  top: auto;
+  bottom: -7px;
+  transform: translate(-50%, 50%);
+}
+
+.workflow :global(.wf-node--material-source) :global(.wf-node__material-ports) {
+  width: 100%;
+  align-self: center;
+  justify-content: center;
+  margin-top: 3px;
+}
+
+.workflow :global(.wf-node--material-source)
+  :global(.wf-node__material-port)
+  > :global(.wf-node__handle--source) {
+  top: auto;
+  bottom: -16px;
+  transform: translate(-50%, 50%);
+}
+
+.workflow :global(.react-flow__edge) path {
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition:
+    stroke-width var(--unilab-motion-fast) ease,
+    opacity var(--unilab-motion-fast) ease;
+}
+
+.workflow :global(.react-flow__edge):hover path,
+.workflow :global(.react-flow__edge):global(.selected) path {
+  stroke-width: 3;
+}
+
+.workflow :global(.react-flow__edge-textbg) {
+  fill: var(--unilab-color-surface);
+  stroke: var(--unilab-color-border);
+  stroke-width: 1;
+}
+
+.workflow :global(.react-flow__edge-text) {
+  font-family: var(--unilab-font-sans);
+}
+
+.workflow :global(.react-flow__edge.wf-flow-edge--material-trace) path {
+  stroke-dasharray: 3 8;
+  stroke-linecap: round;
+  animation: workflow-material-flow-direction 900ms linear infinite;
+}
+
+.workflow :global(.wf-node__state--material_waiting) {
+  color: var(--unilab-color-text-muted);
+}
+
+.workflow :global(.wf-flow-node--running) :global(.wf-node) {
+  border-color: var(--unilab-color-warning);
+  box-shadow:
+    0 0 0 3px color-mix(
+      in srgb,
+      var(--unilab-color-warning) 18%,
+      transparent
+    );
+  animation: workflow-running-pulse 1.2s ease-in-out infinite;
+}
+
+.workflow :global(.wf-flow-node--running) :global(.wf-node)::before {
+  background: var(--unilab-color-warning);
+}
+
+.workflow :global(.wf-flow-node--success) :global(.wf-node) {
+  border-color: color-mix(
+    in srgb,
+    var(--unilab-color-success) 58%,
+    var(--unilab-color-border)
+  );
+}
+
+.workflow :global(.wf-flow-node--success) :global(.wf-node)::before {
+  background: var(--unilab-color-success);
+}
+
+.workflow :global(.wf-flow-node--skipped) :global(.wf-node) {
+  opacity: .58;
+  border-color: var(--unilab-color-skipped);
+}
+
+.workflow :global(.wf-flow-node--skipped) :global(.wf-node)::before,
+.workflow :global(.wf-flow-node--before-start) :global(.wf-node)::before {
+  background: var(--unilab-color-skipped);
+}
+
+.workflow :global(.wf-flow-node--before-start) :global(.wf-node) {
+  opacity: .55;
+  border-color: var(--unilab-color-border-strong);
+  background: var(--unilab-color-skipped-soft);
+  box-shadow: none;
+  filter: grayscale(1);
+}
+
+.workflow :global(.wf-flow-node--paused-before) :global(.wf-node) {
+  border-color: var(--unilab-color-paused);
+  box-shadow:
+    0 0 0 3px color-mix(
+      in srgb,
+      var(--unilab-color-paused) 20%,
+      transparent
+    );
+}
+
+.workflow :global(.wf-flow-node--paused-before) :global(.wf-node)::before {
+  background: var(--unilab-color-paused);
+}
+
+.workflow :global(.react-flow__edge):global(.wf-flow-edge--before-start) {
+  opacity: .2;
+  filter: grayscale(1);
+}
+
+.workflow :global(.wf-flow-node--failed) :global(.wf-node),
+.workflow :global(.wf-flow-node--reconciling) :global(.wf-node) {
+  border-color: var(--unilab-color-danger);
+}
+
+.workflow :global(.wf-flow-node--failed) :global(.wf-node)::before,
+.workflow :global(.wf-flow-node--reconciling) :global(.wf-node)::before {
+  background: var(--unilab-color-danger);
+}
+
+.workflow :global(.react-flow__controls),
+.workflow :global(.react-flow__minimap) {
+  overflow: hidden;
+  border: 1px solid var(--unilab-color-border);
+  border-radius: var(--unilab-radius-md);
+  background: color-mix(
+    in srgb,
+    var(--unilab-color-workflow) 3%,
+    var(--unilab-color-surface)
+  );
+  box-shadow: 0 6px 18px rgb(15 23 42 / 9%);
+}
+
+.workflow :global(.react-flow__minimap) {
+  width: 164px;
+  height: 108px;
+}
+
+.workflow :global(.react-flow__controls-button) {
+  color: var(--unilab-color-text-muted);
+  border-bottom-color: var(--unilab-color-border);
+  background: transparent;
+}
+
+.workflow :global(.react-flow__controls-button):hover {
+  color: var(--unilab-color-primary);
+  background: var(--unilab-color-workflow-soft);
+}
+
+.workflow :global(.wf-flow-node--breakpoint) :global(.wf-node)::after {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 13px;
+  height: 13px;
+  border: 3px solid var(--unilab-color-surface);
+  border-radius: 50%;
+  background: var(--unilab-color-danger);
+  box-shadow: 0 1px 4px rgb(220 38 38 / 35%);
+  content: '';
+}
+
+@keyframes workflow-running-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 2px rgb(217 119 6 / 14%);
+  }
+  50% {
+    box-shadow: 0 0 0 5px rgb(217 119 6 / 24%);
+  }
+}
+
+@keyframes workflow-material-flow-direction {
+  to {
+    stroke-dashoffset: -22;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workflow :global(.wf-flow-node--running) :global(.wf-node) {
+    animation: none;
+  }
+
+  .workflow :global(.react-flow__edge.wf-flow-edge--material-trace) path {
+    stroke-dasharray: none;
+    animation: none;
+  }
+}

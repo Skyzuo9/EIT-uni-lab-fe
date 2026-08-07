@@ -1,26 +1,19 @@
 import {
   app,
-  shell,
   BrowserWindow,
   ipcMain,
   dialog,
   type IpcMainInvokeEvent
 } from 'electron'
-import { basename, dirname, join } from 'path'
+import { join } from 'path'
 import { appendFileSync, existsSync } from 'node:fs'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { fileURLToPath, pathToFileURL } from 'node:url'
-import { readSession, clearSession, runOAuthLogin } from './authManager'
+import { registerAuthIpc } from './authIpc'
+import { createDesktopWindow } from './desktopWindow'
 import { DeviceCardManager } from './deviceCardManager'
-import {
-  DeviceCardAgentBridge,
-  deviceCardAgentEndpoint
-} from './deviceCardAgentBridge'
-import { DeviceCardAgentCliManager } from './deviceCardAgentCli'
+import { DeviceCardAgentEnvironment } from './deviceCardAgentEnvironment'
 import {
   createDiagnosticLogSessionId,
-  openLocalRuntimeLogDirectory,
   resolveDesktopMainLogPath
 } from './diagnosticLogSession'
 import { discoverDefaultCondaEnvironment } from './localRuntimeEnvironment'
@@ -28,36 +21,22 @@ import { registerDeviceProvisioningIpc } from './deviceProvisioningIpc'
 import { LocalDeviceProvisioningManager } from './localDeviceProvisioningManager'
 import { LocalDeviceProvisioningStore } from './localDeviceProvisioningStore'
 import {
-  LocalRuntimeManager,
-  resolveLocalRuntimeLaunchPlan
+  LocalRuntimeManager
 } from './localRuntimeManager'
+import {
+  confirmCustomEdgeLaunch,
+  openRuntimeLogDirectory,
+  parseRuntimeConfig,
+  parseRuntimeLogQuery,
+  resolveGeneratedEdgeCommand,
+  runtimePathDialogOptions
+} from './localRuntimeIpcSupport'
 import {
   createElectronObservability,
   resolveElectronObservabilityOptions
 } from './observability'
-import type {
-  LocalRuntimeLaunchConfig,
-  LocalRuntimeOpenLogResult,
-  LocalRuntimeLogQuery,
-  LocalRuntimePathKind
-} from '../shared/localRuntime'
-
-// 保存文件的入参:path 为 null 时弹出"另存为"对话框
-interface SaveFilePayload {
-  path: string | null
-  content: string
-  defaultName?: string
-}
-
-interface SaveBinaryFilePayload {
-  content: Uint8Array
-  defaultName?: string
-}
-
-// 打开文件的入参:accept 指定对话框过滤的文件类型,缺省为 JSON
-interface OpenFilePayload {
-  accept?: 'json' | 'python'
-}
+import { registerFileIpc } from './fileIpc'
+import type { LocalRuntimePathKind } from '../shared/localRuntime'
 
 // 本次应用生命周期只创建一个日志会话，供主进程和本地运行子进程共同使用。
 const DIAGNOSTIC_LOG_SESSION_ID = createDiagnosticLogSessionId()
@@ -133,154 +112,19 @@ let localRuntimeManager: LocalRuntimeManager | null = null
 let quitCleanupStarted = false
 let quitCleanupFinished = false
 let deviceCardManager: DeviceCardManager | null = null
-let deviceCardAgentBridge: DeviceCardAgentBridge | null = null
-let deviceCardAgentCli: DeviceCardAgentCliManager | null = null
+let deviceCardAgentEnvironment: DeviceCardAgentEnvironment | null = null
 
 function createWindow(): void {
-  mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
-    minWidth: 800,
-    minHeight: 600,
-    show: false,
-    autoHideMenuBar: true,
-    title: 'Lab PC Client',
-    ...(isDev ? { icon: localAppIcon } : {}),
-    webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
-      sandbox: false,
-      contextIsolation: true,
-      nodeIntegration: false
+  mainWindow = createDesktopWindow({
+    baseDirectory: __dirname,
+    isDevelopment: isDev,
+    iconPath: localAppIcon,
+    log: logLine,
+    observability: electronObservability,
+    onClosed: () => {
+      mainWindow = null
     }
   })
-
-  mainWindow.on('ready-to-show', () => {
-    logLine('window ready-to-show')
-    electronObservability.record('electron.renderer.ready')
-    mainWindow?.show()
-  })
-
-  mainWindow.on('closed', () => {
-    mainWindow = null
-  })
-
-  mainWindow.webContents.on('did-fail-load', (_e, code, desc, url) => {
-    logLine(`renderer 加载失败 code=${code} desc=${desc} url=${url}`)
-    electronObservability.record(
-      'electron.renderer.load_failed',
-      {
-        'renderer.error_code': code,
-        'renderer.url': url
-      },
-      new Error(desc)
-    )
-  })
-  mainWindow.webContents.on('render-process-gone', (_e, details) => {
-    logLine(`renderer 进程退出: ${JSON.stringify(details)}`)
-    electronObservability.record(
-      'electron.renderer.process_gone',
-      {
-        'renderer.reason': details.reason,
-        'process.exit_code': details.exitCode
-      },
-      new Error(`Renderer 进程退出：${details.reason}`)
-    )
-  })
-  mainWindow.webContents.on(
-    'console-message',
-    (_e, level, message, line, sourceId) => {
-      if (level >= 2) {
-        logLine(`renderer console: ${message} (${sourceId}:${line})`)
-        electronObservability.record('electron.renderer.console', {
-          'log.severity_number': level,
-          'log.message': message,
-          'code.filepath': sourceId,
-          'code.lineno': line
-        })
-      }
-    }
-  )
-  mainWindow.webContents.on('will-prevent-unload', (event) => {
-    const window = mainWindow
-    if (!window || window.isDestroyed()) return
-
-    const choice = dialog.showMessageBoxSync(window, {
-      type: 'warning',
-      buttons: ['继续编辑', '放弃修改并关闭'],
-      defaultId: 0,
-      cancelId: 0,
-      noLink: true,
-      title: '工作流尚未保存',
-      message: '工作流代码有未保存的修改。',
-      detail: '关闭窗口将丢失这些修改。'
-    })
-    if (choice === 1) {
-      electronObservability.record('electron.renderer.unsaved_changes_discarded')
-      event.preventDefault()
-    }
-  })
-
-  // Pascal 的工具栏图标与平面图光标使用站点根路径。在 Electron 的
-  // file:// 页面中这些路径会落到系统根目录；这里只允许已知路径，
-  // 并重定向到 Vite 打包资源，既兼容桌面端也避免任意路径访问。
-  mainWindow.webContents.session.webRequest.onBeforeRequest(
-    { urls: ['file:///icons/*', 'file:///cursor.svg'] },
-    (details, callback) => {
-      const requestedName = basename(
-        fileURLToPath(new URL(details.url))
-      )
-      const assetDirectory = details.url.startsWith('file:///icons/')
-        ? 'icons'
-        : ''
-      callback({
-        redirectURL: pathToFileURL(
-          join(
-            __dirname,
-            '../renderer',
-            assetDirectory,
-            requestedName
-          )
-        ).toString()
-      })
-    }
-  )
-
-  mainWindow.webContents.setWindowOpenHandler((details) => {
-    void shell.openExternal(details.url)
-    return { action: 'deny' }
-  })
-
-  // In development load the Vite dev server URL, otherwise load the built file.
-  const devServerUrl = process.env['ELECTRON_RENDERER_URL']
-  if (isDev && devServerUrl) {
-    logLine(`加载 dev 渲染地址: ${devServerUrl}`)
-    void electronObservability
-      .run(
-        'electron.renderer.load',
-        { 'renderer.mode': 'development', 'renderer.url': devServerUrl },
-        () => mainWindow?.loadURL(devServerUrl) ?? Promise.resolve()
-      )
-      .catch((error) => {
-        logLine(
-          `加载 dev 渲染地址失败: ${error instanceof Error ? error.message : String(error)}`
-        )
-      })
-    mainWindow.webContents.openDevTools({ mode: 'detach' })
-  } else {
-    const file = join(__dirname, '../renderer/index.html')
-    logLine(`加载生产渲染文件: ${file}`)
-    void electronObservability
-      .run(
-        'electron.renderer.load',
-        { 'renderer.mode': 'production' },
-        () => mainWindow?.loadFile(file) ?? Promise.resolve()
-      )
-      .catch((error) => {
-        logLine(
-          `加载生产渲染文件失败: ${error instanceof Error ? error.message : String(error)}`
-        )
-      })
-  }
 }
 
 /**
@@ -308,61 +152,18 @@ app.whenReady().then(async () => {
     log: logLine
   })
   deviceCardManager.registerIpc()
-  const agentRoot = join(
-    app.getPath('userData'),
-    'device-cards',
-    'agent'
-  )
-  deviceCardAgentBridge = new DeviceCardAgentBridge({
-    automation: deviceCardManager.authoring,
-    agentRoot,
-    endpoint: deviceCardAgentEndpoint(app.getPath('userData')),
+  deviceCardAgentEnvironment = new DeviceCardAgentEnvironment({
+    ipcMain,
+    deviceCardManager,
+    userDataPath: app.getPath('userData'),
+    resourcesPath: process.resourcesPath,
+    processExecutable: process.execPath,
+    isPackaged: app.isPackaged,
+    baseDirectory: __dirname,
+    getMainWindow: () => mainWindow,
     log: logLine
   })
-  if (await readAgentBridgeEnabled(agentRoot)) {
-    await deviceCardAgentBridge.start()
-  }
-  const cliPath = app.isPackaged
-    ? join(process.resourcesPath, 'device-card-agent', 'cli.mjs')
-    : join(
-        __dirname,
-        '../../../../packages/device-card-agent-cli/dist/cli.mjs'
-      )
-  deviceCardAgentCli = new DeviceCardAgentCliManager({
-    cliPath,
-    descriptorPath: deviceCardAgentBridge.descriptorPath,
-    electronExecutable: process.execPath
-  })
-  ipcMain.handle('device-cards:agent:getInfo', (event) => {
-    assertMainRenderer(event.sender.id)
-    return getDeviceCardAgentEnvironmentInfo()
-  })
-  ipcMain.handle('device-cards:agent:installCli', async (event) => {
-    assertMainRenderer(event.sender.id)
-    await deviceCardAgentCli?.install()
-    return getDeviceCardAgentEnvironmentInfo()
-  })
-  ipcMain.handle('device-cards:agent:removeCli', async (event) => {
-    assertMainRenderer(event.sender.id)
-    await deviceCardAgentCli?.remove()
-    return getDeviceCardAgentEnvironmentInfo()
-  })
-  ipcMain.handle(
-    'device-cards:agent:setBridgeEnabled',
-    async (event, enabled: unknown) => {
-      assertMainRenderer(event.sender.id)
-      if (typeof enabled !== 'boolean') {
-        throw new Error('Agent Bridge enabled 参数无效。')
-      }
-      if (enabled) {
-        await deviceCardAgentBridge?.start()
-      } else {
-        await deviceCardAgentBridge?.stop()
-      }
-      await writeAgentBridgeEnabled(agentRoot, enabled)
-      return getDeviceCardAgentEnvironmentInfo()
-    }
-  )
+  await deviceCardAgentEnvironment.start()
 
   localRuntimeManager = new LocalRuntimeManager(
     join(app.getPath('logs'), 'local-runtime'),
@@ -427,7 +228,10 @@ app.whenReady().then(async () => {
   })
   ipcMain.handle(
     'runtime:resolveGeneratedEdgeCommand',
-    handleResolveGeneratedEdgeCommand
+    (event, payload: unknown) => {
+      assertMainWindowSender(event)
+      return resolveGeneratedEdgeCommand(payload)
+    }
   )
   ipcMain.handle('runtime:startSimulator', async (event, payload: unknown) => {
     assertMainWindowSender(event)
@@ -461,7 +265,7 @@ app.whenReady().then(async () => {
         electronObservability.record('electron.runtime.start_requested', {
           'runtime.target': 'edge'
         })
-        await confirmCustomEdgeLaunch(config)
+        await confirmCustomEdgeLaunch(config, mainWindow)
         return requireRuntimeManager().startEdge(config)
       }
     )
@@ -490,7 +294,10 @@ app.whenReady().then(async () => {
       () => requireRuntimeManager().readLog(parseRuntimeLogQuery(payload))
     )
   })
-  ipcMain.handle('runtime:openLogFile', handleOpenLocalRuntimeLogDirectory)
+  ipcMain.handle('runtime:openLogFile', (event, payload: unknown) => {
+    assertMainWindowSender(event)
+    return openRuntimeLogDirectory(requireRuntimeManager(), payload)
+  })
 
   ipcMain.handle('observability:getStatus', (event) => {
     assertMainWindowSender(event)
@@ -520,103 +327,13 @@ app.whenReady().then(async () => {
     }
   )
 
-  // 读取当前登录会话(启动/刷新时使用)
-  ipcMain.handle('auth:getSession', () => readSession())
-
-  // 发起 Bohrium OAuth 登录(与 web 登录方式一致)
-  ipcMain.handle('auth:login', async () => {
-    return electronObservability.run('electron.auth.login', {}, async () => {
-      try {
-        return await runOAuthLogin(mainWindow)
-      } catch (error) {
-        logLine(`OAuth 登录失败: ${error instanceof Error ? error.stack : String(error)}`)
-        throw error
-      }
-    })
+  registerAuthIpc({
+    ipcMain,
+    getMainWindow: () => mainWindow,
+    observability: electronObservability,
+    log: logLine
   })
-
-  // 登出:清除本地会话与 token cookie
-  ipcMain.handle('auth:logout', async () => {
-    return electronObservability.run('electron.auth.logout', {}, async () => {
-      await clearSession()
-      return true
-    })
-  })
-
-  // 打开本地文件:弹出选择框并读取文本内容。
-  // accept 指定过滤的文件类型: 'json'(默认) 仅 .json, 'python' 仅 .py。
-  ipcMain.handle('file:open', async (_event, payload?: OpenFilePayload) => {
-    const isPython = payload?.accept === 'python'
-    const options: Electron.OpenDialogOptions = {
-      title: isPython ? '打开 Python 文件' : '打开 JSON 文件',
-      filters: isPython
-        ? [{ name: 'Python', extensions: ['py'] }]
-        : [{ name: 'JSON', extensions: ['json'] }],
-      properties: ['openFile']
-    }
-    const result = mainWindow
-      ? await dialog.showOpenDialog(mainWindow, options)
-      : await dialog.showOpenDialog(options)
-    if (result.canceled || result.filePaths.length === 0) return null
-    const filePath = result.filePaths[0]
-    const content = await readFile(filePath, 'utf-8')
-    return { path: filePath, content }
-  })
-
-  // 保存文本到本地文件:有 path 时直接写回,否则弹出"另存为"
-  ipcMain.handle('file:save', async (_event, payload: SaveFilePayload) => {
-    let filePath = payload.path
-    if (!filePath) {
-      const options: Electron.SaveDialogOptions = {
-        title: '保存 JSON 文件',
-        defaultPath: payload.defaultName || 'station.json',
-        filters: [{ name: 'JSON', extensions: ['json'] }]
-      }
-      const result = mainWindow
-        ? await dialog.showSaveDialog(mainWindow, options)
-        : await dialog.showSaveDialog(options)
-      if (result.canceled || !result.filePath) return null
-      filePath = result.filePath
-    }
-    await writeFile(filePath, payload.content, 'utf-8')
-    return { path: filePath }
-  })
-
-  // 保存由受信任 renderer 生成的二进制交付物。始终通过对话框选择目标，
-  // renderer 不能借此直接覆盖任意本地路径。
-  ipcMain.handle(
-    'file:saveBinary',
-    async (event, payload: SaveBinaryFilePayload) => {
-      if (event.sender.id !== mainWindow?.webContents.id) {
-        throw new Error('二进制保存调用方不是主渲染进程。')
-      }
-      if (
-        !payload ||
-        !(payload.content instanceof Uint8Array) ||
-        payload.content.byteLength === 0 ||
-        payload.content.byteLength > 10 * 1024 * 1024
-      ) {
-        throw new Error('二进制文件无效或超过 10 MiB。')
-      }
-      const defaultName = basename(
-        payload.defaultName || 'unilab-card-kit.zip'
-      )
-      const options: Electron.SaveDialogOptions = {
-        title: '保存卡片开发包',
-        defaultPath: defaultName,
-        filters: [{
-          name: '卡片开发包',
-          extensions: ['zip']
-        }]
-      }
-      const result = mainWindow
-        ? await dialog.showSaveDialog(mainWindow, options)
-        : await dialog.showSaveDialog(options)
-      if (result.canceled || !result.filePath) return null
-      await writeFile(result.filePath, payload.content)
-      return { path: result.filePath }
-    }
-  )
+  registerFileIpc({ ipcMain, getMainWindow: () => mainWindow })
 
   createWindow()
 
@@ -654,7 +371,7 @@ async function cleanupBeforeQuit(): Promise<void> {
     )
   }
   try {
-    await deviceCardAgentBridge?.stop()
+    await deviceCardAgentEnvironment?.stop()
   } catch (error) {
     logLine(
       `退出时停止 Agent Bridge 失败: ${error instanceof Error ? error.stack : String(error)}`
@@ -728,341 +445,4 @@ function assertMainWindowSender(event: IpcMainInvokeEvent): void {
 function requireRuntimeManager(): LocalRuntimeManager {
   if (!localRuntimeManager) throw new Error('本地运行时尚未初始化')
   return localRuntimeManager
-}
-
-/**
- * 构造本地运行时受控路径选择器，确保渲染器只能请求已声明的文件或目录类型。
- *
- * @param kind 渲染器请求选择的本地运行时路径类别。
- * @returns 与类别匹配的系统文件对话框配置。
- * @throws 当类别不在共享闭集中时抛出。
- */
-function runtimePathDialogOptions(
-  kind: LocalRuntimePathKind
-): Electron.OpenDialogOptions {
-  if (kind === 'graph') {
-    return {
-      title: '选择设备图 JSON',
-      filters: [{ name: 'JSON', extensions: ['json'] }],
-      properties: ['openFile']
-    }
-  }
-  if (kind === 'edgeExecutable') {
-    return {
-      title: '选择 Edge 自定义可执行文件',
-      ...(process.platform === 'win32'
-        ? { filters: [{ name: 'Windows 可执行文件', extensions: ['exe'] }] }
-        : {}),
-      properties: ['openFile']
-    }
-  }
-  const titles: Record<
-    Exclude<LocalRuntimePathKind, 'graph' | 'edgeExecutable'>,
-    string
-  > = {
-    os: '选择 Uni-Lab-OS 项目根目录',
-    szlab: '选择领域项目根目录（以 Uni-Lab-SZLab 为例）',
-    environment: '选择 unilab Conda 环境目录',
-    simulator: '选择 PLC-Sim 项目根目录',
-    edgeWorkingDirectory: '选择 Edge 自定义工作目录'
-  }
-  if (!(kind in titles)) throw new Error('不支持的本地运行时路径类型')
-  return {
-    title: titles[kind as Exclude<
-      LocalRuntimePathKind,
-      'graph' | 'edgeExecutable'
-    >],
-    properties: ['openDirectory']
-  }
-}
-
-/**
- * 校验并复制渲染器提交的本地运行配置，不信任 localStorage 或 IPC 载荷形状。
- *
- * @param value IPC 收到的未知配置值。
- * @returns 字段完整且自定义参数逐项为字符串的启动配置。
- * @throws 当字段缺失、模式非法或自定义命令结构无效时抛出。
- */
-function parseRuntimeConfig(value: unknown): LocalRuntimeLaunchConfig {
-  if (!value || typeof value !== 'object') {
-    throw new Error('本地运行时启动配置无效')
-  }
-  const candidate = value as Record<string, unknown>
-  if (
-    typeof candidate.graphPath !== 'string' ||
-    typeof candidate.osProjectPath !== 'string' ||
-    typeof candidate.szlabProjectPath !== 'string' ||
-    typeof candidate.environmentPath !== 'string' ||
-    typeof candidate.simulatorProjectPath !== 'string' ||
-    !['generated', 'custom'].includes(String(candidate.edgeCommandMode))
-  ) {
-    throw new Error('本地运行时启动配置字段不完整')
-  }
-  const customEdgeCommand = parseCustomEdgeCommand(candidate.customEdgeCommand)
-  return {
-    graphPath: candidate.graphPath,
-    osProjectPath: candidate.osProjectPath,
-    szlabProjectPath: candidate.szlabProjectPath,
-    environmentPath: candidate.environmentPath,
-    simulatorProjectPath: candidate.simulatorProjectPath,
-    edgeCommandMode: candidate.edgeCommandMode as 'generated' | 'custom',
-    customEdgeCommand
-  }
-}
-
-/**
- * 收窄用户自定义 Edge 命令，避免对象原型或非字符串参数跨越 preload seam。
- *
- * @param value IPC 载荷中的自定义命令候选值。
- * @returns 仅包含可执行文件、工作目录、字符串参数和 name/value 环境变量副本的命令配置。
- * @throws 当候选不是普通对象或任一结构化字段类型不正确时抛出。
- */
-function parseCustomEdgeCommand(
-  value: unknown
-): LocalRuntimeLaunchConfig['customEdgeCommand'] {
-  if (!value || typeof value !== 'object') {
-    throw new Error('Edge 自定义启动命令无效')
-  }
-  const candidate = value as Record<string, unknown>
-  const environment = candidate.environment
-  if (
-    typeof candidate.executable !== 'string'
-    || (candidate.workingDirectory !== undefined
-      && typeof candidate.workingDirectory !== 'string')
-    || !Array.isArray(candidate.args)
-    || !candidate.args.every((argument) => typeof argument === 'string')
-    || (environment !== undefined && (
-      !Array.isArray(environment)
-      || !environment.every((entry) => (
-        Boolean(entry)
-        && typeof entry === 'object'
-        && typeof (entry as Record<string, unknown>).name === 'string'
-        && typeof (entry as Record<string, unknown>).value === 'string'
-      ))
-    ))
-  ) {
-    throw new Error('Edge 自定义启动命令字段不完整')
-  }
-  return {
-    executable: candidate.executable,
-    workingDirectory: typeof candidate.workingDirectory === 'string'
-      ? candidate.workingDirectory
-      : '{{workspace}}',
-    args: [...candidate.args],
-    environment: (environment ?? []).map((entry) => ({
-      name: (entry as Record<string, string>).name,
-      value: (entry as Record<string, string>).value
-    }))
-  }
-}
-
-/**
- * 解析当前路径对应的系统生成式 Edge 命令，供用户显式复制后再编辑。
- *
- * @param event Electron 主进程收到的 IPC 调用事件。
- * @param payload renderer 提交的未知本地运行配置。
- * @returns 由主进程权威解析的 executable、argv 与工作目录预览。
- * @throws 当发送方、配置、项目结构或默认可执行文件校验失败时抛出。
- */
-async function handleResolveGeneratedEdgeCommand(
-  event: IpcMainInvokeEvent,
-  payload: unknown
-): Promise<{ executable: string; args: string[]; cwd: string }> {
-  assertMainWindowSender(event)
-  const config = parseRuntimeConfig(payload)
-  const plan = await resolveLocalRuntimeLaunchPlan({
-    ...config,
-    edgeCommandMode: 'generated'
-  })
-  return {
-    executable: plan.edge.command,
-    args: [...plan.edge.args],
-    cwd: plan.edge.cwd
-  }
-}
-
-/**
- * 在每次执行任意自定义程序前显示主进程原生确认，renderer 不能伪造批准结果。
- *
- * @param config 已通过 IPC schema 校验的本地运行配置。
- * @returns 用户批准系统默认命令或本次自定义启动时正常完成。
- * @throws 当用户取消、自定义命令校验失败或窗口已销毁时抛出。
- */
-async function confirmCustomEdgeLaunch(
-  config: LocalRuntimeLaunchConfig
-): Promise<void> {
-  if (config.edgeCommandMode !== 'custom') return
-  if (!mainWindow || mainWindow.isDestroyed()) {
-    throw new Error('主窗口不可用，无法确认 Edge 自定义启动命令')
-  }
-  const plan = await resolveLocalRuntimeLaunchPlan(config)
-  const detailLines = [
-    `可执行文件：${plan.edge.command}`,
-    `工作目录：${plan.edge.cwd}`,
-    '',
-    '参数：',
-    ...plan.edge.args.slice(0, 24).map(
-      (argument, index) => `${index + 1}. ${truncateDialogValue(argument)}`
-    ),
-    ...(plan.edge.args.length > 24
-      ? [`… 另有 ${plan.edge.args.length - 24} 项参数未展开显示`]
-      : []),
-    '',
-    '环境变量覆盖：',
-    ...(config.customEdgeCommand.environment.length > 0
-      ? config.customEdgeCommand.environment.slice(0, 16).map(
-          ({ name, value }) => `${name}=${truncateDialogValue(value)}`
-        )
-      : ['无']),
-    ...(config.customEdgeCommand.environment.length > 16
-      ? [`… 另有 ${config.customEdgeCommand.environment.length - 16} 项未展开显示`]
-      : [])
-  ]
-  const result = await dialog.showMessageBox(mainWindow, {
-    type: 'warning',
-    title: '确认自定义 Edge 启动命令',
-    message: '此配置将启动你指定的本地程序',
-    detail: detailLines.join('\n'),
-    buttons: ['允许本次启动', '取消'],
-    defaultId: 1,
-    cancelId: 1,
-    noLink: true
-  })
-  if (result.response !== 0) throw new Error('已取消 Edge 自定义命令启动')
-}
-
-/**
- * 限制原生确认对话框中单个参数的显示长度，防止超长 argv 淹没安全提示。
- *
- * @param value 已解析的单个命令参数。
- * @returns 最多保留 300 个字符的诊断文本。
- */
-function truncateDialogValue(value: string): string {
-  return value.length <= 300 ? value : `${value.slice(0, 300)}…`
-}
-
-/** 校验渲染器日志来源，只接受主进程固定映射的来源枚举。 */
-function parseRuntimeLogKind(value: unknown): 'simulator' | 'edge' {
-  if (value !== 'simulator' && value !== 'edge') {
-    throw new Error('不支持的本地运行日志来源')
-  }
-  return value
-}
-
-/** 校验有界增量读取游标，防止无效偏移进入主进程文件操作。 */
-function parseRuntimeLogQuery(value: unknown): LocalRuntimeLogQuery {
-  if (!value || typeof value !== 'object') {
-    throw new Error('本地运行日志读取参数无效')
-  }
-  const candidate = value as Record<string, unknown>
-  const kind = parseRuntimeLogKind(candidate.kind)
-  if (candidate.cursor === null) return { kind, cursor: null }
-  if (!candidate.cursor || typeof candidate.cursor !== 'object') {
-    throw new Error('本地运行日志游标无效')
-  }
-  const cursor = candidate.cursor as Record<string, unknown>
-  if (
-    typeof cursor.fileId !== 'string'
-    || !cursor.fileId
-    || !Number.isSafeInteger(cursor.offset)
-    || Number(cursor.offset) < 0
-  ) {
-    throw new Error('本地运行日志游标无效')
-  }
-  return {
-    kind,
-    cursor: { fileId: cursor.fileId, offset: Number(cursor.offset) }
-  }
-}
-
-/**
- * 处理受信任渲染器的“打开日志目录”请求。
- *
- * @param event Electron IPC 调用事件，用于验证主渲染器身份。
- * @param payload 兼容现有协议的固定日志来源，不包含任意路径。
- * @returns 系统文件管理器是否成功打开当前实际日志目录。
- * @throws IPC 调用方或日志来源非法时失败关闭。
- * @safety 目录由 LocalRuntimeManager 解析，渲染器无法指定文件系统位置。
- */
-async function handleOpenLocalRuntimeLogDirectory(
-  event: IpcMainInvokeEvent,
-  payload: unknown
-): Promise<LocalRuntimeOpenLogResult> {
-  assertMainWindowSender(event)
-  const kind = parseRuntimeLogKind(payload)
-  const logsDirectory = dirname(requireRuntimeManager().getLogPath(kind))
-  return openLocalRuntimeLogDirectory(logsDirectory, {
-    createDirectory: createLocalRuntimeLogsDirectory,
-    openPath: openLocalRuntimeLogsPath
-  })
-}
-
-/**
- * 创建 Electron 管理的本地运行日志目录。
- *
- * @param logsDirectory 主进程解析出的当前日志目录。
- * @returns 目录存在后完成的 Promise。
- * @throws 文件系统拒绝创建目录时透传异常，由上层转换为界面提示。
- * @safety recursive 只作用于主进程固定目录，不接受渲染器路径。
- */
-async function createLocalRuntimeLogsDirectory(
-  logsDirectory: string
-): Promise<void> {
-  await mkdir(logsDirectory, { recursive: true })
-}
-
-/**
- * 使用当前平台的系统文件管理器打开本地运行日志目录。
- *
- * @param logsDirectory 已安全创建的当前日志目录。
- * @returns Electron shell.openPath 的空成功文本或具体失败原因。
- * @throws 系统外壳调用异常时透传，由上层转换为界面提示。
- * @safety 只打开目录，不创建或锁定正在写入的日志文件。
- */
-async function openLocalRuntimeLogsPath(
-  logsDirectory: string
-): Promise<string> {
-  return shell.openPath(logsDirectory)
-}
-
-function assertMainRenderer(senderId: number): void {
-  if (!mainWindow || mainWindow.isDestroyed() ||
-    senderId !== mainWindow.webContents.id) {
-    throw new Error('IPC 调用方不是主渲染进程。')
-  }
-}
-
-async function getDeviceCardAgentEnvironmentInfo() {
-  const info = await deviceCardAgentCli?.getInfo(
-    deviceCardAgentBridge?.getInfo().enabled ?? false
-  )
-  return info
-    ? {
-        ...info,
-        recentRequests: deviceCardAgentBridge?.getRecentRequests() ?? []
-      }
-    : null
-}
-
-async function readAgentBridgeEnabled(agentRoot: string): Promise<boolean> {
-  try {
-    const settings = JSON.parse(
-      await readFile(join(agentRoot, 'settings.json'), 'utf8')
-    ) as { enabled?: unknown }
-    return settings.enabled !== false
-  } catch {
-    return true
-  }
-}
-
-async function writeAgentBridgeEnabled(
-  agentRoot: string,
-  enabled: boolean
-): Promise<void> {
-  await mkdir(agentRoot, { recursive: true, mode: 0o700 })
-  await writeFile(
-    join(agentRoot, 'settings.json'),
-    `${JSON.stringify({ enabled }, null, 2)}\n`,
-    { encoding: 'utf8', mode: 0o600 }
-  )
 }

@@ -1,70 +1,10 @@
 {
   "moduleExceptions": {
-    "apps/desktop/src/main/index.ts": {
-      "maxLines": 1100,
-      "maxFunctionComplexity": 25,
-      "reason": "桌面主进程组合入口（DesktopMainCompositionRoot）集中持有 Electron 应用生命周期、受信 IPC 注册、窗口身份校验和本地运行会话的唯一装配顺序；设备接入只在此复用同一个本地运行管理器，避免产生第二份 Edge 权威状态。",
-      "futureSplitBoundary": "为应用启动、窗口重建和 IPC sender 门禁补齐集成测试后，将本地运行、设备接入、设备卡片与认证处理器分别迁入 registerLocalRuntimeIpc.ts、registerDeviceProvisioningIpc.ts、registerDeviceCardIpc.ts 和 registerAuthIpc.ts，index.ts 仅保留生命周期编排。"
-    },
     "apps/kernel-web/src/components/LocalRuntimeLauncher.tsx": {
       "maxLines": 1300,
       "maxFunctionComplexity": 35,
-      "reason": "本地运行启动器（LocalRuntimeLauncher）集中维护 PLC-Sim 与领域侧 Edge 的配置持久化、权威进程快照、启停互锁及可访问对话框；本轮拆分已把日志读取、日志展示和 Edge 命令编辑迁出，保留的分支用于呈现同一运行会话的互斥状态。",
-      "futureSplitBoundary": "补齐 PLC-Sim/Edge 交叉启停、路径校验和键盘焦点的交互特征测试后，将 LocalRuntimeDialog 与 PathField/RuntimeStatus 迁入 LocalRuntimeConfigurationDialog.tsx，并将启动器副作用抽取为 useLocalRuntimeLauncherSession。"
-    },
-    "apps/kernel-web/src/components/device-cards/DeviceCardWorkbenchView.tsx": {
-      "maxLines": 500,
-      "maxFunctionComplexity": 40,
-      "reason": "设备卡片工作台视图（DeviceCardWorkbenchView）集中表达工作区、AI 助手和实时预览三种互斥界面状态；主流程复杂度已从原入口的 71 降至 39。",
-      "futureSplitBoundary": "补齐工作区诊断、AI 助手切换和实时预览的交互测试后，抽取 DeviceCardWorkspacePanel、DeviceCardAgentTools 和 DeviceCardPreview。"
-    },
-    "packages/workflow-editor/src/components/PersistentWorkflowAuthoringView.tsx": {
-      "maxLines": 700,
-      "maxFunctionComplexity": 65,
-      "reason": "工作流编排视图（WorkflowAuthoringView）只保留代码、画布和运行栏的同屏可访问性布局；工具栏及抽屉/冲突覆盖层已拆出，剩余分支主要对应互斥呈现状态。",
-      "futureSplitBoundary": "为代码/画布双模式补齐视觉回归后，抽取 PersistentWorkflowWorkbench，使根视图只组合状态提示、工作台与运行栏。"
-    },
-    "packages/workflow-editor/src/components/PersistentWorkflowToolbar.tsx": {
-      "maxLines": 400,
-      "maxFunctionComplexity": 35,
-      "reason": "工作流工具栏（WorkflowToolbar）集中维护互斥编辑模式、运行模式和单一开始入口的键盘/可访问性呈现，不拥有工作流事实或持久化副作用。",
-      "futureSplitBoundary": "为运行模式分段控件补齐独立交互测试后，抽取 WorkflowRunModeControl，并把保存菜单抽取为 WorkflowDraftMenu。"
-    },
-    "packages/workflow-editor/src/hooks/usePersistentWorkflowAuthoring.ts": {
-      "maxLines": 1200,
-      "maxFunctionComplexity": 80,
-      "reason": "工作流编排会话（WorkflowAuthoringSession）保留双重 CAS、外部失效补读、草稿规范化、候选应用和本地缓冲连续性的单一事务顺序；目录、画布节点编辑和运行入口状态机均已拆出。",
-      "futureSplitBoundary": "为外部失效与冲突重试补齐独立状态机测试后，将远端同步与双 CAS 冲突处理抽取到 usePersistentWorkflowAuthoritySync。"
-    },
-    "packages/material/src/oblique/ObliqueMaterialObject.tsx": {
-      "maxLines": 900,
-      "maxFunctionComplexity": 65,
-      "reason": "物料斜二测对象（ObliqueMaterialObject）作为单一声明式形状解释器维护 SVG 图元的绘制顺序和遮挡语义。",
-      "futureSplitBoundary": "先用 SVG 绘制顺序快照固定开架与车床图元，再将它们抽取到 oblique-primitives/openRack.tsx 和 oblique-primitives/lathe.tsx。"
-    },
-    "packages/services/src/materials.ts": {
-      "maxLines": 1100,
-      "maxFunctionComplexity": 25,
-      "reason": "物料服务（MaterialService）在一个适配边界内完成物料模板、物料图（MaterialGraph）与后端不可信载荷的校验映射，集中定义错误语义可避免模板和图投影产生不一致的解析规则。",
-      "futureSplitBoundary": "补齐模板载荷和物料图载荷的畸形输入矩阵测试后，将模板映射迁入 materialTemplateMapper.ts、物料图映射迁入 materialGraphMapper.ts，materials.ts 仅保留端口组合与 HTTP 调用。"
-    },
-    "packages/services/src/workflowActionCatalog.ts": {
-      "maxLines": 900,
-      "maxFunctionComplexity": 25,
-      "reason": "工作流动作目录（WorkflowActionCatalog）是节点模板游标、详情代际、动作合同和已发布工作流合同的单一关闭失败适配边界；集中校验可防止不同消费者对同一不可信 wire 载荷形成分叉解释。",
-      "futureSplitBoundary": "先为动作合同、已发布工作流合同和句柄畸形矩阵补齐独立 fixture，再将 projectPublishedWorkflow、projectHandle 与 schema 解码分别迁入 workflowPublishedCatalogCodec.ts、workflowHandleCodec.ts 和 workflowActionSchemaCodec.ts。"
-    },
-    "packages/workflow-editor/src/utils/persistentAuthoringGraph.ts": {
-      "maxLines": 500,
-      "maxFunctionComplexity": 45,
-      "reason": "工作流图投影（WorkflowGraphProjection）在一次纯函数事务中验证节点、连接、布局、输入和物料占位符（ResourceSlot）引用，当前分支复杂度对应同一份候选图的关闭失败校验顺序。",
-      "futureSplitBoundary": "补齐节点、连接和物料占位符引用错误的参数化测试后，抽取 validatePersistentNodes、validatePersistentEdges 与 validateResourceSlotBindings，projectPersistentAuthoringGraph 只组合验证结果与最终投影。"
-    },
-    "packages/pascal-lab-plugin/src/materialAggregateSceneBridge.ts": {
-      "maxLines": 1000,
-      "maxFunctionComplexity": 45,
-      "reason": "物料聚合（MaterialAggregate）到 Pascal 场景的桥接是单一权威翻译边界；集中维护稳定身份、毫米到场景坐标转换、挂载关系和只读物料转运（MaterialTransfer）投影，可以避免多个渲染入口各自猜测坐标或复制物料事实。",
-      "futureSplitBoundary": "先为渲染快照回退和未解析转运路线补齐特征测试，再抽取 materialRenderingSnapshot.ts 与 materialTransferSceneProjection.ts，保留 materialAggregateSceneBridge.ts 只负责编排 SceneGraph。"
+      "reason": "本地运行启动器（LocalRuntimeLauncher）集中维护 PLC-Sim 与领域侧边缘端（Edge）的配置持久化、权威进程快照、启停互锁及可访问对话框；本轮按约定冻结 LocalRuntime 源文件。",
+      "futureSplitBoundary": "补齐 PLC-Sim/Edge 交叉启停、路径校验和键盘焦点的交互特征测试后，将配置对话框与路径字段迁入 LocalRuntimeConfigurationDialog.tsx，并将启动器副作用抽取为 useLocalRuntimeLauncherSession。"
     }
   }
 }

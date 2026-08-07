@@ -1,5 +1,6 @@
 @use './workflow-foundations';
 @use './workflow-toolbar';
+@use './workflow-save-prompt';
 @use './workflow-stage';
 @use './workflow-dag-routing';
 @use './workflow-material-source';
@@ -8,7 +9,9 @@
 @use './workflow-swimlanes';
 @use './workflow-debugger';
 @use './workflow-output';
+@use './workflow-output-events';
 @use './workflow-trace';
+@use './workflow-trace-inspector';
 @use './workflow-responsive';
 @use './workflow-persistent-authoring';
 @use './workflow-catalog';

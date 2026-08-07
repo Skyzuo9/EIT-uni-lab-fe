@@ -1,22 +1,14 @@
 import {
-  register,
-  SpanStatusCode,
-  type NodeTracerProvider,
-  type Tracer
-} from '@arizeai/phoenix-otel'
-import { isIP } from 'node:net'
-
-import {
   DEFAULT_OBSERVABILITY_BASE_URL,
   type ObservabilityStatus,
   type TraceDetailResult,
   type TraceListResult
 } from '../shared/observability'
 
-type TraceAttributeValue = string | number | boolean
+export type TraceAttributeValue = string | number | boolean
 type TraceAttributes = Record<string, TraceAttributeValue | undefined>
 
-interface TraceSpanSink {
+export interface TraceSpanSink {
   markError(error: Error): void
 }
 
@@ -64,15 +56,25 @@ interface ApiEnvelope<T> {
   }
 }
 
-const SENSITIVE_KEY = /(authorization|cookie|password|secret|token|api[_-]?key)/i
-const BEARER_TOKEN = /\bBearer\s+[A-Za-z0-9._~+/=-]+/gi
-const INLINE_SECRET =
-  /((?:authorization|cookie|password|secret|token|api[_-]?key)["']?\s*[:=]\s*["']?)[^\s,;"']+/gi
-const SECRET_QUERY_PARAMETER =
-  /([?&](?:authorization|cookie|password|secret|token|api[_-]?key)=)[^&\s]+/gi
 const TRACE_ID = /^[0-9a-fA-F]{32}$/
-const MAX_ATTRIBUTE_LENGTH = 1_024
 const MAX_QUERY_RESPONSE_BYTES = 4 * 1024 * 1024
+
+import {
+  createNoopTraceAdapter,
+  createPhoenixTraceAdapter
+} from './electronTraceAdapters'
+import {
+  isDisabled,
+  normalizeLoopbackBaseUrl,
+  normalizeProjectName,
+  positiveInteger,
+  safeErrorMessage,
+  sanitizeAttributeValue,
+  sanitizeText,
+  traceDetailParameters,
+  traceListParameters,
+  withTimeout
+} from './observabilitySupport'
 
 export function resolveElectronObservabilityOptions({
   environment = process.env,
@@ -128,15 +130,15 @@ export function createElectronObservability(
   let adapter = dependencies.traceAdapter
   if (!adapter) {
     if (!options.enabled) {
-      adapter = new NoopTraceAdapter()
+      adapter = createNoopTraceAdapter()
     } else {
       try {
-        adapter = new PhoenixTraceAdapter(options)
+        adapter = createPhoenixTraceAdapter(options)
       } catch (error) {
         options.log(
           `Trace 初始化失败，已降级为本地日志：${safeErrorMessage(error)}`
         )
-        adapter = new NoopTraceAdapter()
+        adapter = createNoopTraceAdapter()
       }
     }
   }
@@ -309,317 +311,5 @@ export class ElectronObservability {
       throw new Error(sanitizeText(message, this.options.homeDirectory))
     }
     return envelope.data
-  }
-}
-
-class PhoenixTraceAdapter implements ElectronTraceAdapter {
-  private readonly provider: NodeTracerProvider
-  private readonly tracer: Tracer
-
-  constructor(options: ElectronObservabilityOptions) {
-    this.provider = register({
-      projectName: options.projectName,
-      url: `${options.baseUrl}/otlp`,
-      batch: true
-    })
-    this.tracer = this.provider.getTracer(
-      'uni-lab-electron',
-      options.appVersion
-    )
-  }
-
-  run<T>(
-    name: string,
-    attributes: Record<string, TraceAttributeValue>,
-    operation: (span: TraceSpanSink) => Promise<T>
-  ): Promise<T> {
-    return this.tracer.startActiveSpan(name, { attributes }, async (span) => {
-      try {
-        return await operation({
-          markError: (error) => {
-            span.recordException({ name: error.name, message: error.message })
-            span.setStatus({
-              code: SpanStatusCode.ERROR,
-              message: error.message
-            })
-          }
-        })
-      } finally {
-        span.end()
-      }
-    })
-  }
-
-  record(
-    name: string,
-    attributes: Record<string, TraceAttributeValue>,
-    error?: Error
-  ): void {
-    this.tracer.startActiveSpan(name, { attributes }, (span) => {
-      if (error) {
-        span.recordException({ name: error.name, message: error.message })
-        span.setStatus({ code: SpanStatusCode.ERROR, message: error.message })
-      }
-      span.end()
-    })
-  }
-
-  flush(): Promise<void> {
-    return this.provider.forceFlush()
-  }
-
-  shutdown(): Promise<void> {
-    return this.provider.shutdown()
-  }
-}
-
-class NoopTraceAdapter implements ElectronTraceAdapter {
-  run<T>(
-    _name: string,
-    _attributes: Record<string, TraceAttributeValue>,
-    operation: (span: TraceSpanSink) => Promise<T>
-  ): Promise<T> {
-    return operation({ markError: () => undefined })
-  }
-
-  record(): void {}
-
-  flush(): Promise<void> {
-    return Promise.resolve()
-  }
-
-  shutdown(): Promise<void> {
-    return Promise.resolve()
-  }
-}
-
-function traceListParameters(value: unknown): URLSearchParams {
-  const query = objectValue(value, 'Trace 列表查询参数格式不正确')
-  rejectUnknownKeys(query, [
-    'limit',
-    'cursor',
-    'startTime',
-    'endTime',
-    'sort',
-    'order',
-    'includeSpans',
-    'sessionIdentifiers'
-  ])
-  const parameters = new URLSearchParams()
-  appendInteger(parameters, 'limit', query.limit, 1, 1_000)
-  appendString(parameters, 'cursor', query.cursor, 4_096)
-  appendDate(parameters, 'start_time', query.startTime)
-  appendDate(parameters, 'end_time', query.endTime)
-  appendEnum(parameters, 'sort', query.sort, ['start_time', 'latency_ms'])
-  appendEnum(parameters, 'order', query.order, ['asc', 'desc'])
-  appendBoolean(parameters, 'include_spans', query.includeSpans)
-  if (query.sessionIdentifiers !== undefined) {
-    if (
-      !Array.isArray(query.sessionIdentifiers) ||
-      query.sessionIdentifiers.length > 20
-    ) {
-      throw new Error('sessionIdentifiers 格式不正确')
-    }
-    for (const identifier of query.sessionIdentifiers) {
-      if (
-        typeof identifier !== 'string' ||
-        !identifier ||
-        identifier.length > 256
-      ) {
-        throw new Error('sessionIdentifiers 格式不正确')
-      }
-      parameters.append('session_identifier', identifier)
-    }
-  }
-  return parameters
-}
-
-function traceDetailParameters(value: unknown): URLSearchParams {
-  const query = objectValue(value, 'Trace 详情查询参数格式不正确')
-  rejectUnknownKeys(query, ['limit', 'cursor'])
-  const parameters = new URLSearchParams()
-  appendInteger(parameters, 'limit', query.limit, 1, 1_000)
-  appendString(parameters, 'cursor', query.cursor, 4_096)
-  return parameters
-}
-
-function objectValue(value: unknown, message: string): Record<string, unknown> {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    throw new Error(message)
-  }
-  return value as Record<string, unknown>
-}
-
-function rejectUnknownKeys(
-  value: Record<string, unknown>,
-  allowed: string[]
-): void {
-  if (Object.keys(value).some((key) => !allowed.includes(key))) {
-    throw new Error('Trace 查询包含不支持的字段')
-  }
-}
-
-function appendInteger(
-  parameters: URLSearchParams,
-  name: string,
-  value: unknown,
-  minimum: number,
-  maximum: number
-): void {
-  if (value === undefined) return
-  if (
-    !Number.isInteger(value) ||
-    (value as number) < minimum ||
-    (value as number) > maximum
-  ) {
-    throw new Error(`${name} 格式不正确`)
-  }
-  parameters.set(name, String(value))
-}
-
-function appendString(
-  parameters: URLSearchParams,
-  name: string,
-  value: unknown,
-  maxLength: number
-): void {
-  if (value === undefined) return
-  if (typeof value !== 'string' || !value || value.length > maxLength) {
-    throw new Error(`${name} 格式不正确`)
-  }
-  parameters.set(name, value)
-}
-
-function appendDate(
-  parameters: URLSearchParams,
-  name: string,
-  value: unknown
-): void {
-  if (value === undefined) return
-  if (typeof value !== 'string' || !value || Number.isNaN(Date.parse(value))) {
-    throw new Error(`${name} 格式不正确`)
-  }
-  parameters.set(name, value)
-}
-
-function appendEnum(
-  parameters: URLSearchParams,
-  name: string,
-  value: unknown,
-  allowed: string[]
-): void {
-  if (value === undefined) return
-  if (typeof value !== 'string' || !allowed.includes(value)) {
-    throw new Error(`${name} 格式不正确`)
-  }
-  parameters.set(name, value)
-}
-
-function appendBoolean(
-  parameters: URLSearchParams,
-  name: string,
-  value: unknown
-): void {
-  if (value === undefined) return
-  if (typeof value !== 'boolean') throw new Error(`${name} 格式不正确`)
-  parameters.set(name, String(value))
-}
-
-function sanitizeAttributeValue(
-  key: string,
-  value: TraceAttributeValue,
-  homeDirectory: string
-): TraceAttributeValue {
-  if (SENSITIVE_KEY.test(key)) return '[REDACTED]'
-  return typeof value === 'string'
-    ? sanitizeText(value, homeDirectory)
-    : value
-}
-
-function sanitizeText(value: string, homeDirectory: string): string {
-  let sanitized = value
-    .replace(BEARER_TOKEN, 'Bearer [REDACTED]')
-    .replace(INLINE_SECRET, '$1[REDACTED]')
-    .replace(SECRET_QUERY_PARAMETER, '$1[REDACTED]')
-  if (homeDirectory) sanitized = sanitized.split(homeDirectory).join('$HOME')
-  if (/^(https?|file):\/\//i.test(sanitized)) {
-    try {
-      const url = new URL(sanitized)
-      url.username = ''
-      url.password = ''
-      url.search = ''
-      url.hash = ''
-      sanitized = url.toString()
-    } catch {
-      // 普通错误文本可能以 URL 开头，无法完整解析时继续使用已脱敏文本。
-    }
-  }
-  return sanitized.slice(0, MAX_ATTRIBUTE_LENGTH)
-}
-
-function normalizeLoopbackBaseUrl(value: string): string {
-  let url: URL
-  try {
-    url = new URL(value)
-  } catch {
-    throw new Error('UNILABOS_OBSERVABILITY_URL 格式不正确')
-  }
-  if (url.protocol !== 'http:' || url.username || url.password) {
-    throw new Error('Trace 日志地址必须是无凭据的本机 HTTP 地址')
-  }
-  const hostname = url.hostname.replace(/^\[|\]$/g, '').toLowerCase()
-  const ipVersion = isIP(hostname)
-  const isLoopback =
-    hostname === 'localhost' ||
-    (ipVersion === 4 && hostname.startsWith('127.')) ||
-    (ipVersion === 6 && hostname === '::1')
-  if (!isLoopback) throw new Error('Trace 日志地址仅允许本机访问')
-  url.search = ''
-  url.hash = ''
-  url.pathname = url.pathname.replace(/\/+$/, '')
-  return url.toString().replace(/\/$/, '')
-}
-
-function normalizeProjectName(value: string): string {
-  const normalized = value.trim()
-  if (!normalized || normalized.length > 128 || /[/?#]/.test(normalized)) {
-    throw new Error('UNILABOS_TRACE_PROJECT 格式不正确')
-  }
-  return normalized
-}
-
-function positiveInteger(value: string | undefined, fallback: number): number {
-  if (value === undefined) return fallback
-  const parsed = Number(value)
-  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback
-}
-
-function isDisabled(value: string | undefined): boolean {
-  return (
-    value !== undefined &&
-    ['0', 'false', 'off'].includes(value.toLowerCase())
-  )
-}
-
-function safeErrorMessage(error: unknown): string {
-  const message = error instanceof Error ? error.message : String(error)
-  return message.slice(0, 500) || '未知错误'
-}
-
-async function withTimeout<T>(
-  operation: Promise<T>,
-  timeoutMs: number,
-  message: string
-): Promise<T> {
-  let timeout: ReturnType<typeof setTimeout> | undefined
-  try {
-    return await Promise.race([
-      operation,
-      new Promise<never>((_resolve, reject) => {
-        timeout = setTimeout(() => reject(new Error(message)), timeoutMs)
-      })
-    ])
-  } finally {
-    if (timeout) clearTimeout(timeout)
   }
 }

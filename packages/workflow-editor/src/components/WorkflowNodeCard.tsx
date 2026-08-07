@@ -11,22 +11,30 @@
  */
 import { Handle, Position } from 'reactflow'
 import type { NodeProps } from 'reactflow'
-import type { CSSProperties } from 'react'
 import type { MaterialShapeSpec } from '@unilab/material'
 import type { WorkflowHandlePort } from '../utils/parseWorkflow'
 import type {
   WorkflowDagLayoutStrategy,
   WorkflowMaterialSwimlaneDirection
 } from '../utils/workflowDagLayoutStrategy'
-import { WORKFLOW_MATERIAL_LANE_GAP } from '../utils/workflowMaterialSwimlaneLayout'
-import {
-  isResourceSlotHandle,
-  type WorkflowMaterialChip
-} from '../utils/workflowMaterialTrace'
+import type { WorkflowMaterialChip } from '../utils/workflowMaterialTrace'
 import WorkflowMaterialSourceNode from './WorkflowMaterialSourceNode'
 import WorkflowTransferNode from './WorkflowTransferNode'
 import type { WorkflowNodeVisualKind } from '../utils/workflowNodeVisualKind'
+import {
+  handlePosition,
+  isReadyHandle,
+  renderMaterialPorts,
+  type WorkflowMaterialPortCard,
+  workflowMaterialPortCards
+} from './workflowNodeMaterialPorts'
 import styles from './workflow.module.scss'
+
+export {
+  isReadyHandle,
+  workflowMaterialPortCards,
+  type WorkflowMaterialPortCard
+} from './workflowNodeMaterialPorts'
 
 /** 隐藏的转运 ready 锚点以 72px 端口内 54px 菱形的上、下尖角为中心。 */
 const ROBOT_TRANSFER_READY_ANCHOR = {
@@ -146,6 +154,42 @@ export default function WorkflowNodeCard({
     )
   }
   return (
+    <WorkflowActionNode
+      data={data}
+      materialPorts={materialPorts}
+      targetHandles={targetHandles}
+      sourceHandles={sourceHandles}
+      targetPosition={targetPosition}
+      sourcePosition={sourcePosition}
+      projectedMaterialHandleIds={projectedMaterialHandleIds}
+      allowsDebugMarkers={allowsDebugMarkers}
+    />
+  )
+}
+
+interface WorkflowActionNodeProps {
+  data: WorkflowNodeData
+  materialPorts: WorkflowMaterialPortCard[]
+  targetHandles: WorkflowHandlePort[] | undefined
+  sourceHandles: WorkflowHandlePort[] | undefined
+  targetPosition: Position
+  sourcePosition: Position
+  projectedMaterialHandleIds: ReadonlySet<string>
+  allowsDebugMarkers: boolean
+}
+
+/** 渲染普通动作条节点，并组合拆分后的状态与调试控件。 */
+function WorkflowActionNode({
+  data,
+  materialPorts,
+  targetHandles,
+  sourceHandles,
+  targetPosition,
+  sourcePosition,
+  projectedMaterialHandleIds,
+  allowsDebugMarkers
+}: WorkflowActionNodeProps): React.JSX.Element {
+  return (
     <div
       className={`${styles.node} wf-node wf-node--action-strip min-w-[150px] max-w-[220px] cursor-pointer overflow-visible rounded-[var(--unilab-radius-md)] border border-[var(--unilab-color-border)] bg-[var(--unilab-color-surface)] transition-[border-color,box-shadow] duration-200`}
       data-workflow-node-uuid={data.id}
@@ -161,102 +205,19 @@ export default function WorkflowNodeCard({
         targetPosition,
         projectedMaterialHandleIds
       )}
-      {data.layoutStrategy === 'material-swimlanes'
-        && materialPorts.length > 0
-        && !(data.materialLaneDirection === 'horizontal'
-          && materialPorts.length > 1) && (
-        <span className="wf-node__swimlane-rail" aria-hidden="true" />
-      )}
-
-      {allowsDebugMarkers && (
-        <div className="wf-node__markers">
-          {data.startNode && (
-            <span className="wf-node__marker wf-node__marker--start">⚑ 起始点</span>
-          )}
-          {data.breakpoint && (
-            <span className="wf-node__marker wf-node__marker--breakpoint">● 断点</span>
-          )}
-          {data.pausedBefore && (
-            <span className="wf-node__marker wf-node__marker--paused">下一步</span>
-          )}
-          {data.beforeStart && (
-            <span className="wf-node__marker wf-node__marker--excluded">不执行</span>
-          )}
-        </div>
-      )}
-
+      <WorkflowSwimlaneRail data={data} portCount={materialPorts.length} />
+      <WorkflowDebugMarkers data={data} visible={allowsDebugMarkers} />
       <div className="wf-node__body">
-        <span className="wf-node__identity">
-          <span
-            className="wf-node__id"
-            title={data.name || data.id}
-          >
-            {data.name || data.id}
-          </span>
-        </span>
+        <WorkflowNodeIdentity data={data} />
         {renderMaterialPorts(
           materialPorts,
           data.materialLaneRange,
           data.materialLaneDirection
         )}
-        {data.groupKind === 'subworkflow' && (
-          <button
-            type="button"
-            className="wf-node__group-toggle"
-            data-subworkflow-toggle
-            aria-expanded={Boolean(data.groupExpanded)}
-            aria-label={`${data.groupExpanded ? '折叠' : '展开'}子工作流 ${data.name || data.id}`}
-            onPointerDown={(event) => event.stopPropagation()}
-            onClick={(event) => {
-              event.stopPropagation()
-              data.onToggleGroup?.(data.id)
-            }}
-          >
-            <span aria-hidden="true">{data.groupExpanded ? '▾' : '▸'}</span>
-            {data.descendantCount || 0} 个内部节点
-          </button>
-        )}
-        {workflowNodeShowsState(data.kind, data.status) && (
-          <span className={`wf-node__state wf-node__state--${data.status || 'pending'}`}>
-            {workflowNodeStateLabel(data.kind, data.status || 'pending')}
-          </span>
-        )}
-        {allowsDebugMarkers && (data.onSetStart || data.onToggleBreakpoint) && (
-          <span className="wf-node__marker-actions">
-            {data.onSetStart && (
-              <button
-                type="button"
-                className={data.startNode ? 'is-active is-start' : ''}
-                aria-label={`${data.startNode ? '取消' : '设为'}起始点 ${data.id}`}
-                title={data.startNode ? '取消起始点' : '从此节点开始执行'}
-                onPointerDown={(event) => event.stopPropagation()}
-                onClick={(event) => {
-                  event.stopPropagation()
-                  data.onSetStart?.(data.id)
-                }}
-              >
-                ⚑
-              </button>
-            )}
-            {data.onToggleBreakpoint && (
-              <button
-                type="button"
-                className={data.breakpoint ? 'is-active is-breakpoint' : ''}
-                aria-label={`${data.breakpoint ? '取消' : '设置'}断点 ${data.id}`}
-                title={data.breakpoint ? '取消断点' : '在此节点前暂停'}
-                onPointerDown={(event) => event.stopPropagation()}
-                onClick={(event) => {
-                  event.stopPropagation()
-                  data.onToggleBreakpoint?.(data.id)
-                }}
-              >
-                ●
-              </button>
-            )}
-          </span>
-        )}
+        <WorkflowGroupToggle data={data} />
+        <WorkflowNodeState data={data} />
+        <WorkflowMarkerActions data={data} visible={allowsDebugMarkers} />
       </div>
-
       {renderStructuralHandles(
         sourceHandles,
         'source',
@@ -264,6 +225,148 @@ export default function WorkflowNodeCard({
         projectedMaterialHandleIds
       )}
     </div>
+  )
+}
+
+/** 在不产生多横向端口冲突时显示物料泳道（MaterialSwimlane）导轨。 */
+function WorkflowSwimlaneRail({
+  data,
+  portCount
+}: {
+  data: WorkflowNodeData
+  portCount: number
+}): React.JSX.Element | null {
+  const hiddenForHorizontalFanout =
+    data.materialLaneDirection === 'horizontal' && portCount > 1
+  const visible = data.layoutStrategy === 'material-swimlanes'
+    && portCount > 0
+    && !hiddenForHorizontalFanout
+  return visible
+    ? <span className="wf-node__swimlane-rail" aria-hidden="true" />
+    : null
+}
+
+/** 渲染起始点、断点和调试裁剪结果标记。 */
+function WorkflowDebugMarkers({
+  data,
+  visible
+}: {
+  data: WorkflowNodeData
+  visible: boolean
+}): React.JSX.Element | null {
+  if (!visible) return null
+  return (
+    <div className="wf-node__markers">
+      {data.startNode && (
+        <span className="wf-node__marker wf-node__marker--start">⚑ 起始点</span>
+      )}
+      {data.breakpoint && (
+        <span className="wf-node__marker wf-node__marker--breakpoint">● 断点</span>
+      )}
+      {data.pausedBefore && (
+        <span className="wf-node__marker wf-node__marker--paused">下一步</span>
+      )}
+      {data.beforeStart && (
+        <span className="wf-node__marker wf-node__marker--excluded">不执行</span>
+      )}
+    </div>
+  )
+}
+
+/** 渲染节点稳定显示名。 */
+function WorkflowNodeIdentity({ data }: { data: WorkflowNodeData }) {
+  const displayName = data.name || data.id
+  return (
+    <span className="wf-node__identity">
+      <span className="wf-node__id" title={displayName}>{displayName}</span>
+    </span>
+  )
+}
+
+/** 渲染子工作流展开或折叠入口。 */
+function WorkflowGroupToggle({
+  data
+}: {
+  data: WorkflowNodeData
+}): React.JSX.Element | null {
+  if (data.groupKind !== 'subworkflow') return null
+  const action = data.groupExpanded ? '折叠' : '展开'
+  return (
+    <button
+      type="button"
+      className="wf-node__group-toggle"
+      data-subworkflow-toggle
+      aria-expanded={Boolean(data.groupExpanded)}
+      aria-label={`${action}子工作流 ${data.name || data.id}`}
+      onPointerDown={(event) => event.stopPropagation()}
+      onClick={(event) => {
+        event.stopPropagation()
+        data.onToggleGroup?.(data.id)
+      }}
+    >
+      <span aria-hidden="true">{data.groupExpanded ? '▾' : '▸'}</span>
+      {data.descendantCount || 0} 个内部节点
+    </button>
+  )
+}
+
+/** 渲染节点执行状态，仅隐藏默认等待态。 */
+function WorkflowNodeState({
+  data
+}: {
+  data: WorkflowNodeData
+}): React.JSX.Element | null {
+  if (!workflowNodeShowsState(data.kind, data.status)) return null
+  const status = data.status || 'pending'
+  return (
+    <span className={`wf-node__state wf-node__state--${status}`}>
+      {workflowNodeStateLabel(data.kind, status)}
+    </span>
+  )
+}
+
+/** 渲染设置起始点和断点的调试操作。 */
+function WorkflowMarkerActions({
+  data,
+  visible
+}: {
+  data: WorkflowNodeData
+  visible: boolean
+}): React.JSX.Element | null {
+  if (!visible || (!data.onSetStart && !data.onToggleBreakpoint)) return null
+  return (
+    <span className="wf-node__marker-actions">
+      {data.onSetStart && (
+        <button
+          type="button"
+          className={data.startNode ? 'is-active is-start' : ''}
+          aria-label={`${data.startNode ? '取消' : '设为'}起始点 ${data.id}`}
+          title={data.startNode ? '取消起始点' : '从此节点开始执行'}
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation()
+            data.onSetStart?.(data.id)
+          }}
+        >
+          ⚑
+        </button>
+      )}
+      {data.onToggleBreakpoint && (
+        <button
+          type="button"
+          className={data.breakpoint ? 'is-active is-breakpoint' : ''}
+          aria-label={`${data.breakpoint ? '取消' : '设置'}断点 ${data.id}`}
+          title={data.breakpoint ? '取消断点' : '在此节点前暂停'}
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation()
+            data.onToggleBreakpoint?.(data.id)
+          }}
+        >
+          ●
+        </button>
+      )}
+    </span>
   )
 }
 
@@ -340,243 +443,6 @@ function renderStructuralHandles(
  * @param handle OS 接口投影出的工作流句柄。
  * @returns 句柄是否应以南北方向的短竖线显示。
  */
-export function isReadyHandle(handle: WorkflowHandlePort): boolean {
-  const key = (handle.dataKey?.trim() || handle.handleKey).toLowerCase()
-  const valueType = (handle.valueType ?? '').toLowerCase()
-  return key === 'ready' && (
-    valueType === '' ||
-    valueType === 'boolean' ||
-    valueType === 'bool' ||
-    valueType === 'builtins.bool'
-  )
-}
-
-export interface WorkflowMaterialPortCard {
-  key: string
-  variableName: string
-  label: string
-  description?: string
-  accent: string
-  targetHandle?: WorkflowHandlePort
-  sourceHandle?: WorkflowHandlePort
-  laneIndex?: number
-}
-
-/**
- * 将节点的 ResourceSlot Handle 投影为物料标签。
- *
- * @param handles 节点的输入、输出 Handle。
- * @param materialHandleAccents 按 Handle UUID 索引的物料流颜色。
- * @param materialLaneByHandle 按 Handle UUID 索引的物料泳道序号。
- * @returns 按逻辑字段合并后的物料标签；同字段输入、输出只占一项。
- */
-export function workflowMaterialPortCards(
-  handles: readonly WorkflowHandlePort[],
-  materialHandleAccents: Record<string, string> | undefined,
-  materialLaneByHandle: Record<string, number> | undefined = undefined
-): WorkflowMaterialPortCard[] {
-  const cards: WorkflowMaterialPortCard[] = []
-  const resourceHandles = handles.filter(isResourceSlotHandle)
-  const accentByVariable = new Map<string, string>()
-  for (const handle of resourceHandles) {
-    const accent = materialHandleAccents?.[handle.uuid]
-    if (!accent) continue
-    const variableName = handle.dataKey?.trim() || handle.handleKey
-    if (!accentByVariable.has(variableName) || handle.ioType === 'target') {
-      accentByVariable.set(variableName, accent)
-    }
-  }
-  for (const handle of resourceHandles) {
-    const variableName = handle.dataKey?.trim() || handle.handleKey
-    const accent = materialHandleAccents?.[handle.uuid] ??
-      accentByVariable.get(variableName)
-    if (!accent) continue
-    const slot = handle.ioType === 'target' ? 'targetHandle' : 'sourceHandle'
-    const existing = cards.find((card) =>
-      card.variableName === variableName &&
-      card[slot] === undefined
-    )
-    if (existing) {
-      existing[slot] = handle
-      existing.laneIndex ??= materialLaneByHandle?.[handle.uuid]
-      // 同字段输入与输出是同一个 ResourceSlot；输入侧颜色代表进入节点的
-      // 既有物料身份，因此在目录数据暂时不一致时仍以输入侧为准。
-      if (handle.ioType === 'target') existing.accent = accent
-      existing.label = preferredMaterialPortLabel(existing, handle)
-      existing.description = mergeDescriptions(
-        existing.description,
-        handle.description
-      )
-      continue
-    }
-    cards.push({
-      key: `${variableName}:${accent}:${cards.length}`,
-      variableName,
-      label: handle.title || variableName || handle.displayName,
-      ...(handle.description ? { description: handle.description } : {}),
-      accent,
-      laneIndex: materialLaneByHandle?.[handle.uuid],
-      [slot]: handle
-    })
-  }
-  return cards.sort((left, right) =>
-    (left.laneIndex ?? Number.MAX_SAFE_INTEGER) -
-      (right.laneIndex ?? Number.MAX_SAFE_INTEGER)
-  )
-}
-
-function preferredMaterialPortLabel(
-  card: WorkflowMaterialPortCard,
-  handle: WorkflowHandlePort
-): string {
-  const target = handle.ioType === 'target'
-    ? handle
-    : card.targetHandle
-  return target?.title || handle.title || card.variableName || handle.displayName
-}
-
-function mergeDescriptions(
-  current: string | undefined,
-  incoming: string | undefined
-): string | undefined {
-  if (!incoming || incoming === current) return current
-  return current ? `${current}\n${incoming}` : incoming
-}
-
-/**
- * 渲染节点内物料占位符（ResourceSlot）标签及其泳道方向句柄。
- *
- * @param cards 已按变量合并并排序的物料端口卡片。
- * @param laneRange 节点在物料泳道中的最左与最右序号；缺省时使用紧凑排列。
- * @param direction 物料泳道从上到下或从左到右的流向。
- * @returns 物料端口容器；没有物料端口时返回空。
- */
-function renderMaterialPorts(
-  cards: readonly WorkflowMaterialPortCard[],
-  laneRange: { start: number; end: number } | undefined,
-  direction: WorkflowMaterialSwimlaneDirection | undefined
-): React.JSX.Element | null {
-  if (cards.length === 0) return null
-  const swimlane = laneRange && cards.every(
-    (card) => card.laneIndex !== undefined
-  )
-  return (
-    <span
-      className="wf-node__material-ports"
-      aria-label="物料变量"
-      data-workflow-material-lane-start={swimlane ? laneRange.start : undefined}
-      data-workflow-material-lane-end={swimlane ? laneRange.end : undefined}
-      data-workflow-material-lane-direction={swimlane ? direction : undefined}
-      style={swimlane
-        ? direction === 'horizontal'
-          ? {
-              width: 128,
-              height: 38 +
-                (laneRange.end - laneRange.start) * WORKFLOW_MATERIAL_LANE_GAP
-            }
-          : {
-              width: 128 +
-                (laneRange.end - laneRange.start) * WORKFLOW_MATERIAL_LANE_GAP,
-              height: 38
-            }
-        : undefined}
-    >
-      {cards.map((card) => (
-        <span
-          key={card.key}
-          className="wf-node__material-port"
-          data-workflow-material-port-variable={card.variableName}
-          data-workflow-material-port-label={card.label}
-          data-workflow-material-port-description={card.description}
-          data-workflow-material-lane-index={card.laneIndex}
-          style={{
-            '--wf-material-accent': card.accent,
-            ...(swimlane
-              ? direction === 'horizontal'
-                ? {
-                    top: (card.laneIndex as number - laneRange.start) *
-                      WORKFLOW_MATERIAL_LANE_GAP
-                  }
-                : {
-                    left: (card.laneIndex as number - laneRange.start) *
-                      WORKFLOW_MATERIAL_LANE_GAP
-                  }
-              : {})
-          } as CSSProperties & { '--wf-material-accent': string }}
-          title={card.description}
-          aria-label={card.description
-            ? `${card.label}：${card.description}`
-            : card.label}
-        >
-          {card.targetHandle && renderMaterialHandle(
-            card.targetHandle,
-            'target',
-            card.accent,
-            card.label,
-            direction
-          )}
-          <span className="wf-node__material-port-label">{card.label}</span>
-          {card.sourceHandle && renderMaterialHandle(
-            card.sourceHandle,
-            'source',
-            card.accent,
-            card.label,
-            direction
-          )}
-        </span>
-      ))}
-    </span>
-  )
-}
-
-/**
- * 渲染一个物料流（MaterialFlow）句柄，并按泳道方向选择节点外缘。
- *
- * @param handle OS 投影出的物料占位符（ResourceSlot）句柄。
- * @param ioType 句柄是输入端还是输出端。
- * @param accent 当前物料链的稳定强调色。
- * @param label 物料变量的中文优先展示标签。
- * @param direction 物料泳道从上到下或从左到右的流向。
- * @returns 可供 ReactFlow 连线的物料句柄元素。
- */
-function renderMaterialHandle(
-  handle: WorkflowHandlePort,
-  ioType: 'source' | 'target',
-  accent: string,
-  label: string,
-  direction: WorkflowMaterialSwimlaneDirection | undefined
-): React.JSX.Element {
-  return (
-    <Handle
-      key={handle.uuid}
-      id={handle.uuid}
-      type={ioType}
-      position={direction === 'horizontal'
-        ? ioType === 'target' ? Position.Left : Position.Right
-        : ioType === 'target' ? Position.Top : Position.Bottom}
-      className={`wf-node__handle wf-node__handle--material wf-node__handle--${ioType}`}
-      data-workflow-handle-template-uuid={handle.uuid}
-      data-workflow-handle-key={handle.handleKey}
-      data-workflow-handle-io={ioType}
-      data-workflow-handle-kind="material"
-      aria-label={`${label} 物料${ioType === 'target' ? '输入' : '输出'}端口`}
-      title={handle.description || `${label} · 物料流`}
-      style={{ '--wf-material-accent': accent } as CSSProperties}
-    />
-  )
-}
-
-function handlePosition(
-  position: Position,
-  index: number,
-  count: number
-): CSSProperties {
-  const offset = `${((index + 1) * 100) / (count + 1)}%`
-  return position === Position.Top || position === Position.Bottom
-    ? { left: offset }
-    : { top: offset }
-}
-
 export function workflowNodeAllowsDebugMarkers(kind?: string): boolean {
   return kind !== 'material_source'
 }

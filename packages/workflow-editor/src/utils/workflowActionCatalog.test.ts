@@ -959,6 +959,8 @@ describe('typed Action editor projection', () => {
       '../hooks/usePersistentWorkflowCatalogs.ts',
       '../hooks/usePersistentWorkflowCanvasNodeEditor.ts',
       '../components/PersistentWorkflowAuthoringView.tsx',
+      '../components/PersistentWorkflowNodePalette.tsx',
+      '../components/PersistentWorkflowNodeInspector.tsx',
       '../components/PersistentWorkflowOverlays.tsx'
     ].map((relative) => readFileSync(fileURLToPath(new URL(
       relative,

@@ -1,0 +1,282 @@
+.workflow :global(.workflow-runtime__workbench) {
+  background: var(--unilab-color-surface);
+}
+
+.workflow :global(.workflow-runtime__workbench) > :global(.workbench__divider) {
+  border-color: var(--unilab-color-border);
+  background: var(--unilab-color-surface-subtle);
+}
+
+.workflow :global(.workflow-runtime__workbench) > :global(.workbench__divider) :global(.workbench__grip) {
+  background: var(--unilab-color-border-strong);
+}
+
+.workflow :global(.workflow-runtime__workbench) > :global(.workbench__divider):hover :global(.workbench__grip),
+.workflow :global(.workflow-runtime__workbench):global(.workbench--dragging)
+  > :global(.workbench__divider)
+  :global(.workbench__grip) {
+  background: var(--unilab-color-workflow);
+}
+
+.workflow :global(.workflow-runtime__stage) {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--unilab-color-canvas);
+}
+
+.workflow :global(.workflow-runtime__stage-header) {
+  position: relative;
+  z-index: 4;
+  display: flex;
+  min-height: 48px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--unilab-space-4);
+  border-bottom: 1px solid var(--unilab-color-border);
+  background: var(--unilab-color-surface);
+}
+
+.workflow :global(.workflow-runtime__stage-header) > div:first-child {
+  display: flex;
+  align-items: baseline;
+  gap: var(--unilab-space-2);
+}
+
+.workflow :global(.workflow-runtime__stage-header) strong {
+  color: var(--unilab-color-text);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.workflow :global(.workflow-runtime__stage-header) span {
+  color: var(--unilab-color-text-muted);
+  font-size: 12px;
+}
+
+.workflow :global(.workflow-runtime__stage-header)
+  :global(.workflow-runtime__projection-state) {
+  padding: 2px 8px;
+  color: var(--unilab-color-warning);
+  border: 1px solid color-mix(
+    in srgb,
+    var(--unilab-color-warning) 35%,
+    var(--unilab-color-border)
+  );
+  border-radius: 999px;
+  background: var(--unilab-color-warning-soft);
+  font-weight: 600;
+}
+
+.workflow :global(.workflow-runtime__stage-tools) {
+  display: flex;
+  align-items: center;
+  gap: var(--unilab-space-2);
+}
+
+.workflow :global(.workflow-runtime__stage-tools) > button,
+.workflow :global(.workflow-runtime__help) summary {
+  display: inline-flex;
+  height: 30px;
+  align-items: center;
+  padding: 0 10px;
+  color: var(--unilab-color-text-muted);
+  border: 1px solid var(--unilab-color-border);
+  border-radius: var(--unilab-radius-control);
+  background: var(--unilab-color-surface);
+  font-size: 12px;
+  font-weight: 500;
+  list-style: none;
+  cursor: pointer;
+}
+
+.workflow :global(.workflow-runtime__stage-tools) > button:hover,
+.workflow :global(.workflow-runtime__help) summary:hover {
+  color: var(--unilab-color-primary);
+  border-color: var(--unilab-color-focus);
+  background: var(--unilab-color-primary-soft);
+}
+
+.workflow :global(.workflow-runtime__help) {
+  position: relative;
+}
+
+.workflow :global(.workflow-runtime__help) summary::-webkit-details-marker {
+  display: none;
+}
+
+.workflow :global(.workflow-runtime__help) > div {
+  position: absolute;
+  top: 36px;
+  right: 0;
+  width: 280px;
+  padding: var(--unilab-space-3);
+  color: var(--unilab-color-text);
+  border: 1px solid var(--unilab-color-border);
+  border-radius: var(--unilab-radius-md);
+  background: var(--unilab-color-surface);
+  box-shadow: var(--unilab-shadow-panel);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.workflow :global(.workflow-runtime__legend) {
+  display: flex;
+  flex: 0 0 36px;
+  align-items: center;
+  gap: var(--unilab-space-2);
+  padding: 0 var(--unilab-space-3);
+  overflow-x: auto;
+  border-bottom: 1px solid var(--unilab-color-border);
+  background: var(--unilab-color-surface-subtle);
+  white-space: nowrap;
+}
+
+.workflow :global(.workflow-runtime__legend) span {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  color: var(--unilab-color-text-muted);
+  border: 1px solid var(--unilab-color-border);
+  border-radius: 999px;
+  background: var(--unilab-color-surface);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.workflow :global(.workflow-runtime__legend) :global(.is-start) {
+  color: var(--unilab-color-start);
+  border-color: color-mix(
+    in srgb,
+    var(--unilab-color-start) 28%,
+    transparent
+  );
+  background: var(--unilab-color-start-soft);
+}
+
+.workflow :global(.workflow-runtime__legend) :global(.is-breakpoint) {
+  color: var(--unilab-color-danger);
+  border-color: color-mix(
+    in srgb,
+    var(--unilab-color-danger) 28%,
+    transparent
+  );
+  background: var(--unilab-color-danger-soft);
+}
+
+.workflow :global(.workflow-runtime__legend) :global(.is-paused) {
+  color: var(--unilab-color-paused);
+  border-color: color-mix(
+    in srgb,
+    var(--unilab-color-paused) 28%,
+    transparent
+  );
+  background: var(--unilab-color-paused-soft);
+}
+
+.workflow :global(.workflow-runtime__legend) :global(.is-running) {
+  color: var(--unilab-color-warning);
+  border-color: color-mix(
+    in srgb,
+    var(--unilab-color-warning) 28%,
+    transparent
+  );
+  background: var(--unilab-color-warning-soft);
+}
+
+.workflow :global(.workflow-runtime__legend) :global(.is-success) {
+  color: var(--unilab-color-success);
+  border-color: color-mix(
+    in srgb,
+    var(--unilab-color-success) 28%,
+    transparent
+  );
+  background: var(--unilab-color-success-soft);
+}
+
+.workflow :global(.workflow-runtime__legend) :global(.is-excluded) {
+  color: var(--unilab-color-skipped);
+  border-color: color-mix(
+    in srgb,
+    var(--unilab-color-skipped) 28%,
+    transparent
+  );
+  background: var(--unilab-color-skipped-soft);
+}
+
+.workflow :global(.workflow-runtime__canvas) {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 260px;
+}
+
+.workflow :global(.workflow-runtime__debug-dock) {
+  display: flex;
+  height: var(--workflow-debug-dock-height, 300px);
+  min-height: 184px;
+  flex: 0 0 var(--workflow-debug-dock-height, 300px);
+  flex-direction: column;
+  background: var(--unilab-color-surface);
+}
+
+.workflow :global(.workflow-runtime__debug-dock):global(.is-output-collapsed) {
+  height: auto;
+  min-height: 0;
+  flex-basis: auto;
+}
+
+.workflow :global(.workflow-runtime__debug-resizer) {
+  position: relative;
+  z-index: 3;
+  display: grid;
+  width: 100%;
+  min-height: 10px;
+  flex: 0 0 10px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-top: 1px solid var(--unilab-color-border);
+  outline: none;
+  background: var(--unilab-color-surface-subtle);
+  cursor: row-resize;
+  touch-action: none;
+}
+
+.workflow :global(.workflow-runtime__debug-resizer) > span {
+  width: 36px;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--unilab-color-border-strong);
+  transition:
+    width var(--unilab-motion-fast) ease,
+    background-color var(--unilab-motion-fast) ease;
+}
+
+.workflow :global(.workflow-runtime__debug-resizer):hover > span,
+.workflow :global(.workflow-runtime__debug-resizer):focus-visible > span,
+.workflow
+  :global(.workflow-runtime__debug-dock):global(.is-resizing)
+  :global(.workflow-runtime__debug-resizer)
+  > span {
+  width: 44px;
+  background: var(--unilab-color-workflow);
+}
+
+.workflow :global(.workflow-runtime__debug-resizer):focus-visible {
+  box-shadow: inset 0 0 0 2px var(--unilab-color-focus);
+}
+
+.workflow:global(.workflow-runtime--resizing-debugger),
+.workflow:global(.workflow-runtime--resizing-debugger) * {
+  cursor: row-resize !important;
+}
+
+.workflow
+  :global(.workflow-runtime__debug-dock):global(.is-output-expanded)
+  > :global(.workflow-runtime__results):global(.is-expanded) {
+  min-height: 0;
+  flex: 1 1 auto;
+}
+

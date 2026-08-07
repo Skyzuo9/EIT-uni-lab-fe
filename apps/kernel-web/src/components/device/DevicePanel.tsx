@@ -8,9 +8,7 @@ import {
 import {
   ServiceError,
   type DeviceAction,
-  type WorkflowActionCatalogSnapshot,
   type WorkflowActionNodeTemplate,
-  type WorkflowNodeJobFeedback,
   useServices
 } from '@unilab/services'
 
@@ -22,42 +20,28 @@ import {
   serializeDeviceActionInput
 } from './deviceActionRun'
 import { startDeviceActionTaskRecovery } from './deviceActionTaskRecovery'
-import styles from './DevicePanel.module.scss'
 import {
-  ConnectionSummary,
-  DeviceListItem,
-  DeviceWorkspace,
-  UnlockConfirmationDialog,
   createArgumentDraft,
   isTerminalDeviceActionTask,
   projectDeviceActionTask,
   readArgumentDraft,
   writeArgumentDraft,
   type ArgumentDraft,
-  type DeviceActionRunState,
-  type UnlockIntent,
-  type UnlockOperation
+  type DeviceActionRunState
 } from './DevicePanelSupport'
+import { DevicePanelView } from './DevicePanelView'
+import { useDeviceActionCatalog } from './useDeviceActionCatalog'
+import { useDeviceUnlock } from './useDeviceUnlock'
+import type {
+  DeviceActionFeedbackState,
+  DeviceActionRunAttempt,
+  DeviceActionRunOperation
+} from './deviceActionTaskState'
 export {
   DeviceActionAvailability,
   DeviceLockControl,
   UnlockConfirmationDialog
 } from './DevicePanelSupport'
-
-interface DeviceActionRunOperation {
-  actionRef: string
-  state: DeviceActionRunState
-}
-
-interface DeviceActionRunAttempt {
-  signature: string
-  idempotencyKey: string
-}
-
-interface DeviceActionFeedbackState {
-  cursor: number
-  items: WorkflowNodeJobFeedback[]
-}
 
 /**
  * 渲染设备目录、实时状态、动作参数与单动作任务控制面板。
@@ -79,13 +63,6 @@ export default function DevicePanel(): React.JSX.Element {
   const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null)
   const [selectedActionRef, setSelectedActionRef] = useState<string | null>(null)
   const [argumentDraft, setArgumentDraft] = useState<ArgumentDraft>({})
-  const [unlockIntent, setUnlockIntent] = useState<UnlockIntent | null>(null)
-  const [unlockOperation, setUnlockOperation] =
-    useState<UnlockOperation | null>(null)
-  const [actionCatalog, setActionCatalog] =
-    useState<WorkflowActionCatalogSnapshot | null>(null)
-  const [actionCatalogLoading, setActionCatalogLoading] = useState(false)
-  const [actionCatalogError, setActionCatalogError] = useState<string | null>(null)
   const [runOperation, setRunOperation] =
     useState<DeviceActionRunOperation | null>(null)
   const runAttemptRef = useRef<DeviceActionRunAttempt | null>(null)
@@ -95,6 +72,9 @@ export default function DevicePanel(): React.JSX.Element {
   const refreshByTaskRef = useRef<Map<string, Promise<boolean>>>(new Map())
   const canForceUnlock = services.capabilities.devices.forceUnlock
   const canRunActionTask = services.capabilities.devices.runActionTask
+  const actionCatalogState = useDeviceActionCatalog(canRunActionTask)
+  const actionCatalog = actionCatalogState.catalog
+  const unlock = useDeviceUnlock(refresh)
 
   useEffect(() => {
     runAttemptRef.current = null
@@ -146,36 +126,6 @@ export default function DevicePanel(): React.JSX.Element {
     [actionCatalog, selectedAction]
   )
 
-  const loadActionCatalog = useCallback(async (signal?: AbortSignal) => {
-    if (!canRunActionTask || connection !== 'connected') return
-    setActionCatalogLoading(true)
-    setActionCatalogError(null)
-    try {
-      const catalog = await services.workflow.getWorkflowActionCatalog(signal)
-      if (signal?.aborted) return
-      setActionCatalog(catalog)
-    } catch (error) {
-      if (signal?.aborted) return
-      setActionCatalog(null)
-      setActionCatalogError(
-        error instanceof Error ? error.message : '无法读取设备动作信息'
-      )
-    } finally {
-      if (!signal?.aborted) setActionCatalogLoading(false)
-    }
-  }, [canRunActionTask, connection, services.workflow])
-
-  useEffect(() => {
-    if (!canRunActionTask || connection !== 'connected') {
-      setActionCatalog(null)
-      setActionCatalogError(null)
-      setActionCatalogLoading(false)
-      return
-    }
-    const controller = new AbortController()
-    void loadActionCatalog(controller.signal)
-    return () => controller.abort()
-  }, [backend.apiUrl, backend.id, canRunActionTask, connection, loadActionCatalog])
   useEffect(() => {
     if (!devices.length) {
       setSelectedDeviceId(null)
@@ -217,56 +167,6 @@ export default function DevicePanel(): React.JSX.Element {
     },
     [argumentDraftKey]
   )
-
-  const handleRequestUnlock = useCallback(
-    (device: ManagedDevice, action: DeviceAction) => {
-      if (!action.currentJobId) return
-      setUnlockOperation(null)
-      setUnlockIntent({
-        deviceId: device.id,
-        deviceName: device.displayName,
-        actionName: action.actionName,
-        actionRef: action.actionRef,
-        actionLabel: action.displayName,
-        expectedJobId: action.currentJobId
-      })
-    },
-    []
-  )
-
-  const handleConfirmUnlock = useCallback(async () => {
-    const intent = unlockIntent
-    if (!intent) return
-    setUnlockOperation({
-      actionRef: intent.actionRef,
-      state: 'pending',
-      message: '正在请求 OS 取消当前动作并释放锁…'
-    })
-    try {
-      const result = await services.laboratory.forceUnlockDeviceAction({
-        deviceId: intent.deviceId,
-        actionName: intent.actionName,
-        expectedJobId: intent.expectedJobId
-      })
-      setUnlockIntent(null)
-      setUnlockOperation({
-        actionRef: intent.actionRef,
-        state: 'success',
-        message: result.status === 'already_unlocked'
-          ? '该动作锁已由 OS 释放，正在复核最新目录状态。'
-          : `OS 已释放 ${result.releasedJobIds.length} 个关联 Job，正在复核最新目录状态。`
-      })
-      await refresh()
-    } catch (error) {
-      setUnlockOperation({
-        actionRef: intent.actionRef,
-        state: 'error',
-        message: error instanceof Error
-          ? error.message
-          : '设备解锁失败，请刷新状态后重试'
-      })
-    }
-  }, [refresh, services.laboratory, unlockIntent])
 
   const refreshDeviceActionTask = useCallback(async (
     taskUuid: string,
@@ -485,7 +385,7 @@ export default function DevicePanel(): React.JSX.Element {
         error.code === 'template_catalog_conflict'
       ) {
         runAttemptRef.current = null
-        await Promise.all([loadActionCatalog(), refresh()])
+        await Promise.all([actionCatalogState.refresh(), refresh()])
         setRunOperation({
           actionRef: action.actionRef,
           state: {
@@ -508,7 +408,7 @@ export default function DevicePanel(): React.JSX.Element {
   }, [
     actionCatalog,
     argumentDraft,
-    loadActionCatalog,
+    actionCatalogState,
     refresh,
     queueDeviceActionTaskRefresh,
     runOperation?.state.kind,
@@ -546,145 +446,53 @@ export default function DevicePanel(): React.JSX.Element {
     }
   }, [services.workflow])
 
-  return (
-    <>
-      <section
-        className={`section section--split device-page edge-device${
-          devices.length ? '' : ' is-empty'
-        }`}
-      >
-      <aside className="section__list" aria-label="Edge 设备列表">
-        <header className="section__list-head edge-device__list-head">
-          <div>
-            <h1 className="section__list-title">仪器设备</h1>
-            <span className="section__list-meta">
-              {devices.length} 台设备 · Edge 实时上报
-            </span>
-          </div>
-          <button
-            type="button"
-            className="edge-device__refresh"
-            disabled={loading || connection !== 'connected'}
-            onClick={() => void refresh()}
-          >
-            {loading ? '同步中' : '刷新'}
-          </button>
-        </header>
-        <ConnectionSummary
-          connection={connection}
-          backendName={backend.name}
-          lastUpdated={lastUpdated}
-        />
-        {loading && devices.length === 0 ? (
-          <div className="device-loading" role="status">
-            正在读取 Edge 设备与动作目录…
-          </div>
-        ) : null}
-        {error ? (
-          <div className="edge-device__load-error" role="alert">
-            <strong>设备目录不可用</strong>
-            <span>{error}</span>
-            <button type="button" onClick={() => void refresh()}>
-              重新读取
-            </button>
-          </div>
-        ) : null}
-        {devices.length === 0 ? (
-          <div className="device-empty device-empty--compact">
-            <strong>
-              {connection === 'connected'
-                ? '当前未配置仪器设备'
-                : '等待 Edge 上报设备'}
-            </strong>
-            {connection === 'connected' ? (
-              <p>
-                Edge 核心服务已连接。安装或配置设备包和设备图后，重新启动 Edge 并刷新设备。
-              </p>
-            ) : (
-              <p>
-                Edge 连接后会自动上报在线设备、动作节点及其参数 Schema。
-              </p>
-            )}
-          </div>
-        ) : (
-          <ul className="device-list">
-            {devices.map((device) => (
-              <DeviceListItem
-                key={device.id}
-                device={device}
-                selected={device.id === selectedDevice?.id}
-                onSelect={setSelectedDeviceId}
-              />
-            ))}
-          </ul>
-        )}
-        <div className="edge-device__source-note">
-          <span>数据来源</span>
-          设备、在线状态、动作与结果均来自 Edge 实时上报。
-        </div>
-      </aside>
+  const runState =
+    runOperation !== null && selectedAction !== null &&
+    runOperation.actionRef === selectedAction.actionRef
+      ? runOperation.state
+      : null
+  const activeRunActionRef = runOperation && (
+    runOperation.state.kind === 'submitting' ||
+    runOperation.state.kind === 'accepted' ||
+    runOperation.state.kind === 'running'
+  )
+    ? runOperation.actionRef
+    : null
 
-      <main className="section__detail edge-device__detail">
-        {selectedDevice ? (
-          <DeviceWorkspace
-            device={selectedDevice}
-            selectedAction={selectedAction}
-            selectedActionRef={selectedActionRef}
-            argumentDraft={argumentDraft}
-            onSelectAction={setSelectedActionRef}
-            onArgumentChange={handleArgumentChange}
-            actionTemplate={selectedActionTemplate}
-            actionCatalogLoading={actionCatalogLoading}
-            actionCatalogError={actionCatalogError}
-            canRunActionTask={canRunActionTask}
-            connection={connection}
-            runState={
-              runOperation !== null && selectedAction !== null &&
-              runOperation.actionRef === selectedAction.actionRef
-                ? runOperation.state
-                : null
-            }
-            activeRunActionRef={
-              runOperation && (
-                runOperation.state.kind === 'submitting' ||
-                runOperation.state.kind === 'accepted' ||
-                runOperation.state.kind === 'running'
-              )
-                ? runOperation.actionRef
-                : null
-            }
-            onRunAction={(action, template) => {
-              void handleRunAction(selectedDevice, action, template)
-            }}
-            onCancelActionTask={(taskUuid) => {
-              void handleCancelActionTask(taskUuid)
-            }}
-            canForceUnlock={canForceUnlock}
-            unlockOperation={unlockOperation}
-            onRequestUnlock={handleRequestUnlock}
-          />
-        ) : (
-          <div className="device-empty device-empty--detail">
-            <strong>暂无可调试设备</strong>
-            <p>
-              {connection === 'connected'
-                ? '当前可继续使用 Edge 核心服务；配置仪器设备后请重新启动并刷新。'
-                : '请确认 Edge 已启动并连接到本地桥。'}
-            </p>
-          </div>
-        )}
-        </main>
-      </section>
-      {unlockIntent ? (
-        <UnlockConfirmationDialog
-          intent={unlockIntent}
-          operation={unlockOperation}
-          onCancel={() => {
-            if (unlockOperation?.state !== 'pending') setUnlockIntent(null)
-          }}
-          onConfirm={() => void handleConfirmUnlock()}
-        />
-      ) : null}
-    </>
+  return (
+    <DevicePanelView
+      backend={backend}
+      connection={connection}
+      devices={devices}
+      loading={loading}
+      error={error}
+      lastUpdated={lastUpdated}
+      selectedDevice={selectedDevice}
+      selectedAction={selectedAction}
+      selectedActionRef={selectedActionRef}
+      argumentDraft={argumentDraft}
+      actionTemplate={selectedActionTemplate}
+      actionCatalogLoading={actionCatalogState.loading}
+      actionCatalogError={actionCatalogState.error}
+      canRunActionTask={canRunActionTask}
+      canForceUnlock={canForceUnlock}
+      runState={runState}
+      activeRunActionRef={activeRunActionRef}
+      unlockIntent={unlock.unlockIntent}
+      unlockOperation={unlock.unlockOperation}
+      refresh={refresh}
+      onSelectDevice={setSelectedDeviceId}
+      onSelectAction={setSelectedActionRef}
+      onArgumentChange={handleArgumentChange}
+      onRunAction={(action, template) => {
+        if (selectedDevice) void handleRunAction(selectedDevice, action, template)
+      }}
+      onCancelActionTask={(taskUuid) => {
+        void handleCancelActionTask(taskUuid)
+      }}
+      onRequestUnlock={unlock.requestUnlock}
+      onDismissUnlock={unlock.dismissUnlock}
+      onConfirmUnlock={() => void unlock.confirmUnlock()}
+    />
   )
 }

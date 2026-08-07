@@ -3,9 +3,7 @@ import {
   useEffect,
   useMemo,
   useRef,
-  useState,
-  type Dispatch,
-  type SetStateAction
+  useState
 } from 'react'
 import { useCodeMirror } from '@unilab/code-editor'
 import type {
@@ -29,47 +27,26 @@ import {
   compilePythonRevision,
   formatAuthoringDiagnostics,
   isPythonWorkflowFile,
-  parseImportedWorkflow,
   persistActiveWorkflowId,
   projectWorkflowToPython,
   readActiveWorkflowId,
   saveWorkflowRevision,
-  workflowFileSourceUri,
   workflowSourceUri
 } from '../utils/workflowAuthoringOperations'
 import { useWorkflowDownload } from './useWorkflowDownload'
-import { useWorkflowFileUpload } from './useWorkflowFileUpload'
+import { useWorkflowAuthoringFileImport } from './useWorkflowAuthoringFileImport'
+import { useWorkflowPythonAutoProjection } from './useWorkflowPythonAutoProjection'
+import { useWorkflowRevisionValidation } from './useWorkflowRevisionValidation'
+import type {
+  UseWorkflowAuthoringParams,
+  WorkflowAuthoringMode,
+  WorkflowAuthoringSnapshot
+} from './workflowAuthoringTypes'
 
-export type WorkflowAuthoringMode = 'json' | 'python'
-
-export interface WorkflowAuthoringSnapshot {
-  authoringMode: WorkflowAuthoringMode
-  sourceFileName: string | null
-  sourceFileWriter: ((content: string) => Promise<void>) | null
-  editorValue: string
-  editorBaseline: string
-  canonicalSource: string
-  pythonBaseline: string | null
-  pythonSourceMap: NonNullable<WorkflowAuthoringCandidate['source_map']>
-  layoutDirty: boolean
-}
-
-interface UseWorkflowAuthoringParams {
-  runtime: WorkflowRuntimePort
-  activeWorkflowStorageKey?: string
-  initial: WorkflowAuthoringSnapshot | null
-  compactPane: 'code' | 'dag'
-  onRequestCodePane: () => void
-  onResetRun: () => void
-  onRevisionRemapped: (
-    previous: WorkflowRevision,
-    next: WorkflowRevision
-  ) => void
-  onUnsavedChangesChange?: (hasUnsavedChanges: boolean) => void
-  setMessage: Dispatch<SetStateAction<string>>
-  setError: Dispatch<SetStateAction<string | null>>
-  withBusy: (operation: () => Promise<void>) => Promise<void>
-}
+export type {
+  WorkflowAuthoringMode,
+  WorkflowAuthoringSnapshot
+} from './workflowAuthoringTypes'
 
 export function useWorkflowAuthoring({
   runtime,
@@ -272,203 +249,36 @@ export function useWorkflowAuthoring({
     setMessage
   ])
 
-  const fileUpload = useWorkflowFileUpload({
-    onLoaded: ({ content, fileName, writeBack }) => {
-      void withBusy(async () => {
-        if (isPythonWorkflowFile(fileName)) {
-          const current = parseCanonicalWorkflow(canonicalSource)
-          if (!current.revision) {
-            throw new Error(
-              current.error || '缺少可供 Python 编译的基础修订版本'
-            )
-          }
-          resetImportedSource({
-            mode: 'python',
-            editorContent: content,
-            canonicalContent: canonicalSource,
-            fileName,
-            writeBack
-          })
-          setMessage(`${fileName} 已载入，正在由 OS 编译并投影到 DAG`)
-          const validated = await compilePythonRevision(
-            runtime,
-            current.revision,
-            content,
-            workflowFileSourceUri(fileName)
-          )
-          const nextCanonical = JSON.stringify(
-            validated.canonical_ir,
-            null,
-            2
-          )
-          const next = parseCanonicalWorkflow(nextCanonical)
-          if (!next.revision) {
-            throw new Error(
-              next.error || 'OS 返回了无效的标准工作流修订版本'
-            )
-          }
-          setCanonicalSource(nextCanonical)
-          setPythonSourceMap(validated.source_map || [])
-          pythonBaseline.current = content
-          setMessage(
-            `${fileName} 已应用到画布 · ${next.nodes.length} 个节点 · ${
-              next.links.length
-            } 条控制边`
-          )
-          return
-        }
-
-        const imported = parseImportedWorkflow(content, fileName)
-        const canonicalText = JSON.stringify(imported.revision, null, 2)
-        resetImportedSource({
-          mode: 'json',
-          editorContent: canonicalText,
-          canonicalContent: canonicalText,
-          fileName,
-          writeBack
-        })
-        if (!imported.migrated) {
-          setMessage(
-            `${fileName} 已导入 · ${imported.nodeCount} 个节点 · ${
-              imported.edgeCount
-            } 条控制边`
-          )
-          return
-        }
-
-        const warningSuffix = imported.warnings.length > 0
-          ? ` · ${imported.warnings.join('；')}`
-          : ''
-        setMessage(
-          `${fileName} 已转换为标准工作流格式（v2），正在由 OS 校验${
-            warningSuffix
-          }`
-        )
-        let result
-        try {
-          result = await runtime.validateWorkflow(imported.revision)
-        } catch (validationError) {
-          throw new Error(
-            `${fileName} 已转换为标准工作流格式（v2），但 OS 校验请求失败：${
-              validationError instanceof Error
-                ? validationError.message
-                : String(validationError)
-            }`
-          )
-        }
-        if (!result.valid) {
-          setMessage(
-            `${fileName} 已转换为标准工作流格式（v2），但 OS 校验未通过${
-              warningSuffix
-            }`
-          )
-          setError(
-            result.issues
-              .map((issue) => `${issue.code}: ${issue.message}`)
-              .join('\n')
-          )
-          return
-        }
-        setMessage(
-          `${fileName} 已转换为标准工作流格式并通过 OS 校验 · ${
-            result.nodeCount ?? imported.nodeCount
-          } 节点 · ${result.edgeCount ?? imported.edgeCount} 边${
-            warningSuffix
-          }`
-        )
-      })
-    },
-    onError: (uploadError) => setError(uploadError)
+  const fileUpload = useWorkflowAuthoringFileImport({
+    runtime,
+    canonicalSource,
+    pythonBaseline,
+    resetImportedSource,
+    setCanonicalSource,
+    setPythonSourceMap,
+    setMessage,
+    setError,
+    withBusy
   })
 
-  useEffect(() => {
-    if (
-      authoringMode !== 'python' ||
-      !editor.value.trim() ||
-      editor.value === pythonBaseline.current
-    ) {
-      return
-    }
-    const source = editor.value
-    const current = parseCanonicalWorkflow(canonicalSource)
-    if (!current.revision) return
-    const currentRevision = current.revision
-    let cancelled = false
-    const timer = globalThis.setTimeout(() => {
-      if (source === pythonBaseline.current) return
-      void compilePythonRevision(
-        runtime,
-        currentRevision,
-        source,
-        workflowSourceUri(currentRevision.workflow_id)
-      )
-        .then((validated) => {
-          if (cancelled) return
-          const nextCanonical = JSON.stringify(
-            validated.canonical_ir,
-            null,
-            2
-          )
-          const next = parseCanonicalWorkflow(nextCanonical)
-          if (!next.revision) {
-            throw new Error(
-              next.error || 'OS 返回了无效的标准工作流修订版本'
-            )
-          }
-          onRevisionRemapped(currentRevision, next.revision)
-          setPythonSourceMap(validated.source_map || [])
-          setCanonicalSource(nextCanonical)
-          pythonBaseline.current = source
-          setMessage(
-            `Python 已自动应用到画布 · ${next.nodes.length} 节点 · ${
-              next.links.length
-            } 边`
-          )
-        })
-        .catch(() => {
-          if (!cancelled) {
-            setMessage(
-              'Python 草稿尚未通过 OS 编译，画布保留最近一次有效版本'
-            )
-          }
-        })
-    }, 700)
-
-    return () => {
-      cancelled = true
-      globalThis.clearTimeout(timer)
-    }
-  }, [
+  useWorkflowPythonAutoProjection({
+    runtime,
     authoringMode,
     canonicalSource,
-    editor.value,
+    source: editor.value,
+    pythonBaseline,
     onRevisionRemapped,
-    runtime,
+    setPythonSourceMap,
+    setCanonicalSource,
     setMessage
-  ])
+  })
 
-  const validateRevision = useCallback(async (
-  ): Promise<WorkflowRevision | null> => {
-    const revision = await resolveRevision()
-    const result = await runtime.validateWorkflow(revision)
-    if (!result.valid) {
-      setError(
-        result.issues
-          .map((issue) => `${issue.code}: ${issue.message}`)
-          .join('\n')
-      )
-      setMessage('校验未通过')
-      return null
-    }
-    setMessage(
-      `校验通过 · ${
-        result.nodeCount ?? revision.invocations.length
-      } 节点 · ${
-        result.edgeCount ?? revision.control_edges.length
-      } 边`
-    )
-    return revision
-  }, [resolveRevision, runtime, setError, setMessage])
+  const validateRevision = useWorkflowRevisionValidation({
+    runtime,
+    resolveRevision,
+    setError,
+    setMessage
+  })
 
   /**
    * 按选定策略更新 Canonical 修订版本中的节点布局坐标。

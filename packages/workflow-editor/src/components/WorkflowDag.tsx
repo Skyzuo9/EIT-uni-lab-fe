@@ -12,8 +12,7 @@
 import ReactFlow, {
   Background,
   Controls,
-  MiniMap,
-  Panel
+  MiniMap
 } from 'reactflow'
 import type {
   Connection,
@@ -32,17 +31,17 @@ import {
 import { useWorkflowDag } from '../hooks/useWorkflowDag'
 import WorkflowNodeCard from './WorkflowNodeCard'
 import WorkflowRoundedStepEdge from './WorkflowRoundedStepEdge'
-import { WorkflowButton } from './WorkflowButton'
+import { WorkflowDagLayoutTools } from './WorkflowDagLayoutTools'
+import {
+  isWorkflowTextEditingTarget,
+  nestedWorkflowGroupStatus
+} from './workflowDagViewModel'
+import type { WorkflowDagProps } from './workflowDagTypes'
 import type { WorkflowNodeData } from './WorkflowNodeCard'
-import type { WorkflowLink, WorkflowNode } from '../utils/parseWorkflow'
 import { projectNestedWorkflow } from '../utils/canonicalWorkflow'
 import {
   DEFAULT_WORKFLOW_DAG_LAYOUT_STRATEGY,
   DEFAULT_WORKFLOW_MATERIAL_SWIMLANE_DIRECTION,
-  WORKFLOW_DAG_LAYOUT_STRATEGIES,
-  WORKFLOW_MATERIAL_SWIMLANE_DIRECTIONS,
-  workflowDagLayoutStrategyLabel,
-  workflowMaterialSwimlaneDirectionLabel,
   type WorkflowDagLayoutStrategy,
   type WorkflowMaterialSwimlaneDirection
 } from '../utils/workflowDagLayoutStrategy'
@@ -54,41 +53,6 @@ import {
 } from '../utils/workflowCanvasPolicy'
 import 'reactflow/dist/style.css'
 import styles from './workflow.module.scss'
-
-interface WorkflowDagProps {
-  nodes: WorkflowNode[]
-  links: WorkflowLink[]
-  onNodeSelect: (nodeId: string) => void
-  onSetStart?: (nodeId: string) => void
-  onToggleBreakpoint?: (nodeId: string) => void
-  nodeStates?: Readonly<Record<string, string>>
-  breakpoints?: ReadonlySet<string>
-  startNodeId?: string | null
-  beforeStartNodeIds?: ReadonlySet<string>
-  pausedBeforeNodeId?: string | null
-  canBeautify?: boolean
-  beautifyDisabledReason?: string
-  onBeautify?: (
-    strategy: WorkflowDagLayoutStrategy,
-    swimlaneDirection: WorkflowMaterialSwimlaneDirection
-  ) => void
-  canvasMutationEnabled?: boolean
-  nodePositionMutationEnabled?: boolean
-  onNodePositionChange?: (
-    nodeId: string,
-    position: { x: number; y: number }
-  ) => void
-  onConnectHandles?: (connection: {
-    sourceNodeUuid: string
-    sourceHandleUuid: string
-    targetNodeUuid: string
-    targetHandleUuid: string
-  }) => void
-  onDeleteRequest?: (selection: {
-    nodeUuids: string[]
-    edgeUuids: string[]
-  }) => void
-}
 
 // 注册自定义节点类型(在组件外定义,避免每次渲染重建)
 const nodeTypes = { wfNode: WorkflowNodeCard }
@@ -197,7 +161,7 @@ export default function WorkflowDag({
     () => flowNodes.map((node) => {
       const sourceNode = nodeById.get(node.id)
       const status = sourceNode?.groupKind === 'subworkflow'
-        ? nestedGroupStatus(sourceNode, nodeStates)
+        ? nestedWorkflowGroupStatus(sourceNode, nodeStates)
         : nodeStates[node.id] || 'pending'
       const beforeStart = beforeStartNodeIds.has(node.id)
       const pausedBefore = pausedBeforeNodeId === node.id
@@ -417,7 +381,7 @@ export default function WorkflowDag({
           event.key !== 'Backspace'
         ) return
         if (!onDeleteRequest) return
-        if (isTextEditingTarget(event.target)) return
+        if (isWorkflowTextEditingTarget(event.target)) return
         if (deletionDisabledReason) return
         event.preventDefault()
         event.stopPropagation()
@@ -496,99 +460,19 @@ export default function WorkflowDag({
           color="var(--unilab-color-border-strong)"
         />
         <Controls showInteractive={false} />
-        <Panel position="top-right">
-          <div
-            className="workflow-runtime__layout-tools"
-            aria-label="工作流布局工具"
-          >
-            {onDeleteRequest && (
-              <WorkflowButton
-                type="button"
-                className="workflow-runtime__delete-selection"
-                disabled={Boolean(deletionDisabledReason)}
-                disabledReason={deletionDisabledReason || ''}
-                onClick={requestSelectedDeletion}
-              >
-                <span aria-hidden="true">⌫</span>
-                删除选中项
-              </WorkflowButton>
-            )}
-            <select
-              className="workflow-runtime__layout-strategy"
-              aria-label="布局策略"
-              value={layoutStrategy}
-              onChange={handleLayoutStrategyChange}
-            >
-              {WORKFLOW_DAG_LAYOUT_STRATEGIES.map((strategy) => (
-                <option key={strategy.value} value={strategy.value}>
-                  {strategy.label}
-                </option>
-              ))}
-            </select>
-            {layoutStrategy === 'material-swimlanes' && (
-              <div
-                className="workflow-runtime__swimlane-direction"
-                role="group"
-                aria-label="物料泳道方向"
-              >
-                {WORKFLOW_MATERIAL_SWIMLANE_DIRECTIONS.map((direction) => (
-                  <button
-                    key={direction.value}
-                    type="button"
-                    className={swimlaneDirection === direction.value
-                      ? 'is-active'
-                      : undefined}
-                    aria-pressed={swimlaneDirection === direction.value}
-                    title={direction.description}
-                    onClick={() => handleSwimlaneDirectionChange(
-                      direction.value
-                    )}
-                  >
-                    {direction.label}
-                  </button>
-                ))}
-              </div>
-            )}
-            <WorkflowButton
-              type="button"
-              className="workflow-runtime__beautify"
-              disabled={!canBeautify || isBeautifying}
-              disabledReason={isBeautifying
-                ? '正在应用工作流布局，请稍候'
-                : beautifyDisabledReason}
-              aria-label={layoutStrategy === 'material-swimlanes'
-                ? `应用${workflowMaterialSwimlaneDirectionLabel(
-                    swimlaneDirection
-                  )}物料泳道布局`
-                : `应用${workflowDagLayoutStrategyLabel(layoutStrategy)}布局`}
-              title={
-                canBeautify
-                  ? WORKFLOW_DAG_LAYOUT_STRATEGIES.find(
-                      (strategy) => strategy.value === layoutStrategy
-                    )?.description
-                  : beautifyDisabledReason
-              }
-              onClick={handleBeautify}
-            >
-              <svg
-                aria-hidden="true"
-                viewBox="0 0 24 24"
-                fill="none"
-              >
-                <path
-                  d="M12 3l1.35 3.65L17 8l-3.65 1.35L12 13l-1.35-3.65L7 8l3.65-1.35L12 3Z"
-                />
-                <path
-                  d="M18.5 13l.85 2.15L21.5 16l-2.15.85L18.5 19l-.85-2.15L15.5 16l2.15-.85L18.5 13Z"
-                />
-                <path
-                  d="M6 14l.65 1.35L8 16l-1.35.65L6 18l-.65-1.35L4 16l1.35-.65L6 14Z"
-                />
-              </svg>
-              <span>{isBeautifying ? '正在应用' : '应用布局'}</span>
-            </WorkflowButton>
-          </div>
-        </Panel>
+        <WorkflowDagLayoutTools
+          layoutStrategy={layoutStrategy}
+          swimlaneDirection={swimlaneDirection}
+          isBeautifying={isBeautifying}
+          canBeautify={canBeautify}
+          beautifyDisabledReason={beautifyDisabledReason}
+          deletionDisabledReason={deletionDisabledReason}
+          deletionEnabled={Boolean(onDeleteRequest)}
+          onDeleteSelection={requestSelectedDeletion}
+          onLayoutStrategyChange={handleLayoutStrategyChange}
+          onSwimlaneDirectionChange={handleSwimlaneDirectionChange}
+          onBeautify={handleBeautify}
+        />
         <MiniMap
           pannable
           zoomable
@@ -599,36 +483,4 @@ export default function WorkflowDag({
       </ReactFlow>
     </div>
   )
-}
-
-/**
- * 判断删除快捷键是否发生在需要保留原生文本编辑行为的控件内。
- *
- * @param target 键盘事件当前目标。
- * @returns 输入框、文本域、选择框或可编辑区域内返回 true。
- */
-function isTextEditingTarget(target: EventTarget | null): boolean {
-  return target instanceof Element && Boolean(target.closest(
-    'input, textarea, select, [contenteditable="true"]'
-  ))
-}
-
-function nestedGroupStatus(
-  node: WorkflowNode,
-  nodeStates: Readonly<Record<string, string>>
-): string {
-  const statuses = [node.id, ...(node.descendantNodeIds || [])]
-    .map((nodeId) => nodeStates[nodeId])
-    .filter((status): status is string => Boolean(status))
-  if (statuses.includes('failed')) return 'failed'
-  if (statuses.includes('reconciling')) return 'reconciling'
-  if (statuses.includes('running')) return 'running'
-  if (statuses.includes('cancelled')) return 'cancelled'
-  if (
-    statuses.length > 0 &&
-    statuses.every((status) => ['success', 'skipped'].includes(status))
-  ) {
-    return 'success'
-  }
-  return nodeStates[node.id] || 'pending'
 }

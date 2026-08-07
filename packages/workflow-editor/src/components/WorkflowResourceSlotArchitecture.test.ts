@@ -52,6 +52,8 @@ function authoringSource(): string {
   return [
     './PersistentWorkflowAuthoringPanel.tsx',
     './PersistentWorkflowAuthoringView.tsx',
+    './PersistentWorkflowNodePalette.tsx',
+    './PersistentWorkflowNodeInspector.tsx',
     '../hooks/usePersistentWorkflowAuthoring.ts',
     '../hooks/usePersistentWorkflowTaskPanel.ts'
   ].map(source).join('\n')

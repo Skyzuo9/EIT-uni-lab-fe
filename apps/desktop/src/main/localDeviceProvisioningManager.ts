@@ -9,10 +9,10 @@ import type {
   LocalDeviceProvisioningStatus,
   StartLocalDeviceProvisioningInput
 } from '@unilab/device-provisioning'
-import {
-  type DeviceSquareDetail,
-  type DeviceSquareListQuery,
-  type DeviceSquarePage
+import type {
+  DeviceSquareDetail,
+  DeviceSquareListQuery,
+  DeviceSquarePage
 } from '@unilab/services'
 
 import { randomUUID } from 'node:crypto'
@@ -38,6 +38,10 @@ import {
   provisioningRetryAction
 } from './localDeviceProvisioningAdapters'
 import { LocalDeviceProvisioningStore } from './localDeviceProvisioningStore'
+import {
+  resumeProvisioningDownload,
+  startProvisioningDownload
+} from './localDeviceProvisioningDownloads'
 
 type ProvisioningListener = (items: LocalDeviceProvisioning[]) => void
 
@@ -120,69 +124,7 @@ export class LocalDeviceProvisioningManager {
   start(input: StartLocalDeviceProvisioningInput): Promise<LocalDeviceProvisioning> {
     return this.exclusive(async () => {
       const active = this.runtime.getDeviceProvisioningRuntime()
-      const now = new Date().toISOString()
-      let record: LocalDeviceProvisioning = {
-        schemaVersion: 'local-device-provisioning/v1',
-        provisioningId: randomUUID(),
-        cloudEnvironment: input.cloudEnvironment,
-        templateUuid: input.templateUuid,
-        cloudDeviceName: '',
-        cloudDisplayName: '',
-        packageName: '',
-        packageVersion: '',
-        artifactDigest: '',
-        catalogDigest: '',
-        definitionFqid: '',
-        cacheKey: '',
-        configurationSchema: {},
-        configuration: null,
-        instanceId: '',
-        instanceUuid: '',
-        displayName: '',
-        graphPath: active.runtime.graphPath,
-        graphFingerprint: '',
-        backupPath: '',
-        actionCount: 0,
-        status: 'requested',
-        diagnostic: null,
-        createdAt: now,
-        updatedAt: now
-      }
-      record = await this.save(record)
-      try {
-        record = await this.transition(record, 'resolving')
-        const square = createCloudDeviceSquare(input.cloudEnvironment)
-        const detail = await square.getDeviceDetail(input.templateUuid)
-        record = await this.saveCloudDetail(record, detail)
-        const candidate = await square.resolvePackageCandidate(
-          input.templateUuid,
-          detail
-        )
-        record = await this.save({
-          ...record,
-          packageName: candidate.packageName,
-          packageVersion: candidate.version,
-          artifactDigest: candidate.artifactDigest,
-          catalogDigest: candidate.catalogDigest,
-          definitionFqid: candidate.definitionFqid
-        })
-        record = await this.transition(record, 'downloading')
-        const downloaded = await downloadDevicePackageWithCli(
-          devicePackageCliConfig(active.runtime, input.cloudEnvironment),
-          candidate
-        )
-        record = await this.transition({
-          ...record,
-          packageName: downloaded.distribution,
-          packageVersion: downloaded.version,
-          cacheKey: downloaded.cacheKey,
-          catalogDigest: downloaded.catalogDigest,
-          configurationSchema: downloaded.configurationSchema
-        }, 'package_cached')
-        return this.transition(record, 'configuration_required')
-      } catch (error) {
-        return this.fail(record, record.status, error)
-      }
+      return startProvisioningDownload(input, active, this.downloadOperations())
     })
   }
 
@@ -425,39 +367,11 @@ export class LocalDeviceProvisioningManager {
     record: LocalDeviceProvisioning
   ): Promise<LocalDeviceProvisioning> {
     const active = this.assertRuntime(record)
-    try {
-      record = await this.transition(record, 'resolving')
-      const square = createCloudDeviceSquare(record.cloudEnvironment)
-      const detail = await square.getDeviceDetail(record.templateUuid)
-      record = await this.saveCloudDetail(record, detail)
-      const candidate = await square.resolvePackageCandidate(
-        record.templateUuid,
-        detail
-      )
-      record = await this.save({
-        ...record,
-        packageName: candidate.packageName,
-        packageVersion: candidate.version,
-        artifactDigest: candidate.artifactDigest,
-        catalogDigest: candidate.catalogDigest,
-        definitionFqid: candidate.definitionFqid
-      })
-      record = await this.transition(record, 'downloading')
-      const downloaded = await downloadDevicePackageWithCli(
-        devicePackageCliConfig(active.runtime, record.cloudEnvironment),
-        candidate
-      )
-      return this.transition({
-        ...record,
-        packageName: downloaded.distribution,
-        packageVersion: downloaded.version,
-        cacheKey: downloaded.cacheKey,
-        catalogDigest: downloaded.catalogDigest,
-        configurationSchema: downloaded.configurationSchema
-      }, 'configuration_required')
-    } catch (error) {
-      return this.fail(record, record.status, error)
-    }
+    return resumeProvisioningDownload(
+      record,
+      active,
+      this.downloadOperations()
+    )
   }
 
   /** 从本地 `/api/v1/devices` 确认实例在线且至少一个 Action 合同可见。 */
@@ -513,41 +427,6 @@ export class LocalDeviceProvisioningManager {
     return record
   }
 
-  /**
-   * 在包兼容性校验前持久化云端展示身份和可诊断发布字段。
-   *
-   * @param record 当前候选本地设备接入（LocalDeviceProvisioning）持久事实。
-   * @param detail 已由服务校验模板 UUID 的云端设备详情。
-   * @returns 已保存名称、包摘要和定义线索的同一接入记录。
-   */
-  private saveCloudDetail(
-    record: LocalDeviceProvisioning,
-    detail: DeviceSquareDetail
-  ): Promise<LocalDeviceProvisioning> {
-    const packageInfo = detail.packageInfo
-    const sourceRegistry = detail.sourceRegistry
-    const effectiveTemplate = detail.effectiveTemplate
-    // 这些字段只用于失败诊断；是否可执行仍由严格包候选解析和 OS 校验决定。
-    const artifactDigest = textValue(
-      packageInfo.artifact_digest ?? packageInfo.sha256
-    )
-    const definitionFqid = textValue(
-      sourceRegistry.source_fqid ?? effectiveTemplate.source_fqid
-    )
-    const displayName = detail.displayName || detail.name
-    return this.save({
-      ...record,
-      cloudDeviceName: detail.name,
-      cloudDisplayName: displayName,
-      packageName: textValue(packageInfo.name),
-      packageVersion: textValue(packageInfo.version),
-      artifactDigest,
-      catalogDigest: textValue(packageInfo.catalog_digest),
-      definitionFqid,
-      displayName: record.displayName || displayName
-    })
-  }
-
   /** 原子保存记录并向 Renderer 发布完整只读投影。 */
   private async save(record: LocalDeviceProvisioning): Promise<LocalDeviceProvisioning> {
     const saved = await this.store.put({
@@ -591,6 +470,22 @@ export class LocalDeviceProvisioningManager {
     })
   }
 
+  /** 把持久化状态推进操作作为下载模块的最小接口。 */
+  private downloadOperations() {
+    return {
+      save: (record: LocalDeviceProvisioning) => this.save(record),
+      transition: (
+        record: LocalDeviceProvisioning,
+        status: LocalDeviceProvisioningStatus
+      ) => this.transition(record, status),
+      fail: (
+        record: LocalDeviceProvisioning,
+        stage: LocalDeviceProvisioningStatus,
+        error: unknown
+      ) => this.fail(record, stage, error)
+    }
+  }
+
   /** 串行化下载、写图、重启和上传，避免共享 Runtime 上的交叉副作用。 */
   private exclusive<Result>(operation: () => Promise<Result>): Promise<Result> {
     if (this.operation) return Promise.reject(new Error('设备包操作正在进行，请稍后再试'))
@@ -602,15 +497,4 @@ export class LocalDeviceProvisioningManager {
     void running.then(clear, clear)
     return running
   }
-
-}
-
-/**
- * 把云端诊断字段收窄为字符串，不把对象隐式序列化进持久事实。
- *
- * @param value 云端详情中的未知 JSON 值。
- * @returns 字符串原值；其他类型返回空字符串。
- */
-function textValue(value: unknown): string {
-  return typeof value === 'string' ? value : ''
 }

@@ -1,9 +1,4 @@
 import AimOutlined from '@ant-design/icons/AimOutlined'
-import FullscreenExitOutlined from '@ant-design/icons/FullscreenExitOutlined'
-import RotateLeftOutlined from '@ant-design/icons/RotateLeftOutlined'
-import RotateRightOutlined from '@ant-design/icons/RotateRightOutlined'
-import ZoomInOutlined from '@ant-design/icons/ZoomInOutlined'
-import ZoomOutOutlined from '@ant-design/icons/ZoomOutOutlined'
 import {
   useCallback,
   useEffect,
@@ -29,6 +24,7 @@ import type {
   MaterialShapeLibrary
 } from './shapeSpec'
 import { CanvasLegend } from './CanvasLegend'
+import { MaterialObliqueControls } from './MaterialObliqueControls'
 import { ObliqueMaterial } from './ObliqueMaterialObject'
 import {
   DEFAULT_VIEWPORT,
@@ -72,7 +68,6 @@ interface DragState {
 }
 
 const LANDMARK_LIMIT = 7
-const ROTATION_BUTTON_STEP_DEG = 15
 const DRAG_ROTATION_RANGE_DEG = 180
 
 /**
@@ -339,75 +334,16 @@ export function MaterialObliqueCanvas({
         onSelectionChange?.([])
       }}
     >
-      <header className="material-oblique-canvas__header">
-        <div className="material-oblique-canvas__identity">
-          <strong>实验室 2.5D</strong>
-          <span>{scene.objects.length} 个对象</span>
-        </div>
-        <div
-          className="material-oblique-canvas__camera"
-          role="group"
-          aria-label="2.5D 视图控制"
-        >
-          <button
-            type="button"
-            aria-label="向左旋转 2.5D 视图"
-            title="向左旋转"
-            onClick={() => rotateBy(-ROTATION_BUTTON_STEP_DEG)}
-          >
-            <RotateLeftOutlined aria-hidden="true" />
-          </button>
-          <output aria-label="当前旋转角度">
-            {Math.round(rotationDeg)}°
-          </output>
-          <button
-            type="button"
-            aria-label="向右旋转 2.5D 视图"
-            title="向右旋转"
-            onClick={() => rotateBy(ROTATION_BUTTON_STEP_DEG)}
-          >
-            <RotateRightOutlined aria-hidden="true" />
-          </button>
-          <button
-            type="button"
-            aria-label="缩小 2.5D 视图"
-            disabled={camera.zoom <= MIN_CAMERA_ZOOM}
-            title="缩小"
-            onClick={() => changeZoom(1 / 1.25)}
-          >
-            <ZoomOutOutlined aria-hidden="true" />
-          </button>
-          <output aria-label="当前缩放比例">
-            {Math.round(camera.zoom * 100)}%
-          </output>
-          <button
-            type="button"
-            aria-label="放大 2.5D 视图"
-            disabled={camera.zoom >= MAX_CAMERA_ZOOM}
-            title="放大"
-            onClick={() => changeZoom(1.25)}
-          >
-            <ZoomInOutlined aria-hidden="true" />
-          </button>
-          <button
-            type="button"
-            aria-label="适应全部物料"
-            title="适应全部"
-            onClick={fitAll}
-          >
-            <FullscreenExitOutlined aria-hidden="true" />
-          </button>
-          <button
-            type="button"
-            aria-label="聚焦已选物料"
-            disabled={!selectedObject}
-            title="聚焦已选"
-            onClick={() => focusObject(selectedObject)}
-          >
-            <AimOutlined aria-hidden="true" />
-          </button>
-        </div>
-      </header>
+      <MaterialObliqueControls
+        objectCount={scene.objects.length}
+        rotationDeg={rotationDeg}
+        camera={camera}
+        selectedObject={selectedObject}
+        onRotate={rotateBy}
+        onZoom={changeZoom}
+        onFitAll={fitAll}
+        onFocus={focusObject}
+      />
       <p id={instructionsId} className="material-oblique-canvas__sr-only">
         滚轮缩放，左右拖动画布旋转，按住 Shift 拖动可平移，回车或空格选择物料，按
         Escape 清除选择，按 Control 或 Command 可多选。
