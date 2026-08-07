@@ -44,6 +44,7 @@ function useSaveDraftShortcut(
     runtimeBusy,
     saveDraft,
     taskInputForm,
+    workflowImportMismatch,
     workflowStartBusy
   } = model
   const moreMenuRef = useRef<HTMLDetailsElement | null>(null)
@@ -55,7 +56,8 @@ function useSaveDraftShortcut(
         (event.ctrlKey || event.metaKey)
       const saveBlocked = busy || runtimeBusy || workflowStartBusy ||
         !aggregate || Boolean(fullSourceDiff) || Boolean(pendingMode) ||
-        Boolean(remoteConflict) || Boolean(taskInputForm)
+        Boolean(remoteConflict) || Boolean(workflowImportMismatch) ||
+        Boolean(taskInputForm)
       if (!isSaveShortcut || saveBlocked) return
       event.preventDefault()
       saveDraft()
@@ -71,6 +73,7 @@ function useSaveDraftShortcut(
     runtimeBusy,
     saveDraft,
     taskInputForm,
+    workflowImportMismatch,
     workflowStartBusy
   ])
 

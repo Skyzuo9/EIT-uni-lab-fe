@@ -66,6 +66,10 @@ interface PersistentWorkflowDraftPersistenceOptions {
     message: string
   ) => void
   readRemoteConflict: () => Promise<void>
+  presentWorkflowImportMismatch: (
+    saveError: unknown,
+    pythonSource: string
+  ) => Promise<boolean>
   refreshWorkflowCatalogsAfterConflict: () => Promise<{
     action: WorkflowActionCatalogSnapshot
   }>
@@ -107,6 +111,7 @@ export function usePersistentWorkflowDraftPersistence({
   run,
   installAggregate,
   readRemoteConflict,
+  presentWorkflowImportMismatch,
   refreshWorkflowCatalogsAfterConflict,
   setGraph,
   setCanvasDirty,
@@ -168,6 +173,10 @@ export function usePersistentWorkflowDraftPersistence({
             setPendingPythonImport(null)
           }
         } catch (saveError) {
+          if (await presentWorkflowImportMismatch(
+            saveError,
+            editorValue
+          )) return
           if (!isAuthoringConflict(saveError)) throw saveError
           remotePending.current = true
           await readRemoteConflict()
@@ -270,6 +279,10 @@ export function usePersistentWorkflowDraftPersistence({
         const failureAction = authoringSaveFailureAction(saveError)
         if (failureAction === 'close_diff_and_report') {
           setFullSourceDiff(null)
+          if (await presentWorkflowImportMismatch(
+            saveError,
+            decision.python_source
+          )) return
           throw saveError
         }
         if (failureAction === 'report') throw saveError

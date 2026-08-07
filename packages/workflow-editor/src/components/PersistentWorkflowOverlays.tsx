@@ -3,6 +3,7 @@ import { SlideOverDrawer } from '@unilab/design-system'
 import { workflowIoMetadata } from '../utils/persistentAuthoringProjection'
 import { WorkflowActionParameterDrawer } from './WorkflowActionParameterDrawer'
 import { WorkflowButton } from './WorkflowButton'
+import { WorkflowImportMismatchDialog } from './WorkflowImportMismatchDialog'
 import { WorkflowIoEditor } from './WorkflowIoEditor'
 import { WorkflowIoSummary } from './WorkflowIoSummary'
 import { WorkflowTaskInputForm } from './WorkflowTaskInputForm'
@@ -30,10 +31,13 @@ export function PersistentWorkflowOverlays({
     busy,
     cancelFullSourceDiff,
     closeTaskInputForm,
+    continueEditingWorkflowImport,
     discardAndSwitch,
+    discardWorkflowImport,
     fullSourceDiff,
     graph,
     mode,
+    openImportedWorkflow,
     pendingMode,
     policy,
     remoteConflict,
@@ -63,6 +67,7 @@ export function PersistentWorkflowOverlays({
     updateTaskInput,
     updateTypedField,
     updateTypedFieldFromRaw,
+    workflowImportMismatch,
     workflowIoOpen
   } = model
 
@@ -245,6 +250,18 @@ export function PersistentWorkflowOverlays({
             </footer>
           </section>
         </div>
+      )}
+
+      {workflowImportMismatch && (
+        <WorkflowImportMismatchDialog
+          prompt={workflowImportMismatch}
+          busy={busy}
+          onContinueEditing={continueEditingWorkflowImport}
+          onDiscardImport={discardWorkflowImport}
+          onOpenImportedWorkflow={workflowImportMismatch.canOpenImportedWorkflow
+            ? openImportedWorkflow
+            : undefined}
+        />
       )}
 
       {remoteConflict && (

@@ -37,6 +37,7 @@ import {
   workflowGraphJsonProjection,
   workflowIoMetadata
 } from '../utils/persistentAuthoringProjection'
+import { isWorkflowImportMismatch } from '../utils/workflowImportMismatch'
 import type {
   FullSourceDiff,
   PersistentWorkflowAuthoringOptions,
@@ -48,10 +49,10 @@ import { usePersistentWorkflowAuthoritySync } from './usePersistentWorkflowAutho
 import { usePersistentWorkflowCatalogs } from './usePersistentWorkflowCatalogs'
 import { usePersistentWorkflowDraftPersistence } from './usePersistentWorkflowDraftPersistence'
 import { usePersistentWorkflowEditMode } from './usePersistentWorkflowEditMode'
-import { usePersistentWorkflowFileImport } from './usePersistentWorkflowFileImport'
 import { usePersistentWorkflowStartCoordinator } from './usePersistentWorkflowStartCoordinator'
 import { usePersistentWorkflowTaskPanel } from './usePersistentWorkflowTaskPanel'
 import { usePersistentWorkflowTransform } from './usePersistentWorkflowTransform'
+import { useWorkflowImportFlow } from './useWorkflowImportFlow'
 import { useWorkflowPanelRuntimeProjection } from './useWorkflowPanelRuntimeProjection'
 
 export type { PersistentWorkflowAuthoringOptions } from './persistentWorkflowAuthoringTypes'
@@ -64,7 +65,10 @@ export function usePersistentWorkflowAuthoring({
   onUnsavedChangesChange,
   onWorkflowRuntimeProjectionChange,
   onSelectedWorkflowStepChange,
-  onChooseWorkflow
+  onChooseWorkflow,
+  initialPythonImport,
+  onInitialPythonImportConsumed,
+  onOpenWorkflow
 }: PersistentWorkflowAuthoringOptions) {
   const [mode, setMode] = useState<WorkflowEditMode>('code')
   const [codeProjection, setCodeProjection] =
@@ -108,8 +112,6 @@ export function usePersistentWorkflowAuthoring({
   const [pendingMode, setPendingMode] = useState<WorkflowEditMode | null>(null)
   const [fullSourceDiff, setFullSourceDiff] =
     useState<FullSourceDiff | null>(null)
-  const [pendingPythonImport, setPendingPythonImport] =
-    useState<string | null>(null)
   const [remoteConflict, setRemoteConflict] =
     useState<RemoteConflict | null>(null)
   const operationQueue = useRef<AuthoringOperationQueue | null>(null)
@@ -175,35 +177,6 @@ export function usePersistentWorkflowAuthoring({
     setCanvasDirty,
     setMessage
   })
-
-  const fileUpload = usePersistentWorkflowFileImport({
-    workflowUuid,
-    localState,
-    generateCanvasPython,
-    run: async (operation) => {
-      setBusy(true)
-      setError(null)
-      try {
-        await operation()
-      } catch (operationError) {
-        setError(errorMessage(operationError))
-      } finally {
-        setBusy(false)
-      }
-    },
-    replaceEditorContent: editor.replaceContent,
-    updateEditorContent: editor.updateContent,
-    setMode,
-    setGraph,
-    setCanvasDirty,
-    setSelectedNodeUuid,
-    setSelectedNodeName,
-    setSelectedNodeNameDirty,
-    setPendingPythonImport,
-    setMessage,
-    setError
-  })
-
 
   const structure = useMemo(
     () => graph
@@ -297,6 +270,47 @@ export function usePersistentWorkflowAuthoring({
     }
   }, [])
 
+  const {
+    consumeInitialPythonImport,
+    continueEditingWorkflowImport,
+    discardWorkflowImport,
+    fileUpload,
+    openImportedWorkflow,
+    pendingPythonImport,
+    presentWorkflowImportMismatch,
+    setPendingPythonImport,
+    workflowImportMismatch
+  } = useWorkflowImportFlow({
+    runtime,
+    workflowUuid,
+    aggregate,
+    initialPythonImport,
+    onInitialPythonImportConsumed,
+    onOpenWorkflow,
+    updateEditorContent: editor.updateContent,
+    replaceEditorContent: editor.replaceContent,
+    run,
+    generateCanvasPython,
+    restoreAggregate: installAggregate,
+    localState,
+    setMode,
+    setGraph,
+    setCanvasDirty,
+    setSelectedNodeUuid,
+    setSelectedNodeName,
+    setSelectedNodeNameDirty,
+    setFullSourceDiff,
+    setError,
+    setMessage,
+    clearRemotePending: () => {
+      remotePending.current = false
+    }
+  })
+
+  useEffect(() => {
+    if (aggregate) consumeInitialPythonImport(aggregate)
+  }, [aggregate, consumeInitialPythonImport])
+
   const { requestMode, discardAndSwitch } = usePersistentWorkflowEditMode({
     aggregate,
     mode,
@@ -337,6 +351,7 @@ export function usePersistentWorkflowAuthoring({
     run,
     installAggregate,
     readRemoteConflict,
+    presentWorkflowImportMismatch,
     refreshWorkflowCatalogsAfterConflict,
     setGraph,
     setCanvasDirty,
@@ -395,6 +410,7 @@ export function usePersistentWorkflowAuthoring({
     applyCandidateByHash: draftPersistence.applyCandidateByHash,
     installAggregate,
     readRemoteConflict,
+    presentWorkflowImportMismatch,
     openTaskInput: taskPanel.openTaskInputFormForAuthority,
     run,
     setGraph,
@@ -404,7 +420,8 @@ export function usePersistentWorkflowAuthoring({
     setFullSourceDiff,
     setMode,
     setMessage,
-    setError
+    setError,
+    isErrorHandled: isWorkflowImportMismatch
   })
 
   const {
@@ -446,11 +463,14 @@ export function usePersistentWorkflowAuthoring({
     applyCandidate, beautifyCanvasLayout,
     busy, cancelFullSourceDiff, candidateIo, codeProjection,
     diagnostics,
-    dirty, discardAndSwitch, editor, effectiveMaterialSourceCatalog, error,
+    continueEditingWorkflowImport,
+    dirty, discardAndSwitch, discardWorkflowImport,
+    editor, effectiveMaterialSourceCatalog, error,
     fileUpload, fullSourceDiff, graph, jsonProjectionEditor,
     materialSourceAuthorityBlocked, materialSourceCatalogError,
     materialSourceCatalogLoading, materialTraces, message, mode,
-    nodePaletteOpen, onChooseWorkflow, pendingMode, policy, projectionKind,
+    nodePaletteOpen, onChooseWorkflow, openImportedWorkflow,
+    pendingMode, policy, projectionKind,
     refreshMaterialSourceCatalog, remoteConflict, requestMode,
     retryLocalAfterConflict, runtime, saveDraft,
     selectedNodeName, selectedNodeUuid,
@@ -458,7 +478,7 @@ export function usePersistentWorkflowAuthoring({
     setFullSourceDiff, setGraph, setMessage, setNodePaletteOpen,
     setPendingMode, setRemoteConflict, setSelectedNodeName,
     setSelectedNodeNameDirty, setSelectedNodeUuid, setWorkflowIoOpen, structure,
-    traceRuntime, workflowIoOpen, workflowUuid,
+    traceRuntime, workflowImportMismatch, workflowIoOpen, workflowUuid,
     ...canvasNodeEditor,
     ...taskPanel,
     ...workflowStartCoordinator

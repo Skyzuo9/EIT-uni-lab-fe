@@ -10,6 +10,9 @@ import type { WorkflowPanelRuntimeProjection } from '../workflowPanelProjection'
 import type {
   WorkflowResourceSlotOptionsPort
 } from '../utils/workflowResourceSlotOptions'
+import type {
+  WorkflowPythonImport
+} from '../hooks/persistentWorkflowAuthoringTypes'
 import {
   persistActiveWorkflowId,
   readActiveWorkflowId
@@ -31,6 +34,10 @@ export interface WorkflowPanelProps {
     projection: WorkflowPanelRuntimeProjection | null
   ) => void
   onSelectedWorkflowStepChange?: (workflowNodeUuid: string | null) => void
+}
+
+interface WorkflowImportHandoff extends WorkflowPythonImport {
+  workflowUuid: string
 }
 
 /**
@@ -56,6 +63,8 @@ export default function WorkflowPanel({
     string | null
   >(null)
   const [showCatalog, setShowCatalog] = useState(false)
+  const [workflowImportHandoff, setWorkflowImportHandoff] =
+    useState<WorkflowImportHandoff | null>(null)
   const handledCatalogRequestRevision = useRef(catalogRequestRevision)
   const workflowUuid = showCatalog
     ? null
@@ -100,6 +109,28 @@ export default function WorkflowPanel({
           ? onWorkflowRuntimeProjectionChange
           : undefined}
         onSelectedWorkflowStepChange={onSelectedWorkflowStepChange}
+        initialPythonImport={workflowImportHandoff?.workflowUuid === workflowUuid
+          ? workflowImportHandoff
+          : undefined}
+        onInitialPythonImportConsumed={() => {
+          setWorkflowImportHandoff((current) =>
+            current?.workflowUuid === workflowUuid ? null : current
+          )
+        }}
+        onOpenWorkflow={explicitWorkflowUuid
+          ? undefined
+          : (nextWorkflowUuid, importedPython) => {
+              setWorkflowImportHandoff({
+                workflowUuid: nextWorkflowUuid,
+                ...importedPython
+              })
+              persistActiveWorkflowId(
+                activeWorkflowStorageKey,
+                nextWorkflowUuid
+              )
+              setSelectedWorkflowUuid(nextWorkflowUuid)
+              setShowCatalog(false)
+            }}
         onChooseWorkflow={explicitWorkflowUuid
           ? undefined
           : () => {
@@ -115,6 +146,7 @@ export default function WorkflowPanel({
     <WorkflowCatalog
       runtime={runtime}
       onSelect={(nextWorkflowUuid) => {
+        setWorkflowImportHandoff(null)
         persistActiveWorkflowId(activeWorkflowStorageKey, nextWorkflowUuid)
         setSelectedWorkflowUuid(nextWorkflowUuid)
         setShowCatalog(false)

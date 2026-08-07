@@ -52,6 +52,10 @@ interface PersistentWorkflowStartCoordinatorOptions {
     message: string
   ) => void
   readRemoteConflict: () => Promise<void>
+  presentWorkflowImportMismatch: (
+    saveError: unknown,
+    pythonSource: string
+  ) => Promise<boolean>
   openTaskInput: (authority: WorkflowAuthoringAggregate) => Promise<void>
   run: (operation: () => Promise<void>) => Promise<void>
   setGraph: Dispatch<SetStateAction<WorkflowAuthoringGraph | null>>
@@ -62,6 +66,7 @@ interface PersistentWorkflowStartCoordinatorOptions {
   setMode: Dispatch<SetStateAction<WorkflowEditMode>>
   setMessage: Dispatch<SetStateAction<string>>
   setError: Dispatch<SetStateAction<string | null>>
+  isErrorHandled?: (error: unknown) => boolean
 }
 
 /**
@@ -88,6 +93,7 @@ export function usePersistentWorkflowStartCoordinator({
   applyCandidateByHash,
   installAggregate,
   readRemoteConflict,
+  presentWorkflowImportMismatch,
   openTaskInput,
   run,
   setGraph,
@@ -97,7 +103,8 @@ export function usePersistentWorkflowStartCoordinator({
   setFullSourceDiff,
   setMode,
   setMessage,
-  setError
+  setError,
+  isErrorHandled
 }: PersistentWorkflowStartCoordinatorOptions) {
   const workflowStart = usePersistentWorkflowStartFlow({
     context: {
@@ -131,6 +138,10 @@ export function usePersistentWorkflowStartCoordinator({
             installAggregate(saved, draftSaveMessage(saved))
             return { kind: 'saved' as const, aggregate: saved, editMode: mode }
           } catch (saveError) {
+            if (await presentWorkflowImportMismatch(
+              saveError,
+              editorValue
+            )) throw saveError
             if (!isAuthoringConflict(saveError)) throw saveError
             remotePending.current = true
             await readRemoteConflict()
@@ -193,6 +204,10 @@ export function usePersistentWorkflowStartCoordinator({
           setMode(command.resumeMode)
           return { aggregate: saved, editMode: command.resumeMode }
         } catch (saveError) {
+          if (await presentWorkflowImportMismatch(
+            saveError,
+            command.pythonSource
+          )) throw saveError
           if (!isAuthoringConflict(saveError)) throw saveError
           remotePending.current = true
           const refreshed = await queue.run(
@@ -224,7 +239,8 @@ export function usePersistentWorkflowStartCoordinator({
     },
     setFullSourceDiff,
     setMessage,
-    setError
+    setError,
+    isErrorHandled
   })
 
   return workflowStart
