@@ -60,8 +60,12 @@
   },
   "scripts": {
     "build": "theia download:plugins && theia build --mode development",
+    "build:desktop": "pnpm --filter @unilab/desktop build && pnpm build",
+    "desktop": "pnpm build:desktop && pnpm start:desktop",
     "start": "node scripts/start-workbench.mjs",
+    "start:desktop": "node scripts/start-workbench.mjs --desktop",
     "start:theia-only": "theia start \"${THEIA_WORKSPACE:-../..}\" --hostname 127.0.0.1 --port ${THEIA_PORT:-3100} --plugins=local-dir:plugins",
+    "test": "node --test scripts/*.test.mjs",
     "watch": "theia build --watch --mode development"
   },
   "theia": {
