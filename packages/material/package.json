@@ -29,6 +29,7 @@
   },
   "exports": {
     ".": "./src/index.ts",
-    "./domain": "./src/domain.ts"
+    "./domain": "./src/domain.ts",
+    "./UnifiedMaterialViewport.css": "./src/UnifiedMaterialViewport.css"
   }
 }

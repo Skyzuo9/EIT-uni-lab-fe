@@ -298,27 +298,6 @@
 }
 
 @media (max-width: 720px) {
-  .lab-viewport-controls {
-    bottom: 10px;
-    gap: 5px;
-  }
-
-  .lab-view-mode-toggle button {
-    padding-inline: 8px;
-  }
-
-  .lab-site-layer-toggle button {
-    padding-inline: 8px;
-  }
-
-  .lab-site-layer-toggle button span {
-    display: none;
-  }
-
-  .lab-material-role-filter > summary span {
-    display: none;
-  }
-
   .lab-panel-workspace [data-panel-tab-drop-owner] {
     min-height: 0;
     border-bottom: 0;

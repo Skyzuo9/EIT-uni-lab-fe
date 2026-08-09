@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -25,5 +27,17 @@ describe('UnifiedMaterialViewport', () => {
     expect(markup).toContain('<span>2.5D</span>')
     expect(markup).toContain('<span>3D</span>')
     expect(markup).toContain('<span>分屏</span>')
+  })
+
+  it('owns the shared site-layer switch chrome', () => {
+    const styles = readFileSync(
+      new URL('./UnifiedMaterialViewport.css', import.meta.url),
+      'utf8'
+    )
+
+    expect(styles).toContain('.lab-site-layer-toggle i::after')
+    expect(styles).toContain(
+      '.lab-site-layer-toggle button.is-active.is-transfer'
+    )
   })
 })

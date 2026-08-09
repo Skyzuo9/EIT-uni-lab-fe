@@ -1,4 +1,5 @@
 @import '@unilab/pascal-host/styles.css';
+@import '@unilab/material/UnifiedMaterialViewport.css';
 
 .unilab-theia-prototype {
   display: flex;
@@ -109,68 +110,6 @@
   flex: 1 1 auto;
 }
 
-.unilab-theia-prototype .lab-viewport-controls {
-  position: absolute;
-  z-index: 80;
-  bottom: 18px;
-  left: 50%;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  transform: translateX(-50%);
-}
-
-.unilab-theia-prototype .lab-view-mode-toggle,
-.unilab-theia-prototype .lab-site-layer-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  padding: 3px;
-  border: 1px solid var(--unilab-color-border-strong);
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--unilab-color-bg) 92%, transparent);
-  box-shadow: 0 8px 30px rgb(15 23 42 / 18%);
-  backdrop-filter: blur(14px);
-}
-
-.unilab-theia-prototype .lab-view-mode-toggle button,
-.unilab-theia-prototype .lab-site-layer-toggle button {
-  display: inline-flex;
-  min-height: 32px;
-  align-items: center;
-  gap: 6px;
-  padding: 0 10px;
-  color: var(--unilab-color-text-muted);
-  border: 0;
-  border-radius: 9px;
-  background: transparent;
-  font: 600 12px/1 var(--unilab-font-sans);
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.unilab-theia-prototype .lab-view-mode-toggle button.is-active,
-.unilab-theia-prototype .lab-site-layer-toggle button.is-active {
-  color: var(--unilab-color-primary);
-  background: var(--unilab-color-bg);
-  box-shadow: 0 1px 5px rgb(15 23 42 / 14%);
-}
-
-.unilab-theia-prototype .lab-view-mode-toggle svg,
-.unilab-theia-prototype .lab-site-layer-toggle svg {
-  width: 15px;
-  height: 15px;
-  fill: none;
-  stroke: currentcolor;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 1.35;
-}
-
-.unilab-theia-prototype .lab-site-layer-toggle i {
-  display: none;
-}
-
 .unilab-theia-prototype .lab-unified-viewport__error,
 .unilab-workbench-material-loading {
   display: grid;
@@ -181,12 +120,6 @@
   color: var(--unilab-color-text-muted);
   background: var(--unilab-color-canvas);
   text-align: center;
-}
-
-@media (max-width: 1180px) {
-  .unilab-theia-prototype .lab-site-layer-toggle button span {
-    display: none;
-  }
 }
 
 .unilab-theia-prototype__surface > .workflow-runtime {
