@@ -33,6 +33,56 @@ test.describe('UniLab Authoring Workbench real-system contract', () => {
       workspacePath: expectedWorkspace,
       workDir: expectedWorkspace
     })
+    const managedConversation = await agentFrame.locator('body').evaluate(
+      async (_, workspacePath) => {
+        const response = await fetch('/api/conversations', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            name: 'UniLab managed Workspace E2E',
+            assistant: {
+              id: 'bare:8e1acf31',
+              locale: 'zh-CN',
+              conversation_overrides: {
+                model: 'gpt-5.6-sol',
+                permission: 'auto',
+                thought_level: 'low',
+                skill_ids: [],
+                disabled_builtin_skill_ids: [],
+                mcp_ids: []
+              }
+            },
+            extra: {
+              workspace: '',
+              custom_workspace: false,
+              default_files: []
+            }
+          })
+        })
+        if (!response.ok) throw new Error(`create failed: ${response.status}`)
+        const envelope = await response.json() as {
+          data: {
+            id: string
+            assistant?: { backend?: string }
+            extra?: Record<string, unknown>
+          }
+        }
+        return envelope.data
+      },
+      expectedWorkspace
+    )
+    expect(managedConversation).toMatchObject({
+      assistant: { backend: 'codex' },
+      extra: {
+        workspace: expectedWorkspace
+      }
+    })
+    await agentFrame.locator('body').evaluate(async (_, conversationId) => {
+      const response = await fetch(`/api/conversations/${conversationId}`, {
+        method: 'DELETE'
+      })
+      if (!response.ok) throw new Error(`cleanup failed: ${response.status}`)
+    }, managedConversation.id)
     await expect.poll(async () => page.evaluate(() => ({
       readyState: document.readyState,
       title: document.title

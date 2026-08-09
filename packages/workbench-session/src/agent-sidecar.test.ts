@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   isProtectedAgentRequest,
+  managedConversationRequestBody,
   managedLocalAgentAuthStatus
 } from './agent-sidecar'
 
@@ -31,6 +32,39 @@ describe('Workbench Agent managed-local identity bridge', () => {
         name: 'UniLab Local',
         username: 'system_default_user',
         avatarUrl: null
+      }
+    })
+  })
+})
+
+describe('Workbench Agent managed Workspace binding', () => {
+  it('replaces AionUI temporary mode without changing the selected assistant', () => {
+    const body = Buffer.from(JSON.stringify({
+      name: 'Inspect the project',
+      assistant: {
+        id: 'bare:2d23ff1c',
+        conversation_overrides: { permission: 'auto' }
+      },
+      extra: {
+        workspace: '',
+        custom_workspace: false,
+        default_files: []
+      }
+    }))
+
+    expect(JSON.parse(managedConversationRequestBody(
+      body,
+      '/workspace/Uni-Lab-SZLab'
+    ).toString('utf8'))).toEqual({
+      name: 'Inspect the project',
+      assistant: {
+        id: 'bare:2d23ff1c',
+        conversation_overrides: { permission: 'auto' }
+      },
+      extra: {
+        workspace: '/workspace/Uni-Lab-SZLab',
+        custom_workspace: true,
+        default_files: []
       }
     })
   })

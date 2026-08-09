@@ -67,6 +67,7 @@ const MIME_TYPES = new Map([
   ['.woff2', 'font/woff2']
 ])
 export const PINNED_AIONUI_VERSION = '2.1.52'
+const MANAGED_LOCAL_DEFAULT_ASSISTANT_ID = 'bare:8e1acf31'
 
 /** Start the pinned local Agent implementation for one exact Workspace. */
 export async function startManagedWorkbenchAgent(
@@ -142,6 +143,7 @@ export async function startManagedWorkbenchAgent(
   try {
     await waitForHealth(child, backendPort, options.readinessTimeoutMs ?? 60_000)
     sanitizeLocalIdentityDatabase(dataDir)
+    await ensureManagedLocalAgentDefaults(backendPort)
     const server = await startRendererProxy({
       backendPort,
       publicPort,
@@ -223,6 +225,37 @@ function sanitizeLocalIdentityDatabase(dataDir: string): void {
     }
   } finally {
     database.close()
+  }
+}
+
+/** Seed Codex only for a fresh profile; later explicit assistant choices persist. */
+async function ensureManagedLocalAgentDefaults(backendPort: number): Promise<void> {
+  const endpoint = `http://127.0.0.1:${backendPort}/api/settings/client`
+  const currentResponse = await fetch(
+    `${endpoint}?keys=${encodeURIComponent('guid.lastAssistantId')}`,
+    { signal: AbortSignal.timeout(2_000) }
+  )
+  if (!currentResponse.ok) {
+    throw new Error('UniLab Agent could not read managed-local defaults')
+  }
+  const currentPayload: unknown = await currentResponse.json()
+  const currentSettings = isRecord(currentPayload) &&
+    isRecord(currentPayload['data'])
+    ? currentPayload['data']
+    : null
+  if (currentSettings && typeof currentSettings['guid.lastAssistantId'] ===
+    'string') return
+
+  const updateResponse = await fetch(endpoint, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      'guid.lastAssistantId': MANAGED_LOCAL_DEFAULT_ASSISTANT_ID
+    }),
+    signal: AbortSignal.timeout(2_000)
+  })
+  if (!updateResponse.ok) {
+    throw new Error('UniLab Agent could not seed the Codex default')
   }
 }
 
@@ -387,7 +420,11 @@ async function routeRequest(
       response.end(JSON.stringify({ error: 'Workbench private state is protected' }))
       return
     }
-    proxyRequest(request, response, options.backendPort, body)
+    const upstreamBody = pathname === '/api/conversations' &&
+      request.method === 'POST'
+      ? managedConversationRequestBody(body, options.workspacePath)
+      : body
+    proxyRequest(request, response, options.backendPort, upstreamBody)
     return
   }
   await serveStatic(request, response, {
@@ -445,6 +482,29 @@ function managedLocalBootstrapScript(): string {
   return `try {
     localStorage.setItem('onboarding.openingGuideSeen_v1', 'true')
   } catch {}`
+}
+
+/** Bind every newly created conversation to the exact Workbench Workspace. */
+export function managedConversationRequestBody(
+  body: Buffer,
+  workspacePath: string
+): Buffer {
+  let payload: unknown
+  try {
+    payload = JSON.parse(body.toString('utf8'))
+  } catch {
+    return body
+  }
+  if (!isRecord(payload)) return body
+  const extra = isRecord(payload['extra']) ? payload['extra'] : {}
+  return Buffer.from(JSON.stringify({
+    ...payload,
+    extra: {
+      ...extra,
+      workspace: workspacePath,
+      custom_workspace: true
+    }
+  }))
 }
 
 function brandingScript(): string {
