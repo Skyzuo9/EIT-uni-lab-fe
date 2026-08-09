@@ -14,5 +14,9 @@
   },
   "exports": {
     ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@electron/asar": "3.4.1",
+    "original-fs": "1.2.0"
   }
 }

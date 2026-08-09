@@ -5,6 +5,7 @@ const materialCreateFixture =
 const materialObliqueFixture =
   process.env.UNILAB_E2E_MATERIAL_OBLIQUE_FIXTURE === '1'
 const electronFixture = process.env.UNILAB_E2E_ELECTRON === '1'
+const browserExecutable = process.env.UNILAB_E2E_BROWSER_EXECUTABLE
 const baseURL =
   process.env.UNILAB_FE_E2E_URL ||
   (materialObliqueFixture
@@ -26,7 +27,10 @@ export default defineConfig({
     viewport: { width: 1680, height: 1050 },
     colorScheme: 'light',
     locale: 'zh-CN',
-    trace: 'retain-on-failure'
+    trace: 'retain-on-failure',
+    launchOptions: browserExecutable
+      ? { executablePath: browserExecutable }
+      : undefined
   },
   webServer: process.env.UNILAB_FE_E2E_URL || electronFixture
     ? undefined

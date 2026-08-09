@@ -24,7 +24,13 @@ import {
   relative,
   resolve
 } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
+import {
+  startManagedWorkbenchAgent,
+  type ManagedWorkbenchAgent,
+  type WorkbenchAgentIdentity
+} from './agent-sidecar'
 import {
   activatedRuntimeEnvironment,
   runtimeExecutablePaths,
@@ -64,6 +70,31 @@ export interface WorkbenchSessionIdentity {
   generation: string
   logPath: string
   mode: 'simulation'
+  packageMounts: WorkspacePackageMountProjection | null
+  agent: WorkbenchAgentIdentity | null
+}
+
+export interface WorkspacePackageMount {
+  packageId: string
+  distributionName: string
+  version: string
+  namespace: string
+  editable: boolean
+  readOnly: boolean
+  sourceKind: 'workspace'
+  importRootUri: string
+  packageRootUri: string
+  contentDigest: string
+  catalogDigest: string
+}
+
+export interface WorkspacePackageMountProjection {
+  schemaVersion: 'workspace-package-mounts/v1'
+  editablePackageId: string
+  dependencyRevision: string
+  catalogRevision: string
+  mountRevision: string
+  items: readonly WorkspacePackageMount[]
 }
 
 export interface WorkbenchSessionSnapshot {
@@ -84,6 +115,9 @@ export interface ManagedLocalWorkbenchSessionOptions {
   environment?: NodeJS.ProcessEnv
   homeDirectory?: string
   platform?: NodeJS.Platform
+  enableAgent?: boolean
+  agentAppPath?: string
+  agentBrandIconPath?: string
 }
 
 export interface WorkbenchSession {
@@ -93,6 +127,8 @@ export interface WorkbenchSession {
   }
   start(): Promise<WorkbenchSessionSnapshot>
   stop(): Promise<WorkbenchSessionSnapshot>
+  restart(): Promise<WorkbenchSessionSnapshot>
+  readLogTail(maxBytes?: number): Promise<string>
 }
 
 interface ResolvedWorkbenchLaunch {
@@ -126,8 +162,10 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
     snapshot: WorkbenchSessionSnapshot
   ) => void>()
   private child: ChildProcessWithoutNullStreams | null = null
+  private agent: ManagedWorkbenchAgent | null = null
   private starting: Promise<WorkbenchSessionSnapshot> | null = null
   private expectedExit = false
+  private stopRequested = false
 
   constructor(private readonly options: ManagedLocalWorkbenchSessionOptions) {}
 
@@ -145,6 +183,7 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
   start(): Promise<WorkbenchSessionSnapshot> {
     if (this.snapshot.phase === 'ready') return Promise.resolve(this.getSnapshot())
     if (this.starting) return this.starting
+    this.stopRequested = false
     this.starting = this.startManaged()
     return this.starting.finally(() => {
       this.starting = null
@@ -152,6 +191,10 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
   }
 
   async stop(): Promise<WorkbenchSessionSnapshot> {
+    this.stopRequested = true
+    const agent = this.agent
+    this.agent = null
+    if (agent) await agent.stop()
     if (!this.child) {
       this.publish({
         phase: 'idle',
@@ -181,6 +224,26 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
     return this.getSnapshot()
   }
 
+  async restart(): Promise<WorkbenchSessionSnapshot> {
+    await this.stop()
+    return await this.start()
+  }
+
+  async readLogTail(maxBytes = 64 * 1024): Promise<string> {
+    if (!Number.isInteger(maxBytes) || maxBytes < 1 || maxBytes > 1024 * 1024) {
+      throw new Error('Workbench 日志读取上限必须在 1–1048576 字节之间')
+    }
+    const logPath = this.snapshot.identity?.logPath
+    if (!logPath) return ''
+    try {
+      const content = await readFile(logPath)
+      return content.subarray(Math.max(0, content.length - maxBytes)).toString('utf8')
+    } catch (error) {
+      if (isRecord(error) && error['code'] === 'ENOENT') return ''
+      throw error
+    }
+  }
+
   private async startManaged(): Promise<WorkbenchSessionSnapshot> {
     this.publish({
       phase: 'validating',
@@ -201,6 +264,7 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
       })
       throw new Error(diagnostic.message)
     }
+    if (this.stopRequested) return this.getSnapshot()
 
     this.publish({
       phase: 'starting',
@@ -213,6 +277,7 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
         mkdir(dirname(launch.identity.logPath), { recursive: true }),
         mkdir(launch.runtimeDirectory, { recursive: true })
       ])
+      if (this.stopRequested) return this.getSnapshot()
       const log = createWriteStream(launch.identity.logPath, { flags: 'a' })
       log.write(`[workbench] ${new Date().toISOString()} generation=${launch.identity.generation}\n`)
       const child = spawn(launch.command, launch.args, {
@@ -252,11 +317,100 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
         identity: { ...launch.identity },
         diagnostic: null
       })
-      await waitForWorkbenchReadiness(
+      launch.identity.packageMounts = await waitForWorkbenchReadiness(
         launch.identity.backendUrl,
         child,
         this.options.readinessTimeoutMs ?? DEFAULT_READINESS_TIMEOUT_MS
       )
+      if (this.stopRequested) return this.getSnapshot()
+      if (this.options.enableAgent) {
+        const editableMount = launch.identity.packageMounts.items.find(
+          item => item.packageId ===
+            launch.identity.packageMounts?.editablePackageId
+        )
+        if (!editableMount) throw new Error('OS 未发布 Editable Package 挂载')
+        const editablePackagePath = fileURLToPath(editableMount.packageRootUri)
+        try {
+          const agent = await startManagedWorkbenchAgent({
+            workspacePath: launch.identity.workspacePath,
+            editablePackagePath,
+            environment: launch.environment,
+            appPath: this.options.agentAppPath,
+            brandIconPath: this.options.agentBrandIconPath,
+            onUnexpectedExit: message => {
+              if (!this.snapshot.identity) return
+              this.publish({
+                ...this.snapshot,
+                identity: {
+                  ...this.snapshot.identity,
+                  agent: {
+                    implementation: 'aioncore',
+                    productName: 'UniLab Agent',
+                    distributionVersion: 'unknown',
+                    phase: 'failed',
+                    url: null,
+                    iconUrl: null,
+                    pid: null,
+                    dataDir: join(
+                      launch.identity.workspacePath,
+                      '.unilabos',
+                      'agent',
+                      'aionui'
+                    ),
+                    workDir: editablePackagePath,
+                    logPath: join(
+                      launch.identity.workspacePath,
+                      '.unilabos',
+                      'agent',
+                      'aionui',
+                      'logs',
+                      'aioncore.log'
+                    ),
+                    diagnostic: message
+                  }
+                }
+              })
+            }
+          })
+          if (this.stopRequested) {
+            await agent.stop()
+            return this.getSnapshot()
+          }
+          this.agent = agent
+          launch.identity.agent = agent.identity
+        } catch (error) {
+          if (this.stopRequested) return this.getSnapshot()
+          launch.identity.agent = {
+            implementation: 'aioncore',
+            productName: 'UniLab Agent',
+            distributionVersion: 'unknown',
+            phase: 'failed',
+            url: null,
+            iconUrl: null,
+            pid: null,
+            dataDir: join(
+              launch.identity.workspacePath,
+              '.unilabos',
+              'agent',
+              'aionui'
+            ),
+            workDir: editablePackagePath,
+            logPath: join(
+              launch.identity.workspacePath,
+              '.unilabos',
+              'agent',
+              'aionui',
+              'logs',
+              'aioncore.log'
+            ),
+            diagnostic: error instanceof Error ? error.message : String(error)
+          }
+        }
+      }
+      if (this.stopRequested) return this.getSnapshot()
+      if (child.exitCode !== null || child.signalCode !== null) {
+        throw new Error('Uni-Lab OS 在 Workbench 完成就绪前退出')
+      }
       this.publish({
         phase: 'ready',
         message: 'Workspace 与 Uni-Lab OS 已就绪',
@@ -266,12 +420,24 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
       await writeSessionManifest(launch, 'ready')
       return this.getSnapshot()
     } catch (error) {
+      const agent = this.agent
+      this.agent = null
+      if (agent) await agent.stop()
       const child = this.child
       this.child = null
       if (child) {
         this.expectedExit = true
         await stopProcessTree(child)
         this.expectedExit = false
+      }
+      if (this.stopRequested) {
+        this.publish({
+          phase: 'idle',
+          message: 'Uni-Lab OS 已停止',
+          identity: null,
+          diagnostic: null
+        })
+        return this.getSnapshot()
       }
       const source = diagnosticFromError(error)
       const diagnostic: WorkbenchSessionDiagnostic = {
@@ -416,7 +582,9 @@ async function resolveWorkbenchLaunch(
     pid: 0,
     generation,
     logPath,
-    mode: 'simulation'
+    mode: 'simulation',
+    packageMounts: null,
+    agent: null
   }
   return {
     identity,
@@ -491,7 +659,7 @@ async function waitForWorkbenchReadiness(
   backendUrl: string,
   child: ChildProcessWithoutNullStreams,
   timeoutMs: number
-): Promise<void> {
+): Promise<WorkspacePackageMountProjection> {
   const probes: Array<[string, (payload: unknown) => boolean]> = [
     ['/api/v1/health', isHealthReady],
     ['/api/v1/workflow-node-templates', isSuccessfulEnvelope],
@@ -528,6 +696,143 @@ async function waitForWorkbenchReadiness(
         '检查 OS 日志、依赖和端口占用后重试'
       )
     }
+  }
+  const mountPayload = await fetchWorkbenchReadinessPayload(
+    backendUrl,
+    child,
+    '/api/v1/workspace/package-mounts',
+    timeoutMs
+  )
+  return parseWorkspacePackageMountProjection(mountPayload)
+}
+
+async function fetchWorkbenchReadinessPayload(
+  backendUrl: string,
+  child: ChildProcessWithoutNullStreams,
+  path: string,
+  timeoutMs: number
+): Promise<unknown> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (child.exitCode !== null || child.signalCode !== null) {
+      throw new WorkbenchLaunchError(
+        'os_readiness_failed',
+        `Uni-Lab OS 在 ${path} 就绪前退出`,
+        '检查 OS 启动日志并修复依赖或配置错误'
+      )
+    }
+    try {
+      const response = await fetch(`${backendUrl}${path}`, {
+        signal: AbortSignal.timeout(1_000)
+      })
+      if (response.ok) return await response.json()
+    } catch {
+      // The managed process is still publishing the fixed workspace generation.
+    }
+    await delay(200)
+  }
+  throw new WorkbenchLaunchError(
+    'os_readiness_failed',
+    `等待 Uni-Lab OS 就绪超时：${backendUrl}${path}`,
+    '确认 OS 版本支持 workspace-package-mounts/v1 后重试'
+  )
+}
+
+export function parseWorkspacePackageMountProjection(
+  payload: unknown
+): WorkspacePackageMountProjection {
+  if (!isRecord(payload) || payload['code'] !== 0 || !isRecord(payload['data'])) {
+    throw new WorkbenchLaunchError(
+      'os_readiness_failed',
+      'Uni-Lab OS 未返回有效的 Workspace 软件包挂载信封',
+      '升级到支持 workspace-package-mounts/v1 的 Uni-Lab OS'
+    )
+  }
+  const data = payload['data']
+  const items = data['items']
+  if (
+    data['schemaVersion'] !== 'workspace-package-mounts/v1' ||
+    !nonEmptyString(data['editablePackageId']) ||
+    !nonEmptyString(data['dependencyRevision']) ||
+    !nonEmptyString(data['catalogRevision']) ||
+    !nonEmptyString(data['mountRevision']) ||
+    !Array.isArray(items) || items.length === 0
+  ) {
+    throw new WorkbenchLaunchError(
+      'os_readiness_failed',
+      'Uni-Lab OS Workspace 软件包挂载投影形状无效',
+      '检查 OS 包目录编译诊断并重新启动 Workbench'
+    )
+  }
+  const parsedItems = items.map(parseWorkspacePackageMount)
+  const packageIds = new Set(parsedItems.map(item => item.packageId))
+  const editableItems = parsedItems.filter(item => item.editable)
+  if (
+    packageIds.size !== parsedItems.length || editableItems.length !== 1 ||
+    editableItems[0]?.packageId !== data['editablePackageId']
+  ) {
+    throw new WorkbenchLaunchError(
+      'os_readiness_failed',
+      'Uni-Lab OS Workspace 软件包挂载身份冲突',
+      '修复重复包身份或可编辑包选择后重试'
+    )
+  }
+  return {
+    schemaVersion: 'workspace-package-mounts/v1',
+    editablePackageId: data['editablePackageId'],
+    dependencyRevision: data['dependencyRevision'],
+    catalogRevision: data['catalogRevision'],
+    mountRevision: data['mountRevision'],
+    items: parsedItems
+  }
+}
+
+function parseWorkspacePackageMount(value: unknown): WorkspacePackageMount {
+  if (
+    !isRecord(value) ||
+    !nonEmptyString(value['packageId']) ||
+    !nonEmptyString(value['distributionName']) ||
+    !nonEmptyString(value['version']) ||
+    !nonEmptyString(value['namespace']) ||
+    typeof value['editable'] !== 'boolean' ||
+    value['readOnly'] !== !value['editable'] ||
+    value['sourceKind'] !== 'workspace' ||
+    !fileUri(value['importRootUri']) ||
+    !fileUri(value['packageRootUri']) ||
+    !nonEmptyString(value['contentDigest']) ||
+    !nonEmptyString(value['catalogDigest'])
+  ) {
+    throw new WorkbenchLaunchError(
+      'os_readiness_failed',
+      'Uni-Lab OS 返回了无效的软件包挂载项',
+      '检查 OS PackageCatalog 与 WorkspaceSource 配对'
+    )
+  }
+  return {
+    packageId: value['packageId'],
+    distributionName: value['distributionName'],
+    version: value['version'],
+    namespace: value['namespace'],
+    editable: value['editable'],
+    readOnly: value['readOnly'],
+    sourceKind: 'workspace',
+    importRootUri: value['importRootUri'],
+    packageRootUri: value['packageRootUri'],
+    contentDigest: value['contentDigest'],
+    catalogDigest: value['catalogDigest']
+  }
+}
+
+function nonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && Boolean(value.trim())
+}
+
+function fileUri(value: unknown): value is string {
+  if (!nonEmptyString(value)) return false
+  try {
+    return new URL(value).protocol === 'file:'
+  } catch {
+    return false
   }
 }
 
@@ -758,7 +1063,13 @@ function mergePathList(
 function cloneSnapshot(snapshot: WorkbenchSessionSnapshot): WorkbenchSessionSnapshot {
   return {
     ...snapshot,
-    identity: snapshot.identity ? { ...snapshot.identity } : null,
+    identity: snapshot.identity ? {
+      ...snapshot.identity,
+      packageMounts: snapshot.identity.packageMounts ? {
+        ...snapshot.identity.packageMounts,
+        items: snapshot.identity.packageMounts.items.map(item => ({ ...item }))
+      } : null
+    } : null,
     diagnostic: snapshot.diagnostic ? { ...snapshot.diagnostic } : null
   }
 }

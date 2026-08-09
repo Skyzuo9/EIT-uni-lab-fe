@@ -7,7 +7,7 @@ The package owns the parts that must behave identically in both products:
 
 - the `WorkflowIdeBridge` React port used by `@unilab/workflow-editor`;
 - node-to-range and cursor-to-node mapping;
-- `package://` parsing and workspace candidate paths;
+- `package://` parsing and exact OS-published package mount resolution;
 - the dirty/save/source-version state machine that prevents stale reverse
   mapping.
 

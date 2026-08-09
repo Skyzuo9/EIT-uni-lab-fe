@@ -69,6 +69,16 @@ describe('managed local Workbench session', () => {
     expect(ready.identity?.pid).toBeGreaterThan(0)
     expect(ready.identity?.generation).toMatch(/^[0-9a-f-]{36}$/)
     expect(ready.identity?.backendUrl).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/)
+    expect(ready.identity?.packageMounts).toMatchObject({
+      schemaVersion: 'workspace-package-mounts/v1',
+      editablePackageId: 'fixture_lab',
+      items: [{
+        packageId: 'fixture_lab',
+        editable: true,
+        readOnly: false,
+        packageRootUri: `file://${fixture.workspacePath}/fixture_lab`
+      }]
+    })
     expect(ready.identity?.logPath).toBe(join(
       fixture.workspacePath,
       '.unilabos',
@@ -142,6 +152,115 @@ describe('managed local Workbench session', () => {
       await new Promise<void>(resolveClose => owner.close(() => resolveClose()))
     }
   })
+
+  it('deduplicates starts and restarts with a new process generation', async () => {
+    const fixture = await createFixture()
+    const session = createManagedLocalWorkbenchSession({
+      workspacePath: fixture.workspacePath,
+      osProjectPath: fixture.osProjectPath,
+      environmentPath: fixture.environmentPath,
+      readinessTimeoutMs: 5_000
+    })
+    sessions.push(session)
+
+    const [first, duplicate] = await Promise.all([session.start(), session.start()])
+    expect(duplicate.identity?.generation).toBe(first.identity?.generation)
+    const firstPid = first.identity?.pid ?? 0
+    const restarted = await session.restart()
+
+    expect(restarted.phase).toBe('ready')
+    expect(restarted.identity?.generation).not.toBe(first.identity?.generation)
+    expect(restarted.identity?.pid).not.toBe(firstPid)
+    expect(await session.readLogTail()).toContain(
+      `generation=${restarted.identity?.generation}`
+    )
+    await session.stop()
+    expect(session.getSnapshot()).toEqual({
+      phase: 'idle',
+      message: 'Uni-Lab OS 已停止',
+      identity: null,
+      diagnostic: null
+    })
+  })
+
+  it('stops during readiness without publishing a false failure', async () => {
+    const fixture = await createFixture()
+    const session = createManagedLocalWorkbenchSession({
+      workspacePath: fixture.workspacePath,
+      osProjectPath: fixture.osProjectPath,
+      environmentPath: fixture.environmentPath,
+      readinessTimeoutMs: 5_000
+    })
+    sessions.push(session)
+    const waiting = new Promise<void>(resolveWaiting => {
+      const disposable = session.onDidChange(snapshot => {
+        if (snapshot.phase !== 'waiting') return
+        disposable.dispose()
+        resolveWaiting()
+      })
+    })
+
+    const starting = session.start()
+    await waiting
+    await session.stop()
+
+    await expect(starting).resolves.toMatchObject({ phase: 'idle' })
+    expect(session.getSnapshot()).toMatchObject({
+      phase: 'idle',
+      identity: null,
+      diagnostic: null
+    })
+  })
+
+  it('fails closed with logs when OS exits before readiness', async () => {
+    const fixture = await createFixture()
+    const session = createManagedLocalWorkbenchSession({
+      workspacePath: fixture.workspacePath,
+      osProjectPath: fixture.osProjectPath,
+      environmentPath: fixture.environmentPath,
+      environment: { UNILAB_FIXTURE_EXIT_BEFORE_READY: '1' },
+      readinessTimeoutMs: 1_000
+    })
+    sessions.push(session)
+
+    await expect(session.start()).rejects.toThrow(/就绪前退出|fetch failed/)
+    const failed = session.getSnapshot()
+    expect(failed).toMatchObject({
+      phase: 'failed',
+      diagnostic: { code: 'os_readiness_failed' }
+    })
+    expect(failed.identity?.logPath).toContain('/.unilabos/logs/workbench/')
+  })
+
+  it('publishes an actionable failure and clears the child after a runtime crash', async () => {
+    const fixture = await createFixture()
+    const session = createManagedLocalWorkbenchSession({
+      workspacePath: fixture.workspacePath,
+      osProjectPath: fixture.osProjectPath,
+      environmentPath: fixture.environmentPath,
+      environment: {
+        ...process.env,
+        UNILAB_FIXTURE_EXIT_AFTER_READY_MS: '250'
+      },
+      readinessTimeoutMs: 5_000
+    })
+    sessions.push(session)
+    const failed = new Promise<void>(resolveFailed => {
+      const disposable = session.onDidChange(snapshot => {
+        if (snapshot.phase !== 'failed') return
+        disposable.dispose()
+        resolveFailed()
+      })
+    })
+
+    await session.start()
+    await failed
+    expect(session.getSnapshot()).toMatchObject({
+      phase: 'failed',
+      diagnostic: { code: 'os_exited' }
+    })
+    await expect(session.stop()).resolves.toMatchObject({ phase: 'idle' })
+  })
 })
 
 async function createFixture(): Promise<{
@@ -182,6 +301,8 @@ function fakeUnilabExecutable(): string {
 const http = require('node:http')
 const args = process.argv.slice(2)
 const port = Number(args[args.indexOf('--port') + 1])
+if (process.env.UNILAB_FIXTURE_EXIT_BEFORE_READY === '1') process.exit(17)
+let exitScheduled = false
 const json = (response, body) => {
   response.writeHead(200, { 'content-type': 'application/json' })
   response.end(JSON.stringify(body))
@@ -197,6 +318,35 @@ const server = http.createServer((request, response) => {
       data: {
         schemaVersion: 'device-catalog/v1',
         items: [{ id: 'fixture_device', actions: ['ping'] }]
+      }
+    })
+  }
+  if (request.url === '/api/v1/workspace/package-mounts') {
+    if (process.env.UNILAB_FIXTURE_EXIT_AFTER_READY_MS && !exitScheduled) {
+      exitScheduled = true
+      setTimeout(() => process.exit(23), Number(process.env.UNILAB_FIXTURE_EXIT_AFTER_READY_MS))
+    }
+    return json(response, {
+      code: 0,
+      data: {
+        schemaVersion: 'workspace-package-mounts/v1',
+        editablePackageId: 'fixture_lab',
+        dependencyRevision: 'sha256:none',
+        catalogRevision: 'sha256:catalog',
+        mountRevision: 'sha256:mount',
+        items: [{
+          packageId: 'fixture_lab',
+          distributionName: 'fixture-lab',
+          version: '1.0.0',
+          namespace: 'community.fixture_lab',
+          editable: true,
+          readOnly: false,
+          sourceKind: 'workspace',
+          importRootUri: 'file://' + process.cwd(),
+          packageRootUri: 'file://' + process.cwd() + '/fixture_lab',
+          contentDigest: 'sha256:content',
+          catalogDigest: 'sha256:catalog'
+        }]
       }
     })
   }

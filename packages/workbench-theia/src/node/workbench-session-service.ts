@@ -22,7 +22,10 @@ implements WorkbenchSessionServer, BackendApplicationContribution {
     createManagedLocalWorkbenchSession({
       workspacePath: process.env['THEIA_WORKSPACE'] ?? '',
       osProjectPath: process.env['UNILAB_OS_PROJECT'],
-      environmentPath: process.env['UNILAB_PYTHON_ENV']
+      environmentPath: process.env['UNILAB_PYTHON_ENV'],
+      enableAgent: process.env['UNILAB_AGENT_ENABLED'] !== '0',
+      agentAppPath: process.env['UNILAB_AIONUI_APP'],
+      agentBrandIconPath: process.env['UNILAB_AGENT_ICON']
     })
   private sessionListener: Disposable | undefined
 
@@ -42,6 +45,18 @@ implements WorkbenchSessionServer, BackendApplicationContribution {
 
   start() {
     return this.session.start()
+  }
+
+  stop() {
+    return this.session.stop()
+  }
+
+  restart() {
+    return this.session.restart()
+  }
+
+  readLogTail(maxBytes?: number) {
+    return this.session.readLogTail(maxBytes)
   }
 
   setClient(client: WorkbenchSessionClient): void {

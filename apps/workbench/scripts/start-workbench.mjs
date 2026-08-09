@@ -7,18 +7,18 @@ import { fileURLToPath } from 'node:url'
 
 import {
   createWorkbenchRendererUrl,
-  resolveWorkbenchLaunchMode
+  discoverWorkbenchPythonEnvironment,
+  resolveWorkbenchLaunchConfiguration
 } from './workbench-launch.mjs'
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url))
 const workspaceRoot = path.resolve(scriptDirectory, '../../..')
 const desktopRoot = path.join(workspaceRoot, 'apps', 'desktop')
-const launchMode = resolveWorkbenchLaunchMode(process.argv.slice(2))
-
-const workspace = path.resolve(process.env.THEIA_WORKSPACE ?? process.cwd())
-const osProject = process.env.UNILAB_OS_PROJECT
-const pythonEnvironment = process.env.UNILAB_PYTHON_ENV
-const port = Number(process.env.THEIA_PORT ?? 3100)
+const launch = resolveWorkbenchLaunchConfiguration(process.argv.slice(2))
+const launchMode = launch.mode
+const workspace = launch.workspace
+const osProject = launch.osProject
+const port = launch.port
 
 if (!existsSync(workspace)) {
   throw new Error(`Workspace does not exist: ${workspace}`)
@@ -31,43 +31,41 @@ if (!osProject) {
 if (!existsSync(path.resolve(osProject))) {
   throw new Error(`Uni-Lab-OS project does not exist: ${osProject}`)
 }
-if (!Number.isInteger(port) || port < 1024 || port > 65_535) {
-  throw new Error(`THEIA_PORT must be between 1024 and 65535: ${port}`)
-}
+const pythonEnvironment = await discoverWorkbenchPythonEnvironment({
+  selected: launch.pythonEnvironment
+})
 
 console.log(`[UniLab Workbench] workspace: ${workspace}`)
 console.log(`[UniLab Workbench] OS project: ${path.resolve(osProject)}`)
 console.log('[UniLab Workbench] OS lifecycle: managed-local')
 console.log(`[UniLab Workbench] shell: ${launchMode}`)
-if (pythonEnvironment) {
-  console.log(`[UniLab Workbench] Python environment: ${path.resolve(pythonEnvironment)}`)
-}
+console.log(`[UniLab Workbench] Python environment: ${pythonEnvironment}`)
 
-const activatedEnvironment = pythonEnvironment
-  ? {
-      ...process.env,
-      CONDA_PREFIX: path.resolve(pythonEnvironment),
-      CONDA_DEFAULT_ENV: path.basename(path.resolve(pythonEnvironment)),
-      PATH: [
-        path.join(
-          path.resolve(pythonEnvironment),
-          process.platform === 'win32' ? 'Scripts' : 'bin'
-        ),
-        process.env.PATH
-      ].filter(Boolean).join(path.delimiter),
-      PYTHONPATH: [
-        path.resolve(osProject),
-        workspace,
-        process.env.PYTHONPATH
-      ].filter(Boolean).join(path.delimiter)
-    }
-  : process.env
+const activatedEnvironment = {
+  ...process.env,
+  CONDA_PREFIX: pythonEnvironment,
+  CONDA_DEFAULT_ENV: path.basename(pythonEnvironment),
+  PATH: [
+    path.join(
+      pythonEnvironment,
+      process.platform === 'win32' ? 'Scripts' : 'bin'
+    ),
+    process.env.PATH
+  ].filter(Boolean).join(path.delimiter),
+  PYTHONPATH: [
+    path.resolve(osProject),
+    workspace,
+    process.env.PYTHONPATH
+  ].filter(Boolean).join(path.delimiter),
+  UNILAB_AGENT_ICON: process.env.UNILAB_AGENT_ICON ??
+    path.join(desktopRoot, 'build', 'icon.png')
+}
 
 // Interactive zsh reads the user's startup files after inheriting this process'
 // environment. A common `conda init` setup auto-activates `base` there, which
 // would make the terminal disagree with Pyright and the managed OS process.
 // Source the user's normal rc first, then re-activate the Workbench environment.
-if (pythonEnvironment && process.platform !== 'win32' && process.env.SHELL?.endsWith('/zsh')) {
+if (process.platform !== 'win32' && process.env.SHELL?.endsWith('/zsh')) {
   const shellRuntime = path.join(
     workspace,
     '.unilabos',
@@ -99,7 +97,7 @@ if (pythonEnvironment && process.platform !== 'win32' && process.env.SHELL?.ends
   Object.assign(activatedEnvironment, {
     ZDOTDIR: shellRuntime,
     UNILAB_ORIGINAL_ZDOTDIR: originalZdotdir,
-    UNILAB_PYTHON_ENV: path.resolve(pythonEnvironment)
+    UNILAB_PYTHON_ENV: pythonEnvironment
   })
 }
 
@@ -116,7 +114,8 @@ const theia = spawn('theia', [
   env: {
     ...activatedEnvironment,
     THEIA_WORKSPACE: workspace,
-    UNILAB_OS_PROJECT: path.resolve(osProject)
+    UNILAB_OS_PROJECT: path.resolve(osProject),
+    UNILAB_PYTHON_ENV: pythonEnvironment
   }
 })
 
@@ -144,7 +143,7 @@ if (launchMode === 'desktop') {
   const rendererUrl = createWorkbenchRendererUrl({
     port,
     workspace,
-    workflowUuid: process.env.UNILAB_WORKFLOW_UUID
+    workflowUuid: launch.workflowUuid
   })
   void launchDesktop(rendererUrl).catch(error => {
     console.error(

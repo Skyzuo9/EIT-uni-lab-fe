@@ -28,11 +28,7 @@ export function useWorkflowIdeSourceProjection({
   )
   const onProjectionChange = ideBridge?.onSourceProjectionChange
   useEffect(() => {
-    if (projection) onProjectionChange?.(projection)
+    onProjectionChange?.(projection)
   }, [onProjectionChange, projection])
-  useEffect(
-    () => () => onProjectionChange?.(null),
-    [onProjectionChange]
-  )
   return projection
 }

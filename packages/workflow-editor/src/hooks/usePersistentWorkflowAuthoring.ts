@@ -85,7 +85,8 @@ export function usePersistentWorkflowAuthoring({
   onWorkflowRuntimeProjectionChange,
   onSelectedWorkflowStepChange,
   onChooseWorkflow,
-  ideBridge
+  ideBridge,
+  hideEmbeddedCodeEditor = false
 }: PersistentWorkflowAuthoringOptions) {
   const [mode, setMode] = useState<WorkflowEditMode>('code')
   const [codeProjection, setCodeProjection] =
@@ -112,7 +113,11 @@ export function usePersistentWorkflowAuthoring({
   const [selectedNodeNameDirty, setSelectedNodeNameDirty] = useState(false)
   const [actionParametersOpen, setActionParametersOpen] = useState(false)
   const [workflowIoOpen, setWorkflowIoOpen] = useState(false)
-  const [nodePaletteOpen, setNodePaletteOpen] = useState(true)
+  // 外部 IDE 已占用同窗宽度时，默认把节点库收起；用户仍可显式展开。
+  // Kernel Web 保持原有默认展开行为。
+  const [nodePaletteOpen, setNodePaletteOpen] = useState(
+    () => !hideEmbeddedCodeEditor
+  )
   const [message, setMessage] = useState('正在读取 OS 工作流编辑状态…')
   const [error, setError] = useState<string | null>(null)
   const {
@@ -125,6 +130,34 @@ export function usePersistentWorkflowAuthoring({
     refreshMaterialSourceCatalog,
     refreshWorkflowCatalogsAfterConflict
   } = usePersistentWorkflowCatalogs({ runtime, graph, setError })
+  // Resource-template source navigation uses the same exact package identity
+  // as Workflow navigation. Re-entering that source deterministically selects
+  // the first MaterialSource/ResourceSlot consumer in the current graph.
+  useEffect(() => {
+    const sourceUri = ideBridge?.activeSourceUri
+    if (!sourceUri || !graph || !effectiveMaterialSourceCatalog) return
+    const templateUuids = new Set(
+      effectiveMaterialSourceCatalog.resourceTemplates
+        .filter(template => template.sourceUri === sourceUri)
+        .map(template => template.uuid)
+    )
+    if (templateUuids.size === 0) return
+    const matches = graph.nodes.filter(node => {
+      if (node.type !== 'material_source' || !node.param ||
+        typeof node.param !== 'object' || Array.isArray(node.param)) return false
+      return templateUuids.has(String(
+        (node.param as Record<string, unknown>)['resource_template_uuid'] ?? ''
+      ))
+    }).sort((left, right) => String(left.uuid).localeCompare(String(right.uuid)))
+    const match = matches[0]
+    const matchUuid = match ? String(match.uuid) : null
+    if (matchUuid && matchUuid !== selectedNodeUuid) setSelectedNodeUuid(matchUuid)
+  }, [
+    effectiveMaterialSourceCatalog,
+    graph,
+    ideBridge?.activeSourceUri,
+    selectedNodeUuid
+  ])
   const [busy, setBusy] = useState(false)
   const [pendingMode, setPendingMode] = useState<WorkflowEditMode | null>(null)
   const [fullSourceDiff, setFullSourceDiff] =
@@ -1188,7 +1221,11 @@ export function usePersistentWorkflowAuthoring({
     setFullSourceDiff, setGraph, setMessage, setNodePaletteOpen,
     setPendingMode, setRemoteConflict, setSelectedNodeName,
     setSelectedNodeNameDirty, setSelectedNodeUuid, setWorkflowIoOpen, structure,
-    traceRuntime, workflowIoOpen, workflowUuid,
+    ideBridgeConnected: Boolean(ideBridge?.onSourceProjectionChange),
+    revealPackageSource: (sourceUri: string) => {
+      ideBridge?.onRevealPackageSource?.({ sourceUri })
+    },
+    sourceProjection, traceRuntime, workflowIoOpen, workflowUuid,
     ...canvasNodeEditor,
     ...taskPanel,
     ...workflowStart

@@ -793,6 +793,13 @@ importers:
         version: 5.9.3
 
   packages/workbench-session:
+    dependencies:
+      '@electron/asar':
+        specifier: 3.4.1
+        version: 3.4.1
+      original-fs:
+        specifier: 1.2.0
+        version: 1.2.0
     devDependencies:
       '@types/node':
         specifier: ^22.10.0
@@ -6532,6 +6539,9 @@ packages:
   ora@5.4.1:
     resolution: {integrity: sha512-5b6Y85tPxZZ7QytO+BQzysW31HJku27cRIlkbAXaNx+BdcVi+LlRFmVXzeF6a7JCwJpyw5c4b+YSVImQIrBpuQ==}
     engines: {node: '>=10'}
+
+  original-fs@1.2.0:
+    resolution: {integrity: sha512-IGo+qFumpIV65oDchJrqL0BOk9kr82fObnTesNJt8t3YgP6vfqcmRs0ofPzg3D9PKMeBHt7lrg1k/6L+oFdS8g==}
 
   os-homedir@1.0.2:
     resolution: {integrity: sha512-B5JU3cabzk8c67mRRd3ECmROafjYMXbuzlwtqdM8IbS8ktlTix8aFGb2bAGKrSRIlnfKwovGUUr72JUPyOb6kQ==}
@@ -15512,6 +15522,8 @@ snapshots:
       log-symbols: 4.1.0
       strip-ansi: 6.0.1
       wcwidth: 1.0.1
+
+  original-fs@1.2.0: {}
 
   os-homedir@1.0.2: {}
 

@@ -2,13 +2,28 @@ import { expect, test } from '@playwright/test'
 
 const prototypeUrl = process.env.UNILAB_THEIA_PROTOTYPE_URL
 
-test.describe('Theia workflow prototype visual contract', () => {
+test.describe('UniLab Authoring Workbench real-system contract', () => {
   test.skip(!prototypeUrl, 'UNILAB_THEIA_PROTOTYPE_URL is required')
 
-  test('renders Python tokens and keeps the workflow canvas usable', async ({
+  test('binds the exact package source and keeps bidirectional authoring usable', async ({
     page
   }) => {
     await page.goto(prototypeUrl!)
+    const workbench = page.locator('[data-package-mount-count="1"]')
+    await expect(workbench).toBeVisible()
+    await expect(workbench).toHaveAttribute('data-session-mode', 'simulation')
+    await expect(workbench).toHaveAttribute(
+      'data-workspace-graph-fingerprint',
+      /^[0-9a-f]{64}$/
+    )
+    await expect(workbench).toHaveAttribute(
+      'data-package-catalog-revision',
+      /^sha256:[0-9a-f]{64}$/
+    )
+    await page.getByRole('button', { name: '查看 OS 日志' }).click()
+    await expect(page.getByTestId('session-log-tail')).toContainText(
+      '[workbench]'
+    )
     await expect(page.getByText('完整控制流 DAG')).toBeVisible()
     await page.locator('.react-flow__node').first().click()
     await expect(page.locator('.monaco-editor .view-line').first()).toBeVisible()

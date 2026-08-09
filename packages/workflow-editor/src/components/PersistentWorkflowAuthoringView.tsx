@@ -47,6 +47,7 @@ export function PersistentWorkflowAuthoringView({
     effectiveMaterialSourceCatalog,
     error,
     graph,
+    ideBridgeConnected,
     jsonProjectionEditor,
     materialSourceAuthorityBlocked,
     materialSourceCatalogError,
@@ -59,6 +60,7 @@ export function PersistentWorkflowAuthoringView({
     policy,
     projectionKind,
     refreshMaterialSourceCatalog,
+    revealPackageSource,
     runRuntime,
     runtime,
     runtimeBusy,
@@ -89,6 +91,7 @@ export function PersistentWorkflowAuthoringView({
     setTraceViewerOpen,
     setWorkflowIoOpen,
     sourceSelectedNodeUuid,
+    sourceProjection,
     structure,
     task,
     taskControls,
@@ -113,6 +116,12 @@ export function PersistentWorkflowAuthoringView({
         'relative flex h-full w-full flex-col',
         'bg-[var(--unilab-color-canvas)] text-[var(--unilab-color-text)]'
       ].join(' ')}
+      data-workflow-source-uri={sourceProjection?.sourceUri ?? ''}
+      data-workflow-source-version={sourceProjection?.sourceVersion ?? ''}
+      data-workflow-source-mapping={sourceProjection?.mappingAvailable
+        ? 'available'
+        : 'unavailable'}
+      data-workflow-ide-bridge={ideBridgeConnected ? 'connected' : 'missing'}
     >
       <PersistentWorkflowToolbar model={model} />
 
@@ -525,6 +534,7 @@ export function PersistentWorkflowAuthoringView({
                             selectedMaterialSourceEditor,
                             patch
                           )}
+                          onRevealSource={revealPackageSource}
                         />
                       )}
                       {selectedMaterialSourceProjection.error && (

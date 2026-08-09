@@ -12,4 +12,7 @@ export interface WorkbenchSessionServer {
   setClient(client: WorkbenchSessionClient): void
   getSnapshot(): Promise<WorkbenchSessionSnapshot>
   start(): Promise<WorkbenchSessionSnapshot>
+  stop(): Promise<WorkbenchSessionSnapshot>
+  restart(): Promise<WorkbenchSessionSnapshot>
+  readLogTail(maxBytes?: number): Promise<string>
 }

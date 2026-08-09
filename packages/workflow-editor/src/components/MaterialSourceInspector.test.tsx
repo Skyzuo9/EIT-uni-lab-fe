@@ -44,6 +44,7 @@ function rendersClosedSelectorInPublicGraphOrder(): void {
       status="material_waiting"
       diagnostics={[]}
       onChange={vi.fn(ignoreMaterialSourceChange)}
+      onRevealSource={vi.fn()}
     />
   )
 
@@ -51,6 +52,7 @@ function rendersClosedSelectorInPublicGraphOrder(): void {
   expect(markup).toContain('等待物料')
   expect(markup).toContain('物料角色')
   expect(markup).toContain('资源模板')
+  expect(markup).toContain('在代码中打开资源模板')
   expect(markup).toContain('已有物料')
   expect(markup).toContain('新建物料')
   expect(markup).toContain('挂载点')
@@ -107,7 +109,8 @@ function editor(): MaterialSourceEditorProjection {
     flowRole: 'primary_sample',
     resourceTemplates: [{
       uuid: '60000000-0000-4000-8000-000000000001',
-      displayName: '384 Well Plate'
+      displayName: '384 Well Plate',
+      sourceUri: 'package://catalog_lab/definitions.py'
     }],
     mounts: [{
       uuid: '50000000-0000-4000-8000-000000000001',

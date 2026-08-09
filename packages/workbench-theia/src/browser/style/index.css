@@ -279,6 +279,14 @@
   box-shadow: 0 0 0 2px color-mix(in srgb, #41c77a 18%, transparent);
 }
 
+.unilab-aionui__logo {
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  object-fit: contain;
+  background: #fff;
+}
+
 .unilab-aionui__name {
   font-weight: 600;
 }
@@ -318,4 +326,18 @@
   flex: 1 1 auto;
   border: 0;
   background: #fff;
+}
+
+.unilab-agent__gate {
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  text-align: center;
+}
+
+.unilab-agent__gate p {
+  max-width: 360px;
+  margin: 0;
+  color: var(--theia-descriptionForeground);
 }
