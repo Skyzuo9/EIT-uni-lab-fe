@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "pnpm --filter @unilab/kernel-web dev",
     "dev:desktop": "pnpm --filter @unilab/desktop dev",
-    "prototype:theia": "pnpm --filter @unilab/theia-workflow-prototype-extension build && pnpm --filter @unilab/theia-workflow-prototype build && pnpm --filter @unilab/theia-workflow-prototype start",
+    "workbench": "pnpm --filter @unilab/workbench-theia build && pnpm --filter @unilab/workbench build && pnpm --filter @unilab/workbench start",
     "build": "pnpm -r --if-present build",
     "build:web": "pnpm --filter @unilab/kernel-web build",
     "build:desktop": "pnpm --filter @unilab/desktop build",

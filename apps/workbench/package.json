@@ -1,6 +1,6 @@
 {
-  "name": "@unilab/theia-workflow-prototype",
-  "version": "0.0.0-prototype",
+  "name": "@unilab/workbench",
+  "version": "0.1.0",
   "private": true,
   "dependencies": {
     "@theia/ai-core": "1.74.1",
@@ -27,6 +27,7 @@
     "@theia/preferences": "1.74.1",
     "@theia/process": "1.74.1",
     "@theia/scm": "1.74.1",
+    "@theia/scm-extra": "1.74.1",
     "@theia/search-in-workspace": "1.74.1",
     "@theia/terminal": "1.74.1",
     "@theia/task": "1.74.1",
@@ -37,7 +38,7 @@
     "@theia/variable-resolver": "1.74.1",
     "@theia/vsx-registry": "1.74.1",
     "@theia/workspace": "1.74.1",
-    "@unilab/theia-workflow-prototype-extension": "workspace:*",
+    "@unilab/workbench-theia": "workspace:*",
     "node-pty": "1.2.0-beta.12",
     "reflect-metadata": "0.2.2"
   },
@@ -47,7 +48,6 @@
     "trash": "7.2.0"
   },
   "devDependencies": {
-    "@electron/asar": "3.4.1",
     "@theia/bundle-plugin": "1.74.1",
     "@theia/cli": "1.74.1",
     "esbuild": "0.28.2",
@@ -60,7 +60,7 @@
   },
   "scripts": {
     "build": "theia download:plugins && theia build --mode development",
-    "start": "node scripts/start-integrated.mjs",
+    "start": "node scripts/start-workbench.mjs",
     "start:theia-only": "theia start \"${THEIA_WORKSPACE:-../..}\" --hostname 127.0.0.1 --port ${THEIA_PORT:-3100} --plugins=local-dir:plugins",
     "watch": "theia build --watch --mode development"
   },
@@ -68,6 +68,8 @@
     "target": "browser"
   },
   "theiaPlugins": {
-    "ms-pyright.pyright": "https://open-vsx.org/api/ms-pyright/pyright/1.1.402/file/ms-pyright.pyright-1.1.402.vsix"
+    "ms-pyright.pyright": "https://open-vsx.org/api/ms-pyright/pyright/1.1.402/file/ms-pyright.pyright-1.1.402.vsix",
+    "vscode.git-base": "https://open-vsx.org/api/vscode/git-base/1.95.3/file/vscode.git-base-1.95.3.vsix",
+    "vscode.git": "https://open-vsx.org/api/vscode/git/1.95.3/file/vscode.git-1.95.3.vsix"
   }
 }

@@ -11,8 +11,8 @@ import { registerPythonSyntaxHighlighting } from './python-monarch'
 import { TheiaWorkflowPrototypeWidget } from './theia-workflow-prototype-widget'
 
 export const OpenTheiaWorkflowPrototype: Command = {
-  id: 'unilab.theia-workflow-prototype.open',
-  label: 'Open Uni-Lab Workflow Prototype'
+  id: 'unilab.authoring-workbench.open',
+  label: 'Open UniLab Authoring Workbench'
 }
 
 @injectable()

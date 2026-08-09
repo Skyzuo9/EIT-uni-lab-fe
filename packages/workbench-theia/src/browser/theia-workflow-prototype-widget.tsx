@@ -38,15 +38,18 @@ import {
   type WorkflowSourceLocation,
   type WorkflowSourceProjection
 } from '@unilab/workflow-ide-bridge'
+import type { WorkbenchSessionSnapshot } from '@unilab/workbench-session'
 import * as React from 'react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+
+import { WorkbenchSessionServer } from '../common/workbench-session-protocol'
 
 type SourceSaveHandler = (pythonSource: string) => Promise<void>
 
 @injectable()
 export class TheiaWorkflowPrototypeWidget extends ReactWidget {
-  static readonly ID = 'unilab:theia-workflow-prototype'
-  static readonly LABEL = 'Uni-Lab Workflow'
+  static readonly ID = 'unilab:authoring-workbench'
+  static readonly LABEL = 'UniLab Authoring'
 
   @inject(EditorManager)
   protected readonly editorManager!: EditorManager
@@ -60,23 +63,49 @@ export class TheiaWorkflowPrototypeWidget extends ReactWidget {
   @inject(WorkspaceService)
   protected readonly workspaceService!: WorkspaceService
 
+  @inject(WorkbenchSessionServer)
+  protected readonly workbenchSession!: WorkbenchSessionServer
+
   protected editorListeners = new DisposableCollection()
   protected snapshot = createWorkflowIdeSyncState()
+  protected sessionSnapshot: WorkbenchSessionSnapshot = {
+    phase: 'idle',
+    message: '正在连接 Workbench Backend…',
+    identity: null,
+    diagnostic: null
+  }
   protected sourceSaveHandler: SourceSaveHandler | null = null
 
   @postConstruct()
   protected init(): void {
     this.id = TheiaWorkflowPrototypeWidget.ID
     this.title.label = TheiaWorkflowPrototypeWidget.LABEL
-    this.title.caption = 'Workflow / material integration prototype'
+    this.title.caption = 'UniLab Material and Workflow Authoring Workbench'
     this.title.closable = false
     this.title.iconClass = 'codicon codicon-type-hierarchy-sub'
     this.toDispose.push(Disposable.create(() => this.editorListeners.dispose()))
     this.toDispose.push(this.editorManager.onCurrentEditorChanged(() => {
       this.observeCurrentEditor()
     }))
+    const sessionPoll = globalThis.setInterval(() => {
+      void this.refreshSessionSnapshot()
+    }, 300)
+    this.toDispose.push(Disposable.create(() => {
+      globalThis.clearInterval(sessionPoll)
+    }))
+    void this.refreshSessionSnapshot()
     this.observeCurrentEditor()
     this.update()
+  }
+
+  protected async refreshSessionSnapshot(): Promise<void> {
+    this.sessionSnapshot = await this.workbenchSession.getSnapshot()
+    this.update()
+  }
+
+  protected readonly retrySession = async (): Promise<void> => {
+    await this.workbenchSession.start().catch(() => undefined)
+    await this.refreshSessionSnapshot()
   }
 
   protected observeCurrentEditor(): void {
@@ -191,14 +220,27 @@ export class TheiaWorkflowPrototypeWidget extends ReactWidget {
   }
 
   protected override render(): React.ReactElement {
+    if (
+      this.sessionSnapshot.phase !== 'ready'
+      || !this.sessionSnapshot.identity
+    ) {
+      return (
+        <WorkbenchSessionGate
+          snapshot={this.sessionSnapshot}
+          onRetry={this.retrySession}
+        />
+      )
+    }
     const ideBridge: WorkflowIdeBridge = {
       sourcePosition: this.snapshot.sourcePosition,
       onRevealSourceLocation: this.revealSourceLocation,
       onSourceProjectionChange: this.setSourceProjection
     }
     return (
-      <PrototypeSurface
+      <WorkbenchSurface
+        backendUrl={this.sessionSnapshot.identity.backendUrl}
         ideBridge={ideBridge}
+        session={this.sessionSnapshot}
         snapshot={this.snapshot}
         onSourceSaveHandlerChange={this.registerSourceSaveHandler}
       />
@@ -211,12 +253,60 @@ export class TheiaWorkflowPrototypeWidget extends ReactWidget {
   }
 }
 
-function PrototypeSurface({
+function WorkbenchSessionGate({
+  snapshot,
+  onRetry
+}: {
+  snapshot: WorkbenchSessionSnapshot
+  onRetry: () => Promise<void>
+}): React.JSX.Element {
+  return (
+    <div className="unilab-theia-prototype unilab-workbench-session-gate">
+      <section className="unilab-workbench-session-card" aria-live="polite">
+        <span className={`unilab-workbench-session-phase is-${snapshot.phase}`}>
+          {snapshot.phase}
+        </span>
+        <h2>UniLab Authoring Workbench</h2>
+        <p>{snapshot.message}</p>
+        {snapshot.identity ? (
+          <dl>
+            <dt>Workspace</dt>
+            <dd>{snapshot.identity.workspacePath}</dd>
+            <dt>OS PID</dt>
+            <dd>{snapshot.identity.pid || '—'}</dd>
+            <dt>Generation</dt>
+            <dd>{snapshot.identity.generation}</dd>
+            <dt>Backend</dt>
+            <dd>{snapshot.identity.backendUrl}</dd>
+            <dt>Log</dt>
+            <dd>{snapshot.identity.logPath}</dd>
+          </dl>
+        ) : null}
+        {snapshot.diagnostic ? (
+          <div className="unilab-workbench-session-diagnostic" role="alert">
+            <strong>{snapshot.diagnostic.code}</strong>
+            <p>{snapshot.diagnostic.message}</p>
+            <p>{snapshot.diagnostic.recovery}</p>
+          </div>
+        ) : null}
+        {snapshot.phase === 'failed' ? (
+          <button onClick={() => void onRetry()}>重新校验并启动</button>
+        ) : null}
+      </section>
+    </div>
+  )
+}
+
+function WorkbenchSurface({
+  backendUrl,
   ideBridge,
+  session,
   snapshot,
   onSourceSaveHandlerChange
 }: {
+  backendUrl: string
   ideBridge: WorkflowIdeBridge
+  session: WorkbenchSessionSnapshot
   snapshot: WorkflowIdeSyncState
   onSourceSaveHandlerChange: (handler: SourceSaveHandler | null) => void
 }): React.JSX.Element {
@@ -229,7 +319,6 @@ function PrototypeSurface({
     useState<readonly MaterialId[]>([])
   const [sourceSaveStatus, setSourceSaveStatus] = useState('idle')
   const query = new URLSearchParams(globalThis.location.search)
-  const backendUrl = query.get('backend') ?? 'http://127.0.0.1:18003'
   const workflowUuid = query.get('workflowUuid') ?? undefined
   const services = useMemo(() => createPrototypeServices(backendUrl), [backendUrl])
   const queryClient = useMemo(() => new QueryClient(), [])
@@ -288,10 +377,12 @@ function PrototypeSurface({
       <div className="unilab-theia-prototype">
         <header className="unilab-theia-prototype__bar">
           <div>
-            <strong>Uni-Lab / Theia integration slice</strong>
-            <span>OS {backendUrl}</span>
+            <strong>UniLab Authoring Workbench</strong>
+            <span>
+              OS PID {session.identity?.pid} · {session.identity?.mode} · {backendUrl}
+            </span>
           </div>
-          <nav aria-label="Prototype surface">
+          <nav aria-label="Authoring surface">
             <button
               className={surface === 'workflow' ? 'is-active' : ''}
               onClick={() => setSurface('workflow')}
@@ -340,7 +431,7 @@ function PrototypeSurface({
             <MaterialStoreProvider store={materialStore}>
               <MaterialWorkbench
                 catalog={services.materials}
-                profileId={`prototype:${backendUrl}`}
+                profileId={`workbench:${backendUrl}`}
                 scope={scope}
                 capabilities={{
                   readTemplates: services.getCapabilityStatus(

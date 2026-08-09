@@ -1,26 +1,27 @@
 import {
   bindViewContribution,
   FrontendApplicationContribution,
+  WebSocketConnectionProvider,
   WidgetFactory
 } from '@theia/core/lib/browser'
 import { ContainerModule } from '@theia/core/shared/inversify'
 import '@unilab/design-system/theme.css'
 
-import { TheiaAionUiContribution } from './theia-aionui-contribution'
-import { TheiaAionUiWidget } from './theia-aionui-widget'
+import {
+  WORKBENCH_SESSION_PATH,
+  WorkbenchSessionServer
+} from '../common/workbench-session-protocol'
 import { TheiaWorkflowPrototypeContribution } from './theia-workflow-prototype-contribution'
 import { TheiaWorkflowPrototypeWidget } from './theia-workflow-prototype-widget'
 import '../../src/browser/style/index.css'
 
 export default new ContainerModule((bind) => {
-  bindViewContribution(bind, TheiaAionUiContribution)
-  bind(FrontendApplicationContribution)
-    .toService(TheiaAionUiContribution)
-  bind(TheiaAionUiWidget).toSelf()
-  bind(WidgetFactory).toDynamicValue((context) => ({
-    id: TheiaAionUiWidget.ID,
-    createWidget: () => context.container.get(TheiaAionUiWidget)
-  })).inSingletonScope()
+  bind(WorkbenchSessionServer).toDynamicValue(context =>
+    WebSocketConnectionProvider.createProxy(
+      context.container,
+      WORKBENCH_SESSION_PATH
+    )
+  ).inSingletonScope()
 
   bindViewContribution(bind, TheiaWorkflowPrototypeContribution)
   bind(FrontendApplicationContribution)

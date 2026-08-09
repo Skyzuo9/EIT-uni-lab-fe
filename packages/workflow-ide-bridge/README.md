@@ -20,6 +20,6 @@ Each IDE keeps a deliberately small adapter. It only needs to:
    `reduceWorkflowIdeSync`.
 
 Theia implements that adapter in
-`@unilab/theia-workflow-prototype-extension`. A VS Code extension can use the
+`@unilab/workbench-theia`. A VS Code extension can use the
 same package from its extension host; only its manifest/activation entrypoint
 and `vscode.*` calls stay host-specific.
