@@ -10,7 +10,12 @@
     "moduleResolution": "Bundler",
     "target": "ES2022",
     "jsx": "react-jsx",
-    "lib": ["ES2022", "DOM"],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "baseUrl": "../..",
+    "paths": {
+      "next/image": ["packages/pascal-host/src/shims/next-image.tsx"],
+      "next/link": ["packages/pascal-host/src/shims/next-link.tsx"]
+    },
     "sourceMap": true,
     "rootDir": "src",
     "outDir": "lib"

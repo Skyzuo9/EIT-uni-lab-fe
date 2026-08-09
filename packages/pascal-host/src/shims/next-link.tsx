@@ -9,7 +9,7 @@ type NextLinkProps = Omit<AnchorHTMLAttributes<HTMLAnchorElement>, 'href'> & {
   children?: ReactNode
 }
 
-/** Vite equivalent of the small next/link surface used by Pascal Editor. */
+/** Browser/Electron facade for the small next/link surface Pascal consumes. */
 const NextLink = forwardRef<HTMLAnchorElement, NextLinkProps>(
   ({ href, ...props }, ref) => (
     <a
@@ -20,6 +20,6 @@ const NextLink = forwardRef<HTMLAnchorElement, NextLinkProps>(
   )
 )
 
-NextLink.displayName = 'ViteNextLinkShim'
+NextLink.displayName = 'UniLabNextLinkShim'
 
 export default NextLink

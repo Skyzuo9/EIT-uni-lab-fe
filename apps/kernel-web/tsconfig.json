@@ -5,8 +5,8 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"],
-      "next/image": ["src/shims/next-image.tsx"],
-      "next/link": ["src/shims/next-link.tsx"]
+      "next/image": ["../../packages/pascal-host/src/shims/next-image.tsx"],
+      "next/link": ["../../packages/pascal-host/src/shims/next-link.tsx"]
     }
   },
   "include": ["src/**/*"]

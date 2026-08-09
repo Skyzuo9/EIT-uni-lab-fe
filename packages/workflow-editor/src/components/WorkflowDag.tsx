@@ -102,6 +102,11 @@ interface WorkflowDagProps {
 // 注册自定义节点类型(在组件外定义,避免每次渲染重建)
 const nodeTypes = { wfNode: WorkflowNodeCard }
 const edgeTypes = { workflowRoundedStep: WorkflowRoundedStepEdge }
+const WORKFLOW_FIT_VIEW_OPTIONS = {
+  padding: 0.1,
+  minZoom: 0.2,
+  maxZoom: 1.35
+} as const
 
 /**
  * 渲染工作流拓扑、运行状态、物料流句柄及可选的画布编辑控制。
@@ -398,11 +403,7 @@ export default function WorkflowDag({
     let fitFrame = 0
     const syncFrame = requestAnimationFrame(() => {
       fitFrame = requestAnimationFrame(() => {
-        void flowInstanceRef.current?.fitView({
-          padding: 0.16,
-          minZoom: 0.2,
-          maxZoom: 1
-        })
+        fitWorkflowCanvas(flowInstanceRef.current, containerRef.current)
       })
     })
     return () => {
@@ -417,11 +418,7 @@ export default function WorkflowDag({
     const observer = new ResizeObserver(() => {
       cancelAnimationFrame(fitFrame)
       fitFrame = requestAnimationFrame(() => {
-        void flowInstanceRef.current?.fitView({
-          padding: 0.16,
-          minZoom: 0.2,
-          maxZoom: 1
-        })
+        fitWorkflowCanvas(flowInstanceRef.current, container)
       })
     })
     observer.observe(container)
@@ -539,7 +536,7 @@ export default function WorkflowDag({
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         fitView
-        fitViewOptions={{ padding: 0.16, minZoom: 0.2, maxZoom: 1 }}
+        fitViewOptions={WORKFLOW_FIT_VIEW_OPTIONS}
         minZoom={0.2}
         {...(
           canvasMutationEnabled
@@ -551,6 +548,11 @@ export default function WorkflowDag({
         proOptions={{ hideAttribution: true }}
         onInit={(instance) => {
           flowInstanceRef.current = instance
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              fitWorkflowCanvas(instance, containerRef.current)
+            })
+          })
         }}
         onNodeClick={(_event, node: Node<WorkflowNodeData>) => onNodeSelect(node.id)}
         onNodeDragStop={(_event, node: Node<WorkflowNodeData>) => {
@@ -736,6 +738,16 @@ export default function WorkflowDag({
       </ReactFlow>
     </div>
   )
+}
+
+function fitWorkflowCanvas(
+  instance: ReactFlowInstance | null,
+  container: HTMLElement | null
+): void {
+  if (!instance || !container) return
+  const bounds = container.getBoundingClientRect()
+  if (bounds.width <= 0 || bounds.height <= 0) return
+  void instance.fitView(WORKFLOW_FIT_VIEW_OPTIONS)
 }
 
 /**

@@ -15,8 +15,8 @@
     "isolatedModules": true,
     "baseUrl": ".",
     "paths": {
-      "next/image": ["apps/kernel-web/src/shims/next-image.tsx"],
-      "next/link": ["apps/kernel-web/src/shims/next-link.tsx"]
+      "next/image": ["packages/pascal-host/src/shims/next-image.tsx"],
+      "next/link": ["packages/pascal-host/src/shims/next-link.tsx"]
     }
   }
 }

@@ -1,3 +1,4 @@
+/* Shared Pascal host chrome for Web, Electron, and Theia. */
 .pascal-editor-host {
   --pascal-radius: 0.5rem;
   --pascal-background: #ffffff;

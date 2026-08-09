@@ -86,6 +86,17 @@ export function isDesktopSurfaceNavigationAllowed(
   }
 }
 
+/**
+ * Workbench owns a per-launch Theia backend. On macOS the last window must
+ * therefore end that launch instead of reopening against a stale plugin host.
+ */
+export function shouldQuitWhenAllDesktopWindowsClose(
+  platform: NodeJS.Platform,
+  surfaceKind: DesktopSurfaceKind
+): boolean {
+  return platform !== 'darwin' || surfaceKind === 'workbench'
+}
+
 /** Restricts the privileged Workbench renderer to the managed loopback server. */
 function trustedWorkbenchRendererUrl(value: string | undefined): string {
   if (!value?.trim()) {

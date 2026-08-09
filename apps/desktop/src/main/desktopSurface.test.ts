@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 
 import {
   isDesktopSurfaceNavigationAllowed,
-  resolveDesktopSurfaceConfig
+  resolveDesktopSurfaceConfig,
+  shouldQuitWhenAllDesktopWindowsClose
 } from './desktopSurface'
 
 describe('shared Electron desktop surface', () => {
@@ -106,5 +107,14 @@ describe('shared Electron desktop surface', () => {
     )).toBe(false)
     expect(isDesktopSurfaceNavigationAllowed(config, 'not a URL'))
       .toBe(false)
+  })
+
+  it('does not reopen a stale macOS Workbench plugin session', () => {
+    expect(shouldQuitWhenAllDesktopWindowsClose('darwin', 'workbench'))
+      .toBe(true)
+    expect(shouldQuitWhenAllDesktopWindowsClose('darwin', 'kernel'))
+      .toBe(false)
+    expect(shouldQuitWhenAllDesktopWindowsClose('win32', 'kernel'))
+      .toBe(true)
   })
 })

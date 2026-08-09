@@ -59,7 +59,7 @@
     "yargs": "17.7.3"
   },
   "scripts": {
-    "build": "theia download:plugins && theia build --mode development",
+    "build": "pnpm --filter @unilab/pascal-host build:styles && theia download:plugins && theia build --mode development",
     "build:desktop": "pnpm --filter @unilab/desktop build && pnpm build",
     "desktop": "pnpm build:desktop && pnpm start:desktop",
     "start": "node scripts/start-workbench.mjs",

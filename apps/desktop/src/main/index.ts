@@ -43,8 +43,10 @@ import type {
 } from '../shared/localRuntime'
 import {
   isDesktopSurfaceNavigationAllowed,
-  resolveDesktopSurfaceConfig
+  resolveDesktopSurfaceConfig,
+  shouldQuitWhenAllDesktopWindowsClose
 } from './desktopSurface'
+import { RendererConsoleLogLimiter } from './rendererConsoleLogLimiter'
 
 // 保存文件的入参:path 为 null 时弹出"另存为"对话框
 interface SaveFilePayload {
@@ -91,6 +93,10 @@ const isDev = !app.isPackaged
 const desktopSurface = resolveDesktopSurfaceConfig({
   environment: process.env,
   isDevelopment: isDev
+})
+const rendererConsoleLogLimiter = new RendererConsoleLogLimiter({
+  limit: 20,
+  windowMs: 10_000
 })
 const electronObservability = createMainObservability()
 
@@ -197,13 +203,11 @@ function createWindow(): void {
     'console-message',
     (_e, level, message, line, sourceId) => {
       if (level >= 2) {
-        logLine(`renderer console: ${message} (${sourceId}:${line})`)
-        electronObservability.record('electron.renderer.console', {
-          'log.severity_number': level,
-          'log.message': message,
-          'code.filepath': sourceId,
-          'code.lineno': line
-        })
+        rendererConsoleLogLimiter.record(
+          { level, message, line, sourceId },
+          logLine,
+          electronObservability
+        )
       }
     }
   )
@@ -650,7 +654,10 @@ app.whenReady().then(async () => {
 })
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
+  if (shouldQuitWhenAllDesktopWindowsClose(
+    process.platform,
+    desktopSurface.kind
+  )) {
     app.quit()
   }
 })

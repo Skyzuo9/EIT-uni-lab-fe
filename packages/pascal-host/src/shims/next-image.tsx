@@ -22,10 +22,7 @@ type NextImageProps = Omit<
   width?: number | `${number}`
 }
 
-/**
- * Pascal only uses next/image as an optimized img facade. The renderer is Vite,
- * so the compatibility layer intentionally maps it to a native image element.
- */
+/** Browser/Electron facade for the small next/image surface Pascal consumes. */
 const NextImage = forwardRef<HTMLImageElement, NextImageProps>(
   (
     {
@@ -47,21 +44,19 @@ const NextImage = forwardRef<HTMLImageElement, NextImageProps>(
       height={fill ? undefined : height}
       width={fill ? undefined : width}
       loading={priority ? 'eager' : props.loading}
-      style={
-        fill
-          ? {
-              position: 'absolute',
-              inset: 0,
-              width: '100%',
-              height: '100%',
-              ...style
-            }
-          : style
-      }
+      style={fill
+        ? {
+            position: 'absolute',
+            inset: 0,
+            width: '100%',
+            height: '100%',
+            ...style
+          }
+        : style}
     />
   )
 )
 
-NextImage.displayName = 'ViteNextImageShim'
+NextImage.displayName = 'UniLabNextImageShim'
 
 export default NextImage

@@ -2,8 +2,9 @@
 @import "tailwindcss/utilities" layer(utilities);
 
 @source "../**/*.{ts,tsx}";
-@source "../../../../packages/**/*.{ts,tsx}";
-@source "../../../../packages/pascal-host/node_modules/@pascal-app/editor/src/**/*.{ts,tsx}";
+@source "../../../../apps/kernel-web/src/**/*.{ts,tsx}";
+@source "../../../**/*.{ts,tsx}";
+@source "../../node_modules/@pascal-app/editor/src/**/*.{ts,tsx}";
 @source "../../../../node_modules/@pascal-app/editor/src/**/*.{ts,tsx}";
 
 @theme inline {

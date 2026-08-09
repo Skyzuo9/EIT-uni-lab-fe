@@ -12,12 +12,22 @@ import { inject, injectable, postConstruct } from '@theia/core/shared/inversify'
 import { WorkspaceService } from '@theia/workspace/lib/browser'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
+  MaterialCapabilityNotice,
   MaterialStoreProvider,
   MaterialWorkbench,
+  UnifiedMaterialViewport,
   createMaterialStore,
+  useMaterialStore,
+  useMaterialStoreApi,
   type MaterialId,
-  type MaterialStore
+  type MaterialStore,
+  type MaterialWorkbenchViewportProps
 } from '@unilab/material'
+import type {
+  MaterialSceneMove,
+  MaterialTransferSceneRoute
+} from '@unilab/pascal-lab-plugin'
+import { ensurePascalRendererDefaults } from '@unilab/pascal-host'
 import {
   assertCapability,
   createServices,
@@ -41,7 +51,20 @@ import {
 } from '@unilab/workflow-ide-bridge'
 import type { WorkbenchSessionSnapshot } from '@unilab/workbench-session'
 import * as React from 'react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState
+} from 'react'
+
+ensurePascalRendererDefaults()
+
+const PascalLabWorkbench = React.lazy(async () => {
+  const module = await import('@unilab/pascal-lab-plugin')
+  return { default: module.PascalLabWorkbench }
+})
 
 import {
   WorkbenchSessionClient,
@@ -485,12 +508,121 @@ function WorkbenchSurface({
                 selectedMaterialIds={selectedMaterialIds}
                 highlightedMaterialIds={highlightedMaterialIds}
                 onSelectionChange={setSelectedMaterialIds}
+                renderViewport={(viewportProps) => (
+                  <WorkbenchMaterialViewport
+                    {...viewportProps}
+                    backendUrl={backendUrl}
+                    runtimeProjection={runtimeProjection}
+                    selectedWorkflowNode={selectedWorkflowNode}
+                  />
+                )}
               />
             </MaterialStoreProvider>
           </section>
         )}
       </div>
     </QueryClientProvider>
+  )
+}
+
+function WorkbenchMaterialViewport({
+  backendUrl,
+  runtimeProjection,
+  selectedWorkflowNode,
+  readStatus,
+  moveStatus,
+  selectedMaterialIds,
+  highlightedMaterialIds,
+  onSelectionChange
+}: MaterialWorkbenchViewportProps & {
+  backendUrl: string
+  runtimeProjection: WorkflowPanelRuntimeProjection | null
+  selectedWorkflowNode: string | null
+}): React.JSX.Element {
+  const store = useMaterialStoreApi()
+  const aggregatesById = useMaterialStore((state) => state.aggregatesById)
+  const shapeLibrary = useMaterialStore((state) => state.shapeLibrary)
+  const loadState = useMaterialStore((state) => state.loadState)
+  const aggregates = useMemo(
+    () => Object.values(aggregatesById),
+    [aggregatesById]
+  )
+  const materialTransferRoutes = useMemo<MaterialTransferSceneRoute[]>(
+    () => (runtimeProjection?.materialTransferRoutes ?? []).map((route) => ({
+      ...route,
+      selected: route.workflowNodeUuid === selectedWorkflowNode
+    })),
+    [runtimeProjection, selectedWorkflowNode]
+  )
+  const modelRuntime = useMemo(() => ({
+    resolveUrl: (model: { path: string }) => {
+      if (!model.path || /^https?:\/\//u.test(model.path)) return model.path
+      return new URL(
+        model.path,
+        `${backendUrl.replace(/\/+$/u, '')}/`
+      ).toString()
+    }
+  }), [backendUrl])
+
+  useEffect(() => {
+    if (!readStatus.available || loadState !== 'idle') return
+    void store.getState().loadGraph().catch(() => undefined)
+  }, [loadState, readStatus.available, store])
+
+  const applyMoves = useCallback(async (
+    moves: readonly MaterialSceneMove[]
+  ): Promise<void> => {
+    for (const move of moves) {
+      await store.getState().move(move.materialId, move.placement)
+    }
+  }, [store])
+
+  if (!readStatus.available) {
+    return (
+      <MaterialCapabilityNotice
+        title="物料场景不可用"
+        status={readStatus}
+      />
+    )
+  }
+
+  if (loadState === 'idle' || loadState === 'loading') {
+    return <div className="unilab-workbench-material-loading">正在加载物料场景…</div>
+  }
+
+  return (
+    <UnifiedMaterialViewport
+      renderView={(viewMode, { showSites, showMaterialTransfers }) => (
+        <Suspense
+          fallback={(
+            <div className="unilab-workbench-material-loading">
+              正在加载 {viewMode === '3d' || viewMode === 'split'
+                ? '3D'
+                : viewMode} 物料视图…
+            </div>
+          )}
+        >
+          <PascalLabWorkbench
+            aggregates={aggregates}
+            shapes={shapeLibrary}
+            showSites={showSites}
+            showMaterialTransfers={showMaterialTransfers}
+            materialTransferRoutes={materialTransferRoutes}
+            materialTransferProjectionError={null}
+            viewMode={viewMode}
+            projectId={`unilab-workbench-${new URL(backendUrl).port}`}
+            editable={moveStatus.available}
+            selectedMaterialIds={selectedMaterialIds}
+            highlightedMaterialIds={highlightedMaterialIds}
+            modelRuntime={modelRuntime}
+            onMaterialMoves={(moves) => void applyMoves(moves)}
+            onSelectionChange={(materialIds) => {
+              onSelectionChange?.(materialIds)
+            }}
+          />
+        </Suspense>
+      )}
+    />
   )
 }
 
