@@ -35,12 +35,22 @@ export interface ManagedWorkbenchAgent {
 
 export interface ManagedWorkbenchAgentOptions {
   workspacePath: string
-  editablePackagePath: string
   environment?: NodeJS.ProcessEnv
   appPath?: string
   brandIconPath?: string
   readinessTimeoutMs?: number
   onUnexpectedExit?: (message: string) => void
+}
+
+export interface ManagedLocalAgentAuthStatus {
+  mode: 'password'
+  authenticated: true
+  user: {
+    id: 'system_default_user'
+    name: 'UniLab Local'
+    username: 'system_default_user'
+    avatarUrl: null
+  }
 }
 
 const MIME_TYPES = new Map([
@@ -58,7 +68,7 @@ const MIME_TYPES = new Map([
 ])
 export const PINNED_AIONUI_VERSION = '2.1.52'
 
-/** Start the pinned local Agent implementation for one exact Editable Package. */
+/** Start the pinned local Agent implementation for one exact Workspace. */
 export async function startManagedWorkbenchAgent(
   options: ManagedWorkbenchAgentOptions
 ): Promise<ManagedWorkbenchAgent> {
@@ -103,17 +113,17 @@ export async function startManagedWorkbenchAgent(
     '--port', String(backendPort),
     '--data-dir', dataDir,
     '--log-dir', dirname(logPath),
-    '--work-dir', options.editablePackagePath,
+    '--work-dir', options.workspacePath,
     '--app-version', distributionVersion,
     '--managed-resources-mode', 'bundled',
     '--local',
     '--identity-mode', 'local'
   ], {
-    cwd: options.editablePackagePath,
+    cwd: options.workspacePath,
     env: {
       ...environment,
       AIONUI_CACHE_DIR: join(dataDir, 'cache'),
-      AIONUI_WORK_DIR: options.editablePackagePath,
+      AIONUI_WORK_DIR: options.workspacePath,
       AIONUI_LOG_DIR: dirname(logPath)
     },
     detached: process.platform !== 'win32',
@@ -137,7 +147,6 @@ export async function startManagedWorkbenchAgent(
       publicPort,
       rendererDir,
       workspacePath: options.workspacePath,
-      editablePackagePath: options.editablePackagePath,
       brandIconPath
     })
     const identity: WorkbenchAgentIdentity = {
@@ -151,7 +160,7 @@ export async function startManagedWorkbenchAgent(
         : null,
       pid: child.pid ?? null,
       dataDir,
-      workDir: options.editablePackagePath,
+      workDir: options.workspacePath,
       logPath,
       diagnostic: null
     }
@@ -238,6 +247,20 @@ export function isProtectedAgentRequest(url: string, body = ''): boolean {
   return false
 }
 
+/** Browser-host identity bridge for the loopback-only managed-local Agent. */
+export function managedLocalAgentAuthStatus(): ManagedLocalAgentAuthStatus {
+  return {
+    mode: 'password',
+    authenticated: true,
+    user: {
+      id: 'system_default_user',
+      name: 'UniLab Local',
+      username: 'system_default_user',
+      avatarUrl: null
+    }
+  }
+}
+
 async function prepareRenderer(archive: string, dataDir: string): Promise<string> {
   const archiveStat = await stat(archive)
   const cacheKey = createHash('sha256')
@@ -272,7 +295,6 @@ async function startRendererProxy(options: {
   publicPort: number
   rendererDir: string
   workspacePath: string
-  editablePackagePath: string
   brandIconPath?: string
 }): Promise<Server> {
   const server = createHttpServer((request, response) => {
@@ -318,7 +340,6 @@ async function routeRequest(
     backendPort: number
     rendererDir: string
     workspacePath: string
-    editablePackagePath: string
     brandIconPath?: string
   }
 ): Promise<void> {
@@ -329,9 +350,17 @@ async function routeRequest(
       productName: 'UniLab Agent',
       implementation: 'aioncore',
       workspacePath: options.workspacePath,
-      workDir: options.editablePackagePath,
+      workDir: options.workspacePath,
       privateStateProtected: true
     }))
+    return
+  }
+  if (pathname === '/auth/status' && request.method === 'GET') {
+    response.writeHead(200, {
+      'content-type': 'application/json',
+      'cache-control': 'no-store'
+    })
+    response.end(JSON.stringify(managedLocalAgentAuthStatus()))
     return
   }
   if (pathname === '/__unilab/branding.js') {
@@ -385,12 +414,15 @@ async function serveStatic(
   }
   if (target.endsWith('index.html')) {
     const html = await readFile(target, 'utf8')
-    const branded = html.replaceAll('AionUi', 'UniLab Agent').replace(
-      '</head>',
-      `${options.brandIconPath
+    const branded = html
+      .replace(
+        '<head>',
+        `<head><script>${managedLocalBootstrapScript()}</script>`
+      )
+      .replaceAll('AionUi', 'UniLab Agent')
+      .replace('</head>', `${options.brandIconPath
         ? '<link rel="icon" type="image/png" href="/__unilab/icon.png">'
-        : ''}<script defer src="/__unilab/branding.js"></script></head>`
-    )
+        : ''}<script defer src="/__unilab/branding.js"></script></head>`)
     response.writeHead(200, {
       'content-type': 'text/html; charset=utf-8',
       'cache-control': 'no-store'
@@ -407,6 +439,12 @@ async function serveStatic(
   })
   if (request.method === 'HEAD') response.end()
   else createReadStream(target).pipe(response)
+}
+
+function managedLocalBootstrapScript(): string {
+  return `try {
+    localStorage.setItem('onboarding.openingGuideSeen_v1', 'true')
+  } catch {}`
 }
 
 function brandingScript(): string {

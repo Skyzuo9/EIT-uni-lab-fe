@@ -24,7 +24,6 @@ import {
   relative,
   resolve
 } from 'node:path'
-import { fileURLToPath } from 'node:url'
 
 import {
   startManagedWorkbenchAgent,
@@ -324,16 +323,14 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
       )
       if (this.stopRequested) return this.getSnapshot()
       if (this.options.enableAgent) {
-        const editableMount = launch.identity.packageMounts.items.find(
+        const hasEditableMount = launch.identity.packageMounts.items.some(
           item => item.packageId ===
             launch.identity.packageMounts?.editablePackageId
         )
-        if (!editableMount) throw new Error('OS 未发布 Editable Package 挂载')
-        const editablePackagePath = fileURLToPath(editableMount.packageRootUri)
+        if (!hasEditableMount) throw new Error('OS 未发布 Editable Package 挂载')
         try {
           const agent = await startManagedWorkbenchAgent({
             workspacePath: launch.identity.workspacePath,
-            editablePackagePath,
             environment: launch.environment,
             appPath: this.options.agentAppPath,
             brandIconPath: this.options.agentBrandIconPath,
@@ -357,7 +354,7 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
                       'agent',
                       'aionui'
                     ),
-                    workDir: editablePackagePath,
+                    workDir: launch.identity.workspacePath,
                     logPath: join(
                       launch.identity.workspacePath,
                       '.unilabos',
@@ -394,7 +391,7 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
               'agent',
               'aionui'
             ),
-            workDir: editablePackagePath,
+            workDir: launch.identity.workspacePath,
             logPath: join(
               launch.identity.workspacePath,
               '.unilabos',

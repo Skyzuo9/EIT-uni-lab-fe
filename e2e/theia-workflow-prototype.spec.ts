@@ -13,6 +13,26 @@ test.describe('UniLab Authoring Workbench real-system contract', () => {
     await expect(page.locator('iframe.unilab-aionui__frame')).toBeAttached()
 
     await page.waitForTimeout(2_000)
+    const agentFrame = page.frameLocator('iframe.unilab-aionui__frame')
+    await expect(agentFrame.getByText(/今天有什么安排/)).toBeVisible()
+    await expect(agentFrame.locator(
+      'input[placeholder="请输入用户名"]'
+    )).toHaveCount(0)
+    await expect(agentFrame.getByTestId('opening-guide')).toHaveCount(0)
+    const agentStatus = await agentFrame.locator('body').evaluate(async () => {
+      const response = await fetch('/__unilab/status')
+      return response.json() as Promise<{
+        workspacePath: string
+        workDir: string
+      }>
+    })
+    const expectedWorkspace = decodeURIComponent(
+      new URL(prototypeUrl!).hash.replace(/^#\/?/, '/')
+    )
+    expect(agentStatus).toMatchObject({
+      workspacePath: expectedWorkspace,
+      workDir: expectedWorkspace
+    })
     await expect.poll(async () => page.evaluate(() => ({
       readyState: document.readyState,
       title: document.title
