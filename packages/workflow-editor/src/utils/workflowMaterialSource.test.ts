@@ -235,6 +235,7 @@ function catalog(): WorkflowMaterialSourceCatalogSnapshot {
       displayName: 'Material Source',
       actionClass: 'unilabos.workflow.authoring:material_source',
       actionType: 'material_source',
+      schema: null,
       wireValue: materialSourceTemplateWire(),
       sourceHandle: {
         uuid: handleUuid,

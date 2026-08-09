@@ -33,6 +33,72 @@ const fingerprint = `sha256:${'b'.repeat(64)}`
 const materialSourceCatalogPath =
   '/api/v1/workflow-node-templates?limit=100&node_type=material_source'
 
+/** 构造 OS 发布的 MaterialSource 闭合参数与库位选择器 Schema。 */
+function materialSourceSchema(): Record<string, unknown> {
+  return {
+    type: 'object',
+    properties: {
+      mode: {
+        type: 'string',
+        enum: ['existing', 'create_new']
+      },
+      resource_template_uuid: {
+        type: 'string',
+        format: 'uuid'
+      },
+      mount: {
+        type: 'object',
+        properties: {
+          uuid: { type: 'string', format: 'uuid' }
+        },
+        required: ['uuid'],
+        additionalProperties: false
+      },
+      material_uuid: {
+        type: ['string', 'null'],
+        format: 'uuid'
+      },
+      site: {
+        type: ['string', 'null'],
+        format: 'uuid',
+        'x-unilabos-editor-control': 'site_selector',
+        'x-unilabos-site-selector': {
+          version: 1,
+          owner: 'mount',
+          occupant: 'resource_template_uuid',
+          show_occupied: true,
+          allow_occupied: false
+        }
+      },
+      slot_range: {
+        type: ['array', 'null'],
+        items: { type: 'string', format: 'uuid' },
+        minItems: 1,
+        uniqueItems: true
+      },
+      flow_role: {
+        type: 'string',
+        enum: [
+          'primary_sample',
+          'aliquot_sample',
+          'reagent',
+          'consumable'
+        ]
+      }
+    },
+    required: [
+      'mode',
+      'resource_template_uuid',
+      'mount',
+      'material_uuid',
+      'site',
+      'slot_range',
+      'flow_role'
+    ],
+    additionalProperties: false
+  }
+}
+
 /** 注册物料来源（MaterialSource）目录适配器测试；无参数和返回值，断言失败由 Vitest 汇报。 */
 function registerWorkflowMaterialSourceCatalogTests(): void {
   it(
@@ -40,8 +106,8 @@ function registerWorkflowMaterialSourceCatalogTests(): void {
     loadsMaterialSourceCatalogInPublicGraphOrder
   )
   it(
-    '框架模板 schema 空值规范为 null 且非空错误类型关闭失败',
-    validatesScaffoldSchemaNullability
+    '解析并校验 OS 发布的物料来源选择器 Schema',
+    validatesPublishedMaterialSourceSchema
   )
   it(
     'OS 未发布精确物料来源框架模板时关闭失败',
@@ -59,18 +125,17 @@ describe(
 )
 
 /**
- * 验证框架模板（ScaffoldTemplate）的 `schema` wire 空值语义和失败关闭边界。
+ * 验证框架模板（ScaffoldTemplate）的物料来源选择器 Schema 及失败关闭边界。
  *
- * @returns Promise 完成时表示缺失值等价于 null，非空错误类型仍被拒绝。
- * @throws 若空值规范化或错误类型边界失效，则由 Vitest 断言失败。
+ * @returns Promise 完成时表示 JSON 文本被解析保留，旧 Edge 空 Schema 仍可兼容。
+ * @throws 若 Schema 解析、投影或错误边界失效，则由 Vitest 断言失败。
  */
-async function validatesScaffoldSchemaNullability(): Promise<void> {
+async function validatesPublishedMaterialSourceSchema(): Promise<void> {
   const fixture = responses()
-  // `detailTemplate` 是服务端经 `omitempty` 输出的框架模板 wire 记录。
+  // `detailTemplate` 是服务端把 JSON Schema 持久化为文本后的 wire 记录。
   const detailTemplate = (fixture[
     `/api/v1/workflow-node-templates/${frameworkTemplateUuid}`
   ] as { data: { template: Record<string, unknown> } }).data.template
-  delete detailTemplate.schema
   const runtime = createWorkflowRuntime(
     fixtureHttp(fixture, []),
     getDefaultBackend('local-python'),
@@ -79,8 +144,12 @@ async function validatesScaffoldSchemaNullability(): Promise<void> {
 
   const snapshot = await runtime.getWorkflowMaterialSourceCatalog()
   expect(snapshot.template.uuid).toBe(frameworkTemplateUuid)
+  expect(snapshot.template.schema).toEqual(materialSourceSchema())
 
-  // 非空对象不是 Backend `*string` 合同，也不是无参数框架模板的合法值。
+  // 旧 Edge 尚未发布选择器 Schema 时保持兼容，但非空错误 Schema 仍失败关闭。
+  detailTemplate.schema = null
+  await expect(runtime.getWorkflowMaterialSourceCatalog()).resolves
+    .toMatchObject({ template: { schema: null } })
   detailTemplate.schema = { type: 'object' }
   await expect(runtime.getWorkflowMaterialSourceCatalog()).rejects.toMatchObject({
     code: 'INVALID_WORKFLOW_MATERIAL_SOURCE_CATALOG'
@@ -114,6 +183,7 @@ async function loadsMaterialSourceCatalogInPublicGraphOrder(): Promise<void> {
         displayName: 'Material Source',
         actionClass: 'unilabos.workflow.authoring:material_source',
         actionType: 'material_source',
+        schema: materialSourceSchema(),
         sourceHandle: {
           uuid: frameworkHandleUuid,
           workflowNodeTemplateUuid: frameworkTemplateUuid,
@@ -281,7 +351,7 @@ function responses(): Record<string, unknown> {
           class: 'unilabos.workflow.authoring:material_source',
           type: 'material_source',
           node_type: 'material_source',
-          schema: null,
+          schema: JSON.stringify(materialSourceSchema()),
           goal: {},
           goal_default: {},
           meta_data: {}
