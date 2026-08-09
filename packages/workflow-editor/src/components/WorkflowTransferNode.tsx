@@ -29,7 +29,9 @@ export default function WorkflowTransferNode({
 }: WorkflowTransferNodeProps): React.JSX.Element {
   return (
     <div
-      className={`${styles.node} wf-node wf-node--robot-transfer cursor-pointer overflow-visible`}
+      className={`${styles.node} wf-node wf-node--robot-transfer ${
+        data.sourceSelected ? 'wf-node--source-selected' : ''
+      } cursor-pointer overflow-visible`}
       data-workflow-node-uuid={data.id}
       data-workflow-node-kind={data.kind || 'workflow'}
       data-workflow-node-visual-kind="robot-transfer"

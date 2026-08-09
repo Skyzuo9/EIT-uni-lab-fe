@@ -7,6 +7,7 @@ import {
   type PersistentWorkflowAuthoringOptions
 } from '../hooks/usePersistentWorkflowAuthoring'
 import type { WorkflowResourceSlotOptionsPort } from '../utils/workflowResourceSlotOptions'
+import type { WorkflowIdeBridge } from '../utils/workflowSourceNavigation'
 import { PersistentWorkflowAuthoringView } from './PersistentWorkflowAuthoringView'
 
 export {
@@ -30,6 +31,8 @@ interface PersistentWorkflowAuthoringPanelProps {
   materialRoleFilter?: string | null
   onMaterialRoleFilterChange?: (materialRole: string | null) => void
   onChooseWorkflow?: () => void
+  ideBridge?: WorkflowIdeBridge
+  hideEmbeddedCodeEditor?: boolean
 }
 
 /**
@@ -46,6 +49,7 @@ export function PersistentWorkflowAuthoringPanel(
       model={model}
       materialRoleFilter={props.materialRoleFilter}
       onMaterialRoleFilterChange={props.onMaterialRoleFilterChange}
+      hideEmbeddedCodeEditor={props.hideEmbeddedCodeEditor}
     />
   )
 }

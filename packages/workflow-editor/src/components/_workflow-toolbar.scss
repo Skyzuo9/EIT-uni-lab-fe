@@ -221,6 +221,15 @@
   box-shadow: 0 0 0 1px var(--unilab-color-text);
 }
 
+/* IDE 光标反查选中使用独立类，不依赖 React Flow 的本地选择 store。 */
+.workflow :global(.react-flow__node-wfNode) :global(.wf-node--source-selected),
+.workflow :global(.react-flow__node-wfNode):global(.selected) :global(.wf-node--source-selected) {
+  border-color: var(--unilab-color-focus);
+  box-shadow:
+    0 0 0 2px var(--unilab-color-focus),
+    0 7px 18px rgba(79, 70, 229, 0.2);
+}
+
 .workflow :global(.wf-node__body) {
   position: relative;
   display: flex;

@@ -8,6 +8,7 @@ import type { WorkflowTracePort } from '../traceRuntime'
 import type { WorkflowPanelRuntimeProjection } from '../workflowPanelProjection'
 import type { WorkflowEditMode } from '../utils/workflowCanvasPolicy'
 import type { WorkflowResourceSlotOptionsPort } from '../utils/workflowResourceSlotOptions'
+import type { WorkflowIdeBridge } from '../utils/workflowSourceNavigation'
 
 export interface PersistentWorkflowAuthoringOptions {
   runtime: WorkflowRuntimePort
@@ -20,6 +21,8 @@ export interface PersistentWorkflowAuthoringOptions {
   ) => void
   onSelectedWorkflowStepChange?: (workflowNodeUuid: string | null) => void
   onChooseWorkflow?: () => void
+  ideBridge?: WorkflowIdeBridge
+  hideEmbeddedCodeEditor?: boolean
 }
 
 export interface FullSourceDiff {

@@ -47,6 +47,7 @@ export interface WorkflowNodeData {
   startNode?: boolean
   beforeStart?: boolean
   pausedBefore?: boolean
+  sourceSelected?: boolean
   groupKind?: 'group' | 'subworkflow'
   groupExpanded?: boolean
   descendantCount?: number
@@ -148,7 +149,9 @@ export default function WorkflowNodeCard({
   }
   return (
     <div
-      className={`${styles.node} wf-node wf-node--action-strip min-w-[150px] max-w-[220px] cursor-pointer overflow-visible rounded-[var(--unilab-radius-md)] border border-[var(--unilab-color-border)] bg-[var(--unilab-color-surface)] transition-[border-color,box-shadow] duration-200`}
+      className={`${styles.node} wf-node wf-node--action-strip ${
+        data.sourceSelected ? 'wf-node--source-selected' : ''
+      } min-w-[150px] max-w-[220px] cursor-pointer overflow-visible rounded-[var(--unilab-radius-md)] border border-[var(--unilab-color-border)] bg-[var(--unilab-color-surface)] transition-[border-color,box-shadow] duration-200`}
       data-workflow-node-uuid={data.id}
       data-workflow-node-kind={data.kind || 'action'}
       data-workflow-layout-strategy={data.layoutStrategy}

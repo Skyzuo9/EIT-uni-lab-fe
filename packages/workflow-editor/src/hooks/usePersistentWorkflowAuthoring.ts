@@ -71,6 +71,7 @@ import { usePersistentWorkflowCanvasNodeEditor } from './usePersistentWorkflowCa
 import { usePersistentWorkflowCatalogs } from './usePersistentWorkflowCatalogs'
 import { usePersistentWorkflowStartFlow } from './usePersistentWorkflowStartFlow'
 import { usePersistentWorkflowTaskPanel } from './usePersistentWorkflowTaskPanel'
+import { useWorkflowIdeSourceProjection } from './useWorkflowIdeSourceProjection'
 import { useWorkflowPanelRuntimeProjection } from './useWorkflowPanelRuntimeProjection'
 
 export type { PersistentWorkflowAuthoringOptions } from './persistentWorkflowAuthoringTypes'
@@ -83,7 +84,8 @@ export function usePersistentWorkflowAuthoring({
   onUnsavedChangesChange,
   onWorkflowRuntimeProjectionChange,
   onSelectedWorkflowStepChange,
-  onChooseWorkflow
+  onChooseWorkflow,
+  ideBridge
 }: PersistentWorkflowAuthoringOptions) {
   const [mode, setMode] = useState<WorkflowEditMode>('code')
   const [codeProjection, setCodeProjection] =
@@ -308,6 +310,13 @@ export function usePersistentWorkflowAuthoring({
     aggregate,
     runtimeSnapshot: taskPanel.taskRuntime.snapshot,
     onProjectionChange: onWorkflowRuntimeProjectionChange
+  })
+
+  const sourceProjection = useWorkflowIdeSourceProjection({
+    aggregate,
+    workflowUuid,
+    sourceMap: taskPanel.codeSourceMap,
+    ideBridge
   })
 
   useEffect(() => {
@@ -1021,7 +1030,9 @@ export function usePersistentWorkflowAuthoring({
     setMessage,
     setSelectedNodeName,
     setSelectedNodeNameDirty,
-    setSelectedNodeUuid
+    setSelectedNodeUuid,
+    ideBridge,
+    sourceProjection
   })
 
   const workflowStart = usePersistentWorkflowStartFlow({

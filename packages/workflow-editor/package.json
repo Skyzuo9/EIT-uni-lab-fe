@@ -20,6 +20,7 @@
     "@unilab/design-system": "workspace:*",
     "@unilab/material": "workspace:*",
     "@unilab/services": "workspace:*",
+    "@unilab/workflow-ide-bridge": "workspace:*",
     "elkjs": "^0.10.2",
     "reactflow": "^11.11.2",
     "uuid": "^11.1.0"

@@ -64,6 +64,8 @@ interface WorkflowDagProps {
   nodes: WorkflowNode[]
   links: WorkflowLink[]
   onNodeSelect: (nodeId: string) => void
+  /** IDE 光标反查的单一节点；undefined 时由 React Flow 管理本地多选。 */
+  selectedNodeId?: string | null
   onSetStart?: (nodeId: string) => void
   onToggleBreakpoint?: (nodeId: string) => void
   nodeStates?: Readonly<Record<string, string>>
@@ -111,6 +113,7 @@ export default function WorkflowDag({
   nodes,
   links,
   onNodeSelect,
+  selectedNodeId,
   onSetStart,
   onToggleBreakpoint,
   nodeStates = {},
@@ -261,6 +264,9 @@ export default function WorkflowDag({
       const startNode = startNodeId === node.id
       return {
         ...node,
+        selected: selectedNodeId === undefined
+          ? node.selected
+          : node.id === selectedNodeId,
         deletable: false,
         className: [
           node.className,
@@ -269,6 +275,9 @@ export default function WorkflowDag({
           startNode ? 'wf-flow-node--start' : '',
           pausedBefore ? 'wf-flow-node--paused-before' : '',
           breakpoints.has(node.id) ? 'wf-flow-node--breakpoint' : '',
+          selectedNodeId === node.id
+            ? 'wf-flow-node--source-selected'
+            : '',
           sourceNode?.groupKind === 'subworkflow'
             ? 'wf-flow-node--subworkflow'
             : ''
@@ -285,6 +294,7 @@ export default function WorkflowDag({
                   ? 'var(--unilab-color-warning)'
                   : 'var(--unilab-color-text-subtle)',
           status,
+          sourceSelected: selectedNodeId === node.id,
           breakpoint: breakpoints.has(node.id),
           startNode,
           beforeStart,
@@ -310,6 +320,7 @@ export default function WorkflowDag({
       onSetStart,
       onToggleBreakpoint,
       pausedBeforeNodeId,
+      selectedNodeId,
       startNodeId,
       toggleGroup
     ]
