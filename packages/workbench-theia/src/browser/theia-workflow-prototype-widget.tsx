@@ -2,6 +2,7 @@ import { EditorManager, EditorWidget } from '@theia/editor/lib/browser'
 import { FileService } from '@theia/filesystem/lib/browser/file-service'
 import { ApplicationShell, Message } from '@theia/core/lib/browser'
 import { ReactWidget } from '@theia/core/lib/browser/widgets/react-widget'
+import { MessageService } from '@theia/core/lib/common/message-service'
 import URI from '@theia/core/lib/common/uri'
 import {
   Disposable,
@@ -42,7 +43,11 @@ import type { WorkbenchSessionSnapshot } from '@unilab/workbench-session'
 import * as React from 'react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
-import { WorkbenchSessionServer } from '../common/workbench-session-protocol'
+import {
+  WorkbenchSessionClient,
+  WorkbenchSessionServer
+} from '../common/workbench-session-protocol'
+import { WorkbenchSessionClientImpl } from './workbench-session-client'
 
 type SourceSaveHandler = (pythonSource: string) => Promise<void>
 
@@ -66,6 +71,12 @@ export class TheiaWorkflowPrototypeWidget extends ReactWidget {
   @inject(WorkbenchSessionServer)
   protected readonly workbenchSession!: WorkbenchSessionServer
 
+  @inject(WorkbenchSessionClient)
+  protected readonly workbenchSessionClient!: WorkbenchSessionClientImpl
+
+  @inject(MessageService)
+  protected readonly messages!: MessageService
+
   protected editorListeners = new DisposableCollection()
   protected snapshot = createWorkflowIdeSyncState()
   protected sessionSnapshot: WorkbenchSessionSnapshot = {
@@ -87,11 +98,9 @@ export class TheiaWorkflowPrototypeWidget extends ReactWidget {
     this.toDispose.push(this.editorManager.onCurrentEditorChanged(() => {
       this.observeCurrentEditor()
     }))
-    const sessionPoll = globalThis.setInterval(() => {
-      void this.refreshSessionSnapshot()
-    }, 300)
-    this.toDispose.push(Disposable.create(() => {
-      globalThis.clearInterval(sessionPoll)
+    this.toDispose.push(this.workbenchSessionClient.onSessionChanged(snapshot => {
+      this.sessionSnapshot = snapshot
+      this.update()
     }))
     void this.refreshSessionSnapshot()
     this.observeCurrentEditor()
@@ -99,12 +108,30 @@ export class TheiaWorkflowPrototypeWidget extends ReactWidget {
   }
 
   protected async refreshSessionSnapshot(): Promise<void> {
-    this.sessionSnapshot = await this.workbenchSession.getSnapshot()
+    try {
+      this.sessionSnapshot = await this.workbenchSession.getSnapshot()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      this.sessionSnapshot = {
+        phase: 'failed',
+        message: 'Workbench Backend 连接失败',
+        identity: null,
+        diagnostic: {
+          code: 'os_start_failed',
+          message,
+          recovery: '确认 Workbench Backend 正在运行后重新加载窗口'
+        }
+      }
+    }
     this.update()
   }
 
   protected readonly retrySession = async (): Promise<void> => {
-    await this.workbenchSession.start().catch(() => undefined)
+    try {
+      await this.workbenchSession.start()
+    } catch {
+      // The backend publishes the actionable failed snapshot before rejecting.
+    }
     await this.refreshSessionSnapshot()
   }
 
@@ -136,12 +163,21 @@ export class TheiaWorkflowPrototypeWidget extends ReactWidget {
     const previous = this.snapshot
     const currentUri = editorWidget.editor.uri.toString()
     const dirty = editorWidget.editor.document.dirty
-    const cursor = editorWidget.editor.cursor
+    let cursor: { line: number; column: number } | null = null
+    try {
+      const editorCursor = editorWidget.editor.cursor
+      cursor = {
+        line: editorCursor.line + 1,
+        column: editorCursor.character + 1
+      }
+    } catch {
+      // Monaco can transiently have no position while its model is detaching.
+    }
     this.snapshot = reduceWorkflowIdeSync(this.snapshot, {
       type: 'editor-changed',
       currentUri,
       dirty,
-      cursor: { line: cursor.line + 1, column: cursor.character + 1 }
+      cursor
     })
     this.update()
     if (
@@ -152,7 +188,10 @@ export class TheiaWorkflowPrototypeWidget extends ReactWidget {
       this.sourceSaveHandler
     ) {
       const pythonSource = editorWidget.editor.document.getText()
-      void this.sourceSaveHandler(pythonSource).catch(() => undefined)
+      void this.sourceSaveHandler(pythonSource).catch(error => {
+        const message = error instanceof Error ? error.message : String(error)
+        void this.messages.error(`工作流源码同步失败：${message}`)
+      })
     }
   }
 
@@ -331,10 +370,7 @@ function WorkbenchSurface({
     }
   }), [scope, services])
 
-  useEffect(() => {
-    void materialStore.getState().loadGraph().catch(() => undefined)
-    return () => materialStore.getState().reset()
-  }, [materialStore])
+  useEffect(() => () => materialStore.getState().reset(), [materialStore])
 
   useEffect(() => () => {
     queryClient.clear()

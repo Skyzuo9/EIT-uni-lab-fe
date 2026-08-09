@@ -7,6 +7,7 @@ import { ContainerModule } from '@theia/core/shared/inversify'
 
 import {
   WORKBENCH_SESSION_PATH,
+  WorkbenchSessionClient,
   WorkbenchSessionServer
 } from '../common/workbench-session-protocol'
 import { WorkbenchSessionService } from './workbench-session-service'
@@ -15,8 +16,14 @@ export default new ContainerModule(bind => {
   bind(WorkbenchSessionService).toSelf().inSingletonScope()
   bind(WorkbenchSessionServer).toService(WorkbenchSessionService)
   bind(BackendApplicationContribution).toService(WorkbenchSessionService)
-  bind(ConnectionHandler).toDynamicValue(context => new RpcConnectionHandler(
+  bind(ConnectionHandler).toDynamicValue(context => new RpcConnectionHandler<WorkbenchSessionClient>(
     WORKBENCH_SESSION_PATH,
-    () => context.container.get(WorkbenchSessionServer)
+    client => {
+      const server = context.container.get<WorkbenchSessionServer>(
+        WorkbenchSessionServer
+      )
+      server.setClient(client)
+      return server
+    }
   )).inSingletonScope()
 })

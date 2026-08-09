@@ -2,8 +2,14 @@ import type { WorkbenchSessionSnapshot } from '@unilab/workbench-session'
 
 export const WORKBENCH_SESSION_PATH = '/services/unilab-workbench-session'
 export const WorkbenchSessionServer = Symbol('WorkbenchSessionServer')
+export const WorkbenchSessionClient = Symbol('WorkbenchSessionClient')
+
+export interface WorkbenchSessionClient {
+  onDidChange(snapshot: WorkbenchSessionSnapshot): void
+}
 
 export interface WorkbenchSessionServer {
+  setClient(client: WorkbenchSessionClient): void
   getSnapshot(): Promise<WorkbenchSessionSnapshot>
   start(): Promise<WorkbenchSessionSnapshot>
 }

@@ -11,8 +11,11 @@ import ReactFlow, {
   MarkerType,
   MiniMap,
   type Edge,
-  type Node,
-  type OnSelectionChangeFunc,
+  type FitViewOptions,
+  type NodeDragHandler,
+  type NodeMouseHandler,
+  type OnInit,
+  type ProOptions,
   type ReactFlowInstance
 } from 'reactflow'
 import 'reactflow/dist/style.css'
@@ -38,6 +41,11 @@ const NODE_TYPES = {
   material: MaterialNode
 }
 const EMPTY_MATERIAL_IDS: readonly MaterialId[] = []
+const MATERIAL_FIT_VIEW_OPTIONS: FitViewOptions = {
+  padding: 0.12,
+  maxZoom: 1.25
+}
+const MATERIAL_PRO_OPTIONS: ProOptions = { hideAttribution: true }
 
 export interface MaterialCanvasProps {
   readStatus: CapabilityStatus
@@ -128,7 +136,39 @@ export function MaterialCanvas({
     () => projectMaterialTransferFlowEdges(materialTransferRoutes, nodes),
     [materialTransferRoutes, nodes]
   )
-
+  const handleInit = useCallback<OnInit<MaterialFlowNode['data']>>((instance) => {
+    flowInstanceRef.current = instance
+  }, [])
+  const handleNodeClick = useCallback<NodeMouseHandler>((_, node) => {
+    publishSelection([node.id])
+  }, [publishSelection])
+  const handlePaneClick = useCallback(() => {
+    publishSelection(EMPTY_MATERIAL_IDS)
+  }, [publishSelection])
+  const handleNodeDrag = useCallback<NodeDragHandler>((_, node) => {
+    if (!canDrag) return
+    const placement = flowPositionToPlacement({
+      materialId: node.id,
+      flowPosition: node.position,
+      aggregatesById
+    })
+    const pose = placementPose(placement)
+    if (pose) store.getState().setDragPreview(node.id, pose)
+  }, [aggregatesById, canDrag, store])
+  const handleNodeDragStop = useCallback<NodeDragHandler>((_, node) => {
+    if (!canDrag) {
+      store.getState().clearDragPreview(node.id)
+      return
+    }
+    const placement = flowPositionToPlacement({
+      materialId: node.id,
+      flowPosition: node.position,
+      aggregatesById
+    })
+    void store.getState().move(node.id, placement).catch(() => {
+      // The store owns the actionable error and preview rollback.
+    })
+  }, [aggregatesById, canDrag, store])
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas || loadState !== 'ready') return
@@ -220,50 +260,17 @@ export function MaterialCanvas({
         edges={transferEdges}
         nodeTypes={NODE_TYPES}
         fitView
-        fitViewOptions={{ padding: 0.12, maxZoom: 1.25 }}
+        fitViewOptions={MATERIAL_FIT_VIEW_OPTIONS}
         minZoom={0.15}
         maxZoom={2}
-        proOptions={{ hideAttribution: true }}
+        proOptions={MATERIAL_PRO_OPTIONS}
         nodesConnectable={false}
-        onInit={(instance) => {
-          flowInstanceRef.current = instance
-        }}
-        onNodeClick={(_, node) => {
-          publishSelection([node.id])
-        }}
-        onPaneClick={() => {
-          publishSelection(EMPTY_MATERIAL_IDS)
-        }}
-        onNodeDrag={(_, node) => {
-          if (!canDrag) return
-          const placement = flowPositionToPlacement({
-            materialId: node.id,
-            flowPosition: node.position,
-            aggregatesById
-          })
-          const pose = placementPose(placement)
-          if (pose) store.getState().setDragPreview(node.id, pose)
-        }}
-        onNodeDragStop={(_, node) => {
-          if (!canDrag) {
-            store.getState().clearDragPreview(node.id)
-            return
-          }
-          const placement = flowPositionToPlacement({
-            materialId: node.id,
-            flowPosition: node.position,
-            aggregatesById
-          })
-          void store.getState().move(node.id, placement).catch(() => {
-            // The store owns the actionable error and preview rollback.
-          })
-        }}
-        onSelectionChange={
-          ((selection) =>
-            publishSelection(
-              selection.nodes.map((node: Node) => node.id)
-            )) as OnSelectionChangeFunc
-        }
+        elementsSelectable={false}
+        onInit={handleInit}
+        onNodeClick={handleNodeClick}
+        onPaneClick={handlePaneClick}
+        onNodeDrag={handleNodeDrag}
+        onNodeDragStop={handleNodeDragStop}
       >
         {!floorplanOverlay && <Background gap={24} size={1} />}
         {!floorplanOverlay && <MiniMap pannable zoomable />}
