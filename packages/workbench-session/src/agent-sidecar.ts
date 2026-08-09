@@ -411,16 +411,37 @@ async function serveStatic(
 
 function brandingScript(): string {
   return `(() => {
-    const brand = () => {
-      document.title = 'UniLab Agent'
-      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT)
+    const brandNode = (root) => {
+      if (root.nodeType === Node.TEXT_NODE) {
+        if (root.nodeValue && /Aion\s*Ui/i.test(root.nodeValue)) {
+          root.nodeValue = root.nodeValue.replace(/Aion\s*Ui/gi, 'UniLab Agent')
+        }
+        return
+      }
+      if (!root.ownerDocument && root !== document) return
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
       for (let node = walker.nextNode(); node; node = walker.nextNode()) {
         if (node.nodeValue && /Aion\s*Ui/i.test(node.nodeValue)) {
           node.nodeValue = node.nodeValue.replace(/Aion\s*Ui/gi, 'UniLab Agent')
         }
       }
     }
-    new MutationObserver(brand).observe(document.documentElement, { childList: true, subtree: true })
+    const brand = () => {
+      if (document.title !== 'UniLab Agent') document.title = 'UniLab Agent'
+      if (document.body) brandNode(document.body)
+    }
+    new MutationObserver((records) => {
+      for (const record of records) {
+        if (record.type === 'characterData') brandNode(record.target)
+        for (const node of record.addedNodes) {
+          brandNode(node)
+        }
+      }
+    }).observe(document.documentElement, {
+      childList: true,
+      characterData: true,
+      subtree: true
+    })
     addEventListener('DOMContentLoaded', brand)
     brand()
   })()`

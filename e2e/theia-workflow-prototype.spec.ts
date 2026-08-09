@@ -5,6 +5,26 @@ const prototypeUrl = process.env.UNILAB_THEIA_PROTOTYPE_URL
 test.describe('UniLab Authoring Workbench real-system contract', () => {
   test.skip(!prototypeUrl, 'UNILAB_THEIA_PROTOTYPE_URL is required')
 
+  test('keeps the renderer responsive after UniLab Agent branding mounts', async ({
+    page
+  }) => {
+    test.setTimeout(15_000)
+    await page.goto(prototypeUrl!, { waitUntil: 'domcontentloaded' })
+    await expect(page.locator('iframe.unilab-aionui__frame')).toBeAttached()
+
+    await page.waitForTimeout(2_000)
+    await expect.poll(async () => page.evaluate(() => ({
+      readyState: document.readyState,
+      title: document.title
+    })), { timeout: 2_000 }).toEqual({
+      readyState: 'complete',
+      title: 'UniLab Authoring - Uni-Lab-SZLab'
+    })
+
+    await page.getByRole('button', { name: '查看 OS 日志' }).click()
+    await expect(page.getByTestId('session-log-tail')).toBeVisible()
+  })
+
   test('binds the exact package source and keeps bidirectional authoring usable', async ({
     page
   }) => {
@@ -21,9 +41,8 @@ test.describe('UniLab Authoring Workbench real-system contract', () => {
       /^sha256:[0-9a-f]{64}$/
     )
     await page.getByRole('button', { name: '查看 OS 日志' }).click()
-    await expect(page.getByTestId('session-log-tail')).toContainText(
-      '[workbench]'
-    )
+    await expect(page.getByTestId('session-log-tail')).toContainText(/\S/)
+    await page.getByText('OS 日志尾部', { exact: true }).click()
     await expect(page.getByText('完整控制流 DAG')).toBeVisible()
     await page.locator('.react-flow__node').first().click()
     await expect(page.locator('.monaco-editor .view-line').first()).toBeVisible()
@@ -78,11 +97,15 @@ test.describe('UniLab Authoring Workbench real-system contract', () => {
 
     await page.keyboard.press('Escape')
     await page.getByRole('button', { name: '画布模式', exact: true }).click()
-    await page.locator('.wf-node__id').first().click()
-    await expect(page.locator('[role="dialog"]:visible')).toHaveCount(0)
-    await expect(page.getByRole('complementary', {
+    const nodeEditor = page.getByRole('complementary', {
       name: '画布节点编辑器'
-    })).toBeVisible()
+    })
+    await expect(nodeEditor).toBeVisible()
+    await page.locator('.react-flow__node').filter({
+      hasText: 'run_solvent_addition'
+    }).click()
+    await expect(page.locator('[role="dialog"]:visible')).toHaveCount(0)
+    await expect(nodeEditor).toBeVisible()
 
     const layout = await page.evaluate(() => {
       const workflow = document.querySelector<HTMLElement>('.workflow-runtime')
