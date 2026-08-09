@@ -24,8 +24,10 @@ export interface WorkflowSourceLocation extends WorkflowSourcePosition {
 export interface WorkflowSourceProjection {
   workflowUuid: string
   sourceUri: string
-  /** 与 sourceMap 同一份 OS 权威结果的稳定身份。 */
+  /** OS 已观测源码代；mappingAvailable 时也与 sourceMap 属于同一结果。 */
   sourceVersion: string
+  /** false 表示只绑定了已保存文件，仍在等待 OS 签发 source map。 */
+  mappingAvailable: boolean
   sourceMap: readonly WorkflowSourceMapEntry[]
 }
 
@@ -165,6 +167,9 @@ export function workflowIdeMappingStatus(
   if (state.staleSourceVersion !== null) {
     return 'paused: waiting for OS source map'
   }
+  if (state.sourceProjection?.mappingAvailable === false) {
+    return 'paused: waiting for OS source map'
+  }
   return 'active'
 }
 
@@ -267,7 +272,8 @@ function deriveSourcePosition(
 ): WorkflowIdeSyncState {
   const mapped = Boolean(
     state.currentUri && state.currentUri === state.resolvedSourceUri &&
-    !state.dirty && state.staleSourceVersion === null
+    !state.dirty && state.staleSourceVersion === null &&
+    state.sourceProjection?.mappingAvailable !== false
   )
   return {
     ...state,

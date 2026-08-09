@@ -16,6 +16,7 @@ const projection: WorkflowSourceProjection = {
   workflowUuid: 'workflow-1',
   sourceUri: 'package://szlab_poly_studio/workflows/s06_robot.py',
   sourceVersion: 'v1',
+  mappingAvailable: true,
   sourceMap: [{
     workflow_node_uuid: 'node-1',
     start_line: 19,
@@ -81,6 +82,24 @@ describe('workflow IDE bridge', () => {
     })
     expect(workflowIdeMappingStatus(state)).toBe('active')
     expect(state.sourcePosition).toEqual({ line: 19, column: 5 })
+  })
+
+  it('keeps navigation paused when the source file is known but its map is not', () => {
+    const resolvedSourceUri = 'file:///workspace/workflows/s06_robot.py'
+    const state = reduceWorkflowIdeSync(createWorkflowIdeSyncState(), {
+      type: 'source-projection-changed',
+      projection: {
+        ...projection,
+        sourceMap: [],
+        mappingAvailable: false
+      },
+      resolvedSourceUri
+    })
+
+    expect(workflowIdeMappingStatus(state)).toBe(
+      'paused: waiting for OS source map'
+    )
+    expect(state.sourcePosition).toBeNull()
   })
 
   it('recompiles an IDE-saved file with the hash OS just observed', async () => {

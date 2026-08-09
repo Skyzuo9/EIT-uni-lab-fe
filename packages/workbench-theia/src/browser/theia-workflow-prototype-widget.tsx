@@ -109,6 +109,7 @@ export class TheiaWorkflowPrototypeWidget extends ReactWidget {
     diagnostic: null
   }
   protected sourceSaveHandler: SourceSaveHandler | null = null
+  protected lastAutomaticSourceSync: string | null = null
 
   @postConstruct()
   protected init(): void {
@@ -222,6 +223,7 @@ export class TheiaWorkflowPrototypeWidget extends ReactWidget {
     handler: SourceSaveHandler | null
   ): void => {
     this.sourceSaveHandler = handler
+    if (handler) void this.synchronizeUnmappedSource()
   }
 
   protected readonly setSourceProjection = async (
@@ -236,6 +238,37 @@ export class TheiaWorkflowPrototypeWidget extends ReactWidget {
       resolvedSourceUri: resolved?.toString() ?? null
     })
     this.observeCurrentEditor()
+    void this.synchronizeUnmappedSource()
+  }
+
+  /**
+   * 对已经落盘但尚无 source map 的源码执行一次同内容 CAS 编译。
+   *
+   * 文件字节由 Theia 文件服务读取；OS 会再次核对当前 draft hash，因此保存后
+   * 发生的并发编辑不会被覆盖。同一源码版本只尝试一次，非法草稿不会形成循环。
+   */
+  protected async synchronizeUnmappedSource(): Promise<void> {
+    const projection = this.snapshot.sourceProjection
+    const resolvedSourceUri = this.snapshot.resolvedSourceUri
+    const handler = this.sourceSaveHandler
+    if (
+      !projection || projection.mappingAvailable || !resolvedSourceUri ||
+      !handler ||
+      (
+        this.snapshot.currentUri === resolvedSourceUri &&
+        this.snapshot.dirty
+      )
+    ) return
+    const attempt = `${projection.workflowUuid}:${projection.sourceVersion}`
+    if (this.lastAutomaticSourceSync === attempt) return
+    this.lastAutomaticSourceSync = attempt
+    try {
+      const source = await this.fileService.read(new URI(resolvedSourceUri))
+      await handler(source.value)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      void this.messages.error(`工作流源码补编译失败：${message}`)
+    }
   }
 
   protected readonly revealSourceLocation = async (

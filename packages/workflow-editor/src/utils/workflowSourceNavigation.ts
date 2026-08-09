@@ -13,7 +13,7 @@ export {
   type WorkflowSourceProjection
 } from '@unilab/workflow-ide-bridge'
 
-/** 只发布与同一候选/已应用源码身份共同签发的 source map。 */
+/** 发布源码文件绑定；只有同代候选/已应用结果才携带可用 source map。 */
 export function projectWorkflowSourceNavigation(
   aggregate: WorkflowAuthoringAggregate | null,
   workflowUuid: string,
@@ -30,7 +30,23 @@ export function projectWorkflowSourceNavigation(
       ? aggregate.applied_source.source_hash
       : null
   const sourceVersion = candidateSourceVersion ?? appliedSourceVersion
-  return sourceVersion
-    ? { workflowUuid, sourceUri, sourceVersion, sourceMap }
+  if (sourceVersion) {
+    return {
+      workflowUuid,
+      sourceUri,
+      sourceVersion,
+      mappingAvailable: true,
+      sourceMap
+    }
+  }
+  const draftVersion = aggregate?.draft?.draft_hash
+  return draftVersion
+    ? {
+        workflowUuid,
+        sourceUri,
+        sourceVersion: draftVersion,
+        mappingAvailable: false,
+        sourceMap: []
+      }
     : null
 }
