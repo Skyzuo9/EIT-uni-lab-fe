@@ -28,6 +28,7 @@ implements WorkbenchSessionServer, BackendApplicationContribution {
       agentBrandIconPath: process.env['UNILAB_AGENT_ICON'],
       plcSimulatorProjectPath: process.env['UNILAB_PLC_SIM_PROJECT']
     })
+  private readonly clients = new Set<WorkbenchSessionClient>()
   private sessionListener: Disposable | undefined
 
   onStart(): void {
@@ -36,8 +37,11 @@ implements WorkbenchSessionServer, BackendApplicationContribution {
     })
   }
 
-  onStop(): Promise<void> {
-    return this.session.stopAll().then(() => undefined)
+  async onStop(): Promise<void> {
+    this.sessionListener?.dispose()
+    this.sessionListener = undefined
+    this.clients.clear()
+    await this.session.stopAll()
   }
 
   getSnapshot() {
@@ -88,10 +92,26 @@ implements WorkbenchSessionServer, BackendApplicationContribution {
   }
 
   setClient(client: WorkbenchSessionClient): void {
-    this.sessionListener?.dispose()
-    this.sessionListener = this.session.onDidChange(snapshot => {
-      client.onDidChange(snapshot)
+    this.clients.add(client)
+    this.sessionListener ??= this.session.onDidChange(snapshot => {
+      for (const connectedClient of this.clients) {
+        this.publishToClient(connectedClient, snapshot)
+      }
     })
-    client.onDidChange(this.session.getSnapshot())
+    this.publishToClient(client, this.session.getSnapshot())
+  }
+
+  private publishToClient(
+    client: WorkbenchSessionClient,
+    snapshot: ReturnType<WorkbenchSession['getSnapshot']>
+  ): void {
+    try {
+      // Theia can reject the asynchronous callback acknowledgement even after
+      // the renderer handled the notification. That is not a connection-lifecycle
+      // signal, so keep the renderer subscribed for the next snapshot.
+      void Promise.resolve(client.onDidChange(snapshot)).catch(() => undefined)
+    } catch {
+      this.clients.delete(client)
+    }
   }
 }
