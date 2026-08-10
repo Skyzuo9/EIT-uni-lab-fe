@@ -38,8 +38,16 @@ import {
 import {
   startManagedWorkbenchAgent,
   type ManagedWorkbenchAgent,
+  type ManagedWorkbenchAgentOptions,
   type WorkbenchAgentIdentity
 } from './agent-sidecar'
+import { WorkbenchLaunchError } from './launch-error'
+import {
+  readLocalEnvironmentConfiguration,
+  writeLocalEnvironmentConfigurationFile
+} from './local-environment-configuration'
+import { waitForWorkbenchReadiness } from './readiness'
+export { parseWorkspacePackageMountProjection } from './readiness'
 export type WorkbenchSessionPhase =
   | 'idle'
   | 'validating'
@@ -62,6 +70,8 @@ export interface WorkbenchSessionDiagnostic {
   recovery: string
 }
 
+export type WorkbenchRuntimeMode = 'normal' | 'dry-run'
+
 export interface WorkbenchSessionIdentity {
   workspacePath: string
   osProjectPath: string
@@ -72,7 +82,7 @@ export interface WorkbenchSessionIdentity {
   pid: number
   generation: string
   logPath: string
-  mode: 'simulation'
+  mode: WorkbenchRuntimeMode
   packageMounts: WorkspacePackageMountProjection | null
   agent: WorkbenchAgentIdentity | null
 }
@@ -125,6 +135,7 @@ export interface WorkspacePackageMountProjection {
 export interface WorkbenchSessionSnapshot {
   phase: WorkbenchSessionPhase
   message: string
+  configuredGraphPath: string
   identity: WorkbenchSessionIdentity | null
   diagnostic: WorkbenchSessionDiagnostic | null
   plcSimulator: WorkbenchPlcSimulatorSnapshot
@@ -144,9 +155,13 @@ export interface ManagedLocalWorkbenchSessionOptions {
   enableAgent?: boolean
   agentAppPath?: string
   agentBrandIconPath?: string
+  agentStarter?: (
+    options: ManagedWorkbenchAgentOptions
+  ) => Promise<ManagedWorkbenchAgent>
   plcSimulatorProjectPath?: string
   plcSimulatorGuiPort?: number
   plcSimulatorOpcUaPort?: number
+  runtimeMode?: WorkbenchRuntimeMode
 }
 
 export interface WorkbenchSession {
@@ -163,9 +178,11 @@ export interface WorkbenchSession {
     kind: WorkbenchEnvironmentLogKind,
     maxBytes?: number
   ): Promise<string>
+  configureGraph(graphPath: string): Promise<WorkbenchSessionSnapshot>
   configurePlcSimulator(projectPath: string): Promise<WorkbenchSessionSnapshot>
   startPlcSimulator(): Promise<WorkbenchSessionSnapshot>
   stopPlcSimulator(): Promise<WorkbenchSessionSnapshot>
+  setRuntimeMode(mode: WorkbenchRuntimeMode): Promise<WorkbenchSessionSnapshot>
 }
 
 interface ResolvedWorkbenchLaunch {
@@ -198,16 +215,26 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
   private plcSimulatorChild: ChildProcessWithoutNullStreams | null = null
   private agent: ManagedWorkbenchAgent | null = null
   private starting: Promise<WorkbenchSessionSnapshot> | null = null
+  private stopping: Promise<WorkbenchSessionSnapshot> | null = null
   private plcSimulatorStarting: Promise<WorkbenchSessionSnapshot> | null = null
-  private expectedExit = false
-  private expectedPlcSimulatorExit = false
+  private plcSimulatorStopping: Promise<WorkbenchSessionSnapshot> | null = null
+  private readonly expectedExits = new WeakSet<ChildProcessWithoutNullStreams>()
+  private readonly expectedPlcSimulatorExits = new WeakSet<
+    ChildProcessWithoutNullStreams
+  >()
   private stopRequested = false
   private plcSimulatorStopRequested = false
+  private selectedMode: WorkbenchRuntimeMode
+  private selectedGraphPath: string
 
   constructor(private readonly options: ManagedLocalWorkbenchSessionOptions) {
+    this.selectedMode = options.runtimeMode ?? 'normal'
+    this.selectedGraphPath = options.graphPath
+      ?? join('deployment', 'graphs', 'szlab-local-debug.json')
     this.snapshot = {
       phase: 'idle',
       message: '尚未启动 Uni-Lab OS',
+      configuredGraphPath: this.selectedGraphPath,
       identity: null,
       diagnostic: null,
       plcSimulator: idlePlcSimulatorSnapshot(
@@ -231,52 +258,82 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
   }
 
   start(): Promise<WorkbenchSessionSnapshot> {
+    if (this.stopping) return this.stopping.then(() => this.start())
     if (this.snapshot.phase === 'ready') return Promise.resolve(this.getSnapshot())
     if (this.starting) return this.starting
     this.stopRequested = false
-    this.starting = this.startManaged()
-    return this.starting.finally(() => {
-      this.starting = null
+    const starting = this.startManaged()
+    this.starting = starting
+    return starting.finally(() => {
+      if (this.starting === starting) this.starting = null
     })
   }
 
-  async stop(): Promise<WorkbenchSessionSnapshot> {
+  stop(): Promise<WorkbenchSessionSnapshot> {
     this.stopRequested = true
+    if (this.stopping) return this.stopping
+    let trackedStop: Promise<WorkbenchSessionSnapshot>
+    trackedStop = this.stopManaged().finally(() => {
+      if (this.stopping === trackedStop) this.stopping = null
+    })
+    this.stopping = trackedStop
+    return trackedStop
+  }
+
+  private async stopManaged(): Promise<WorkbenchSessionSnapshot> {
+    const starting = this.starting
     const agent = this.agent
     this.agent = null
-    if (agent) await agent.stop()
-    if (!this.child) {
+    let agentStopError: unknown = null
+    if (this.child) {
       this.publish({
-        phase: 'idle',
-        message: 'Uni-Lab OS 已停止',
-        identity: null,
+        ...this.snapshot,
+        phase: 'stopping',
+        message: '正在安全停止 Uni-Lab OS…',
         diagnostic: null
       })
-      return this.getSnapshot()
+      await this.stopCurrentOsChild()
     }
-    this.publish({
-      ...this.snapshot,
-      phase: 'stopping',
-      message: '正在安全停止 Uni-Lab OS…',
-      diagnostic: null
-    })
-    this.expectedExit = true
-    const child = this.child
-    this.child = null
-    await stopProcessTree(child)
-    this.expectedExit = false
+    if (starting) {
+      try {
+        await starting
+      } catch {
+        // 停止中的世代可能在就绪探测退出时拒绝。
+      }
+    }
+    await this.stopCurrentOsChild()
+    if (agent) {
+      try {
+        await stopManagedAgent(agent)
+      } catch (error) {
+        agentStopError = error
+      }
+    }
     this.publish({
       phase: 'idle',
       message: 'Uni-Lab OS 已停止',
       identity: null,
       diagnostic: null
     })
+    if (agentStopError) throw agentStopError
     return this.getSnapshot()
   }
 
   async stopAll(): Promise<WorkbenchSessionSnapshot> {
-    await this.stop()
-    return await this.stopPlcSimulator()
+    const results = await Promise.allSettled([
+      this.stop(),
+      this.stopPlcSimulator()
+    ])
+    const failures = results.filter(
+      (result): result is PromiseRejectedResult => result.status === 'rejected'
+    )
+    if (failures.length) {
+      throw new AggregateError(
+        failures.map(result => result.reason),
+        'Workbench 环境停止时发生错误；OS 与 PLC-Sim 已完成尽力清理'
+      )
+    }
+    return this.getSnapshot()
   }
 
   async restart(): Promise<WorkbenchSessionSnapshot> {
@@ -300,6 +357,24 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
     return await readLogTailFromPath(logPath, maxBytes)
   }
 
+  async configureGraph(graphPath: string): Promise<WorkbenchSessionSnapshot> {
+    const normalizedGraphPath = graphPath.trim()
+    if (!normalizedGraphPath || normalizedGraphPath.includes('\0')) {
+      throw new Error('设备图路径不能为空或包含非法字符')
+    }
+    await writeLocalEnvironmentConfiguration(this.options.workspacePath, {
+      graphPath: normalizedGraphPath,
+      plcSimulatorProjectPath: this.snapshot.plcSimulator.projectPath,
+      runtimeMode: this.selectedMode
+    })
+    this.selectedGraphPath = normalizedGraphPath
+    this.publish({
+      ...this.snapshot,
+      configuredGraphPath: normalizedGraphPath
+    })
+    return this.getSnapshot()
+  }
+
   async configurePlcSimulator(
     projectPath: string
   ): Promise<WorkbenchSessionSnapshot> {
@@ -310,10 +385,11 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
     if (normalizedProjectPath.includes('\0')) {
       throw new Error('PLC-Sim 项目目录包含非法字符')
     }
-    await writeLocalEnvironmentConfiguration(
-      this.options.workspacePath,
-      normalizedProjectPath
-    )
+    await writeLocalEnvironmentConfiguration(this.options.workspacePath, {
+      graphPath: this.selectedGraphPath,
+      plcSimulatorProjectPath: normalizedProjectPath,
+      runtimeMode: this.selectedMode
+    })
     this.publishPlcSimulator({
       ...idlePlcSimulatorSnapshot(normalizedProjectPath),
       message: normalizedProjectPath
@@ -323,39 +399,74 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
     return this.getSnapshot()
   }
 
+  async setRuntimeMode(
+    mode: WorkbenchRuntimeMode
+  ): Promise<WorkbenchSessionSnapshot> {
+    if (mode !== 'normal' && mode !== 'dry-run') {
+      throw new Error(`不支持的 OS 运行模式：${String(mode)}`)
+    }
+    if (this.snapshot.identity?.mode === mode) return this.getSnapshot()
+    await writeLocalEnvironmentConfiguration(this.options.workspacePath, {
+      graphPath: this.selectedGraphPath,
+      plcSimulatorProjectPath: this.snapshot.plcSimulator.projectPath,
+      runtimeMode: mode
+    })
+    this.selectedMode = mode
+    return await this.restart()
+  }
+
   startPlcSimulator(): Promise<WorkbenchSessionSnapshot> {
+    if (this.plcSimulatorStopping) {
+      return this.plcSimulatorStopping.then(() => this.startPlcSimulator())
+    }
     if (this.snapshot.plcSimulator.phase === 'ready') {
       return Promise.resolve(this.getSnapshot())
     }
     if (this.plcSimulatorStarting) return this.plcSimulatorStarting
     this.plcSimulatorStopRequested = false
-    this.plcSimulatorStarting = this.startManagedPlcSimulator()
-    return this.plcSimulatorStarting.finally(() => {
-      this.plcSimulatorStarting = null
+    const starting = this.startManagedPlcSimulator()
+    this.plcSimulatorStarting = starting
+    return starting.finally(() => {
+      if (this.plcSimulatorStarting === starting) {
+        this.plcSimulatorStarting = null
+      }
     })
   }
 
-  async stopPlcSimulator(): Promise<WorkbenchSessionSnapshot> {
+  stopPlcSimulator(): Promise<WorkbenchSessionSnapshot> {
     this.plcSimulatorStopRequested = true
+    if (this.plcSimulatorStopping) return this.plcSimulatorStopping
+    let trackedStop: Promise<WorkbenchSessionSnapshot>
+    trackedStop = this.stopManagedPlcSimulator().finally(() => {
+      if (this.plcSimulatorStopping === trackedStop) {
+        this.plcSimulatorStopping = null
+      }
+    })
+    this.plcSimulatorStopping = trackedStop
+    return trackedStop
+  }
+
+  private async stopManagedPlcSimulator(): Promise<WorkbenchSessionSnapshot> {
+    const starting = this.plcSimulatorStarting
     const projectPath = this.snapshot.plcSimulator.projectPath
     const child = this.plcSimulatorChild
-    this.plcSimulatorChild = null
-    if (!child) {
+    if (child) {
       this.publishPlcSimulator({
-        ...idlePlcSimulatorSnapshot(projectPath),
-        message: 'PLC-Sim 已停止'
+        ...this.snapshot.plcSimulator,
+        phase: 'stopping',
+        message: '正在停止 PLC-Sim…',
+        diagnostic: null
       })
-      return this.getSnapshot()
+      await this.stopCurrentPlcSimulatorChild()
     }
-    this.publishPlcSimulator({
-      ...this.snapshot.plcSimulator,
-      phase: 'stopping',
-      message: '正在停止 PLC-Sim…',
-      diagnostic: null
-    })
-    this.expectedPlcSimulatorExit = true
-    await stopProcessTree(child)
-    this.expectedPlcSimulatorExit = false
+    if (starting) {
+      try {
+        await starting
+      } catch {
+        // 停止中的 PLC-Sim 可能在端口探测退出时拒绝。
+      }
+    }
+    await this.stopCurrentPlcSimulatorChild()
     this.publishPlcSimulator({
       ...idlePlcSimulatorSnapshot(projectPath),
       message: 'PLC-Sim 已停止'
@@ -363,10 +474,18 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
     return this.getSnapshot()
   }
 
+  private async stopCurrentPlcSimulatorChild(): Promise<void> {
+    const child = this.plcSimulatorChild
+    if (!child) return
+    this.expectedPlcSimulatorExits.add(child)
+    await stopProcessTree(child)
+    if (this.plcSimulatorChild === child) this.plcSimulatorChild = null
+  }
+
   private async startManagedPlcSimulator(): Promise<WorkbenchSessionSnapshot> {
     const identity = this.snapshot.identity
-    if (this.snapshot.phase !== 'ready' || !identity) {
-      throw new Error('请先启动 OS，再启动 PLC-Sim')
+    if (!identity) {
+      throw new Error('请先校验 Workbench 环境，再启动 PLC-Sim')
     }
     const projectPath = this.snapshot.plcSimulator.projectPath
     this.publishPlcSimulator({
@@ -403,6 +522,7 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
         'plc-sim.log'
       )
       await mkdir(dirname(logPath), { recursive: true })
+      if (this.plcSimulatorStopRequested) return this.getSnapshot()
       const log = createWriteStream(logPath, { flags: 'a' })
       log.write(`[workbench] ${new Date().toISOString()} starting PLC-Sim\n`)
       this.publishPlcSimulator({
@@ -434,7 +554,8 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
           `[workbench] PLC-Sim exited code=${String(code)} signal=${String(signal)}\n`
         )
         if (this.plcSimulatorChild === child) this.plcSimulatorChild = null
-        if (!this.expectedPlcSimulatorExit) {
+        const expectedExit = this.expectedPlcSimulatorExits.delete(child)
+        if (!expectedExit) {
           this.publishPlcSimulator({
             ...this.snapshot.plcSimulator,
             phase: 'failed',
@@ -466,11 +587,10 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
       return this.getSnapshot()
     } catch (error) {
       const child = this.plcSimulatorChild
-      this.plcSimulatorChild = null
       if (child) {
-        this.expectedPlcSimulatorExit = true
+        this.expectedPlcSimulatorExits.add(child)
         await stopProcessTree(child)
-        this.expectedPlcSimulatorExit = false
+        if (this.plcSimulatorChild === child) this.plcSimulatorChild = null
       }
       const message = error instanceof Error ? error.message : String(error)
       if (this.plcSimulatorStopRequested) {
@@ -500,6 +620,61 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
     })
   }
 
+  private async stopCurrentOsChild(): Promise<void> {
+    const child = this.child
+    if (!child) return
+    this.expectedExits.add(child)
+    await stopProcessTree(child)
+    if (this.child === child) this.child = null
+  }
+
+  private async startAgentForLaunch(
+    launch: ResolvedWorkbenchLaunch
+  ): Promise<void> {
+    if (!this.options.enableAgent) return
+    const packageMounts = launch.identity.packageMounts
+    const hasEditableMount = packageMounts?.items.some(
+      item => item.packageId === packageMounts.editablePackageId
+    ) ?? false
+    if (!hasEditableMount) throw new Error('OS 未发布 Editable Package 挂载')
+    try {
+      const agent = await (
+        this.options.agentStarter ?? startManagedWorkbenchAgent
+      )({
+        workspacePath: launch.identity.workspacePath,
+        environment: launch.environment,
+        appPath: this.options.agentAppPath,
+        brandIconPath: this.options.agentBrandIconPath,
+        onUnexpectedExit: message => {
+          if (!this.snapshot.identity) return
+          this.publish({
+            ...this.snapshot,
+            identity: {
+              ...this.snapshot.identity,
+              agent: failedAgentIdentity(launch, message)
+            }
+          })
+        }
+      })
+      if (this.stopRequested) {
+        try {
+          await stopManagedAgent(agent)
+        } catch {
+          // OS/PLC process cleanup remains independent from Agent teardown.
+        }
+        return
+      }
+      this.agent = agent
+      launch.identity.agent = agent.identity
+    } catch (error) {
+      if (this.stopRequested) return
+      launch.identity.agent = failedAgentIdentity(
+        launch,
+        error instanceof Error ? error.message : String(error)
+      )
+    }
+  }
+
   private async startManaged(): Promise<WorkbenchSessionSnapshot> {
     this.publish({
       phase: 'validating',
@@ -509,9 +684,32 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
     })
     let launch: ResolvedWorkbenchLaunch
     try {
-      launch = await resolveWorkbenchLaunch(this.options)
+      const localConfiguration = await readLocalEnvironmentConfiguration(
+        join(
+          this.options.workspacePath,
+          '.unilabos',
+          LOCAL_ENVIRONMENT_CONFIG
+        )
+      )
+      this.selectedMode = this.options.runtimeMode
+        ?? localConfiguration.runtimeMode
+        ?? this.selectedMode
+      this.selectedGraphPath = this.options.graphPath
+        ?? localConfiguration.graphPath
+        ?? this.selectedGraphPath
+      this.snapshot = {
+        ...this.snapshot,
+        configuredGraphPath: this.selectedGraphPath
+      }
+      launch = await resolveWorkbenchLaunch(
+        {
+          ...this.options,
+          graphPath: this.selectedGraphPath
+        },
+        this.selectedMode
+      )
       const savedPlcSimulatorProjectPath =
-        await readLocalEnvironmentConfiguration(launch.identity.workspacePath)
+        localConfiguration.plcSimulatorProjectPath
       if (
         savedPlcSimulatorProjectPath
         && !this.snapshot.plcSimulator.projectPath
@@ -564,7 +762,8 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
       child.once('close', (code, signal) => {
         log.end(`[workbench] process exited code=${String(code)} signal=${String(signal)}\n`)
         if (this.child === child) this.child = null
-        if (!this.expectedExit && this.snapshot.phase !== 'failed') {
+        const expectedExit = this.expectedExits.delete(child)
+        if (!expectedExit && this.snapshot.phase !== 'failed') {
           this.publish({
             phase: 'failed',
             message: 'Uni-Lab OS 已意外退出',
@@ -590,88 +789,7 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
         this.options.readinessTimeoutMs ?? DEFAULT_READINESS_TIMEOUT_MS
       )
       if (this.stopRequested) return this.getSnapshot()
-      if (this.options.enableAgent) {
-        const hasEditableMount = launch.identity.packageMounts.items.some(
-          item => item.packageId ===
-            launch.identity.packageMounts?.editablePackageId
-        )
-        if (!hasEditableMount) throw new Error('OS 未发布 Editable Package 挂载')
-        try {
-          const agent = await startManagedWorkbenchAgent({
-            workspacePath: launch.identity.workspacePath,
-            environment: launch.environment,
-            appPath: this.options.agentAppPath,
-            brandIconPath: this.options.agentBrandIconPath,
-            onUnexpectedExit: message => {
-              if (!this.snapshot.identity) return
-              this.publish({
-                ...this.snapshot,
-                identity: {
-                  ...this.snapshot.identity,
-                  agent: {
-                    implementation: 'aioncore',
-                    productName: 'UniLab Agent',
-                    distributionVersion: 'unknown',
-                    phase: 'failed',
-                    url: null,
-                    iconUrl: null,
-                    pid: null,
-                    dataDir: join(
-                      launch.identity.workspacePath,
-                      '.unilabos',
-                      'agent',
-                      'aionui'
-                    ),
-                    workDir: launch.identity.workspacePath,
-                    logPath: join(
-                      launch.identity.workspacePath,
-                      '.unilabos',
-                      'agent',
-                      'aionui',
-                      'logs',
-                      'aioncore.log'
-                    ),
-                    diagnostic: message
-                  }
-                }
-              })
-            }
-          })
-          if (this.stopRequested) {
-            await agent.stop()
-            return this.getSnapshot()
-          }
-          this.agent = agent
-          launch.identity.agent = agent.identity
-        } catch (error) {
-          if (this.stopRequested) return this.getSnapshot()
-          launch.identity.agent = {
-            implementation: 'aioncore',
-            productName: 'UniLab Agent',
-            distributionVersion: 'unknown',
-            phase: 'failed',
-            url: null,
-            iconUrl: null,
-            pid: null,
-            dataDir: join(
-              launch.identity.workspacePath,
-              '.unilabos',
-              'agent',
-              'aionui'
-            ),
-            workDir: launch.identity.workspacePath,
-            logPath: join(
-              launch.identity.workspacePath,
-              '.unilabos',
-              'agent',
-              'aionui',
-              'logs',
-              'aioncore.log'
-            ),
-            diagnostic: error instanceof Error ? error.message : String(error)
-          }
-        }
-      }
+      await this.startAgentForLaunch(launch)
       if (this.stopRequested) return this.getSnapshot()
       if (child.exitCode !== null || child.signalCode !== null) {
         throw new Error('Uni-Lab OS 在 Workbench 完成就绪前退出')
@@ -687,14 +805,16 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
     } catch (error) {
       const agent = this.agent
       this.agent = null
-      if (agent) await agent.stop()
       const child = this.child
-      this.child = null
+      const cleanup: Promise<unknown>[] = []
       if (child) {
-        this.expectedExit = true
-        await stopProcessTree(child)
-        this.expectedExit = false
+        this.expectedExits.add(child)
+        cleanup.push(stopProcessTree(child).finally(() => {
+          if (this.child === child) this.child = null
+        }))
       }
+      if (agent) cleanup.push(stopManagedAgent(agent))
+      await Promise.allSettled(cleanup)
       if (this.stopRequested) {
         this.publish({
           phase: 'idle',
@@ -723,20 +843,52 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
   }
 
   private publish(
-    snapshot: Omit<WorkbenchSessionSnapshot, 'plcSimulator'> & {
+    snapshot: Omit<
+      WorkbenchSessionSnapshot,
+      'configuredGraphPath' | 'plcSimulator'
+    > & {
+      configuredGraphPath?: string
       plcSimulator?: WorkbenchPlcSimulatorSnapshot
     }
   ): void {
     this.snapshot = cloneSnapshot({
       ...snapshot,
+      configuredGraphPath:
+        snapshot.configuredGraphPath ?? this.snapshot.configuredGraphPath,
       plcSimulator: snapshot.plcSimulator ?? this.snapshot.plcSimulator
     })
     for (const listener of this.listeners) listener(this.getSnapshot())
   }
 }
 
+function failedAgentIdentity(
+  launch: ResolvedWorkbenchLaunch,
+  diagnostic: string
+): WorkbenchAgentIdentity {
+  const dataDir = join(
+    launch.identity.workspacePath,
+    '.unilabos',
+    'agent',
+    'aionui'
+  )
+  return {
+    implementation: 'aioncore',
+    productName: 'UniLab Agent',
+    distributionVersion: 'unknown',
+    phase: 'failed',
+    url: null,
+    iconUrl: null,
+    pid: null,
+    dataDir,
+    workDir: launch.identity.workspacePath,
+    logPath: join(dataDir, 'logs', 'aioncore.log'),
+    diagnostic
+  }
+}
+
 async function resolveWorkbenchLaunch(
-  options: ManagedLocalWorkbenchSessionOptions
+  options: ManagedLocalWorkbenchSessionOptions,
+  mode: WorkbenchRuntimeMode
 ): Promise<ResolvedWorkbenchLaunch> {
   const environment = options.environment ?? process.env
   const platform = options.platform ?? process.platform
@@ -752,12 +904,12 @@ async function resolveWorkbenchLaunch(
     'invalid_workspace',
     '所选 Workspace 缺少 deployment/local_config.py'
   )
+  const configuredGraphPath = options.graphPath
+    ?? join('deployment', 'graphs', 'szlab-local-debug.json')
   const graphPath = await requireRealFile(
-    options.graphPath
-      ? resolve(workspacePath, options.graphPath)
-      : join(workspacePath, 'deployment', 'graphs', 'szlab-local-debug.json'),
+    resolve(workspacePath, configuredGraphPath),
     'invalid_workspace',
-    '所选 Workspace 缺少 deployment/graphs/szlab-local-debug.json'
+    '所选设备图不存在'
   )
   ensureInsideWorkspace(workspacePath, graphPath)
 
@@ -841,9 +993,19 @@ async function resolveWorkbenchLaunch(
     'workbench',
     `${generation}.log`
   )
+  const graphBytes = await readFile(graphPath)
   const graphFingerprint = createHash('sha256')
-    .update(await readFile(graphPath))
+    .update(graphBytes)
     .digest('hex')
+  const validatedGraphPath = join(
+    runtimeDirectory,
+    'selected-graph.json'
+  )
+  await mkdir(runtimeDirectory, { recursive: true })
+  await writeFile(validatedGraphPath, graphBytes, {
+    flag: 'wx',
+    mode: 0o600
+  })
   const identity: WorkbenchSessionIdentity = {
     workspacePath,
     osProjectPath,
@@ -854,7 +1016,7 @@ async function resolveWorkbenchLaunch(
     pid: 0,
     generation,
     logPath,
-    mode: 'simulation',
+    mode,
     packageMounts: null,
     agent: null
   }
@@ -865,7 +1027,7 @@ async function resolveWorkbenchLaunch(
       '--workspace',
       workspacePath,
       '--graph',
-      graphPath,
+      validatedGraphPath,
       '--config',
       localConfigPath,
       '--working_dir',
@@ -878,7 +1040,7 @@ async function resolveWorkbenchLaunch(
       String(backendPort),
       '--disable_browser',
       '--action_mode',
-      'simulate',
+      mode === 'normal' ? 'real' : 'simulate',
       '--external_devices_only',
       '--ros_discovery_server',
       'off'
@@ -894,6 +1056,10 @@ async function resolveWorkbenchLaunch(
       UNILABOS_HOSTLINKCONFIG_PORT: String(hostLinkPort),
       UNILABOS_OBSERVABILITYCONFIG_ENABLED: 'true',
       UNILABOS_OBSERVABILITYCONFIG_PROJECT_NAME: 'uni-lab-workbench',
+      UNILABOS_WORKBENCH_RUNTIME_MODE: mode,
+      UNILABOS_WORKBENCH_GENERATION: generation,
+      UNILABOS_WORKBENCH_WORKSPACE: workspacePath,
+      UNILABOS_WORKBENCH_GRAPH_FINGERPRINT: graphFingerprint,
       ROS_DOMAIN_ID: String(2 + Math.floor(Math.random() * 98))
     },
     runtimeDirectory,
@@ -930,187 +1096,6 @@ async function ensureWorkbenchStateIgnored(workbenchRoot: string): Promise<void>
   }
   if (changed || !existing) {
     await writeFile(ignorePath, `${[...lines].join('\n')}\n`, { mode: 0o600 })
-  }
-}
-
-async function waitForWorkbenchReadiness(
-  backendUrl: string,
-  child: ChildProcessWithoutNullStreams,
-  timeoutMs: number
-): Promise<WorkspacePackageMountProjection> {
-  const probes: Array<[string, (payload: unknown) => boolean]> = [
-    ['/api/v1/health', isHealthReady],
-    ['/api/v1/workflow-node-templates', isSuccessfulEnvelope],
-    ['/api/v1/devices', isSuccessfulEnvelope]
-  ]
-  for (const [path, accepts] of probes) {
-    const deadline = Date.now() + timeoutMs
-    let ready = false
-    while (Date.now() < deadline) {
-      if (child.exitCode !== null || child.signalCode !== null) {
-        throw new WorkbenchLaunchError(
-          'os_readiness_failed',
-          `Uni-Lab OS 在 ${path} 就绪前退出`,
-          '检查 OS 启动日志并修复依赖或配置错误'
-        )
-      }
-      try {
-        const response = await fetch(`${backendUrl}${path}`, {
-          signal: AbortSignal.timeout(1_000)
-        })
-        if (response.ok && accepts(await response.json())) {
-          ready = true
-          break
-        }
-      } catch {
-        // The managed process is still starting.
-      }
-      await delay(200)
-    }
-    if (!ready) {
-      throw new WorkbenchLaunchError(
-        'os_readiness_failed',
-        `等待 Uni-Lab OS 就绪超时：${backendUrl}${path}`,
-        '检查 OS 日志、依赖和端口占用后重试'
-      )
-    }
-  }
-  const mountPayload = await fetchWorkbenchReadinessPayload(
-    backendUrl,
-    child,
-    '/api/v1/workspace/package-mounts',
-    timeoutMs
-  )
-  return parseWorkspacePackageMountProjection(mountPayload)
-}
-
-async function fetchWorkbenchReadinessPayload(
-  backendUrl: string,
-  child: ChildProcessWithoutNullStreams,
-  path: string,
-  timeoutMs: number
-): Promise<unknown> {
-  const deadline = Date.now() + timeoutMs
-  while (Date.now() < deadline) {
-    if (child.exitCode !== null || child.signalCode !== null) {
-      throw new WorkbenchLaunchError(
-        'os_readiness_failed',
-        `Uni-Lab OS 在 ${path} 就绪前退出`,
-        '检查 OS 启动日志并修复依赖或配置错误'
-      )
-    }
-    try {
-      const response = await fetch(`${backendUrl}${path}`, {
-        signal: AbortSignal.timeout(1_000)
-      })
-      if (response.ok) return await response.json()
-    } catch {
-      // The managed process is still publishing the fixed workspace generation.
-    }
-    await delay(200)
-  }
-  throw new WorkbenchLaunchError(
-    'os_readiness_failed',
-    `等待 Uni-Lab OS 就绪超时：${backendUrl}${path}`,
-    '确认 OS 版本支持 workspace-package-mounts/v1 后重试'
-  )
-}
-
-export function parseWorkspacePackageMountProjection(
-  payload: unknown
-): WorkspacePackageMountProjection {
-  if (!isRecord(payload) || payload['code'] !== 0 || !isRecord(payload['data'])) {
-    throw new WorkbenchLaunchError(
-      'os_readiness_failed',
-      'Uni-Lab OS 未返回有效的 Workspace 软件包挂载信封',
-      '升级到支持 workspace-package-mounts/v1 的 Uni-Lab OS'
-    )
-  }
-  const data = payload['data']
-  const items = data['items']
-  if (
-    data['schemaVersion'] !== 'workspace-package-mounts/v1' ||
-    !nonEmptyString(data['editablePackageId']) ||
-    !nonEmptyString(data['dependencyRevision']) ||
-    !nonEmptyString(data['catalogRevision']) ||
-    !nonEmptyString(data['mountRevision']) ||
-    !Array.isArray(items) || items.length === 0
-  ) {
-    throw new WorkbenchLaunchError(
-      'os_readiness_failed',
-      'Uni-Lab OS Workspace 软件包挂载投影形状无效',
-      '检查 OS 包目录编译诊断并重新启动 Workbench'
-    )
-  }
-  const parsedItems = items.map(parseWorkspacePackageMount)
-  const packageIds = new Set(parsedItems.map(item => item.packageId))
-  const editableItems = parsedItems.filter(item => item.editable)
-  if (
-    packageIds.size !== parsedItems.length || editableItems.length !== 1 ||
-    editableItems[0]?.packageId !== data['editablePackageId']
-  ) {
-    throw new WorkbenchLaunchError(
-      'os_readiness_failed',
-      'Uni-Lab OS Workspace 软件包挂载身份冲突',
-      '修复重复包身份或可编辑包选择后重试'
-    )
-  }
-  return {
-    schemaVersion: 'workspace-package-mounts/v1',
-    editablePackageId: data['editablePackageId'],
-    dependencyRevision: data['dependencyRevision'],
-    catalogRevision: data['catalogRevision'],
-    mountRevision: data['mountRevision'],
-    items: parsedItems
-  }
-}
-
-function parseWorkspacePackageMount(value: unknown): WorkspacePackageMount {
-  if (
-    !isRecord(value) ||
-    !nonEmptyString(value['packageId']) ||
-    !nonEmptyString(value['distributionName']) ||
-    !nonEmptyString(value['version']) ||
-    !nonEmptyString(value['namespace']) ||
-    typeof value['editable'] !== 'boolean' ||
-    value['readOnly'] !== !value['editable'] ||
-    value['sourceKind'] !== 'workspace' ||
-    !fileUri(value['importRootUri']) ||
-    !fileUri(value['packageRootUri']) ||
-    !nonEmptyString(value['contentDigest']) ||
-    !nonEmptyString(value['catalogDigest'])
-  ) {
-    throw new WorkbenchLaunchError(
-      'os_readiness_failed',
-      'Uni-Lab OS 返回了无效的软件包挂载项',
-      '检查 OS PackageCatalog 与 WorkspaceSource 配对'
-    )
-  }
-  return {
-    packageId: value['packageId'],
-    distributionName: value['distributionName'],
-    version: value['version'],
-    namespace: value['namespace'],
-    editable: value['editable'],
-    readOnly: value['readOnly'],
-    sourceKind: 'workspace',
-    importRootUri: value['importRootUri'],
-    packageRootUri: value['packageRootUri'],
-    contentDigest: value['contentDigest'],
-    catalogDigest: value['catalogDigest']
-  }
-}
-
-function nonEmptyString(value: unknown): value is string {
-  return typeof value === 'string' && Boolean(value.trim())
-}
-
-function fileUri(value: unknown): value is string {
-  if (!nonEmptyString(value)) return false
-  try {
-    return new URL(value).protocol === 'file:'
-  } catch {
-    return false
   }
 }
 
@@ -1349,45 +1334,19 @@ function canConnectToLoopbackPort(port: number): Promise<boolean> {
   })
 }
 
-async function readLocalEnvironmentConfiguration(
-  workspacePath: string
-): Promise<string | null> {
-  try {
-    const content = JSON.parse(await readFile(
-      join(workspacePath, '.unilabos', LOCAL_ENVIRONMENT_CONFIG),
-      'utf8'
-    )) as unknown
-    return isRecord(content) && content['schemaVersion'] === 1
-      && typeof content['plcSimulatorProjectPath'] === 'string'
-      ? content['plcSimulatorProjectPath']
-      : null
-  } catch {
-    return null
-  }
-}
-
 async function writeLocalEnvironmentConfiguration(
   workspacePath: string,
-  plcSimulatorProjectPath: string
+  configuration: {
+    graphPath: string
+    plcSimulatorProjectPath: string
+    runtimeMode: WorkbenchRuntimeMode
+  }
 ): Promise<void> {
   const resolvedWorkspacePath = await realpath(resolve(workspacePath))
   const workbenchRoot = join(resolvedWorkspacePath, '.unilabos')
   await ensureWorkbenchStateIgnored(workbenchRoot)
   const configPath = join(workbenchRoot, LOCAL_ENVIRONMENT_CONFIG)
-  const temporaryPath = `${configPath}.${process.pid}.tmp`
-  await writeFile(temporaryPath, `${JSON.stringify({
-    schemaVersion: 1,
-    plcSimulatorProjectPath
-  }, null, 2)}\n`, { mode: 0o600 })
-  await rename(temporaryPath, configPath)
-}
-
-function isHealthReady(payload: unknown): boolean {
-  return isRecord(payload) && payload['status'] === 'ok'
-}
-
-function isSuccessfulEnvelope(payload: unknown): boolean {
-  return isRecord(payload) && payload['code'] === 0
+  await writeLocalEnvironmentConfigurationFile(configPath, configuration)
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -1436,17 +1395,13 @@ function diagnosticFromError(error: unknown): WorkbenchSessionDiagnostic {
   }
 }
 
-class WorkbenchLaunchError extends Error {
-  readonly diagnostic: WorkbenchSessionDiagnostic
-
-  constructor(
-    code: WorkbenchSessionDiagnostic['code'],
-    message: string,
-    recovery: string
-  ) {
-    super(message)
-    this.diagnostic = { code, message, recovery }
-  }
+async function stopManagedAgent(agent: ManagedWorkbenchAgent): Promise<void> {
+  await Promise.race([
+    agent.stop(),
+    delay(5_000).then(() => {
+      throw new Error('等待 UniLab Agent 停止超时')
+    })
+  ])
 }
 
 function delay(milliseconds: number): Promise<void> {

@@ -68,6 +68,7 @@ const MIME_TYPES = new Map([
 ])
 export const PINNED_AIONUI_VERSION = '2.1.52'
 const MANAGED_LOCAL_DEFAULT_ASSISTANT_ID = 'bare:8e1acf31'
+const trackedServerSockets = new WeakMap<Server | net.Server, Set<net.Socket>>()
 
 /** Start the pinned local Agent implementation for one exact Workspace. */
 export async function startManagedWorkbenchAgent(
@@ -336,6 +337,7 @@ async function startRendererProxy(options: {
       response.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }))
     })
   })
+  trackServerSockets(server)
   server.on('upgrade', (request, socket, head) => {
     if (isProtectedAgentRequest(request.url ?? '')) return socket.destroy()
     const upstream = net.connect(options.backendPort, '127.0.0.1', () => {
@@ -646,7 +648,20 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 async function closeServer(server: Server | net.Server): Promise<void> {
   if (!server.listening) return
-  await new Promise<void>((resolveClose, reject) => server.close(error => (
-    error ? reject(error) : resolveClose()
-  )))
+  for (const socket of trackedServerSockets.get(server) ?? []) socket.destroy()
+  await Promise.race([
+    new Promise<void>((resolveClose, reject) => server.close(error => (
+      error ? reject(error) : resolveClose()
+    ))),
+    new Promise<void>(resolveTimeout => setTimeout(resolveTimeout, 1_000))
+  ])
+}
+
+function trackServerSockets(server: Server | net.Server): void {
+  const sockets = new Set<net.Socket>()
+  trackedServerSockets.set(server, sockets)
+  server.on('connection', socket => {
+    sockets.add(socket)
+    socket.once('close', () => sockets.delete(socket))
+  })
 }

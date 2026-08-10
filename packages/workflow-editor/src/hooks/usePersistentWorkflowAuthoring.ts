@@ -122,6 +122,7 @@ export function usePersistentWorkflowAuthoring({
   const [error, setError] = useState<string | null>(null)
   const {
     actionCatalog,
+    actionCatalogError,
     effectiveMaterialSourceCatalog,
     materialSourceAuthorityBlocked,
     materialSourceCatalog,
@@ -129,7 +130,7 @@ export function usePersistentWorkflowAuthoring({
     materialSourceCatalogLoading,
     refreshMaterialSourceCatalog,
     refreshWorkflowCatalogsAfterConflict
-  } = usePersistentWorkflowCatalogs({ runtime, graph, setError })
+  } = usePersistentWorkflowCatalogs({ runtime, graph })
   // Resource-template source navigation uses the same exact package identity
   // as Workflow navigation. Re-entering that source deterministically selects
   // the first MaterialSource/ResourceSlot consumer in the current graph.
@@ -383,6 +384,7 @@ export function usePersistentWorkflowAuthoring({
     setSelectedNodeName('')
     setSelectedNodeNameDirty(false)
     setRemoteConflict(null)
+    setError(null)
     setMessage(nextMessage)
     localState.current = {
       ...localState.current,
@@ -1204,7 +1206,7 @@ export function usePersistentWorkflowAuthoring({
   const candidateIo = graph ? workflowIoMetadata(graph) : null
 
   return {
-    acceptFullSourceDiff, actionCatalog, actionParametersOpen,
+    acceptFullSourceDiff, actionCatalog, actionCatalogError, actionParametersOpen,
     adoptRemoteConflict, aggregate, appliedIo,
     applyCandidate, beautifyCanvasLayout,
     busy, cancelFullSourceDiff, candidateIo, codeProjection,

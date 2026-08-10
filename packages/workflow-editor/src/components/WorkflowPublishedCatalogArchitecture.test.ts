@@ -117,6 +117,34 @@ describe('Published Workflow Catalog in the Authoring module', () => {
     expect(source).not.toMatch(/loadPublishedWorkflowCatalog/)
     expect(source).not.toMatch(/\bprofile(?:Id|Kind|Name)?\b/i)
   })
+
+  it('isolates action catalog failures from MaterialSource authority and retries them', () => {
+    const source = readFileSync(catalogHookPath, 'utf8')
+
+    expect(source).toContain('catalogRequestGeneration')
+    expect(source).toContain(
+      'requestGeneration !== catalogRequestGeneration.current'
+    )
+    expect(source).not.toContain('setError(errorMessage(catalogError))')
+    expect(source).toContain('setActionCatalogError')
+    expect(source).toContain('ACTION_CATALOG_RETRY_DELAY_MS')
+    expect(source).not.toMatch(
+      /setMaterialSourceCatalogError\(\s*`操作目录加载失败：/
+    )
+  })
+
+  it('clears an obsolete transport error after authority is installed', () => {
+    const source = readFileSync(authoringHookPath, 'utf8')
+    const installStart = source.indexOf('const installAggregate = useCallback')
+    const installEnd = source.indexOf('\n  useEffect(() => {', installStart)
+    const installAggregate = source.slice(installStart, installEnd)
+
+    expect(installAggregate).toContain('setAggregate(next)')
+    expect(installAggregate).toContain('setError(null)')
+    expect(installAggregate.indexOf('setError(null)')).toBeLessThan(
+      installAggregate.indexOf('setMessage(nextMessage)')
+    )
+  })
 })
 
 function paletteSection(source: string, label: string): string {

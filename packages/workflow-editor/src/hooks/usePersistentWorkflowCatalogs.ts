@@ -4,7 +4,7 @@ import type {
   WorkflowMaterialSourceCatalogSnapshot,
   WorkflowRuntimePort
 } from '@unilab/services'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { projectMaterialSourceEditor } from '../utils/workflowMaterialSource'
 import {
@@ -16,7 +16,35 @@ import {
 interface PersistentWorkflowCatalogOptions {
   runtime: WorkflowRuntimePort
   graph: WorkflowAuthoringGraph | null
-  setError: (message: string | null) => void
+}
+
+const CATALOG_READ_RETRY_DELAY_MS = 250
+const CATALOG_READ_RETRY_ATTEMPTS = 5
+const ACTION_CATALOG_RETRY_DELAY_MS = 1_000
+
+/**
+ * 对只读目录做一次短暂重试，吸收本地 OS 重启和大量模板预取时的瞬时断连。
+ *
+ * @param read 无副作用的目录读取操作。
+ * @returns 首次成功的目录快照。
+ * @throws 五次读取均失败时抛出最后一次错误。
+ */
+async function readCatalogWithRetry<Value>(
+  read: () => Promise<Value>
+): Promise<Value> {
+  let lastError: unknown = null
+  for (let attempt = 0; attempt < CATALOG_READ_RETRY_ATTEMPTS; attempt += 1) {
+    try {
+      return await read()
+    } catch (error) {
+      lastError = error
+    }
+    if (attempt === CATALOG_READ_RETRY_ATTEMPTS - 1) break
+    await new Promise<void>((resolve) => {
+      globalThis.setTimeout(resolve, CATALOG_READ_RETRY_DELAY_MS)
+    })
+  }
+  throw lastError
 }
 
 /**
@@ -27,34 +55,22 @@ interface PersistentWorkflowCatalogOptions {
  */
 export function usePersistentWorkflowCatalogs({
   runtime,
-  graph,
-  setError
+  graph
 }: PersistentWorkflowCatalogOptions) {
   const [actionCatalog, setActionCatalog] =
     useState<WorkflowActionCatalogSnapshot | null>(null)
+  const [actionCatalogError, setActionCatalogError] =
+    useState<string | null>(null)
   const [materialSourceCatalog, setMaterialSourceCatalog] =
     useState<WorkflowMaterialSourceCatalogSnapshot | null>(null)
   const [materialSourceCatalogLoading, setMaterialSourceCatalogLoading] =
     useState(true)
   const [materialSourceCatalogError, setMaterialSourceCatalogError] =
     useState<string | null>(null)
-
-  useEffect(() => {
-    let active = true
-    setActionCatalog(null)
-    void runtime.getWorkflowActionCatalog()
-      .then((catalog) => {
-        if (active) setActionCatalog(catalog)
-      })
-      .catch((catalogError) => {
-        if (!active) return
-        setActionCatalog(null)
-        setError(errorMessage(catalogError))
-      })
-    return () => {
-      active = false
-    }
-  }, [runtime, setError])
+  // 每次 runtime/backend 换代都使旧请求租约失效，禁止旧 OS 的迟到失败覆盖
+  // 新 OS 已完成的目录状态。
+  const catalogRequestGeneration = useRef(0)
+  const actionCatalogRequestGeneration = useRef(0)
 
   /**
    * 重新读取物料来源（MaterialSource）目录，并保留失败关闭状态。
@@ -62,17 +78,23 @@ export function usePersistentWorkflowCatalogs({
    * @returns 目录刷新完成后的 Promise；错误通过目录状态呈现。
    */
   const refreshMaterialSourceCatalog = useCallback(async (): Promise<void> => {
+    const requestGeneration = ++catalogRequestGeneration.current
     setMaterialSourceCatalogLoading(true)
     setMaterialSourceCatalogError(null)
     try {
-      setMaterialSourceCatalog(
-        await runtime.getWorkflowMaterialSourceCatalog()
+      const catalog = await readCatalogWithRetry(
+        () => runtime.getWorkflowMaterialSourceCatalog()
       )
+      if (requestGeneration !== catalogRequestGeneration.current) return
+      setMaterialSourceCatalog(catalog)
     } catch (catalogError) {
+      if (requestGeneration !== catalogRequestGeneration.current) return
       setMaterialSourceCatalog(null)
       setMaterialSourceCatalogError(errorMessage(catalogError))
     } finally {
-      setMaterialSourceCatalogLoading(false)
+      if (requestGeneration === catalogRequestGeneration.current) {
+        setMaterialSourceCatalogLoading(false)
+      }
     }
   }, [runtime])
 
@@ -86,23 +108,54 @@ export function usePersistentWorkflowCatalogs({
       action: WorkflowActionCatalogSnapshot
       materialSource: WorkflowMaterialSourceCatalogSnapshot
     }> => {
+      // 冲突补读同时接管两份目录的请求租约。否则它完成后，旧的后台预取仍
+      // 可能迟到并把新目录覆盖成旧 OS 的快照。
+      const materialSourceRequestGeneration =
+        ++catalogRequestGeneration.current
+      const actionRequestGeneration =
+        ++actionCatalogRequestGeneration.current
       setActionCatalog(null)
+      setActionCatalogError(null)
       setMaterialSourceCatalog(null)
       setMaterialSourceCatalogLoading(true)
       setMaterialSourceCatalogError(null)
-      try {
-        const [action, materialSource] = await Promise.all([
-          runtime.getWorkflowActionCatalog(),
-          runtime.getWorkflowMaterialSourceCatalog()
-        ])
-        setActionCatalog(action)
-        setMaterialSourceCatalog(materialSource)
-        return { action, materialSource }
-      } catch (catalogError) {
-        setMaterialSourceCatalogError(errorMessage(catalogError))
-        throw catalogError
-      } finally {
+      const [actionResult, materialSourceResult] = await Promise.allSettled([
+        runtime.getWorkflowActionCatalog(),
+        runtime.getWorkflowMaterialSourceCatalog()
+      ])
+      const actionRequestIsCurrent =
+        actionRequestGeneration === actionCatalogRequestGeneration.current
+      const materialSourceRequestIsCurrent =
+        materialSourceRequestGeneration === catalogRequestGeneration.current
+      if (actionRequestIsCurrent) {
+        if (actionResult.status === 'fulfilled') {
+          setActionCatalog(actionResult.value)
+        } else {
+          setActionCatalogError(
+            `操作目录加载失败：${errorMessage(actionResult.reason)}`
+          )
+        }
+      }
+      if (materialSourceRequestIsCurrent) {
+        if (materialSourceResult.status === 'fulfilled') {
+          setMaterialSourceCatalog(materialSourceResult.value)
+        } else {
+          setMaterialSourceCatalogError(
+            errorMessage(materialSourceResult.reason)
+          )
+        }
         setMaterialSourceCatalogLoading(false)
+      }
+      if (!actionRequestIsCurrent || !materialSourceRequestIsCurrent) {
+        throw new Error('目录刷新已被较新的运行环境请求替代，请重试')
+      }
+      if (materialSourceResult.status === 'rejected') {
+        throw materialSourceResult.reason
+      }
+      if (actionResult.status === 'rejected') throw actionResult.reason
+      return {
+        action: actionResult.value,
+        materialSource: materialSourceResult.value
       }
     },
     [runtime]
@@ -110,7 +163,59 @@ export function usePersistentWorkflowCatalogs({
 
   useEffect(() => {
     void refreshMaterialSourceCatalog()
+    return () => {
+      catalogRequestGeneration.current += 1
+    }
   }, [refreshMaterialSourceCatalog])
+
+  useEffect(() => {
+    if (
+      materialSourceCatalogLoading ||
+      materialSourceCatalogError ||
+      !materialSourceCatalog
+    ) return
+    let active = true
+    let retryTimer: ReturnType<typeof globalThis.setTimeout> | null = null
+    const requestGeneration = ++actionCatalogRequestGeneration.current
+    // MaterialSource 是运行准入门禁；先建立它，再预取体量更大的动作目录，
+    // 避免两组跨端口请求在浏览器启动瞬间彼此挤占连接。
+    const readActionCatalog = async (): Promise<void> => {
+      setActionCatalogError(null)
+      try {
+        const catalog = await readCatalogWithRetry(
+          () => runtime.getWorkflowActionCatalog()
+        )
+        if (
+          !active ||
+          requestGeneration !== actionCatalogRequestGeneration.current
+        ) return
+        setActionCatalog(catalog)
+      } catch (catalogError) {
+        if (
+          !active ||
+          requestGeneration !== actionCatalogRequestGeneration.current
+        ) return
+        setActionCatalog(null)
+        setActionCatalogError(
+          `操作目录加载失败：${errorMessage(catalogError)}`
+        )
+        retryTimer = globalThis.setTimeout(() => {
+          void readActionCatalog()
+        }, ACTION_CATALOG_RETRY_DELAY_MS)
+      }
+    }
+    void readActionCatalog()
+    return () => {
+      active = false
+      actionCatalogRequestGeneration.current += 1
+      if (retryTimer !== null) globalThis.clearTimeout(retryTimer)
+    }
+  }, [
+    materialSourceCatalog,
+    materialSourceCatalogError,
+    materialSourceCatalogLoading,
+    runtime
+  ])
 
   const effectiveMaterialSourceCatalog = useMemo(() => {
     if (!materialSourceCatalog) return null
@@ -189,6 +294,7 @@ export function usePersistentWorkflowCatalogs({
 
   return {
     actionCatalog,
+    actionCatalogError,
     effectiveMaterialSourceCatalog,
     materialSourceAuthorityBlocked,
     materialSourceCatalog,

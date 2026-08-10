@@ -1,5 +1,5 @@
 import type {
-  WorkbenchEnvironmentLogKind,
+  WorkbenchSession,
   WorkbenchSessionSnapshot
 } from '@unilab/workbench-session'
 
@@ -11,18 +11,22 @@ export interface WorkbenchSessionClient {
   onDidChange(snapshot: WorkbenchSessionSnapshot): void
 }
 
-export interface WorkbenchSessionServer {
+type WorkbenchSessionRemoteOperations = Pick<
+  WorkbenchSession,
+  | 'start'
+  | 'stop'
+  | 'restart'
+  | 'readLogTail'
+  | 'readEnvironmentLog'
+  | 'configureGraph'
+  | 'configurePlcSimulator'
+  | 'startPlcSimulator'
+  | 'stopPlcSimulator'
+  | 'setRuntimeMode'
+>
+
+export interface WorkbenchSessionServer
+extends WorkbenchSessionRemoteOperations {
   setClient(client: WorkbenchSessionClient): void
   getSnapshot(): Promise<WorkbenchSessionSnapshot>
-  start(): Promise<WorkbenchSessionSnapshot>
-  stop(): Promise<WorkbenchSessionSnapshot>
-  restart(): Promise<WorkbenchSessionSnapshot>
-  readLogTail(maxBytes?: number): Promise<string>
-  readEnvironmentLog(
-    kind: WorkbenchEnvironmentLogKind,
-    maxBytes?: number
-  ): Promise<string>
-  configurePlcSimulator(projectPath: string): Promise<WorkbenchSessionSnapshot>
-  startPlcSimulator(): Promise<WorkbenchSessionSnapshot>
-  stopPlcSimulator(): Promise<WorkbenchSessionSnapshot>
 }

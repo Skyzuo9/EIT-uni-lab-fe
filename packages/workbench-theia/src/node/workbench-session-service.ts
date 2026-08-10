@@ -67,6 +67,10 @@ implements WorkbenchSessionServer, BackendApplicationContribution {
     return this.session.readEnvironmentLog(kind, maxBytes)
   }
 
+  configureGraph(graphPath: string) {
+    return this.session.configureGraph(graphPath)
+  }
+
   configurePlcSimulator(projectPath: string) {
     return this.session.configurePlcSimulator(projectPath)
   }
@@ -77,6 +81,10 @@ implements WorkbenchSessionServer, BackendApplicationContribution {
 
   stopPlcSimulator() {
     return this.session.stopPlcSimulator()
+  }
+
+  setRuntimeMode(mode: Parameters<WorkbenchSession['setRuntimeMode']>[0]) {
+    return this.session.setRuntimeMode(mode)
   }
 
   setClient(client: WorkbenchSessionClient): void {
