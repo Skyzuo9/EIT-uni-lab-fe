@@ -53,6 +53,7 @@ export interface WorkflowNodeData {
   handles?: WorkflowHandlePort[]
   traceAccent?: string
   materialHandleAccents?: Record<string, string>
+  materialHandleRoles?: Record<string, string>
   materialChips?: WorkflowMaterialChip[]
   layoutStrategy?: WorkflowDagLayoutStrategy
   materialLaneDirection?: WorkflowMaterialSwimlaneDirection
@@ -92,7 +93,8 @@ export default function WorkflowNodeCard({
   const materialPorts = workflowMaterialPortCards(
     [...(targetHandles ?? []), ...(sourceHandles ?? [])],
     data.materialHandleAccents,
-    data.materialLaneByHandle
+    data.materialLaneByHandle,
+    data.materialHandleRoles
   )
   const projectedMaterialHandleIds = new Set(
     materialPorts.flatMap((port) => [
@@ -216,7 +218,8 @@ export default function WorkflowNodeCard({
           data.materialLaneRange,
           data.materialLaneDirection,
           targetPosition,
-          sourcePosition
+          sourcePosition,
+          serpentineFlow
         )}
         {data.groupKind === 'subworkflow' && (
           <button
@@ -415,6 +418,7 @@ export interface WorkflowMaterialPortCard {
   targetHandle?: WorkflowHandlePort
   sourceHandle?: WorkflowHandlePort
   laneIndex?: number
+  materialRole?: string
 }
 
 /**
@@ -423,29 +427,41 @@ export interface WorkflowMaterialPortCard {
  * @param handles 节点的输入、输出 Handle。
  * @param materialHandleAccents 按 Handle UUID 索引的物料流颜色。
  * @param materialLaneByHandle 按 Handle UUID 索引的物料泳道序号。
+ * @param materialRoleByHandle 按 Handle UUID 索引的物料流角色（MaterialFlowRole）。
  * @returns 按逻辑字段合并后的物料标签；同字段输入、输出只占一项。
  */
 export function workflowMaterialPortCards(
   handles: readonly WorkflowHandlePort[],
   materialHandleAccents: Record<string, string> | undefined,
-  materialLaneByHandle: Record<string, number> | undefined = undefined
+  materialLaneByHandle: Record<string, number> | undefined = undefined,
+  materialRoleByHandle: Record<string, string> | undefined = undefined
 ): WorkflowMaterialPortCard[] {
   const cards: WorkflowMaterialPortCard[] = []
   const resourceHandles = handles.filter(isResourceSlotHandle)
   const accentByVariable = new Map<string, string>()
+  // `roleByVariable` 让同字段输入、输出共享同一物料流角色视觉层级。
+  const roleByVariable = new Map<string, string>()
   for (const handle of resourceHandles) {
     const accent = materialHandleAccents?.[handle.uuid]
-    if (!accent) continue
     const variableName = handle.dataKey?.trim() || handle.handleKey
-    if (!accentByVariable.has(variableName) || handle.ioType === 'target') {
+    if (accent && (
+      !accentByVariable.has(variableName) || handle.ioType === 'target'
+    )) {
       accentByVariable.set(variableName, accent)
     }
+    const materialRole = materialRoleByHandle?.[handle.uuid]
+    if (materialRole && (
+      !roleByVariable.has(variableName) || handle.ioType === 'target'
+    )) roleByVariable.set(variableName, materialRole)
   }
   for (const handle of resourceHandles) {
     const variableName = handle.dataKey?.trim() || handle.handleKey
     const accent = materialHandleAccents?.[handle.uuid] ??
       accentByVariable.get(variableName)
     if (!accent) continue
+    // `materialRole` 与颜色一样优先采用输入侧，表达进入节点的既有物料身份。
+    const materialRole = materialRoleByHandle?.[handle.uuid] ??
+      roleByVariable.get(variableName)
     const slot = handle.ioType === 'target' ? 'targetHandle' : 'sourceHandle'
     const existing = cards.find((card) =>
       card.variableName === variableName &&
@@ -457,6 +473,9 @@ export function workflowMaterialPortCards(
       // 同字段输入与输出是同一个 ResourceSlot；输入侧颜色代表进入节点的
       // 既有物料身份，因此在目录数据暂时不一致时仍以输入侧为准。
       if (handle.ioType === 'target') existing.accent = accent
+      if (handle.ioType === 'target' && materialRole) {
+        existing.materialRole = materialRole
+      }
       existing.label = preferredMaterialPortLabel(existing, handle)
       existing.description = mergeDescriptions(
         existing.description,
@@ -470,6 +489,7 @@ export function workflowMaterialPortCards(
       label: handle.title || variableName || handle.displayName,
       ...(handle.description ? { description: handle.description } : {}),
       accent,
+      materialRole,
       laneIndex: materialLaneByHandle?.[handle.uuid],
       [slot]: handle
     })
@@ -506,6 +526,7 @@ function mergeDescriptions(
  * @param direction 物料泳道从上到下或从左到右的流向。
  * @param targetPosition 当前节点的物料输入端口方位。
  * @param sourcePosition 当前节点的物料输出端口方位。
+ * @param supportingMaterialPresentation 是否启用主样品优先的辅助物料视觉层级。
  * @returns 物料端口容器；没有物料端口时返回空。
  */
 function renderMaterialPorts(
@@ -513,7 +534,8 @@ function renderMaterialPorts(
   laneRange: { start: number; end: number } | undefined,
   direction: WorkflowMaterialSwimlaneDirection | undefined,
   targetPosition: Position,
-  sourcePosition: Position
+  sourcePosition: Position,
+  supportingMaterialPresentation = false
 ): React.JSX.Element | null {
   if (cards.length === 0) return null
   const swimlane = laneRange && cards.every(
@@ -548,6 +570,10 @@ function renderMaterialPorts(
           data-workflow-material-port-label={card.label}
           data-workflow-material-port-description={card.description}
           data-workflow-material-lane-index={card.laneIndex}
+          data-workflow-material-role={card.materialRole}
+          data-workflow-material-emphasis={supportingMaterialPresentation
+            ? card.materialRole === 'primary_sample' ? 'primary' : 'supporting'
+            : undefined}
           style={{
             '--wf-material-accent': card.accent,
             ...(swimlane

@@ -123,6 +123,12 @@ describe('Material trace projection', () => {
         [reagentInput.uuid, reagentUuid]
       ])
     )
+    expect(projection.handleRolesByNode.get(firstActionUuid)).toEqual(
+      new Map([
+        [sampleInput.uuid, 'primary_sample'],
+        [reagentInput.uuid, 'reagent']
+      ])
+    )
     expect(projection.chipsByNode.get(firstActionUuid)).toEqual([
       materialChip(sampleInput.uuid, materialTraceAccent(sourceUuid), {
         sourceNodeUuid: sourceUuid,

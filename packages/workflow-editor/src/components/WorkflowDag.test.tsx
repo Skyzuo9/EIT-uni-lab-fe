@@ -221,6 +221,9 @@ describe('WorkflowDag canvas controls', () => {
       /wf-node__handle--source\.react-flow__handle-right/
     )
     expect(stylesheet).toMatch(/wf-node__material-port-label/)
+    expect(stylesheet).toMatch(/data-workflow-material-emphasis='supporting'/)
+    expect(stylesheet).toMatch(/wf-flow-edge--supporting-material/)
+    expect(stylesheet).toMatch(/opacity:\s*\.36/)
   })
 })
 

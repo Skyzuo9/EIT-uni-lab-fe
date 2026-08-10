@@ -72,6 +72,11 @@ describe('Action node presentation', () => {
       'reagent-target': '#8056a8',
       'sample-source': '#6657c7',
       'result-source': '#4f69b8'
+    }, undefined, {
+      'sample-target': 'primary_sample',
+      'sample-source': 'primary_sample',
+      'reagent-target': 'reagent',
+      'result-source': 'derived'
     })
 
     expect(cards).toHaveLength(3)
@@ -84,10 +89,12 @@ describe('Action node presentation', () => {
       variableName: 'sample',
       targetHandle: handles[0],
       sourceHandle: handles[2],
+      materialRole: 'primary_sample',
       description: '进入当前操作的原始样品\n离开当前操作的样品'
     }))
     expect(cards[1]).toEqual(expect.objectContaining({
       variableName: 'reagent',
+      materialRole: 'reagent',
       targetHandle: handles[1]
     }))
   })

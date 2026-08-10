@@ -33,6 +33,12 @@ export default function WorkflowMaterialSourceNode({
   structuralTargetHandles,
   structuralSourceHandles
 }: WorkflowMaterialSourceNodeProps): React.JSX.Element {
+  // `materialEmphasis` 仅在主样品蛇形画布声明视觉层级，其他布局保持原样。
+  const materialEmphasis = data.layoutStrategy === 'primary-sample-serpentine'
+    ? data.materialSource?.flowRole === 'primary_sample'
+      ? 'primary'
+      : 'supporting'
+    : undefined
   const sourceDescription = data.materialSource
     ? `${flowRoleLabel(data.materialSource.flowRole)} · ${
         data.materialSource.mode === 'create_new' ? '新建物料' : '已有物料'
@@ -44,6 +50,7 @@ export default function WorkflowMaterialSourceNode({
       data-workflow-node-uuid={data.id}
       data-workflow-node-kind="material_source"
       data-workflow-material-role={data.materialSource?.flowRole}
+      data-workflow-material-emphasis={materialEmphasis}
       data-workflow-layout-strategy={data.layoutStrategy}
       data-workflow-layout-direction={data.materialLaneDirection}
       data-workflow-node-description={data.description}

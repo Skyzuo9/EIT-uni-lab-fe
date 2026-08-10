@@ -159,3 +159,134 @@
   :global(.wf-node__marker-actions) {
   align-self: flex-end;
 }
+
+/* 辅助物料加入保持可读和可操作，只降低色面、线宽与运动强度。 */
+.workflow
+  :global([data-workflow-layout-strategy='primary-sample-serpentine'][data-workflow-material-emphasis='supporting'])
+  :global(.wf-node__material-source-label) strong {
+  color: var(--unilab-color-text-muted);
+  font-weight: 600;
+}
+
+.workflow
+  :global([data-workflow-layout-strategy='primary-sample-serpentine'][data-workflow-material-emphasis='supporting'])
+  :global(.wf-node__material-source-visual) {
+  color: color-mix(
+    in srgb,
+    var(--wf-material-accent) 48%,
+    var(--unilab-color-text-muted)
+  );
+  background: color-mix(
+    in srgb,
+    var(--wf-material-accent) 18%,
+    var(--unilab-color-border-strong)
+  );
+  filter: saturate(.38);
+}
+
+.workflow
+  :global([data-workflow-layout-strategy='primary-sample-serpentine'][data-workflow-material-emphasis='supporting'])
+  :global(.wf-node__material-source-visual)::before {
+  background: color-mix(
+    in srgb,
+    var(--wf-material-accent) 5%,
+    var(--unilab-color-surface)
+  );
+}
+
+.workflow
+  :global([data-workflow-layout-strategy='primary-sample-serpentine'])
+  :global(.wf-node__material-port[data-workflow-material-emphasis='supporting'])
+  :global(.wf-node__material-port-label) {
+  color: var(--unilab-color-text-muted);
+  border-color: color-mix(
+    in srgb,
+    var(--wf-material-accent) 14%,
+    var(--unilab-color-border)
+  );
+  background: color-mix(
+    in srgb,
+    var(--wf-material-accent) 3%,
+    var(--unilab-color-surface)
+  );
+  box-shadow: inset 0 1px 0 color-mix(
+    in srgb,
+    var(--wf-material-accent) 28%,
+    transparent
+  );
+  font-weight: 600;
+}
+
+.workflow
+  :global([data-workflow-layout-strategy='primary-sample-serpentine'])
+  :global(.wf-node__material-port[data-workflow-material-emphasis='supporting'])
+  > :global(.wf-node__handle) {
+  opacity: .62;
+}
+
+.workflow :global(.react-flow__edge.wf-flow-edge--supporting-material) {
+  opacity: .36;
+  transition: opacity var(--unilab-motion-fast) ease;
+}
+
+/* 用户检查辅助物料时恢复完整色彩，不牺牲 hover、选中和键盘聚焦反馈。 */
+.workflow
+  :global(.react-flow__node:hover)
+  :global([data-workflow-layout-strategy='primary-sample-serpentine'][data-workflow-material-emphasis='supporting'])
+  :global(.wf-node__material-source-visual),
+.workflow
+  :global(.react-flow__node:focus-visible)
+  :global([data-workflow-layout-strategy='primary-sample-serpentine'][data-workflow-material-emphasis='supporting'])
+  :global(.wf-node__material-source-visual),
+.workflow
+  :global(.react-flow__node.selected)
+  :global([data-workflow-layout-strategy='primary-sample-serpentine'][data-workflow-material-emphasis='supporting'])
+  :global(.wf-node__material-source-visual) {
+  color: var(--wf-material-accent);
+  background: var(--unilab-color-text);
+  filter: none;
+}
+
+.workflow
+  :global(.wf-node__material-port[data-workflow-material-emphasis='supporting']:hover)
+  :global(.wf-node__material-port-label),
+.workflow
+  :global(.react-flow__node:focus-visible)
+  :global(.wf-node__material-port[data-workflow-material-emphasis='supporting'])
+  :global(.wf-node__material-port-label),
+.workflow
+  :global(.react-flow__node.selected)
+  :global(.wf-node__material-port[data-workflow-material-emphasis='supporting'])
+  :global(.wf-node__material-port-label) {
+  color: var(--unilab-color-text);
+  border-color: color-mix(
+    in srgb,
+    var(--wf-material-accent) 58%,
+    var(--unilab-color-border-strong)
+  );
+  background: color-mix(
+    in srgb,
+    var(--wf-material-accent) 10%,
+    var(--unilab-color-surface)
+  );
+}
+
+.workflow
+  :global(.wf-node__material-port[data-workflow-material-emphasis='supporting']:hover)
+  > :global(.wf-node__handle),
+.workflow
+  :global(.react-flow__node:focus-visible)
+  :global(.wf-node__material-port[data-workflow-material-emphasis='supporting'])
+  > :global(.wf-node__handle),
+.workflow
+  :global(.react-flow__node.selected)
+  :global(.wf-node__material-port[data-workflow-material-emphasis='supporting'])
+  > :global(.wf-node__handle) {
+  opacity: 1;
+}
+
+.workflow :global(.react-flow__edge.wf-flow-edge--supporting-material:hover),
+.workflow :global(.react-flow__edge.wf-flow-edge--supporting-material.selected),
+.workflow :global(.react-flow__edge.wf-flow-edge--supporting-material:focus-visible) {
+  opacity: .9;
+}
