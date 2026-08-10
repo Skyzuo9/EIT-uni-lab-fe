@@ -122,7 +122,14 @@ describe('Workbench state lifecycle', () => {
     const state = await prepareWorkbenchState(workspace)
     await writeFile(
       join(state.root, 'logs', 'workbench.log'),
-      `workspace=${workspace}\ntoken=secret-value\nAuthorization: Bearer abc123\n`
+      [
+        `workspace=${workspace}`,
+        'token=secret-value',
+        'Authorization: Bearer abc123',
+        'Cookie: unilab_workbench_session=cookie-secret',
+        'access=https://workbench.example/__unilab/auth#token=fragment-secret',
+        ''
+      ].join('\n')
     )
     await writeFile(
       join(state.root, 'agent', 'conversation.txt'),
@@ -141,6 +148,8 @@ describe('Workbench state lifecycle', () => {
     expect(serialized).toContain('<redacted>')
     expect(serialized).not.toContain('secret-value')
     expect(serialized).not.toContain('abc123')
+    expect(serialized).not.toContain('cookie-secret')
+    expect(serialized).not.toContain('fragment-secret')
     expect(serialized).not.toContain('private conversation')
   })
 })

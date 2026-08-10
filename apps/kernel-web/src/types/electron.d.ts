@@ -270,8 +270,33 @@ export interface DesktopObservabilityApi {
   recordHttpRequest?: (event: HttpRequestTraceEvent) => Promise<void>
 }
 
+export type WorkbenchRemoteAccessPhase =
+  | 'unavailable'
+  | 'idle'
+  | 'starting'
+  | 'ready'
+  | 'stopping'
+  | 'failed'
+
+export interface WorkbenchRemoteAccessSnapshot {
+  phase: WorkbenchRemoteAccessPhase
+  origin: string | null
+  accessUrl: string | null
+  pid: number | null
+  generation: string | null
+  expiresAt: number | null
+  error: string | null
+}
+
+export interface DesktopWorkbenchRemoteApi {
+  getSnapshot: () => Promise<WorkbenchRemoteAccessSnapshot>
+  start: () => Promise<WorkbenchRemoteAccessSnapshot>
+  stop: () => Promise<WorkbenchRemoteAccessSnapshot>
+}
+
 interface DesktopApi {
   getVersion: () => Promise<string>
+  workbenchRemote?: DesktopWorkbenchRemoteApi
   auth: {
     getSession: () => Promise<AuthSession | null>
     login: () => Promise<AuthSession | null>

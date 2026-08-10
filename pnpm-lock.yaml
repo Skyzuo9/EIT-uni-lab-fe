@@ -339,7 +339,37 @@ importers:
       '@parcel/watcher-darwin-arm64':
         specifier: 2.6.0
         version: 2.6.0
+      '@parcel/watcher-darwin-x64':
+        specifier: 2.6.0
+        version: 2.6.0
+      '@parcel/watcher-linux-arm64-glibc':
+        specifier: 2.6.0
+        version: 2.6.0
+      '@parcel/watcher-linux-x64-glibc':
+        specifier: 2.6.0
+        version: 2.6.0
+      '@parcel/watcher-win32-arm64':
+        specifier: 2.6.0
+        version: 2.6.0
+      '@parcel/watcher-win32-x64':
+        specifier: 2.6.0
+        version: 2.6.0
       '@vscode/ripgrep-darwin-arm64':
+        specifier: 1.18.0
+        version: 1.18.0
+      '@vscode/ripgrep-darwin-x64':
+        specifier: 1.18.0
+        version: 1.18.0
+      '@vscode/ripgrep-linux-arm64':
+        specifier: 1.18.0
+        version: 1.18.0
+      '@vscode/ripgrep-linux-x64':
+        specifier: 1.18.0
+        version: 1.18.0
+      '@vscode/ripgrep-win32-arm64':
+        specifier: 1.18.0
+        version: 1.18.0
+      '@vscode/ripgrep-win32-x64':
         specifier: 1.18.0
         version: 1.18.0
       trash:

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.unilab.workbench.remote</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/sh</string>
+    <string>/opt/unilab-workbench/current/apps/workbench/macos/start-remote-service.sh</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>UNILAB_CONFIG_FILE</key>
+    <string>/etc/unilab/workbench.env</string>
+  </dict>
+  <key>UserName</key>
+  <string>unilab</string>
+  <key>GroupName</key>
+  <string>unilab</string>
+  <key>WorkingDirectory</key>
+  <string>/opt/unilab-workbench/current/apps/workbench</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+  <key>ThrottleInterval</key>
+  <integer>3</integer>
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>StandardOutPath</key>
+  <string>/var/log/unilab-workbench.log</string>
+  <key>StandardErrorPath</key>
+  <string>/var/log/unilab-workbench.error.log</string>
+</dict>
+</plist>

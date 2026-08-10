@@ -12,6 +12,22 @@
     },
     "darwin-x64": {
       "status": "unverified"
+    },
+    "linux-x64": {
+      "status": "unverified",
+      "minimumDistribution": "Ubuntu 22.04",
+      "minimumGlibc": "2.35",
+      "verificationBlocker": "The available Linux x64 host does not yet have the pinned Node or pnpm runtime"
+    },
+    "linux-arm64": {
+      "status": "unverified"
+    },
+    "win32-x64": {
+      "status": "unverified",
+      "minimumVersion": "Windows 10 22H2"
+    },
+    "win32-arm64": {
+      "status": "unverified"
     }
   },
   "components": {
@@ -30,6 +46,11 @@
     "workspace": "managed-local",
     "osRuntime": ["installed-environment", "source-checkout"],
     "workflowIdeHostAdapter": 1,
-    "agent": "external-aion-ui"
+    "agent": "external-aion-ui",
+    "remoteAccess": {
+      "protocol": "unilab-workbench-remote-access/v1",
+      "operatingSystems": ["darwin", "linux", "win32"],
+      "serviceAdapters": ["launchd", "systemd", "windows-task-scheduler"]
+    }
   }
 }

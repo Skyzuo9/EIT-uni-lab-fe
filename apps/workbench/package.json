@@ -47,7 +47,17 @@
   },
   "optionalDependencies": {
     "@parcel/watcher-darwin-arm64": "2.6.0",
+    "@parcel/watcher-darwin-x64": "2.6.0",
+    "@parcel/watcher-linux-arm64-glibc": "2.6.0",
+    "@parcel/watcher-linux-x64-glibc": "2.6.0",
+    "@parcel/watcher-win32-arm64": "2.6.0",
+    "@parcel/watcher-win32-x64": "2.6.0",
     "@vscode/ripgrep-darwin-arm64": "1.18.0",
+    "@vscode/ripgrep-darwin-x64": "1.18.0",
+    "@vscode/ripgrep-linux-arm64": "1.18.0",
+    "@vscode/ripgrep-linux-x64": "1.18.0",
+    "@vscode/ripgrep-win32-arm64": "1.18.0",
+    "@vscode/ripgrep-win32-x64": "1.18.0",
     "trash": "7.2.0"
   },
   "devDependencies": {
@@ -70,6 +80,8 @@
     "desktop": "pnpm build:desktop && pnpm start:desktop",
     "start": "node scripts/start-workbench.mjs",
     "start:desktop": "node scripts/start-workbench.mjs --desktop",
+    "start:desktop-remote": "node scripts/start-workbench.mjs --desktop --remote",
+    "start:remote": "node scripts/start-workbench.mjs --remote",
     "start:theia-only": "theia start \"${THEIA_WORKSPACE:-../..}\" --hostname 127.0.0.1 --port ${THEIA_PORT:-3100} --plugins=local-dir:plugins",
     "package:mac": "pnpm build:desktop && node scripts/package-macos.mjs --signed",
     "package:mac:unsigned": "pnpm build:desktop && node scripts/package-macos.mjs --unsigned",

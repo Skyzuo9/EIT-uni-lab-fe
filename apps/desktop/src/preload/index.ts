@@ -49,6 +49,10 @@ import type {
   DeviceSquarePage,
   HttpRequestTraceEvent
 } from '@unilab/services'
+import type {
+  DesktopWorkbenchRemoteApi,
+  WorkbenchRemoteAccessSnapshot
+} from '../shared/workbenchRemote'
 
 // 登录会话结构(与主进程 authManager.AuthSession 保持一致)
 export interface AuthUserInfo {
@@ -91,6 +95,14 @@ export interface OpenFilePayload {
 
 const api = {
   getVersion: (): Promise<string> => ipcRenderer.invoke('app:getVersion'),
+  workbenchRemote: {
+    getSnapshot: (): Promise<WorkbenchRemoteAccessSnapshot> =>
+      ipcRenderer.invoke('workbench-remote:getSnapshot'),
+    start: (): Promise<WorkbenchRemoteAccessSnapshot> =>
+      ipcRenderer.invoke('workbench-remote:start'),
+    stop: (): Promise<WorkbenchRemoteAccessSnapshot> =>
+      ipcRenderer.invoke('workbench-remote:stop')
+  } satisfies DesktopWorkbenchRemoteApi,
   auth: {
     // 读取本地已保存的登录会话
     getSession: (): Promise<AuthSession | null> => ipcRenderer.invoke('auth:getSession'),
