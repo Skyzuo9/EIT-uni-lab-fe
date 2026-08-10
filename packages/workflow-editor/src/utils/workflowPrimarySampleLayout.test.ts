@@ -90,15 +90,21 @@ describe('layoutWorkflowPrimarySampleFlow', () => {
       .toBeGreaterThan(positions.get('step-5')?.x ?? 0)
     expect(positions.get('step-3')?.y)
       .toBeLessThan(positions.get('step-4')?.y ?? 0)
-    expect(result.nodePorts?.get('step-3')).toMatchObject({
-      source: 'bottom'
+    expect(result.nodePorts?.get('step-3')).toEqual({
+      target: 'left',
+      source: 'right'
     })
     expect(result.nodePorts?.get('step-4')).toMatchObject({
-      target: 'top',
+      target: 'right',
       source: 'left'
     })
     expect(result.edgeDirections?.get(2)).toBe('LR')
-    expect(result.edgeDirections?.get(3)).toBe('TB')
+    expect(result.edgeDirections?.get(3)).toBe('LR')
+    expect([...result.nodePorts?.values() ?? []].every((ports) =>
+      [ports.target, ports.source].every((side) =>
+        side === 'left' || side === 'right'
+      )
+    )).toBe(true)
     expect(backbone).not.toContain('reagent-source')
     expect(positions.get('reagent-source')?.y)
       .toBeGreaterThan(positions.get('step-3')?.y ?? 0)

@@ -270,6 +270,12 @@ export default function WorkflowDag({
     layoutStrategy,
     swimlaneDirection
   )
+  // `canvasLayoutDirection` 是当前视觉投影的实际阅读方向；蛇形固定横向，
+  // 物料泳道（Material Swimlane）才使用用户选择的方向。
+  const canvasLayoutDirection: WorkflowMaterialSwimlaneDirection =
+    layoutStrategy === 'primary-sample-serpentine'
+      ? 'horizontal'
+      : swimlaneDirection
   const handleNodesChange = useCallback(
     (changes: NodeChange[]) => {
       const visibleChanges = nodePositionMutationEnabled
@@ -504,6 +510,8 @@ export default function WorkflowDag({
   return (
     <div
       className={styles.dag}
+      data-workflow-layout-strategy={layoutStrategy}
+      data-workflow-layout-direction={canvasLayoutDirection}
       onKeyDownCapture={(event) => {
         if (
           event.key !== 'Delete' &&
@@ -531,7 +539,7 @@ export default function WorkflowDag({
         className={[
           isBeautifying ? 'is-beautifying' : '',
           `wf-layout--${layoutStrategy}`,
-          `wf-layout-direction--${swimlaneDirection}`
+          `wf-layout-direction--${canvasLayoutDirection}`
         ].filter(Boolean).join(' ')}
         nodes={runtimeNodes}
         edges={runtimeEdges}

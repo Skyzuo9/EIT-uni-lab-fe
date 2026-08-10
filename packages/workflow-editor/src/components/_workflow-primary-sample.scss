@@ -1,0 +1,161 @@
+/* 横向主样品蛇形布局让标题与物料占位符（ResourceSlot）卡片形成紧凑纵向栈。 */
+.workflow:global(.workflow-runtime)
+  :global(.wf-node--action-strip[data-workflow-layout-strategy='primary-sample-serpentine'][data-workflow-layout-direction='horizontal']) {
+  width: 184px;
+  min-width: 184px;
+  max-width: 184px;
+}
+
+.workflow:global(.workflow-runtime)
+  :global(.wf-node--action-strip[data-workflow-layout-strategy='primary-sample-serpentine'][data-workflow-layout-direction='horizontal'])
+  :global(.wf-node__body) {
+  min-height: 0;
+  align-items: stretch;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+}
+
+.workflow
+  :global(.wf-node--action-strip[data-workflow-layout-strategy='primary-sample-serpentine'][data-workflow-layout-direction='horizontal'])
+  :global(.wf-node__identity) {
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  min-height: 30px;
+  align-items: center;
+  align-self: auto;
+  flex: 0 0 auto;
+  padding: 2px 6px 6px;
+  border-right: 0;
+  border-bottom: 1px solid var(--unilab-color-border);
+}
+
+.workflow
+  :global(.wf-node--action-strip[data-workflow-layout-strategy='primary-sample-serpentine'][data-workflow-layout-direction='horizontal'])
+  :global(.wf-node__id) {
+  display: -webkit-box;
+  max-height: 32px;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  line-height: 16px;
+  text-overflow: clip;
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.workflow
+  :global(.wf-node--action-strip[data-workflow-layout-strategy='primary-sample-serpentine'][data-workflow-layout-direction='horizontal'])
+  :global(.wf-node__material-ports) {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: stretch;
+  align-self: auto;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.workflow
+  :global(.wf-node--action-strip[data-workflow-layout-strategy='primary-sample-serpentine'][data-workflow-layout-direction='horizontal'])
+  :global(.wf-node__material-port) {
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  height: 28px;
+  flex: 0 0 28px;
+}
+
+.workflow
+  :global(.wf-node--action-strip[data-workflow-layout-strategy='primary-sample-serpentine'][data-workflow-layout-direction='horizontal'])
+  :global(.wf-node__material-port-label) {
+  height: 28px;
+  padding: 0 8px;
+  font-size: 10px;
+  line-height: 26px;
+  text-align: left;
+}
+
+/* 横向蛇形的所有物料与执行顺序 Handle 都由东西两侧进出。 */
+.workflow
+  :global([data-workflow-layout-strategy='primary-sample-serpentine'][data-workflow-layout-direction='horizontal'])
+  :global(.wf-node__material-port)
+  > :global(.wf-node__handle),
+.workflow
+  :global([data-workflow-layout-strategy='primary-sample-serpentine'][data-workflow-layout-direction='horizontal'])
+  :global(.wf-node__handle--ready) {
+  top: 50%;
+  right: auto;
+  bottom: auto;
+  left: auto;
+  margin: 0;
+}
+
+.workflow
+  :global([data-workflow-layout-strategy='primary-sample-serpentine'][data-workflow-layout-direction='horizontal'])
+  :global(.wf-node__handle--ready) {
+  width: 12px;
+  height: 3px;
+}
+
+.workflow
+  :global([data-workflow-layout-strategy='primary-sample-serpentine'][data-workflow-layout-direction='horizontal'])
+  :global(.react-flow__handle-left) {
+  right: auto;
+  left: -7px;
+  transform: translate(-50%, -50%);
+}
+
+.workflow
+  :global([data-workflow-layout-strategy='primary-sample-serpentine'][data-workflow-layout-direction='horizontal'])
+  :global(.react-flow__handle-right) {
+  right: -7px;
+  left: auto;
+  transform: translate(50%, -50%);
+}
+
+/* 覆盖物料泳道（Material Swimlane）的卡片中线定位，确保物料输入、输出也落在东西外缘。 */
+.workflow
+  :global(.wf-node--action-strip[data-workflow-layout-strategy='primary-sample-serpentine'][data-workflow-layout-direction='horizontal'])
+  :global(.wf-node__material-port)
+  > :global(.wf-node__handle--target.react-flow__handle-left) {
+  top: 50%;
+  right: auto;
+  bottom: auto;
+  left: -7px;
+  transform: translate(-50%, -50%);
+}
+
+.workflow
+  :global(.wf-node--action-strip[data-workflow-layout-strategy='primary-sample-serpentine'][data-workflow-layout-direction='horizontal'])
+  :global(.wf-node__material-port)
+  > :global(.wf-node__handle--source.react-flow__handle-right) {
+  top: 50%;
+  right: -7px;
+  bottom: auto;
+  left: auto;
+  transform: translate(50%, -50%);
+}
+
+.workflow
+  :global(.wf-node--action-strip[data-workflow-layout-strategy='primary-sample-serpentine'][data-workflow-layout-direction='horizontal'])
+  :global(.wf-node__state) {
+  height: 22px;
+  align-self: flex-start;
+  margin-left: 0;
+  padding: 0 6px;
+}
+
+.workflow
+  :global(.wf-node--action-strip[data-workflow-layout-strategy='primary-sample-serpentine'][data-workflow-layout-direction='horizontal'])
+  :global(.wf-node__group-toggle) {
+  max-width: 100%;
+  align-self: flex-start;
+}
+
+.workflow
+  :global(.wf-node--action-strip[data-workflow-layout-strategy='primary-sample-serpentine'][data-workflow-layout-direction='horizontal'])
+  :global(.wf-node__marker-actions) {
+  align-self: flex-end;
+}

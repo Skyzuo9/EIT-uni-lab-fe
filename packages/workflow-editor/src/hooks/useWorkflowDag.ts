@@ -198,6 +198,10 @@ function buildFlowElements(
       (node.handles ?? []).map((handle) => [handle.uuid, handle] as const)
     )
   )
+  // 主样品蛇形布局（Primary Sample Serpentine Layout）按节点内紧凑卡片排布，
+  // 不继承物料泳道（Material Swimlane）的绝对坐标和节点尺寸。
+  const compactPrimarySampleLayout =
+    strategy === 'primary-sample-serpentine'
   const flowNodes: Node<WorkflowNodeData>[] = layout.nodes.map((node) => {
     const laneLayout = layout.swimlanes?.nodeLayouts.get(node.id)
     const handleLanes = layout.swimlanes?.handleLaneIndexes.get(node.id)
@@ -217,7 +221,7 @@ function buildFlowElements(
         : layout.direction === 'horizontal'
           ? Position.Right
           : Position.Bottom,
-      ...(laneLayout
+      ...(laneLayout && !compactPrimarySampleLayout
         ? { style: { width: laneLayout.width, height: laneLayout.height } }
         : {}),
       data: {
@@ -240,11 +244,15 @@ function buildFlowElements(
         ),
         materialChips: materialTraces.chipsByNode.get(node.id) ?? [],
         layoutStrategy: strategy,
-        materialLaneDirection: layout.swimlanes?.direction,
-        materialLaneRange: laneLayout
+        materialLaneDirection: layout.swimlanes?.direction ?? (
+          strategy === 'primary-sample-serpentine'
+            ? 'horizontal'
+            : undefined
+        ),
+        materialLaneRange: laneLayout && !compactPrimarySampleLayout
           ? { start: laneLayout.startLane, end: laneLayout.endLane }
           : undefined,
-        materialLaneByHandle: handleLanes
+        materialLaneByHandle: handleLanes && !compactPrimarySampleLayout
           ? Object.fromEntries(handleLanes)
           : undefined
       }

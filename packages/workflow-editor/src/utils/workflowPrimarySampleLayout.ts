@@ -3,7 +3,10 @@ import type {
   WorkflowNodePortLayout
 } from './dagLayout'
 import type { WorkflowLink, WorkflowNode } from './parseWorkflow'
-import { projectMaterialTraces } from './workflowMaterialTrace'
+import {
+  isResourceSlotHandle,
+  projectMaterialTraces
+} from './workflowMaterialTrace'
 
 export const WORKFLOW_PRIMARY_SAMPLE_NODES_PER_ROW = 4
 export const WORKFLOW_PRIMARY_SAMPLE_COLUMN_GAP = 328
@@ -11,9 +14,11 @@ export const WORKFLOW_PRIMARY_SAMPLE_MIN_ROW_GAP = 300
 
 const ORIGIN_X = 72
 const ORIGIN_Y = 72
-const BRANCH_ROW_OFFSET = 164
-const BRANCH_ROW_GAP = 124
-const ROW_CLEARANCE = 152
+const NODE_VERTICAL_GAP = 72
+const ROW_CLEARANCE = 112
+const COMPACT_NODE_BASE_HEIGHT = 48
+const COMPACT_MATERIAL_CARD_HEIGHT = 33
+const SPECIAL_NODE_HEIGHT = 72
 
 /**
  * 以主样品物料流角色（MaterialFlowRole）的第一条物料链为主干生成蛇形布局。
@@ -86,6 +91,7 @@ export function layoutWorkflowPrimarySampleFlow(
   )
   const positionByNode = new Map<string, { x: number; y: number }>()
   const nodePorts = new Map<string, WorkflowNodePortLayout>()
+  const nodeById = new Map(nodes.map((node) => [node.id, node]))
   let mainRowY = ORIGIN_Y
 
   for (let row = 0; row < rowCount; row += 1) {
@@ -93,6 +99,12 @@ export function layoutWorkflowPrimarySampleFlow(
     const rowNodeIds = backboneNodeIds.slice(
       rowStart,
       rowStart + WORKFLOW_PRIMARY_SAMPLE_NODES_PER_ROW
+    )
+    const mainRowHeight = Math.max(
+      SPECIAL_NODE_HEIGHT,
+      ...rowNodeIds.map((nodeId) =>
+        estimatedHorizontalNodeHeight(nodeById.get(nodeId))
+      )
     )
     for (const [rowIndex, nodeId] of rowNodeIds.entries()) {
       const column = row % 2 === 0
@@ -104,44 +116,44 @@ export function layoutWorkflowPrimarySampleFlow(
       })
       rowByNode.set(nodeId, row)
       const absoluteIndex = rowStart + rowIndex
-      nodePorts.set(nodeId, backbonePortLayout(
-        absoluteIndex,
-        backboneNodeIds.length
-      ))
+      nodePorts.set(nodeId, backboneHorizontalPortLayout(absoluteIndex))
     }
 
     const secondaryNodes = secondaryByRow.get(row) ?? []
-    for (const [index, node] of secondaryNodes.entries()) {
-      const column = index % WORKFLOW_PRIMARY_SAMPLE_NODES_PER_ROW
-      const branchRow = Math.floor(
-        index / WORKFLOW_PRIMARY_SAMPLE_NODES_PER_ROW
+    let occupiedBottom = mainRowY + mainRowHeight
+    for (
+      let branchRow = 0;
+      branchRow * WORKFLOW_PRIMARY_SAMPLE_NODES_PER_ROW < secondaryNodes.length;
+      branchRow += 1
+    ) {
+      const branchNodes = secondaryNodes.slice(
+        branchRow * WORKFLOW_PRIMARY_SAMPLE_NODES_PER_ROW,
+        (branchRow + 1) * WORKFLOW_PRIMARY_SAMPLE_NODES_PER_ROW
       )
-      positionByNode.set(node.id, {
-        x: ORIGIN_X + column * WORKFLOW_PRIMARY_SAMPLE_COLUMN_GAP,
-        y: mainRowY + BRANCH_ROW_OFFSET + branchRow * BRANCH_ROW_GAP
-      })
-      rowByNode.set(node.id, row)
-      nodePorts.set(node.id, { target: 'top', source: 'bottom' })
+      const branchY = occupiedBottom + NODE_VERTICAL_GAP
+      const branchHeight = Math.max(
+        SPECIAL_NODE_HEIGHT,
+        ...branchNodes.map(estimatedHorizontalNodeHeight)
+      )
+      for (const [column, node] of branchNodes.entries()) {
+        positionByNode.set(node.id, {
+          x: ORIGIN_X + column * WORKFLOW_PRIMARY_SAMPLE_COLUMN_GAP,
+          y: branchY
+        })
+        rowByNode.set(node.id, row)
+        nodePorts.set(node.id, { target: 'left', source: 'right' })
+      }
+      occupiedBottom = branchY + branchHeight
     }
-    const branchRowCount = Math.ceil(
-      secondaryNodes.length / WORKFLOW_PRIMARY_SAMPLE_NODES_PER_ROW
-    )
     mainRowY += Math.max(
       WORKFLOW_PRIMARY_SAMPLE_MIN_ROW_GAP,
-      BRANCH_ROW_OFFSET + branchRowCount * BRANCH_ROW_GAP + ROW_CLEARANCE
+      occupiedBottom - mainRowY + ROW_CLEARANCE
     )
   }
 
   const edgeDirections = new Map<number, 'TB' | 'LR'>()
-  visibleLinks.forEach((link, index) => {
-    const sourceIndex = backboneIndexes.get(link.source)
-    const targetIndex = backboneIndexes.get(link.target)
-    const sameBackboneRow = sourceIndex !== undefined &&
-      targetIndex !== undefined &&
-      Math.abs(sourceIndex - targetIndex) === 1 &&
-      Math.floor(sourceIndex / WORKFLOW_PRIMARY_SAMPLE_NODES_PER_ROW) ===
-        Math.floor(targetIndex / WORKFLOW_PRIMARY_SAMPLE_NODES_PER_ROW)
-    edgeDirections.set(index, sameBackboneRow ? 'LR' : 'TB')
+  visibleLinks.forEach((_link, index) => {
+    edgeDirections.set(index, 'LR')
   })
 
   return {
@@ -289,32 +301,46 @@ function nearestBackboneIndex(
 }
 
 /**
- * 返回主样品蛇形路径中一个节点的输入、输出端口方向。
+ * 返回横向主样品蛇形路径中一个节点的输入、输出端口方向。
  *
  * @param nodeIndex 节点在主样品主干中的零基序号。
- * @param nodeCount 主样品主干节点总数。
- * @returns 同行使用左右端口、换行转折使用上下端口的端口布局。
+ * @returns 偶数行由西向东、奇数行由东向西的端口布局。
  */
-function backbonePortLayout(
-  nodeIndex: number,
-  nodeCount: number
+function backboneHorizontalPortLayout(
+  nodeIndex: number
 ): WorkflowNodePortLayout {
   const row = Math.floor(
     nodeIndex / WORKFLOW_PRIMARY_SAMPLE_NODES_PER_ROW
   )
-  const rowIndex = nodeIndex % WORKFLOW_PRIMARY_SAMPLE_NODES_PER_ROW
-  const firstInRow = rowIndex === 0
-  const lastInRow = rowIndex === WORKFLOW_PRIMARY_SAMPLE_NODES_PER_ROW - 1 ||
-    nodeIndex === nodeCount - 1
   const leftToRight = row % 2 === 0
   return {
-    target: firstInRow && nodeIndex > 0
-      ? 'top'
-      : leftToRight ? 'left' : 'right',
-    source: lastInRow && nodeIndex < nodeCount - 1
-      ? 'bottom'
-      : leftToRight ? 'right' : 'left'
+    target: leftToRight ? 'left' : 'right',
+    source: leftToRight ? 'right' : 'left'
   }
+}
+
+/**
+ * 估算横向节点在物料名称卡片纵向堆叠后的占用高度。
+ *
+ * 该估算只用于为下一辅助行预留空间；ReactFlow 仍以真实 DOM 测量作为
+ * 连线锚点权威。物料来源（MaterialSource）和标准转运节点保持专用视觉高度。
+ *
+ * @param node 当前工作流（Workflow）节点；缺失时按专用节点最低高度处理。
+ * @returns 画布布局应为该节点预留的像素高度。
+ */
+function estimatedHorizontalNodeHeight(
+  node: WorkflowNode | undefined
+): number {
+  if (!node || node.type === 'material_source' ||
+    node.visualKind === 'robot-transfer') return SPECIAL_NODE_HEIGHT
+  // `materialVariableKeys` 是节点内需要独立展示的物料占位符逻辑字段集合。
+  const materialVariableKeys = new Set(
+    (node.handles ?? [])
+      .filter(isResourceSlotHandle)
+      .map((handle) => handle.dataKey?.trim() || handle.handleKey)
+  )
+  return COMPACT_NODE_BASE_HEIGHT +
+    Math.max(1, materialVariableKeys.size) * COMPACT_MATERIAL_CARD_HEIGHT
 }
 
 /**

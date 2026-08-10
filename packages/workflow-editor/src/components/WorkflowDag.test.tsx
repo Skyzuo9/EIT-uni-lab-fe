@@ -182,6 +182,9 @@ describe('WorkflowDag canvas controls', () => {
     expect(markup).toContain('workflow-runtime__canvas-button')
     expect(markup).toContain('workflow-runtime__beautify')
     expect(markup).toContain('aria-busy="false"')
+    expect(markup).toContain(
+      'data-workflow-layout-direction="horizontal"'
+    )
   })
 
   /** 证明交互态与窄视口规则不依赖运行时内联样式。 */
@@ -199,6 +202,25 @@ describe('WorkflowDag canvas controls', () => {
     )
     expect(stylesheet).toMatch(/canvas-button\):focus-visible/)
     expect(stylesheet).toMatch(/@container workflow \(max-width: 900px\)/)
+  })
+
+  /** 证明横向蛇形节点纵向堆叠物料卡片，并把 Handle 固定到东西两侧。 */
+  it('defines compact vertical node content with east-west handles', () => {
+    const stylesheet = readFileSync(
+      new URL('./_workflow-primary-sample.scss', import.meta.url),
+      'utf8'
+    )
+
+    expect(stylesheet).toMatch(/flex-direction:\s*column/)
+    expect(stylesheet).toMatch(/react-flow__handle-left/)
+    expect(stylesheet).toMatch(/react-flow__handle-right/)
+    expect(stylesheet).toMatch(
+      /wf-node__handle--target\.react-flow__handle-left/
+    )
+    expect(stylesheet).toMatch(
+      /wf-node__handle--source\.react-flow__handle-right/
+    )
+    expect(stylesheet).toMatch(/wf-node__material-port-label/)
   })
 })
 
