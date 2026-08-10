@@ -15,6 +15,7 @@
     "@theia/core": "1.74.1",
     "@theia/editor": "1.74.1",
     "@theia/filesystem": "1.74.1",
+    "@theia/markers": "1.74.1",
     "@theia/monaco-editor-core": "1.108.201",
     "@theia/workspace": "1.74.1",
     "@unilab/design-system": "workspace:*",
