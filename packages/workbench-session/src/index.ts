@@ -42,6 +42,10 @@ import {
   type WorkbenchAgentIdentity
 } from './agent-sidecar'
 import { WorkbenchLaunchError } from './launch-error'
+import {
+  readLocalEnvironmentConfiguration,
+  writeLocalEnvironmentConfigurationFile
+} from './local-environment-configuration'
 import { waitForWorkbenchReadiness } from './readiness'
 export { parseWorkspacePackageMountProjection } from './readiness'
 export type WorkbenchSessionPhase =
@@ -358,12 +362,12 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
     if (!normalizedGraphPath || normalizedGraphPath.includes('\0')) {
       throw new Error('设备图路径不能为空或包含非法字符')
     }
-    this.selectedGraphPath = normalizedGraphPath
     await writeLocalEnvironmentConfiguration(this.options.workspacePath, {
       graphPath: normalizedGraphPath,
       plcSimulatorProjectPath: this.snapshot.plcSimulator.projectPath,
       runtimeMode: this.selectedMode
     })
+    this.selectedGraphPath = normalizedGraphPath
     this.publish({
       ...this.snapshot,
       configuredGraphPath: normalizedGraphPath
@@ -402,12 +406,12 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
       throw new Error(`不支持的 OS 运行模式：${String(mode)}`)
     }
     if (this.snapshot.identity?.mode === mode) return this.getSnapshot()
-    this.selectedMode = mode
     await writeLocalEnvironmentConfiguration(this.options.workspacePath, {
       graphPath: this.selectedGraphPath,
       plcSimulatorProjectPath: this.snapshot.plcSimulator.projectPath,
       runtimeMode: mode
     })
+    this.selectedMode = mode
     return await this.restart()
   }
 
@@ -681,7 +685,11 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
     let launch: ResolvedWorkbenchLaunch
     try {
       const localConfiguration = await readLocalEnvironmentConfiguration(
-        this.options.workspacePath
+        join(
+          this.options.workspacePath,
+          '.unilabos',
+          LOCAL_ENVIRONMENT_CONFIG
+        )
       )
       this.selectedMode = this.options.runtimeMode
         ?? localConfiguration.runtimeMode
@@ -1326,47 +1334,6 @@ function canConnectToLoopbackPort(port: number): Promise<boolean> {
   })
 }
 
-interface LocalEnvironmentConfiguration {
-  graphPath: string | null
-  plcSimulatorProjectPath: string | null
-  runtimeMode: WorkbenchRuntimeMode | null
-}
-
-async function readLocalEnvironmentConfiguration(
-  workspacePath: string
-): Promise<LocalEnvironmentConfiguration> {
-  try {
-    const content = JSON.parse(await readFile(
-      join(workspacePath, '.unilabos', LOCAL_ENVIRONMENT_CONFIG),
-      'utf8'
-    )) as unknown
-    if (!isRecord(content) || content['schemaVersion'] !== 1) {
-      return { graphPath: null, plcSimulatorProjectPath: null, runtimeMode: null }
-    }
-    const runtimeMode = content['runtimeMode']
-    return {
-      graphPath:
-        typeof content['graphPath'] === 'string'
-          ? content['graphPath']
-          : null,
-      plcSimulatorProjectPath:
-        typeof content['plcSimulatorProjectPath'] === 'string'
-          ? content['plcSimulatorProjectPath']
-          : null,
-      runtimeMode:
-        runtimeMode === 'normal' || runtimeMode === 'dry-run'
-          ? runtimeMode
-          : runtimeMode === 'real-device'
-            ? 'normal'
-            : runtimeMode === 'simulation'
-              ? 'dry-run'
-              : null
-    }
-  } catch {
-    return { graphPath: null, plcSimulatorProjectPath: null, runtimeMode: null }
-  }
-}
-
 async function writeLocalEnvironmentConfiguration(
   workspacePath: string,
   configuration: {
@@ -1379,12 +1346,7 @@ async function writeLocalEnvironmentConfiguration(
   const workbenchRoot = join(resolvedWorkspacePath, '.unilabos')
   await ensureWorkbenchStateIgnored(workbenchRoot)
   const configPath = join(workbenchRoot, LOCAL_ENVIRONMENT_CONFIG)
-  const temporaryPath = `${configPath}.${process.pid}.tmp`
-  await writeFile(temporaryPath, `${JSON.stringify({
-    schemaVersion: 1,
-    ...configuration
-  }, null, 2)}\n`, { mode: 0o600 })
-  await rename(temporaryPath, configPath)
+  await writeLocalEnvironmentConfigurationFile(configPath, configuration)
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

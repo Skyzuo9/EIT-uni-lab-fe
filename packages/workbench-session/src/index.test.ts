@@ -118,6 +118,69 @@ describe('managed local Workbench session', () => {
     })
   })
 
+  it('fails closed when the persisted local environment configuration is corrupt', async () => {
+    const fixture = await createFixture()
+    const configurationRoot = join(fixture.workspacePath, '.unilabos')
+    await mkdir(configurationRoot, { recursive: true })
+    await writeFile(
+      join(configurationRoot, 'environment.local.json'),
+      '{not-json}\n'
+    )
+    const session = createManagedLocalWorkbenchSession({
+      workspacePath: fixture.workspacePath,
+      osProjectPath: fixture.osProjectPath,
+      environmentPath: fixture.environmentPath,
+      readinessTimeoutMs: 1_000
+    })
+    sessions.push(session)
+
+    await expect(session.start()).rejects.toThrow(
+      '本地环境配置不是有效 JSON'
+    )
+    expect(session.getSnapshot()).toMatchObject({
+      phase: 'failed',
+      identity: null,
+      diagnostic: { code: 'invalid_workspace' }
+    })
+  })
+
+  it('does not change the selected graph or mode when configuration persistence fails', async () => {
+    const fixture = await createFixture()
+    const configurationPath = join(
+      fixture.workspacePath,
+      '.unilabos',
+      'environment.local.json'
+    )
+    await mkdir(configurationPath, { recursive: true })
+    const session = createManagedLocalWorkbenchSession({
+      workspacePath: fixture.workspacePath,
+      osProjectPath: fixture.osProjectPath,
+      environmentPath: fixture.environmentPath,
+      readinessTimeoutMs: 5_000
+    })
+    sessions.push(session)
+
+    await expect(session.configureGraph(
+      'deployment/graphs/not-recorded.json'
+    )).rejects.toThrow()
+    await expect(session.setRuntimeMode('dry-run')).rejects.toThrow()
+    expect(session.getSnapshot().configuredGraphPath).toBe(
+      join('deployment', 'graphs', 'szlab-local-debug.json')
+    )
+
+    await rm(configurationPath, { recursive: true, force: true })
+    const ready = await session.start()
+    expect(ready.identity).toMatchObject({
+      graphPath: join(
+        fixture.workspacePath,
+        'deployment',
+        'graphs',
+        'szlab-local-debug.json'
+      ),
+      mode: 'normal'
+    })
+  })
+
   it('fails closed without touching a process that owns an explicit port', async () => {
     const fixture = await createFixture()
     const owner = createServer()
