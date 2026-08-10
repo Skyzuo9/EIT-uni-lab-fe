@@ -63,6 +63,10 @@ export default function WorkflowMaterialSourceNode({
       style={{ '--wf-material-accent': data.traceAccent } as CSSProperties}
     >
       {structuralTargetHandles}
+      {renderMaterialSourceHandles(
+        materialPorts,
+        materialSourcePosition
+      )}
       <span className="wf-node__material-source-label">
         <strong
           data-workflow-material-source-name
@@ -106,10 +110,6 @@ export default function WorkflowMaterialSourceNode({
             <path d="m17 17.5 12 6" />
             <path d="m31 17.5-12 6" />
           </svg>
-        )}
-        {renderMaterialSourceHandles(
-          materialPorts,
-          materialSourcePosition
         )}
       </span>
       {stateVisible && (

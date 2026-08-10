@@ -1,0 +1,116 @@
+/*
+ * 工作流运行态沿用既有 warning / success 色票，只增加技术信号环、辉光和
+ * 层级。这样在大图低缩放下仍能一眼看到当前节点和已完成节点。
+ */
+.workflow
+  :global(.react-flow__node-wfNode.wf-flow-node--running)
+  > :global(.wf-node) {
+  z-index: 4;
+  border-color: var(--unilab-color-warning);
+  outline: 2px solid color-mix(
+    in srgb,
+    var(--unilab-color-warning) 82%,
+    transparent
+  );
+  outline-offset: 3px;
+  box-shadow:
+    0 0 0 6px color-mix(
+      in srgb,
+      var(--unilab-color-warning) 22%,
+      transparent
+    ),
+    0 0 22px color-mix(
+      in srgb,
+      var(--unilab-color-warning) 48%,
+      transparent
+    );
+  filter: drop-shadow(0 0 5px color-mix(
+    in srgb,
+    var(--unilab-color-warning) 55%,
+    transparent
+  ));
+  animation: workflow-execution-running-signal 1.05s ease-in-out infinite;
+}
+
+.workflow
+  :global(.react-flow__node-wfNode.wf-flow-node--success)
+  > :global(.wf-node) {
+  z-index: 3;
+  border-color: var(--unilab-color-success);
+  outline: 2px solid color-mix(
+    in srgb,
+    var(--unilab-color-success) 76%,
+    transparent
+  );
+  outline-offset: 3px;
+  box-shadow:
+    0 0 0 5px color-mix(
+      in srgb,
+      var(--unilab-color-success) 18%,
+      transparent
+    ),
+    0 0 16px color-mix(
+      in srgb,
+      var(--unilab-color-success) 34%,
+      transparent
+    );
+  filter: drop-shadow(0 0 3px color-mix(
+    in srgb,
+    var(--unilab-color-success) 42%,
+    transparent
+  ));
+}
+
+.workflow :global(.wf-node__state--running),
+.workflow :global(.wf-node__state--success) {
+  font-weight: 750;
+  box-shadow: inset 0 0 0 1px currentcolor;
+}
+
+.workflow :global(.wf-node__state--running) {
+  background: var(--unilab-color-warning-soft);
+}
+
+.workflow :global(.wf-node__state--success) {
+  background: var(--unilab-color-success-soft);
+}
+
+@keyframes workflow-execution-running-signal {
+  0%,
+  100% {
+    outline-offset: 3px;
+    box-shadow:
+      0 0 0 5px color-mix(
+        in srgb,
+        var(--unilab-color-warning) 18%,
+        transparent
+      ),
+      0 0 18px color-mix(
+        in srgb,
+        var(--unilab-color-warning) 40%,
+        transparent
+      );
+  }
+  50% {
+    outline-offset: 5px;
+    box-shadow:
+      0 0 0 8px color-mix(
+        in srgb,
+        var(--unilab-color-warning) 28%,
+        transparent
+      ),
+      0 0 28px color-mix(
+        in srgb,
+        var(--unilab-color-warning) 58%,
+        transparent
+      );
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workflow
+    :global(.react-flow__node-wfNode.wf-flow-node--running)
+    > :global(.wf-node) {
+    animation: none;
+  }
+}

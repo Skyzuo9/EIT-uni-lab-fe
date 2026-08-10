@@ -51,6 +51,18 @@ export default function WorkflowTransferNode({
       style={{ '--wf-material-accent': materialPort.accent } as CSSProperties}
     >
       {structuralTargetHandles}
+      {materialPort.targetHandle && renderTransferHandle(
+        materialPort.targetHandle,
+        'target',
+        materialPort,
+        materialTargetPosition
+      )}
+      {materialPort.sourceHandle && renderTransferHandle(
+        materialPort.sourceHandle,
+        'source',
+        materialPort,
+        materialSourcePosition
+      )}
       <span
         className="wf-node__robot-transfer-port"
         data-workflow-material-port-variable={materialPort.variableName}
@@ -58,12 +70,6 @@ export default function WorkflowTransferNode({
         data-workflow-material-port-description={materialPort.description}
         title={materialPort.description}
       >
-        {materialPort.targetHandle && renderTransferHandle(
-          materialPort.targetHandle,
-          'target',
-          materialPort,
-          materialTargetPosition
-        )}
         <span
           className="wf-node__robot-transfer-visual"
           data-workflow-robot-arm
@@ -83,12 +89,6 @@ export default function WorkflowTransferNode({
             <path d="m38.2 19.4.7 3.7" />
           </svg>
         </span>
-        {materialPort.sourceHandle && renderTransferHandle(
-          materialPort.sourceHandle,
-          'source',
-          materialPort,
-          materialSourcePosition
-        )}
       </span>
       <span className="wf-node__robot-transfer-copy">
         <strong title={data.description?.trim() || data.name || data.id}>

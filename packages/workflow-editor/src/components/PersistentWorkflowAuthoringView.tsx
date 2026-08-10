@@ -1,4 +1,5 @@
 import { CodeEditor } from '@unilab/code-editor'
+import { useCallback, useState } from 'react'
 
 import { diagnosticRange } from '../utils/persistentAuthoringSession'
 import {
@@ -107,6 +108,27 @@ export function PersistentWorkflowAuthoringView({
     updateMaterialSource,
     workflowUuid,
   } = model
+  const [canvasRevealRequest, setCanvasRevealRequest] = useState<{
+    nodeId: string
+    nonce: number
+  } | null>(null)
+  const handleCanvasNodeSelect = useCallback((nodeId: string): void => {
+    // React Flow may report the focused node again while its viewport settles.
+    // Keep the external highlight for that same node; a deliberate click on a
+    // different node still hands selection control back to the canvas.
+    setCanvasRevealRequest((current) =>
+      current?.nodeId === nodeId ? current : null
+    )
+    selectCanvasNode(nodeId)
+  }, [selectCanvasNode])
+  const handleRuntimeNodeSelect = useCallback((nodeId: string): void => {
+    setSelectedJobNodeUuid(nodeId)
+    selectCanvasNode(nodeId, 'runtime')
+    setCanvasRevealRequest((current) => ({
+      nodeId,
+      nonce: (current?.nonce ?? 0) + 1
+    }))
+  }, [selectCanvasNode, setSelectedJobNodeUuid])
   const debugProjection = taskRuntime.snapshot.debug
   const debugFinished = !task || [
     'succeeded',
@@ -371,10 +393,11 @@ export function PersistentWorkflowAuthoringView({
                   <WorkflowDag
                     nodes={structure.nodes}
                     links={structure.links}
-                    onNodeSelect={selectCanvasNode}
+                    onNodeSelect={handleCanvasNodeSelect}
                     selectedNodeId={mode === 'code'
                       ? sourceSelectedNodeUuid
-                      : undefined}
+                      : canvasRevealRequest?.nodeId}
+                    revealNodeRequest={canvasRevealRequest}
                     onSetStart={toggleDebugStartNode}
                     onToggleBreakpoint={toggleDebugBreakpoint}
                     onToggleDisabled={mode === 'canvas'
@@ -612,7 +635,7 @@ export function PersistentWorkflowAuthoringView({
           nodesTabLabel="节点任务状态"
           onExpandedChange={setOutputExpanded}
           onTabChange={setOutputTab}
-          onNodeSelect={setSelectedJobNodeUuid}
+          onNodeSelect={handleRuntimeNodeSelect}
           onClearError={taskRuntime.clearError}
         />
       </section>

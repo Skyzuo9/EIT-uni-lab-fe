@@ -165,6 +165,101 @@ describe('WorkflowDag IDE source selection', () => {
       /data-node-classes="[^"]*\|[^"]*wf-flow-node--source-selected/
     )
   })
+
+  /** 运行输出定位到折叠组合内部节点时，应选择当前可见的组合边界。 */
+  it('maps an externally selected hidden child to its collapsed group', () => {
+    const markup = renderToStaticMarkup(
+      <WorkflowDag
+        nodes={[
+          {
+            ...workflowNode,
+            id: 'group-1',
+            name: '标准转运',
+            type: 'group',
+            groupKind: 'subworkflow',
+            collapsedByDefault: true,
+            childNodeIds: ['child-1'],
+            descendantNodeIds: ['child-1']
+          },
+          {
+            ...workflowNode,
+            id: 'child-1',
+            name: '内部动作',
+            parentGroupId: 'group-1'
+          }
+        ]}
+        links={[]}
+        selectedNodeId="child-1"
+        onNodeSelect={vi.fn()}
+      />
+    )
+
+    expect(markup).toContain('data-node-selection="true"')
+    expect(markup).toContain('wf-flow-node--source-selected')
+    expect(markup).not.toContain('data-node-selection="false"')
+  })
+
+  /** 运行输出的揭示请求直接成为可见选中项，并携带独立运行态选择类。 */
+  it('projects a runtime reveal request into a durable canvas highlight', () => {
+    const markup = renderToStaticMarkup(
+      <WorkflowDag
+        nodes={[
+          workflowNode,
+          { ...workflowNode, id: 'node-2', name: '第二个动作' }
+        ]}
+        links={[]}
+        revealNodeRequest={{ nodeId: 'node-2', nonce: 1 }}
+        onNodeSelect={vi.fn()}
+      />
+    )
+
+    expect(markup).toContain('data-node-selection="false,true"')
+    expect(markup).toContain('wf-flow-node--runtime-selected')
+  })
+})
+
+describe('WorkflowDag material handles and execution signals', () => {
+  /** 蛇形返程必须服从 React Flow 的实际侧边，不能再按输入输出语义写死。 */
+  it('anchors horizontal material handles by their rendered side', () => {
+    const stylesheet = readFileSync(
+      new URL('./_workflow-primary-sample.scss', import.meta.url),
+      'utf8'
+    )
+
+    expect(stylesheet).toMatch(
+      /handle--material\.react-flow__handle-left[\s\S]*left:\s*-7px/
+    )
+    expect(stylesheet).toMatch(
+      /handle--material\.react-flow__handle-right[\s\S]*right:\s*-7px/
+    )
+    expect(stylesheet).not.toMatch(
+      /handle--target\.react-flow__handle-left/
+    )
+    expect(stylesheet).not.toMatch(
+      /handle--source\.react-flow__handle-right/
+    )
+  })
+
+  /** 运行与成功使用既有色票的强信号环，并为减弱动态偏好关闭脉冲。 */
+  it('keeps running and success prominent without introducing new colors', () => {
+    const stylesheet = readFileSync(
+      new URL('./_workflow-execution-status.scss', import.meta.url),
+      'utf8'
+    )
+
+    expect(stylesheet).toMatch(
+      /wf-flow-node--running[\s\S]*outline:\s*2px[\s\S]*unilab-color-warning/
+    )
+    expect(stylesheet).toMatch(
+      /wf-flow-node--success[\s\S]*outline:\s*2px[\s\S]*unilab-color-success/
+    )
+    expect(stylesheet).toContain('@keyframes workflow-execution-running-signal')
+    expect(stylesheet).toMatch(
+      /prefers-reduced-motion:\s*reduce[\s\S]*animation:\s*none/
+    )
+    expect(stylesheet).not.toMatch(/#[0-9a-f]{3,8}/i)
+    expect(stylesheet).not.toMatch(/rgb\(/i)
+  })
 })
 
 describe('WorkflowDag material role filter', () => {
@@ -280,10 +375,10 @@ describe('WorkflowDag canvas controls', () => {
     expect(stylesheet).toMatch(/react-flow__handle-left/)
     expect(stylesheet).toMatch(/react-flow__handle-right/)
     expect(stylesheet).toMatch(
-      /wf-node__handle--target\.react-flow__handle-left/
+      /wf-node__handle--material\.react-flow__handle-left/
     )
     expect(stylesheet).toMatch(
-      /wf-node__handle--source\.react-flow__handle-right/
+      /wf-node__handle--material\.react-flow__handle-right/
     )
     expect(stylesheet).toMatch(/wf-node__material-port-label/)
     expect(stylesheet).toMatch(/data-workflow-material-emphasis='supporting'/)

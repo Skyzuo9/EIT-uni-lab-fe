@@ -145,6 +145,32 @@ export interface NestedWorkflowProjection {
 }
 
 /**
+ * 把真实执行节点解析为当前折叠投影中真正可见的画布节点。
+ *
+ * @param nodes 完整的工作流节点集合。
+ * @param collapsedGroupIds 当前折叠的组合工作流 UUID。
+ * @param nodeId 需要在画布中揭示的真实节点 UUID。
+ * @returns 当前画布可见的节点 UUID；未知节点保持原值。
+ */
+export function visibleNestedWorkflowNodeId(
+  nodes: ReadonlyArray<WorkflowNode>,
+  collapsedGroupIds: ReadonlySet<string>,
+  nodeId: string
+): string {
+  const nodeById = new Map(nodes.map((node) => [node.id, node]))
+  let result = nodeId
+  let current = nodeById.get(nodeId)
+  const visited = new Set<string>()
+  while (current?.parentGroupId && !visited.has(current.parentGroupId)) {
+    const parentId = current.parentGroupId
+    visited.add(parentId)
+    if (collapsedGroupIds.has(parentId)) result = parentId
+    current = nodeById.get(parentId)
+  }
+  return result
+}
+
+/**
  * 将平面工作流（Workflow）执行图投影为可折叠的组合工作流调用视图，并隐藏仅
  * 表达源码范围的原生分组节点。
  *
@@ -177,18 +203,8 @@ export function projectNestedWorkflow(
       )
       .map((node) => node.id)
   )
-  const representative = (nodeId: string): string => {
-    let result = nodeId
-    let current = nodeById.get(nodeId)
-    const visited = new Set<string>()
-    while (current?.parentGroupId && !visited.has(current.parentGroupId)) {
-      const parentId = current.parentGroupId
-      visited.add(parentId)
-      if (collapsedGroupIds.has(parentId)) result = parentId
-      current = nodeById.get(parentId)
-    }
-    return result
-  }
+  const representative = (nodeId: string): string =>
+    visibleNestedWorkflowNodeId(nodes, collapsedGroupIds, nodeId)
   const hiddenNodeIds = new Set(
     nodes
       .filter((node) => representative(node.id) !== node.id)

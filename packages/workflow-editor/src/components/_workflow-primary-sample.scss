@@ -9,6 +9,7 @@
 .workflow:global(.workflow-runtime)
   :global(.wf-node--action-strip[data-workflow-layout-strategy='primary-sample-serpentine'][data-workflow-layout-direction='horizontal'])
   :global(.wf-node__body) {
+  box-sizing: border-box;
   min-height: 0;
   align-items: stretch;
   flex-direction: column;
@@ -49,7 +50,7 @@
   :global(.wf-node--action-strip[data-workflow-layout-strategy='primary-sample-serpentine'][data-workflow-layout-direction='horizontal'])
   :global(.wf-node__material-ports) {
   display: flex;
-  width: 100%;
+  width: auto;
   min-width: 0;
   align-items: stretch;
   align-self: auto;
@@ -100,7 +101,7 @@
   :global(.wf-node__material-ports[data-workflow-material-lane-direction='horizontal']) {
   position: static;
   inset: auto;
-  width: 100%;
+  width: auto;
   min-width: 0;
   max-width: none;
   transform: none;
@@ -144,11 +145,14 @@
   transform: translate(50%, -50%);
 }
 
-/* 覆盖物料泳道（Material Swimlane）的卡片中线定位，确保物料输入、输出也落在东西外缘。 */
+/*
+ * 覆盖物料泳道（Material Swimlane）的输入/输出写死定位。蛇形在返程会交换
+ * source/target 的实际侧边，因此必须以 React Flow 的 Left/Right 类为权威。
+ */
 .workflow
   :global(.wf-node--action-strip[data-workflow-layout-strategy='primary-sample-serpentine'][data-workflow-layout-direction='horizontal'])
   :global(.wf-node__material-port)
-  > :global(.wf-node__handle--target.react-flow__handle-left) {
+  > :global(.wf-node__handle--material.react-flow__handle-left) {
   top: 50%;
   right: auto;
   bottom: auto;
@@ -159,9 +163,36 @@
 .workflow
   :global(.wf-node--action-strip[data-workflow-layout-strategy='primary-sample-serpentine'][data-workflow-layout-direction='horizontal'])
   :global(.wf-node__material-port)
-  > :global(.wf-node__handle--source.react-flow__handle-right) {
+  > :global(.wf-node__handle--material.react-flow__handle-right) {
   top: 50%;
   right: -7px;
+  bottom: auto;
+  left: auto;
+  transform: translate(50%, -50%);
+}
+
+/* 独立物料来源与转运视觉的 Handle 以整个节点外框为锚点，不再依附内部图形。 */
+.workflow
+  :global(.wf-node--material-source[data-workflow-layout-strategy='primary-sample-serpentine'][data-workflow-layout-direction='horizontal'])
+  > :global(.wf-node__handle--material.react-flow__handle-left),
+.workflow
+  :global(.wf-node--robot-transfer[data-workflow-layout-strategy='primary-sample-serpentine'][data-workflow-layout-direction='horizontal'])
+  > :global(.wf-node__handle--material.react-flow__handle-left) {
+  top: 50%;
+  right: auto;
+  bottom: auto;
+  left: 0;
+  transform: translate(-50%, -50%);
+}
+
+.workflow
+  :global(.wf-node--material-source[data-workflow-layout-strategy='primary-sample-serpentine'][data-workflow-layout-direction='horizontal'])
+  > :global(.wf-node__handle--material.react-flow__handle-right),
+.workflow
+  :global(.wf-node--robot-transfer[data-workflow-layout-strategy='primary-sample-serpentine'][data-workflow-layout-direction='horizontal'])
+  > :global(.wf-node__handle--material.react-flow__handle-right) {
+  top: 50%;
+  right: 0;
   bottom: auto;
   left: auto;
   transform: translate(50%, -50%);

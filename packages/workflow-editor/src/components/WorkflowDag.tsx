@@ -37,7 +37,10 @@ import WorkflowSupportingMaterialPresentationControl from './WorkflowSupportingM
 import { WORKFLOW_DAG_NODE_TYPES } from './workflowDagNodeTypes'
 import type { WorkflowNodeData } from './WorkflowNodeCard'
 import type { WorkflowLink, WorkflowNode } from '../utils/parseWorkflow'
-import { projectNestedWorkflow } from '../utils/canonicalWorkflow'
+import {
+  projectNestedWorkflow,
+  visibleNestedWorkflowNodeId
+} from '../utils/canonicalWorkflow'
 import {
   filterWorkflowByMaterialRoles,
   projectMaterialTraces,
@@ -71,6 +74,8 @@ interface WorkflowDagProps {
   onNodeSelect: (nodeId: string) => void
   /** IDE 光标反查的单一节点；undefined 时由 React Flow 管理本地多选。 */
   selectedNodeId?: string | null
+  /** 运行输出等外部入口发出的可重复画布聚焦请求。 */
+  revealNodeRequest?: Readonly<{ nodeId: string; nonce: number }> | null
   onSetStart?: (nodeId: string) => void
   onToggleBreakpoint?: (nodeId: string) => void
   onToggleDisabled?: (nodeId: string) => void
@@ -125,6 +130,7 @@ export default function WorkflowDag({
   links,
   onNodeSelect,
   selectedNodeId,
+  revealNodeRequest = null,
   onSetStart,
   onToggleBreakpoint,
   onToggleDisabled,
@@ -176,6 +182,9 @@ export default function WorkflowDag({
   const beautifyTimerRef = useRef<
     ReturnType<typeof globalThis.setTimeout> | null
   >(null)
+  const revealTimerRef = useRef<
+    ReturnType<typeof globalThis.setTimeout> | null
+  >(null)
   const groupSignature = useMemo(
     () => nodes
       .filter((node) => node.groupKind === 'subworkflow')
@@ -190,6 +199,9 @@ export default function WorkflowDag({
     () => () => {
       if (beautifyTimerRef.current !== null) {
         globalThis.clearTimeout(beautifyTimerRef.current)
+      }
+      if (revealTimerRef.current !== null) {
+        globalThis.clearTimeout(revealTimerRef.current)
       }
     },
     []
@@ -234,6 +246,33 @@ export default function WorkflowDag({
     ),
     [expandedGroupIds, materialRoleProjection]
   )
+  const visibleSelectedNodeId = selectedNodeId === undefined
+    ? undefined
+    : selectedNodeId === null
+      ? null
+      : visibleNestedWorkflowNodeId(
+          materialRoleProjection.nodes,
+          nestedProjection.collapsedGroupIds,
+          selectedNodeId
+        )
+  const visibleRevealNodeId = revealNodeRequest
+    ? visibleNestedWorkflowNodeId(
+        materialRoleProjection.nodes,
+        nestedProjection.collapsedGroupIds,
+        revealNodeRequest.nodeId
+      )
+    : null
+  const [retainedRevealNodeId, setRetainedRevealNodeId] = useState<
+    string | null
+  >(null)
+  useEffect(() => {
+    if (visibleRevealNodeId) setRetainedRevealNodeId(visibleRevealNodeId)
+  }, [revealNodeRequest?.nonce, visibleRevealNodeId])
+  const highlightedNodeId = visibleSelectedNodeId ??
+    visibleRevealNodeId ??
+    retainedRevealNodeId
+  const externalSelectionActive = visibleSelectedNodeId !== undefined ||
+    highlightedNodeId !== null
   useEffect(() => {
     if (!activeVisibleMaterialRoles || materialRoleOptions.length === 0) return
     const availableRoles = new Set(
@@ -320,9 +359,9 @@ export default function WorkflowDag({
       const startNode = startNodeId === node.id
       return {
         ...node,
-        selected: selectedNodeId === undefined
+        selected: !externalSelectionActive
           ? node.selected
-          : node.id === selectedNodeId,
+          : node.id === highlightedNodeId,
         deletable: false,
         className: [
           node.className,
@@ -332,8 +371,11 @@ export default function WorkflowDag({
           pausedBefore ? 'wf-flow-node--paused-before' : '',
           breakpoints.has(node.id) ? 'wf-flow-node--breakpoint' : '',
           sourceNode?.disabled ? 'wf-flow-node--disabled' : '',
-          selectedNodeId === node.id
+          highlightedNodeId === node.id
             ? 'wf-flow-node--source-selected'
+            : '',
+          retainedRevealNodeId === node.id || visibleRevealNodeId === node.id
+            ? 'wf-flow-node--runtime-selected'
             : '',
           sourceNode?.groupKind === 'subworkflow'
             ? 'wf-flow-node--subworkflow'
@@ -351,7 +393,7 @@ export default function WorkflowDag({
                   ? 'var(--unilab-color-warning)'
                   : 'var(--unilab-color-text-subtle)',
           status,
-          sourceSelected: selectedNodeId === node.id,
+          sourceSelected: highlightedNodeId === node.id,
           breakpoint: breakpoints.has(node.id),
           disabled: sourceNode?.disabled === true,
           startNode,
@@ -374,7 +416,9 @@ export default function WorkflowDag({
     [
       beforeStartNodeIds,
       breakpoints,
+      externalSelectionActive,
       flowNodes,
+      highlightedNodeId,
       expandedGroupIds,
       nodeById,
       nodeStates,
@@ -382,11 +426,44 @@ export default function WorkflowDag({
       onToggleBreakpoint,
       onToggleDisabled,
       pausedBeforeNodeId,
-      selectedNodeId,
+      retainedRevealNodeId,
       startNodeId,
-      toggleGroup
+      toggleGroup,
+      visibleRevealNodeId
     ]
   )
+  const scheduleCanvasNodeReveal = useCallback((
+    instance: ReactFlowInstance,
+    nodeId: string
+  ): void => {
+    if (revealTimerRef.current !== null) {
+      globalThis.clearTimeout(revealTimerRef.current)
+    }
+    revealTimerRef.current = globalThis.setTimeout(() => {
+      revealTimerRef.current = null
+      const node = instance.getNode(nodeId)
+      if (!node) return
+      const width = node.width ?? 0
+      const height = node.height ?? 0
+      instance.setCenter(
+        node.position.x + width / 2,
+        node.position.y + height / 2,
+        {
+          zoom: Math.max(instance.getZoom(), 0.72),
+          duration: 280
+        }
+      )
+    }, 0)
+  }, [])
+  useEffect(() => {
+    const instance = flowInstanceRef.current
+    if (!instance || !visibleRevealNodeId) return
+    scheduleCanvasNodeReveal(instance, visibleRevealNodeId)
+  }, [
+    revealNodeRequest?.nonce,
+    scheduleCanvasNodeReveal,
+    visibleRevealNodeId
+  ])
   const runtimeEdges = useMemo(
     () => flowEdges.map((edge) => ({
       ...edge,
@@ -604,9 +681,15 @@ export default function WorkflowDag({
         proOptions={{ hideAttribution: true }}
         onInit={(instance) => {
           flowInstanceRef.current = instance
+          if (visibleRevealNodeId) {
+            scheduleCanvasNodeReveal(instance, visibleRevealNodeId)
+          }
         }}
         onNodeClick={(_event, node: Node<WorkflowNodeData>) => {
           if (node.type === 'wfReactionMaterial') return
+          setRetainedRevealNodeId((current) =>
+            current === node.id ? current : null
+          )
           onNodeSelect(node.id)
         }}
         onNodeDragStop={(_event, node: Node<WorkflowNodeData>) => {
