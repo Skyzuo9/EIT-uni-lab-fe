@@ -76,4 +76,29 @@ describe('Workbench compatibility matrix', () => {
       assert.match(commit, /^[a-f0-9]{40}$/u)
     }
   })
+
+  it('pins the cross-platform remote-browser support boundary', () => {
+    assert.deepEqual(compatibility.platforms['linux-x64'], {
+      status: 'unverified',
+      minimumDistribution: 'Ubuntu 22.04',
+      minimumGlibc: '2.35',
+      verificationBlocker:
+        'The available Linux x64 host does not yet have the pinned Node or pnpm runtime'
+    })
+    assert.equal(compatibility.platforms['linux-arm64'].status, 'unverified')
+    assert.equal(compatibility.platforms['win32-x64'].status, 'unverified')
+    assert.equal(compatibility.platforms['win32-arm64'].status, 'unverified')
+    assert.deepEqual(
+      compatibility.contracts.remoteAccess,
+      {
+        protocol: 'unilab-workbench-remote-access/v1',
+        operatingSystems: ['darwin', 'linux', 'win32'],
+        serviceAdapters: [
+          'launchd',
+          'systemd',
+          'windows-task-scheduler'
+        ]
+      }
+    )
+  })
 })

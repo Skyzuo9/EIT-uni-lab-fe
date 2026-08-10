@@ -19,12 +19,14 @@ import {
   discoverWorkbenchPythonEnvironment,
   resolveWorkbenchLaunchConfiguration
 } from '../scripts/workbench-launch.mjs'
+import { createRemoteWorkbenchController } from '../scripts/remote-controller.mjs'
 
 const CONFIG_VERSION = 1
 const STARTUP_TIMEOUT_MS = 60_000
 const BACKEND_STOP_TIMEOUT_MS = 5_000
 
 let backendProcess
+let remoteAccessController
 
 void startPackagedWorkbench().catch(async error => {
   await stopBackendProcess(backendProcess)
@@ -122,6 +124,7 @@ async function startPackagedWorkbench() {
   backendProcess.stdout.pipe(logStream, { end: false })
   backendProcess.stderr.pipe(logStream, { end: false })
   backendProcess.once('close', (code, signal) => {
+    void remoteAccessController?.close().catch(() => undefined)
     logStream.end(
       `[${new Date().toISOString()}] backend exit code=${String(code)} signal=${String(signal)}\n`
     )
@@ -134,6 +137,37 @@ async function startPackagedWorkbench() {
     workflowUuid: parsed.workflowUuid
   })
   await waitForWorkbench(rendererUrl, backendProcess, STARTUP_TIMEOUT_MS)
+
+  const remoteLaunch = resolveWorkbenchLaunchConfiguration(
+    ['--remote', '--port', String(port)],
+    process.env,
+    process.cwd()
+  )
+  const remoteConfiguration = {
+    ...remoteLaunch.remote,
+    accessUrlFile: remoteLaunch.remote.accessUrlFile ?? path.join(
+      app.getPath('userData'),
+      'runtime',
+      'remote-access.url'
+    )
+  }
+  remoteAccessController = createRemoteWorkbenchController({
+    backendPort: port,
+    workspacePath: workspace,
+    rendererUrl,
+    configuration: remoteConfiguration,
+    log: message => logStream.write(
+      `[${new Date().toISOString()}] ${message}\n`
+    )
+  })
+  globalThis.__unilabWorkbenchRemoteAccessController = remoteAccessController
+  if (
+    parsed.mode === 'remote'
+    || parsed.mode === 'desktop-remote'
+    || process.env['UNILAB_REMOTE_AUTOSTART'] === '1'
+  ) {
+    await remoteAccessController.start()
+  }
 
   process.env['THEIA_WORKSPACE'] = workspace
   process.env['UNILAB_PYTHON_ENV'] = pythonEnvironment

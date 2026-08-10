@@ -431,6 +431,9 @@ function sanitizeDiagnosticText(source: string, workspacePath: string): string {
   return source
     .split(resolve(workspacePath)).join('<WORKSPACE>')
     .split(homedir()).join('<HOME>')
+    .replace(/((?:set-cookie|cookie)\s*[:=]\s*)[^\r\n]+/gi, '$1<redacted>')
+    .replace(/([?&#](?:authorization|password|secret|token|api[_-]?key)=)[^&\s]+/gi,
+      '$1<redacted>')
     .replace(/(authorization\s*[:=]\s*bearer\s+)[^\s]+/gi, '$1<redacted>')
     .replace(/((?:api[_-]?key|token|password|secret)\s*[:=]\s*)[^\s,;]+/gi,
       '$1<redacted>')

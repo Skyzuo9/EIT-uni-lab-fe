@@ -4,9 +4,14 @@ import type {
   WorkbenchSessionSnapshot
 } from '@unilab/workbench-session'
 import * as React from 'react'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { captureWorkbenchUiOperation } from './workbench-session-gate'
+import {
+  desktopWorkbenchRemoteApi,
+  type DesktopWorkbenchRemoteApi,
+  type WorkbenchRemoteAccessSnapshot
+} from './desktop-remote-access'
 
 export interface EnvironmentManagerProps {
   session: WorkbenchSessionSnapshot
@@ -43,6 +48,7 @@ export function EnvironmentManager({
   const [logKind, setLogKind] = useState<WorkbenchEnvironmentLogKind>('os')
   const [logTail, setLogTail] = useState<string | null>(null)
   const [operationError, setOperationError] = useState<string | null>(null)
+  const remoteAccessApi = useMemo(desktopWorkbenchRemoteApi, [])
 
   useEffect(() => setPlcProjectPath(plcSimulator.projectPath), [
     plcSimulator.projectPath
@@ -235,6 +241,9 @@ export function EnvironmentManager({
             ['Data', agent?.dataDir ?? '—']
           ]}
         />
+        {remoteAccessApi ? (
+          <RemoteAccessCard api={remoteAccessApi} />
+        ) : null}
       </div>
 
       <section className="unilab-environment-manager__logs">
@@ -271,6 +280,130 @@ export function EnvironmentManager({
       </section>
     </section>
   )
+}
+
+function RemoteAccessCard({
+  api
+}: {
+  api: DesktopWorkbenchRemoteApi
+}): React.JSX.Element {
+  const [snapshot, setSnapshot] = useState<WorkbenchRemoteAccessSnapshot | null>(
+    null
+  )
+  const [busy, setBusy] = useState(false)
+  const [copyStatus, setCopyStatus] = useState<string | null>(null)
+
+  useEffect(() => {
+    let active = true
+    void api.getSnapshot().then(value => {
+      if (active) setSnapshot(value)
+    }).catch(error => {
+      if (active) setSnapshot(failedRemoteSnapshot(error))
+    })
+    return () => { active = false }
+  }, [api])
+
+  const update = useCallback(async (
+    operation: () => Promise<WorkbenchRemoteAccessSnapshot>
+  ) => {
+    setBusy(true)
+    setCopyStatus(null)
+    try {
+      setSnapshot(await operation())
+    } catch (error) {
+      setSnapshot(failedRemoteSnapshot(error))
+    } finally {
+      setBusy(false)
+    }
+  }, [])
+
+  const copyAccessUrl = useCallback(async () => {
+    if (!snapshot?.accessUrl) return
+    try {
+      await navigator.clipboard.writeText(snapshot.accessUrl)
+      setCopyStatus('访问链接已复制；请按凭据安全传递。')
+    } catch {
+      setCopyStatus('无法写入剪贴板，请重新开启远程访问后再试。')
+    }
+  }, [snapshot?.accessUrl])
+
+  const current = snapshot ?? pendingRemoteSnapshot()
+  const transitioning = current.phase === 'starting'
+    || current.phase === 'stopping'
+  return (
+    <EnvironmentStatusCard
+      name="远程访问"
+      phase={current.phase}
+      message={copyStatus ?? remoteAccessMessage(current)}
+      facts={[
+        ['入口', current.origin ?? '—'],
+        ['PID', String(current.pid ?? '—')],
+        ['Generation', current.generation ?? '—'],
+        ['有效期', formatRemoteExpiry(current.expiresAt)]
+      ]}
+      actions={(
+        <>
+          {current.phase === 'ready' ? (
+            <>
+              <button
+                type="button"
+                disabled={busy || !current.accessUrl}
+                onClick={() => void copyAccessUrl()}
+              >复制访问链接</button>
+              <button
+                type="button"
+                className="is-danger"
+                disabled={busy}
+                onClick={() => void update(api.stop)}
+              >停止共享</button>
+            </>
+          ) : (
+            <button
+              type="button"
+              disabled={busy || transitioning || current.phase === 'unavailable'}
+              onClick={() => void update(api.start)}
+            >允许远程访问</button>
+          )}
+        </>
+      )}
+    />
+  )
+}
+
+function pendingRemoteSnapshot(): WorkbenchRemoteAccessSnapshot {
+  return {
+    phase: 'starting',
+    origin: null,
+    accessUrl: null,
+    pid: null,
+    generation: null,
+    expiresAt: null,
+    error: null
+  }
+}
+
+function failedRemoteSnapshot(error: unknown): WorkbenchRemoteAccessSnapshot {
+  return {
+    ...pendingRemoteSnapshot(),
+    phase: 'failed',
+    error: error instanceof Error ? error.message : String(error)
+  }
+}
+
+function remoteAccessMessage(snapshot: WorkbenchRemoteAccessSnapshot): string {
+  if (snapshot.phase === 'ready') {
+    return '本地 Electron 与远程浏览器正在共享同一个 WorkbenchSession。'
+  }
+  if (snapshot.phase === 'starting') return '正在建立鉴权浏览器门面…'
+  if (snapshot.phase === 'stopping') return '正在撤销访问链接并关闭远程连接…'
+  if (snapshot.phase === 'failed') return snapshot.error ?? '远程访问启动失败。'
+  if (snapshot.phase === 'unavailable') return '当前不是受支持的桌面 Workbench。'
+  return '关闭；Theia 与 OS 仍只接受本机连接。'
+}
+
+function formatRemoteExpiry(expiresAt: number | null): string {
+  if (!expiresAt) return '—'
+  return new Date(expiresAt).toLocaleString()
 }
 
 function RuntimeModeControl({

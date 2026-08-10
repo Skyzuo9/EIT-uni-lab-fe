@@ -39,6 +39,92 @@ handled by the local Theia Node backend, so browser and desktop Workbench share
 the same lifecycle. If the Theia backend is deployed remotely, the panel manages
 processes on that backend host.
 
+## Start remote mode on macOS, Linux or Windows
+
+Remote mode keeps Theia, OS, PLC-Sim and Agent control endpoints on
+`127.0.0.1`. The only browser-facing listener is the Workbench authentication
+facade, which proxies authenticated HTTP and WebSocket traffic. The remote
+access protocol and launcher are platform-neutral; launchd, systemd and Windows
+Task Scheduler are thin process-supervision adapters over the same command.
+
+```bash
+pnpm --filter @unilab/workbench start:remote -- \
+  --workspace /srv/unilab/Uni-Lab-SZLab \
+  --python-env /opt/conda/envs/unilab \
+  --port 3100 \
+  --remote-host 0.0.0.0 \
+  --remote-port 8443 \
+  --public-origin https://workbench.example.com:8443 \
+  --tls-cert /etc/unilab/tls/fullchain.pem \
+  --tls-key /etc/unilab/tls/private-key.pem \
+  --access-url-file /run/unilab-workbench/access.url
+```
+
+A non-loopback listener fails closed unless both TLS files and an HTTPS public
+origin are supplied. When TLS terminates at a trusted reverse proxy, bind the
+facade itself to `127.0.0.1`, configure the HTTPS `--public-origin`, preserve
+the external Host header, and omit the local TLS files.
+
+Every start creates a signed capability bound to the facade PID, port and
+generation. The secret access URL is written with mode `0600` outside the
+Workspace (or displayed only on an interactive TTY). The browser sends the URL
+fragment once, receives an HttpOnly/SameSite session cookie, and immediately
+removes the fragment. `.unilabos/runtime/remote-access.json` contains only the
+token SHA-256 and process identity. Restart/update rotates the generation, so
+old URLs and cookies are rejected; normal reconnects keep working until the
+configured expiry.
+
+The service template at `linux/unilab-workbench.service` pins Node 24.14.0,
+uses `/run/unilab-workbench` for secret delivery, and applies bounded
+control-group shutdown. Install releases below `/opt/unilab-workbench/`, point
+`current` at the selected release, then restart the unit. Rollback switches the
+symlink back and restarts; Workspace state migration/backup remains governed by
+`.unilabos/schema.json`.
+
+All service adapters consume the same environment contract:
+
+```dotenv
+UNILAB_NODE=/opt/unilab-workbench/node-v24.14.0/bin/node
+UNILAB_WORKBENCH_ROOT=/opt/unilab-workbench/current
+THEIA_WORKSPACE=/srv/unilab/Uni-Lab-SZLab
+UNILAB_PYTHON_ENV=/opt/conda/envs/unilab
+THEIA_PORT=3100
+UNILAB_REMOTE_HOST=0.0.0.0
+UNILAB_REMOTE_PORT=8443
+UNILAB_REMOTE_PUBLIC_ORIGIN=https://workbench.example.com:8443
+UNILAB_REMOTE_TLS_CERT=/etc/unilab/tls/fullchain.pem
+UNILAB_REMOTE_TLS_KEY=/etc/unilab/tls/private-key.pem
+UNILAB_REMOTE_ACCESS_URL_FILE=/run/unilab-workbench/access.url
+```
+
+Do not add a capability token to this file. Workbench generates it on every
+start and writes the complete secret URL only to the configured access URL
+file. The service account must be able to write that file; only the operator
+who delivers the URL to the browser should be able to read it.
+
+- Linux installs `linux/unilab-workbench.service` and a root-controlled
+  `/etc/unilab/workbench.env`, then enables the systemd unit.
+- macOS installs `macos/com.unilab.workbench.remote.plist` as a LaunchDaemon.
+  Its launcher reads the same administrator-controlled environment file and
+  runs as the dedicated `unilab` account/group. Install the file as
+  `root:unilab` with mode `0640`; it must not contain a generated capability.
+- Windows stores the environment file below
+  `C:\ProgramData\UniLab\Workbench`, then runs the elevated
+  `windows/install-remote-task.ps1`. The installer restricts the directory to
+  SYSTEM and Administrators and registers a machine-start task; uninstalling
+  removes the task without deleting Workspace state.
+
+The environment activation passed to Theia, terminal, LSP and managed OS is
+also platform-neutral. Windows includes the Conda root, Scripts and Library
+tool directories; native watcher, ripgrep and terminal packages are pinned for
+macOS, Linux and Windows on arm64 and x64. A target remains `unverified` in
+`compatibility.json` until a real host has completed cold start, reconnect,
+shutdown and rollback acceptance.
+
+Remote diagnostics use the same bounded Workbench bundle: Workspace/home paths,
+Bearer credentials, cookies, token/secret query or fragment values are redacted,
+and Agent conversation/session bodies are excluded.
+
 ## Start as a desktop application
 
 ```bash
@@ -55,6 +141,30 @@ Desktop preload/IPC, authentication, file dialogs, local runtime, device-card,
 device-provisioning, diagnostics and safe-quit implementation. The privileged
 renderer is restricted to its original `http://127.0.0.1` origin; remote
 renderer URLs and cross-origin navigation are rejected.
+
+The desktop Environment Manager can enable or stop an authenticated remote
+browser entrance while Electron stays open. Both entrances use the same Theia
+backend, `WorkbenchSession`, managed OS, terminals and files; enabling sharing
+does not launch a second environment. The secret launch URL is exposed only to
+the trusted preload bridge and the configured out-of-Workspace access file.
+Stopping sharing releases the remote listener and revokes its generation while
+the local Electron session continues running.
+
+To start Electron with remote sharing already enabled, use the combined mode:
+
+```bash
+pnpm workbench:desktop-remote -- \
+  --workspace /absolute/path/to/Uni-Lab-SZLab \
+  --remote-host 127.0.0.1 \
+  --remote-port 3111 \
+  --access-url-file /absolute/private/runtime/workbench-access.url
+```
+
+T12 deliberately provides shared-session semantics, not CRDT collaboration.
+Local and remote clients see the same applied workflow and filesystem state,
+but two people must not edit and save the same source file concurrently. A
+later collaboration slice must add document-level ownership or CRDT/OT before
+same-file multi-user editing can be advertised.
 
 The legacy Electron kernel surface does not depend on Theia. Its
 `LocalRuntimeManager` and Theia's `WorkbenchSession` instead share the lower

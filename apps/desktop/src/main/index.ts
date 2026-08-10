@@ -47,10 +47,8 @@ import {
   shouldQuitWhenAllDesktopWindowsClose
 } from './desktopSurface'
 import { RendererConsoleLogLimiter } from './rendererConsoleLogLimiter'
-import {
-  cleanupPackagedWorkbenchBackend,
-  configurePackagedDeviceCardBuilder
-} from './packagedRuntime'
+import { cleanupPackagedWorkbench, configurePackagedDeviceCardBuilder } from './packagedRuntime'
+import { registerWorkbenchRemoteAccessIpc } from './workbenchRemoteIpc'
 
 // 保存文件的入参:path 为 null 时弹出"另存为"对话框
 interface SaveFilePayload {
@@ -320,6 +318,7 @@ app.whenReady().then(async () => {
     app.dock.setIcon(localAppIcon)
   }
   ipcMain.handle('app:getVersion', () => app.getVersion())
+  registerWorkbenchRemoteAccessIpc({ observability: electronObservability, assertSender: assertMainWindowSender })
   deviceCardManager = new DeviceCardManager({
     getMainWindow: () => mainWindow,
     preloadPath: join(__dirname, '../preload/deviceCard.js'),
@@ -706,7 +705,7 @@ async function cleanupBeforeQuit(): Promise<void> {
       error
     )
   }
-  await cleanupPackagedWorkbenchBackend({
+  await cleanupPackagedWorkbench({
     enabled: desktopSurface.kind === 'workbench',
     observability: electronObservability,
     log: logLine
