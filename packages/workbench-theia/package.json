@@ -45,7 +45,7 @@
   },
   "theiaExtensions": [
     {
-      "frontend": "lib/browser/theia-workflow-prototype-frontend-module"
+      "frontend": "lib/browser/unilab-workbench-frontend-module"
     },
     {
       "backend": "lib/node/workbench-session-backend-module"

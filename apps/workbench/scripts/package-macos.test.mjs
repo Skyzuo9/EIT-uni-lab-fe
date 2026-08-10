@@ -12,6 +12,35 @@ import {
 } from './package-macos.mjs'
 
 describe('Workbench macOS distribution gate', () => {
+  it('publishes the formal UniLab Workbench identity at version 0.1.0', async () => {
+    const packageManifest = JSON.parse(await readFile(
+      new URL('../package.json', import.meta.url),
+      'utf8'
+    ))
+    const theiaManifest = JSON.parse(await readFile(
+      new URL('../../../packages/workbench-theia/package.json', import.meta.url),
+      'utf8'
+    ))
+    const builderConfiguration = await readFile(
+      new URL('../electron-builder.yml', import.meta.url),
+      'utf8'
+    )
+    const welcomeDocument = await readFile(
+      new URL('../desktop/welcome.html', import.meta.url),
+      'utf8'
+    )
+
+    assert.equal(packageManifest.version, '0.1.0')
+    assert.match(packageManifest.description, /UniLab 调试工作台/u)
+    assert.match(builderConfiguration, /^productName: UniLab Workbench$/mu)
+    assert.match(welcomeDocument, /<title>UniLab 调试工作台<\/title>/u)
+    assert.equal(
+      theiaManifest.theiaExtensions[0].frontend,
+      'lib/browser/unilab-workbench-frontend-module'
+    )
+    assert.doesNotMatch(JSON.stringify(theiaManifest), /prototype/iu)
+  })
+
   it('never silently downgrades the formal release to unsigned', () => {
     assert.throws(
       () => assertMacosSigningEnvironment({}),

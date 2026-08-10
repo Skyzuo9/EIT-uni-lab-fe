@@ -13,8 +13,8 @@ import {
   WorkbenchSessionClient,
   WorkbenchSessionServer
 } from '../common/workbench-session-protocol'
-import { TheiaWorkflowPrototypeContribution } from './theia-workflow-prototype-contribution'
-import { TheiaWorkflowPrototypeWidget } from './theia-workflow-prototype-widget'
+import { UniLabWorkbenchContribution } from './unilab-workbench-contribution'
+import { UniLabWorkbenchWidget } from './unilab-workbench-widget'
 import { WorkbenchSessionClientImpl } from './workbench-session-client'
 import { WorkbenchPrivateStatePreferenceContribution } from './workbench-private-state-preferences'
 import { UniLabAgentContribution } from './unilab-agent-contribution'
@@ -44,12 +44,12 @@ export default new ContainerModule((bind) => {
     createWidget: () => context.container.get(UniLabAgentWidget)
   })).inSingletonScope()
 
-  bindViewContribution(bind, TheiaWorkflowPrototypeContribution)
+  bindViewContribution(bind, UniLabWorkbenchContribution)
   bind(FrontendApplicationContribution)
-    .toService(TheiaWorkflowPrototypeContribution)
-  bind(TheiaWorkflowPrototypeWidget).toSelf()
+    .toService(UniLabWorkbenchContribution)
+  bind(UniLabWorkbenchWidget).toSelf()
   bind(WidgetFactory).toDynamicValue((context) => ({
-    id: TheiaWorkflowPrototypeWidget.ID,
-    createWidget: () => context.container.get(TheiaWorkflowPrototypeWidget)
+    id: UniLabWorkbenchWidget.ID,
+    createWidget: () => context.container.get(UniLabWorkbenchWidget)
   })).inSingletonScope()
 })

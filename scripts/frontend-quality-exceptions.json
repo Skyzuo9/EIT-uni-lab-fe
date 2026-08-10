@@ -48,10 +48,10 @@
       "reason": "工作台环境会话（WorkbenchSession）是 managed-local OS、PLC-Sim 与 Agent 的唯一 Node 生命周期权威；Interface 集中保证 OS 独立停止、应用退出统一清理、同代 Workspace 身份和有界日志读取，避免浏览器、Theia 与 Electron 各自管理同一进程。",
       "futureSplitBoundary": "在 PLC-Sim 真实仓库与 Windows 进程树验收完成后，将 PLC-Sim 配置持久化、启动就绪和日志读取抽取为 ManagedPlcSimulatorSidecar；index.ts 只保留 OS/Agent/PLC 会话编排与公开 Interface。"
     },
-    "packages/workbench-theia/src/browser/theia-workflow-prototype-widget.tsx": {
+    "packages/workbench-theia/src/browser/unilab-workbench-widget.tsx": {
       "maxLines": 1150,
       "maxFunctionComplexity": 25,
-      "reason": "Theia 编写工作台宿主（AuthoringWorkbenchHost）集中组合 Monaco/文件服务双向联动、Workflow/Material 互切和同一 WorkbenchSession 环境投影；不创建第二份工作流或进程权威，环境面板仅调用窄化 RPC Interface。",
+      "reason": "UniLab 调试工作台的 Theia 宿主（UniLabWorkbenchHost）集中组合 Monaco/文件服务双向联动、Workflow/Material 互切和同一 WorkbenchSession 环境投影；不创建第二份工作流或进程权威，环境面板仅调用窄化 RPC Interface。",
       "futureSplitBoundary": "环境面板补齐独立组件交互测试后迁入 environment-manager/EnvironmentManager.tsx，并将 Material viewport 适配迁入 WorkbenchMaterialViewport.tsx，使宿主只保留 Theia IDE bridge 与顶层 surface 组合。"
     },
     "packages/services/src/materials.ts": {

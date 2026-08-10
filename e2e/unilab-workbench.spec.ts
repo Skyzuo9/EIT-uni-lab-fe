@@ -1,15 +1,15 @@
 import { expect, test } from '@playwright/test'
 
-const prototypeUrl = process.env.UNILAB_THEIA_PROTOTYPE_URL
+const workbenchUrl = process.env.UNILAB_WORKBENCH_URL
 
-test.describe('UniLab Authoring Workbench real-system contract', () => {
-  test.skip(!prototypeUrl, 'UNILAB_THEIA_PROTOTYPE_URL is required')
+test.describe('UniLab Workbench real-system contract', () => {
+  test.skip(!workbenchUrl, 'UNILAB_WORKBENCH_URL is required')
 
   test('keeps the renderer responsive after UniLab Agent branding mounts', async ({
     page
   }) => {
     test.setTimeout(15_000)
-    await page.goto(prototypeUrl!, { waitUntil: 'domcontentloaded' })
+    await page.goto(workbenchUrl!, { waitUntil: 'domcontentloaded' })
     await expect(page.locator('iframe.unilab-aionui__frame')).toBeAttached()
 
     await page.waitForTimeout(2_000)
@@ -27,7 +27,7 @@ test.describe('UniLab Authoring Workbench real-system contract', () => {
       }>
     })
     const expectedWorkspace = decodeURIComponent(
-      new URL(prototypeUrl!).hash.replace(/^#\/?/, '/')
+      new URL(workbenchUrl!).hash.replace(/^#\/?/, '/')
     )
     expect(agentStatus).toMatchObject({
       workspacePath: expectedWorkspace,
@@ -88,7 +88,7 @@ test.describe('UniLab Authoring Workbench real-system contract', () => {
       title: document.title
     })), { timeout: 2_000 }).toEqual({
       readyState: 'complete',
-      title: 'UniLab Authoring - Uni-Lab-SZLab'
+      title: 'UniLab 调试工作台 - Uni-Lab-SZLab'
     })
 
     await page.getByRole('button', { name: '查看 OS 日志' }).click()
@@ -98,10 +98,10 @@ test.describe('UniLab Authoring Workbench real-system contract', () => {
   test('binds the exact package source and keeps bidirectional authoring usable', async ({
     page
   }) => {
-    await page.goto(prototypeUrl!)
+    await page.goto(workbenchUrl!)
     const workbench = page.locator('[data-package-mount-count="1"]')
     await expect(workbench).toBeVisible()
-    await expect(workbench).toHaveAttribute('data-session-mode', 'simulation')
+    await expect(workbench).toHaveAttribute('data-session-mode', 'normal')
     await expect(workbench).toHaveAttribute(
       'data-workspace-graph-fingerprint',
       /^[0-9a-f]{64}$/

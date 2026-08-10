@@ -1,4 +1,4 @@
-# UniLab Authoring Workbench
+# UniLab 调试工作台（UniLab Workbench）
 
 The formal Theia application for one managed-local Uni-Lab OS Workspace. It can
 run in a browser or inside the shared UniLab Electron Desktop shell. The Theia
@@ -141,7 +141,7 @@ selections are recorded as canonical paths in the machine-local application
 configuration; invalid launches return to the welcome surface without replacing
 the last successful entry.
 
-From a running desktop Workbench, use **切换工作区** in the authoring
+From a running desktop Workbench, use **切换工作区** in the Workbench
 toolbar. Unsaved editors keep Electron's native discard confirmation. After
 confirmation, the current managed process tree is stopped within the bounded
 shutdown window, and the same BrowserWindow returns to the welcome surface.

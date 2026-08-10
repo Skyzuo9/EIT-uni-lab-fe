@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "author": "UniLab",
-  "description": "UniLab Authoring Workbench desktop and browser application",
+  "description": "UniLab 调试工作台（UniLab Workbench）desktop and browser application",
   "main": "./desktop/main.cjs",
   "dependencies": {
     "@theia/ai-core": "1.74.1",

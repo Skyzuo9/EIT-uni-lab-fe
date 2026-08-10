@@ -88,9 +88,11 @@ import { WorkbenchSessionGate } from './workbench-session-gate'
 type SourceSaveHandler = (pythonSource: string) => Promise<void>
 
 @injectable()
-export class TheiaWorkflowPrototypeWidget extends ReactWidget {
+export class UniLabWorkbenchWidget extends ReactWidget {
+  // This persisted identity predates the formal product name. Keep it stable so
+  // existing Theia layouts reopen the same widget after upgrading.
   static readonly ID = 'unilab:authoring-workbench'
-  static readonly LABEL = 'UniLab Authoring'
+  static readonly LABEL = 'UniLab 调试工作台'
 
   @inject(EditorManager)
   protected readonly editorManager!: EditorManager
@@ -136,9 +138,9 @@ export class TheiaWorkflowPrototypeWidget extends ReactWidget {
       reportError: message => { void this.messages.error(message) }
     })
     this.ideBridge = this.ideAdapter.bridge
-    this.id = TheiaWorkflowPrototypeWidget.ID
-    this.title.label = TheiaWorkflowPrototypeWidget.LABEL
-    this.title.caption = 'UniLab Material and Workflow Authoring Workbench'
+    this.id = UniLabWorkbenchWidget.ID
+    this.title.label = UniLabWorkbenchWidget.LABEL
+    this.title.caption = 'UniLab Workbench'
     this.title.closable = false
     this.title.iconClass = 'codicon codicon-type-hierarchy-sub'
     this.toDispose.push(Disposable.create(() => this.editorListeners.dispose()))
@@ -545,7 +547,7 @@ function WorkbenchSurface({
   const [environmentOpen, setEnvironmentOpen] = useState(false)
   const query = new URLSearchParams(globalThis.location.search)
   const workflowUuid = query.get('workflowUuid') ?? undefined
-  const services = useMemo(() => createPrototypeServices(backendUrl), [backendUrl])
+  const services = useMemo(() => createWorkbenchServices(backendUrl), [backendUrl])
   const queryClient = useMemo(() => new QueryClient(), [])
   const scope = useMemo(() => ({ kind: 'singleton' } as const), [])
   const materialStore = useMemo<MaterialStore>(() => createMaterialStore({
@@ -597,7 +599,7 @@ function WorkbenchSurface({
   return (
     <QueryClientProvider client={queryClient}>
       <div
-        className="unilab-theia-prototype"
+        className="unilab-workbench"
         data-workspace-path={session.identity?.workspacePath ?? ''}
         data-package-mount-count={
           session.identity?.packageMounts?.items.length ?? 0
@@ -609,14 +611,14 @@ function WorkbenchSurface({
           session.identity?.packageMounts?.catalogRevision ?? ''
         }
       >
-        <header className="unilab-theia-prototype__bar">
+        <header className="unilab-workbench__bar">
           <div>
-            <strong>UniLab Authoring Workbench</strong>
+            <strong>UniLab 调试工作台</strong>
             <span>
               OS PID {session.identity?.pid} · {session.identity?.mode} · {backendUrl}
             </span>
           </div>
-          <nav aria-label="Authoring surface">
+          <nav aria-label="调试工作台页面">
             <button
               className={surface === 'workflow' ? 'is-active' : ''}
               onClick={() => setSurface('workflow')}
@@ -653,7 +655,7 @@ function WorkbenchSurface({
             onStopSession={onStopSession}
           />
         ) : null}
-        <details className="unilab-theia-prototype__debug">
+        <details className="unilab-workbench__debug">
           <summary>同步状态</summary>
           <dl>
             <dt>source URI</dt>
@@ -675,7 +677,7 @@ function WorkbenchSurface({
           </dl>
         </details>
         {surface === 'workflow' ? (
-          <section className="unilab-theia-prototype__surface">
+          <section className="unilab-workbench__surface">
             <WorkflowPanel
               runtime={services.workflow}
               active={surface === 'workflow'}
@@ -687,7 +689,7 @@ function WorkbenchSurface({
             />
           </section>
         ) : (
-          <section className="unilab-theia-prototype__surface">
+          <section className="unilab-workbench__surface">
             <MaterialStoreProvider store={materialStore}>
               <MaterialWorkbench
                 catalog={services.materials}
@@ -827,7 +829,7 @@ function WorkbenchMaterialViewport({
   )
 }
 
-function createPrototypeServices(backendUrl: string): Services {
+function createWorkbenchServices(backendUrl: string): Services {
   const backend = getDefaultBackend('local-python')
   const url = backendUrl.replace(/\/$/, '')
   return createServices({

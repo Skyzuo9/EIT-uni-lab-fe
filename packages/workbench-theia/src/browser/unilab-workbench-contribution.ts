@@ -8,25 +8,25 @@ import { injectable } from '@theia/core/shared/inversify'
 import type { IDisposable } from '@theia/monaco-editor-core'
 
 import { registerPythonSyntaxHighlighting } from './python-monarch'
-import { TheiaWorkflowPrototypeWidget } from './theia-workflow-prototype-widget'
+import { UniLabWorkbenchWidget } from './unilab-workbench-widget'
 
-export const OpenTheiaWorkflowPrototype: Command = {
+export const OpenUniLabWorkbench: Command = {
   id: 'unilab.authoring-workbench.open',
-  label: 'Open UniLab Authoring Workbench'
+  label: '打开 UniLab 调试工作台'
 }
 
 @injectable()
-export class TheiaWorkflowPrototypeContribution
-  extends AbstractViewContribution<TheiaWorkflowPrototypeWidget>
+export class UniLabWorkbenchContribution
+  extends AbstractViewContribution<UniLabWorkbenchWidget>
   implements FrontendApplicationContribution {
   protected pythonSyntaxHighlighting: IDisposable | undefined
 
   constructor() {
     super({
-      widgetId: TheiaWorkflowPrototypeWidget.ID,
-      widgetName: TheiaWorkflowPrototypeWidget.LABEL,
+      widgetId: UniLabWorkbenchWidget.ID,
+      widgetName: UniLabWorkbenchWidget.LABEL,
       defaultWidgetOptions: { area: 'main' },
-      toggleCommandId: OpenTheiaWorkflowPrototype.id
+      toggleCommandId: OpenUniLabWorkbench.id
     })
   }
 
