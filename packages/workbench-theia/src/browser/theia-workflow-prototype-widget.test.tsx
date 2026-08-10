@@ -28,6 +28,7 @@ describe('WorkbenchSessionGate', () => {
           identity: {
             workspacePath: '/workspace',
             osProjectPath: '/os',
+            osRuntimeSource: 'checkout',
             environmentPath: '/python',
             graphPath: '/workspace/deployment/graphs/szlab-local-debug.json',
             graphFingerprint: 'graph',

@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "product": {
+    "name": "UniLab Workbench",
+    "version": "0.1.0",
+    "stateSchemaVersion": 1
+  },
+  "platforms": {
+    "darwin-arm64": {
+      "status": "supported",
+      "minimumVersion": "13.0"
+    },
+    "darwin-x64": {
+      "status": "unverified"
+    }
+  },
+  "components": {
+    "electron": "33.4.11",
+    "backendNode": "24.14.0",
+    "theia": "1.74.1",
+    "aionUiExternal": "2.1.52",
+    "vscodeExtensionRelease": "vscode-v0.1.0"
+  },
+  "acceptedBaselines": {
+    "uniLabOsCommit": "aee69e0364b8f034daf9edd1a2d5c97df056f702",
+    "szLabCommit": "1016dd30d7dbc044535cc7cc12b727d725aec89f",
+    "frontendCommit": "46d7926c933cfbca0321b40de3f183824d6e5a33"
+  },
+  "contracts": {
+    "workspace": "managed-local",
+    "osRuntime": ["installed-environment", "source-checkout"],
+    "workflowIdeHostAdapter": 1,
+    "agent": "external-aion-ui"
+  }
+}

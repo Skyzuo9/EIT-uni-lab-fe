@@ -20,7 +20,8 @@ assert.deepEqual(packageConfig.dependencies ?? {}, {
   '@arizeai/phoenix-otel': '2.1.0',
   '@unilab/device-card-agent-cli': 'workspace:*',
   '@unilab/device-card-host': 'workspace:*',
-  '@unilab/device-card-sdk': 'workspace:*'
+  '@unilab/device-card-sdk': 'workspace:*',
+  '@unilab/local-environment': 'workspace:*'
 })
 assert.equal(
   packageConfig.devDependencies?.['@unilab/kernel-web'],
@@ -36,7 +37,7 @@ assert.equal(
 )
 assert.match(
   readFileSync(join(desktopDirectory, 'electron.vite.config.ts'), 'utf8'),
-  /externalizeDepsPlugin\(\{ exclude: \['@unilab\/services'\] \}\)/
+  /exclude: \['@unilab\/services', '@unilab\/local-environment'\]/
 )
 assert.equal(
   packageConfig.scripts?.['package:win'],

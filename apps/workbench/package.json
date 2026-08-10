@@ -2,6 +2,9 @@
   "name": "@unilab/workbench",
   "version": "0.1.0",
   "private": true,
+  "author": "UniLab",
+  "description": "UniLab Authoring Workbench desktop and browser application",
+  "main": "./desktop/main.cjs",
   "dependencies": {
     "@theia/ai-core": "1.74.1",
     "@theia/ai-mcp": "1.74.1",
@@ -50,6 +53,8 @@
   "devDependencies": {
     "@theia/bundle-plugin": "1.74.1",
     "@theia/cli": "1.74.1",
+    "electron": "33.4.11",
+    "electron-builder": "25.1.8",
     "esbuild": "0.28.2",
     "esbuild-plugin-copy": "2.1.1",
     "esbuild-plugins-node-modules-polyfill": "1.8.3",
@@ -60,11 +65,14 @@
   },
   "scripts": {
     "build": "pnpm --filter @unilab/workbench-theia build && pnpm --filter @unilab/pascal-host build:styles && theia download:plugins && theia build --mode development",
-    "build:desktop": "pnpm --filter @unilab/desktop build && pnpm build",
+    "build:desktop": "pnpm --filter @unilab/desktop build && pnpm build && pnpm build:desktop-launcher",
+    "build:desktop-launcher": "node scripts/build-desktop-launcher.mjs",
     "desktop": "pnpm build:desktop && pnpm start:desktop",
     "start": "node scripts/start-workbench.mjs",
     "start:desktop": "node scripts/start-workbench.mjs --desktop",
     "start:theia-only": "theia start \"${THEIA_WORKSPACE:-../..}\" --hostname 127.0.0.1 --port ${THEIA_PORT:-3100} --plugins=local-dir:plugins",
+    "package:mac": "pnpm build:desktop && node scripts/package-macos.mjs --signed",
+    "package:mac:unsigned": "pnpm build:desktop && node scripts/package-macos.mjs --unsigned",
     "test": "node --test scripts/*.test.mjs",
     "watch": "theia build --watch --mode development"
   },
