@@ -792,6 +792,7 @@
 .workflow :global(.wf-node__handle--material):global(.connecting),
 .workflow :global(.wf-node__handle--material):global(.connected) {
   border-color: var(--wf-material-accent);
+  border-radius: 50%;
   background: color-mix(
     in srgb,
     var(--wf-material-accent) 12%,

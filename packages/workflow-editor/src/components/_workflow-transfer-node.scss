@@ -217,29 +217,33 @@
 
 .workflow
   :global(.wf-node--robot-transfer:not([data-workflow-layout-direction='horizontal']))
-  :global(.wf-node__robot-transfer-handle) {
+  :global(.wf-node__robot-transfer-port)
+  > :global(.wf-node__robot-transfer-handle) {
   right: auto;
   left: 50%;
 }
 
 .workflow
   :global(.wf-node--robot-transfer:not([data-workflow-layout-direction='horizontal']))
+  :global(.wf-node__robot-transfer-port)
   > :global(.wf-node__robot-transfer-handle.react-flow__handle-top) {
-  top: 0;
+  top: 9px;
   bottom: auto;
   transform: translate(-50%, -50%);
 }
 
 .workflow
   :global(.wf-node--robot-transfer:not([data-workflow-layout-direction='horizontal']))
+  :global(.wf-node__robot-transfer-port)
   > :global(.wf-node__robot-transfer-handle.react-flow__handle-bottom) {
   top: auto;
-  bottom: 0;
+  bottom: 9px;
   transform: translate(-50%, 50%);
 }
 
 .workflow
   :global(.wf-node--robot-transfer[data-workflow-layout-direction='horizontal'])
+  :global(.wf-node__robot-transfer-port)
   > :global(.wf-node__robot-transfer-handle) {
   top: 50%;
   bottom: auto;
@@ -247,16 +251,18 @@
 
 .workflow
   :global(.wf-node--robot-transfer[data-workflow-layout-direction='horizontal'])
+  :global(.wf-node__robot-transfer-port)
   > :global(.wf-node__robot-transfer-handle.react-flow__handle-left) {
   right: auto;
-  left: 0;
+  left: 9px;
   transform: translate(-50%, -50%);
 }
 
 .workflow
   :global(.wf-node--robot-transfer[data-workflow-layout-direction='horizontal'])
+  :global(.wf-node__robot-transfer-port)
   > :global(.wf-node__robot-transfer-handle.react-flow__handle-right) {
-  right: 0;
+  right: 9px;
   left: auto;
   transform: translate(50%, -50%);
 }

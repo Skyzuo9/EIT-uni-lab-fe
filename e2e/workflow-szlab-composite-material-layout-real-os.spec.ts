@@ -342,7 +342,8 @@ test('SZLab composite material workflow uses one orthogonal visible layout', asy
   )
   expect(horizontalMaterialHandleEvidence.length).toBeGreaterThan(0)
   expect(horizontalMaterialHandleEvidence.every((handle) =>
-    handle.cssHeight >= 17 && handle.cssWidth <= 9
+    handle.cssHeight >= 11 && handle.cssWidth >= 11 &&
+    Math.abs(handle.cssHeight - handle.cssWidth) <= 0.5
   ), JSON.stringify(horizontalMaterialHandleEvidence, null, 2)).toBe(true)
   expect(new Set(horizontalMaterialHandleEvidence.map((handle) => handle.owner)))
     .toEqual(new Set(['action', 'material-source', 'robot-transfer']))
@@ -526,7 +527,7 @@ interface HorizontalMaterialHandleEvidence {
  * 读取横向物料流（MaterialFlow）句柄的所有者、方向和实际视觉尺寸。
  *
  * @param handles 当前横向工作流（Workflow）画布中的全部物料句柄。
- * @returns 可验证输入空心、输出实心和垂直短胶囊比例的浏览器证据。
+ * @returns 可验证输入空心、输出实心和圆形比例的浏览器证据。
  */
 async function readHorizontalMaterialHandles(
   handles: Locator
@@ -542,6 +543,10 @@ async function readHorizontalMaterialHandles(
       : node?.dataset.workflowNodeKind === 'material_source'
         ? 'material-source'
         : 'action'
+    const anchorBounds = owner === 'robot-transfer'
+      ? node?.querySelector<HTMLElement>('[data-workflow-robot-arm]')
+        ?.getBoundingClientRect()
+      : nodeBounds
     return {
       owner,
       io: handle.dataset.workflowHandleIo ?? '',
@@ -550,12 +555,12 @@ async function readHorizontalMaterialHandles(
       screenWidth: bounds.width,
       screenHeight: bounds.height,
       backgroundColor: style.backgroundColor,
-      nodeEdgeDelta: nodeBounds
+      nodeEdgeDelta: anchorBounds
         ? Math.abs(
             bounds.left + bounds.width / 2 -
             (handle.classList.contains('react-flow__handle-left')
-              ? nodeBounds.left
-              : nodeBounds.right)
+              ? anchorBounds.left
+              : anchorBounds.right)
           )
         : Number.POSITIVE_INFINITY
     }
@@ -569,13 +574,22 @@ interface TransferHandleEvidence {
   edgeDelta: number
 }
 
-/** 验证物料流（MaterialFlow）句柄位于完整转运节点外缘并与节点中心轴对齐。 */
+/** 验证物料流（MaterialFlow）句柄位于机械臂菱形外缘并与其中心轴对齐。 */
 async function transferHandleEvidence(
   nodes: Locator
 ): Promise<TransferHandleEvidence[]> {
   return nodes.evaluateAll((elements) => elements.flatMap((element) => {
     const node = element as HTMLElement
-    const nodeRect = node.getBoundingClientRect()
+    const visual = node.querySelector<HTMLElement>('[data-workflow-robot-arm]')
+    const visualRect = visual?.getBoundingClientRect()
+    if (!visualRect) {
+      return [{
+        nodeId: node.dataset.workflowNodeUuid ?? '',
+        io: 'missing-visual',
+        crossAxisDelta: 9999,
+        edgeDelta: 9999
+      }]
+    }
     const horizontal = node.dataset.workflowLayoutDirection === 'horizontal'
     return [...node.querySelectorAll<HTMLElement>(
       '[data-workflow-handle-kind="material"]'
@@ -588,24 +602,24 @@ async function transferHandleEvidence(
         crossAxisDelta: horizontal
           ? Math.abs(
               handleRect.top + handleRect.height / 2 -
-              (nodeRect.top + nodeRect.height / 2)
+              (visualRect.top + visualRect.height / 2)
             )
           : Math.abs(
               handleRect.left + handleRect.width / 2 -
-              (nodeRect.left + nodeRect.width / 2)
+              (visualRect.left + visualRect.width / 2)
             ),
         edgeDelta: horizontal
           ? Math.abs(
               handleRect.left + handleRect.width / 2 -
               (handle.classList.contains('react-flow__handle-left')
-                ? nodeRect.left
-                : nodeRect.right)
+                ? visualRect.left
+                : visualRect.right)
             )
           : Math.abs(
               handleRect.top + handleRect.height / 2 -
               (handle.classList.contains('react-flow__handle-top')
-                ? nodeRect.top
-                : nodeRect.bottom)
+                ? visualRect.top
+                : visualRect.bottom)
             )
       }
     })

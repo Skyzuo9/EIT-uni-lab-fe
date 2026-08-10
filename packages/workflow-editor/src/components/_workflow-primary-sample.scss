@@ -171,12 +171,9 @@
   transform: translate(50%, -50%);
 }
 
-/* 独立物料来源与转运视觉的 Handle 以整个节点外框为锚点，不再依附内部图形。 */
+/* 独立物料来源的 Handle 以整个节点外框为锚点。 */
 .workflow
   :global(.wf-node--material-source[data-workflow-layout-strategy='primary-sample-serpentine'][data-workflow-layout-direction='horizontal'])
-  > :global(.wf-node__handle--material.react-flow__handle-left),
-.workflow
-  :global(.wf-node--robot-transfer[data-workflow-layout-strategy='primary-sample-serpentine'][data-workflow-layout-direction='horizontal'])
   > :global(.wf-node__handle--material.react-flow__handle-left) {
   top: 50%;
   right: auto;
@@ -187,9 +184,6 @@
 
 .workflow
   :global(.wf-node--material-source[data-workflow-layout-strategy='primary-sample-serpentine'][data-workflow-layout-direction='horizontal'])
-  > :global(.wf-node__handle--material.react-flow__handle-right),
-.workflow
-  :global(.wf-node--robot-transfer[data-workflow-layout-strategy='primary-sample-serpentine'][data-workflow-layout-direction='horizontal'])
   > :global(.wf-node__handle--material.react-flow__handle-right) {
   top: 50%;
   right: 0;

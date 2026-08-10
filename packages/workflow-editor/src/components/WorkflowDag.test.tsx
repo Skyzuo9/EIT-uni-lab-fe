@@ -384,6 +384,14 @@ describe('WorkflowDag canvas controls', () => {
     expect(stylesheet).toMatch(/data-workflow-material-emphasis='supporting'/)
     expect(stylesheet).toMatch(/wf-flow-edge--supporting-material/)
     expect(stylesheet).toMatch(/opacity:\s*\.28/)
+
+    const swimlaneStylesheet = readFileSync(
+      new URL('./_workflow-swimlanes.scss', import.meta.url),
+      'utf8'
+    )
+    expect(swimlaneStylesheet).toMatch(
+      /wf-node__handle--material[\s\S]*width:\s*12px;[\s\S]*height:\s*12px;[\s\S]*border-radius:\s*50%/
+    )
   })
 })
 
