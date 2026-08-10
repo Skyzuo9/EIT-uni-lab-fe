@@ -1,6 +1,7 @@
 export type WorkflowDagLayoutStrategy =
   | 'crossing-minimized'
   | 'material-swimlanes'
+  | 'primary-sample-serpentine'
 
 export type WorkflowMaterialSwimlaneDirection = 'vertical' | 'horizontal'
 
@@ -44,6 +45,11 @@ export const WORKFLOW_DAG_LAYOUT_STRATEGIES:
     value: 'material-swimlanes',
     label: '物料泳道',
     description: '固定每种物料的左右泳道，使同一物料的连线保持竖直'
+  },
+  {
+    value: 'primary-sample-serpentine',
+    label: '主样品蛇形',
+    description: '以主样品路径为主干分行折返，其它物料支线靠近关联步骤'
   }
 ]
 

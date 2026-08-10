@@ -78,6 +78,12 @@ const storage: PanelStoragePort = {
   }
 }
 
+/**
+ * 将物料（Material）面板接入共享实验室视图与跨面板可见性意图。
+ *
+ * @param props 面板实例、服务、交互 Store 与统一视图开关。
+ * @returns 独立物料工作台或复用同一投影的统一实验室视图。
+ */
 function MaterialRenderer(
   props: PanelRendererProps<LabPanelScope> & {
     unified?: boolean
@@ -96,9 +102,9 @@ function MaterialRenderer(
     props.scope.interaction,
     (state) => state.activeWorkflowMaterialTransferRoutes
   )
-  const materialRoleFilter = useStore(
+  const visibleMaterialRoles = useStore(
     props.scope.interaction,
-    (state) => state.activeWorkflowMaterialRoleFilter
+    (state) => state.activeWorkflowVisibleMaterialRoles
   )
   const activeWorkflowPanelId = useStore(
     props.scope.interaction,
@@ -129,6 +135,21 @@ function MaterialRenderer(
       lineageCount: lineageKeys.size
     }))
   }, [workflowMaterialTransferRoutes])
+  /**
+   * 从统一实验室视图发布物料流角色（MaterialFlowRole）可见性。
+   *
+   * @param nextVisibleRoles 可见角色数组；null 表示全部可见。
+   * @returns 无返回值；没有活动工作流面板时拒绝更新。
+   */
+  const publishVisibleMaterialRoles = useCallback((
+    nextVisibleRoles: readonly string[] | null
+  ): void => {
+    if (!activeWorkflowPanelId) return
+    props.scope.interaction.getState().setWorkflowVisibleMaterialRoles(
+      activeWorkflowPanelId,
+      nextVisibleRoles
+    )
+  }, [activeWorkflowPanelId, props.scope.interaction])
 
   if (!runtime.store || !runtime.scope) {
     const unavailableNotice = (
@@ -166,16 +187,9 @@ function MaterialRenderer(
         props.unified
           ? (_viewportProps) => (
               <UnifiedLabViewport
-                materialRoleFilter={materialRoleFilter}
+                visibleMaterialRoles={visibleMaterialRoles}
                 materialRoleOptions={materialRoleOptions}
-                onMaterialRoleFilterChange={(materialRole) => {
-                  if (!activeWorkflowPanelId) return
-                  props.scope.interaction.getState()
-                    .setWorkflowMaterialRoleFilter(
-                      activeWorkflowPanelId,
-                      materialRole
-                    )
-                }}
+                onVisibleMaterialRolesChange={publishVisibleMaterialRoles}
                 renderView={(
                   viewMode,
                   { showSites, showMaterialTransfers }
@@ -195,15 +209,21 @@ function MaterialRenderer(
   )
 }
 
+/**
+ * 将工作流（Workflow）面板接入共享运行投影、选择与物料角色显隐意图。
+ *
+ * @param props 面板实例、工作流服务、物料服务与跨面板交互 Store。
+ * @returns 使用唯一工作流编辑器所有者的持久编写面板。
+ */
 function WorkflowRenderer(
   props: PanelRendererProps<LabPanelScope>
 ): React.JSX.Element {
   const materialRuntime = useMaterialRuntime()
   const panelVisible = usePanelVisibility()
   const panelId = props.panelInstance.id
-  const materialRoleFilter = useStore(
+  const visibleMaterialRoles = useStore(
     props.scope.interaction,
-    (state) => state.activeWorkflowMaterialRoleFilter
+    (state) => state.activeWorkflowVisibleMaterialRoles
   )
   const workflowProjectionRef = useRef<WorkflowPanelRuntimeProjection | null>(
     null
@@ -266,12 +286,12 @@ function WorkflowRenderer(
     },
     [panelId, props.scope.interaction]
   )
-  /** 发布物料角色筛选，使工作流画布与物料场景使用同一可见性意图。 */
-  const publishMaterialRoleFilter = useCallback(
-    (materialRole: string | null): void => {
-      props.scope.interaction.getState().setWorkflowMaterialRoleFilter(
+  /** 发布物料流角色（MaterialFlowRole）显隐，使画布与场景共享同一投影。 */
+  const publishVisibleMaterialRoles = useCallback(
+    (nextVisibleRoles: readonly string[] | null): void => {
+      props.scope.interaction.getState().setWorkflowVisibleMaterialRoles(
         panelId,
-        materialRole
+        nextVisibleRoles
       )
     },
     [panelId, props.scope.interaction]
@@ -300,8 +320,8 @@ function WorkflowRenderer(
       onActiveWorkflowChange={publishActiveWorkflow}
       onWorkflowRuntimeProjectionChange={publishWorkflowRuntime}
       onSelectedWorkflowStepChange={publishSelectedWorkflowStep}
-      materialRoleFilter={materialRoleFilter}
-      onMaterialRoleFilterChange={publishMaterialRoleFilter}
+      visibleMaterialRoles={visibleMaterialRoles}
+      onVisibleMaterialRolesChange={publishVisibleMaterialRoles}
     />
   )
 }

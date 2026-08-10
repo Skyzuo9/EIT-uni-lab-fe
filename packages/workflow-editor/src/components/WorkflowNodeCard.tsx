@@ -54,6 +54,7 @@ export interface WorkflowNodeData {
   handles?: WorkflowHandlePort[]
   traceAccent?: string
   materialHandleAccents?: Record<string, string>
+  materialHandleRoles?: Record<string, string>
   materialChips?: WorkflowMaterialChip[]
   layoutStrategy?: WorkflowDagLayoutStrategy
   materialLaneDirection?: WorkflowMaterialSwimlaneDirection
@@ -93,7 +94,8 @@ export default function WorkflowNodeCard({
   const materialPorts = workflowMaterialPortCards(
     [...(targetHandles ?? []), ...(sourceHandles ?? [])],
     data.materialHandleAccents,
-    data.materialLaneByHandle
+    data.materialLaneByHandle,
+    data.materialHandleRoles
   )
   const projectedMaterialHandleIds = new Set(
     materialPorts.flatMap((port) => [
@@ -101,24 +103,30 @@ export default function WorkflowNodeCard({
       port.sourceHandle?.uuid
     ]).filter((uuid): uuid is string => Boolean(uuid))
   )
+  const serpentineFlow = data.layoutStrategy === 'primary-sample-serpentine'
   if (materialSource) {
     return (
       <WorkflowMaterialSourceNode
         data={data}
         materialPorts={materialPorts}
+        materialSourcePosition={sourcePosition}
         stateVisible={workflowNodeShowsState(data.kind, data.status)}
         stateLabel={workflowNodeStateLabel(data.kind, data.status || 'pending')}
         structuralTargetHandles={renderStructuralHandles(
           targetHandles,
           'target',
           targetPosition,
-          projectedMaterialHandleIds
+          projectedMaterialHandleIds,
+          undefined,
+          serpentineFlow
         )}
         structuralSourceHandles={renderStructuralHandles(
           sourceHandles,
           'source',
           sourcePosition,
-          projectedMaterialHandleIds
+          projectedMaterialHandleIds,
+          undefined,
+          serpentineFlow
         )}
       />
     )
@@ -128,6 +136,8 @@ export default function WorkflowNodeCard({
       <WorkflowTransferNode
         data={data}
         materialPort={materialPorts[0]!}
+        materialTargetPosition={targetPosition}
+        materialSourcePosition={sourcePosition}
         stateVisible={workflowNodeShowsState(data.kind, data.status)}
         stateLabel={workflowNodeStateLabel(data.kind, data.status || 'pending')}
         structuralTargetHandles={renderStructuralHandles(
@@ -135,14 +145,16 @@ export default function WorkflowNodeCard({
           'target',
           targetPosition,
           projectedMaterialHandleIds,
-          ROBOT_TRANSFER_READY_ANCHOR
+          ROBOT_TRANSFER_READY_ANCHOR,
+          serpentineFlow
         )}
         structuralSourceHandles={renderStructuralHandles(
           sourceHandles,
           'source',
           sourcePosition,
           projectedMaterialHandleIds,
-          ROBOT_TRANSFER_READY_ANCHOR
+          ROBOT_TRANSFER_READY_ANCHOR,
+          serpentineFlow
         )}
       />
     )
@@ -167,7 +179,9 @@ export default function WorkflowNodeCard({
         targetHandles,
         'target',
         targetPosition,
-        projectedMaterialHandleIds
+        projectedMaterialHandleIds,
+        undefined,
+        serpentineFlow
       )}
       {data.layoutStrategy === 'material-swimlanes'
         && materialPorts.length > 0
@@ -205,7 +219,10 @@ export default function WorkflowNodeCard({
         {renderMaterialPorts(
           materialPorts,
           data.materialLaneRange,
-          data.materialLaneDirection
+          data.materialLaneDirection,
+          targetPosition,
+          sourcePosition,
+          serpentineFlow
         )}
         {data.groupKind === 'subworkflow' && (
           <button
@@ -269,7 +286,9 @@ export default function WorkflowNodeCard({
         sourceHandles,
         'source',
         sourcePosition,
-        projectedMaterialHandleIds
+        projectedMaterialHandleIds,
+        undefined,
+        serpentineFlow
       )}
     </div>
   )
@@ -290,6 +309,7 @@ export function workflowNodeHoverText(
  * @param position 非 ready 结构句柄沿用的 React Flow 方位。
  * @param projectedMaterialHandleIds 已由物料占位符（ResourceSlot）卡片承载的句柄 UUID。
  * @param readyAnchor 特殊视觉的 ready 横向中心与边缘内缩；省略时使用节点边缘正中。
+ * @param followLayoutPosition 是否让执行顺序端口跟随蛇形布局的逐节点方位。
  * @returns 可供 React Flow 测量和连线的结构句柄元素。
  */
 function renderStructuralHandles(
@@ -297,7 +317,8 @@ function renderStructuralHandles(
   ioType: 'source' | 'target',
   position: Position,
   projectedMaterialHandleIds: ReadonlySet<string>,
-  readyAnchor?: Readonly<{ left: string; edgeInset: string }>
+  readyAnchor?: Readonly<{ left: string; edgeInset: string }>,
+  followLayoutPosition = false
 ): React.JSX.Element | React.JSX.Element[] {
   if (handles === undefined) {
     return (
@@ -315,7 +336,9 @@ function renderStructuralHandles(
   )
   return structuralHandles.map((handle, index) => {
     const ready = isReadyHandle(handle)
-    const readyPosition = ioType === 'target' ? Position.Top : Position.Bottom
+    const readyPosition = followLayoutPosition
+      ? position
+      : ioType === 'target' ? Position.Top : Position.Bottom
     return (
       <Handle
         key={handle.uuid}
@@ -335,18 +358,41 @@ function renderStructuralHandles(
         aria-hidden={ready ? undefined : true}
         title={ready ? '执行顺序' : undefined}
         style={ready
-          ? {
-              left: readyAnchor?.left ?? '50%',
-              ...(readyAnchor
-                ? ioType === 'target'
-                  ? { top: readyAnchor.edgeInset }
-                  : { bottom: readyAnchor.edgeInset }
-                : {})
-            }
+          ? readyHandlePosition(
+              readyPosition,
+              ioType,
+              followLayoutPosition ? undefined : readyAnchor
+            )
           : handlePosition(position, index, structuralHandles.length)}
       />
     )
   })
+}
+
+/**
+ * 计算执行顺序端口在节点边缘的稳定位置。
+ *
+ * @param position React Flow 为当前蛇形节点或普通布局指定的边缘方位。
+ * @param ioType 端口是输入还是输出。
+ * @param readyAnchor 特殊视觉在纵向布局中的精确锚点；横向蛇形布局不使用。
+ * @returns 可直接赋给 Handle 的相对定位样式。
+ */
+function readyHandlePosition(
+  position: Position,
+  ioType: 'source' | 'target',
+  readyAnchor?: Readonly<{ left: string; edgeInset: string }>
+): CSSProperties {
+  if (position === Position.Left || position === Position.Right) {
+    return { top: '50%' }
+  }
+  return {
+    left: readyAnchor?.left ?? '50%',
+    ...(readyAnchor
+      ? ioType === 'target'
+        ? { top: readyAnchor.edgeInset }
+        : { bottom: readyAnchor.edgeInset }
+      : {})
+  }
 }
 
 /**
@@ -375,6 +421,7 @@ export interface WorkflowMaterialPortCard {
   targetHandle?: WorkflowHandlePort
   sourceHandle?: WorkflowHandlePort
   laneIndex?: number
+  materialRole?: string
 }
 
 /**
@@ -383,29 +430,41 @@ export interface WorkflowMaterialPortCard {
  * @param handles 节点的输入、输出 Handle。
  * @param materialHandleAccents 按 Handle UUID 索引的物料流颜色。
  * @param materialLaneByHandle 按 Handle UUID 索引的物料泳道序号。
+ * @param materialRoleByHandle 按 Handle UUID 索引的物料流角色（MaterialFlowRole）。
  * @returns 按逻辑字段合并后的物料标签；同字段输入、输出只占一项。
  */
 export function workflowMaterialPortCards(
   handles: readonly WorkflowHandlePort[],
   materialHandleAccents: Record<string, string> | undefined,
-  materialLaneByHandle: Record<string, number> | undefined = undefined
+  materialLaneByHandle: Record<string, number> | undefined = undefined,
+  materialRoleByHandle: Record<string, string> | undefined = undefined
 ): WorkflowMaterialPortCard[] {
   const cards: WorkflowMaterialPortCard[] = []
   const resourceHandles = handles.filter(isResourceSlotHandle)
   const accentByVariable = new Map<string, string>()
+  // `roleByVariable` 让同字段输入、输出共享同一物料流角色视觉层级。
+  const roleByVariable = new Map<string, string>()
   for (const handle of resourceHandles) {
     const accent = materialHandleAccents?.[handle.uuid]
-    if (!accent) continue
     const variableName = handle.dataKey?.trim() || handle.handleKey
-    if (!accentByVariable.has(variableName) || handle.ioType === 'target') {
+    if (accent && (
+      !accentByVariable.has(variableName) || handle.ioType === 'target'
+    )) {
       accentByVariable.set(variableName, accent)
     }
+    const materialRole = materialRoleByHandle?.[handle.uuid]
+    if (materialRole && (
+      !roleByVariable.has(variableName) || handle.ioType === 'target'
+    )) roleByVariable.set(variableName, materialRole)
   }
   for (const handle of resourceHandles) {
     const variableName = handle.dataKey?.trim() || handle.handleKey
     const accent = materialHandleAccents?.[handle.uuid] ??
       accentByVariable.get(variableName)
     if (!accent) continue
+    // `materialRole` 与颜色一样优先采用输入侧，表达进入节点的既有物料身份。
+    const materialRole = materialRoleByHandle?.[handle.uuid] ??
+      roleByVariable.get(variableName)
     const slot = handle.ioType === 'target' ? 'targetHandle' : 'sourceHandle'
     const existing = cards.find((card) =>
       card.variableName === variableName &&
@@ -417,6 +476,9 @@ export function workflowMaterialPortCards(
       // 同字段输入与输出是同一个 ResourceSlot；输入侧颜色代表进入节点的
       // 既有物料身份，因此在目录数据暂时不一致时仍以输入侧为准。
       if (handle.ioType === 'target') existing.accent = accent
+      if (handle.ioType === 'target' && materialRole) {
+        existing.materialRole = materialRole
+      }
       existing.label = preferredMaterialPortLabel(existing, handle)
       existing.description = mergeDescriptions(
         existing.description,
@@ -430,6 +492,7 @@ export function workflowMaterialPortCards(
       label: handle.title || variableName || handle.displayName,
       ...(handle.description ? { description: handle.description } : {}),
       accent,
+      materialRole,
       laneIndex: materialLaneByHandle?.[handle.uuid],
       [slot]: handle
     })
@@ -464,12 +527,18 @@ function mergeDescriptions(
  * @param cards 已按变量合并并排序的物料端口卡片。
  * @param laneRange 节点在物料泳道中的最左与最右序号；缺省时使用紧凑排列。
  * @param direction 物料泳道从上到下或从左到右的流向。
+ * @param targetPosition 当前节点的物料输入端口方位。
+ * @param sourcePosition 当前节点的物料输出端口方位。
+ * @param supportingMaterialPresentation 是否启用主样品优先的辅助物料视觉层级。
  * @returns 物料端口容器；没有物料端口时返回空。
  */
 function renderMaterialPorts(
   cards: readonly WorkflowMaterialPortCard[],
   laneRange: { start: number; end: number } | undefined,
-  direction: WorkflowMaterialSwimlaneDirection | undefined
+  direction: WorkflowMaterialSwimlaneDirection | undefined,
+  targetPosition: Position,
+  sourcePosition: Position,
+  supportingMaterialPresentation = false
 ): React.JSX.Element | null {
   if (cards.length === 0) return null
   const swimlane = laneRange && cards.every(
@@ -504,6 +573,10 @@ function renderMaterialPorts(
           data-workflow-material-port-label={card.label}
           data-workflow-material-port-description={card.description}
           data-workflow-material-lane-index={card.laneIndex}
+          data-workflow-material-role={card.materialRole}
+          data-workflow-material-emphasis={supportingMaterialPresentation
+            ? card.materialRole === 'primary_sample' ? 'primary' : 'supporting'
+            : undefined}
           style={{
             '--wf-material-accent': card.accent,
             ...(swimlane
@@ -528,7 +601,7 @@ function renderMaterialPorts(
             'target',
             card.accent,
             card.label,
-            direction
+            targetPosition
           )}
           <span className="wf-node__material-port-label">{card.label}</span>
           {card.sourceHandle && renderMaterialHandle(
@@ -536,7 +609,7 @@ function renderMaterialPorts(
             'source',
             card.accent,
             card.label,
-            direction
+            sourcePosition
           )}
         </span>
       ))}
@@ -551,7 +624,7 @@ function renderMaterialPorts(
  * @param ioType 句柄是输入端还是输出端。
  * @param accent 当前物料链的稳定强调色。
  * @param label 物料变量的中文优先展示标签。
- * @param direction 物料泳道从上到下或从左到右的流向。
+ * @param position 当前节点布局为该输入或输出指定的边缘方位。
  * @returns 可供 ReactFlow 连线的物料句柄元素。
  */
 function renderMaterialHandle(
@@ -559,16 +632,14 @@ function renderMaterialHandle(
   ioType: 'source' | 'target',
   accent: string,
   label: string,
-  direction: WorkflowMaterialSwimlaneDirection | undefined
+  position: Position
 ): React.JSX.Element {
   return (
     <Handle
       key={handle.uuid}
       id={handle.uuid}
       type={ioType}
-      position={direction === 'horizontal'
-        ? ioType === 'target' ? Position.Left : Position.Right
-        : ioType === 'target' ? Position.Top : Position.Bottom}
+      position={position}
       className={`wf-node__handle wf-node__handle--material wf-node__handle--${ioType}`}
       data-workflow-handle-template-uuid={handle.uuid}
       data-workflow-handle-key={handle.handleKey}

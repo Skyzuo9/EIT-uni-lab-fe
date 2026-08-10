@@ -35,7 +35,8 @@ describe('WorkflowActionParameterDrawer', () => {
 
     expect(markup).toContain('role="dialog"')
     expect(markup).toContain('aria-label="节点参数 dose"')
-    expect(text).toMatch(/输入\s*1/)
+    expect(text).toMatch(/已配置\s*1/)
+    expect(text).toMatch(/待补\s*0/)
     expect(text).toMatch(/输出\s*1/)
     expect(text).toContain('target_mass_g')
     expect(text).toContain('commanded_mass_g')
@@ -68,6 +69,45 @@ describe('WorkflowActionParameterDrawer', () => {
     expect(outputStart).toBeGreaterThanOrEqual(0)
     expect(visibleText(markup)).toContain('OS 操作模板')
     expect(outputMarkup).not.toMatch(/<input|<select/)
+  })
+
+  it('surfaces required parameters that still need configuration', () => {
+    const missingEditor: TypedActionEditorProjection = {
+      ...editor,
+      fields: [{
+        ...editor.fields[0]!,
+        valueState: 'missing',
+        value: undefined,
+        providerKind: 'missing'
+      }],
+      diagnostics: [{
+        handleUuid: inputHandleUuid,
+        fieldPath: '/param/target_mass_g',
+        severity: 'error',
+        code: 'required_action_parameter_missing',
+        message: '目标质量为必填参数'
+      }]
+    }
+    const markup = renderToStaticMarkup(
+      <WorkflowActionParameterDrawer
+        open
+        nodeName="dose"
+        templateName="固体投料"
+        editor={missingEditor}
+        outputHandles={[outputHandle]}
+        graph={graph}
+        editable
+        onClose={vi.fn()}
+        onProviderChange={vi.fn()}
+        onLiteralBlur={vi.fn()}
+        onClear={vi.fn()}
+        onNull={vi.fn()}
+      />
+    )
+
+    expect(visibleText(markup)).toMatch(/已配置\s*0/)
+    expect(visibleText(markup)).toMatch(/待补\s*1/)
+    expect(markup).toContain('class="has-error"')
   })
 })
 

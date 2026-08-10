@@ -17,6 +17,8 @@ export interface WorkflowRoundedStepEdgeData {
   targetNodeUuid: string
   sourceHandleUuid: string
   targetHandleUuid: string
+  materialRole?: string
+  materialEmphasis?: 'primary' | 'supporting'
 }
 
 /**
@@ -47,6 +49,7 @@ export default function WorkflowRoundedStepEdge({
     sourceY,
     targetX,
     targetY,
+    targetPosition,
     direction: data?.direction
   })
   const [path, labelX, labelY] = getSmoothStepPath({
@@ -67,6 +70,8 @@ export default function WorkflowRoundedStepEdge({
       data-workflow-edge-target-node-uuid={data?.targetNodeUuid}
       data-workflow-edge-source-handle-uuid={data?.sourceHandleUuid}
       data-workflow-edge-target-handle-uuid={data?.targetHandleUuid}
+      data-workflow-material-role={data?.materialRole}
+      data-workflow-material-emphasis={data?.materialEmphasis}
     >
       <BaseEdge path={path} markerEnd={markerEnd} style={style} />
       {label !== undefined && label !== null && (

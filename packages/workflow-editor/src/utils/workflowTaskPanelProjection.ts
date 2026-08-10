@@ -63,11 +63,60 @@ export function workflowTaskMetadata(
     'realtimeStatus' | 'projectionStale' | 'feedbackStale'
   >
 ): ReadonlyArray<{ label: string; value: string; title?: string }> {
+  const metadata = task
+    ? taskMetadataRecord(task.meta_data)
+    : {}
+  const workflowSnapshot = task
+    ? taskMetadataRecord(task.workflow_snapshot)
+    : {}
+  const snapshotWorkflow = taskMetadataRecord(workflowSnapshot.workflow)
+  const actor = firstTaskMetadataText(metadata, [
+    'operator_name',
+    'created_by_name',
+    'actor_name',
+    'operator',
+    'created_by',
+    'actor'
+  ])
+  const subject = task?.description || firstTaskMetadataText(metadata, [
+    'display_name',
+    'task_name',
+    'name'
+  ]) || firstTaskMetadataText(snapshotWorkflow, [
+    'display_name',
+    'name',
+    'title'
+  ]) || firstTaskMetadataText(workflowSnapshot, [
+    'display_name',
+    'name',
+    'title'
+  ]) || (task ? '当前工作流' : '尚未创建')
+  const syncState = snapshot.projectionStale
+    ? '上一版本'
+    : snapshot.feedbackStale
+      ? '反馈待补读'
+      : {
+          connecting: '正在连接',
+          live: '已确认',
+          reconnecting: '正在重连'
+        }[snapshot.realtimeStatus]
+
   return [
+    {
+      label: '运行主体',
+      value: subject,
+      title: task?.description || undefined
+    },
+    {
+      label: '执行人',
+      value: actor || 'OS 未返回'
+    },
     {
       label: '任务',
       value: task ? task.uuid.slice(-8) : '尚未创建',
-      title: task?.uuid
+      title: task
+        ? `工作流任务 UUID：${task.uuid}；创建时间：${task.create_time}`
+        : undefined
     },
     {
       label: '模式',
@@ -80,22 +129,29 @@ export function workflowTaskMetadata(
         : '无'
     },
     {
-      label: '实时同步',
-      value: {
-        connecting: '正在连接',
-        live: '已连接',
-        reconnecting: '正在重连'
-      }[snapshot.realtimeStatus]
-    },
-    {
-      label: '状态投影',
-      value: snapshot.projectionStale
-        ? '保留的上一版本'
-        : snapshot.feedbackStale
-          ? '反馈事件待补读'
-          : '已确认'
+      label: '状态同步',
+      value: syncState
     }
   ]
+}
+
+/** 把开放的任务元数据值收窄为可安全读取的对象。 */
+function taskMetadataRecord(value: unknown): Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {}
+}
+
+/** 从 OS 任务元数据中读取第一个非空、可识别的文本字段。 */
+function firstTaskMetadataText(
+  record: Readonly<Record<string, unknown>>,
+  keys: readonly string[]
+): string | null {
+  for (const key of keys) {
+    const value = record[key]
+    if (typeof value === 'string' && value.trim()) return value.trim()
+  }
+  return null
 }
 
 /** 返回任务命令的中文显示名。 */

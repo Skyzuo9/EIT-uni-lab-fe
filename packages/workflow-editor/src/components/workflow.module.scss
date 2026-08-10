@@ -6,9 +6,12 @@
 @use './workflow-transfer-node';
 @use './workflow-beautify';
 @use './workflow-swimlanes';
+@use './workflow-primary-sample';
+@use './workflow-reaction-materials';
 @use './workflow-debugger';
 @use './workflow-output';
 @use './workflow-trace';
 @use './workflow-responsive';
 @use './workflow-persistent-authoring';
 @use './workflow-catalog';
+@use './workflow-canvas-ux';

@@ -43,7 +43,12 @@ export function WorkflowActionParameterDrawer({
   onClear,
   onNull
 }: WorkflowActionParameterDrawerProps): React.JSX.Element {
-  const inputCount = editor?.fields.length ?? 0
+  const configuredInputCount = editor?.fields.filter(
+    (field) => field.providerKind !== 'missing'
+  ).length ?? 0
+  const missingRequiredCount = editor?.diagnostics.filter(
+    (diagnostic) => diagnostic.code === 'required_action_parameter_missing'
+  ).length ?? 0
   const [literalDraftHandles, setLiteralDraftHandles] = useState<Set<string>>(
     () => new Set()
   )
@@ -101,7 +106,10 @@ export function WorkflowActionParameterDrawer({
             </p>
           </div>
           <dl aria-label="节点参数数量">
-            <div><dt>输入</dt><dd>{inputCount}</dd></div>
+            <div><dt>已配置</dt><dd>{configuredInputCount}</dd></div>
+            <div className={missingRequiredCount > 0 ? 'has-error' : undefined}>
+              <dt>待补</dt><dd>{missingRequiredCount}</dd>
+            </div>
             <div><dt>输出</dt><dd>{outputHandles.length}</dd></div>
           </dl>
         </header>

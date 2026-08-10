@@ -40,4 +40,34 @@ describe('UnifiedMaterialViewport', () => {
       '.lab-site-layer-toggle button.is-active.is-transfer'
     )
   })
+
+  it('renders independently selectable material roles from the shared package', () => {
+    const markup = renderToStaticMarkup(
+      <UnifiedMaterialViewport
+        visibleMaterialRoles={['reagent']}
+        materialRoleOptions={[
+          {
+            value: 'reagent',
+            label: '试剂',
+            accent: '#7c3aed',
+            lineageCount: 5
+          },
+          {
+            value: 'consumable',
+            label: '耗材',
+            accent: '#0f766e',
+            lineageCount: 2
+          }
+        ]}
+        onVisibleMaterialRolesChange={vi.fn()}
+        renderView={() => <div>scene</div>}
+      />
+    )
+
+    expect(markup).toContain('aria-label="物料节点可见性：显示 1/2"')
+    expect(markup).toContain('type="checkbox"')
+    expect(markup).toContain('checked=""')
+    expect(markup).toContain('试剂')
+    expect(markup).toContain('耗材')
+  })
 })

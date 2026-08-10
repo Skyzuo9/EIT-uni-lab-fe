@@ -17,6 +17,7 @@ export interface WorkflowMaterialTraceProjection {
   edgeLineages: Map<number, string>
   handleAccentsByNode: Map<string, Map<string, string>>
   handleLineagesByNode: Map<string, Map<string, string>>
+  handleRolesByNode: Map<string, Map<string, string>>
   materialSourceAccents: Map<string, string>
   chipsByNode: Map<string, WorkflowMaterialChip[]>
   lineages: WorkflowMaterialLineage[]
@@ -99,19 +100,26 @@ export function workflowMaterialRoleOptions(
 }
 
 /**
- * 只保留承载指定物料角色的节点、该角色的物料边，以及可见节点之间的结构边。
- * 过滤仅作用于画布投影，不修改 OS 权威工作流图。
+ * 只保留承载任一可见物料流角色（MaterialFlowRole）的节点、对应物料边，
+ * 以及可见节点之间的结构边。共享操作节点只要仍承载一种可见物料就会保留。
+ * 过滤仅作用于画布投影，不修改 OS 权威工作流图（Workflow Graph）。
+ *
+ * @param nodes 当前权威工作流图投影出的全部节点。
+ * @param links 当前权威工作流图投影出的全部边。
+ * @param visibleMaterialRoles 可见角色集合；null 表示显示全部角色。
+ * @param projection 可复用的物料流追踪投影，省略时由当前图计算。
+ * @returns 仅包含所选角色及其共享操作节点的画布投影。
  */
-export function filterWorkflowByMaterialRole(
+export function filterWorkflowByMaterialRoles(
   nodes: readonly WorkflowNode[],
   links: readonly WorkflowLink[],
-  materialRole: string | null,
+  visibleMaterialRoles: ReadonlySet<string> | null,
   projection = projectMaterialTraces(nodes, links)
 ): WorkflowMaterialRoleProjection {
-  if (!materialRole) return { nodes: [...nodes], links: [...links] }
+  if (!visibleMaterialRoles) return { nodes: [...nodes], links: [...links] }
   const lineageKeys = new Set(
     projection.lineages
-      .filter((lineage) => lineage.materialRole === materialRole)
+      .filter((lineage) => visibleMaterialRoles.has(lineage.materialRole))
       .map((lineage) => lineage.key)
   )
   if (lineageKeys.size === 0) return { nodes: [], links: [] }
@@ -153,6 +161,29 @@ export function filterWorkflowByMaterialRole(
         : visibleNodeIds.has(link.source) && visibleNodeIds.has(link.target)
     })
   }
+}
+
+/**
+ * 兼容既有单一物料流角色（MaterialFlowRole）聚焦调用。
+ *
+ * @param nodes 当前权威工作流图投影出的全部节点。
+ * @param links 当前权威工作流图投影出的全部边。
+ * @param materialRole 唯一可见角色；null 表示显示全部角色。
+ * @param projection 可复用的物料流追踪投影。
+ * @returns 与多角色可见性投影相同结构的节点与边。
+ */
+export function filterWorkflowByMaterialRole(
+  nodes: readonly WorkflowNode[],
+  links: readonly WorkflowLink[],
+  materialRole: string | null,
+  projection = projectMaterialTraces(nodes, links)
+): WorkflowMaterialRoleProjection {
+  return filterWorkflowByMaterialRoles(
+    nodes,
+    links,
+    materialRole ? new Set([materialRole]) : null,
+    projection
+  )
 }
 
 /**
@@ -210,6 +241,9 @@ export function projectMaterialTraces(
   const edgeLineages = new Map<number, string>()
   const handleAccentsByNode = new Map<string, Map<string, string>>()
   const handleLineagesByNode = new Map<string, Map<string, string>>()
+  // `handleRolesByNode` 让画布只调整物料流角色（MaterialFlowRole）的视觉层级，
+  // 不需要再次猜测物料来源（MaterialSource）或改写权威工作流图。
+  const handleRolesByNode = new Map<string, Map<string, string>>()
   const materialSourceAccents = new Map<string, string>()
   const chipsByNode = new Map<string, WorkflowMaterialChip[]>()
   const lineages: WorkflowMaterialLineage[] = []
@@ -263,6 +297,12 @@ export function projectMaterialTraces(
         current.handle.uuid,
         lineage.key
       )
+      setHandleRole(
+        handleRolesByNode,
+        current.node.id,
+        current.handle.uuid,
+        lineage.materialRole
+      )
       for (const edge of outgoingByHandle.get(currentIdentity) ?? []) {
         edgeAccents.set(edge.index, lineage.accent)
         edgeLineages.set(edge.index, lineage.key)
@@ -277,6 +317,12 @@ export function projectMaterialTraces(
           edge.targetNode.id,
           edge.targetHandle.uuid,
           lineage.key
+        )
+        setHandleRole(
+          handleRolesByNode,
+          edge.targetNode.id,
+          edge.targetHandle.uuid,
+          lineage.materialRole
         )
         addMaterialChip(chipsByNode, edge.targetNode.id, {
           handleUuid: edge.targetHandle.uuid,
@@ -301,6 +347,12 @@ export function projectMaterialTraces(
             edge.targetNode.id,
             nextHandle.uuid,
             lineage.key
+          )
+          setHandleRole(
+            handleRolesByNode,
+            edge.targetNode.id,
+            nextHandle.uuid,
+            lineage.materialRole
           )
           queue.push({ node: edge.targetNode, handle: nextHandle })
         }
@@ -338,6 +390,7 @@ export function projectMaterialTraces(
     edgeLineages,
     handleAccentsByNode,
     handleLineagesByNode,
+    handleRolesByNode,
     materialSourceAccents,
     chipsByNode,
     lineages
@@ -464,6 +517,27 @@ function setHandleLineage(
   const nodeLineages = lineages.get(nodeUuid) ?? new Map<string, string>()
   if (!nodeLineages.has(handleUuid)) nodeLineages.set(handleUuid, lineageKey)
   lineages.set(nodeUuid, nodeLineages)
+}
+
+/**
+ * 记录句柄承载的物料流角色（MaterialFlowRole），供只读画布投影分层使用。
+ *
+ * @param roles 按节点和句柄组织的物料流角色索引。
+ * @param nodeUuid 工作流（Workflow）节点 UUID。
+ * @param handleUuid 物料占位符（ResourceSlot）句柄 UUID。
+ * @param materialRole 当前物料链的物料流角色。
+ * @returns 无返回值；索引在原位置更新。
+ */
+function setHandleRole(
+  roles: Map<string, Map<string, string>>,
+  nodeUuid: string,
+  handleUuid: string,
+  materialRole: string
+): void {
+  // `nodeRoles` 保留同一句柄最先解析出的权威物料角色，合流时不静默覆盖。
+  const nodeRoles = roles.get(nodeUuid) ?? new Map<string, string>()
+  if (!nodeRoles.has(handleUuid)) nodeRoles.set(handleUuid, materialRole)
+  roles.set(nodeUuid, nodeRoles)
 }
 
 function setHandleAccent(

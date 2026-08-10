@@ -168,7 +168,8 @@ describe('WorkflowDag IDE source selection', () => {
 })
 
 describe('WorkflowDag material role filter', () => {
-  it('exposes labeled role choices without relying on color alone', () => {
+  /** 验证物料流角色（MaterialFlowRole）显隐使用带文字的独立复选框。 */
+  it('exposes independently selectable role visibility without color-only cues', () => {
     const markup = renderToStaticMarkup(
       <WorkflowDag
         nodes={[
@@ -180,8 +181,9 @@ describe('WorkflowDag material role filter', () => {
       />
     )
 
-    expect(markup).toContain('aria-label="按物料角色筛选：全部"')
-    expect(markup).toContain('role="radiogroup"')
+    expect(markup).toContain('aria-label="物料节点可见性：全部物料"')
+    expect(markup).toContain('aria-label="物料节点可见性"')
+    expect(markup).toContain('type="checkbox"')
     expect(markup).toContain('主样品')
     expect(markup).toContain('试剂')
     expect(markup).toContain('全部物料')
@@ -215,6 +217,78 @@ describe('WorkflowDag host sizing', () => {
     expect(stylesheet).not.toMatch(
       /persistent-authoring__graph-stage[\s\S]{0,160}\n\s+height:\s*260px/
     )
+  })
+})
+
+describe('WorkflowDag canvas controls', () => {
+  /** 证明画布按钮按任务分组，并把布局提交保持为唯一主操作。 */
+  it('groups view actions separately from material and layout controls', () => {
+    const markup = renderToStaticMarkup(
+      <WorkflowDag
+        nodes={[
+          workflowNode,
+          materialSourceNode('sample-source', '主样品', 'primary_sample')
+        ]}
+        links={[]}
+        canvasMutationEnabled
+        onNodeSelect={vi.fn()}
+        onDeleteRequest={vi.fn()}
+        onBeautify={vi.fn()}
+      />
+    )
+
+    expect(markup).toContain('role="toolbar"')
+    expect(markup).toContain('aria-label="画布视图与布局工具"')
+    expect(markup).toContain('aria-label="视图与选择"')
+    expect(markup).toContain('aria-label="物料筛选与布局"')
+    expect(markup).toContain('workflow-runtime__canvas-button')
+    expect(markup).toContain('workflow-runtime__beautify')
+    expect(markup).toContain('aria-busy="false"')
+    expect(markup).toContain(
+      'data-workflow-layout-direction="horizontal"'
+    )
+    expect(markup).toContain('aria-label="辅助物料展示方式"')
+    expect(markup).toMatch(/aria-pressed="true"[^>]*>反应式</)
+    expect(markup).toMatch(/aria-pressed="false"[^>]*>完整支线</)
+  })
+
+  /** 证明交互态与窄视口规则不依赖运行时内联样式。 */
+  it('defines primary, danger, focus and compact responsive states', () => {
+    const stylesheet = readFileSync(
+      new URL('./_workflow-beautify.scss', import.meta.url),
+      'utf8'
+    )
+
+    expect(stylesheet).toMatch(
+      /workflow-runtime__beautify[\s\S]*background:\s*var\(--unilab-color-workflow\)/
+    )
+    expect(stylesheet).toMatch(
+      /delete-selection\):hover:not\(:disabled\)[\s\S]*unilab-color-danger/
+    )
+    expect(stylesheet).toMatch(/canvas-button\):focus-visible/)
+    expect(stylesheet).toMatch(/@container workflow \(max-width: 900px\)/)
+  })
+
+  /** 证明横向蛇形节点纵向堆叠物料卡片，并把 Handle 固定到东西两侧。 */
+  it('defines compact vertical node content with east-west handles', () => {
+    const stylesheet = readFileSync(
+      new URL('./_workflow-primary-sample.scss', import.meta.url),
+      'utf8'
+    )
+
+    expect(stylesheet).toMatch(/flex-direction:\s*column/)
+    expect(stylesheet).toMatch(/react-flow__handle-left/)
+    expect(stylesheet).toMatch(/react-flow__handle-right/)
+    expect(stylesheet).toMatch(
+      /wf-node__handle--target\.react-flow__handle-left/
+    )
+    expect(stylesheet).toMatch(
+      /wf-node__handle--source\.react-flow__handle-right/
+    )
+    expect(stylesheet).toMatch(/wf-node__material-port-label/)
+    expect(stylesheet).toMatch(/data-workflow-material-emphasis='supporting'/)
+    expect(stylesheet).toMatch(/wf-flow-edge--supporting-material/)
+    expect(stylesheet).toMatch(/opacity:\s*\.28/)
   })
 })
 

@@ -22,9 +22,9 @@ describe('lab interaction store', () => {
     store.getState().selectMaterials(['material-1'])
     store.getState().activateWorkflowPanel('panel-2', 'workflow-2')
     store.getState().selectWorkflowStep('panel-2', 'step-3')
-    store.getState().setWorkflowMaterialRoleFilter(
+    store.getState().setWorkflowVisibleMaterialRoles(
       'panel-2',
-      'primary_sample'
+      ['primary_sample', 'reagent']
     )
     store.getState().publishWorkflowRuntime('panel-2', {
       workflowUuid: 'workflow-2',
@@ -41,7 +41,7 @@ describe('lab interaction store', () => {
       activeWorkflowTaskId: 'task-4',
       activeWorkflowRuntimeGeneration: 7,
       activeWorkflowMaterialTransferRoutes: [ROUTE],
-      activeWorkflowMaterialRoleFilter: 'primary_sample',
+      activeWorkflowVisibleMaterialRoles: ['primary_sample', 'reagent'],
       selectedWorkflowStepId: 'step-3',
       selectedSceneObjectIds: ['scene-object-9']
     })
@@ -56,7 +56,7 @@ describe('lab interaction store', () => {
       activeWorkflowTaskId: null,
       activeWorkflowRuntimeGeneration: 0,
       activeWorkflowMaterialTransferRoutes: [],
-      activeWorkflowMaterialRoleFilter: null,
+      activeWorkflowVisibleMaterialRoles: null,
       selectedWorkflowStepId: null,
       selectedSceneObjectIds: []
     })
@@ -133,7 +133,10 @@ describe('lab interaction store', () => {
       materialTransferRoutes: []
     })
     store.getState().selectWorkflowStep('panel-a', 'step-a')
-    store.getState().setWorkflowMaterialRoleFilter('panel-a', 'reagent')
+    store.getState().setWorkflowVisibleMaterialRoles(
+      'panel-a',
+      ['reagent']
+    )
     store.getState().deactivateWorkflowPanel('panel-a')
 
     expect(store.getState()).toMatchObject({
@@ -142,7 +145,7 @@ describe('lab interaction store', () => {
       activeWorkflowTaskId: 'task-b',
       activeWorkflowRuntimeGeneration: 5,
       activeWorkflowMaterialTransferRoutes: [ROUTE],
-      activeWorkflowMaterialRoleFilter: null,
+      activeWorkflowVisibleMaterialRoles: null,
       selectedWorkflowStepId: null
     })
   })

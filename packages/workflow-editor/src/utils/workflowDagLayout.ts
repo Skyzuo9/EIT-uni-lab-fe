@@ -13,6 +13,7 @@ import {
   type WorkflowMaterialSwimlaneDirection
 } from './workflowDagLayoutStrategy'
 import { layoutWorkflowMaterialSwimlanes } from './workflowMaterialSwimlaneLayout'
+import { layoutWorkflowPrimarySampleFlow } from './workflowPrimarySampleLayout'
 
 const elk = new ELK()
 
@@ -55,6 +56,9 @@ export async function layoutVisibleWorkflowDag(
 ): Promise<LayoutResult> {
   if (strategy === 'material-swimlanes') {
     return layoutWorkflowMaterialSwimlanes(nodes, links, swimlaneDirection)
+  }
+  if (strategy === 'primary-sample-serpentine') {
+    return layoutWorkflowPrimarySampleFlow(nodes, links)
   }
   if (nodes.length === 0) {
     return { nodes: [], links: [], direction: 'vertical' }

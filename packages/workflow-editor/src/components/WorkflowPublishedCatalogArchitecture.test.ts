@@ -11,6 +11,10 @@ const viewPath = fileURLToPath(new URL(
   './PersistentWorkflowAuthoringView.tsx',
   import.meta.url
 ))
+const palettePath = fileURLToPath(new URL(
+  './WorkflowNodePalette.tsx',
+  import.meta.url
+))
 const authoringHookPath = fileURLToPath(new URL(
   '../hooks/usePersistentWorkflowAuthoring.ts',
   import.meta.url
@@ -36,11 +40,11 @@ describe('Published Workflow Catalog in the Authoring module', () => {
     const actionPicker = paletteSection(source, '操作')
     const workflowPicker = paletteSection(source, '子工作流')
 
-    expect(actionPicker).toContain('actionTemplates.map')
+    expect(actionPicker).toContain('projection.actions.map')
     expect(actionPicker).toMatch(
       /<WorkflowButton[\s\S]*?key=\{template\.uuid\}[\s\S]*?\{template\.displayName\}/
     )
-    expect(workflowPicker).toContain('workflowTemplates.map')
+    expect(workflowPicker).toContain('projection.workflows.map')
     expect(workflowPicker).toMatch(
       /<WorkflowButton[\s\S]*?key=\{template\.uuid\}[\s\S]*?\{template\.displayName\}/
     )
@@ -48,7 +52,7 @@ describe('Published Workflow Catalog in the Authoring module', () => {
 
   it('does not present the Published Workflow renderer owner as a device', () => {
     const workflowPicker = paletteSection(
-      readFileSync(viewPath, 'utf8'),
+      readFileSync(palettePath, 'utf8'),
       '子工作流'
     )
 
@@ -65,10 +69,10 @@ describe('Published Workflow Catalog in the Authoring module', () => {
 
     expect(source).toContain('createPublishedWorkflowNode')
     expect(workflowPicker).toMatch(
-      /disabled=\{[\s\S]*?busy[\s\S]*?canvasMutationEnabled[\s\S]*?graph[\s\S]*?\}/
+      /disabled=\{templateDisabled\}/
     )
     expect(workflowPicker).toMatch(
-      /onClick=\{\(\) => addPublishedWorkflowNode\(template\.uuid\)\}/
+      /onClick=\{\(\) => onAddWorkflow\(template\.uuid\)\}/
     )
     expect(source).toContain('globalThis.crypto.randomUUID()')
   })
@@ -160,6 +164,7 @@ function authoringSource(): string {
   return [
     panelPath,
     viewPath,
+    palettePath,
     authoringHookPath,
     catalogHookPath,
     canvasNodeEditorHookPath,

@@ -16,6 +16,7 @@ import {
   type WorkflowMaterialSwimlaneDirection
 } from './workflowDagLayoutStrategy'
 import { layoutWorkflowMaterialSwimlanes } from './workflowMaterialSwimlaneLayout'
+import { layoutWorkflowPrimarySampleFlow } from './workflowPrimarySampleLayout'
 import {
   workflowNodeVisualKind,
   type WorkflowNodeVisualKind
@@ -328,9 +329,11 @@ export function beautifyPersistentAuthoringGraph(
         structure.links,
         swimlaneDirection
       )
-    : layoutDag(structure.nodes, structure.links, {
-        preserveExistingPositions: false
-      })
+    : strategy === 'primary-sample-serpentine'
+      ? layoutWorkflowPrimarySampleFlow(structure.nodes, structure.links)
+      : layoutDag(structure.nodes, structure.links, {
+          preserveExistingPositions: false
+        })
   const positionByNodeUuid = new Map(
     layout.nodes.map((node) => [node.id, {
       x: node.x,
