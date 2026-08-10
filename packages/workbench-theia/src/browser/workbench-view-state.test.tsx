@@ -6,18 +6,36 @@ import { WorkbenchDomainLayout } from './workbench-domain-layout'
 import { WorkbenchViewState } from './workbench-view-state'
 
 describe('Workbench domain view presentation', () => {
-  it('publishes only real view-mode changes', () => {
+  it('derives split layout from independent workflow and material toggles', () => {
     const state = new WorkbenchViewState()
     const listener = vi.fn()
     state.onDidChangeMode(listener)
 
-    state.select('workflow')
-    state.select('split')
-    state.select('split')
-    state.select('device')
+    state.toggle('material')
+    state.toggle('workflow')
+    state.toggle('workflow')
+    state.toggle('material')
 
-    expect(listener.mock.calls).toEqual([['split'], ['device']])
+    expect(listener.mock.calls).toEqual([
+      ['split'],
+      ['material'],
+      ['split'],
+      ['workflow']
+    ])
+    expect(state.currentMode).toBe('workflow')
+    expect(state.isVisible('workflow')).toBe(true)
+    expect(state.isVisible('material')).toBe(false)
+  })
+
+  it('toggles instruments without discarding the authoring panel selection', () => {
+    const state = new WorkbenchViewState()
+
+    state.toggle('material')
+    state.toggle('device')
     expect(state.currentMode).toBe('device')
+    state.toggle('device')
+
+    expect(state.currentMode).toBe('split')
   })
 
   it('presents an instrument entry without nesting the other domains', () => {
@@ -59,7 +77,7 @@ describe('Workbench domain view presentation', () => {
     expect(markup).toContain('aria-valuenow="55"')
   })
 
-  it('mounts only the selected domain in a single-view layout', () => {
+  it('keeps inactive domains mounted but hidden in a single-view layout', () => {
     const markup = renderToStaticMarkup(
       <WorkbenchDomainLayout
         mode="material"
@@ -69,9 +87,11 @@ describe('Workbench domain view presentation', () => {
       />
     )
 
-    expect(markup).not.toContain('data-testid="workflow-surface"')
+    expect(markup).toContain('data-testid="workflow-surface"')
     expect(markup).toContain('data-testid="material-surface"')
-    expect(markup).not.toContain('role="separator"')
+    expect(markup).toContain('data-testid="device-surface"')
+    expect(markup).toContain('role="separator"')
+    expect(markup).toContain('hidden=""')
   })
 
   it('mounts the shared instrument panel as a first-class domain', () => {
@@ -86,7 +106,7 @@ describe('Workbench domain view presentation', () => {
 
     expect(markup).toContain('data-workbench-view="device"')
     expect(markup).toContain('data-testid="device-surface"')
-    expect(markup).not.toContain('data-testid="workflow-surface"')
-    expect(markup).not.toContain('data-testid="material-surface"')
+    expect(markup).toContain('data-testid="workflow-surface"')
+    expect(markup).toContain('data-testid="material-surface"')
   })
 })

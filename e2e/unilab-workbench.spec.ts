@@ -224,7 +224,7 @@ test.describe('UniLab Workbench real-system contract', () => {
     expect(layout.zoom).toBeGreaterThanOrEqual(0.8)
   })
 
-  test('switches first-class domain views from the IDE activity bar', async ({
+  test('toggles Workbench panels without opening the native IDE sidebar', async ({
     page
   }) => {
     await page.goto(workbenchUrl!)
@@ -234,10 +234,37 @@ test.describe('UniLab Workbench real-system contract', () => {
     await page.locator('[id="shell-tab-unilab:material-navigation"]').click()
     await expect(page.locator('main[data-workbench-view]')).toHaveAttribute(
       'data-workbench-view',
-      'material'
+      'split'
     )
     await expect(page.getByRole('region', { name: '物料窗口' })).toBeVisible()
-    await expect(page.getByRole('region', { name: '工作流窗口' })).toHaveCount(0)
+    await expect(page.getByRole('region', { name: '工作流窗口' })).toBeVisible()
+    await expect(page.locator(
+      '[id="shell-tab-unilab:workbench-navigator"]'
+    )).toHaveAttribute('data-unilabactive', 'true')
+    await expect(page.locator(
+      '[id="shell-tab-unilab:material-navigation"]'
+    )).toHaveAttribute('data-unilabactive', 'true')
+    await expect(page.locator(
+      '[id="shell-tab-unilab:device-management-navigation"]'
+    )).toHaveAttribute('data-unilabactive', 'false')
+    await expect(page.locator('#theia-left-content-panel')).toHaveClass(
+      /theia-mod-collapsed/
+    )
+    await expect.poll(() => page.evaluate(() => [
+      getComputedStyle(document.querySelector<HTMLElement>(
+        '[id="shell-tab-unilab:device-management-navigation"]'
+      )!, '::before').content,
+      getComputedStyle(document.querySelector<HTMLElement>(
+        '[id="shell-tab-explorer-view-container"]'
+      )!, '::before').content
+    ])).toEqual(['"UNILAB"', '"IDE"'])
+
+    await page.locator('[id="shell-tab-unilab:workbench-navigator"]').click()
+    await expect(page.locator('main[data-workbench-view]')).toHaveAttribute(
+      'data-workbench-view',
+      'material'
+    )
+    await expect(page.getByRole('region', { name: '工作流窗口' })).toBeHidden()
 
     await page.locator(
       '[id="shell-tab-unilab:device-management-navigation"]'
@@ -254,16 +281,22 @@ test.describe('UniLab Workbench real-system contract', () => {
       exact: true
     })).toBeVisible()
 
-    await page.locator('[id="shell-tab-unilab:split-navigation"]').click()
+    await page.locator(
+      '[id="shell-tab-unilab:device-management-navigation"]'
+    ).click()
+    await expect(page.locator('main[data-workbench-view]')).toHaveAttribute(
+      'data-workbench-view',
+      'material'
+    )
+    await expect(page.getByRole('region', { name: '物料窗口' })).toBeVisible()
+
+    await page.locator('[id="shell-tab-unilab:workbench-navigator"]').click()
     await expect(page.locator('main[data-workbench-view]')).toHaveAttribute(
       'data-workbench-view',
       'split'
     )
-    await expect(page.getByRole('region', { name: '工作流窗口' })).toBeVisible()
-    await expect(page.getByRole('region', { name: '物料窗口' })).toBeVisible()
-    await expect(page.getByRole('separator', {
-      name: '调整工作流与物料窗口宽度'
-    })).toBeVisible()
+    await expect(page.locator('[id="shell-tab-unilab:split-navigation"]'))
+      .toHaveCount(0)
 
     const separator = page.getByRole('separator', {
       name: '调整工作流与物料窗口宽度'
@@ -271,5 +304,82 @@ test.describe('UniLab Workbench real-system contract', () => {
     await separator.focus()
     await page.keyboard.press('ArrowRight')
     await expect(separator).toHaveAttribute('aria-valuenow', '60')
+  })
+
+  test('preserves the 3D camera and device picking across outer layout resize', async ({
+    page
+  }) => {
+    test.setTimeout(120_000)
+    await page.goto(workbenchUrl!)
+    await expect(page.locator('[data-package-mount-count="1"]')).toBeVisible()
+
+    const materialNavigation = page.locator(
+      '[id="shell-tab-unilab:material-navigation"]'
+    )
+    const workflowNavigation = page.locator(
+      '[id="shell-tab-unilab:workbench-navigator"]'
+    )
+    await workflowNavigation.click()
+    await materialNavigation.click()
+    await page.getByRole('button', { name: '3D', exact: true }).click()
+    const visibleCanvas = page.locator('canvas:visible').first()
+    await expect(visibleCanvas).toBeVisible()
+    await expect(page.locator('.pascal-model-label').filter({
+      hasText: 'SZLab 机械臂'
+    }).first()).toBeVisible()
+
+    const readProjection = async () => page.evaluate(() => {
+      const canvas = Array.from(document.querySelectorAll('canvas')).find(
+        (element) => {
+          const rect = element.getBoundingClientRect()
+          return rect.width > 0 && rect.height > 0
+        }
+      )
+      const label = Array.from(document.querySelectorAll(
+        '.pascal-model-label'
+      )).find((element) => element.textContent?.trim() === 'SZLab 机械臂')
+      if (!canvas || !label) throw new Error('3D projection is not ready')
+      const canvasRect = canvas.getBoundingClientRect()
+      const labelRect = label.getBoundingClientRect()
+      return {
+        labelCenterX: labelRect.left + labelRect.width / 2,
+        labelCenterY: labelRect.top + labelRect.height / 2,
+        normalizedY: (
+          labelRect.top + labelRect.height / 2 - canvasRect.top
+        ) / canvasRect.height
+      }
+    })
+
+    const beforeResize = await readProjection()
+    const workflowNavigationBox = await workflowNavigation.boundingBox()
+    expect(workflowNavigationBox).not.toBeNull()
+    await page.mouse.click(
+      workflowNavigationBox!.x + workflowNavigationBox!.width / 2,
+      workflowNavigationBox!.y + workflowNavigationBox!.height / 2
+    )
+    await expect(page.locator('main[data-workbench-view]')).toHaveAttribute(
+      'data-workbench-view',
+      'split'
+    )
+    await expect(visibleCanvas).toBeVisible()
+    const afterResize = await readProjection()
+
+    expect(Math.abs(
+      afterResize.normalizedY - beforeResize.normalizedY
+    )).toBeLessThan(0.005)
+
+    await page.mouse.move(
+      afterResize.labelCenterX,
+      afterResize.labelCenterY + 100
+    )
+    await page.mouse.down()
+    await page.mouse.move(
+      afterResize.labelCenterX + 1,
+      afterResize.labelCenterY + 101
+    )
+    await page.mouse.up()
+    await expect(page.locator(
+      '[role="treeitem"][aria-selected="true"]'
+    )).toHaveCount(1)
   })
 })

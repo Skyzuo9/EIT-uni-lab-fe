@@ -38,6 +38,7 @@ export default function HierarchyRenderer({
 }): React.JSX.Element {
   const groupRef = useRef<Group>(null!)
   const fitSceneRevisionRef = useRef(node.fitSceneRevision)
+  const hasAppliedInitialFitRef = useRef(false)
   const controls = useThree(
     (state) => state.controls
   ) as AdaptiveCameraControls | null
@@ -96,10 +97,21 @@ export default function HierarchyRenderer({
   )
 
   useEffect(() => {
-    if (node.type !== 'site') return
+    if (
+      node.type !== 'site' ||
+      hasAppliedInitialFitRef.current ||
+      !controls?.fitToBox ||
+      !controls.rotatePolarTo ||
+      viewportWidth <= 0 ||
+      viewportHeight <= 0
+    ) {
+      return
+    }
+    hasAppliedInitialFitRef.current = true
     const timer = window.setTimeout(() => fitScene(false), 0)
     return () => window.clearTimeout(timer)
   }, [
+    controls,
     fitScene,
     node.type,
     viewportHeight,

@@ -55,6 +55,9 @@ export function WorkbenchDomainLayout({
           + `minmax(0, ${100 - workflowPercent}fr)`
       }
     : undefined
+  const workflowVisible = mode === 'workflow' || mode === 'split'
+  const materialVisible = mode === 'material' || mode === 'split'
+  const deviceVisible = mode === 'device'
 
   return (
     <main
@@ -63,25 +66,39 @@ export function WorkbenchDomainLayout({
       data-workbench-view={mode}
       style={splitStyle}
     >
-      {mode === 'workflow' || mode === 'split' ? workflow : null}
-      {mode === 'split' ? (
-        <div
-          className="unilab-workbench__splitter"
-          role="separator"
-          aria-label="调整工作流与物料窗口宽度"
-          aria-orientation="vertical"
-          aria-valuemin={MIN_WORKFLOW_PERCENT}
-          aria-valuemax={MAX_WORKFLOW_PERCENT}
-          aria-valuenow={workflowPercent}
-          tabIndex={0}
-          onPointerDown={startResize}
-          onKeyDown={resizeFromKeyboard}
-        >
-          <span aria-hidden="true" />
-        </div>
-      ) : null}
-      {mode === 'material' || mode === 'split' ? material : null}
-      {mode === 'device' ? device : null}
+      <div
+        className="unilab-workbench__domain-slot is-workflow"
+        hidden={!workflowVisible}
+      >
+        {workflow}
+      </div>
+      <div
+        className="unilab-workbench__splitter"
+        role="separator"
+        aria-label="调整工作流与物料窗口宽度"
+        aria-orientation="vertical"
+        aria-valuemin={MIN_WORKFLOW_PERCENT}
+        aria-valuemax={MAX_WORKFLOW_PERCENT}
+        aria-valuenow={workflowPercent}
+        hidden={mode !== 'split'}
+        tabIndex={mode === 'split' ? 0 : -1}
+        onPointerDown={startResize}
+        onKeyDown={resizeFromKeyboard}
+      >
+        <span aria-hidden="true" />
+      </div>
+      <div
+        className="unilab-workbench__domain-slot is-material"
+        hidden={!materialVisible}
+      >
+        {material}
+      </div>
+      <div
+        className="unilab-workbench__domain-slot is-device"
+        hidden={!deviceVisible}
+      >
+        {device}
+      </div>
     </main>
   )
 }

@@ -16,7 +16,6 @@ import {
 import {
   DeviceDomainEntryContribution,
   MaterialDomainEntryContribution,
-  SplitDomainEntryContribution,
   UniLabDomainNavigationInitializer,
   UniLabWorkbenchContribution,
   WorkflowDomainEntryContribution
@@ -24,7 +23,6 @@ import {
 import {
   DeviceDomainEntryWidget,
   MaterialDomainEntryWidget,
-  SplitDomainEntryWidget,
   WorkflowDomainEntryWidget
 } from './unilab-workbench-navigator-widget'
 import { UniLabWorkbenchWidget } from './unilab-workbench-widget'
@@ -87,13 +85,6 @@ export default new ContainerModule((bind) => {
   bind(WidgetFactory).toDynamicValue((context) => ({
     id: DeviceDomainEntryWidget.ID,
     createWidget: () => context.container.get(DeviceDomainEntryWidget)
-  })).inSingletonScope()
-
-  bindViewContribution(bind, SplitDomainEntryContribution)
-  bind(SplitDomainEntryWidget).toSelf()
-  bind(WidgetFactory).toDynamicValue((context) => ({
-    id: SplitDomainEntryWidget.ID,
-    createWidget: () => context.container.get(SplitDomainEntryWidget)
   })).inSingletonScope()
 
   bind(UniLabDomainNavigationInitializer).toSelf().inSingletonScope()

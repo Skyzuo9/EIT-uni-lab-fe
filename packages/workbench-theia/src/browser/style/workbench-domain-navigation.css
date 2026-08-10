@@ -21,6 +21,24 @@
   align-items: stretch;
 }
 
+.unilab-workbench__domain-slot {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+
+.unilab-workbench__domain-slot[hidden],
+.unilab-workbench__splitter[hidden] {
+  display: none !important;
+}
+
+.unilab-workbench__domain-slot > .unilab-workbench__surface {
+  width: 100%;
+  height: 100%;
+}
+
 .unilab-workbench__domain-layout.is-split
   .unilab-workbench__surface--workflow {
   box-shadow: inset -1px 0 var(--unilab-color-border);
@@ -76,6 +94,81 @@
 .unilab-workbench__splitter:focus-visible {
   outline: 2px solid var(--unilab-color-focus);
   outline-offset: -2px;
+}
+
+/*
+ * Theia owns the activity bar structure; the title dataset supplied by the
+ * UniLab widgets gives it a second, independent active state. Native IDE tabs
+ * remain selected by Theia, while these tabs describe panels inside Workbench.
+ */
+.theia-app-left .lm-TabBar-tab[data-unilabdomain='device'] {
+  margin-top: 18px;
+  overflow: visible;
+}
+
+.theia-app-left .lm-TabBar-tab[data-unilabdomain='device']::before {
+  position: absolute;
+  top: -14px;
+  left: 0;
+  width: 100%;
+  color: var(--unilab-color-primary);
+  content: 'UNILAB';
+  font: 650 7px/1 var(--unilab-font-mono);
+  letter-spacing: 0.06em;
+  text-align: center;
+  pointer-events: none;
+}
+
+.theia-app-left .lm-TabBar-tab[id='shell-tab-explorer-view-container'] {
+  margin-top: 27px;
+  overflow: visible;
+  border-top-color: var(--unilab-color-border-strong);
+}
+
+.theia-app-left
+  .lm-TabBar-tab[id='shell-tab-explorer-view-container']::before {
+  position: absolute;
+  top: -20px;
+  left: 0;
+  width: 100%;
+  color: var(--theia-descriptionForeground);
+  content: 'IDE';
+  font: 600 8px/1 var(--unilab-font-mono);
+  letter-spacing: 0.12em;
+  text-align: center;
+  pointer-events: none;
+}
+
+.theia-app-left .lm-TabBar-tab[data-unilabactive='true'] {
+  color: var(--unilab-color-primary);
+  background: color-mix(
+    in srgb,
+    var(--unilab-color-primary) 12%,
+    transparent
+  );
+  box-shadow: inset 2px 0 var(--unilab-color-primary);
+}
+
+.unilab-activity-icon {
+  display: block;
+  width: 22px;
+  height: 22px;
+  background: currentColor;
+  mask-position: center;
+  mask-repeat: no-repeat;
+  mask-size: 20px 20px;
+}
+
+.unilab-activity-icon--device {
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='2.5' y='3' width='15' height='14' rx='2'/%3E%3Crect x='5' y='6' width='6' height='4' rx='.75'/%3E%3Ccircle cx='14.25' cy='8' r='1.25'/%3E%3Cpath d='M5 13.5h5.5M13 13.5h1.5'/%3E%3C/svg%3E");
+}
+
+.unilab-activity-icon--material {
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m10 2.5 6.5 3.75v7.5L10 17.5l-6.5-3.75v-7.5L10 2.5Z'/%3E%3Cpath d='m3.8 6.4 6.2 3.5 6.2-3.5M10 9.9v7.2'/%3E%3C/svg%3E");
+}
+
+.unilab-activity-icon--workflow {
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='2.5' y='2.5' width='5' height='4' rx='1'/%3E%3Crect x='12.5' y='2.5' width='5' height='4' rx='1'/%3E%3Crect x='7.5' y='13.5' width='5' height='4' rx='1'/%3E%3Cpath d='M5 6.5V9h5v4.5M15 6.5V9h-5'/%3E%3C/svg%3E");
 }
 
 .unilab-domain-entry {

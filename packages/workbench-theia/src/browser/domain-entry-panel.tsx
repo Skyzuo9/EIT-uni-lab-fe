@@ -1,9 +1,9 @@
 import * as React from 'react'
 
-import type { WorkbenchViewMode } from './workbench-view-state'
+import type { WorkbenchDomain } from './workbench-view-state'
 
 export interface DomainEntryDefinition {
-  mode: WorkbenchViewMode
+  mode: WorkbenchDomain
   label: string
   caption: string
   description: string
@@ -28,7 +28,10 @@ export function DomainEntryPanel({
     >
       <span className="unilab-domain-entry__eyebrow">{entry.eyebrow}</span>
       <div className="unilab-domain-entry__identity">
-        <span className={`codicon ${entry.iconClass}`} aria-hidden="true" />
+        <span
+          className={`unilab-activity-icon ${entry.iconClass}`}
+          aria-hidden="true"
+        />
         <div>
           <strong>{entry.label}</strong>
           <small>{active ? '已在主区打开' : '可在主区打开'}</small>

@@ -69,6 +69,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState
 } from 'react'
 
@@ -560,6 +561,16 @@ function WorkbenchSurface({
     useState<readonly MaterialId[]>([])
   const [sourceSaveStatus, setSourceSaveStatus] = useState('idle')
   const [environmentOpen, setEnvironmentOpen] = useState(false)
+  const mountedDomains = useRef(new Set<'workflow' | 'material' | 'device'>([
+    'workflow'
+  ]))
+  if (viewMode === 'workflow' || viewMode === 'split') {
+    mountedDomains.current.add('workflow')
+  }
+  if (viewMode === 'material' || viewMode === 'split') {
+    mountedDomains.current.add('material')
+  }
+  if (viewMode === 'device') mountedDomains.current.add('device')
   const query = new URLSearchParams(globalThis.location.search)
   const workflowUuid = query.get('workflowUuid') ?? undefined
   const services = useMemo(() => createWorkbenchServices(backendUrl), [backendUrl])
@@ -630,7 +641,7 @@ function WorkbenchSurface({
     >
       <WorkflowPanel
         runtime={services.workflow}
-        active={viewMode !== 'material'}
+        active={viewMode === 'workflow' || viewMode === 'split'}
         workflowUuid={workflowUuid}
         hideEmbeddedCodeEditor
         ideBridge={ideBridge}
@@ -713,7 +724,11 @@ function WorkbenchSurface({
                 ? '工作流 + 物料'
                 : viewMode === 'workflow'
                   ? '工作流'
-                  : viewMode === 'material' ? '物料' : '仪器设备'}
+                  : viewMode === 'material'
+                    ? '物料'
+                    : viewMode === 'device'
+                      ? '仪器设备'
+                      : '未打开面板'}
             </span>
           </div>
           <nav aria-label="调试工作台页面">
@@ -768,9 +783,15 @@ function WorkbenchSurface({
         </details>
         <WorkbenchDomainLayout
           mode={viewMode}
-          workflow={workflowSurface}
-          material={materialSurface}
-          device={deviceSurface}
+          workflow={mountedDomains.current.has('workflow')
+            ? workflowSurface
+            : null}
+          material={mountedDomains.current.has('material')
+            ? materialSurface
+            : null}
+          device={mountedDomains.current.has('device')
+            ? deviceSurface
+            : null}
         />
       </div>
     </QueryClientProvider>

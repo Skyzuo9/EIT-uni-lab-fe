@@ -11,7 +11,6 @@ import { registerPythonSyntaxHighlighting } from './python-monarch'
 import {
   DeviceDomainEntryWidget,
   MaterialDomainEntryWidget,
-  SplitDomainEntryWidget,
   WorkflowDomainEntryWidget
 } from './unilab-workbench-navigator-widget'
 import { UniLabWorkbenchWidget } from './unilab-workbench-widget'
@@ -34,11 +33,6 @@ export const OpenUniLabMaterialView: Command = {
 export const OpenUniLabDeviceView: Command = {
   id: 'unilab.workbench.device-management.open',
   label: '打开仪器设备'
-}
-
-export const OpenUniLabSplitView: Command = {
-  id: 'unilab.workbench.split.open',
-  label: '打开工作流与物料并排视图'
 }
 
 @injectable()
@@ -107,19 +101,6 @@ export class DeviceDomainEntryContribution
 }
 
 @injectable()
-export class SplitDomainEntryContribution
-  extends AbstractViewContribution<SplitDomainEntryWidget> {
-  constructor() {
-    super({
-      widgetId: SplitDomainEntryWidget.ID,
-      widgetName: '并排视图',
-      defaultWidgetOptions: { area: 'left', rank: 70 },
-      toggleCommandId: OpenUniLabSplitView.id
-    })
-  }
-}
-
-@injectable()
 export class UniLabDomainNavigationInitializer
 implements FrontendApplicationContribution {
   @inject(WorkflowDomainEntryContribution)
@@ -131,14 +112,10 @@ implements FrontendApplicationContribution {
   @inject(DeviceDomainEntryContribution)
   protected readonly device!: DeviceDomainEntryContribution
 
-  @inject(SplitDomainEntryContribution)
-  protected readonly split!: SplitDomainEntryContribution
-
-  async onDidInitializeLayout(_app: FrontendApplication): Promise<void> {
-    await this.workflow.openView({ activate: false, reveal: true })
-    await this.material.openView({ activate: false, reveal: true })
-    await this.device.openView({ activate: false, reveal: true })
-    await this.split.openView({ activate: false, reveal: true })
-    await this.workflow.openView({ activate: true, reveal: true })
+  async onDidInitializeLayout(app: FrontendApplication): Promise<void> {
+    await this.workflow.openView({ activate: false, reveal: false })
+    await this.material.openView({ activate: false, reveal: false })
+    await this.device.openView({ activate: false, reveal: false })
+    await app.shell.collapsePanel('left')
   }
 }
