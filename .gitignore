@@ -1,6 +1,7 @@
 node_modules/
 out/
 release/
+release-macos/
 dist/
 *.log
 .DS_Store
@@ -8,3 +9,5 @@ dist/
 *.tsbuildinfo
 test-results/
 playwright-report/
+apps/workbench/.packaging/
+apps/workbench/desktop/main.cjs

@@ -23,12 +23,7 @@ const port = launch.port
 if (!existsSync(workspace)) {
   throw new Error(`Workspace does not exist: ${workspace}`)
 }
-if (!osProject) {
-  throw new Error(
-    'UNILAB_OS_PROJECT must point to the local Uni-Lab-OS checkout'
-  )
-}
-if (!existsSync(path.resolve(osProject))) {
+if (osProject && !existsSync(path.resolve(osProject))) {
   throw new Error(`Uni-Lab-OS project does not exist: ${osProject}`)
 }
 const pythonEnvironment = await discoverWorkbenchPythonEnvironment({
@@ -36,7 +31,9 @@ const pythonEnvironment = await discoverWorkbenchPythonEnvironment({
 })
 
 console.log(`[UniLab Workbench] workspace: ${workspace}`)
-console.log(`[UniLab Workbench] OS project: ${path.resolve(osProject)}`)
+console.log(`[UniLab Workbench] OS runtime: ${osProject
+  ? path.resolve(osProject)
+  : 'selected Python environment'}`)
 console.log('[UniLab Workbench] OS lifecycle: managed-local')
 console.log(`[UniLab Workbench] shell: ${launchMode}`)
 console.log(`[UniLab Workbench] Python environment: ${pythonEnvironment}`)
@@ -53,7 +50,7 @@ const activatedEnvironment = {
     process.env.PATH
   ].filter(Boolean).join(path.delimiter),
   PYTHONPATH: [
-    path.resolve(osProject),
+    osProject ? path.resolve(osProject) : null,
     workspace,
     process.env.PYTHONPATH
   ].filter(Boolean).join(path.delimiter),
@@ -114,7 +111,7 @@ const theia = spawn('theia', [
   env: {
     ...activatedEnvironment,
     THEIA_WORKSPACE: workspace,
-    UNILAB_OS_PROJECT: path.resolve(osProject),
+    ...(osProject ? { UNILAB_OS_PROJECT: path.resolve(osProject) } : {}),
     UNILAB_PYTHON_ENV: pythonEnvironment
   }
 })

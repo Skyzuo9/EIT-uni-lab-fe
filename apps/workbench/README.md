@@ -61,6 +61,43 @@ The legacy Electron kernel surface does not depend on Theia. Its
 level `@unilab/local-environment` package for Conda/Python discovery and the
 validated PLC-Sim launch contract.
 
-Signed/notarized macOS and signed Windows distribution remain the responsibility
-of the Workbench T11 and T13 delivery slices. This command is the local desktop
-development and acceptance entry point.
+## macOS distribution
+
+The formal macOS arm64 application packages the shared Electron shell, Theia
+frontend/backend, Pyright and Git plugins, and a pinned Node backend runtime.
+It discovers an installed UniLab OS environment at first launch; an OS source
+checkout is optional. The first launch opens a native Workspace directory
+picker, while later launches restore the last valid selection.
+
+```bash
+# Local artifact and cold-start acceptance; intentionally unsigned.
+pnpm --filter @unilab/workbench package:mac:unsigned
+
+# Formal Developer ID release; fails closed unless every credential is present.
+CSC_LINK=/secure/developer-id.p12 \
+CSC_KEY_PASSWORD=... \
+APPLE_ID=... \
+APPLE_APP_SPECIFIC_PASSWORD=... \
+APPLE_TEAM_ID=... \
+pnpm --filter @unilab/workbench package:mac
+```
+
+The build verifies the pinned Node archive SHA-256, packaged native resources,
+and an executable backend HTTP smoke test before publishing the DMG. The formal
+path additionally requires `codesign --verify`, Gatekeeper assessment and
+stapled notarization for both the app and DMG. It never silently publishes an
+unsigned artifact.
+
+Workbench owns the packaged Theia process tree. Closing the app stops the
+backend first (which in turn stops managed OS, Agent and PLC processes) and
+forces termination after a five-second bound. The legacy Kernel Electron
+surface remains independent from Theia.
+
+Workspace-owned state uses `.unilabos/schema.json` and separates durable
+`sessions/`, `agent/` and `audit/` data from quota-managed `runtime/`, `logs/`
+and `cache/`. Schema upgrades create a backup; corrupt metadata is isolated in
+`recovery/`; diagnostics redact paths and credentials and never include Agent
+conversation content.
+
+macOS arm64 is the T11 supported target. macOS x64 remains explicitly
+unverified. Windows signing and distribution remain the T13 delivery slice.

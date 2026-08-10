@@ -7,7 +7,7 @@ import {
   type IpcMainInvokeEvent
 } from 'electron'
 import { basename, dirname, join } from 'path'
-import { appendFileSync, existsSync } from 'node:fs'
+import { appendFileSync } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -47,6 +47,10 @@ import {
   shouldQuitWhenAllDesktopWindowsClose
 } from './desktopSurface'
 import { RendererConsoleLogLimiter } from './rendererConsoleLogLimiter'
+import {
+  cleanupPackagedWorkbenchBackend,
+  configurePackagedDeviceCardBuilder
+} from './packagedRuntime'
 
 // 保存文件的入参:path 为 null 时弹出"另存为"对话框
 interface SaveFilePayload {
@@ -106,24 +110,6 @@ const rendererConsoleLogLimiter = new RendererConsoleLogLimiter({
 })
 const electronObservability = createMainObservability()
 remoteLogSink = (message) => electronObservability.log(message)
-
-function configurePackagedDeviceCardBuilder(): void {
-  if (!app.isPackaged) return
-  const executable = process.platform === 'win32' ? 'esbuild.exe' : 'esbuild'
-  const binaryPath = join(
-    process.resourcesPath,
-    'app.asar.unpacked',
-    'node_modules',
-    'esbuild',
-    'bin',
-    executable
-  )
-  if (!existsSync(binaryPath)) {
-    logLine(`Device Card Builder 缺少 esbuild binary: ${binaryPath}`)
-    return
-  }
-  process.env['ESBUILD_BINARY_PATH'] = binaryPath
-}
 
 process.on('uncaughtException', (error) => {
   logLine(`uncaughtException: ${error instanceof Error ? error.stack : String(error)}`)
@@ -325,7 +311,9 @@ function createWindow(): void {
 app.whenReady().then(async () => {
   logLine('app ready')
   electronObservability.record('electron.app.ready')
-  configurePackagedDeviceCardBuilder()
+  configurePackagedDeviceCardBuilder({
+    isPackaged: app.isPackaged, resourcesPath: process.resourcesPath, log: logLine
+  })
   // macOS 开发态运行的是 Electron 可执行文件，BrowserWindow.icon 不会改变
   // Dock 图标；安装包则从 icon.icns 自动获得图标。
   if (isDev && process.platform === 'darwin') {
@@ -718,6 +706,11 @@ async function cleanupBeforeQuit(): Promise<void> {
       error
     )
   }
+  await cleanupPackagedWorkbenchBackend({
+    enabled: desktopSurface.kind === 'workbench',
+    observability: electronObservability,
+    log: logLine
+  })
   electronObservability.record('electron.app.quit')
   await electronObservability.shutdown()
 }

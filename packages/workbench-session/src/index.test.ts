@@ -93,6 +93,28 @@ describe('managed local Workbench session', () => {
     )).resolves.toMatch(/(^|\n)agent\/\n/)
   })
 
+  it('launches an installed OS from the selected Python environment without a source checkout', async () => {
+    const fixture = await createFixture()
+    const session = createManagedLocalWorkbenchSession({
+      workspacePath: fixture.workspacePath,
+      environmentPath: fixture.environmentPath,
+      plcSimulatorOpcUaPort: fixture.plcSimulatorOpcUaPort,
+      readinessTimeoutMs: 5_000
+    })
+    sessions.push(session)
+
+    const ready = await session.start()
+
+    expect(ready).toMatchObject({
+      phase: 'ready',
+      identity: {
+        osProjectPath: '',
+        osRuntimeSource: 'environment',
+        environmentPath: fixture.environmentPath
+      }
+    })
+  })
+
   it('fails closed when the explicitly selected Python environment is invalid', async () => {
     const fixture = await createFixture()
     const session = createManagedLocalWorkbenchSession({

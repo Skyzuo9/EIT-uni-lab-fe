@@ -308,6 +308,12 @@ importers:
       '@theia/cli':
         specifier: 1.74.1
         version: 1.74.1
+      electron:
+        specifier: 33.4.11
+        version: 33.4.11
+      electron-builder:
+        specifier: 25.1.8
+        version: 25.1.8
       esbuild:
         specifier: 0.28.2
         version: 0.28.2

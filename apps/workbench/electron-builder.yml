@@ -1,0 +1,63 @@
+appId: org.unilab.workbench
+productName: UniLab Workbench
+copyright: Copyright © 2026 UniLab
+directories:
+  output: release-macos
+  buildResources: ../desktop/build
+files:
+  - desktop/main.cjs
+  - package.json
+  - '!node_modules/**'
+extraResources:
+  - from: lib
+    to: workbench/lib
+    filter:
+      - '**/*'
+      - '!**/*.map'
+  - from: plugins
+    to: workbench/plugins
+  - from: ../desktop/out/main
+    to: desktop/out/main
+    filter:
+      - '**/*'
+      - '!**/*.map'
+  - from: ../desktop/out/preload
+    to: desktop/out/preload
+    filter:
+      - '**/*'
+      - '!**/*.map'
+  - from: .packaging/desktop-runtime/node_modules
+    to: desktop/node_modules
+  - from: .packaging/node-runtime/bin/node
+    to: node-runtime/bin/node
+  - from: ../../node_modules/.pnpm/@esbuild+darwin-arm64@0.21.5/node_modules/@esbuild/darwin-arm64/bin/esbuild
+    to: device-card-builder/esbuild
+  - from: ../../packages/device-card-agent-cli/dist/cli.mjs
+    to: device-card-agent/cli.mjs
+  - from: ../desktop/build/icon.png
+    to: branding/icon.png
+  - from: compatibility.json
+    to: compatibility.json
+  - from: .packaging/workbench-package.json
+    to: workbench/package.json
+npmRebuild: false
+electronLanguages:
+  - zh-CN
+  - en-US
+afterPack: ../desktop/scripts/after-pack.mjs
+mac:
+  category: public.app-category.developer-tools
+  icon: icon.icns
+  target:
+    - target: dmg
+      arch:
+        - arm64
+  artifactName: ${productName}-${version}-${arch}.${ext}
+  minimumSystemVersion: '13.0'
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  notarize: true
+dmg:
+  artifactName: ${productName}-${version}-${arch}.${ext}

@@ -47,7 +47,20 @@ import {
   writeLocalEnvironmentConfigurationFile
 } from './local-environment-configuration'
 import { waitForWorkbenchReadiness } from './readiness'
+import { prepareWorkbenchState } from './workbench-state'
 export { parseWorkspacePackageMountProjection } from './readiness'
+export {
+  createWorkbenchDiagnosticBundle,
+  createWorkbenchStateBackup,
+  prepareWorkbenchState,
+  restoreWorkbenchStateBackup,
+  WORKBENCH_STATE_SCHEMA_VERSION,
+  WorkbenchStateError,
+  type WorkbenchStateBackup,
+  type WorkbenchStateManifest,
+  type WorkbenchStatePreparation,
+  type WorkbenchStateQuotas
+} from './workbench-state'
 export type WorkbenchSessionPhase =
   | 'idle'
   | 'validating'
@@ -75,6 +88,7 @@ export type WorkbenchRuntimeMode = 'normal' | 'dry-run'
 export interface WorkbenchSessionIdentity {
   workspacePath: string
   osProjectPath: string
+  osRuntimeSource: 'checkout' | 'environment'
   environmentPath: string
   graphPath: string
   graphFingerprint: string
@@ -898,6 +912,7 @@ async function resolveWorkbenchLaunch(
     'invalid_workspace',
     '所选 Workspace 不存在'
   )
+  await prepareWorkbenchState(workspacePath)
   const localConfigPath = join(workspacePath, 'deployment', 'local_config.py')
   await requireReadableFile(
     localConfigPath,
@@ -915,23 +930,20 @@ async function resolveWorkbenchLaunch(
 
   const osProjectCandidate = options.osProjectPath
     ?? environment['UNILAB_OS_PROJECT']
-  if (!osProjectCandidate) {
-    throw new WorkbenchLaunchError(
+  const osProjectPath = osProjectCandidate
+    ? await requireRealDirectory(
+        osProjectCandidate,
+        'invalid_os_project',
+        'Uni-Lab-OS 项目目录不存在'
+      )
+    : ''
+  if (osProjectPath) {
+    await requireRealDirectory(
+      join(osProjectPath, 'unilabos'),
       'invalid_os_project',
-      '未选择 Uni-Lab-OS 项目目录',
-      '设置 UNILAB_OS_PROJECT 或在 Workbench 启动配置中选择 OS 项目'
+      '所选目录不是有效的 Uni-Lab-OS 项目'
     )
   }
-  const osProjectPath = await requireRealDirectory(
-    osProjectCandidate,
-    'invalid_os_project',
-    'Uni-Lab-OS 项目目录不存在'
-  )
-  await requireRealDirectory(
-    join(osProjectPath, 'unilabos'),
-    'invalid_os_project',
-    '所选目录不是有效的 Uni-Lab-OS 项目'
-  )
 
   const environmentPath = await resolveRuntimeEnvironmentPath({
     selected: options.environmentPath,
@@ -1009,6 +1021,7 @@ async function resolveWorkbenchLaunch(
   const identity: WorkbenchSessionIdentity = {
     workspacePath,
     osProjectPath,
+    osRuntimeSource: osProjectPath ? 'checkout' : 'environment',
     environmentPath,
     graphPath,
     graphFingerprint,
@@ -1049,7 +1062,7 @@ async function resolveWorkbenchLaunch(
     environment: {
       ...activatedCondaEnvironment(environmentPath, platform, environment),
       PYTHONPATH: mergePathList(
-        [osProjectPath, workspacePath, environment['PYTHONPATH']],
+        [osProjectPath || undefined, workspacePath, environment['PYTHONPATH']],
         platform === 'win32' ? ';' : ':'
       ),
       PYTHONUNBUFFERED: '1',
