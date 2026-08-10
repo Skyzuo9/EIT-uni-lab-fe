@@ -153,6 +153,7 @@ export default function WorkflowDag({
     ? localMaterialRoleFilter
     : materialRoleFilter
   const flowInstanceRef = useRef<ReactFlowInstance | null>(null)
+  const materialRoleFilterRef = useRef<HTMLDetailsElement | null>(null)
   const beautifyTimerRef = useRef<
     ReturnType<typeof globalThis.setTimeout> | null
   >(null)
@@ -340,6 +341,8 @@ export default function WorkflowDag({
       .filter((edge) => edge.selected)
       .map((edge) => edge.id)
   }), [flowEdges, flowNodes])
+  const deletionSelectionCount = deletionSelection.nodeUuids.length +
+    deletionSelection.edgeUuids.length
   const deletionDisabledReason = useMemo(() => {
     if (!canvasMutationEnabled) {
       return '代码模式下工作流画布只读；请切换到画布模式'
@@ -428,6 +431,7 @@ export default function WorkflowDag({
       setLocalMaterialRoleFilter(nextMaterialRole)
     }
     onMaterialRoleFilterChange?.(nextMaterialRole)
+    materialRoleFilterRef.current?.removeAttribute('open')
   }, [materialRoleFilter, onMaterialRoleFilterChange])
 
   if (flowNodes.length === 0) {
@@ -529,164 +533,193 @@ export default function WorkflowDag({
         <Panel position="top-right">
           <div
             className="workflow-runtime__layout-tools"
-            aria-label="工作流布局工具"
+            role="toolbar"
+            aria-label="画布视图与布局工具"
           >
-            <WorkflowButton
-              type="button"
-              className="workflow-runtime__fit-view"
-              aria-label="适应完整工作流视图"
-              disabledReason="工作流图尚未加载完成"
-              onClick={fitWorkflowView}
+            <div
+              className="workflow-runtime__canvas-action-group"
+              role="group"
+              aria-label="视图与选择"
             >
-              <span aria-hidden="true">⊡</span>
-              适应视图
-            </WorkflowButton>
-            {onDeleteRequest && (
               <WorkflowButton
                 type="button"
-                className="workflow-runtime__delete-selection"
-                disabled={Boolean(deletionDisabledReason)}
-                disabledReason={deletionDisabledReason || ''}
-                onClick={requestSelectedDeletion}
+                className="workflow-runtime__canvas-button workflow-runtime__fit-view"
+                aria-label="适应完整工作流视图"
+                title="适应完整工作流视图"
+                disabledReason="工作流图尚未加载完成"
+                onClick={fitWorkflowView}
               >
-                <span aria-hidden="true">⌫</span>
-                删除选中项
+                <svg aria-hidden="true" viewBox="0 0 20 20" fill="none">
+                  <path d="M7 3.5H3.5V7M13 3.5h3.5V7M7 16.5H3.5V13M13 16.5h3.5V13" />
+                </svg>
+                <span>适应视图</span>
               </WorkflowButton>
-            )}
-            {materialRoleOptions.length > 0 && (
-              <details className="workflow-runtime__material-role-filter">
-                <summary
-                  aria-label={`按物料角色筛选：${
-                    materialRoleOptions.find((option) =>
-                      option.value === activeMaterialRoleFilter
-                    )?.label ?? '全部'
-                  }`}
+              {onDeleteRequest && (
+                <WorkflowButton
+                  type="button"
+                  className="workflow-runtime__canvas-button workflow-runtime__delete-selection"
+                  disabled={Boolean(deletionDisabledReason)}
+                  disabledReason={deletionDisabledReason || ''}
+                  aria-label={deletionSelectionCount > 0
+                    ? `删除选中的 ${deletionSelectionCount} 项`
+                    : '删除选中项'}
+                  title={deletionSelectionCount > 0
+                    ? `删除选中的 ${deletionSelectionCount} 项`
+                    : undefined}
+                  onClick={requestSelectedDeletion}
                 >
-                  <svg aria-hidden="true" viewBox="0 0 20 20">
-                    <path d="M3 4h14l-5.4 6.2v4.4l-3.2 1.8v-6.2L3 4Z" />
+                  <svg aria-hidden="true" viewBox="0 0 20 20" fill="none">
+                    <path d="M4.5 6.5h11M8 6.5v-2h4v2M6.5 6.5l.6 9h5.8l.6-9M8.5 9v4M11.5 9v4" />
                   </svg>
-                  <span>
-                    {materialRoleOptions.find((option) =>
-                      option.value === activeMaterialRoleFilter
-                    )?.label ?? '全部物料'}
-                  </span>
-                </summary>
-                <div
-                  className="workflow-runtime__material-role-menu"
-                  role="radiogroup"
-                  aria-label="物料角色"
+                  <span>删除选中项</span>
+                </WorkflowButton>
+              )}
+            </div>
+            <div
+              className="workflow-runtime__layout-control-group"
+              role="group"
+              aria-label="物料筛选与布局"
+            >
+              {materialRoleOptions.length > 0 && (
+                <details
+                  ref={materialRoleFilterRef}
+                  className="workflow-runtime__material-role-filter"
+                  data-filter-active={Boolean(activeMaterialRoleFilter)}
                 >
-                  <button
-                    type="button"
-                    role="radio"
-                    aria-checked={!activeMaterialRoleFilter}
-                    className={!activeMaterialRoleFilter
-                      ? 'is-active'
-                      : undefined}
-                    onClick={() => handleMaterialRoleFilterChange(null)}
+                  <summary
+                    aria-label={`按物料角色筛选：${
+                      materialRoleOptions.find((option) =>
+                        option.value === activeMaterialRoleFilter
+                      )?.label ?? '全部'
+                    }`}
                   >
-                    <span className="is-all" aria-hidden="true" />
-                    <span>全部物料</span>
-                  </button>
-                  {materialRoleOptions.map((option) => (
+                    <svg aria-hidden="true" viewBox="0 0 20 20">
+                      <path d="M3 4h14l-5.4 6.2v4.4l-3.2 1.8v-6.2L3 4Z" />
+                    </svg>
+                    <span>
+                      {materialRoleOptions.find((option) =>
+                        option.value === activeMaterialRoleFilter
+                      )?.label ?? '全部物料'}
+                    </span>
+                  </summary>
+                  <div
+                    className="workflow-runtime__material-role-menu"
+                    role="radiogroup"
+                    aria-label="物料角色"
+                  >
                     <button
-                      key={option.value}
                       type="button"
                       role="radio"
-                      aria-checked={activeMaterialRoleFilter === option.value}
-                      className={activeMaterialRoleFilter === option.value
+                      aria-checked={!activeMaterialRoleFilter}
+                      className={!activeMaterialRoleFilter
                         ? 'is-active'
                         : undefined}
-                      onClick={() => handleMaterialRoleFilterChange(
-                        option.value
+                      onClick={() => handleMaterialRoleFilterChange(null)}
+                    >
+                      <span className="is-all" aria-hidden="true" />
+                      <span>全部物料</span>
+                    </button>
+                    {materialRoleOptions.map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        role="radio"
+                        aria-checked={
+                          activeMaterialRoleFilter === option.value
+                        }
+                        className={
+                          activeMaterialRoleFilter === option.value
+                            ? 'is-active'
+                            : undefined
+                        }
+                        onClick={() => handleMaterialRoleFilterChange(
+                          option.value
+                        )}
+                      >
+                        <span
+                          className="workflow-runtime__material-role-swatch"
+                          aria-hidden="true"
+                          style={{ backgroundColor: option.accent }}
+                        />
+                        <span>{option.label}</span>
+                        <small>{option.lineageCount}</small>
+                      </button>
+                    ))}
+                  </div>
+                </details>
+              )}
+              <label className="workflow-runtime__layout-strategy-field">
+                <span aria-hidden="true">布局</span>
+                <select
+                  className="workflow-runtime__layout-strategy"
+                  aria-label="布局策略"
+                  value={layoutStrategy}
+                  onChange={handleLayoutStrategyChange}
+                >
+                  {WORKFLOW_DAG_LAYOUT_STRATEGIES.map((strategy) => (
+                    <option key={strategy.value} value={strategy.value}>
+                      {strategy.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {layoutStrategy === 'material-swimlanes' && (
+                <div
+                  className="workflow-runtime__swimlane-direction"
+                  role="group"
+                  aria-label="物料泳道方向"
+                >
+                  {WORKFLOW_MATERIAL_SWIMLANE_DIRECTIONS.map((direction) => (
+                    <button
+                      key={direction.value}
+                      type="button"
+                      className={swimlaneDirection === direction.value
+                        ? 'is-active'
+                        : undefined}
+                      aria-pressed={swimlaneDirection === direction.value}
+                      title={direction.description}
+                      onClick={() => handleSwimlaneDirectionChange(
+                        direction.value
                       )}
                     >
-                      <span
-                        className="workflow-runtime__material-role-swatch"
-                        aria-hidden="true"
-                        style={{ backgroundColor: option.accent }}
-                      />
-                      <span>{option.label}</span>
-                      <small>{option.lineageCount}</small>
+                      {direction.label}
                     </button>
                   ))}
                 </div>
-              </details>
-            )}
-            <select
-              className="workflow-runtime__layout-strategy"
-              aria-label="布局策略"
-              value={layoutStrategy}
-              onChange={handleLayoutStrategyChange}
-            >
-              {WORKFLOW_DAG_LAYOUT_STRATEGIES.map((strategy) => (
-                <option key={strategy.value} value={strategy.value}>
-                  {strategy.label}
-                </option>
-              ))}
-            </select>
-            {layoutStrategy === 'material-swimlanes' && (
-              <div
-                className="workflow-runtime__swimlane-direction"
-                role="group"
-                aria-label="物料泳道方向"
+              )}
+              <WorkflowButton
+                type="button"
+                className="workflow-runtime__beautify"
+                disabled={!canBeautify || isBeautifying}
+                disabledReason={isBeautifying
+                  ? '正在应用工作流布局，请稍候'
+                  : beautifyDisabledReason}
+                aria-busy={isBeautifying}
+                aria-label={layoutStrategy === 'material-swimlanes'
+                  ? `应用${workflowMaterialSwimlaneDirectionLabel(
+                      swimlaneDirection
+                    )}物料泳道布局`
+                  : `应用${workflowDagLayoutStrategyLabel(layoutStrategy)}布局`}
+                title={
+                  canBeautify
+                    ? WORKFLOW_DAG_LAYOUT_STRATEGIES.find(
+                        (strategy) => strategy.value === layoutStrategy
+                      )?.description
+                    : beautifyDisabledReason
+                }
+                onClick={handleBeautify}
               >
-                {WORKFLOW_MATERIAL_SWIMLANE_DIRECTIONS.map((direction) => (
-                  <button
-                    key={direction.value}
-                    type="button"
-                    className={swimlaneDirection === direction.value
-                      ? 'is-active'
-                      : undefined}
-                    aria-pressed={swimlaneDirection === direction.value}
-                    title={direction.description}
-                    onClick={() => handleSwimlaneDirectionChange(
-                      direction.value
-                    )}
-                  >
-                    {direction.label}
-                  </button>
-                ))}
-              </div>
-            )}
-            <WorkflowButton
-              type="button"
-              className="workflow-runtime__beautify"
-              disabled={!canBeautify || isBeautifying}
-              disabledReason={isBeautifying
-                ? '正在应用工作流布局，请稍候'
-                : beautifyDisabledReason}
-              aria-label={layoutStrategy === 'material-swimlanes'
-                ? `应用${workflowMaterialSwimlaneDirectionLabel(
-                    swimlaneDirection
-                  )}物料泳道布局`
-                : `应用${workflowDagLayoutStrategyLabel(layoutStrategy)}布局`}
-              title={
-                canBeautify
-                  ? WORKFLOW_DAG_LAYOUT_STRATEGIES.find(
-                      (strategy) => strategy.value === layoutStrategy
-                    )?.description
-                  : beautifyDisabledReason
-              }
-              onClick={handleBeautify}
-            >
-              <svg
-                aria-hidden="true"
-                viewBox="0 0 24 24"
-                fill="none"
-              >
-                <path
-                  d="M12 3l1.35 3.65L17 8l-3.65 1.35L12 13l-1.35-3.65L7 8l3.65-1.35L12 3Z"
-                />
-                <path
-                  d="M18.5 13l.85 2.15L21.5 16l-2.15.85L18.5 19l-.85-2.15L15.5 16l2.15-.85L18.5 13Z"
-                />
-                <path
-                  d="M6 14l.65 1.35L8 16l-1.35.65L6 18l-.65-1.35L4 16l1.35-.65L6 14Z"
-                />
-              </svg>
-              <span>{isBeautifying ? '正在应用' : '应用布局'}</span>
-            </WorkflowButton>
+                <svg
+                  aria-hidden="true"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                >
+                  <path d="M5 6h14M5 12h9M5 18h6" />
+                  <path d="m15.5 15.5 2 2 3-4" />
+                </svg>
+                <span>{isBeautifying ? '正在应用' : '应用布局'}</span>
+              </WorkflowButton>
+            </div>
           </div>
         </Panel>
         <MiniMap

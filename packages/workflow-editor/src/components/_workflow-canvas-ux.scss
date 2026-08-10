@@ -220,27 +220,6 @@
       cursor: pointer;
     }
 
-    :global(.workflow-runtime__fit-view) {
-      display: inline-flex;
-      height: 32px;
-      flex: 0 0 auto;
-      align-items: center;
-      gap: 5px;
-      padding: 0 9px;
-      color: var(--unilab-color-text-muted);
-      border: 0;
-      border-right: 1px solid var(--unilab-color-border);
-      background: var(--unilab-color-surface);
-      font: 600 12px/1 var(--unilab-font-sans);
-      white-space: nowrap;
-      cursor: pointer;
-    }
-
-    :global(.workflow-runtime__fit-view):hover {
-      color: var(--unilab-color-primary);
-      background: var(--unilab-color-workflow-soft);
-    }
-
     :global(.persistent-authoring__runtime)
       :global(.workflow-runtime__debugger) {
       box-sizing: border-box;

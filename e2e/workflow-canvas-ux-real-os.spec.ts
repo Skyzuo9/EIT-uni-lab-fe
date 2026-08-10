@@ -89,8 +89,37 @@ async function verifyWorkflowCanvasUx(
   await expect(palette.getByRole('button', { name: /物料来源/ })).toBeVisible()
   await search.fill('')
 
+  const canvasControls = workflowPanel.getByRole('toolbar', {
+    name: '画布视图与布局工具'
+  })
+  await expect(canvasControls).toBeVisible()
+  await expect(canvasControls.getByRole('group', {
+    name: '视图与选择'
+  })).toBeVisible()
+  await expect(canvasControls.getByRole('group', {
+    name: '物料筛选与布局'
+  })).toBeVisible()
+  await expect(canvasControls.getByRole('button', {
+    name: '适应完整工作流视图'
+  })).toBeVisible()
+  await expect(canvasControls.getByRole('button', {
+    name: '删除选中项'
+  })).toBeDisabled()
+  const applyLayoutButton = canvasControls.getByRole('button', {
+    name: '应用减少交叉布局'
+  })
+  await expect(applyLayoutButton).toBeVisible()
+  await expect(applyLayoutButton).toHaveCSS(
+    'background-color',
+    'rgb(37, 99, 235)'
+  )
+
   await workflowPanel.screenshot({
     path: testInfo.outputPath('workflow-canvas-desktop.png'),
+    animations: 'disabled'
+  })
+  await canvasControls.screenshot({
+    path: testInfo.outputPath('workflow-canvas-controls-desktop.png'),
     animations: 'disabled'
   })
 
@@ -134,6 +163,16 @@ async function verifyWorkflowCanvasUx(
   await expect(search).toBeVisible()
   const narrowPaletteBox = await palette.boundingBox()
   expect(narrowPaletteBox?.width).toBeLessThanOrEqual(280)
+  const narrowControlsBox = await canvasControls.boundingBox()
+  const narrowPanelBox = await workflowPanel.boundingBox()
+  expect(
+    (narrowControlsBox?.x ?? 0) + (narrowControlsBox?.width ?? 0)
+  ).toBeLessThanOrEqual(
+    (narrowPanelBox?.x ?? 0) + (narrowPanelBox?.width ?? 0) + 1
+  )
+  expect(narrowControlsBox?.x).toBeGreaterThanOrEqual(
+    (narrowPaletteBox?.x ?? 0) + (narrowPaletteBox?.width ?? 0) - 1
+  )
   await workflowPanel.screenshot({
     path: testInfo.outputPath('workflow-canvas-narrow.png'),
     animations: 'disabled'

@@ -156,6 +156,50 @@ describe('WorkflowDag material role filter', () => {
   })
 })
 
+describe('WorkflowDag canvas controls', () => {
+  /** 证明画布按钮按任务分组，并把布局提交保持为唯一主操作。 */
+  it('groups view actions separately from material and layout controls', () => {
+    const markup = renderToStaticMarkup(
+      <WorkflowDag
+        nodes={[
+          workflowNode,
+          materialSourceNode('sample-source', '主样品', 'primary_sample')
+        ]}
+        links={[]}
+        canvasMutationEnabled
+        onNodeSelect={vi.fn()}
+        onDeleteRequest={vi.fn()}
+        onBeautify={vi.fn()}
+      />
+    )
+
+    expect(markup).toContain('role="toolbar"')
+    expect(markup).toContain('aria-label="画布视图与布局工具"')
+    expect(markup).toContain('aria-label="视图与选择"')
+    expect(markup).toContain('aria-label="物料筛选与布局"')
+    expect(markup).toContain('workflow-runtime__canvas-button')
+    expect(markup).toContain('workflow-runtime__beautify')
+    expect(markup).toContain('aria-busy="false"')
+  })
+
+  /** 证明交互态与窄视口规则不依赖运行时内联样式。 */
+  it('defines primary, danger, focus and compact responsive states', () => {
+    const stylesheet = readFileSync(
+      new URL('./_workflow-beautify.scss', import.meta.url),
+      'utf8'
+    )
+
+    expect(stylesheet).toMatch(
+      /workflow-runtime__beautify[\s\S]*background:\s*var\(--unilab-color-workflow\)/
+    )
+    expect(stylesheet).toMatch(
+      /delete-selection\):hover:not\(:disabled\)[\s\S]*unilab-color-danger/
+    )
+    expect(stylesheet).toMatch(/canvas-button\):focus-visible/)
+    expect(stylesheet).toMatch(/@container workflow \(max-width: 900px\)/)
+  })
+})
+
 const workflowNode: WorkflowNode = {
   id: 'node-1',
   name: '示例动作',
