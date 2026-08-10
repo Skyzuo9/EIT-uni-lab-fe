@@ -136,7 +136,8 @@ describe('WorkflowDag deletion interaction', () => {
 })
 
 describe('WorkflowDag material role filter', () => {
-  it('exposes labeled role choices without relying on color alone', () => {
+  /** 验证物料流角色（MaterialFlowRole）显隐使用带文字的独立复选框。 */
+  it('exposes independently selectable role visibility without color-only cues', () => {
     const markup = renderToStaticMarkup(
       <WorkflowDag
         nodes={[
@@ -148,8 +149,9 @@ describe('WorkflowDag material role filter', () => {
       />
     )
 
-    expect(markup).toContain('aria-label="按物料角色筛选：全部"')
-    expect(markup).toContain('role="radiogroup"')
+    expect(markup).toContain('aria-label="物料节点可见性：全部物料"')
+    expect(markup).toContain('aria-label="物料节点可见性"')
+    expect(markup).toContain('type="checkbox"')
     expect(markup).toContain('主样品')
     expect(markup).toContain('试剂')
     expect(markup).toContain('全部物料')

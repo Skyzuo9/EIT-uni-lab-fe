@@ -100,24 +100,30 @@ export default function WorkflowNodeCard({
       port.sourceHandle?.uuid
     ]).filter((uuid): uuid is string => Boolean(uuid))
   )
+  const serpentineFlow = data.layoutStrategy === 'primary-sample-serpentine'
   if (materialSource) {
     return (
       <WorkflowMaterialSourceNode
         data={data}
         materialPorts={materialPorts}
+        materialSourcePosition={sourcePosition}
         stateVisible={workflowNodeShowsState(data.kind, data.status)}
         stateLabel={workflowNodeStateLabel(data.kind, data.status || 'pending')}
         structuralTargetHandles={renderStructuralHandles(
           targetHandles,
           'target',
           targetPosition,
-          projectedMaterialHandleIds
+          projectedMaterialHandleIds,
+          undefined,
+          serpentineFlow
         )}
         structuralSourceHandles={renderStructuralHandles(
           sourceHandles,
           'source',
           sourcePosition,
-          projectedMaterialHandleIds
+          projectedMaterialHandleIds,
+          undefined,
+          serpentineFlow
         )}
       />
     )
@@ -127,6 +133,8 @@ export default function WorkflowNodeCard({
       <WorkflowTransferNode
         data={data}
         materialPort={materialPorts[0]!}
+        materialTargetPosition={targetPosition}
+        materialSourcePosition={sourcePosition}
         stateVisible={workflowNodeShowsState(data.kind, data.status)}
         stateLabel={workflowNodeStateLabel(data.kind, data.status || 'pending')}
         structuralTargetHandles={renderStructuralHandles(
@@ -134,14 +142,16 @@ export default function WorkflowNodeCard({
           'target',
           targetPosition,
           projectedMaterialHandleIds,
-          ROBOT_TRANSFER_READY_ANCHOR
+          ROBOT_TRANSFER_READY_ANCHOR,
+          serpentineFlow
         )}
         structuralSourceHandles={renderStructuralHandles(
           sourceHandles,
           'source',
           sourcePosition,
           projectedMaterialHandleIds,
-          ROBOT_TRANSFER_READY_ANCHOR
+          ROBOT_TRANSFER_READY_ANCHOR,
+          serpentineFlow
         )}
       />
     )
@@ -164,7 +174,9 @@ export default function WorkflowNodeCard({
         targetHandles,
         'target',
         targetPosition,
-        projectedMaterialHandleIds
+        projectedMaterialHandleIds,
+        undefined,
+        serpentineFlow
       )}
       {data.layoutStrategy === 'material-swimlanes'
         && materialPorts.length > 0
@@ -202,7 +214,9 @@ export default function WorkflowNodeCard({
         {renderMaterialPorts(
           materialPorts,
           data.materialLaneRange,
-          data.materialLaneDirection
+          data.materialLaneDirection,
+          targetPosition,
+          sourcePosition
         )}
         {data.groupKind === 'subworkflow' && (
           <button
@@ -266,7 +280,9 @@ export default function WorkflowNodeCard({
         sourceHandles,
         'source',
         sourcePosition,
-        projectedMaterialHandleIds
+        projectedMaterialHandleIds,
+        undefined,
+        serpentineFlow
       )}
     </div>
   )
@@ -287,6 +303,7 @@ export function workflowNodeHoverText(
  * @param position 非 ready 结构句柄沿用的 React Flow 方位。
  * @param projectedMaterialHandleIds 已由物料占位符（ResourceSlot）卡片承载的句柄 UUID。
  * @param readyAnchor 特殊视觉的 ready 横向中心与边缘内缩；省略时使用节点边缘正中。
+ * @param followLayoutPosition 是否让执行顺序端口跟随蛇形布局的逐节点方位。
  * @returns 可供 React Flow 测量和连线的结构句柄元素。
  */
 function renderStructuralHandles(
@@ -294,7 +311,8 @@ function renderStructuralHandles(
   ioType: 'source' | 'target',
   position: Position,
   projectedMaterialHandleIds: ReadonlySet<string>,
-  readyAnchor?: Readonly<{ left: string; edgeInset: string }>
+  readyAnchor?: Readonly<{ left: string; edgeInset: string }>,
+  followLayoutPosition = false
 ): React.JSX.Element | React.JSX.Element[] {
   if (handles === undefined) {
     return (
@@ -312,7 +330,9 @@ function renderStructuralHandles(
   )
   return structuralHandles.map((handle, index) => {
     const ready = isReadyHandle(handle)
-    const readyPosition = ioType === 'target' ? Position.Top : Position.Bottom
+    const readyPosition = followLayoutPosition
+      ? position
+      : ioType === 'target' ? Position.Top : Position.Bottom
     return (
       <Handle
         key={handle.uuid}
@@ -332,18 +352,41 @@ function renderStructuralHandles(
         aria-hidden={ready ? undefined : true}
         title={ready ? '执行顺序' : undefined}
         style={ready
-          ? {
-              left: readyAnchor?.left ?? '50%',
-              ...(readyAnchor
-                ? ioType === 'target'
-                  ? { top: readyAnchor.edgeInset }
-                  : { bottom: readyAnchor.edgeInset }
-                : {})
-            }
+          ? readyHandlePosition(
+              readyPosition,
+              ioType,
+              followLayoutPosition ? undefined : readyAnchor
+            )
           : handlePosition(position, index, structuralHandles.length)}
       />
     )
   })
+}
+
+/**
+ * 计算执行顺序端口在节点边缘的稳定位置。
+ *
+ * @param position React Flow 为当前蛇形节点或普通布局指定的边缘方位。
+ * @param ioType 端口是输入还是输出。
+ * @param readyAnchor 特殊视觉在纵向布局中的精确锚点；横向蛇形布局不使用。
+ * @returns 可直接赋给 Handle 的相对定位样式。
+ */
+function readyHandlePosition(
+  position: Position,
+  ioType: 'source' | 'target',
+  readyAnchor?: Readonly<{ left: string; edgeInset: string }>
+): CSSProperties {
+  if (position === Position.Left || position === Position.Right) {
+    return { top: '50%' }
+  }
+  return {
+    left: readyAnchor?.left ?? '50%',
+    ...(readyAnchor
+      ? ioType === 'target'
+        ? { top: readyAnchor.edgeInset }
+        : { bottom: readyAnchor.edgeInset }
+      : {})
+  }
 }
 
 /**
@@ -461,12 +504,16 @@ function mergeDescriptions(
  * @param cards 已按变量合并并排序的物料端口卡片。
  * @param laneRange 节点在物料泳道中的最左与最右序号；缺省时使用紧凑排列。
  * @param direction 物料泳道从上到下或从左到右的流向。
+ * @param targetPosition 当前节点的物料输入端口方位。
+ * @param sourcePosition 当前节点的物料输出端口方位。
  * @returns 物料端口容器；没有物料端口时返回空。
  */
 function renderMaterialPorts(
   cards: readonly WorkflowMaterialPortCard[],
   laneRange: { start: number; end: number } | undefined,
-  direction: WorkflowMaterialSwimlaneDirection | undefined
+  direction: WorkflowMaterialSwimlaneDirection | undefined,
+  targetPosition: Position,
+  sourcePosition: Position
 ): React.JSX.Element | null {
   if (cards.length === 0) return null
   const swimlane = laneRange && cards.every(
@@ -525,7 +572,7 @@ function renderMaterialPorts(
             'target',
             card.accent,
             card.label,
-            direction
+            targetPosition
           )}
           <span className="wf-node__material-port-label">{card.label}</span>
           {card.sourceHandle && renderMaterialHandle(
@@ -533,7 +580,7 @@ function renderMaterialPorts(
             'source',
             card.accent,
             card.label,
-            direction
+            sourcePosition
           )}
         </span>
       ))}
@@ -548,7 +595,7 @@ function renderMaterialPorts(
  * @param ioType 句柄是输入端还是输出端。
  * @param accent 当前物料链的稳定强调色。
  * @param label 物料变量的中文优先展示标签。
- * @param direction 物料泳道从上到下或从左到右的流向。
+ * @param position 当前节点布局为该输入或输出指定的边缘方位。
  * @returns 可供 ReactFlow 连线的物料句柄元素。
  */
 function renderMaterialHandle(
@@ -556,16 +603,14 @@ function renderMaterialHandle(
   ioType: 'source' | 'target',
   accent: string,
   label: string,
-  direction: WorkflowMaterialSwimlaneDirection | undefined
+  position: Position
 ): React.JSX.Element {
   return (
     <Handle
       key={handle.uuid}
       id={handle.uuid}
       type={ioType}
-      position={direction === 'horizontal'
-        ? ioType === 'target' ? Position.Left : Position.Right
-        : ioType === 'target' ? Position.Top : Position.Bottom}
+      position={position}
       className={`wf-node__handle wf-node__handle--material wf-node__handle--${ioType}`}
       data-workflow-handle-template-uuid={handle.uuid}
       data-workflow-handle-key={handle.handleKey}

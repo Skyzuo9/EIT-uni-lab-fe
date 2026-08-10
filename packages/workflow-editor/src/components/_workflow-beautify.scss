@@ -195,9 +195,9 @@
   box-shadow: var(--unilab-shadow-panel);
 }
 
-.workflow :global(.workflow-runtime__material-role-menu) button {
+.workflow :global(.workflow-runtime__material-role-menu) label {
   display: grid;
-  grid-template-columns: 12px 1fr auto;
+  grid-template-columns: 14px 10px 1fr auto;
   align-items: center;
   gap: 8px;
   min-height: 32px;
@@ -211,23 +211,30 @@
   cursor: pointer;
 }
 
-.workflow :global(.workflow-runtime__material-role-menu) button:hover {
+.workflow :global(.workflow-runtime__material-role-menu) label:hover {
   color: var(--unilab-color-text);
   background: var(--unilab-color-surface-muted);
 }
 
 .workflow
   :global(.workflow-runtime__material-role-menu)
-  button:global(.is-active) {
+  label:global(.is-active) {
   color: var(--unilab-color-material);
   background: var(--unilab-color-material-soft);
 }
 
 .workflow
   :global(.workflow-runtime__material-role-menu)
-  button:focus-visible {
+  input:focus-visible {
   outline: 2px solid var(--unilab-color-focus);
-  outline-offset: -2px;
+  outline-offset: 1px;
+}
+
+.workflow
+  :global(.workflow-runtime__material-role-menu)
+  label:has(input:disabled) {
+  cursor: default;
+  opacity: .72;
 }
 
 .workflow :global(.workflow-runtime__material-role-menu) small {
@@ -235,22 +242,28 @@
   font: 600 10px/1 var(--unilab-font-mono);
 }
 
-.workflow :global(.workflow-runtime__material-role-swatch),
-.workflow :global(.workflow-runtime__material-role-menu .is-all) {
+.workflow :global(.workflow-runtime__material-role-swatch) {
   width: 10px;
   height: 10px;
   border: 1px solid color-mix(in srgb, currentcolor 38%, transparent);
   border-radius: 50%;
 }
 
-.workflow :global(.workflow-runtime__material-role-menu .is-all) {
-  background: conic-gradient(
-    #7c3aed,
-    #c026d3,
-    #0f766e,
-    #a16207,
-    #7c3aed
-  );
+.workflow :global(.workflow-runtime__material-role-show-all) {
+  min-height: 28px;
+  margin-top: 3px;
+  color: var(--unilab-color-material);
+  border: 0;
+  border-top: 1px solid var(--unilab-color-border);
+  background: transparent;
+  font: 650 11px/1 var(--unilab-font-sans);
+  cursor: pointer;
+}
+
+.workflow :global(.workflow-runtime__material-role-show-all):disabled {
+  color: var(--unilab-color-text-subtle);
+  cursor: default;
+  opacity: .65;
 }
 
 .workflow :global(.workflow-runtime__layout-strategy-field) {

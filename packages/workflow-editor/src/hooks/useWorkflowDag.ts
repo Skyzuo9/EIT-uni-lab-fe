@@ -16,6 +16,7 @@ import {
   type WorkflowMaterialSwimlaneDirection
 } from '../utils/workflowDagLayoutStrategy'
 import { layoutWorkflowMaterialSwimlanes } from '../utils/workflowMaterialSwimlaneLayout'
+import { layoutWorkflowPrimarySampleFlow } from '../utils/workflowPrimarySampleLayout'
 import { reconcileReactFlowNodeMeasurements } from '../utils/reactFlowNodeMeasurement'
 import {
   materialTraceAccent,
@@ -58,6 +59,8 @@ export function useWorkflowDag(
     () => buildFlowElements(
       strategy === 'material-swimlanes'
         ? layoutWorkflowMaterialSwimlanes(nodes, links, swimlaneDirection)
+        : strategy === 'primary-sample-serpentine'
+          ? layoutWorkflowPrimarySampleFlow(nodes, links)
         : layoutDag(nodes, links, { preserveExistingPositions: false }),
       nodes,
       links,
@@ -198,17 +201,22 @@ function buildFlowElements(
   const flowNodes: Node<WorkflowNodeData>[] = layout.nodes.map((node) => {
     const laneLayout = layout.swimlanes?.nodeLayouts.get(node.id)
     const handleLanes = layout.swimlanes?.handleLaneIndexes.get(node.id)
+    const nodePorts = layout.nodePorts?.get(node.id)
     return {
       id: node.id,
       type: 'wfNode',
       focusable: node.groupKind !== 'subworkflow',
       position: { x: node.x, y: node.y },
-      targetPosition: layout.direction === 'horizontal'
-        ? Position.Left
-        : Position.Top,
-      sourcePosition: layout.direction === 'horizontal'
-        ? Position.Right
-        : Position.Bottom,
+      targetPosition: nodePorts
+        ? reactFlowPosition(nodePorts.target)
+        : layout.direction === 'horizontal'
+          ? Position.Left
+          : Position.Top,
+      sourcePosition: nodePorts
+        ? reactFlowPosition(nodePorts.source)
+        : layout.direction === 'horizontal'
+          ? Position.Right
+          : Position.Bottom,
       ...(laneLayout
         ? { style: { width: laneLayout.width, height: laneLayout.height } }
         : {}),
@@ -274,11 +282,13 @@ function buildFlowElements(
         },
         type: 'workflowRoundedStep',
         data: {
-          direction: ready
-            ? 'TB'
-            : layout.direction === 'horizontal'
-              ? 'LR'
-              : 'TB',
+          direction: layout.edgeDirections?.get(index) ?? (
+            ready
+              ? 'TB'
+              : layout.direction === 'horizontal'
+                ? 'LR'
+                : 'TB'
+          ),
           borderRadius: 8,
           sourceNodeUuid: link.source,
           targetNodeUuid: link.target,
@@ -314,4 +324,21 @@ function buildFlowElements(
   )
 
   return { flowNodes, flowEdges }
+}
+
+/**
+ * 将布局模块的框架无关端口方位映射为 React Flow 方位枚举。
+ *
+ * @param side 布局模块返回的节点边缘方位。
+ * @returns React Flow 可直接消费的端口方位。
+ */
+function reactFlowPosition(
+  side: 'top' | 'right' | 'bottom' | 'left'
+): Position {
+  return {
+    top: Position.Top,
+    right: Position.Right,
+    bottom: Position.Bottom,
+    left: Position.Left
+  }[side]
 }

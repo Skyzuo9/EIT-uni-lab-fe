@@ -7,6 +7,7 @@ import type {
 } from './parseWorkflow'
 import {
   filterWorkflowByMaterialRole,
+  filterWorkflowByMaterialRoles,
   materialTraceAccent,
   projectMaterialTraces,
   workflowMaterialRoleOptions
@@ -188,6 +189,69 @@ describe('Material trace projection', () => {
       sourceHandleName: '产物板',
       accent,
     }])
+  })
+
+  /** 验证试剂与耗材可独立隐藏，同时保留承载主样品的共享操作节点。 */
+  it('projects multiple visible material roles without dropping shared actions', () => {
+    const sampleOutput = resourceSlotHandle('sample-output', 'sample', 'source')
+    const reagentOutput = resourceSlotHandle('reagent-output', 'reagent', 'source')
+    const consumableOutput = resourceSlotHandle(
+      'consumable-output',
+      'consumable',
+      'source'
+    )
+    const sampleInput = resourceSlotHandle('sample-input', 'sample', 'target')
+    const reagentInput = resourceSlotHandle('reagent-input', 'reagent', 'target')
+    const consumableInput = resourceSlotHandle(
+      'consumable-input',
+      'consumable',
+      'target'
+    )
+    const nodes = [
+      workflowNode('sample-source', '主样品', 'material_source', [sampleOutput]),
+      workflowNode(
+        'reagent-source',
+        '试剂',
+        'material_source',
+        [reagentOutput],
+        'reagent'
+      ),
+      workflowNode(
+        'consumable-source',
+        '耗材',
+        'material_source',
+        [consumableOutput],
+        'consumable'
+      ),
+      workflowNode('shared-action', '混合', 'action', [
+        sampleInput,
+        reagentInput,
+        consumableInput
+      ])
+    ]
+    const links = [
+      link('sample-source', sampleOutput.uuid, 'shared-action', sampleInput.uuid),
+      link('reagent-source', reagentOutput.uuid, 'shared-action', reagentInput.uuid),
+      link(
+        'consumable-source',
+        consumableOutput.uuid,
+        'shared-action',
+        consumableInput.uuid
+      )
+    ]
+
+    const filtered = filterWorkflowByMaterialRoles(
+      nodes,
+      links,
+      new Set(['primary_sample', 'reagent'])
+    )
+
+    expect(filtered.nodes.map((node) => node.id)).toEqual([
+      'sample-source',
+      'reagent-source',
+      'shared-action'
+    ])
+    expect(filtered.links).toEqual(links.slice(0, 2))
   })
 
   /** 验证下游边先出现时仍沿用最上游的同一物料身份。 */

@@ -2,6 +2,7 @@ import {
   Component,
   useEffect,
   useState,
+  type ChangeEvent,
   type ErrorInfo,
   type ReactNode
 } from 'react'
@@ -27,27 +28,65 @@ export interface LabMaterialRoleFilterOption {
 
 export interface UnifiedLabViewportProps {
   renderView: (mode: LabViewMode, options: LabViewOptions) => ReactNode
-  materialRoleFilter?: string | null
+  visibleMaterialRoles?: readonly string[] | null
   materialRoleOptions?: readonly LabMaterialRoleFilterOption[]
-  onMaterialRoleFilterChange?: (materialRole: string | null) => void
+  onVisibleMaterialRolesChange?: (
+    visibleMaterialRoles: readonly string[] | null
+  ) => void
 }
 
 /**
- * One host-owned mode switch drives Pascal's native 2D/3D/split state. The
- * app-owned 2.5D projection consumes the same Material aggregates while the
- * Pascal/WebGL tree stays mounted underneath.
+ * 渲染由宿主统一拥有的实验室视图模式、场景图层与物料流角色显隐控制。
+ *
+ * @param props 视图渲染入口、可见物料流角色（MaterialFlowRole）及变更回调。
+ * @returns 复用同一物料（Material）聚合的 2D、2.5D、3D 或分屏工作区。
  */
 export function UnifiedLabViewport({
   renderView,
-  materialRoleFilter = null,
+  visibleMaterialRoles = null,
   materialRoleOptions = [],
-  onMaterialRoleFilterChange
+  onVisibleMaterialRolesChange
 }: UnifiedLabViewportProps): React.JSX.Element {
   const [mode, setMode] = useState<LabViewMode>(readStoredMode)
   const [showSites, setShowSites] = useState(readStoredSiteLayer)
   const [showMaterialTransfers, setShowMaterialTransfers] = useState(
     readStoredMaterialTransferLayer
   )
+  const visibleMaterialRoleSet = new Set(
+    visibleMaterialRoles ?? materialRoleOptions.map((option) => option.value)
+  )
+  const allMaterialRolesVisible =
+    visibleMaterialRoleSet.size === materialRoleOptions.length
+
+  /**
+   * 切换物料流角色（MaterialFlowRole）在统一场景中的可见性。
+   *
+   * @param event 发生变化的复选框事件；value 是角色 wire 值。
+   * @returns 无返回值；至少保留一种角色，全部选中时规范化为 null。
+   */
+  function handleMaterialRoleVisibilityChange(
+    event: ChangeEvent<HTMLInputElement>
+  ): void {
+    const next = new Set(visibleMaterialRoleSet)
+    if (event.currentTarget.checked) next.add(event.currentTarget.value)
+    else next.delete(event.currentTarget.value)
+    if (next.size === 0) return
+    const ordered = materialRoleOptions
+      .map((option) => option.value)
+      .filter((value) => next.has(value))
+    onVisibleMaterialRolesChange?.(
+      ordered.length === materialRoleOptions.length ? null : ordered
+    )
+  }
+
+  /**
+   * 恢复统一场景中的全部物料流角色（MaterialFlowRole）。
+   *
+   * @returns 无返回值；null 表示不裁剪物料转运路线投影。
+   */
+  function showAllMaterialRoles(): void {
+    onVisibleMaterialRolesChange?.(null)
+  }
 
   useEffect(() => {
     globalThis.localStorage?.setItem(STORAGE_KEY, mode)
@@ -147,50 +186,57 @@ export function UnifiedLabViewport({
             <i aria-hidden="true" />
           </button>
         </div>
-        {materialRoleOptions.length > 0 && onMaterialRoleFilterChange && (
+        {materialRoleOptions.length > 0 && onVisibleMaterialRolesChange && (
           <details className="lab-material-role-filter">
-            <summary aria-label={`按物料角色筛选：${
-              materialRoleOptions.find((option) =>
-                option.value === materialRoleFilter
-              )?.label ?? '全部'
+            <summary aria-label={`物料节点可见性：${
+              allMaterialRolesVisible
+                ? '全部物料'
+                : `显示 ${visibleMaterialRoleSet.size}/${
+                    materialRoleOptions.length
+                  }`
             }`}>
               <FilterIcon />
               <span>
-                {materialRoleOptions.find((option) =>
-                  option.value === materialRoleFilter
-                )?.label ?? '全部物料'}
+                {allMaterialRolesVisible
+                  ? '全部物料'
+                  : `显示 ${visibleMaterialRoleSet.size}/${
+                      materialRoleOptions.length
+                    }`}
               </span>
             </summary>
-            <div role="radiogroup" aria-label="物料画布角色">
-              <button
-                type="button"
-                role="radio"
-                aria-checked={!materialRoleFilter}
-                className={!materialRoleFilter ? 'is-active' : undefined}
-                onClick={() => onMaterialRoleFilterChange(null)}
-              >
-                <i className="is-all" aria-hidden="true" />
-                <span>全部物料</span>
-              </button>
+            <div role="group" aria-label="物料节点可见性">
               {materialRoleOptions.map((option) => (
-                <button
+                <label
                   key={option.value}
-                  type="button"
-                  role="radio"
-                  aria-checked={materialRoleFilter === option.value}
-                  className={materialRoleFilter === option.value
+                  className={visibleMaterialRoleSet.has(option.value)
                     ? 'is-active'
                     : undefined}
-                  onClick={() => onMaterialRoleFilterChange(option.value)}
                 >
+                  <input
+                    type="checkbox"
+                    value={option.value}
+                    checked={visibleMaterialRoleSet.has(option.value)}
+                    disabled={
+                      visibleMaterialRoleSet.has(option.value) &&
+                      visibleMaterialRoleSet.size === 1
+                    }
+                    onChange={handleMaterialRoleVisibilityChange}
+                  />
                   <i
                     aria-hidden="true"
                     style={{ backgroundColor: option.accent }}
                   />
                   <span>{option.label}</span>
                   <small>{option.lineageCount}</small>
-                </button>
+                </label>
               ))}
+              <button
+                type="button"
+                disabled={allMaterialRolesVisible}
+                onClick={showAllMaterialRoles}
+              >
+                全部显示
+              </button>
             </div>
           </details>
         )}

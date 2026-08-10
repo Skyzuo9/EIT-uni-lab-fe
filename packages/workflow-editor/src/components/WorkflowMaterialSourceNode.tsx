@@ -11,6 +11,7 @@ import styles from './workflow.module.scss'
 interface WorkflowMaterialSourceNodeProps {
   data: WorkflowNodeData
   materialPorts: readonly WorkflowMaterialPortCard[]
+  materialSourcePosition: Position
   stateVisible: boolean
   stateLabel: string
   structuralTargetHandles: ReactNode
@@ -26,6 +27,7 @@ interface WorkflowMaterialSourceNodeProps {
 export default function WorkflowMaterialSourceNode({
   data,
   materialPorts,
+  materialSourcePosition,
   stateVisible,
   stateLabel,
   structuralTargetHandles,
@@ -41,6 +43,7 @@ export default function WorkflowMaterialSourceNode({
       className={`${styles.node} wf-node wf-node--material-source cursor-pointer overflow-visible`}
       data-workflow-node-uuid={data.id}
       data-workflow-node-kind="material_source"
+      data-workflow-material-role={data.materialSource?.flowRole}
       data-workflow-layout-strategy={data.layoutStrategy}
       data-workflow-layout-direction={data.materialLaneDirection}
       data-workflow-node-description={data.description}
@@ -80,7 +83,7 @@ export default function WorkflowMaterialSourceNode({
         )}
         {renderMaterialSourceHandles(
           materialPorts,
-          data.materialLaneDirection
+          materialSourcePosition
         )}
       </span>
       {stateVisible && (
@@ -97,12 +100,12 @@ export default function WorkflowMaterialSourceNode({
  * 把物料来源（MaterialSource）的输出物料占位符映射到六边形底边句柄。
  *
  * @param cards 已按变量合并的物料占位符端口。
- * @param direction 物料泳道从上到下或从左到右的流向。
+ * @param position 当前物料来源输出端口在节点边缘的方位。
  * @returns 对准六边形底边的物料流（MaterialFlow）输出句柄。
  */
 function renderMaterialSourceHandles(
   cards: readonly WorkflowMaterialPortCard[],
-  direction: WorkflowNodeData['materialLaneDirection']
+  position: Position
 ): React.JSX.Element[] | null {
   const outputs = cards.filter((card) => card.sourceHandle)
   if (outputs.length === 0) return null
@@ -113,7 +116,7 @@ function renderMaterialSourceHandles(
         key={handle.uuid}
         id={handle.uuid}
         type="source"
-        position={direction === 'horizontal' ? Position.Right : Position.Bottom}
+        position={position}
         className="wf-node__handle wf-node__handle--material wf-node__material-source-handle"
         data-workflow-handle-template-uuid={handle.uuid}
         data-workflow-handle-key={handle.handleKey}
@@ -121,7 +124,7 @@ function renderMaterialSourceHandles(
         data-workflow-handle-kind="material"
         aria-label={`${card.label} 物料输出端口`}
         title={handle.description || `${card.label} · 物料流`}
-        style={direction === 'horizontal'
+        style={position === Position.Left || position === Position.Right
           ? {
               top: `${((index + 1) * 100) / (outputs.length + 1)}%`,
               '--wf-material-accent': card.accent

@@ -99,19 +99,26 @@ export function workflowMaterialRoleOptions(
 }
 
 /**
- * 只保留承载指定物料角色的节点、该角色的物料边，以及可见节点之间的结构边。
- * 过滤仅作用于画布投影，不修改 OS 权威工作流图。
+ * 只保留承载任一可见物料流角色（MaterialFlowRole）的节点、对应物料边，
+ * 以及可见节点之间的结构边。共享操作节点只要仍承载一种可见物料就会保留。
+ * 过滤仅作用于画布投影，不修改 OS 权威工作流图（Workflow Graph）。
+ *
+ * @param nodes 当前权威工作流图投影出的全部节点。
+ * @param links 当前权威工作流图投影出的全部边。
+ * @param visibleMaterialRoles 可见角色集合；null 表示显示全部角色。
+ * @param projection 可复用的物料流追踪投影，省略时由当前图计算。
+ * @returns 仅包含所选角色及其共享操作节点的画布投影。
  */
-export function filterWorkflowByMaterialRole(
+export function filterWorkflowByMaterialRoles(
   nodes: readonly WorkflowNode[],
   links: readonly WorkflowLink[],
-  materialRole: string | null,
+  visibleMaterialRoles: ReadonlySet<string> | null,
   projection = projectMaterialTraces(nodes, links)
 ): WorkflowMaterialRoleProjection {
-  if (!materialRole) return { nodes: [...nodes], links: [...links] }
+  if (!visibleMaterialRoles) return { nodes: [...nodes], links: [...links] }
   const lineageKeys = new Set(
     projection.lineages
-      .filter((lineage) => lineage.materialRole === materialRole)
+      .filter((lineage) => visibleMaterialRoles.has(lineage.materialRole))
       .map((lineage) => lineage.key)
   )
   if (lineageKeys.size === 0) return { nodes: [], links: [] }
@@ -153,6 +160,29 @@ export function filterWorkflowByMaterialRole(
         : visibleNodeIds.has(link.source) && visibleNodeIds.has(link.target)
     })
   }
+}
+
+/**
+ * 兼容既有单一物料流角色（MaterialFlowRole）聚焦调用。
+ *
+ * @param nodes 当前权威工作流图投影出的全部节点。
+ * @param links 当前权威工作流图投影出的全部边。
+ * @param materialRole 唯一可见角色；null 表示显示全部角色。
+ * @param projection 可复用的物料流追踪投影。
+ * @returns 与多角色可见性投影相同结构的节点与边。
+ */
+export function filterWorkflowByMaterialRole(
+  nodes: readonly WorkflowNode[],
+  links: readonly WorkflowLink[],
+  materialRole: string | null,
+  projection = projectMaterialTraces(nodes, links)
+): WorkflowMaterialRoleProjection {
+  return filterWorkflowByMaterialRoles(
+    nodes,
+    links,
+    materialRole ? new Set([materialRole]) : null,
+    projection
+  )
 }
 
 /**

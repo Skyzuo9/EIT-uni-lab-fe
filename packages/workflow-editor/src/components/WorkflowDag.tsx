@@ -33,11 +33,12 @@ import { useWorkflowDag } from '../hooks/useWorkflowDag'
 import WorkflowNodeCard from './WorkflowNodeCard'
 import WorkflowRoundedStepEdge from './WorkflowRoundedStepEdge'
 import { WorkflowButton } from './WorkflowButton'
+import WorkflowMaterialVisibilityControl from './WorkflowMaterialVisibilityControl'
 import type { WorkflowNodeData } from './WorkflowNodeCard'
 import type { WorkflowLink, WorkflowNode } from '../utils/parseWorkflow'
 import { projectNestedWorkflow } from '../utils/canonicalWorkflow'
 import {
-  filterWorkflowByMaterialRole,
+  filterWorkflowByMaterialRoles,
   projectMaterialTraces,
   workflowMaterialRoleOptions
 } from '../utils/workflowMaterialTrace'
@@ -93,8 +94,10 @@ interface WorkflowDagProps {
     nodeUuids: string[]
     edgeUuids: string[]
   }) => void
-  materialRoleFilter?: string | null
-  onMaterialRoleFilterChange?: (materialRole: string | null) => void
+  visibleMaterialRoles?: readonly string[] | null
+  onVisibleMaterialRolesChange?: (
+    visibleMaterialRoles: readonly string[] | null
+  ) => void
 }
 
 // 注册自定义节点类型(在组件外定义,避免每次渲染重建)
@@ -131,14 +134,22 @@ export default function WorkflowDag({
   onNodePositionChange,
   onConnectHandles,
   onDeleteRequest,
-  materialRoleFilter,
-  onMaterialRoleFilterChange
+  visibleMaterialRoles,
+  onVisibleMaterialRolesChange
 }: WorkflowDagProps): React.JSX.Element {
   const [isBeautifying, setIsBeautifying] = useState(false)
+  const initialLayoutStrategy: WorkflowDagLayoutStrategy = nodes.some(
+    (node) => node.materialSource?.flowRole === 'primary_sample'
+  )
+    ? 'primary-sample-serpentine'
+    : DEFAULT_WORKFLOW_DAG_LAYOUT_STRATEGY
   const [layoutStrategy, setLayoutStrategy] =
     useState<WorkflowDagLayoutStrategy>(
-      DEFAULT_WORKFLOW_DAG_LAYOUT_STRATEGY
+      initialLayoutStrategy
     )
+  const layoutStrategyInitializedRef = useRef(
+    initialLayoutStrategy === 'primary-sample-serpentine'
+  )
   const [swimlaneDirection, setSwimlaneDirection] =
     useState<WorkflowMaterialSwimlaneDirection>(
       DEFAULT_WORKFLOW_MATERIAL_SWIMLANE_DIRECTION
@@ -146,14 +157,13 @@ export default function WorkflowDag({
   const [expandedGroupIds, setExpandedGroupIds] = useState<Set<string>>(
     () => new Set()
   )
-  const [localMaterialRoleFilter, setLocalMaterialRoleFilter] = useState<
-    string | null
+  const [localVisibleMaterialRoles, setLocalVisibleMaterialRoles] = useState<
+    readonly string[] | null
   >(null)
-  const activeMaterialRoleFilter = materialRoleFilter === undefined
-    ? localMaterialRoleFilter
-    : materialRoleFilter
+  const activeVisibleMaterialRoles = visibleMaterialRoles === undefined
+    ? localVisibleMaterialRoles
+    : visibleMaterialRoles
   const flowInstanceRef = useRef<ReactFlowInstance | null>(null)
-  const materialRoleFilterRef = useRef<HTMLDetailsElement | null>(null)
   const beautifyTimerRef = useRef<
     ReturnType<typeof globalThis.setTimeout> | null
   >(null)
@@ -183,15 +193,25 @@ export default function WorkflowDag({
     () => workflowMaterialRoleOptions(materialTraceProjection),
     [materialTraceProjection]
   )
+  useEffect(() => {
+    if (layoutStrategyInitializedRef.current) return
+    if (!materialRoleOptions.some((option) =>
+      option.value === 'primary_sample'
+    )) return
+    layoutStrategyInitializedRef.current = true
+    setLayoutStrategy('primary-sample-serpentine')
+  }, [materialRoleOptions])
   const materialRoleProjection = useMemo(
-    () => filterWorkflowByMaterialRole(
+    () => filterWorkflowByMaterialRoles(
       nodes,
       links,
-      activeMaterialRoleFilter,
+      activeVisibleMaterialRoles
+        ? new Set(activeVisibleMaterialRoles)
+        : null,
       materialTraceProjection
     ),
     [
-      activeMaterialRoleFilter,
+      activeVisibleMaterialRoles,
       links,
       materialTraceProjection,
       nodes
@@ -206,20 +226,35 @@ export default function WorkflowDag({
     [expandedGroupIds, materialRoleProjection]
   )
   useEffect(() => {
+    if (!activeVisibleMaterialRoles || materialRoleOptions.length === 0) return
+    const availableRoles = new Set(
+      materialRoleOptions.map((option) => option.value)
+    )
+    const nextRoles = activeVisibleMaterialRoles.filter((role) =>
+      availableRoles.has(role)
+    )
     if (
-      !activeMaterialRoleFilter ||
-      materialRoleOptions.length === 0 ||
-      materialRoleOptions.some((option) =>
-        option.value === activeMaterialRoleFilter
+      layoutStrategy === 'primary-sample-serpentine' &&
+      availableRoles.has('primary_sample') &&
+      !nextRoles.includes('primary_sample')
+    ) nextRoles.unshift('primary_sample')
+    if (
+      nextRoles.length === activeVisibleMaterialRoles.length &&
+      nextRoles.every((role, index) =>
+        role === activeVisibleMaterialRoles[index]
       )
     ) return
-    if (materialRoleFilter === undefined) setLocalMaterialRoleFilter(null)
-    onMaterialRoleFilterChange?.(null)
+    const normalizedRoles = nextRoles.length === 0 ? null : nextRoles
+    if (visibleMaterialRoles === undefined) {
+      setLocalVisibleMaterialRoles(normalizedRoles)
+    }
+    onVisibleMaterialRolesChange?.(normalizedRoles)
   }, [
-    activeMaterialRoleFilter,
-    materialRoleFilter,
+    activeVisibleMaterialRoles,
+    layoutStrategy,
     materialRoleOptions,
-    onMaterialRoleFilterChange
+    onVisibleMaterialRolesChange,
+    visibleMaterialRoles
   ])
   const toggleGroup = useCallback((nodeId: string) => {
     setExpandedGroupIds((current) => {
@@ -401,16 +436,50 @@ export default function WorkflowDag({
   }, [canBeautify, layoutStrategy, onBeautify, swimlaneDirection])
 
   /**
+   * 更新画布物料流角色（MaterialFlowRole）可见性投影。
+   *
+   * @param nextVisibleRoles 可见角色数组；null 表示全部可见。
+   * @returns 无返回值；受控模式发布到跨面板交互所有者。
+   */
+  const handleVisibleMaterialRolesChange = useCallback((
+    nextVisibleRoles: readonly string[] | null
+  ): void => {
+    if (visibleMaterialRoles === undefined) {
+      setLocalVisibleMaterialRoles(nextVisibleRoles)
+    }
+    onVisibleMaterialRolesChange?.(nextVisibleRoles)
+  }, [onVisibleMaterialRolesChange, visibleMaterialRoles])
+
+  /**
    * 切换画布布局策略并立即刷新本地预览。
    *
    * @param event 布局策略下拉框的变更事件。
-   * @returns 无返回值；只有点击“应用布局”才会写入工作流草稿。
+   * @returns 无返回值；主样品蛇形模式同时保证主样品保持可见。
    */
   const handleLayoutStrategyChange = useCallback((
     event: React.ChangeEvent<HTMLSelectElement>
   ): void => {
-    setLayoutStrategy(event.target.value as WorkflowDagLayoutStrategy)
-  }, [])
+    const nextStrategy = event.target.value as WorkflowDagLayoutStrategy
+    layoutStrategyInitializedRef.current = true
+    setLayoutStrategy(nextStrategy)
+    if (
+      nextStrategy === 'primary-sample-serpentine' &&
+      activeVisibleMaterialRoles &&
+      !activeVisibleMaterialRoles.includes('primary_sample') &&
+      materialRoleOptions.some((option) =>
+        option.value === 'primary_sample'
+      )
+    ) {
+      handleVisibleMaterialRolesChange([
+        'primary_sample',
+        ...activeVisibleMaterialRoles
+      ])
+    }
+  }, [
+    activeVisibleMaterialRoles,
+    handleVisibleMaterialRolesChange,
+    materialRoleOptions
+  ])
 
   /**
    * 切换物料泳道的流向并立即刷新本地预览。
@@ -423,16 +492,6 @@ export default function WorkflowDag({
   ): void => {
     setSwimlaneDirection(direction)
   }, [])
-
-  const handleMaterialRoleFilterChange = useCallback((
-    nextMaterialRole: string | null
-  ): void => {
-    if (materialRoleFilter === undefined) {
-      setLocalMaterialRoleFilter(nextMaterialRole)
-    }
-    onMaterialRoleFilterChange?.(nextMaterialRole)
-    materialRoleFilterRef.current?.removeAttribute('open')
-  }, [materialRoleFilter, onMaterialRoleFilterChange])
 
   if (flowNodes.length === 0) {
     return (
@@ -581,72 +640,16 @@ export default function WorkflowDag({
               aria-label="物料筛选与布局"
             >
               {materialRoleOptions.length > 0 && (
-                <details
-                  ref={materialRoleFilterRef}
-                  className="workflow-runtime__material-role-filter"
-                  data-filter-active={Boolean(activeMaterialRoleFilter)}
-                >
-                  <summary
-                    aria-label={`按物料角色筛选：${
-                      materialRoleOptions.find((option) =>
-                        option.value === activeMaterialRoleFilter
-                      )?.label ?? '全部'
-                    }`}
-                  >
-                    <svg aria-hidden="true" viewBox="0 0 20 20">
-                      <path d="M3 4h14l-5.4 6.2v4.4l-3.2 1.8v-6.2L3 4Z" />
-                    </svg>
-                    <span>
-                      {materialRoleOptions.find((option) =>
-                        option.value === activeMaterialRoleFilter
-                      )?.label ?? '全部物料'}
-                    </span>
-                  </summary>
-                  <div
-                    className="workflow-runtime__material-role-menu"
-                    role="radiogroup"
-                    aria-label="物料角色"
-                  >
-                    <button
-                      type="button"
-                      role="radio"
-                      aria-checked={!activeMaterialRoleFilter}
-                      className={!activeMaterialRoleFilter
-                        ? 'is-active'
-                        : undefined}
-                      onClick={() => handleMaterialRoleFilterChange(null)}
-                    >
-                      <span className="is-all" aria-hidden="true" />
-                      <span>全部物料</span>
-                    </button>
-                    {materialRoleOptions.map((option) => (
-                      <button
-                        key={option.value}
-                        type="button"
-                        role="radio"
-                        aria-checked={
-                          activeMaterialRoleFilter === option.value
-                        }
-                        className={
-                          activeMaterialRoleFilter === option.value
-                            ? 'is-active'
-                            : undefined
-                        }
-                        onClick={() => handleMaterialRoleFilterChange(
-                          option.value
-                        )}
-                      >
-                        <span
-                          className="workflow-runtime__material-role-swatch"
-                          aria-hidden="true"
-                          style={{ backgroundColor: option.accent }}
-                        />
-                        <span>{option.label}</span>
-                        <small>{option.lineageCount}</small>
-                      </button>
-                    ))}
-                  </div>
-                </details>
+                <WorkflowMaterialVisibilityControl
+                  options={materialRoleOptions}
+                  visibleMaterialRoles={activeVisibleMaterialRoles}
+                  primarySampleLocked={
+                    layoutStrategy === 'primary-sample-serpentine'
+                  }
+                  onVisibleMaterialRolesChange={
+                    handleVisibleMaterialRolesChange
+                  }
+                />
               )}
               <label className="workflow-runtime__layout-strategy-field">
                 <span aria-hidden="true">布局</span>

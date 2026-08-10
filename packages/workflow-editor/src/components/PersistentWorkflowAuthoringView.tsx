@@ -20,12 +20,14 @@ import styles from './workflow.module.scss'
 
 export function PersistentWorkflowAuthoringView({
   model,
-  materialRoleFilter,
-  onMaterialRoleFilterChange
+  visibleMaterialRoles,
+  onVisibleMaterialRolesChange
 }: {
   model: PersistentWorkflowAuthoringModel
-  materialRoleFilter?: string | null
-  onMaterialRoleFilterChange?: (materialRole: string | null) => void
+  visibleMaterialRoles?: readonly string[] | null
+  onVisibleMaterialRolesChange?: (
+    visibleMaterialRoles: readonly string[] | null
+  ) => void
 }): React.JSX.Element {
   const {
     actionCatalog,
@@ -364,8 +366,10 @@ export function PersistentWorkflowAuthoringView({
                     canvasMutationEnabled={policy.canvasMutationEnabled}
                     onConnectHandles={connectTypedHandles}
                     onDeleteRequest={deleteCanvasElements}
-                    materialRoleFilter={materialRoleFilter}
-                    onMaterialRoleFilterChange={onMaterialRoleFilterChange}
+                    visibleMaterialRoles={visibleMaterialRoles}
+                    onVisibleMaterialRolesChange={
+                      onVisibleMaterialRolesChange
+                    }
                   />
                 </div>
                 {mode === 'canvas' && selectedNodeUuid && (

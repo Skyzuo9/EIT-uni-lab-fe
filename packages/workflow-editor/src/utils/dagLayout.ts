@@ -24,6 +24,7 @@ import {
   layoutWorkflowMaterialSwimlanes,
   type WorkflowMaterialSwimlaneProjection
 } from './workflowMaterialSwimlaneLayout'
+import { layoutWorkflowPrimarySampleFlow } from './workflowPrimarySampleLayout'
 
 // 布局后的节点(带坐标)
 export interface LayoutNode extends WorkflowNode {
@@ -33,11 +34,27 @@ export interface LayoutNode extends WorkflowNode {
 
 export type DagLayoutDirection = 'horizontal' | 'vertical'
 
+export type WorkflowNodePortSide = 'top' | 'right' | 'bottom' | 'left'
+
+export interface WorkflowNodePortLayout {
+  target: WorkflowNodePortSide
+  source: WorkflowNodePortSide
+}
+
+export interface WorkflowPrimarySampleLayoutProjection {
+  hasPrimarySample: boolean
+  backboneNodeIds: readonly string[]
+  rowByNode: Map<string, number>
+}
+
 export interface LayoutResult {
   nodes: LayoutNode[]
   links: WorkflowLink[]
   direction: DagLayoutDirection
   swimlanes?: WorkflowMaterialSwimlaneProjection
+  nodePorts?: Map<string, WorkflowNodePortLayout>
+  edgeDirections?: Map<number, 'TB' | 'LR'>
+  primarySample?: WorkflowPrimarySampleLayoutProjection
 }
 
 export interface LayoutDagOptions {
@@ -396,7 +413,9 @@ export function beautifyWorkflowRevision(
   const nextNodes = { ...previousNodes }
   const result = strategy === 'material-swimlanes'
     ? layoutWorkflowMaterialSwimlanes(nodes, links, swimlaneDirection)
-    : layoutDag(nodes, links, { preserveExistingPositions: false })
+    : strategy === 'primary-sample-serpentine'
+      ? layoutWorkflowPrimarySampleFlow(nodes, links)
+      : layoutDag(nodes, links, { preserveExistingPositions: false })
   for (const node of result.nodes) {
     nextNodes[node.id] = {
       ...recordValue(previousNodes[node.id]),

@@ -15,10 +15,11 @@ describe('UnifiedLabViewport material role filter', () => {
     vi.unstubAllGlobals()
   })
 
-  it('renders the shared role filter with text and lineage counts', () => {
+  /** 验证统一场景复用多选物料流角色（MaterialFlowRole）显隐意图。 */
+  it('renders shared multi-role visibility with text and lineage counts', () => {
     const markup = renderToStaticMarkup(
       <UnifiedLabViewport
-        materialRoleFilter="reagent"
+        visibleMaterialRoles={['reagent']}
         materialRoleOptions={[
           {
             value: 'reagent',
@@ -33,14 +34,15 @@ describe('UnifiedLabViewport material role filter', () => {
             lineageCount: 2
           }
         ]}
-        onMaterialRoleFilterChange={vi.fn()}
+        onVisibleMaterialRolesChange={vi.fn()}
         renderView={() => <div>scene</div>}
       />
     )
 
-    expect(markup).toContain('aria-label="按物料角色筛选：试剂"')
-    expect(markup).toContain('aria-label="物料画布角色"')
-    expect(markup).toContain('aria-checked="true"')
+    expect(markup).toContain('aria-label="物料节点可见性：显示 1/2"')
+    expect(markup).toContain('aria-label="物料节点可见性"')
+    expect(markup).toContain('type="checkbox"')
+    expect(markup).toContain('checked=""')
     expect(markup).toContain('试剂')
     expect(markup).toContain('耗材')
     expect(markup).toContain('>5<')

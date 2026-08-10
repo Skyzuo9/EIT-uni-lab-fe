@@ -14,7 +14,7 @@ export interface LabInteractionState {
   activeWorkflowRuntimeGeneration: number
   activeWorkflowMaterialTransferRoutes:
     readonly WorkflowMaterialTransferRoute[]
-  activeWorkflowMaterialRoleFilter: string | null
+  activeWorkflowVisibleMaterialRoles: readonly string[] | null
   selectedWorkflowStepId: string | null
   selectMaterials: (materialIds: readonly string[]) => void
   highlightMaterials: (materialIds: readonly string[]) => void
@@ -29,9 +29,9 @@ export interface LabInteractionState {
     panelId: string,
     workflowStepId: string | null
   ) => void
-  setWorkflowMaterialRoleFilter: (
+  setWorkflowVisibleMaterialRoles: (
     panelId: string,
-    materialRole: string | null
+    visibleMaterialRoles: readonly string[] | null
   ) => void
   clearInteraction: () => void
 }
@@ -46,7 +46,7 @@ const EMPTY_INTERACTION = {
   activeWorkflowRuntimeGeneration: 0,
   activeWorkflowMaterialTransferRoutes:
     [] as readonly WorkflowMaterialTransferRoute[],
-  activeWorkflowMaterialRoleFilter: null,
+  activeWorkflowVisibleMaterialRoles: null,
   selectedWorkflowStepId: null
 }
 
@@ -88,7 +88,7 @@ export function createLabInteractionStore(): StoreApi<LabInteractionState> {
         activeWorkflowTaskId: null,
         activeWorkflowRuntimeGeneration: 0,
         activeWorkflowMaterialTransferRoutes: [],
-        activeWorkflowMaterialRoleFilter: null,
+        activeWorkflowVisibleMaterialRoles: null,
         selectedWorkflowStepId: null
       })
     },
@@ -101,7 +101,7 @@ export function createLabInteractionStore(): StoreApi<LabInteractionState> {
         activeWorkflowTaskId: null,
         activeWorkflowRuntimeGeneration: 0,
         activeWorkflowMaterialTransferRoutes: [],
-        activeWorkflowMaterialRoleFilter: null,
+        activeWorkflowVisibleMaterialRoles: null,
         selectedWorkflowStepId: null
       })
     },
@@ -134,17 +134,24 @@ export function createLabInteractionStore(): StoreApi<LabInteractionState> {
       if (get().selectedWorkflowStepId === selectedWorkflowStepId) return
       set({ selectedWorkflowStepId })
     },
-    /** 发布当前工作流面板的物料角色筛选意图，并拒绝非所有者面板更新。 */
-    setWorkflowMaterialRoleFilter: (
+    /** 发布当前工作流面板的物料流角色（MaterialFlowRole）可见性意图。 */
+    setWorkflowVisibleMaterialRoles: (
       panelId,
-      activeWorkflowMaterialRoleFilter
+      activeWorkflowVisibleMaterialRoles
     ) => {
       if (get().activeWorkflowPanelId !== panelId) return
       if (
-        get().activeWorkflowMaterialRoleFilter ===
-          activeWorkflowMaterialRoleFilter
+        sameNullableIds(
+          get().activeWorkflowVisibleMaterialRoles,
+          activeWorkflowVisibleMaterialRoles
+        )
       ) return
-      set({ activeWorkflowMaterialRoleFilter })
+      set({
+        activeWorkflowVisibleMaterialRoles:
+          activeWorkflowVisibleMaterialRoles
+            ? [...activeWorkflowVisibleMaterialRoles]
+            : null
+      })
     },
     clearInteraction: () => set(EMPTY_INTERACTION)
   }))
@@ -160,4 +167,19 @@ function sameIds(
     left.length === right.length &&
     left.every((value, index) => value === right[index])
   )
+}
+
+/**
+ * 比较两个可空的有序稳定身份数组。
+ *
+ * @param left 当前物料流角色（MaterialFlowRole）可见性数组。
+ * @param right 候选物料流角色（MaterialFlowRole）可见性数组。
+ * @returns 两者同为 null 或逐项相同时返回 true。
+ */
+function sameNullableIds(
+  left: readonly string[] | null,
+  right: readonly string[] | null
+): boolean {
+  if (left === null || right === null) return left === right
+  return sameIds(left, right)
 }

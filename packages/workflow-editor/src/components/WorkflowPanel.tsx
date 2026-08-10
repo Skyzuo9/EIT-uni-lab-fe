@@ -31,8 +31,10 @@ export interface WorkflowPanelProps {
     projection: WorkflowPanelRuntimeProjection | null
   ) => void
   onSelectedWorkflowStepChange?: (workflowNodeUuid: string | null) => void
-  materialRoleFilter?: string | null
-  onMaterialRoleFilterChange?: (materialRole: string | null) => void
+  visibleMaterialRoles?: readonly string[] | null
+  onVisibleMaterialRolesChange?: (
+    visibleMaterialRoles: readonly string[] | null
+  ) => void
 }
 
 /**
@@ -53,8 +55,8 @@ export default function WorkflowPanel({
   onActiveWorkflowChange,
   onWorkflowRuntimeProjectionChange,
   onSelectedWorkflowStepChange,
-  materialRoleFilter,
-  onMaterialRoleFilterChange
+  visibleMaterialRoles,
+  onVisibleMaterialRolesChange
 }: WorkflowPanelProps): React.JSX.Element {
   const [selectedWorkflowUuid, setSelectedWorkflowUuid] = useState<
     string | null
@@ -104,8 +106,8 @@ export default function WorkflowPanel({
           ? onWorkflowRuntimeProjectionChange
           : undefined}
         onSelectedWorkflowStepChange={onSelectedWorkflowStepChange}
-        materialRoleFilter={materialRoleFilter}
-        onMaterialRoleFilterChange={onMaterialRoleFilterChange}
+        visibleMaterialRoles={visibleMaterialRoles}
+        onVisibleMaterialRolesChange={onVisibleMaterialRolesChange}
         onChooseWorkflow={explicitWorkflowUuid
           ? undefined
           : () => {
