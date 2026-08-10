@@ -86,6 +86,7 @@
     "start:remote": "node scripts/start-workbench.mjs --remote",
     "start:theia-only": "theia start \"${THEIA_WORKSPACE:-../..}\" --hostname 127.0.0.1 --port ${THEIA_PORT:-3100} --plugins=local-dir:plugins",
     "package:mac": "pnpm build:desktop && node scripts/package-macos.mjs --signed",
+    "package:mac:adhoc": "pnpm build:desktop && node scripts/package-macos.mjs --adhoc",
     "package:mac:unsigned": "pnpm build:desktop && node scripts/package-macos.mjs --unsigned",
     "test": "node --test scripts/*.test.mjs",
     "watch": "theia build --watch --mode development"

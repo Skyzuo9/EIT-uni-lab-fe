@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict'
-import { readFile } from 'node:fs/promises'
+import { lstat, mkdir, mkdtemp, readFile, rm, symlink } from 'node:fs/promises'
+import os from 'node:os'
+import path from 'node:path'
 import { describe, it } from 'node:test'
 
+import { removePackagedDesktopSelfLink } from '../../desktop/scripts/after-pack.mjs'
 import {
   assertMacosSigningEnvironment,
   NODE_RUNTIME_SHA256,
@@ -14,6 +17,42 @@ describe('Workbench macOS distribution gate', () => {
       () => assertMacosSigningEnvironment({}),
       /CSC_LINK.*APPLE_TEAM_ID/
     )
+  })
+
+  it('keeps the temporary ad-hoc acceptance build separate from formal release', async () => {
+    const packageManifest = JSON.parse(await readFile(
+      new URL('../package.json', import.meta.url),
+      'utf8'
+    ))
+
+    assert.match(packageManifest.scripts['package:mac'], /--signed$/u)
+    assert.match(packageManifest.scripts['package:mac:adhoc'], /--adhoc$/u)
+    assert.doesNotMatch(packageManifest.scripts['package:mac:adhoc'], /--signed/u)
+  })
+
+  it('removes the deploy-only broken desktop self-link before signing', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'unilab-packaged-app-'))
+    const link = path.join(
+      root,
+      'Contents',
+      'Resources',
+      'desktop',
+      'node_modules',
+      '.pnpm',
+      'node_modules',
+      '@unilab',
+      'desktop'
+    )
+    try {
+      await mkdir(path.dirname(link), { recursive: true })
+      await symlink('/missing/deploy-only-workspace-package', link)
+
+      await removePackagedDesktopSelfLink(root)
+
+      await assert.rejects(lstat(link), error => error?.code === 'ENOENT')
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
   })
 
   it('accepts the complete electron-builder signing contract', () => {

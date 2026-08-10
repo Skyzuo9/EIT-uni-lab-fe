@@ -9,6 +9,7 @@ import {
   openSync,
   readFileSync,
   readSync,
+  realpathSync,
   readdirSync,
   rmSync,
   statSync
@@ -98,9 +99,12 @@ export function validatePackagedWorkbench(outputDirectory) {
   return appPath
 }
 
-export function packageMacos({ signed }) {
+export function packageMacos({ signed, adhoc = false }) {
   if (process.platform !== 'darwin' || process.arch !== 'arm64') {
     throw new Error('T11 仅在 macOS arm64 构建；darwin-x64 仍为 unverified。')
+  }
+  if (signed && adhoc) {
+    throw new Error('Developer ID 正式签名与 ad-hoc 临时签名不能同时启用。')
   }
   if (signed) assertMacosSigningEnvironment()
 
@@ -138,6 +142,13 @@ export function packageMacos({ signed }) {
         '--config.mac.identity=null',
         '--config.mac.notarize=false'
       )
+      if (adhoc) {
+        builderEnvironment['UNILAB_WORKBENCH_ADHOC_SIGN'] = '1'
+        builderArgs.push(
+          '--config.mac.artifactName=${productName}-${version}-rc-adhoc-${arch}.${ext}',
+          '--config.dmg.artifactName=${productName}-${version}-rc-adhoc-${arch}.${ext}'
+        )
+      }
     }
     runCommand(
       process.execPath,
@@ -162,11 +173,15 @@ export function packageMacos({ signed }) {
       '--app',
       appPath
     ])
-    const installer = findInstaller(outputDirectory)
+    let installer = findInstaller(outputDirectory)
     if (signed) verifySignedAndNotarized(appPath, installer.path)
+    if (adhoc) installer = signAndVerifyAdHocCandidate(installer.path)
     publishInstaller(installer.path)
+    const distribution = signed
+      ? 'signed/notarized'
+      : adhoc ? 'RC ad-hoc signed' : 'unsigned'
     console.log(
-      `macOS ${signed ? 'signed/notarized' : 'unsigned'} 安装包已发布：${join(releaseDirectory, basename(installer.path))}（${formatMebibytes(installer.size)} MiB）`
+      `macOS ${distribution} 安装包已发布：${join(releaseDirectory, basename(installer.path))}（${formatMebibytes(installer.size)} MiB）`
     )
   } finally {
     rmSync(outputDirectory, { recursive: true, force: true })
@@ -256,6 +271,44 @@ function verifySignedAndNotarized(appPath, installerPath) {
   runCommand('xcrun', ['stapler', 'validate', installerPath])
 }
 
+function signAndVerifyAdHocCandidate(installerPath) {
+  runCommand('codesign', ['--force', '--sign', '-', '--timestamp=none', installerPath])
+  runCommand('codesign', ['--verify', '--verbose=2', installerPath])
+  runCommand('hdiutil', ['verify', installerPath])
+  const mountPoint = realpathSync(
+    mkdtempSync(join(tmpdir(), 'unilab-workbench-adhoc-mount-'))
+  )
+  const verificationDirectory = realpathSync(
+    mkdtempSync(join(tmpdir(), 'unilab-workbench-adhoc-verify-'))
+  )
+  try {
+    runCommand('hdiutil', [
+      'attach',
+      '-readonly',
+      '-nobrowse',
+      '-mountpoint',
+      mountPoint,
+      installerPath
+    ])
+    const app = readdirSync(mountPoint, { withFileTypes: true })
+      .find(entry => entry.isDirectory() && entry.name.endsWith('.app'))
+    if (!app) throw new Error('ad-hoc DMG 内缺少 Workbench .app。')
+    const mountedApplication = realpathSync(join(mountPoint, app.name))
+    const copiedApplication = join(verificationDirectory, app.name)
+    runCommand('ditto', [mountedApplication, copiedApplication])
+    runCommand('codesign', [
+      '--display',
+      '--verbose=4',
+      copiedApplication
+    ])
+  } finally {
+    spawnSync('hdiutil', ['detach', mountPoint, '-force'], { stdio: 'inherit' })
+    rmSync(mountPoint, { recursive: true, force: true })
+    rmSync(verificationDirectory, { recursive: true, force: true })
+  }
+  return validateMacosInstaller(installerPath)
+}
+
 function runCommand(command, args, cwd = workbenchDirectory, environment = process.env) {
   const result = spawnSync(command, args, {
     cwd,
@@ -274,12 +327,15 @@ function formatMebibytes(bytes) {
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const mode = process.argv[2]
-  if (!['--signed', '--unsigned'].includes(mode)) {
-    console.error('用法：package-macos.mjs --signed|--unsigned')
+  if (!['--signed', '--adhoc', '--unsigned'].includes(mode)) {
+    console.error('用法：package-macos.mjs --signed|--adhoc|--unsigned')
     process.exitCode = 1
   } else {
     try {
-      packageMacos({ signed: mode === '--signed' })
+      packageMacos({
+        signed: mode === '--signed',
+        adhoc: mode === '--adhoc'
+      })
     } catch (error) {
       console.error(error instanceof Error ? error.message : error)
       process.exitCode = 1

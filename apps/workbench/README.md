@@ -213,6 +213,9 @@ selections.
 # Local artifact and cold-start acceptance; intentionally unsigned.
 pnpm --filter @unilab/workbench package:mac:unsigned
 
+# Local T14 release-candidate acceptance; ad-hoc signed and not notarized.
+pnpm --filter @unilab/workbench package:mac:adhoc
+
 # Formal Developer ID release; fails closed unless every credential is present.
 CSC_LINK=/secure/developer-id.p12 \
 CSC_KEY_PASSWORD=... \
@@ -226,7 +229,9 @@ The build verifies the pinned Node archive SHA-256, packaged native resources,
 and an executable backend HTTP smoke test before publishing the DMG. The formal
 path additionally requires `codesign --verify`, Gatekeeper assessment and
 stapled notarization for both the app and DMG. It never silently publishes an
-unsigned artifact.
+unsigned artifact. The distinctly named `rc-adhoc` artifact verifies the signed
+application bundle and installer shape for local T14 acceptance only; it does
+not claim Developer ID trust or replace the formal release.
 
 Workbench owns the packaged Theia process tree. Closing the app stops the
 backend first (which in turn stops managed OS, Agent and PLC processes) and
