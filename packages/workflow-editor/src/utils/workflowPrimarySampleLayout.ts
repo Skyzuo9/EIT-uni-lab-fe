@@ -20,6 +20,16 @@ const COMPACT_NODE_BASE_HEIGHT = 48
 const COMPACT_MATERIAL_CARD_HEIGHT = 33
 const SPECIAL_NODE_HEIGHT = 72
 
+interface SecondaryNodePlacement {
+  node: WorkflowNode
+  anchorIndex: number
+  anchorColumn: number
+}
+
+interface PackedSecondaryNodePlacement extends SecondaryNodePlacement {
+  column: number
+}
+
 /**
  * 以主样品物料流角色（MaterialFlowRole）的第一条物料链为主干生成蛇形布局。
  *
@@ -119,23 +129,17 @@ export function layoutWorkflowPrimarySampleFlow(
       nodePorts.set(nodeId, backboneHorizontalPortLayout(absoluteIndex))
     }
 
-    const secondaryNodes = secondaryByRow.get(row) ?? []
+    const secondaryRows = packSecondaryNodes(
+      secondaryByRow.get(row) ?? []
+    )
     let occupiedBottom = mainRowY + mainRowHeight
-    for (
-      let branchRow = 0;
-      branchRow * WORKFLOW_PRIMARY_SAMPLE_NODES_PER_ROW < secondaryNodes.length;
-      branchRow += 1
-    ) {
-      const branchNodes = secondaryNodes.slice(
-        branchRow * WORKFLOW_PRIMARY_SAMPLE_NODES_PER_ROW,
-        (branchRow + 1) * WORKFLOW_PRIMARY_SAMPLE_NODES_PER_ROW
-      )
+    for (const branchNodes of secondaryRows) {
       const branchY = occupiedBottom + NODE_VERTICAL_GAP
       const branchHeight = Math.max(
         SPECIAL_NODE_HEIGHT,
-        ...branchNodes.map(estimatedHorizontalNodeHeight)
+        ...branchNodes.map(({ node }) => estimatedHorizontalNodeHeight(node))
       )
-      for (const [column, node] of branchNodes.entries()) {
+      for (const { node, column } of branchNodes) {
         positionByNode.set(node.id, {
           x: ORIGIN_X + column * WORKFLOW_PRIMARY_SAMPLE_COLUMN_GAP,
           y: branchY
@@ -228,16 +232,13 @@ function groupSecondaryNodesByBackboneRow(
   backboneIndexes: ReadonlyMap<string, number>,
   layerByNode: ReadonlyMap<string, number>,
   nodeOrder: ReadonlyMap<string, number>
-): Map<number, WorkflowNode[]> {
+): Map<number, SecondaryNodePlacement[]> {
   const adjacency = new Map(nodes.map((node) => [node.id, [] as string[]]))
   for (const link of links) {
     adjacency.get(link.source)?.push(link.target)
     adjacency.get(link.target)?.push(link.source)
   }
-  const assigned = new Map<number, Array<{
-    node: WorkflowNode
-    anchorIndex: number
-  }>>()
+  const assigned = new Map<number, SecondaryNodePlacement[]>()
   for (const node of nodes) {
     if (backboneIndexes.has(node.id)) continue
     const anchorIndex = nearestBackboneIndex(
@@ -250,21 +251,110 @@ function groupSecondaryNodesByBackboneRow(
     )
     assigned.set(row, [
       ...(assigned.get(row) ?? []),
-      { node, anchorIndex }
+      {
+        node,
+        anchorIndex,
+        anchorColumn: backboneColumnForIndex(anchorIndex)
+      }
     ])
   }
   return new Map([...assigned].map(([row, entries]) => [
     row,
     entries
       .sort((left, right) =>
-        left.anchorIndex - right.anchorIndex ||
+        // 辅助物料按主干的实际画布列排序。蛇形奇数行的主干顺序从东向西，
+        // 若仍按拓扑序号排列，辅助来源与接入动作之间会形成系统性交叉。
+        left.anchorColumn - right.anchorColumn ||
         (layerByNode.get(left.node.id) ?? 0) -
           (layerByNode.get(right.node.id) ?? 0) ||
+        left.anchorIndex - right.anchorIndex ||
         (nodeOrder.get(left.node.id) ?? 0) -
           (nodeOrder.get(right.node.id) ?? 0)
       )
-      .map(({ node }) => node)
   ]))
+}
+
+/**
+ * 把同一主干行的辅助节点装入最靠近接入动作的稀疏画布列。
+ *
+ * 每行仍保持最多四个节点；行内在不改变接入点左右顺序的前提下，选择总距离
+ * 最短的列组合。这样既避免稀疏物料被强制挤到西侧，也不因同列物料较多而
+ * 形成过高的垂直塔。
+ *
+ * @param entries 已按实际主干列稳定排序的辅助节点。
+ * @returns 每个辅助行内不重复列的节点集合。
+ */
+function packSecondaryNodes(
+  entries: readonly SecondaryNodePlacement[]
+): PackedSecondaryNodePlacement[][] {
+  const rows: PackedSecondaryNodePlacement[][] = []
+  for (
+    let start = 0;
+    start < entries.length;
+    start += WORKFLOW_PRIMARY_SAMPLE_NODES_PER_ROW
+  ) {
+    const rowEntries = entries.slice(
+      start,
+      start + WORKFLOW_PRIMARY_SAMPLE_NODES_PER_ROW
+    )
+    const columns = closestOrderedColumns(
+      rowEntries.map(({ anchorColumn }) => anchorColumn)
+    )
+    rows.push(rowEntries.map((entry, index) => ({
+      ...entry,
+      column: columns[index] ?? entry.anchorColumn
+    })))
+  }
+  return rows
+}
+
+/**
+ * 为一行已排序辅助节点选择保持顺序且总水平距离最小的互异列。
+ *
+ * @param preferredColumns 各节点最接近的主干列，长度不超过四。
+ * @returns 与输入同序的互异画布列。
+ */
+function closestOrderedColumns(
+  preferredColumns: readonly number[]
+): number[] {
+  let bestColumns: number[] = []
+  let bestDistance = Number.POSITIVE_INFINITY
+  const visit = (nextColumn: number, selected: number[]): void => {
+    if (selected.length === preferredColumns.length) {
+      const distance = selected.reduce((total, column, index) =>
+        total + Math.abs(column - (preferredColumns[index] ?? column)), 0
+      )
+      if (distance < bestDistance) {
+        bestColumns = [...selected]
+        bestDistance = distance
+      }
+      return
+    }
+    const remaining = preferredColumns.length - selected.length
+    for (
+      let column = nextColumn;
+      column <= WORKFLOW_PRIMARY_SAMPLE_NODES_PER_ROW - remaining;
+      column += 1
+    ) visit(column + 1, [...selected, column])
+  }
+  visit(0, [])
+  return bestColumns
+}
+
+/**
+ * 把主样品主干序号转换为该节点在蛇形行内的实际画布列。
+ *
+ * @param nodeIndex 节点在主样品主干中的零基序号。
+ * @returns 从西向东计数的零基画布列。
+ */
+function backboneColumnForIndex(nodeIndex: number): number {
+  const row = Math.floor(
+    nodeIndex / WORKFLOW_PRIMARY_SAMPLE_NODES_PER_ROW
+  )
+  const indexInRow = nodeIndex % WORKFLOW_PRIMARY_SAMPLE_NODES_PER_ROW
+  return row % 2 === 0
+    ? indexInRow
+    : WORKFLOW_PRIMARY_SAMPLE_NODES_PER_ROW - 1 - indexInRow
 }
 
 /**

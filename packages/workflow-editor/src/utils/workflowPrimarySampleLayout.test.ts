@@ -109,7 +109,153 @@ describe('layoutWorkflowPrimarySampleFlow', () => {
     expect(positions.get('reagent-source')?.y)
       .toBeGreaterThan(positions.get('step-3')?.y ?? 0)
   })
+
+  /** 验证反向蛇形行的辅助物料按实际接入列排列，避免来源连线互相穿越。 */
+  it('orders supporting materials by physical anchor column', () => {
+    const primaryOutput = resourceSlotHandle(
+      'primary-output',
+      'sample',
+      'source'
+    )
+    const westReagentOutput = resourceSlotHandle(
+      'west-reagent-output',
+      'west_reagent',
+      'source'
+    )
+    const eastReagentOutput = resourceSlotHandle(
+      'east-reagent-output',
+      'east_reagent',
+      'source'
+    )
+    const actionNodes = Array.from({ length: 6 }, (_, index) =>
+      sampleAction(`step-${index + 1}`, index < 5)
+    )
+    actionNodes[3]!.handles?.push(resourceSlotHandle(
+      'step-4-east-reagent-input',
+      'east_reagent',
+      'target'
+    ))
+    actionNodes[5]!.handles?.push(resourceSlotHandle(
+      'step-6-west-reagent-input',
+      'west_reagent',
+      'target'
+    ))
+    const nodes: WorkflowNode[] = [
+      materialSource(
+        'east-reagent-source',
+        '东侧接入试剂',
+        'reagent',
+        eastReagentOutput
+      ),
+      materialSource(
+        'west-reagent-source',
+        '西侧接入试剂',
+        'reagent',
+        westReagentOutput
+      ),
+      materialSource(
+        'primary-source',
+        '主样品',
+        'primary_sample',
+        primaryOutput
+      ),
+      ...actionNodes
+    ]
+    const primaryLinks = [
+      materialLink(
+        'primary-source',
+        primaryOutput.uuid,
+        'step-1',
+        'step-1-input'
+      ),
+      ...Array.from({ length: 5 }, (_, index) => materialLink(
+        `step-${index + 1}`,
+        `step-${index + 1}-output`,
+        `step-${index + 2}`,
+        `step-${index + 2}-input`
+      ))
+    ]
+    const supportingLinks = [
+      materialLink(
+        'east-reagent-source',
+        eastReagentOutput.uuid,
+        'step-4',
+        'step-4-east-reagent-input'
+      ),
+      materialLink(
+        'west-reagent-source',
+        westReagentOutput.uuid,
+        'step-6',
+        'step-6-west-reagent-input'
+      )
+    ]
+
+    const result = layoutWorkflowPrimarySampleFlow(
+      nodes,
+      [...primaryLinks, ...supportingLinks]
+    )
+    const positions = new Map(
+      result.nodes.map((node) => [node.id, { x: node.x ?? 0, y: node.y ?? 0 }])
+    )
+    const optimizedCrossings = countTwoBandCrossings(
+      supportingLinks,
+      positions
+    )
+    const declarationOrderCrossings = countOrderInversions([
+      { sourceOrder: 0, targetOrder: 3 },
+      { sourceOrder: 1, targetOrder: 1 }
+    ])
+
+    expect(declarationOrderCrossings).toBe(1)
+    expect(optimizedCrossings).toBe(0)
+    expect(positions.get('west-reagent-source')?.x)
+      .toBeLessThan(positions.get('east-reagent-source')?.x ?? 0)
+    expect(positions.get('step-6')?.x)
+      .toBeLessThan(positions.get('step-4')?.x ?? 0)
+    expect(positions.get('west-reagent-source')?.x)
+      .toBe(positions.get('step-6')?.x)
+    expect(positions.get('east-reagent-source')?.x)
+      .toBe(positions.get('step-4')?.x)
+  })
 })
+
+/**
+ * 统计两条水平带之间的直连边次序反转数，作为交叉数回归指标。
+ *
+ * @param links 连接辅助物料与主样品（Primary Sample）主干的边。
+ * @param positions 节点 UUID 到布局坐标的映射。
+ * @returns 端点次序相反、因而必然交叉的边对数量。
+ */
+function countTwoBandCrossings(
+  links: readonly WorkflowLink[],
+  positions: ReadonlyMap<string, { x: number; y: number }>
+): number {
+  return countOrderInversions(links.map((link) => ({
+    sourceOrder: positions.get(link.source)?.x ?? 0,
+    targetOrder: positions.get(link.target)?.x ?? 0
+  })))
+}
+
+/**
+ * 统计两组端点排序中的逆序边对。
+ *
+ * @param edges 每条边在来源带和目标带中的相对位置。
+ * @returns 严格逆序的边对数量；共享端点不计为交叉。
+ */
+function countOrderInversions(
+  edges: ReadonlyArray<{ sourceOrder: number; targetOrder: number }>
+): number {
+  let crossings = 0
+  edges.forEach((left, leftIndex) => {
+    edges.slice(leftIndex + 1).forEach((right) => {
+      if (
+        (left.sourceOrder - right.sourceOrder) *
+          (left.targetOrder - right.targetOrder) < 0
+      ) crossings += 1
+    })
+  })
+  return crossings
+}
 
 /**
  * 创建声明物料流角色（MaterialFlowRole）的物料来源（MaterialSource）。
