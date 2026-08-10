@@ -91,10 +91,9 @@
 }
 
 .workflow :global(.workflow-runtime__canvas-button):disabled {
-  color: var(--unilab-color-text-subtle);
+  color: var(--unilab-color-text-muted);
   background: var(--unilab-color-surface-subtle);
   cursor: not-allowed;
-  opacity: .72;
 }
 
 .workflow :global(.workflow-runtime__material-role-filter) {
@@ -264,7 +263,7 @@
 
 .workflow :global(.workflow-runtime__layout-strategy-field) > span {
   padding-left: 10px;
-  color: var(--unilab-color-text-subtle);
+  color: var(--unilab-color-text-muted);
   font: 600 10px/1 var(--unilab-font-sans);
 }
 
