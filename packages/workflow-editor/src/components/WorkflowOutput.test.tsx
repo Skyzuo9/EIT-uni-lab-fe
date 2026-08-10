@@ -6,9 +6,21 @@ import {
   type WorkflowOutputNode
 } from './WorkflowOutput'
 
+/**
+ * 为静态渲染测试提供无副作用回调。
+ *
+ * @returns 无。
+ */
+function noop(): void {}
+
 describe('WorkflowOutput', () => {
-  it('uses the node name as the primary execution history identity', () => {
+  /**
+   * 验证动态运行节点只展示节点名称，不展示节点或作业 UUID。
+   * 参数：无。返回：无；身份泄露时由 Vitest 报告失败。
+   */
+  it('动态运行节点只显示节点名称', () => {
     const jobUuid = '40000000-0000-4000-8000-000000000042'
+    const nodeUuid = '20000000-0000-4000-8000-000000000011'
     const html = renderToStaticMarkup(
       <WorkflowOutput
         expanded
@@ -17,33 +29,70 @@ describe('WorkflowOutput', () => {
         expectedNodeCount={1}
         nodes={[{
           nodeId: jobUuid,
-          sourceNodeId: '20000000-0000-4000-8000-000000000011',
+          sourceNodeId: nodeUuid,
           nodeType: 'action',
           state: 'success',
           result: {},
           attempt: 2
         }]}
         nodeNames={{
-          '20000000-0000-4000-8000-000000000011': '称量样品'
+          [nodeUuid]: '称量样品'
         }}
         events={[]}
         error={null}
         selectedNode={undefined}
         selectedNodeId={null}
         pausedBeforeNodeId={null}
-        onExpandedChange={() => {}}
-        onTabChange={() => {}}
-        onNodeSelect={() => {}}
-        onClearError={() => {}}
+        onExpandedChange={noop}
+        onTabChange={noop}
+        onNodeSelect={noop}
+        onClearError={noop}
       />
     )
 
     expect(html).toContain('class="is-node-name">称量样品</span>')
-    expect(html).toContain('作业 00000042')
-    expect(html).toContain(`工作流节点作业 UUID：${jobUuid}`)
-    expect(html).not.toContain(
-      'class="is-node-id">20000000-0000-4000-8000-000000000011'
+    expect(html).toContain('操作节点')
+    expect(html).toContain('第 2 次')
+    expect(html).not.toContain(jobUuid)
+    expect(html).not.toContain(nodeUuid)
+  })
+
+  /**
+   * 验证名称缺失时使用中性占位，不把节点 UUID 当成名称展示。
+   * 参数：无。返回：无；ID 被渲染时由 Vitest 报告失败。
+   */
+  it('名称缺失时不回退显示节点 ID', () => {
+    const nodeUuid = '20000000-0000-4000-8000-000000000011'
+    const html = renderToStaticMarkup(
+      <WorkflowOutput
+        expanded
+        activeTab="nodes"
+        completedNodeCount={0}
+        expectedNodeCount={1}
+        nodes={[{
+          nodeId: 'job-without-name',
+          sourceNodeId: nodeUuid,
+          nodeType: 'action',
+          state: 'running',
+          result: {},
+          attempt: 1
+        }]}
+        nodeNames={{ [nodeUuid]: nodeUuid }}
+        events={[]}
+        error={null}
+        selectedNode={undefined}
+        selectedNodeId={null}
+        pausedBeforeNodeId={null}
+        onExpandedChange={noop}
+        onTabChange={noop}
+        onNodeSelect={noop}
+        onClearError={noop}
+      />
     )
+
+    expect(html).toContain('class="is-node-name">未命名节点</span>')
+    expect(html).not.toContain(nodeUuid)
+    expect(html).not.toContain('job-without-name')
   })
 
   it('shows the failed node error log in runtime exceptions', () => {
