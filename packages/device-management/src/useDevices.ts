@@ -10,12 +10,12 @@
  * ============================================================
  */
 import { useCallback, useEffect, useState } from 'react'
-import { useServices } from '@unilab/services'
-import { useWorkbench } from '../context/WorkbenchContext'
+import type { Services } from '@unilab/services'
 import {
   presentEdgeDevices,
   type ManagedDevice
-} from '../data/deviceCatalog'
+} from './deviceCatalog'
+import type { DeviceManagementConnection } from './types'
 
 interface UseDevicesResult {
   devices: ManagedDevice[]
@@ -25,9 +25,15 @@ interface UseDevicesResult {
   refresh: () => Promise<void>
 }
 
-export function useDevices(): UseDevicesResult {
-  const { backendEnabled, connection } = useWorkbench()
-  const services = useServices()
+export function useDevices({
+  services,
+  backendEnabled,
+  connection
+}: {
+  services: Services
+  backendEnabled: boolean
+  connection: DeviceManagementConnection
+}): UseDevicesResult {
   const client = services.laboratory
   const canListActions = services.capabilities.devices.listActions
   const isOnline = backendEnabled && connection === 'connected'

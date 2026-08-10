@@ -1,6 +1,6 @@
 import type { DeviceAction, DeviceActionInputSchema } from '@unilab/services'
 
-import type { ManagedDevice } from '../../data/deviceCatalog'
+import type { ManagedDevice } from './deviceCatalog'
 import type { DeviceActionArgumentDraft } from './deviceActionRun'
 
 export type ArgumentDraft = DeviceActionArgumentDraft

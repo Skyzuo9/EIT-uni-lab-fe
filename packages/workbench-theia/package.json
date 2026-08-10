@@ -19,6 +19,7 @@
     "@theia/monaco-editor-core": "1.108.201",
     "@theia/workspace": "1.74.1",
     "@unilab/design-system": "workspace:*",
+    "@unilab/device-management": "workspace:*",
     "@unilab/material": "workspace:*",
     "@unilab/pascal-host": "workspace:*",
     "@unilab/pascal-lab-plugin": "workspace:*",

@@ -1,6 +1,7 @@
 import type { DeviceAction, WorkflowActionNodeTemplate } from '@unilab/services'
 
-import type { ManagedDevice } from '../../data/deviceCatalog'
+import type { ManagedDevice } from './deviceCatalog'
+import type { DeviceManagementConnection } from './types'
 import {
   DeviceActionAvailability,
   deviceActionReadiness,
@@ -24,7 +25,7 @@ export function ConnectionSummary({
   backendName,
   lastUpdated
 }: {
-  connection: 'disconnected' | 'connecting' | 'connected' | 'error'
+  connection: DeviceManagementConnection
   backendName: string
   lastUpdated: number | null
 }): React.JSX.Element {
@@ -145,7 +146,7 @@ export function DeviceWorkspace({
   actionCatalogLoading: boolean
   actionCatalogError: string | null
   canRunActionTask: boolean
-  connection: 'disconnected' | 'connecting' | 'connected' | 'error'
+  connection: DeviceManagementConnection
   runState: DeviceActionRunState | null
   activeRunActionRef: string | null
   onRunAction: (

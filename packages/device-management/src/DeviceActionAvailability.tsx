@@ -6,7 +6,7 @@ import type {
   WorkflowNodeJobFeedback
 } from '@unilab/services'
 
-import type { ManagedDevice } from '../../data/deviceCatalog'
+import type { ManagedDevice } from './deviceCatalog'
 import { supportsD1AS1 } from './deviceActionRun'
 import { shortIdentifier } from './devicePanelFormat'
 import styles from './DevicePanel.module.scss'

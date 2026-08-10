@@ -13,8 +13,22 @@ import {
   WorkbenchSessionClient,
   WorkbenchSessionServer
 } from '../common/workbench-session-protocol'
-import { UniLabWorkbenchContribution } from './unilab-workbench-contribution'
+import {
+  DeviceDomainEntryContribution,
+  MaterialDomainEntryContribution,
+  SplitDomainEntryContribution,
+  UniLabDomainNavigationInitializer,
+  UniLabWorkbenchContribution,
+  WorkflowDomainEntryContribution
+} from './unilab-workbench-contribution'
+import {
+  DeviceDomainEntryWidget,
+  MaterialDomainEntryWidget,
+  SplitDomainEntryWidget,
+  WorkflowDomainEntryWidget
+} from './unilab-workbench-navigator-widget'
 import { UniLabWorkbenchWidget } from './unilab-workbench-widget'
+import { WorkbenchViewState } from './workbench-view-state'
 import { WorkbenchSessionClientImpl } from './workbench-session-client'
 import { WorkbenchPrivateStatePreferenceContribution } from './workbench-private-state-preferences'
 import { UniLabAgentContribution } from './unilab-agent-contribution'
@@ -22,6 +36,7 @@ import { UniLabAgentWidget } from './unilab-agent-widget'
 import '../../src/browser/style/index.css'
 
 export default new ContainerModule((bind) => {
+  bind(WorkbenchViewState).toSelf().inSingletonScope()
   bind(WorkbenchPrivateStatePreferenceContribution).toSelf().inSingletonScope()
   bind(PreferenceContribution).toService(
     WorkbenchPrivateStatePreferenceContribution
@@ -52,4 +67,36 @@ export default new ContainerModule((bind) => {
     id: UniLabWorkbenchWidget.ID,
     createWidget: () => context.container.get(UniLabWorkbenchWidget)
   })).inSingletonScope()
+
+  bindViewContribution(bind, WorkflowDomainEntryContribution)
+  bind(WorkflowDomainEntryWidget).toSelf()
+  bind(WidgetFactory).toDynamicValue((context) => ({
+    id: WorkflowDomainEntryWidget.ID,
+    createWidget: () => context.container.get(WorkflowDomainEntryWidget)
+  })).inSingletonScope()
+
+  bindViewContribution(bind, MaterialDomainEntryContribution)
+  bind(MaterialDomainEntryWidget).toSelf()
+  bind(WidgetFactory).toDynamicValue((context) => ({
+    id: MaterialDomainEntryWidget.ID,
+    createWidget: () => context.container.get(MaterialDomainEntryWidget)
+  })).inSingletonScope()
+
+  bindViewContribution(bind, DeviceDomainEntryContribution)
+  bind(DeviceDomainEntryWidget).toSelf()
+  bind(WidgetFactory).toDynamicValue((context) => ({
+    id: DeviceDomainEntryWidget.ID,
+    createWidget: () => context.container.get(DeviceDomainEntryWidget)
+  })).inSingletonScope()
+
+  bindViewContribution(bind, SplitDomainEntryContribution)
+  bind(SplitDomainEntryWidget).toSelf()
+  bind(WidgetFactory).toDynamicValue((context) => ({
+    id: SplitDomainEntryWidget.ID,
+    createWidget: () => context.container.get(SplitDomainEntryWidget)
+  })).inSingletonScope()
+
+  bind(UniLabDomainNavigationInitializer).toSelf().inSingletonScope()
+  bind(FrontendApplicationContribution)
+    .toService(UniLabDomainNavigationInitializer)
 })

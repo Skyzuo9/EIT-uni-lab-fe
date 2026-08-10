@@ -1,5 +1,6 @@
 @import '@unilab/pascal-host/styles.css';
 @import '@unilab/material/UnifiedMaterialViewport.css';
+@import './workbench-domain-navigation.css';
 
 .unilab-workbench {
   position: relative;
@@ -380,6 +381,7 @@
 
 .unilab-workbench__surface {
   flex: 1;
+  min-width: 0;
   min-height: 0;
   overflow: hidden;
   background: var(--unilab-color-canvas);

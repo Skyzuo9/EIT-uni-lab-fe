@@ -16,6 +16,10 @@ import {
 import { inject, injectable, postConstruct } from '@theia/core/shared/inversify'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
+  DeviceManagementPanel,
+  type DeviceManagementConnection
+} from '@unilab/device-management'
+import {
   MaterialCapabilityNotice,
   MaterialStoreProvider,
   MaterialWorkbench,
@@ -83,7 +87,12 @@ import { WorkbenchSessionClientImpl } from './workbench-session-client'
 import { DesktopWorkspaceSwitchButton } from './desktop-workspace-switch'
 import { EnvironmentManager } from './environment-manager'
 import { createTheiaWorkflowIdeAdapter } from './theia-workflow-ide-adapter'
+import { WorkbenchDomainLayout } from './workbench-domain-layout'
 import { WorkbenchSessionGate } from './workbench-session-gate'
+import {
+  WorkbenchViewState,
+  type WorkbenchViewMode
+} from './workbench-view-state'
 
 type SourceSaveHandler = (pythonSource: string) => Promise<void>
 
@@ -114,6 +123,9 @@ export class UniLabWorkbenchWidget extends ReactWidget {
 
   @inject(ProblemManager)
   protected readonly problemManager!: ProblemManager
+
+  @inject(WorkbenchViewState)
+  protected readonly viewState!: WorkbenchViewState
 
   protected editorListeners = new DisposableCollection()
   protected snapshot = createWorkflowIdeSyncState()
@@ -157,6 +169,7 @@ export class UniLabWorkbenchWidget extends ReactWidget {
       )
       this.update()
     }))
+    this.toDispose.push(this.viewState.onDidChangeMode(() => this.update()))
     void this.refreshSessionSnapshot()
     this.observeCurrentEditor()
     this.update()
@@ -488,6 +501,7 @@ export class UniLabWorkbenchWidget extends ReactWidget {
         ideBridge={this.ideBridge}
         session={this.sessionSnapshot}
         snapshot={this.snapshot}
+        viewMode={this.viewState.currentMode}
         onSourceSaveHandlerChange={this.registerSourceSaveHandler}
         onRestartSession={this.restartSession}
         onReadEnvironmentLog={this.readEnvironmentLog}
@@ -512,6 +526,7 @@ function WorkbenchSurface({
   ideBridge,
   session,
   snapshot,
+  viewMode,
   onSourceSaveHandlerChange,
   onRestartSession,
   onReadEnvironmentLog,
@@ -526,6 +541,7 @@ function WorkbenchSurface({
   ideBridge: WorkflowIdeBridge
   session: WorkbenchSessionSnapshot
   snapshot: WorkflowIdeSyncState
+  viewMode: WorkbenchViewMode
   onSourceSaveHandlerChange: (handler: SourceSaveHandler | null) => void
   onRestartSession: () => Promise<void>
   onReadEnvironmentLog: (kind: WorkbenchEnvironmentLogKind) => Promise<string>
@@ -536,7 +552,6 @@ function WorkbenchSurface({
   onSetRuntimeMode: (mode: WorkbenchRuntimeMode) => Promise<void>
   onStopSession: () => Promise<void>
 }): React.JSX.Element {
-  const [surface, setSurface] = useState<'workflow' | 'material'>('workflow')
   const [selectedWorkflowNode, setSelectedWorkflowNode] =
     useState<string | null>(null)
   const [runtimeProjection, setRuntimeProjection] =
@@ -557,6 +572,18 @@ function WorkbenchSurface({
       assertCapability(services.getCapabilityStatus(capability), capability)
     }
   }), [scope, services])
+  const deviceConnection: DeviceManagementConnection = session.phase === 'ready'
+    ? 'connected'
+    : session.phase === 'failed'
+      ? 'error'
+      : session.phase === 'idle'
+        ? 'disconnected'
+        : 'connecting'
+  const deviceBackend = useMemo(() => ({
+    id: 'managed-local-os',
+    name: '本地 UniLab OS',
+    apiUrl: backendUrl
+  }), [backendUrl])
 
   useEffect(() => () => materialStore.getState().reset(), [materialStore])
 
@@ -596,6 +623,70 @@ function WorkbenchSurface({
     ].filter((value): value is string => Boolean(value))
   }, [runtimeProjection, selectedWorkflowNode])
 
+  const workflowSurface = (
+    <section
+      className="unilab-workbench__surface unilab-workbench__surface--workflow"
+      aria-label="工作流窗口"
+    >
+      <WorkflowPanel
+        runtime={services.workflow}
+        active={viewMode !== 'material'}
+        workflowUuid={workflowUuid}
+        hideEmbeddedCodeEditor
+        ideBridge={ideBridge}
+        onSelectedWorkflowStepChange={setSelectedWorkflowNode}
+        onWorkflowRuntimeProjectionChange={setRuntimeProjection}
+      />
+    </section>
+  )
+  const materialSurface = (
+    <section
+      className="unilab-workbench__surface unilab-workbench__surface--material"
+      aria-label="物料窗口"
+    >
+      <MaterialStoreProvider store={materialStore}>
+        <MaterialWorkbench
+          catalog={services.materials}
+          profileId={`workbench:${backendUrl}`}
+          scope={scope}
+          capabilities={{
+            readTemplates: services.getCapabilityStatus(
+              'material.readTemplates'
+            ),
+            readGraph: services.getCapabilityStatus('material.readGraph'),
+            create: services.getCapabilityStatus('material.create'),
+            updateConfig: services.getCapabilityStatus('material.updateConfig'),
+            move: services.getCapabilityStatus('material.move')
+          }}
+          selectedMaterialIds={selectedMaterialIds}
+          highlightedMaterialIds={highlightedMaterialIds}
+          onSelectionChange={setSelectedMaterialIds}
+          renderViewport={(viewportProps) => (
+            <WorkbenchMaterialViewport
+              {...viewportProps}
+              backendUrl={backendUrl}
+              runtimeProjection={runtimeProjection}
+              selectedWorkflowNode={selectedWorkflowNode}
+            />
+          )}
+        />
+      </MaterialStoreProvider>
+    </section>
+  )
+  const deviceSurface = (
+    <section
+      className="unilab-workbench__surface unilab-workbench__surface--device"
+      aria-label="仪器设备窗口"
+    >
+      <DeviceManagementPanel
+        services={services}
+        backend={deviceBackend}
+        backendEnabled={Boolean(backendUrl)}
+        connection={deviceConnection}
+      />
+    </section>
+  )
+
   return (
     <QueryClientProvider client={queryClient}>
       <div
@@ -617,16 +708,15 @@ function WorkbenchSurface({
             <span>
               OS PID {session.identity?.pid} · {session.identity?.mode} · {backendUrl}
             </span>
+            <span className="unilab-workbench__view-mode">
+              {viewMode === 'split'
+                ? '工作流 + 物料'
+                : viewMode === 'workflow'
+                  ? '工作流'
+                  : viewMode === 'material' ? '物料' : '仪器设备'}
+            </span>
           </div>
           <nav aria-label="调试工作台页面">
-            <button
-              className={surface === 'workflow' ? 'is-active' : ''}
-              onClick={() => setSurface('workflow')}
-            >Workflow</button>
-            <button
-              className={surface === 'material' ? 'is-active' : ''}
-              onClick={() => setSurface('material')}
-            >Material</button>
             <button
               className={environmentOpen ? 'is-active' : ''}
               aria-expanded={environmentOpen}
@@ -676,53 +766,12 @@ function WorkbenchSurface({
             <dd data-testid="sync-save-status">{sourceSaveStatus}</dd>
           </dl>
         </details>
-        {surface === 'workflow' ? (
-          <section className="unilab-workbench__surface">
-            <WorkflowPanel
-              runtime={services.workflow}
-              active={surface === 'workflow'}
-              workflowUuid={workflowUuid}
-              hideEmbeddedCodeEditor
-              ideBridge={ideBridge}
-              onSelectedWorkflowStepChange={setSelectedWorkflowNode}
-              onWorkflowRuntimeProjectionChange={setRuntimeProjection}
-            />
-          </section>
-        ) : (
-          <section className="unilab-workbench__surface">
-            <MaterialStoreProvider store={materialStore}>
-              <MaterialWorkbench
-                catalog={services.materials}
-                profileId={`workbench:${backendUrl}`}
-                scope={scope}
-                capabilities={{
-                  readTemplates: services.getCapabilityStatus(
-                    'material.readTemplates'
-                  ),
-                  readGraph: services.getCapabilityStatus(
-                    'material.readGraph'
-                  ),
-                  create: services.getCapabilityStatus('material.create'),
-                  updateConfig: services.getCapabilityStatus(
-                    'material.updateConfig'
-                  ),
-                  move: services.getCapabilityStatus('material.move')
-                }}
-                selectedMaterialIds={selectedMaterialIds}
-                highlightedMaterialIds={highlightedMaterialIds}
-                onSelectionChange={setSelectedMaterialIds}
-                renderViewport={(viewportProps) => (
-                  <WorkbenchMaterialViewport
-                    {...viewportProps}
-                    backendUrl={backendUrl}
-                    runtimeProjection={runtimeProjection}
-                    selectedWorkflowNode={selectedWorkflowNode}
-                  />
-                )}
-              />
-            </MaterialStoreProvider>
-          </section>
-        )}
+        <WorkbenchDomainLayout
+          mode={viewMode}
+          workflow={workflowSurface}
+          material={materialSurface}
+          device={deviceSurface}
+        />
       </div>
     </QueryClientProvider>
   )

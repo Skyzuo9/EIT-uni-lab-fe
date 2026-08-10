@@ -223,4 +223,53 @@ test.describe('UniLab Workbench real-system contract', () => {
     expect(layout.overlaps).toBe(0)
     expect(layout.zoom).toBeGreaterThanOrEqual(0.8)
   })
+
+  test('switches first-class domain views from the IDE activity bar', async ({
+    page
+  }) => {
+    await page.goto(workbenchUrl!)
+    const workbench = page.locator('[data-package-mount-count="1"]')
+    await expect(workbench).toBeVisible()
+
+    await page.locator('[id="shell-tab-unilab:material-navigation"]').click()
+    await expect(page.locator('main[data-workbench-view]')).toHaveAttribute(
+      'data-workbench-view',
+      'material'
+    )
+    await expect(page.getByRole('region', { name: '物料窗口' })).toBeVisible()
+    await expect(page.getByRole('region', { name: '工作流窗口' })).toHaveCount(0)
+
+    await page.locator(
+      '[id="shell-tab-unilab:device-management-navigation"]'
+    ).click()
+    await expect(page.locator('main[data-workbench-view]')).toHaveAttribute(
+      'data-workbench-view',
+      'device'
+    )
+    await expect(page.getByRole('region', {
+      name: '仪器设备窗口'
+    })).toBeVisible()
+    await expect(page.getByRole('heading', {
+      name: '仪器设备',
+      exact: true
+    })).toBeVisible()
+
+    await page.locator('[id="shell-tab-unilab:split-navigation"]').click()
+    await expect(page.locator('main[data-workbench-view]')).toHaveAttribute(
+      'data-workbench-view',
+      'split'
+    )
+    await expect(page.getByRole('region', { name: '工作流窗口' })).toBeVisible()
+    await expect(page.getByRole('region', { name: '物料窗口' })).toBeVisible()
+    await expect(page.getByRole('separator', {
+      name: '调整工作流与物料窗口宽度'
+    })).toBeVisible()
+
+    const separator = page.getByRole('separator', {
+      name: '调整工作流与物料窗口宽度'
+    })
+    await separator.focus()
+    await page.keyboard.press('ArrowRight')
+    await expect(separator).toHaveAttribute('aria-valuenow', '60')
+  })
 })
