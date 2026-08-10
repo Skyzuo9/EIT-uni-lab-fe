@@ -8,6 +8,8 @@ import {
   resolveWorkflowPackageSource,
   resolveWorkflowPackageSourceUri,
   synchronizeSavedWorkflowSource,
+  WorkflowIdeHostAdapter,
+  WORKFLOW_IDE_BRIDGE_COMPATIBILITY,
   workflowIdeMappingStatus,
   workflowNodeAtSourcePosition,
   workflowSourceLocationForNode,
@@ -29,6 +31,87 @@ const projection: WorkflowSourceProjection = {
 }
 
 describe('workflow IDE bridge', () => {
+  it('publishes one explicit compatibility contract for both hosts', () => {
+    expect(WORKFLOW_IDE_BRIDGE_COMPATIBILITY).toEqual({
+      protocolVersion: 1,
+      sourceMapContract: 'unilab.workflow-source-map/v1',
+      packageSourceContract: 'unilab.package-source/v1',
+      minimumOsContract: 'authoring-source-map/v1'
+    })
+  })
+
+  it('drives reveal, reverse highlight and diagnostics through one host adapter', async () => {
+    const reveals: unknown[] = []
+    const diagnosticBatches: unknown[] = []
+    const adapter = new WorkflowIdeHostAdapter({
+      revealSource: async location => { reveals.push(location) },
+      replaceDiagnostics: diagnostics => { diagnosticBatches.push(diagnostics) }
+    })
+    adapter.setPackageMounts([{
+      packageId: 'szlab_poly_studio',
+      packageRootUri: 'file:///workspace/szlab_poly_studio',
+      editable: true,
+      readOnly: false
+    }, {
+      packageId: 'catalog_lab',
+      packageRootUri: 'file:///workspace/catalog_lab',
+      editable: false,
+      readOnly: true
+    }])
+    adapter.acceptSourceProjection(projection)
+    adapter.acceptEditor({
+      currentUri: 'file:///workspace/szlab_poly_studio/workflows/s06_robot.py',
+      dirty: false,
+      cursor: { line: 19, column: 8 }
+    })
+
+    expect(adapter.bridge.sourcePosition).toEqual({ line: 19, column: 8 })
+    expect(adapter.bridge.activeSourceUri).toBe(projection.sourceUri)
+    adapter.bridge.onRevealSourceLocation?.(
+      workflowSourceLocationForNode(projection, 'node-1')!
+    )
+    adapter.bridge.onRevealPackageSource?.({
+      sourceUri: 'package://catalog_lab/definitions.py',
+      line: 7,
+      column: 3,
+      endLine: 7,
+      endColumn: 18
+    })
+    await adapter.acceptDiagnostics([{
+      sourceUri: projection.sourceUri,
+      severity: 'error',
+      code: 'invalid_transfer',
+      message: '转运目标无效',
+      line: 19,
+      column: 5,
+      endLine: 20,
+      endColumn: 57
+    }])
+    await Promise.resolve()
+
+    expect(reveals).toEqual([
+      expect.objectContaining({
+        resolvedUri: 'file:///workspace/szlab_poly_studio/workflows/s06_robot.py',
+        line: 19,
+        column: 5,
+        readOnly: false
+      }),
+      expect.objectContaining({
+        resolvedUri: 'file:///workspace/catalog_lab/definitions.py',
+        line: 7,
+        column: 3,
+        readOnly: true
+      })
+    ])
+    expect(diagnosticBatches.at(-1)).toEqual([
+      expect.objectContaining({
+        resolvedUri: 'file:///workspace/szlab_poly_studio/workflows/s06_robot.py',
+        severity: 'error',
+        code: 'invalid_transfer'
+      })
+    ])
+  })
+
   it('maps nodes and source positions using the same OS projection', () => {
     expect(workflowSourceLocationForNode(projection, 'node-1')).toMatchObject({
       sourceUri: projection.sourceUri,

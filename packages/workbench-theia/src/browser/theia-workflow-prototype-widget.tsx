@@ -4,6 +4,11 @@ import { ApplicationShell, Message } from '@theia/core/lib/browser'
 import { ReactWidget } from '@theia/core/lib/browser/widgets/react-widget'
 import { MessageService } from '@theia/core/lib/common/message-service'
 import { URI } from '@theia/core/lib/common/uri'
+import { ProblemManager } from '@theia/markers/lib/browser/problem/problem-manager'
+import {
+  DiagnosticSeverity,
+  type Diagnostic
+} from '@theia/core/shared/vscode-languageserver-protocol'
 import {
   Disposable,
   DisposableCollection
@@ -39,16 +44,14 @@ import {
 } from '@unilab/workflow-editor'
 import {
   createWorkflowIdeSyncState,
-  packageSourceUriForResolvedUri,
-  reduceWorkflowIdeSync,
-  resolveWorkflowPackageSource,
-  resolveWorkflowPackageSourceUri,
   synchronizeSavedWorkflowSource,
+  WorkflowIdeHostAdapter,
   workflowIdeMappingStatus,
   type WorkflowIdeBridge,
-  type PackageSourceLocation,
+  type WorkflowIdeDiagnosticSeverity,
   type WorkflowIdeSyncState,
-  type WorkflowSourceLocation,
+  type WorkflowIdeResolvedDiagnostic,
+  type WorkflowIdeResolvedLocation,
   type WorkflowSourceProjection
 } from '@unilab/workflow-ide-bridge'
 import type {
@@ -78,6 +81,7 @@ import {
 } from '../common/workbench-session-protocol'
 import { WorkbenchSessionClientImpl } from './workbench-session-client'
 import { EnvironmentManager } from './environment-manager'
+import { createTheiaWorkflowIdeAdapter } from './theia-workflow-ide-adapter'
 import { WorkbenchSessionGate } from './workbench-session-gate'
 
 type SourceSaveHandler = (pythonSource: string) => Promise<void>
@@ -105,8 +109,14 @@ export class TheiaWorkflowPrototypeWidget extends ReactWidget {
   @inject(MessageService)
   protected readonly messages!: MessageService
 
+  @inject(ProblemManager)
+  protected readonly problemManager!: ProblemManager
+
   protected editorListeners = new DisposableCollection()
   protected snapshot = createWorkflowIdeSyncState()
+  protected ideAdapter!: WorkflowIdeHostAdapter
+  protected ideBridge!: WorkflowIdeBridge
+  protected diagnosticUris = new Set<string>()
   protected sessionSnapshot: WorkbenchSessionSnapshot = {
     phase: 'idle',
     message: '正在连接 Workbench Backend…',
@@ -117,40 +127,31 @@ export class TheiaWorkflowPrototypeWidget extends ReactWidget {
   }
   protected sourceSaveHandler: SourceSaveHandler | null = null
   protected lastAutomaticSourceSync: string | null = null
-  /** React 重绘之间保持同一宿主端口身份，避免投影 effect 被当作换宿主清理。 */
-  protected readonly ideBridge: WorkflowIdeBridge = {
-    onRevealSourceLocation: location => {
-      void this.revealSourceLocation(location).catch(error => {
-        void this.messages.error(
-          `源码定位失败：${error instanceof Error ? error.message : String(error)}`
-        )
-      })
-    },
-    onRevealPackageSource: location => {
-      void this.revealPackageSource(location).catch(error => {
-        void this.messages.error(
-          `软件包源码定位失败：${error instanceof Error ? error.message : String(error)}`
-        )
-      })
-    },
-    onSourceProjectionChange: projection => {
-      this.setSourceProjection(projection)
-    }
-  }
-
   @postConstruct()
   protected init(): void {
+    this.ideAdapter = createTheiaWorkflowIdeAdapter({
+      revealSource: location => this.revealResolvedSource(location),
+      replaceDiagnostics: diagnostics => this.replaceDiagnostics(diagnostics),
+      reportError: message => { void this.messages.error(message) }
+    })
+    this.ideBridge = this.ideAdapter.bridge
     this.id = TheiaWorkflowPrototypeWidget.ID
     this.title.label = TheiaWorkflowPrototypeWidget.LABEL
     this.title.caption = 'UniLab Material and Workflow Authoring Workbench'
     this.title.closable = false
     this.title.iconClass = 'codicon codicon-type-hierarchy-sub'
     this.toDispose.push(Disposable.create(() => this.editorListeners.dispose()))
+    this.toDispose.push(Disposable.create(() => {
+      void this.ideAdapter.dispose()
+    }))
     this.toDispose.push(this.editorManager.onCurrentEditorChanged(() => {
       this.observeCurrentEditor()
     }))
     this.toDispose.push(this.workbenchSessionClient.onSessionChanged(snapshot => {
       this.sessionSnapshot = snapshot
+      this.ideAdapter.setPackageMounts(
+        snapshot.identity?.packageMounts?.items ?? []
+      )
       this.update()
     }))
     void this.refreshSessionSnapshot()
@@ -176,6 +177,9 @@ export class TheiaWorkflowPrototypeWidget extends ReactWidget {
         plcSimulator: emptyPlcSimulatorSnapshot()
       }
     }
+    this.ideAdapter.setPackageMounts(
+      this.sessionSnapshot.identity?.packageMounts?.items ?? []
+    )
     this.update()
   }
 
@@ -270,12 +274,12 @@ export class TheiaWorkflowPrototypeWidget extends ReactWidget {
     this.editorListeners = new DisposableCollection()
     const editorWidget = this.editorManager.currentEditor
     if (!editorWidget) {
-      this.snapshot = reduceWorkflowIdeSync(this.snapshot, {
-        type: 'editor-changed',
+      this.ideAdapter.acceptEditor({
         currentUri: null,
         dirty: false,
         cursor: null
       })
+      this.snapshot = this.ideAdapter.snapshot.sync
       if (render) this.update()
       return
     }
@@ -303,17 +307,12 @@ export class TheiaWorkflowPrototypeWidget extends ReactWidget {
     } catch {
       // Monaco can transiently have no position while its model is detaching.
     }
-    this.snapshot = reduceWorkflowIdeSync(this.snapshot, {
-      type: 'editor-changed',
+    this.ideAdapter.acceptEditor({
       currentUri,
       dirty,
       cursor
     })
-    this.ideBridge.sourcePosition = this.snapshot.sourcePosition
-    this.ideBridge.activeSourceUri = packageSourceUriForResolvedUri(
-      currentUri,
-      this.sessionSnapshot.identity?.packageMounts?.items ?? []
-    )
+    this.snapshot = this.ideAdapter.snapshot.sync
     if (render) this.update()
     if (
       previous.currentUri === currentUri &&
@@ -342,26 +341,18 @@ export class TheiaWorkflowPrototypeWidget extends ReactWidget {
   ): void => {
     // OS mount 到 Theia URI 是纯身份换算，必须和 projection 原子安装。
     // 中间态 update 会允许 React effect cleanup 把同一投影清空，形成竞态。
-    const resolved = sourceProjection
-      ? this.resolveSourceUri(sourceProjection.sourceUri)
-      : null
     const current = this.snapshot.sourceProjection
     if (
       current?.workflowUuid === sourceProjection?.workflowUuid &&
       current?.sourceVersion === sourceProjection?.sourceVersion &&
       current?.sourceUri === sourceProjection?.sourceUri &&
-      current?.mappingAvailable === sourceProjection?.mappingAvailable &&
-      this.snapshot.resolvedSourceUri === (resolved?.toString() ?? null)
+      current?.mappingAvailable === sourceProjection?.mappingAvailable
     ) return
-    this.snapshot = reduceWorkflowIdeSync(this.snapshot, {
-      type: 'source-projection-changed',
-      projection: sourceProjection,
-      resolvedSourceUri: resolved?.toString() ?? null
-    })
+    this.ideAdapter.acceptSourceProjection(sourceProjection)
+    this.snapshot = this.ideAdapter.snapshot.sync
     // React effect 正在向宿主发布该投影；此处只更新宿主快照，不能同步要求
     // ReactWidget 重绘，否则 StrictMode/effect cleanup 会重入同一发布路径。
     this.observeCurrentEditor(false)
-    this.ideBridge.sourcePosition = this.snapshot.sourcePosition
     void this.synchronizeUnmappedSource()
   }
 
@@ -395,52 +386,10 @@ export class TheiaWorkflowPrototypeWidget extends ReactWidget {
     }
   }
 
-  protected readonly revealSourceLocation = async (
-    location: WorkflowSourceLocation
+  protected readonly revealResolvedSource = async (
+    location: WorkflowIdeResolvedLocation
   ): Promise<void> => {
-    const uri = await this.resolveSourceUri(location.sourceUri)
-    if (!uri) return
-    const existing = this.editorManager.all.find(
-      candidate => candidate.editor.uri.toString() === uri.toString()
-    )
-    const widget = existing ?? await this.editorManager.open(uri, {
-      mode: 'activate',
-      widgetOptions: {
-        area: 'main',
-        mode: 'split-right',
-        ref: this
-      }
-    })
-    const packageMounts = this.sessionSnapshot.identity?.packageMounts?.items ?? []
-    const packageSource = resolveWorkflowPackageSource(
-      location.sourceUri,
-      packageMounts
-    )
-    if (packageSource?.mount.readOnly) {
-      const monacoEditor = widget.editor as typeof widget.editor & {
-        editor?: { updateOptions(options: { readOnly: boolean }): void }
-      }
-      monacoEditor.editor?.updateOptions({ readOnly: true })
-    }
-    if (existing) await this.shell.activateWidget(existing.id)
-    const start = {
-      line: Math.max(0, location.line - 1),
-      character: Math.max(0, location.column - 1)
-    }
-    const end = {
-      line: Math.max(0, location.endLine - 1),
-      character: Math.max(0, location.endColumn - 1)
-    }
-    widget.editor.selection = { start, end, direction: 'ltr' }
-    widget.editor.cursor = start
-    widget.editor.revealRange({ start, end })
-  }
-
-  protected readonly revealPackageSource = async (
-    location: PackageSourceLocation
-  ): Promise<void> => {
-    const uri = this.resolveSourceUri(location.sourceUri)
-    if (!uri) return
+    const uri = new URI(location.resolvedUri)
     const existing = this.editorManager.all.find(
       candidate => candidate.editor.uri.toString() === uri.toString()
     )
@@ -448,32 +397,59 @@ export class TheiaWorkflowPrototypeWidget extends ReactWidget {
       mode: 'activate',
       widgetOptions: { area: 'main', mode: 'split-right', ref: this }
     })
+    if (location.readOnly) {
+      const monacoEditor = widget.editor as typeof widget.editor & {
+        editor?: { updateOptions(options: { readOnly: boolean }): void }
+      }
+      monacoEditor.editor?.updateOptions({ readOnly: true })
+    }
     if (existing) await this.shell.activateWidget(existing.id)
     const start = {
-      line: Math.max(0, (location.line ?? 1) - 1),
-      character: Math.max(0, (location.column ?? 1) - 1)
+      line: location.line - 1,
+      character: location.column - 1
     }
     const end = {
-      line: Math.max(0, (location.endLine ?? location.line ?? 1) - 1),
-      character: Math.max(0, (location.endColumn ?? location.column ?? 1) - 1)
+      line: location.endLine - 1,
+      character: location.endColumn - 1
     }
     widget.editor.selection = { start, end, direction: 'ltr' }
     widget.editor.cursor = start
     widget.editor.revealRange({ start, end })
   }
 
-  protected resolveSourceUri(sourceUri: string): URI | null {
-    if (sourceUri.startsWith('file://')) return new URI(sourceUri)
-    const packageMounts = this.sessionSnapshot.identity?.packageMounts?.items ?? []
-    const resolved = resolveWorkflowPackageSourceUri(sourceUri, packageMounts)
-    if (!resolved) {
-      void this.messages.error(`OS 未发布源码软件包挂载：${sourceUri}`)
-      return null
+  protected readonly replaceDiagnostics = (
+    diagnostics: readonly WorkflowIdeResolvedDiagnostic[]
+  ): void => {
+    const grouped = new Map<string, Diagnostic[]>()
+    for (const diagnostic of diagnostics) {
+      const markers = grouped.get(diagnostic.resolvedUri) ?? []
+      markers.push({
+        range: {
+          start: {
+            line: diagnostic.line - 1,
+            character: diagnostic.column - 1
+          },
+          end: {
+            line: diagnostic.endLine - 1,
+            character: diagnostic.endColumn - 1
+          }
+        },
+        severity: theiaDiagnosticSeverity(diagnostic.severity),
+        code: diagnostic.code,
+        source: diagnostic.source,
+        message: diagnostic.message
+      })
+      grouped.set(diagnostic.resolvedUri, markers)
     }
-    const uri = new URI(resolved)
-    // package mount 是 OS 同代签发的身份合同；不要在投影阶段用异步 exists
-    // 再造一个文件权威。实际打开/读取失败由对应操作报告完整 FileService 诊断。
-    return uri
+    for (const uri of this.diagnosticUris) {
+      if (!grouped.has(uri)) {
+        this.problemManager.setMarkers(new URI(uri), 'unilab', [])
+      }
+    }
+    for (const [uri, markers] of grouped) {
+      this.problemManager.setMarkers(new URI(uri), 'unilab', markers)
+    }
+    this.diagnosticUris = new Set(grouped.keys())
   }
 
   protected override render(): React.ReactElement {
@@ -503,7 +479,6 @@ export class TheiaWorkflowPrototypeWidget extends ReactWidget {
         />
       )
     }
-    this.ideBridge.sourcePosition = this.snapshot.sourcePosition
     return (
       <WorkbenchSurface
         backendUrl={this.sessionSnapshot.identity.backendUrl}
@@ -860,6 +835,17 @@ function createPrototypeServices(backendUrl: string): Services {
       realtimeUrl: url.replace(/^http/, 'ws')
     }
   })
+}
+
+function theiaDiagnosticSeverity(
+  severity: WorkflowIdeDiagnosticSeverity
+): DiagnosticSeverity {
+  switch (severity) {
+    case 'error': return DiagnosticSeverity.Error
+    case 'warning': return DiagnosticSeverity.Warning
+    case 'information': return DiagnosticSeverity.Information
+    case 'hint': return DiagnosticSeverity.Hint
+  }
 }
 
 function emptyPlcSimulatorSnapshot(): WorkbenchSessionSnapshot['plcSimulator'] {

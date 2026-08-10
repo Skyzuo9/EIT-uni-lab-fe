@@ -1,4 +1,5 @@
 import type { WorkflowRuntimePort } from '@unilab/services'
+import { useEffect } from 'react'
 
 import type { WorkflowTracePort } from '../traceRuntime'
 import type { WorkflowPanelRuntimeProjection } from '../workflowPanelProjection'
@@ -8,6 +9,7 @@ import {
 } from '../hooks/usePersistentWorkflowAuthoring'
 import type { WorkflowResourceSlotOptionsPort } from '../utils/workflowResourceSlotOptions'
 import type { WorkflowIdeBridge } from '../utils/workflowSourceNavigation'
+import { projectWorkflowIdeDiagnostics } from '../utils/workflowSourceNavigation'
 import { PersistentWorkflowAuthoringView } from './PersistentWorkflowAuthoringView'
 
 export {
@@ -44,6 +46,14 @@ export function PersistentWorkflowAuthoringPanel(
   const model = usePersistentWorkflowAuthoring(
     props satisfies PersistentWorkflowAuthoringOptions
   )
+  const onDiagnosticsChange = props.ideBridge?.onDiagnosticsChange
+  useEffect(() => {
+    onDiagnosticsChange?.(projectWorkflowIdeDiagnostics(
+      model.aggregate,
+      model.sourceProjection
+    ))
+    return () => onDiagnosticsChange?.([])
+  }, [model.aggregate, model.sourceProjection, onDiagnosticsChange])
   return (
     <PersistentWorkflowAuthoringView
       model={model}

@@ -1,5 +1,9 @@
-import type { WorkflowAuthoringAggregate } from '@unilab/services'
 import type {
+  WorkflowAuthoringAggregate,
+  WorkflowAuthoringDiagnostic
+} from '@unilab/services'
+import type {
+  WorkflowIdeDiagnostic,
   WorkflowSourceMapEntry,
   WorkflowSourceProjection
 } from '@unilab/workflow-ide-bridge'
@@ -51,6 +55,50 @@ export function projectWorkflowSourceNavigation(
         sourceMap: []
       }
     : null
+}
+
+/** Project OS authoring diagnostics into the same exact IDE source identity. */
+export function projectWorkflowIdeDiagnostics(
+  aggregate: WorkflowAuthoringAggregate | null,
+  projection: WorkflowSourceProjection | null
+): WorkflowIdeDiagnostic[] {
+  const sourceUri = aggregate?.draft?.source_uri ?? projection?.sourceUri
+  if (!sourceUri) return []
+  return (aggregate?.draft?.diagnostics ?? []).map(diagnostic => {
+    const sourceMapEntry = diagnostic.node_id
+      ? projection?.sourceMap.find(entry =>
+          entry.workflow_node_uuid === diagnostic.node_id
+        )
+      : undefined
+    const range = diagnostic.source_range ?? sourceMapEntry
+    return {
+      sourceUri: diagnosticSourceUri(diagnostic, sourceUri),
+      severity: diagnostic.severity,
+      code: diagnostic.code,
+      message: diagnostic.message,
+      source: 'UniLab OS',
+      workflowUuid: aggregate?.workflow_uuid,
+      ...(diagnostic.node_id
+        ? { workflowNodeUuid: diagnostic.node_id }
+        : {}),
+      ...(range ? {
+        line: range.start_line,
+        column: range.start_column,
+        endLine: range.end_line,
+        endColumn: range.end_column
+      } : {})
+    }
+  })
+}
+
+function diagnosticSourceUri(
+  diagnostic: WorkflowAuthoringDiagnostic,
+  fallback: string
+): string {
+  const path = diagnostic.path?.trim()
+  return path && (path.startsWith('package://') || path.startsWith('file://'))
+    ? path
+    : fallback
 }
 
 /** 源码映射跨 RPC/宿主后对象身份会变化，只比较 OS 合同中的稳定标量。 */
