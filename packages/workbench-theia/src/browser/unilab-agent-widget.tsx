@@ -28,6 +28,7 @@ export class UniLabAgentWidget extends ReactWidget {
     this.title.caption = 'UniLab Agent — current Editable Package sessions'
     this.title.closable = true
     this.title.iconClass = 'codicon codicon-sparkle'
+    this.title.dataset = { unilabAgentPanel: 'true' }
     this.node.style.minWidth = '420px'
     this.toDispose.push(this.sessionClient.onSessionChanged(snapshot => {
       this.snapshot = snapshot

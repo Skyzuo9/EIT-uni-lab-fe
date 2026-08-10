@@ -101,6 +101,30 @@ test.describe('UniLab Workbench real-system contract', () => {
     await page.goto(workbenchUrl!)
     const workbench = page.locator('[data-package-mount-count="1"]')
     await expect(workbench).toBeVisible()
+
+    const unilabActivityTabs = page.locator(
+      '.theia-app-left .lm-TabBar-tab[data-unilabgroup="true"]:not([id$="-hidden"])'
+    )
+    await expect(unilabActivityTabs).toHaveCount(4)
+    await expect.poll(async () => unilabActivityTabs.evaluateAll(tabs =>
+      tabs.map(tab => tab.id)
+    )).toEqual([
+      'shell-tab-unilab:device-management-navigation',
+      'shell-tab-unilab:material-navigation',
+      'shell-tab-unilab:workbench-navigator',
+      'shell-tab-unilab:agent-navigation'
+    ])
+    await expect.poll(() => page.evaluate(() => [
+      getComputedStyle(document.querySelector<HTMLElement>(
+        '.theia-app-left .lm-TabBar-tab[data-unilabgroup="true"]'
+      )!, '::before').content,
+      getComputedStyle(document.querySelector<HTMLElement>(
+        '[id="shell-tab-explorer-view-container"]'
+      )!, '::before').content
+    ])).toEqual(['"UNILAB"', '"IDE"'])
+    await expect(page.locator(
+      '.theia-app-right [id="shell-tab-unilab:agent"]'
+    )).toBeHidden()
     await expect(workbench).toHaveAttribute('data-session-mode', 'normal')
     await expect(workbench).toHaveAttribute(
       'data-workspace-graph-fingerprint',
@@ -250,14 +274,25 @@ test.describe('UniLab Workbench real-system contract', () => {
     await expect(page.locator('#theia-left-content-panel')).toHaveClass(
       /theia-mod-collapsed/
     )
-    await expect.poll(() => page.evaluate(() => [
-      getComputedStyle(document.querySelector<HTMLElement>(
-        '[id="shell-tab-unilab:device-management-navigation"]'
-      )!, '::before').content,
-      getComputedStyle(document.querySelector<HTMLElement>(
-        '[id="shell-tab-explorer-view-container"]'
-      )!, '::before').content
-    ])).toEqual(['"UNILAB"', '"IDE"'])
+    const agentActivityTab = page.locator(
+      '[id="shell-tab-unilab:agent-navigation"]'
+    )
+    const agentWasActive = await agentActivityTab.getAttribute(
+      'data-unilabactive'
+    )
+    await agentActivityTab.click()
+    await expect(agentActivityTab).toHaveAttribute(
+      'data-unilabactive',
+      agentWasActive === 'true' ? 'false' : 'true'
+    )
+    await expect(page.locator('#theia-left-content-panel')).toHaveClass(
+      /theia-mod-collapsed/
+    )
+    await agentActivityTab.click()
+    await expect(agentActivityTab).toHaveAttribute(
+      'data-unilabactive',
+      agentWasActive ?? 'false'
+    )
 
     await page.locator('[id="shell-tab-unilab:workbench-navigator"]').click()
     await expect(page.locator('main[data-workbench-view]')).toHaveAttribute(

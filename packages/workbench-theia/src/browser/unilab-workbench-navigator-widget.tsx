@@ -45,6 +45,7 @@ abstract class UniLabDomainEntryWidget extends ReactWidget {
   protected updateActivityPresentation(): void {
     const active = this.viewState.isVisible(this.entry.mode)
     this.title.dataset = {
+      unilabGroup: 'true',
       unilabDomain: this.entry.mode,
       unilabActive: String(active)
     }

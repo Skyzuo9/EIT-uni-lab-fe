@@ -590,7 +590,7 @@ export default function DevicePanel({
             </button>
           </div>
         ) : null}
-        {devices.length === 0 ? (
+        {error ? null : devices.length === 0 ? (
           <div className="device-empty device-empty--compact">
             <strong>
               {connection === 'connected'
@@ -626,7 +626,12 @@ export default function DevicePanel({
       </aside>
 
       <main className="section__detail edge-device__detail">
-        {selectedDevice ? (
+        {error ? (
+          <div className="device-empty device-empty--detail">
+            <strong>设备目录暂未就绪</strong>
+            <p>请根据左侧诊断检查 OS 设备启动日志，然后重新读取。</p>
+          </div>
+        ) : selectedDevice ? (
           <DeviceWorkspace
             device={selectedDevice}
             selectedAction={selectedAction}

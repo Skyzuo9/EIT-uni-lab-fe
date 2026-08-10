@@ -29,7 +29,11 @@ import { UniLabWorkbenchWidget } from './unilab-workbench-widget'
 import { WorkbenchViewState } from './workbench-view-state'
 import { WorkbenchSessionClientImpl } from './workbench-session-client'
 import { WorkbenchPrivateStatePreferenceContribution } from './workbench-private-state-preferences'
-import { UniLabAgentContribution } from './unilab-agent-contribution'
+import {
+  UniLabAgentContribution,
+  UniLabAgentNavigationContribution
+} from './unilab-agent-contribution'
+import { UniLabAgentNavigatorWidget } from './unilab-agent-navigator-widget'
 import { UniLabAgentWidget } from './unilab-agent-widget'
 import '../../src/browser/style/index.css'
 
@@ -55,6 +59,13 @@ export default new ContainerModule((bind) => {
   bind(WidgetFactory).toDynamicValue(context => ({
     id: UniLabAgentWidget.ID,
     createWidget: () => context.container.get(UniLabAgentWidget)
+  })).inSingletonScope()
+
+  bindViewContribution(bind, UniLabAgentNavigationContribution)
+  bind(UniLabAgentNavigatorWidget).toSelf()
+  bind(WidgetFactory).toDynamicValue(context => ({
+    id: UniLabAgentNavigatorWidget.ID,
+    createWidget: () => context.container.get(UniLabAgentNavigatorWidget)
   })).inSingletonScope()
 
   bindViewContribution(bind, UniLabWorkbenchContribution)

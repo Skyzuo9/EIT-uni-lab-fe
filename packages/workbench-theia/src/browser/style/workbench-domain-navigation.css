@@ -101,12 +101,20 @@
  * UniLab widgets gives it a second, independent active state. Native IDE tabs
  * remain selected by Theia, while these tabs describe panels inside Workbench.
  */
-.theia-app-left .lm-TabBar-tab[data-unilabdomain='device'] {
+.theia-app-left
+  .lm-TabBar-tab[data-unilabgroup='true']:not(
+    .lm-TabBar-tab[data-unilabgroup='true']
+      ~ .lm-TabBar-tab[data-unilabgroup='true']
+  ) {
   margin-top: 18px;
   overflow: visible;
 }
 
-.theia-app-left .lm-TabBar-tab[data-unilabdomain='device']::before {
+.theia-app-left
+  .lm-TabBar-tab[data-unilabgroup='true']:not(
+    .lm-TabBar-tab[data-unilabgroup='true']
+      ~ .lm-TabBar-tab[data-unilabgroup='true']
+  )::before {
   position: absolute;
   top: -14px;
   left: 0;
@@ -117,6 +125,12 @@
   letter-spacing: 0.06em;
   text-align: center;
   pointer-events: none;
+}
+
+/* The visible Agent content remains in the right panel. Its activity entry is
+ * intentionally represented by the UniLab proxy in the left product group. */
+.theia-app-right .lm-TabBar-tab[data-unilabagentpanel='true'] {
+  display: none;
 }
 
 .theia-app-left .lm-TabBar-tab[id='shell-tab-explorer-view-container'] {

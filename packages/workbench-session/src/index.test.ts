@@ -427,7 +427,7 @@ describe('managed local Workbench session', () => {
     })
   })
 
-  it('does not block Workbench authoring on disconnected devices', async () => {
+  it('does not block Workbench authoring when the HostNode has no online devices', async () => {
     const fixture = await createFixture()
     const session = createManagedLocalWorkbenchSession({
       workspacePath: fixture.workspacePath,
@@ -438,13 +438,36 @@ describe('managed local Workbench session', () => {
       readinessTimeoutMs: 5_000,
       environment: {
         ...process.env,
-        UNILAB_FIXTURE_DEVICES_NOT_READY: '1'
+        UNILAB_FIXTURE_NO_ONLINE_DEVICES: '1'
       }
     })
     sessions.push(session)
     await expect(session.start()).resolves.toMatchObject({
       phase: 'ready',
       diagnostic: null
+    })
+  })
+
+  it('does not publish ready while the HostNode device catalog is unavailable', async () => {
+    const fixture = await createFixture()
+    const session = createManagedLocalWorkbenchSession({
+      workspacePath: fixture.workspacePath,
+      osProjectPath: fixture.osProjectPath,
+      environmentPath: fixture.environmentPath,
+      plcSimulatorGuiPort: fixture.plcSimulatorGuiPort,
+      plcSimulatorOpcUaPort: fixture.plcSimulatorOpcUaPort,
+      readinessTimeoutMs: 800,
+      environment: {
+        ...process.env,
+        UNILAB_FIXTURE_DEVICES_NOT_READY: '1'
+      }
+    })
+    sessions.push(session)
+
+    await expect(session.start()).rejects.toThrow('/api/v1/devices')
+    expect(session.getSnapshot()).toMatchObject({
+      phase: 'failed',
+      diagnostic: { code: 'os_readiness_failed' }
     })
   })
 
@@ -872,20 +895,18 @@ const server = http.createServer((request, response) => {
     })
   }
   if (request.url === '/api/v1/devices') {
-    if (
-      process.env.UNILAB_FIXTURE_DEVICES_NOT_READY === '1'
-      || (
-        process.env.UNILAB_FIXTURE_PLC_READY_FILE
-        && !fs.existsSync(process.env.UNILAB_FIXTURE_PLC_READY_FILE)
-      )
-    ) {
+    if (process.env.UNILAB_FIXTURE_DEVICES_NOT_READY === '1') {
       return json(response, { code: 2001, data: {}, message: 'Host node not initialized' })
     }
+    const plcIsOnline = !process.env.UNILAB_FIXTURE_PLC_READY_FILE
+      || fs.existsSync(process.env.UNILAB_FIXTURE_PLC_READY_FILE)
     return json(response, {
       code: 0,
       data: {
         schemaVersion: 'device-catalog/v1',
-        items: [{ id: 'fixture_device', actions: ['ping'] }]
+        items: process.env.UNILAB_FIXTURE_NO_ONLINE_DEVICES === '1' || !plcIsOnline
+          ? []
+          : [{ id: 'fixture_device', actions: ['ping'] }]
       }
     })
   }

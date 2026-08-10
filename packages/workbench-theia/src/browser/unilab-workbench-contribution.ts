@@ -14,6 +14,7 @@ import {
   WorkflowDomainEntryWidget
 } from './unilab-workbench-navigator-widget'
 import { UniLabWorkbenchWidget } from './unilab-workbench-widget'
+import { UniLabAgentNavigationContribution } from './unilab-agent-contribution'
 
 export const OpenUniLabWorkbench: Command = {
   id: 'unilab.authoring-workbench.open',
@@ -112,10 +113,37 @@ implements FrontendApplicationContribution {
   @inject(DeviceDomainEntryContribution)
   protected readonly device!: DeviceDomainEntryContribution
 
+  @inject(UniLabAgentNavigationContribution)
+  protected readonly agent!: UniLabAgentNavigationContribution
+
   async onDidInitializeLayout(app: FrontendApplication): Promise<void> {
-    await this.workflow.openView({ activate: false, reveal: false })
-    await this.material.openView({ activate: false, reveal: false })
-    await this.device.openView({ activate: false, reveal: false })
+    const device = await this.device.openView({ activate: false, reveal: false })
+    const material = await this.material.openView({
+      activate: false,
+      reveal: false
+    })
+    const workflow = await this.workflow.openView({
+      activate: false,
+      reveal: false
+    })
+    const agent = await this.agent.openView({ activate: false, reveal: false })
+
+    // Ranks govern fresh widgets, while Theia restores persisted titles in their
+    // saved order before contributions run. Re-add to restore each rank, then
+    // normalize the public tab bar so upgrades cannot retain an obsolete order.
+    await app.shell.addWidget(device, { area: 'left', rank: 71 })
+    await app.shell.addWidget(material, { area: 'left', rank: 72 })
+    await app.shell.addWidget(workflow, { area: 'left', rank: 73 })
+    await app.shell.addWidget(agent, { area: 'left', rank: 74 })
+    const activityBar = app.shell.getTabBarFor(device)
+    for (const [index, widget] of [
+      device,
+      material,
+      workflow,
+      agent
+    ].entries()) {
+      activityBar?.insertTab(index, widget.title)
+    }
     await app.shell.collapsePanel('left')
   }
 }

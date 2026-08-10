@@ -2,8 +2,10 @@ import * as React from 'react'
 
 import type { WorkbenchDomain } from './workbench-view-state'
 
-export interface DomainEntryDefinition {
-  mode: WorkbenchDomain
+export interface DomainEntryDefinition<
+  TMode extends WorkbenchDomain | 'agent' = WorkbenchDomain
+> {
+  mode: TMode
   label: string
   caption: string
   description: string
@@ -16,7 +18,7 @@ export function DomainEntryPanel({
   active,
   onOpen
 }: {
-  entry: DomainEntryDefinition
+  entry: DomainEntryDefinition<WorkbenchDomain | 'agent'>
   active: boolean
   onOpen: () => void
 }): React.JSX.Element {
