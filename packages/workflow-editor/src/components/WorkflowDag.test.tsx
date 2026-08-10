@@ -185,6 +185,9 @@ describe('WorkflowDag canvas controls', () => {
     expect(markup).toContain(
       'data-workflow-layout-direction="horizontal"'
     )
+    expect(markup).toContain('aria-label="辅助物料展示方式"')
+    expect(markup).toMatch(/aria-pressed="true"[^>]*>反应式</)
+    expect(markup).toMatch(/aria-pressed="false"[^>]*>完整支线</)
   })
 
   /** 证明交互态与窄视口规则不依赖运行时内联样式。 */

@@ -5,6 +5,9 @@ import { MarkerType, Position, useNodesState, useEdgesState } from 'reactflow'
 
 import type { WorkflowNodeData } from '../components/WorkflowNodeCard'
 import { isReadyHandle } from '../components/WorkflowNodeCard'
+import type {
+  WorkflowReactionMaterialNodeData
+} from '../components/WorkflowReactionMaterialNode'
 import type { WorkflowRoundedStepEdgeData } from '../components/WorkflowRoundedStepEdge'
 import { layoutDag, type LayoutResult } from '../utils/dagLayout'
 import { getNodeColor } from '../utils/nodeColors'
@@ -21,6 +24,11 @@ import { layoutWorkflowPrimarySampleFlow } from '../utils/workflowPrimarySampleL
 import { reconcileReactFlowNodeMeasurements } from '../utils/reactFlowNodeMeasurement'
 import { materialTraceAccent, projectMaterialTraces } from '../utils/workflowMaterialTrace'
 import type { WorkflowMaterialTraceProjection } from '../utils/workflowMaterialTrace'
+import {
+  projectWorkflowReactionMaterialAnnotations,
+  type WorkflowReactionMaterialAnnotation,
+  type WorkflowSupportingMaterialPresentation
+} from '../utils/workflowReactionMaterialProjection'
 
 interface UseWorkflowDagResult {
   nodes: Node<WorkflowNodeData>[]
@@ -47,6 +55,10 @@ interface WorkflowFlowEdgeContext {
 
 const COMM_EDGE_TYPE = 'communication'
 const STRUCTURAL_EDGE_COLOR = 'var(--unilab-color-text-subtle)'
+const REACTION_MATERIAL_NODE_WIDTH = 152
+const PRIMARY_SAMPLE_NODE_WIDTH = 184
+const REACTION_MATERIAL_NODE_GAP = 12
+const REACTION_MATERIAL_ITEM_HEIGHT = 22
 
 /**
  * 将当前可见工作流（Workflow）投影为可交互的 ReactFlow 节点和正交边。
@@ -55,6 +67,7 @@ const STRUCTURAL_EDGE_COLOR = 'var(--unilab-color-text-subtle)'
  * @param links 已重接端点的控制边与物料流（MaterialFlow）边。
  * @param strategy 当前选中的画布布局策略。
  * @param swimlaneDirection 物料泳道策略当前选中的流向。
+ * @param supportingMaterialPresentation 辅助物料使用反应式标注或完整支线展示。
  * @returns ReactFlow 状态以及节点、边变更入口。
  */
 export function useWorkflowDag(
@@ -63,20 +76,31 @@ export function useWorkflowDag(
   strategy: WorkflowDagLayoutStrategy =
     DEFAULT_WORKFLOW_DAG_LAYOUT_STRATEGY,
   swimlaneDirection: WorkflowMaterialSwimlaneDirection =
-    DEFAULT_WORKFLOW_MATERIAL_SWIMLANE_DIRECTION
+    DEFAULT_WORKFLOW_MATERIAL_SWIMLANE_DIRECTION,
+  supportingMaterialPresentation: WorkflowSupportingMaterialPresentation =
+    'full-branches'
 ): UseWorkflowDagResult {
   const fallback = useMemo(
     () => buildFlowElements(
       strategy === 'material-swimlanes'
         ? layoutWorkflowMaterialSwimlanes(nodes, links, swimlaneDirection)
         : strategy === 'primary-sample-serpentine'
-          ? layoutWorkflowPrimarySampleFlow(nodes, links)
+          ? layoutWorkflowPrimarySampleFlow(nodes, links, {
+              supportingMaterialPresentation
+            })
         : layoutDag(nodes, links, { preserveExistingPositions: false }),
       nodes,
       links,
-      strategy
+      strategy,
+      supportingMaterialPresentation
     ),
-    [nodes, links, strategy, swimlaneDirection]
+    [
+      nodes,
+      links,
+      strategy,
+      supportingMaterialPresentation,
+      swimlaneDirection
+    ]
   )
   const [flowNodes, setNodes, onNodesChange] = useNodesState(
     fallback.flowNodes
@@ -121,12 +145,17 @@ export function useWorkflowDag(
      */
     () => {
     let cancelled = false
-    void layoutVisibleWorkflowDag(
-      nodes,
-      links,
-      strategy,
-      swimlaneDirection
-    ).then(
+    const layoutPromise = strategy === 'primary-sample-serpentine'
+      ? Promise.resolve(layoutWorkflowPrimarySampleFlow(nodes, links, {
+          supportingMaterialPresentation
+        }))
+      : layoutVisibleWorkflowDag(
+          nodes,
+          links,
+          strategy,
+          swimlaneDirection
+        )
+    void layoutPromise.then(
       /**
        * 安装仍有效的异步布局结果。
        *
@@ -136,7 +165,13 @@ export function useWorkflowDag(
        */
       (layout) => {
       if (cancelled) return
-      const elements = buildFlowElements(layout, nodes, links, strategy)
+      const elements = buildFlowElements(
+        layout,
+        nodes,
+        links,
+        strategy,
+        supportingMaterialPresentation
+      )
       // `currentNodes` 是异步布局完成时仍有效的最新节点与测量集合。
       setNodes(
         /**
@@ -175,7 +210,15 @@ export function useWorkflowDag(
     }
     return cancelLayout
     },
-    [links, nodes, setEdges, setNodes, strategy, swimlaneDirection]
+    [
+      links,
+      nodes,
+      setEdges,
+      setNodes,
+      strategy,
+      supportingMaterialPresentation,
+      swimlaneDirection
+    ]
   )
 
   return {
@@ -193,13 +236,15 @@ export function useWorkflowDag(
  * @param sourceNodes 用于查询句柄、物料颜色和节点展示信息的源节点。
  * @param sourceLinks 用于计算物料流（MaterialFlow）追踪颜色的源边。
  * @param strategy 当前画布布局策略，用于节点样式和交互投影。
+ * @param supportingMaterialPresentation 辅助物料的画布展示方式。
  * @returns 可直接交给 ReactFlow 的节点与边。
  */
 function buildFlowElements(
   layout: LayoutResult,
   sourceNodes: readonly WorkflowNode[],
   sourceLinks: readonly WorkflowLink[],
-  strategy: WorkflowDagLayoutStrategy
+  strategy: WorkflowDagLayoutStrategy,
+  supportingMaterialPresentation: WorkflowSupportingMaterialPresentation
 ): WorkflowFlowElements {
   const materialTraces = projectMaterialTraces(sourceNodes, sourceLinks)
   const nodeNames = new Map(sourceNodes.map((node) => [node.id, node.name]))
@@ -212,6 +257,12 @@ function buildFlowElements(
   // 不继承物料泳道（Material Swimlane）的绝对坐标和节点尺寸。
   const compactPrimarySampleLayout =
     strategy === 'primary-sample-serpentine'
+  const reactionFormulaPresentation = compactPrimarySampleLayout &&
+    supportingMaterialPresentation === 'reaction-formula' &&
+    Boolean(layout.primarySample?.hasPrimarySample)
+  const backboneNodeIds = new Set(
+    layout.primarySample?.backboneNodeIds ?? []
+  )
   // `materialRoleByLineage` 让每条物料边以常数时间读取物料流角色。
   const materialRoleByLineage = new Map(
     materialTraces.lineages.map((lineage) => [
@@ -219,7 +270,10 @@ function buildFlowElements(
       lineage.materialRole
     ])
   )
-  const flowNodes: Node<WorkflowNodeData>[] = layout.nodes.map((node) => {
+  const visibleLayoutNodes = reactionFormulaPresentation
+    ? layout.nodes.filter((node) => backboneNodeIds.has(node.id))
+    : layout.nodes
+  const flowNodes: Node<WorkflowNodeData>[] = visibleLayoutNodes.map((node) => {
     const laneLayout = layout.swimlanes?.nodeLayouts.get(node.id)
     const handleLanes = layout.swimlanes?.handleLaneIndexes.get(node.id)
     const nodePorts = layout.nodePorts?.get(node.id)
@@ -279,18 +333,78 @@ function buildFlowElements(
     }
   })
 
-  const flowEdges = layout.links.map((link, index) => buildWorkflowFlowEdge({
-    link,
-    index,
-    layout,
-    materialTraces,
-    materialRoleByLineage,
-    handleByUuid,
-    nodeNames,
-    compactPrimarySampleLayout
-  }))
+  if (reactionFormulaPresentation) {
+    const annotations = projectWorkflowReactionMaterialAnnotations(
+      sourceNodes,
+      sourceLinks,
+      backboneNodeIds
+    )
+    flowNodes.push(...buildReactionMaterialNodes(layout, annotations))
+  }
+
+  const flowEdges = layout.links.flatMap((link, index) => {
+    if (
+      reactionFormulaPresentation &&
+      (!backboneNodeIds.has(link.source) || !backboneNodeIds.has(link.target))
+    ) return []
+    return [buildWorkflowFlowEdge({
+      link,
+      index,
+      layout,
+      materialTraces,
+      materialRoleByLineage,
+      handleByUuid,
+      nodeNames,
+      compactPrimarySampleLayout
+    })]
+  })
 
   return { flowNodes, flowEdges }
+}
+
+/**
+ * 把辅助物料反应式标注定位到实际加入的主样品（Primary Sample）步骤上方。
+ *
+ * @param layout 已完成主样品蛇形排布的画布布局。
+ * @param annotations 按主干目标节点分组的辅助物料（Material）标注。
+ * @returns 不可选择、不承载执行语义的 ReactFlow 注释节点。
+ */
+function buildReactionMaterialNodes(
+  layout: LayoutResult,
+  annotations: readonly WorkflowReactionMaterialAnnotation[]
+): Node<WorkflowNodeData>[] {
+  const layoutNodeById = new Map(layout.nodes.map((node) => [node.id, node]))
+  return annotations.flatMap((annotation) => {
+    const targetNode = layoutNodeById.get(annotation.targetNodeUuid)
+    if (!targetNode) return []
+    const annotationHeight = Math.max(
+      REACTION_MATERIAL_ITEM_HEIGHT,
+      annotation.items.length * REACTION_MATERIAL_ITEM_HEIGHT
+    )
+    const data: WorkflowReactionMaterialNodeData = {
+      id: annotation.targetNodeUuid,
+      name: annotation.targetNodeName,
+      color: 'transparent',
+      reactionMaterials: annotation.items,
+      reactionTargetNodeName: annotation.targetNodeName,
+      layoutStrategy: 'primary-sample-serpentine',
+      materialLaneDirection: 'horizontal'
+    }
+    return [{
+      id: `reaction-materials:${annotation.targetNodeUuid}`,
+      type: 'wfReactionMaterial',
+      position: {
+        x: targetNode.x +
+          (PRIMARY_SAMPLE_NODE_WIDTH - REACTION_MATERIAL_NODE_WIDTH) / 2,
+        y: targetNode.y - annotationHeight - REACTION_MATERIAL_NODE_GAP
+      },
+      selectable: false,
+      draggable: false,
+      focusable: false,
+      deletable: false,
+      data
+    }]
+  })
 }
 
 /**

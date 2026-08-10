@@ -12,6 +12,9 @@ import {
   type WorkflowSupportingBranch,
   workflowBackboneColumnForIndex
 } from './workflowPrimarySampleBranchLayout'
+import type {
+  WorkflowSupportingMaterialPresentation
+} from './workflowReactionMaterialProjection'
 
 export const WORKFLOW_PRIMARY_SAMPLE_NODES_PER_ROW = 4
 export const WORKFLOW_PRIMARY_SAMPLE_COLUMN_GAP = 328
@@ -25,6 +28,10 @@ const COMPACT_NODE_BASE_HEIGHT = 48
 const COMPACT_MATERIAL_CARD_HEIGHT = 33
 const SPECIAL_NODE_HEIGHT = 72
 
+export interface WorkflowPrimarySampleLayoutOptions {
+  supportingMaterialPresentation?: WorkflowSupportingMaterialPresentation
+}
+
 /**
  * 以主样品物料流角色（MaterialFlowRole）的第一条物料链为主干生成蛇形布局。
  *
@@ -34,11 +41,13 @@ const SPECIAL_NODE_HEIGHT = 72
  *
  * @param nodes 已完成组合工作流折叠与物料可见性投影的节点。
  * @param links 端点均可能出现在当前投影中的控制边与物料边。
+ * @param options 辅助物料使用反应式标注或完整支线的布局选项。
  * @returns 包含蛇形坐标、逐节点端口方向和主样品主干目录的布局结果。
  */
 export function layoutWorkflowPrimarySampleFlow(
   nodes: readonly WorkflowNode[],
-  links: readonly WorkflowLink[]
+  links: readonly WorkflowLink[],
+  options: WorkflowPrimarySampleLayoutOptions = {}
 ): LayoutResult {
   const nodeIds = new Set(nodes.map((node) => node.id))
   const visibleLinks = links.filter((link) =>
@@ -91,6 +100,8 @@ export function layoutWorkflowPrimarySampleFlow(
     layerByNode,
     nodeOrder
   )
+  const showSupportingBranches =
+    options.supportingMaterialPresentation !== 'reaction-formula'
   const rowCount = Math.max(
     1,
     Math.ceil(backboneNodeIds.length / WORKFLOW_PRIMARY_SAMPLE_NODES_PER_ROW)
@@ -125,12 +136,14 @@ export function layoutWorkflowPrimarySampleFlow(
       nodePorts.set(nodeId, backboneHorizontalPortLayout(absoluteIndex))
     }
 
-    const secondaryBands = packWorkflowSupportingBranches(
-      secondaryBranchesByRow.get(row) ?? [],
-      ORIGIN_X,
-      WORKFLOW_PRIMARY_SAMPLE_COLUMN_GAP,
-      WORKFLOW_PRIMARY_SAMPLE_NODES_PER_ROW
-    )
+    const secondaryBands = showSupportingBranches
+      ? packWorkflowSupportingBranches(
+          secondaryBranchesByRow.get(row) ?? [],
+          ORIGIN_X,
+          WORKFLOW_PRIMARY_SAMPLE_COLUMN_GAP,
+          WORKFLOW_PRIMARY_SAMPLE_NODES_PER_ROW
+        )
+      : []
     let occupiedBottom = mainRowY + mainRowHeight
     for (const branchNodes of secondaryBands) {
       const branchY = occupiedBottom + SUPPORTING_BRANCH_VERTICAL_GAP

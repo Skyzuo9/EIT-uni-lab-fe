@@ -77,6 +77,35 @@
   text-align: left;
 }
 
+/* 多物料节点仍沿用纵向紧密栈，避免物料泳道的绝对定位让标题和卡片重叠。 */
+.workflow:global(.workflow-runtime)
+  :global(.wf-node--action-strip[data-workflow-layout-strategy='primary-sample-serpentine'][data-workflow-layout-direction='horizontal'][data-workflow-multi-material='true'])
+  :global(.wf-node__identity) {
+  position: static;
+  z-index: auto;
+  inset: auto;
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  flex-basis: auto;
+  padding: 2px 6px 6px;
+  border-right: 0;
+  border-bottom: 1px solid var(--unilab-color-border);
+  background: transparent;
+  transform: none;
+}
+
+.workflow:global(.workflow-runtime)
+  :global(.wf-node--action-strip[data-workflow-layout-strategy='primary-sample-serpentine'][data-workflow-layout-direction='horizontal'][data-workflow-multi-material='true'])
+  :global(.wf-node__material-ports[data-workflow-material-lane-direction='horizontal']) {
+  position: static;
+  inset: auto;
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  transform: none;
+}
+
 /* 横向蛇形的所有物料与执行顺序 Handle 都由东西两侧进出。 */
 .workflow
   :global([data-workflow-layout-strategy='primary-sample-serpentine'][data-workflow-layout-direction='horizontal'])
@@ -141,6 +170,8 @@
 .workflow
   :global(.wf-node--action-strip[data-workflow-layout-strategy='primary-sample-serpentine'][data-workflow-layout-direction='horizontal'])
   :global(.wf-node__state) {
+  position: static;
+  inset: auto;
   height: 22px;
   align-self: flex-start;
   margin-left: 0;
@@ -157,6 +188,8 @@
 .workflow
   :global(.wf-node--action-strip[data-workflow-layout-strategy='primary-sample-serpentine'][data-workflow-layout-direction='horizontal'])
   :global(.wf-node__marker-actions) {
+  position: static;
+  inset: auto;
   align-self: flex-end;
 }
 

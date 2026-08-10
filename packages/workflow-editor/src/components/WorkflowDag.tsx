@@ -30,10 +30,11 @@ import {
   useState
 } from 'react'
 import { useWorkflowDag } from '../hooks/useWorkflowDag'
-import WorkflowNodeCard from './WorkflowNodeCard'
 import WorkflowRoundedStepEdge from './WorkflowRoundedStepEdge'
 import { WorkflowButton } from './WorkflowButton'
 import WorkflowMaterialVisibilityControl from './WorkflowMaterialVisibilityControl'
+import WorkflowSupportingMaterialPresentationControl from './WorkflowSupportingMaterialPresentationControl'
+import { WORKFLOW_DAG_NODE_TYPES } from './workflowDagNodeTypes'
 import type { WorkflowNodeData } from './WorkflowNodeCard'
 import type { WorkflowLink, WorkflowNode } from '../utils/parseWorkflow'
 import { projectNestedWorkflow } from '../utils/canonicalWorkflow'
@@ -58,6 +59,9 @@ import {
   visibleReadOnlyEdgeChanges,
   visibleReadOnlyNodeChanges
 } from '../utils/workflowCanvasPolicy'
+import type {
+  WorkflowSupportingMaterialPresentation
+} from '../utils/workflowReactionMaterialProjection'
 import 'reactflow/dist/style.css'
 import styles from './workflow.module.scss'
 
@@ -99,9 +103,7 @@ interface WorkflowDagProps {
     visibleMaterialRoles: readonly string[] | null
   ) => void
 }
-
-// 注册自定义节点类型(在组件外定义,避免每次渲染重建)
-const nodeTypes = { wfNode: WorkflowNodeCard }
+// 注册自定义边类型（在组件外定义，避免每次渲染重建）。
 const edgeTypes = { workflowRoundedStep: WorkflowRoundedStepEdge }
 const WORKFLOW_FIT_VIEW_OPTIONS = {
   padding: 0.16,
@@ -154,6 +156,8 @@ export default function WorkflowDag({
     useState<WorkflowMaterialSwimlaneDirection>(
       DEFAULT_WORKFLOW_MATERIAL_SWIMLANE_DIRECTION
     )
+  const [supportingMaterialPresentation, setSupportingMaterialPresentation] =
+    useState<WorkflowSupportingMaterialPresentation>('reaction-formula')
   const [expandedGroupIds, setExpandedGroupIds] = useState<Set<string>>(
     () => new Set()
   )
@@ -268,7 +272,8 @@ export default function WorkflowDag({
     nestedProjection.nodes,
     nestedProjection.links,
     layoutStrategy,
-    swimlaneDirection
+    swimlaneDirection,
+    supportingMaterialPresentation
   )
   // `canvasLayoutDirection` 是当前视觉投影的实际阅读方向；蛇形固定横向，
   // 物料泳道（Material Swimlane）才使用用户选择的方向。
@@ -298,6 +303,9 @@ export default function WorkflowDag({
   )
   const runtimeNodes = useMemo(
     () => flowNodes.map((node) => {
+      if (node.type === 'wfReactionMaterial') {
+        return { ...node, deletable: false }
+      }
       const sourceNode = nodeById.get(node.id)
       const status = sourceNode?.groupKind === 'subworkflow'
         ? nestedGroupStatus(sourceNode, nodeStates)
@@ -506,12 +514,14 @@ export default function WorkflowDag({
       </p>
     )
   }
-
   return (
     <div
       className={styles.dag}
       data-workflow-layout-strategy={layoutStrategy}
       data-workflow-layout-direction={canvasLayoutDirection}
+      data-workflow-supporting-material-presentation={
+        supportingMaterialPresentation
+      }
       onKeyDownCapture={(event) => {
         if (
           event.key !== 'Delete' &&
@@ -560,7 +570,7 @@ export default function WorkflowDag({
             targetHandleUuid: connection.targetHandle
           })
         }}
-        nodeTypes={nodeTypes}
+        nodeTypes={WORKFLOW_DAG_NODE_TYPES}
         edgeTypes={edgeTypes}
         fitView
         fitViewOptions={WORKFLOW_FIT_VIEW_OPTIONS}
@@ -576,7 +586,10 @@ export default function WorkflowDag({
         onInit={(instance) => {
           flowInstanceRef.current = instance
         }}
-        onNodeClick={(_event, node: Node<WorkflowNodeData>) => onNodeSelect(node.id)}
+        onNodeClick={(_event, node: Node<WorkflowNodeData>) => {
+          if (node.type === 'wfReactionMaterial') return
+          onNodeSelect(node.id)
+        }}
         onNodeDragStop={(_event, node: Node<WorkflowNodeData>) => {
           if (!nodePositionMutationEnabled) return
           onNodePositionChange?.(node.id, node.position)
@@ -659,6 +672,12 @@ export default function WorkflowDag({
                   }
                 />
               )}
+              {layoutStrategy === 'primary-sample-serpentine' && (
+                <WorkflowSupportingMaterialPresentationControl
+                  value={supportingMaterialPresentation}
+                  onChange={setSupportingMaterialPresentation}
+                />
+              )}
               <label className="workflow-runtime__layout-strategy-field">
                 <span aria-hidden="true">布局</span>
                 <select
@@ -737,7 +756,9 @@ export default function WorkflowDag({
           pannable
           zoomable
           nodeColor={(node) =>
-            node.data?.color ?? 'var(--unilab-color-text-subtle)'
+            node.type === 'wfReactionMaterial'
+              ? 'transparent'
+              : node.data?.color ?? 'var(--unilab-color-text-subtle)'
           }
         />
       </ReactFlow>

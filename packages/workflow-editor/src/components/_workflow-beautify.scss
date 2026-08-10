@@ -274,6 +274,54 @@
   background: var(--unilab-color-surface);
 }
 
+.workflow :global(.workflow-runtime__supporting-material-presentation) {
+  display: inline-flex;
+  align-items: stretch;
+  border-right: 1px solid var(--unilab-color-border);
+  background: var(--unilab-color-surface-subtle);
+}
+
+.workflow :global(.workflow-runtime__supporting-material-presentation) button {
+  min-width: 54px;
+  padding: 0 8px;
+  color: var(--unilab-color-text-muted);
+  border: 0;
+  border-right: 1px solid var(--unilab-color-border);
+  background: transparent;
+  font: 600 11px/1 var(--unilab-font-sans);
+  cursor: pointer;
+}
+
+.workflow
+  :global(.workflow-runtime__supporting-material-presentation)
+  button:last-child {
+  border-right: 0;
+}
+
+.workflow
+  :global(.workflow-runtime__supporting-material-presentation)
+  button:hover:not(:global(.is-active)) {
+  color: var(--unilab-color-text);
+  background: var(--unilab-color-surface-muted);
+}
+
+.workflow
+  :global(.workflow-runtime__supporting-material-presentation)
+  button:global(.is-active) {
+  color: var(--unilab-color-material);
+  background: var(--unilab-color-material-soft);
+  box-shadow: inset 0 -2px 0 var(--unilab-color-material);
+}
+
+.workflow
+  :global(.workflow-runtime__supporting-material-presentation)
+  button:focus-visible {
+  position: relative;
+  z-index: 2;
+  outline: 2px solid var(--unilab-color-focus);
+  outline-offset: -2px;
+}
+
 .workflow :global(.workflow-runtime__layout-strategy-field) > span {
   padding-left: 10px;
   color: var(--unilab-color-text-muted);
