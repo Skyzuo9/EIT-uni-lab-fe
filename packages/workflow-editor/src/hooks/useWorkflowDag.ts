@@ -299,6 +299,7 @@ function buildFlowElements(
         id: node.id,
         name: node.name,
         description: node.description,
+        disabled: node.disabled,
         color: getNodeColor(node.labNodeType, node.type),
         kind: node.type,
         visualKind: node.visualKind,

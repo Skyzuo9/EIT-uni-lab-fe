@@ -16,6 +16,7 @@ describe('PersistentWorkflowToolbar', () => {
     expect(html).toContain('画布模式')
     expect(html).toContain('aria-label="保存工作流"')
     expect(html).toContain('aria-label="开始运行"')
+    expect(html).toContain('调试启动')
     expect(html.indexOf('工作流列表')).toBeLessThan(html.indexOf('代码模式'))
     expect(html).not.toContain('导入 Python')
     expect(html).not.toContain('导入 JSON')

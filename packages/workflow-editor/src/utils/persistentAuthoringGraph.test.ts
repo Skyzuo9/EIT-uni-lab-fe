@@ -6,6 +6,7 @@ import {
   beautifyPersistentAuthoringGraph,
   parseWorkflowAuthoringGraphImport,
   projectPersistentAuthoringGraph,
+  updatePersistentAuthoringNodeDisabled,
   updatePersistentAuthoringNodeName
 } from './persistentAuthoringGraph'
 import { projectNestedWorkflow } from './canonicalWorkflow'
@@ -22,6 +23,22 @@ const graph: WorkflowAuthoringGraph = {
 }
 
 describe('persistent Authoring canvas graph edits', () => {
+  it('persists node disablement and projects a visible disabled marker', () => {
+    const disabled = updatePersistentAuthoringNodeDisabled(graph, 'node-1', true)
+    const projected = projectPersistentAuthoringGraph(disabled)
+
+    expect(disabled.nodes[0]?.disabled).toBe(true)
+    expect(graph.nodes[0]?.disabled).toBeUndefined()
+    expect(projected.nodes[0]?.disabled).toBe(true)
+
+    const enabled = updatePersistentAuthoringNodeDisabled(
+      disabled,
+      'node-1',
+      false
+    )
+    expect(enabled.nodes[0]?.disabled).toBe(false)
+  })
+
   it('projects localized action presentation while preserving an explicit custom title', () => {
     const projected = projectPersistentAuthoringGraph({
       ...graph,

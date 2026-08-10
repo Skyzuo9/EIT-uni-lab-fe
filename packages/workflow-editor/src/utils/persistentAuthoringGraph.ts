@@ -115,6 +115,7 @@ function projectPersistentAuthoringNode(
   )
   return {
     ...projectNodeIdentity(node, template, type),
+    disabled: node.disabled === true,
     handles: context.handlesByTemplate.get(templateUuid) ?? [],
     ...projectNodeParent(node, context.nodeByUuid),
     ...projectNodeReadOnlyState(node),
@@ -456,6 +457,24 @@ export function updatePersistentAuthoringNodeName(
         name
       }
     })
+  }
+}
+
+export function updatePersistentAuthoringNodeDisabled(
+  graph: WorkflowAuthoringGraph,
+  nodeUuid: string,
+  disabled: boolean
+): WorkflowAuthoringGraph {
+  const node = graph.nodes.find((item) => item.uuid === nodeUuid)
+  if (!node) throw new Error('节点不存在或已被删除')
+  if (node.parent_uuid !== undefined && node.parent_uuid !== null) {
+    throw new Error('复合工作流的内部私有节点只读；请编辑调用边界')
+  }
+  return {
+    ...graph,
+    nodes: graph.nodes.map((item) => item.uuid === nodeUuid
+      ? { ...item, disabled }
+      : item)
   }
 }
 

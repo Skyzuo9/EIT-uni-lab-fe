@@ -43,6 +43,7 @@ export interface WorkflowNodeData {
   kind?: string
   visualKind?: WorkflowNodeVisualKind
   status?: string
+  disabled?: boolean
   breakpoint?: boolean
   startNode?: boolean
   beforeStart?: boolean
@@ -69,6 +70,7 @@ export interface WorkflowNodeData {
   }
   onSetStart?: (nodeId: string) => void
   onToggleBreakpoint?: (nodeId: string) => void
+  onToggleDisabled?: (nodeId: string) => void
   onToggleGroup?: (nodeId: string) => void
 }
 
@@ -171,6 +173,7 @@ export default function WorkflowNodeCard({
       data-workflow-material-port-count={materialPorts.length}
       data-workflow-multi-material={materialPorts.length > 1 ? 'true' : undefined}
       data-workflow-node-description={data.description}
+      data-workflow-node-disabled={data.disabled ? 'true' : 'false'}
       aria-label={data.description
         ? `${data.name || data.id}：${data.description}`
         : data.name || data.id}
@@ -203,6 +206,9 @@ export default function WorkflowNodeCard({
           )}
           {data.beforeStart && (
             <span className="wf-node__marker wf-node__marker--excluded">不执行</span>
+          )}
+          {data.disabled && (
+            <span className="wf-node__marker wf-node__marker--disabled">⊘ 已禁用</span>
           )}
         </div>
       )}
@@ -276,6 +282,21 @@ export default function WorkflowNodeCard({
                 }}
               >
                 ●
+              </button>
+            )}
+            {data.onToggleDisabled && (
+              <button
+                type="button"
+                className={data.disabled ? 'is-active is-disabled' : ''}
+                aria-label={`${data.disabled ? '启用' : '禁用'}节点 ${data.id}`}
+                title={data.disabled ? '启用节点' : '禁用节点（运行时自动跳过）'}
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  data.onToggleDisabled?.(data.id)
+                }}
+              >
+                ⊘
               </button>
             )}
           </span>
@@ -702,6 +723,7 @@ export function workflowNodeStateLabel(kind: string | undefined, status: string)
     ready: '已就绪',
     running: '正在运行',
     success: '执行成功',
+    disabled: '已禁用（工作流配置）',
     skipped: '已跳过',
     failed: '执行失败',
     cancelled: '已取消',

@@ -73,6 +73,7 @@ interface WorkflowDagProps {
   selectedNodeId?: string | null
   onSetStart?: (nodeId: string) => void
   onToggleBreakpoint?: (nodeId: string) => void
+  onToggleDisabled?: (nodeId: string) => void
   nodeStates?: Readonly<Record<string, string>>
   breakpoints?: ReadonlySet<string>
   startNodeId?: string | null
@@ -126,6 +127,7 @@ export default function WorkflowDag({
   selectedNodeId,
   onSetStart,
   onToggleBreakpoint,
+  onToggleDisabled,
   nodeStates = {},
   breakpoints = new Set(),
   startNodeId = null,
@@ -329,6 +331,7 @@ export default function WorkflowDag({
           startNode ? 'wf-flow-node--start' : '',
           pausedBefore ? 'wf-flow-node--paused-before' : '',
           breakpoints.has(node.id) ? 'wf-flow-node--breakpoint' : '',
+          sourceNode?.disabled ? 'wf-flow-node--disabled' : '',
           selectedNodeId === node.id
             ? 'wf-flow-node--source-selected'
             : '',
@@ -350,6 +353,7 @@ export default function WorkflowDag({
           status,
           sourceSelected: selectedNodeId === node.id,
           breakpoint: breakpoints.has(node.id),
+          disabled: sourceNode?.disabled === true,
           startNode,
           beforeStart,
           pausedBefore,
@@ -360,7 +364,10 @@ export default function WorkflowDag({
             : onSetStart,
           onToggleBreakpoint: sourceNode?.type === 'material_source'
             ? undefined
-            : onToggleBreakpoint
+            : onToggleBreakpoint,
+          onToggleDisabled: sourceNode?.authoringReadOnly
+            ? undefined
+            : onToggleDisabled
         }
       }
     }),
@@ -373,6 +380,7 @@ export default function WorkflowDag({
       nodeStates,
       onSetStart,
       onToggleBreakpoint,
+      onToggleDisabled,
       pausedBeforeNodeId,
       selectedNodeId,
       startNodeId,

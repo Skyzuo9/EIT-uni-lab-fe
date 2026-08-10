@@ -18,7 +18,8 @@ interface PersistentWorkflowToolbarProps {
 const RUN_MODE_LABELS = {
   normal: '正常运行',
   step: '单步模式',
-  single_node: '单节点调试'
+  single_node: '单节点调试',
+  debug: '调试启动'
 } as const
 
 /**
@@ -98,6 +99,8 @@ export function PersistentWorkflowToolbar({
 
   const startLabel = taskRunMode === 'single_node'
     ? '开始单节点调试'
+    : taskRunMode === 'debug'
+      ? '调试启动'
     : workflowStartPresentation.label
   const visualStatus = workflowTaskVisualStatus(task)
 
@@ -210,7 +213,7 @@ export function PersistentWorkflowToolbar({
               <span aria-hidden="true">⌄</span>
             </summary>
             <div role="menu" aria-label="任务运行模式">
-              {(['normal', 'step', 'single_node'] as const).map((runMode) => (
+              {(['normal', 'debug', 'step', 'single_node'] as const).map((runMode) => (
                 <WorkflowButton
                   key={runMode}
                   type="button"
@@ -224,6 +227,8 @@ export function PersistentWorkflowToolbar({
                   <ToolbarIcon
                     name={runMode === 'normal'
                       ? 'play'
+                      : runMode === 'debug'
+                        ? 'debug'
                       : runMode === 'step'
                         ? 'step'
                         : 'node'}
@@ -262,7 +267,7 @@ export function PersistentWorkflowToolbar({
           </WorkflowButton>
         )}
 
-        {liveTask && (
+        {liveTask && !taskRuntime.snapshot.debug && (
           <WorkflowDebugControls
             compact
             controls={compactTaskControls}

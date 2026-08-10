@@ -56,6 +56,7 @@ export default function WorkflowMaterialSourceNode({
       data-workflow-layout-strategy={data.layoutStrategy}
       data-workflow-layout-direction={data.materialLaneDirection}
       data-workflow-node-description={data.description}
+      data-workflow-node-disabled={data.disabled ? 'true' : 'false'}
       aria-label={data.description
         ? `${data.name || data.id}：${data.description}`
         : data.name || data.id}
@@ -70,6 +71,22 @@ export default function WorkflowMaterialSourceNode({
           {data.name || data.id}
         </strong>
         <small>{sourceDescription}</small>
+        {data.disabled && <small className="wf-node__marker--disabled">⊘ 已禁用</small>}
+        {data.onToggleDisabled && (
+          <button
+            type="button"
+            className={data.disabled ? 'is-active is-disabled' : ''}
+            aria-label={`${data.disabled ? '启用' : '禁用'}节点 ${data.id}`}
+            title={data.disabled ? '启用节点' : '禁用节点（运行时自动跳过）'}
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation()
+              data.onToggleDisabled?.(data.id)
+            }}
+          >
+            ⊘
+          </button>
+        )}
       </span>
       <span
         className="wf-node__material-source-visual"
