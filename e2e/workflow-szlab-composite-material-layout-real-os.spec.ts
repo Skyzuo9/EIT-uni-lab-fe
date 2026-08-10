@@ -365,6 +365,33 @@ test('SZLab composite material workflow uses one orthogonal visible layout', asy
   expect(horizontalMaterialHandleEvidence.every((handle) =>
     handle.nodeEdgeDelta <= 3
   ), JSON.stringify(horizontalMaterialHandleEvidence, null, 2)).toBe(true)
+  const materialSourceLabelEvidence = await materialSources.evaluateAll(
+    (sources) => sources.map((source) => {
+      const label = source.querySelector<HTMLElement>(
+        '.wf-node__material-source-label'
+      )?.getBoundingClientRect()
+      const visual = source.querySelector<HTMLElement>(
+        '[data-workflow-material-source-visual]'
+      )?.getBoundingClientRect()
+      if (!label || !visual || visual.width === 0 || visual.height === 0) {
+        return { visible: false, overlap: false, above: false }
+      }
+      return {
+        visible: true,
+        above: label.bottom <= visual.top,
+        overlap:
+          label.left < visual.right &&
+          label.right > visual.left &&
+          label.top < visual.bottom &&
+          label.bottom > visual.top
+      }
+    })
+  )
+  expect(materialSourceLabelEvidence.some((item) => item.visible)).toBe(true)
+  expect(materialSourceLabelEvidence.every((item) => !item.visible || item.above),
+    JSON.stringify(materialSourceLabelEvidence, null, 2)).toBe(true)
+  expect(materialSourceLabelEvidence.every((item) => !item.overlap),
+    JSON.stringify(materialSourceLabelEvidence, null, 2)).toBe(true)
   const horizontalSourceOrder = await materialSources.evaluateAll((sources) =>
     sources.map((source) => {
       const label = source.querySelector(
@@ -543,8 +570,13 @@ async function readHorizontalMaterialHandles(
       : node?.dataset.workflowNodeKind === 'material_source'
         ? 'material-source'
         : 'action'
-    const anchorBounds = owner === 'robot-transfer'
-      ? node?.querySelector<HTMLElement>('[data-workflow-robot-arm]')
+    const shapeSelector = owner === 'robot-transfer'
+      ? '[data-workflow-robot-arm]'
+      : owner === 'material-source'
+        ? '[data-workflow-material-source-visual]'
+        : undefined
+    const anchorBounds = shapeSelector
+      ? node?.querySelector<HTMLElement>(shapeSelector)
         ?.getBoundingClientRect()
       : nodeBounds
     return {

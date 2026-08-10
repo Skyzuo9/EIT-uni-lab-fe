@@ -35,8 +35,8 @@
   width: 54px;
   height: 54px;
   place-items: center;
-  color: var(--unilab-color-surface);
-  background: var(--unilab-color-device);
+  color: var(--unilab-color-text);
+  background: var(--unilab-color-text);
   clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
   filter: drop-shadow(0 2px 3px color-mix(in srgb, var(--unilab-color-text) 18%, transparent));
   transition: transform var(--unilab-motion-fast) ease;
@@ -44,8 +44,8 @@
 
 .workflow :global(.wf-node__robot-transfer-visual)::before {
   position: absolute;
-  inset: 3px;
-  border: 1px solid color-mix(in srgb, var(--wf-material-accent) 58%, white);
+  inset: 2px;
+  background: var(--unilab-color-surface);
   clip-path: inherit;
   content: '';
 }

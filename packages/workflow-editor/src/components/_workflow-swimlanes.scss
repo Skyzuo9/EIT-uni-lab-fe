@@ -216,29 +216,41 @@
 
 .workflow:global(.workflow-runtime)
   :global(.wf-node--material-source[data-workflow-layout-direction='horizontal']) {
-  width: 180px;
-  min-width: 180px;
-  max-width: 180px;
-  min-height: 72px;
+  width: 112px;
+  min-width: 112px;
+  max-width: 112px;
+  min-height: 112px;
   align-items: center;
-  flex-direction: row;
-  gap: 8px;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .workflow
   :global(.wf-node--material-source[data-workflow-layout-direction='horizontal'])
   :global(.wf-node__material-source-label) {
-  width: 92px;
+  width: 104px;
 }
 
 .workflow
   :global(.wf-node--material-source[data-workflow-layout-direction='horizontal'])
-  :global(.wf-node__material-source-handle) {
+  :global(.wf-node__material-source-port)
+  > :global(.wf-node__material-source-handle.react-flow__handle-right) {
   top: 50%;
   right: 0;
   bottom: auto;
   left: auto;
   transform: translate(50%, -50%);
+}
+
+.workflow
+  :global(.wf-node--material-source[data-workflow-layout-direction='horizontal'])
+  :global(.wf-node__material-source-port)
+  > :global(.wf-node__material-source-handle.react-flow__handle-left) {
+  top: 50%;
+  right: auto;
+  bottom: auto;
+  left: 0;
+  transform: translate(-50%, -50%);
 }
 
 /* 物料输入/输出统一使用圆形 Handle：空心为输入，实心为输出。 */

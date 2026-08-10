@@ -171,27 +171,6 @@
   transform: translate(50%, -50%);
 }
 
-/* 独立物料来源的 Handle 以整个节点外框为锚点。 */
-.workflow
-  :global(.wf-node--material-source[data-workflow-layout-strategy='primary-sample-serpentine'][data-workflow-layout-direction='horizontal'])
-  > :global(.wf-node__handle--material.react-flow__handle-left) {
-  top: 50%;
-  right: auto;
-  bottom: auto;
-  left: 0;
-  transform: translate(-50%, -50%);
-}
-
-.workflow
-  :global(.wf-node--material-source[data-workflow-layout-strategy='primary-sample-serpentine'][data-workflow-layout-direction='horizontal'])
-  > :global(.wf-node__handle--material.react-flow__handle-right) {
-  top: 50%;
-  right: 0;
-  bottom: auto;
-  left: auto;
-  transform: translate(50%, -50%);
-}
-
 .workflow
   :global(.wf-node--action-strip[data-workflow-layout-strategy='primary-sample-serpentine'][data-workflow-layout-direction='horizontal'])
   :global(.wf-node__state) {

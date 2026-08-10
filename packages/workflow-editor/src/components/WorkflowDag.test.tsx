@@ -253,12 +253,60 @@ describe('WorkflowDag material handles and execution signals', () => {
     expect(stylesheet).toMatch(
       /wf-flow-node--success[\s\S]*outline:\s*2px[\s\S]*unilab-color-success/
     )
+    expect(stylesheet).toContain(
+      '.wf-node:not(.wf-node--material-source):not(.wf-node--robot-transfer)'
+    )
+    expect(stylesheet).toMatch(
+      /wf-flow-node--running[\s\S]*wf-node__material-source-visual[\s\S]*wf-node__robot-transfer-visual[\s\S]*drop-shadow[\s\S]*unilab-color-warning/
+    )
+    expect(stylesheet).toMatch(
+      /wf-flow-node--success[\s\S]*wf-node__material-source-visual[\s\S]*wf-node__robot-transfer-visual[\s\S]*drop-shadow[\s\S]*unilab-color-success/
+    )
     expect(stylesheet).toContain('@keyframes workflow-execution-running-signal')
+    expect(stylesheet).toContain(
+      '@keyframes workflow-execution-running-shape-signal'
+    )
     expect(stylesheet).toMatch(
       /prefers-reduced-motion:\s*reduce[\s\S]*animation:\s*none/
     )
     expect(stylesheet).not.toMatch(/#[0-9a-f]{3,8}/i)
     expect(stylesheet).not.toMatch(/rgb\(/i)
+  })
+
+  /** MaterialSource 横向文字在上、纵向文字在左，Handle 以六边形为锚点。 */
+  it('places MaterialSource labels by layout and anchors handles to the hexagon', () => {
+    const sourceStylesheet = readFileSync(
+      new URL('./_workflow-material-source.scss', import.meta.url),
+      'utf8'
+    )
+    const swimlaneStylesheet = readFileSync(
+      new URL('./_workflow-swimlanes.scss', import.meta.url),
+      'utf8'
+    )
+    const transferStylesheet = readFileSync(
+      new URL('./_workflow-transfer-node.scss', import.meta.url),
+      'utf8'
+    )
+
+    expect(sourceStylesheet).toContain('.wf-node__material-source-port')
+    expect(sourceStylesheet).toMatch(
+      /material-source-port[\s\S]*handle\.react-flow__handle-left[\s\S]*left:\s*0/
+    )
+    expect(sourceStylesheet).toMatch(
+      /material-source-port[\s\S]*handle\.react-flow__handle-right[\s\S]*right:\s*0/
+    )
+    expect(sourceStylesheet).toMatch(
+      /wf-node--material-source[\s\S]*flex-direction:\s*row/
+    )
+    expect(swimlaneStylesheet).toMatch(
+      /layout-direction='horizontal'[\s\S]*flex-direction:\s*column/
+    )
+    expect(transferStylesheet).toMatch(
+      /robot-transfer-visual[\s\S]*color:\s*var\(--unilab-color-text\)[\s\S]*background:\s*var\(--unilab-color-text\)/
+    )
+    expect(transferStylesheet).toMatch(
+      /robot-transfer-visual\)::before[\s\S]*background:\s*var\(--unilab-color-surface\)/
+    )
   })
 })
 

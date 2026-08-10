@@ -4,7 +4,7 @@
  */
 .workflow
   :global(.react-flow__node-wfNode.wf-flow-node--running)
-  > :global(.wf-node) {
+  > :global(.wf-node:not(.wf-node--material-source):not(.wf-node--robot-transfer)) {
   z-index: 4;
   border-color: var(--unilab-color-warning);
   outline: 2px solid color-mix(
@@ -34,7 +34,7 @@
 
 .workflow
   :global(.react-flow__node-wfNode.wf-flow-node--success)
-  > :global(.wf-node) {
+  > :global(.wf-node:not(.wf-node--material-source):not(.wf-node--robot-transfer)) {
   z-index: 3;
   border-color: var(--unilab-color-success);
   outline: 2px solid color-mix(
@@ -59,6 +59,42 @@
     var(--unilab-color-success) 42%,
     transparent
   ));
+}
+
+/* 图形节点的运行信号紧贴真实几何本体，不再包围外浮文字。 */
+.workflow
+  :global(.react-flow__node-wfNode.wf-flow-node--running)
+  > :global(.wf-node--material-source)
+  :global(.wf-node__material-source-visual),
+.workflow
+  :global(.react-flow__node-wfNode.wf-flow-node--running)
+  > :global(.wf-node--robot-transfer)
+  :global(.wf-node__robot-transfer-visual) {
+  filter:
+    drop-shadow(0 0 2px var(--unilab-color-warning))
+    drop-shadow(0 0 8px color-mix(
+      in srgb,
+      var(--unilab-color-warning) 62%,
+      transparent
+    ));
+  animation: workflow-execution-running-shape-signal 1.05s ease-in-out infinite;
+}
+
+.workflow
+  :global(.react-flow__node-wfNode.wf-flow-node--success)
+  > :global(.wf-node--material-source)
+  :global(.wf-node__material-source-visual),
+.workflow
+  :global(.react-flow__node-wfNode.wf-flow-node--success)
+  > :global(.wf-node--robot-transfer)
+  :global(.wf-node__robot-transfer-visual) {
+  filter:
+    drop-shadow(0 0 1px var(--unilab-color-success))
+    drop-shadow(0 0 6px color-mix(
+      in srgb,
+      var(--unilab-color-success) 48%,
+      transparent
+    ));
 }
 
 .workflow :global(.wf-node__state--running),
@@ -107,10 +143,38 @@
   }
 }
 
+@keyframes workflow-execution-running-shape-signal {
+  0%,
+  100% {
+    filter:
+      drop-shadow(0 0 2px var(--unilab-color-warning))
+      drop-shadow(0 0 7px color-mix(
+        in srgb,
+        var(--unilab-color-warning) 54%,
+        transparent
+      ));
+  }
+  50% {
+    filter:
+      drop-shadow(0 0 3px var(--unilab-color-warning))
+      drop-shadow(0 0 12px color-mix(
+        in srgb,
+        var(--unilab-color-warning) 74%,
+        transparent
+      ));
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .workflow
     :global(.react-flow__node-wfNode.wf-flow-node--running)
-    > :global(.wf-node) {
+    > :global(.wf-node:not(.wf-node--material-source):not(.wf-node--robot-transfer)),
+  .workflow
+    :global(.react-flow__node-wfNode.wf-flow-node--running)
+    :global(.wf-node__material-source-visual),
+  .workflow
+    :global(.react-flow__node-wfNode.wf-flow-node--running)
+    :global(.wf-node__robot-transfer-visual) {
     animation: none;
   }
 }

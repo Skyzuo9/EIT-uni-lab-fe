@@ -55,6 +55,7 @@ export default function WorkflowMaterialSourceNode({
       data-workflow-material-emphasis={materialEmphasis}
       data-workflow-layout-strategy={data.layoutStrategy}
       data-workflow-layout-direction={data.materialLaneDirection}
+      data-workflow-material-position={materialSourcePosition}
       data-workflow-node-description={data.description}
       data-workflow-node-disabled={data.disabled ? 'true' : 'false'}
       aria-label={data.description
@@ -63,10 +64,6 @@ export default function WorkflowMaterialSourceNode({
       style={{ '--wf-material-accent': data.traceAccent } as CSSProperties}
     >
       {structuralTargetHandles}
-      {renderMaterialSourceHandles(
-        materialPorts,
-        materialSourcePosition
-      )}
       <span className="wf-node__material-source-label">
         <strong
           data-workflow-material-source-name
@@ -91,32 +88,38 @@ export default function WorkflowMaterialSourceNode({
             ⊘
           </button>
         )}
-      </span>
-      <span
-        className="wf-node__material-source-visual"
-        data-workflow-material-source-visual
-      >
-        {data.materialSource?.shape ? (
-          <MaterialShapeThumbnail shape={data.materialSource.shape} />
-        ) : (
-          <svg
-            aria-hidden="true"
-            data-material-shape-source="default"
-            focusable="false"
-            viewBox="0 0 48 48"
-          >
-            <path d="m12 20 12-6 12 6-12 6-12-6Z" />
-            <path d="m12 20v8l12 6 12-6v-8" />
-            <path d="m17 17.5 12 6" />
-            <path d="m31 17.5-12 6" />
-          </svg>
+        {stateVisible && (
+          <span className={`wf-node__material-source-state wf-node__state--${data.status || 'pending'}`}>
+            {stateLabel}
+          </span>
         )}
       </span>
-      {stateVisible && (
-        <span className={`wf-node__material-source-state wf-node__state--${data.status || 'pending'}`}>
-          {stateLabel}
+      <span className="wf-node__material-source-port">
+        <span
+          className="wf-node__material-source-visual"
+          data-workflow-material-source-visual
+        >
+          {data.materialSource?.shape ? (
+            <MaterialShapeThumbnail shape={data.materialSource.shape} />
+          ) : (
+            <svg
+              aria-hidden="true"
+              data-material-shape-source="default"
+              focusable="false"
+              viewBox="0 0 48 48"
+            >
+              <path d="m12 20 12-6 12 6-12 6-12-6Z" />
+              <path d="m12 20v8l12 6 12-6v-8" />
+              <path d="m17 17.5 12 6" />
+              <path d="m31 17.5-12 6" />
+            </svg>
+          )}
         </span>
-      )}
+        {renderMaterialSourceHandles(
+          materialPorts,
+          materialSourcePosition
+        )}
+      </span>
       {structuralSourceHandles}
     </div>
   )
