@@ -132,6 +132,19 @@ describe('Published Workflow Catalog in the Authoring module', () => {
       /setMaterialSourceCatalogError\(\s*`操作目录加载失败：/
     )
   })
+
+  it('clears an obsolete transport error after authority is installed', () => {
+    const source = readFileSync(authoringHookPath, 'utf8')
+    const installStart = source.indexOf('const installAggregate = useCallback')
+    const installEnd = source.indexOf('\n  useEffect(() => {', installStart)
+    const installAggregate = source.slice(installStart, installEnd)
+
+    expect(installAggregate).toContain('setAggregate(next)')
+    expect(installAggregate).toContain('setError(null)')
+    expect(installAggregate.indexOf('setError(null)')).toBeLessThan(
+      installAggregate.indexOf('setMessage(nextMessage)')
+    )
+  })
 })
 
 function paletteSection(source: string, label: string): string {

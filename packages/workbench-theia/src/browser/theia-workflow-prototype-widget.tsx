@@ -77,6 +77,8 @@ import {
   WorkbenchSessionServer
 } from '../common/workbench-session-protocol'
 import { WorkbenchSessionClientImpl } from './workbench-session-client'
+import { EnvironmentManager } from './environment-manager'
+import { WorkbenchSessionGate } from './workbench-session-gate'
 
 type SourceSaveHandler = (pythonSource: string) => Promise<void>
 
@@ -108,6 +110,7 @@ export class TheiaWorkflowPrototypeWidget extends ReactWidget {
   protected sessionSnapshot: WorkbenchSessionSnapshot = {
     phase: 'idle',
     message: '正在连接 Workbench Backend…',
+    configuredGraphPath: 'deployment/graphs/szlab-local-debug.json',
     identity: null,
     diagnostic: null,
     plcSimulator: emptyPlcSimulatorSnapshot()
@@ -117,10 +120,18 @@ export class TheiaWorkflowPrototypeWidget extends ReactWidget {
   /** React 重绘之间保持同一宿主端口身份，避免投影 effect 被当作换宿主清理。 */
   protected readonly ideBridge: WorkflowIdeBridge = {
     onRevealSourceLocation: location => {
-      void this.revealSourceLocation(location)
+      void this.revealSourceLocation(location).catch(error => {
+        void this.messages.error(
+          `源码定位失败：${error instanceof Error ? error.message : String(error)}`
+        )
+      })
     },
     onRevealPackageSource: location => {
-      void this.revealPackageSource(location)
+      void this.revealPackageSource(location).catch(error => {
+        void this.messages.error(
+          `软件包源码定位失败：${error instanceof Error ? error.message : String(error)}`
+        )
+      })
     },
     onSourceProjectionChange: projection => {
       this.setSourceProjection(projection)
@@ -155,6 +166,7 @@ export class TheiaWorkflowPrototypeWidget extends ReactWidget {
       this.sessionSnapshot = {
         phase: 'failed',
         message: 'Workbench Backend 连接失败',
+        configuredGraphPath: 'deployment/graphs/szlab-local-debug.json',
         identity: null,
         diagnostic: {
           code: 'os_start_failed',
@@ -205,6 +217,18 @@ export class TheiaWorkflowPrototypeWidget extends ReactWidget {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       void this.messages.error(`PLC-Sim 配置失败：${message}`)
+      throw error
+    } finally {
+      await this.refreshSessionSnapshot()
+    }
+  }
+
+  protected readonly configureGraph = async (graphPath: string): Promise<void> => {
+    try {
+      await this.workbenchSession.configureGraph(graphPath)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      void this.messages.error(`设备图配置失败：${message}`)
       throw error
     } finally {
       await this.refreshSessionSnapshot()
@@ -462,6 +486,20 @@ export class TheiaWorkflowPrototypeWidget extends ReactWidget {
           snapshot={this.sessionSnapshot}
           onRetry={this.retrySession}
           onStop={this.stopSession}
+          renderEnvironmentManager={onClose => (
+            <EnvironmentManager
+              session={this.sessionSnapshot}
+              onClose={onClose}
+              onRestartSession={this.restartSession}
+              onReadEnvironmentLog={this.readEnvironmentLog}
+              onConfigureGraph={this.configureGraph}
+              onConfigurePlcSimulator={this.configurePlcSimulator}
+              onStartPlcSimulator={this.startPlcSimulator}
+              onStopPlcSimulator={this.stopPlcSimulator}
+              onSetRuntimeMode={this.setRuntimeMode}
+              onStopSession={this.stopSession}
+            />
+          )}
         />
       )
     }
@@ -475,6 +513,7 @@ export class TheiaWorkflowPrototypeWidget extends ReactWidget {
         onSourceSaveHandlerChange={this.registerSourceSaveHandler}
         onRestartSession={this.restartSession}
         onReadEnvironmentLog={this.readEnvironmentLog}
+        onConfigureGraph={this.configureGraph}
         onConfigurePlcSimulator={this.configurePlcSimulator}
         onStartPlcSimulator={this.startPlcSimulator}
         onStopPlcSimulator={this.stopPlcSimulator}
@@ -490,342 +529,6 @@ export class TheiaWorkflowPrototypeWidget extends ReactWidget {
   }
 }
 
-function WorkbenchSessionGate({
-  snapshot,
-  onRetry,
-  onStop
-}: {
-  snapshot: WorkbenchSessionSnapshot
-  onRetry: () => Promise<void>
-  onStop: () => Promise<void>
-}): React.JSX.Element {
-  return (
-    <div className="unilab-theia-prototype unilab-workbench-session-gate">
-      <section className="unilab-workbench-session-card" aria-live="polite">
-        <span className={`unilab-workbench-session-phase is-${snapshot.phase}`}>
-          {snapshot.phase}
-        </span>
-        <h2>UniLab Authoring Workbench</h2>
-        <p>{snapshot.message}</p>
-        {snapshot.identity ? (
-          <dl>
-            <dt>Workspace</dt>
-            <dd>{snapshot.identity.workspacePath}</dd>
-            <dt>OS PID</dt>
-            <dd>{snapshot.identity.pid || '—'}</dd>
-            <dt>Generation</dt>
-            <dd>{snapshot.identity.generation}</dd>
-            <dt>Backend</dt>
-            <dd>{snapshot.identity.backendUrl}</dd>
-            <dt>Log</dt>
-            <dd>{snapshot.identity.logPath}</dd>
-          </dl>
-        ) : null}
-        {snapshot.diagnostic ? (
-          <div className="unilab-workbench-session-diagnostic" role="alert">
-            <strong>{snapshot.diagnostic.code}</strong>
-            <p>{snapshot.diagnostic.message}</p>
-            <p>{snapshot.diagnostic.recovery}</p>
-          </div>
-        ) : null}
-        {snapshot.phase === 'idle' || snapshot.phase === 'failed' ? (
-          <button onClick={() => void onRetry()}>校验并启动</button>
-        ) : null}
-        {snapshot.phase === 'starting' || snapshot.phase === 'waiting' ? (
-          <button onClick={() => void onStop()}>停止</button>
-        ) : null}
-      </section>
-    </div>
-  )
-}
-
-function EnvironmentManager({
-  session,
-  onClose,
-  onRestartSession,
-  onReadEnvironmentLog,
-  onConfigurePlcSimulator,
-  onStartPlcSimulator,
-  onStopPlcSimulator,
-  onSetRuntimeMode,
-  onStopSession
-}: {
-  session: WorkbenchSessionSnapshot
-  onClose: () => void
-  onRestartSession: () => Promise<void>
-  onReadEnvironmentLog: (kind: WorkbenchEnvironmentLogKind) => Promise<string>
-  onConfigurePlcSimulator: (projectPath: string) => Promise<void>
-  onStartPlcSimulator: () => Promise<void>
-  onStopPlcSimulator: () => Promise<void>
-  onSetRuntimeMode: (mode: WorkbenchRuntimeMode) => Promise<void>
-  onStopSession: () => Promise<void>
-}): React.JSX.Element {
-  const identity = session.identity
-  const plcSimulator = session.plcSimulator
-  const agent = identity?.agent
-  const [plcProjectPath, setPlcProjectPath] = useState(
-    plcSimulator.projectPath
-  )
-  const [busyAction, setBusyAction] = useState<string | null>(null)
-  const [logKind, setLogKind] = useState<WorkbenchEnvironmentLogKind>('os')
-  const [logTail, setLogTail] = useState<string | null>(null)
-
-  useEffect(() => {
-    setPlcProjectPath(plcSimulator.projectPath)
-  }, [plcSimulator.projectPath])
-
-  const run = useCallback(async (
-    action: string,
-    operation: () => Promise<void>
-  ) => {
-    setBusyAction(action)
-    try {
-      await operation()
-    } finally {
-      setBusyAction(null)
-    }
-  }, [])
-
-  const savePlcProjectPath = useCallback(async () => {
-    await run('save-plc', async () => {
-      await onConfigurePlcSimulator(plcProjectPath)
-    })
-  }, [onConfigurePlcSimulator, plcProjectPath, run])
-
-  const startPlcSimulator = useCallback(async () => {
-    await run('start-plc', async () => {
-      if (plcProjectPath.trim() !== plcSimulator.projectPath) {
-        await onConfigurePlcSimulator(plcProjectPath)
-      }
-      await onStartPlcSimulator()
-    })
-  }, [
-    onConfigurePlcSimulator,
-    onStartPlcSimulator,
-    plcProjectPath,
-    plcSimulator.projectPath,
-    run
-  ])
-
-  const readSelectedLog = useCallback(async () => {
-    await run('read-log', async () => {
-      setLogTail(await onReadEnvironmentLog(logKind))
-    })
-  }, [logKind, onReadEnvironmentLog, run])
-
-  return (
-    <section
-      className="unilab-environment-manager"
-      role="dialog"
-      aria-label="环境管理"
-      data-testid="environment-manager"
-    >
-      <header className="unilab-environment-manager__header">
-        <div>
-          <span className="unilab-environment-manager__eyebrow">MANAGED LOCAL</span>
-          <strong>环境管理</strong>
-        </div>
-        <button type="button" aria-label="关闭环境管理" onClick={onClose}>
-          <span className="codicon codicon-close" />
-        </button>
-      </header>
-
-      <div className="unilab-environment-manager__rail" aria-label="本地环境状态链">
-        <EnvironmentStatusCard
-          name="OS"
-          phase={session.phase}
-          message={session.message}
-          facts={[
-            ['PID', String(identity?.pid ?? '—')],
-            ['启动模式', identity?.mode === 'dry-run' ? 'Dry-run' : '正常运行'],
-            ['API', identity?.backendUrl ?? '—'],
-            ['Python', identity?.environmentPath ?? '—']
-          ]}
-          content={(
-            <div
-              className="unilab-environment-manager__mode"
-              role="group"
-              aria-label="OS 运行模式"
-            >
-              <button
-                type="button"
-                className={identity?.mode === 'normal' ? 'is-active' : ''}
-                disabled={Boolean(busyAction)}
-                onClick={() => {
-                  if (identity?.mode === 'normal') return
-                  if (!globalThis.confirm('关闭 Dry-run 并以正常动作路径重启 OS？')) return
-                  void run('switch-mode', () => onSetRuntimeMode('normal'))
-                }}
-              >正常运行</button>
-              <button
-                type="button"
-                className={identity?.mode === 'dry-run' ? 'is-active' : ''}
-                disabled={Boolean(busyAction)}
-                title="动作返回模拟成功；每次 OS 重启使用新的隔离运行数据库"
-                onClick={() => {
-                  if (identity?.mode === 'dry-run') return
-                  if (!globalThis.confirm(
-                    '启用 Dry-run 将以 --action_mode simulate 重启 OS，动作不会发送给设备。确认继续？'
-                  )) return
-                  void run('switch-mode', () => onSetRuntimeMode('dry-run'))
-                }}
-              >Dry-run</button>
-            </div>
-          )}
-          actions={(
-            <>
-              <button
-                type="button"
-                disabled={Boolean(busyAction)}
-                onClick={() => void run('restart-os', onRestartSession)}
-              >重启 OS</button>
-              <button
-                type="button"
-                className="is-danger"
-                disabled={Boolean(busyAction)}
-                onClick={() => void run('stop-os', onStopSession)}
-              >停止 OS</button>
-            </>
-          )}
-        />
-
-        <EnvironmentStatusCard
-          name="PLC-Sim"
-          phase={plcSimulator.phase}
-          message={plcSimulator.diagnostic ?? plcSimulator.message}
-          facts={[
-            ['PID', String(plcSimulator.pid ?? '—')],
-            ['GUI', plcSimulator.guiUrl],
-            ['OPC UA', plcSimulator.opcUaUrl]
-          ]}
-          content={(
-            <label className="unilab-environment-manager__path">
-              <span>项目目录</span>
-              <input
-                value={plcProjectPath}
-                disabled={plcSimulator.phase !== 'idle' && plcSimulator.phase !== 'failed'}
-                placeholder="/path/to/PLC-Sim"
-                onChange={event => setPlcProjectPath(event.currentTarget.value)}
-              />
-            </label>
-          )}
-          actions={(
-            <>
-              <button
-                type="button"
-                disabled={
-                  Boolean(busyAction)
-                  || !plcProjectPath.trim()
-                  || plcSimulator.phase === 'ready'
-                }
-                onClick={() => void startPlcSimulator()}
-              >启动 PLC-Sim</button>
-              <button
-                type="button"
-                disabled={Boolean(busyAction) || plcSimulator.phase !== 'ready'}
-                onClick={() => void run('stop-plc', onStopPlcSimulator)}
-              >停止</button>
-              <button
-                type="button"
-                disabled={
-                  Boolean(busyAction)
-                  || plcProjectPath.trim() === plcSimulator.projectPath
-                }
-                onClick={() => void savePlcProjectPath()}
-              >保存目录</button>
-            </>
-          )}
-        />
-
-        <EnvironmentStatusCard
-          name="Agent"
-          phase={agent?.phase ?? 'idle'}
-          message={agent?.diagnostic ?? (
-            agent?.phase === 'ready' ? '工作区 Agent 已就绪' : 'Agent 未启用'
-          )}
-          facts={[
-            ['PID', String(agent?.pid ?? '—')],
-            ['Workdir', agent?.workDir ?? identity?.workspacePath ?? '—'],
-            ['Data', agent?.dataDir ?? '—']
-          ]}
-        />
-      </div>
-
-      <section className="unilab-environment-manager__logs">
-        <header>
-          <strong>日志尾部</strong>
-          <div role="group" aria-label="日志来源">
-            {([
-              ['os', 'OS'],
-              ['plc-sim', 'PLC-Sim'],
-              ['agent', 'Agent']
-            ] as const).map(([kind, label]) => (
-              <button
-                key={kind}
-                type="button"
-                className={logKind === kind ? 'is-active' : ''}
-                onClick={() => {
-                  setLogKind(kind)
-                  setLogTail(null)
-                }}
-              >{label}</button>
-            ))}
-          </div>
-          <button
-            type="button"
-            disabled={Boolean(busyAction)}
-            onClick={() => void readSelectedLog()}
-          >刷新</button>
-        </header>
-        {logTail !== null ? (
-          <pre data-testid="environment-log-tail">{logTail || '暂无日志'}</pre>
-        ) : (
-          <p>选择来源后点击“刷新”。</p>
-        )}
-      </section>
-    </section>
-  )
-}
-
-function EnvironmentStatusCard({
-  name,
-  phase,
-  message,
-  facts,
-  content,
-  actions
-}: {
-  name: string
-  phase: string
-  message: string
-  facts: Array<[string, string]>
-  content?: React.ReactNode
-  actions?: React.ReactNode
-}): React.JSX.Element {
-  return (
-    <article className="unilab-environment-card" data-phase={phase}>
-      <span className={`unilab-environment-card__dot is-${phase}`} aria-hidden="true" />
-      <div className="unilab-environment-card__body">
-        <header>
-          <strong>{name}</strong>
-          <span>{phase}</span>
-        </header>
-        <p>{message}</p>
-        <dl>
-          {facts.map(([label, value]) => (
-            <React.Fragment key={label}>
-              <dt>{label}</dt>
-              <dd title={value}>{value}</dd>
-            </React.Fragment>
-          ))}
-        </dl>
-        {content}
-        {actions ? <div className="unilab-environment-card__actions">{actions}</div> : null}
-      </div>
-    </article>
-  )
-}
-
 function WorkbenchSurface({
   backendUrl,
   ideBridge,
@@ -834,6 +537,7 @@ function WorkbenchSurface({
   onSourceSaveHandlerChange,
   onRestartSession,
   onReadEnvironmentLog,
+  onConfigureGraph,
   onConfigurePlcSimulator,
   onStartPlcSimulator,
   onStopPlcSimulator,
@@ -847,6 +551,7 @@ function WorkbenchSurface({
   onSourceSaveHandlerChange: (handler: SourceSaveHandler | null) => void
   onRestartSession: () => Promise<void>
   onReadEnvironmentLog: (kind: WorkbenchEnvironmentLogKind) => Promise<string>
+  onConfigureGraph: (graphPath: string) => Promise<void>
   onConfigurePlcSimulator: (projectPath: string) => Promise<void>
   onStartPlcSimulator: () => Promise<void>
   onStopPlcSimulator: () => Promise<void>
@@ -963,6 +668,7 @@ function WorkbenchSurface({
             onClose={() => setEnvironmentOpen(false)}
             onRestartSession={onRestartSession}
             onReadEnvironmentLog={onReadEnvironmentLog}
+            onConfigureGraph={onConfigureGraph}
             onConfigurePlcSimulator={onConfigurePlcSimulator}
             onStartPlcSimulator={onStartPlcSimulator}
             onStopPlcSimulator={onStopPlcSimulator}
@@ -1084,7 +790,7 @@ function WorkbenchMaterialViewport({
 
   useEffect(() => {
     if (!readStatus.available || loadState !== 'idle') return
-    void store.getState().loadGraph().catch(() => undefined)
+    void store.getState().loadGraph()
   }, [loadState, readStatus.available, store])
 
   const applyMoves = useCallback(async (

@@ -23,6 +23,7 @@ export interface WorkbenchSessionServer {
     kind: WorkbenchEnvironmentLogKind,
     maxBytes?: number
   ): Promise<string>
+  configureGraph(graphPath: string): Promise<WorkbenchSessionSnapshot>
   configurePlcSimulator(projectPath: string): Promise<WorkbenchSessionSnapshot>
   startPlcSimulator(): Promise<WorkbenchSessionSnapshot>
   stopPlcSimulator(): Promise<WorkbenchSessionSnapshot>

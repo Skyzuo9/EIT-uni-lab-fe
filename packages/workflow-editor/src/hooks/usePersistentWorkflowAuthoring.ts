@@ -384,6 +384,7 @@ export function usePersistentWorkflowAuthoring({
     setSelectedNodeName('')
     setSelectedNodeNameDirty(false)
     setRemoteConflict(null)
+    setError(null)
     setMessage(nextMessage)
     localState.current = {
       ...localState.current,

@@ -67,6 +67,10 @@ implements WorkbenchSessionServer, BackendApplicationContribution {
     return this.session.readEnvironmentLog(kind, maxBytes)
   }
 
+  configureGraph(graphPath: string) {
+    return this.session.configureGraph(graphPath)
+  }
+
   configurePlcSimulator(projectPath: string) {
     return this.session.configurePlcSimulator(projectPath)
   }

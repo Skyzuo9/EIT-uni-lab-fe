@@ -108,6 +108,12 @@ export function usePersistentWorkflowCatalogs({
       action: WorkflowActionCatalogSnapshot
       materialSource: WorkflowMaterialSourceCatalogSnapshot
     }> => {
+      // 冲突补读同时接管两份目录的请求租约。否则它完成后，旧的后台预取仍
+      // 可能迟到并把新目录覆盖成旧 OS 的快照。
+      const materialSourceRequestGeneration =
+        ++catalogRequestGeneration.current
+      const actionRequestGeneration =
+        ++actionCatalogRequestGeneration.current
       setActionCatalog(null)
       setActionCatalogError(null)
       setMaterialSourceCatalog(null)
@@ -117,19 +123,32 @@ export function usePersistentWorkflowCatalogs({
         runtime.getWorkflowActionCatalog(),
         runtime.getWorkflowMaterialSourceCatalog()
       ])
-      if (actionResult.status === 'fulfilled') {
-        setActionCatalog(actionResult.value)
-      } else {
-        setActionCatalogError(
-          `操作目录加载失败：${errorMessage(actionResult.reason)}`
-        )
+      const actionRequestIsCurrent =
+        actionRequestGeneration === actionCatalogRequestGeneration.current
+      const materialSourceRequestIsCurrent =
+        materialSourceRequestGeneration === catalogRequestGeneration.current
+      if (actionRequestIsCurrent) {
+        if (actionResult.status === 'fulfilled') {
+          setActionCatalog(actionResult.value)
+        } else {
+          setActionCatalogError(
+            `操作目录加载失败：${errorMessage(actionResult.reason)}`
+          )
+        }
       }
-      if (materialSourceResult.status === 'fulfilled') {
-        setMaterialSourceCatalog(materialSourceResult.value)
-      } else {
-        setMaterialSourceCatalogError(errorMessage(materialSourceResult.reason))
+      if (materialSourceRequestIsCurrent) {
+        if (materialSourceResult.status === 'fulfilled') {
+          setMaterialSourceCatalog(materialSourceResult.value)
+        } else {
+          setMaterialSourceCatalogError(
+            errorMessage(materialSourceResult.reason)
+          )
+        }
+        setMaterialSourceCatalogLoading(false)
       }
-      setMaterialSourceCatalogLoading(false)
+      if (!actionRequestIsCurrent || !materialSourceRequestIsCurrent) {
+        throw new Error('目录刷新已被较新的运行环境请求替代，请重试')
+      }
       if (materialSourceResult.status === 'rejected') {
         throw materialSourceResult.reason
       }
