@@ -138,7 +138,16 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
+  :global(.persistent-authoring__workbench.has-external-code-editor) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   :global(.persistent-authoring__workbench.is-canvas-mode)
+    :global(.persistent-authoring__code) {
+    display: none;
+  }
+
+  :global(.persistent-authoring__workbench.has-external-code-editor)
     :global(.persistent-authoring__code) {
     display: none;
   }

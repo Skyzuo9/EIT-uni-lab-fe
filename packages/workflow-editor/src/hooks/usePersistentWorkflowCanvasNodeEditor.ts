@@ -2,10 +2,11 @@ import type {
   WorkflowActionCatalogSnapshot,
   WorkflowAuthoringDiagnostic,
   WorkflowAuthoringGraph,
+  WorkflowAuthoringSourceMapEntry,
   WorkflowMaterialSourceCatalogSnapshot
 } from '@unilab/services'
 import type { Dispatch, SetStateAction } from 'react'
-import { useMemo } from 'react'
+import { useCallback, useEffect, useMemo } from 'react'
 
 import {
   bindTypedActionWorkflowInput,
@@ -29,16 +30,17 @@ import {
   parseTypedFieldValue
 } from '../utils/persistentAuthoringProjection'
 import { useWorkflowCanvasDeletion } from './useWorkflowCanvasDeletion'
-
-interface WorkflowCodeSourceEntry {
-  workflow_node_uuid: string
-  start_line: number
-}
+import {
+  workflowNodeAtSourcePosition,
+  workflowSourceLocationForNode,
+  type WorkflowIdeBridge,
+  type WorkflowSourceProjection
+} from '../utils/workflowSourceNavigation'
 
 interface PersistentWorkflowCanvasNodeEditorOptions {
   actionCatalog: WorkflowActionCatalogSnapshot | null
   canvasMutationEnabled: boolean
-  codeSourceMap: readonly WorkflowCodeSourceEntry[]
+  codeSourceMap: readonly WorkflowAuthoringSourceMapEntry[]
   diagnostics: readonly WorkflowAuthoringDiagnostic[]
   effectiveMaterialSourceCatalog: WorkflowMaterialSourceCatalogSnapshot | null
   graph: WorkflowAuthoringGraph | null
@@ -55,6 +57,8 @@ interface PersistentWorkflowCanvasNodeEditorOptions {
   setSelectedNodeName: Dispatch<SetStateAction<string>>
   setSelectedNodeNameDirty: Dispatch<SetStateAction<boolean>>
   setSelectedNodeUuid: Dispatch<SetStateAction<string | null>>
+  ideBridge?: WorkflowIdeBridge
+  sourceProjection: WorkflowSourceProjection | null
 }
 
 /**
@@ -88,7 +92,9 @@ export function usePersistentWorkflowCanvasNodeEditor(
     setMessage,
     setSelectedNodeName,
     setSelectedNodeNameDirty,
-    setSelectedNodeUuid
+    setSelectedNodeUuid,
+    ideBridge,
+    sourceProjection
   } = options
 
   const deleteCanvasElements = useWorkflowCanvasDeletion({
@@ -107,7 +113,10 @@ export function usePersistentWorkflowCanvasNodeEditor(
   })
 
   /** 选择画布节点，并把代码编辑器定位到对应源码行。 */
-  const selectCanvasNode = (nodeUuid: string): void => {
+  const selectCanvasNode = useCallback((
+    nodeUuid: string,
+    origin: 'canvas' | 'source' = 'canvas'
+  ): void => {
     if (selectedNodeNameDirty && nodeUuid !== selectedNodeUuid) {
       setError('请先保存当前节点名称修改，再选择其他节点')
       return
@@ -117,12 +126,58 @@ export function usePersistentWorkflowCanvasNodeEditor(
     setSelectedNodeUuid(nodeUuid)
     setSelectedNodeName(String(node.name || ''))
     setSelectedNodeNameDirty(false)
-    setActionParametersOpen(node.type !== 'material_source')
-    const sourceLine = codeSourceMap.find(
-      (entry) => entry.workflow_node_uuid === nodeUuid
-    )?.start_line
-    if (sourceLine) revealLine(sourceLine)
-  }
+    // Selection already exposes the compact inspector beside the graph. Keep
+    // the full parameter drawer behind its explicit "配置节点参数" action so a
+    // navigation click cannot cover both the canvas and the linked editor.
+    setActionParametersOpen(false)
+    const location = sourceProjection
+      ? workflowSourceLocationForNode(sourceProjection, nodeUuid)
+      : null
+    if (origin === 'canvas') {
+      const sourceLine = location?.line ?? codeSourceMap.find(
+        (entry) => entry.workflow_node_uuid === nodeUuid
+      )?.start_line
+      if (sourceLine) revealLine(sourceLine)
+      if (location) ideBridge?.onRevealSourceLocation?.(location)
+    }
+  }, [
+    codeSourceMap,
+    graph,
+    ideBridge?.onRevealSourceLocation,
+    revealLine,
+    selectedNodeNameDirty,
+    selectedNodeUuid,
+    setActionParametersOpen,
+    setError,
+    setSelectedNodeName,
+    setSelectedNodeNameDirty,
+    setSelectedNodeUuid,
+    sourceProjection
+  ])
+
+  const sourceSelectedNodeUuid = useMemo(
+    () => ideBridge?.sourcePosition
+      ? workflowNodeAtSourcePosition(codeSourceMap, ideBridge.sourcePosition)
+      : null,
+    [
+      codeSourceMap,
+      ideBridge?.sourcePosition?.column,
+      ideBridge?.sourcePosition?.line
+    ]
+  )
+
+  useEffect(() => {
+    if (
+      !sourceSelectedNodeUuid ||
+      sourceSelectedNodeUuid === selectedNodeUuid
+    ) return
+    selectCanvasNode(sourceSelectedNodeUuid, 'source')
+  }, [
+    codeSourceMap,
+    selectedNodeUuid,
+    selectCanvasNode,
+    sourceSelectedNodeUuid
+  ])
 
   const selectedGraphNode = graph?.nodes.find(
     (node) => node.uuid === selectedNodeUuid
@@ -412,6 +467,7 @@ export function usePersistentWorkflowCanvasNodeEditor(
     selectedMaterialSourceEditor,
     selectedMaterialSourceProjection,
     selectedNodeIsInternal,
+    sourceSelectedNodeUuid,
     updateMaterialSource,
     updateTypedField,
     updateTypedFieldFromRaw

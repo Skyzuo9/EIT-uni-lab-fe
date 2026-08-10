@@ -38,7 +38,9 @@ export default function WorkflowMaterialSourceNode({
     : '物料来源'
   return (
     <div
-      className={`${styles.node} wf-node wf-node--material-source cursor-pointer overflow-visible`}
+      className={`${styles.node} wf-node wf-node--material-source ${
+        data.sourceSelected ? 'wf-node--source-selected' : ''
+      } cursor-pointer overflow-visible`}
       data-workflow-node-uuid={data.id}
       data-workflow-node-kind="material_source"
       data-workflow-layout-strategy={data.layoutStrategy}

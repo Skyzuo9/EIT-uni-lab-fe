@@ -20,11 +20,13 @@ import styles from './workflow.module.scss'
 export function PersistentWorkflowAuthoringView({
   model,
   materialRoleFilter,
-  onMaterialRoleFilterChange
+  onMaterialRoleFilterChange,
+  hideEmbeddedCodeEditor = false
 }: {
   model: PersistentWorkflowAuthoringModel
   materialRoleFilter?: string | null
   onMaterialRoleFilterChange?: (materialRole: string | null) => void
+  hideEmbeddedCodeEditor?: boolean
 }): React.JSX.Element {
   const {
     actionCatalog,
@@ -86,6 +88,7 @@ export function PersistentWorkflowAuthoringView({
     setSelectedNodeUuid,
     setTraceViewerOpen,
     setWorkflowIoOpen,
+    sourceSelectedNodeUuid,
     structure,
     task,
     taskControls,
@@ -167,11 +170,13 @@ export function PersistentWorkflowAuthoringView({
 
       <main className={[
         'persistent-authoring__workbench',
-        mode === 'canvas' ? 'is-canvas-mode' : ''
+        mode === 'canvas' ? 'is-canvas-mode' : '',
+        hideEmbeddedCodeEditor ? 'has-external-code-editor' : ''
       ].filter(Boolean).join(' ')}>
         <section
           className="persistent-authoring__pane persistent-authoring__code"
           aria-label="工作流代码视图"
+          hidden={hideEmbeddedCodeEditor}
         >
           {mode === 'code' && (
             <div className="persistent-authoring__projection-toolbar">
@@ -420,6 +425,9 @@ export function PersistentWorkflowAuthoringView({
                     nodes={structure.nodes}
                     links={structure.links}
                     onNodeSelect={selectCanvasNode}
+                    selectedNodeId={mode === 'code'
+                      ? sourceSelectedNodeUuid
+                      : undefined}
                     onSetStart={toggleDebugStartNode}
                     onToggleBreakpoint={toggleDebugBreakpoint}
                     nodeStates={taskNodeStates}

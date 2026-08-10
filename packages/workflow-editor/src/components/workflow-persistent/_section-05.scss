@@ -278,7 +278,8 @@
       grid-template-rows: minmax(280px, 0.9fr) minmax(320px, 1.1fr);
     }
 
-    :global(.persistent-authoring__workbench.is-canvas-mode) {
+    :global(.persistent-authoring__workbench.is-canvas-mode),
+    :global(.persistent-authoring__workbench.has-external-code-editor) {
       grid-template-columns: 1fr;
       grid-template-rows: minmax(0, 1fr);
     }

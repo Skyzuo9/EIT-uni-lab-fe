@@ -15,12 +15,19 @@ vi.mock('reactflow', () => ({
     edges
   }: PropsWithChildren<{
     deleteKeyCode?: string[] | null
-    nodes: Array<{ id: string; deletable?: boolean }>
+    nodes: Array<{
+      id: string
+      className?: string
+      deletable?: boolean
+      selected?: boolean
+    }>
     edges: Array<{ id: string; deletable?: boolean }>
   }>) => (
     <div
       data-delete-keys={JSON.stringify(deleteKeyCode)}
       data-node-deletable={String(nodes[0]?.deletable)}
+      data-node-selection={nodes.map((node) => String(node.selected)).join(',')}
+      data-node-classes={nodes.map((node) => node.className).join('|')}
       data-edge-id={edges[0]?.id}
     >
       {children}
@@ -131,6 +138,28 @@ describe('WorkflowDag deletion interaction', () => {
 
     expect(markup).toContain(
       'data-disabled-reason="复合工作流内部私有节点只读；请删除或编辑调用边界"'
+    )
+  })
+})
+
+describe('WorkflowDag IDE source selection', () => {
+  /** 验证代码光标反查到的节点成为 React Flow 唯一可见选中项。 */
+  it('projects the externally selected workflow node into the canvas', () => {
+    const markup = renderToStaticMarkup(
+      <WorkflowDag
+        nodes={[
+          workflowNode,
+          { ...workflowNode, id: 'node-2', name: '第二个动作' }
+        ]}
+        links={[]}
+        selectedNodeId="node-2"
+        onNodeSelect={vi.fn()}
+      />
+    )
+
+    expect(markup).toContain('data-node-selection="false,true"')
+    expect(markup).toMatch(
+      /data-node-classes="[^"]*\|[^"]*wf-flow-node--source-selected/
     )
   })
 })

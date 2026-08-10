@@ -1,0 +1,17 @@
+{
+  "name": "@unilab/workflow-ide-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.9"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

@@ -12,6 +12,7 @@ import {
   loadWorkflowNodeTemplateCatalog,
   parseWorkflowNodeTemplateDetail
 } from './workflowNodeTemplateCursor'
+import { templateSchemaValue } from './workflowActionCatalogWire'
 
 export interface WorkflowMaterialSourceHandleTemplate {
   uuid: string
@@ -33,6 +34,7 @@ export interface WorkflowMaterialSourceNodeTemplate {
   displayName: string
   actionClass: 'unilabos.workflow.authoring:material_source'
   actionType: 'material_source'
+  schema: Record<string, unknown> | null
   sourceHandle: WorkflowMaterialSourceHandleTemplate
   wireValue?: Record<string, unknown>
 }
@@ -118,8 +120,8 @@ export async function loadWorkflowMaterialSourceCatalog(
   )
   const template = recordValue(detail.template)
   const handles = recordArray(detail.handles)
-  // `scaffoldSchema` 把 Backend `omitempty` 缺失值规范为框架模板的内部 null。
-  const scaffoldSchema = template.schema ?? null
+  // OS 把数据库 JSON Schema 作为文本发布；解析后再校验物料来源选择器合同。
+  const schema = materialSourceTemplateSchema(template.schema)
   if (
     uuidString(template.uuid) !== summaryUuid ||
     uuidString(template.resource_template_uuid) !== summaryResourceUuid ||
@@ -127,7 +129,6 @@ export async function loadWorkflowMaterialSourceCatalog(
     template.type !== 'material_source' ||
     template.node_type !== 'material_source' ||
     template.class !== 'unilabos.workflow.authoring:material_source' ||
-    scaffoldSchema !== null ||
     handles.length !== 1
   ) invalidCatalog('物料来源（MaterialSource）框架模板详情无效')
   const handle = handles[0]
@@ -172,6 +173,7 @@ export async function loadWorkflowMaterialSourceCatalog(
     displayName: nonEmptyString(template.display_name),
     actionClass: 'unilabos.workflow.authoring:material_source' as const,
     actionType: 'material_source' as const,
+    schema,
     sourceHandle
   }, template)
 
@@ -187,6 +189,82 @@ export async function loadWorkflowMaterialSourceCatalog(
     ...graphProjection,
     resourceTemplates
   }
+}
+
+const MATERIAL_SOURCE_PARAMETER_KEYS = [
+  'mode',
+  'resource_template_uuid',
+  'mount',
+  'material_uuid',
+  'site',
+  'slot_range',
+  'flow_role'
+] as const
+
+/**
+ * 解析并校验 OS 发布的 MaterialSource 闭合选择器 Schema。
+ *
+ * @param raw 节点模板详情中的 JSON 对象或数据库 JSON 文本。
+ * @returns 可供编辑器投影使用的结构化 Schema 副本。
+ * @throws 根对象、字段集合或 SiteSelector 扩展与编辑合同不一致时关闭失败。
+ */
+function materialSourceTemplateSchema(
+  raw: unknown
+): Record<string, unknown> | null {
+  // 保留旧 Edge 节点的无 Schema 框架合同；新 OS 发布时则必须完整校验。
+  if (raw === null || raw === undefined) return null
+  const schema = recordValue(templateSchemaValue(raw))
+  const properties = recordValue(schema.properties)
+  const mode = recordValue(properties.mode)
+  const resourceTemplate = recordValue(properties.resource_template_uuid)
+  const mount = recordValue(properties.mount)
+  const mountProperties = recordValue(mount.properties)
+  const mountUuid = recordValue(mountProperties.uuid)
+  const materialUuid = recordValue(properties.material_uuid)
+  const site = recordValue(properties.site)
+  const siteSelector = recordValue(site['x-unilabos-site-selector'])
+  const slotRange = recordValue(properties.slot_range)
+  const slotItem = recordValue(slotRange.items)
+  const flowRole = recordValue(properties.flow_role)
+  if (
+    schema.type !== 'object' ||
+    schema.additionalProperties !== false ||
+    !sameStringSet(Object.keys(properties), MATERIAL_SOURCE_PARAMETER_KEYS) ||
+    !sameStringSet(schema.required, MATERIAL_SOURCE_PARAMETER_KEYS) ||
+    mode.type !== 'string' ||
+    !sameStringSet(mode.enum, ['existing', 'create_new']) ||
+    resourceTemplate.type !== 'string' ||
+    resourceTemplate.format !== 'uuid' ||
+    mount.type !== 'object' ||
+    mount.additionalProperties !== false ||
+    !sameStringSet(Object.keys(mountProperties), ['uuid']) ||
+    !sameStringSet(mount.required, ['uuid']) ||
+    mountUuid.type !== 'string' ||
+    mountUuid.format !== 'uuid' ||
+    !sameStringSet(materialUuid.type, ['string', 'null']) ||
+    materialUuid.format !== 'uuid' ||
+    !sameStringSet(site.type, ['string', 'null']) ||
+    site.format !== 'uuid' ||
+    site['x-unilabos-editor-control'] !== 'site_selector' ||
+    siteSelector.version !== 1 ||
+    siteSelector.owner !== 'mount' ||
+    siteSelector.occupant !== 'resource_template_uuid' ||
+    siteSelector.show_occupied !== true ||
+    siteSelector.allow_occupied !== false ||
+    !sameStringSet(slotRange.type, ['array', 'null']) ||
+    slotRange.minItems !== 1 ||
+    slotRange.uniqueItems !== true ||
+    slotItem.type !== 'string' ||
+    slotItem.format !== 'uuid' ||
+    flowRole.type !== 'string' ||
+    !sameStringSet(flowRole.enum, [
+      'primary_sample',
+      'aliquot_sample',
+      'reagent',
+      'consumable'
+    ])
+  ) invalidCatalog('物料来源（MaterialSource）参数 Schema 无效')
+  return structuredClone(schema)
 }
 
 /**
@@ -408,6 +486,20 @@ function stringArray(value: unknown): string[] {
     if (typeof entry === 'string' && entry.trim()) strings.push(entry)
   }
   return strings
+}
+
+/** 校验未信任值是与期望成员完全一致的无重复字符串集合。 */
+function sameStringSet(
+  value: unknown,
+  expected: readonly string[]
+): boolean {
+  if (
+    !Array.isArray(value) ||
+    value.some((entry) => typeof entry !== 'string') ||
+    value.length !== expected.length ||
+    new Set(value).size !== value.length
+  ) return false
+  return expected.every((entry) => value.includes(entry))
 }
 
 /** 判断普通对象；参数是未信任值，返回类型守卫结果，不主动抛错。 */

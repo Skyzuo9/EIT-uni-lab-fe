@@ -84,6 +84,27 @@ describe('layoutVisibleWorkflowDag', () => {
       (byId.get('prepare-powder')?.x ?? 0) + 81
     )
   })
+
+  /** 小型线性流程应保持可读卡片尺寸，而不是被过大的层间距迫使 fitView 缩小。 */
+  it('keeps a linear action track compact enough for a split IDE pane', async () => {
+    const nodes = [
+      workflowNode('place', 'action'),
+      workflowNode('process', 'action'),
+      workflowNode('pick', 'action')
+    ]
+    const links: WorkflowLink[] = [
+      { source: 'place', target: 'process', type: 'ready' },
+      { source: 'process', target: 'pick', type: 'ready' }
+    ]
+
+    const result = await layoutVisibleWorkflowDag(nodes, links)
+    const ordered = [...result.nodes].sort((left, right) => left.y - right.y)
+    const layerSteps = ordered.slice(1).map((node, index) => (
+      node.y - (ordered[index]?.y ?? 0)
+    ))
+
+    expect(layerSteps.every((step) => step >= 128 && step <= 140)).toBe(true)
+  })
 })
 
 /**

@@ -25,7 +25,10 @@ const TRANSFER_NODE_WIDTH = 168
 const TRANSFER_NODE_HEIGHT = 72
 const SUBWORKFLOW_NODE_HEIGHT = 88
 const NODE_GAP = 80
-const LAYER_GAP = 96
+// Keep the async ELK projection aligned with the synchronous 140px layer
+// pitch. A 96px gap made three-node workflows shrink below 80% in split IDE
+// panes even though the cards themselves fit comfortably.
+const LAYER_GAP = 72
 
 interface SizedNode {
   node: WorkflowNode

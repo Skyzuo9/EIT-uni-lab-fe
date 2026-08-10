@@ -14,6 +14,7 @@ import {
   persistActiveWorkflowId,
   readActiveWorkflowId
 } from '../utils/workflowAuthoringOperations'
+import type { WorkflowIdeBridge } from '../utils/workflowSourceNavigation'
 import { PersistentWorkflowAuthoringPanel } from './PersistentWorkflowAuthoringPanel'
 import styles from './workflow.module.scss'
 
@@ -33,6 +34,8 @@ export interface WorkflowPanelProps {
   onSelectedWorkflowStepChange?: (workflowNodeUuid: string | null) => void
   materialRoleFilter?: string | null
   onMaterialRoleFilterChange?: (materialRole: string | null) => void
+  ideBridge?: WorkflowIdeBridge
+  hideEmbeddedCodeEditor?: boolean
 }
 
 /**
@@ -54,7 +57,9 @@ export default function WorkflowPanel({
   onWorkflowRuntimeProjectionChange,
   onSelectedWorkflowStepChange,
   materialRoleFilter,
-  onMaterialRoleFilterChange
+  onMaterialRoleFilterChange,
+  ideBridge,
+  hideEmbeddedCodeEditor = false
 }: WorkflowPanelProps): React.JSX.Element {
   const [selectedWorkflowUuid, setSelectedWorkflowUuid] = useState<
     string | null
@@ -104,6 +109,8 @@ export default function WorkflowPanel({
           ? onWorkflowRuntimeProjectionChange
           : undefined}
         onSelectedWorkflowStepChange={onSelectedWorkflowStepChange}
+        ideBridge={ideBridge}
+        hideEmbeddedCodeEditor={hideEmbeddedCodeEditor}
         materialRoleFilter={materialRoleFilter}
         onMaterialRoleFilterChange={onMaterialRoleFilterChange}
         onChooseWorkflow={explicitWorkflowUuid

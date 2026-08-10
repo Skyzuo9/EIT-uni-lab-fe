@@ -1,0 +1,5 @@
+lib/
+plugins/
+src-gen/
+gen-*.mjs
+*.log

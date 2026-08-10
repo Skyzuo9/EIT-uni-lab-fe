@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "pnpm --filter @unilab/kernel-web dev",
     "dev:desktop": "pnpm --filter @unilab/desktop dev",
+    "prototype:theia": "pnpm --filter @unilab/theia-workflow-prototype-extension build && pnpm --filter @unilab/theia-workflow-prototype build && pnpm --filter @unilab/theia-workflow-prototype start",
     "build": "pnpm -r --if-present build",
     "build:web": "pnpm --filter @unilab/kernel-web build",
     "build:desktop": "pnpm --filter @unilab/desktop build",
@@ -53,7 +54,9 @@
   "pnpm": {
     "onlyBuiltDependencies": [
       "electron",
-      "esbuild"
+      "esbuild",
+      "drivelist",
+      "node-pty"
     ],
     "patchedDependencies": {
       "@pascal-app/editor@0.9.2": "patches/@pascal-app__editor@0.9.2.patch"

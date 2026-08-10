@@ -38,3 +38,11 @@ export {
 } from './utils/workflowMaterialTrace'
 export * from './utils/parseWorkflow'
 export * from './utils/parseWorkflowJson'
+export {
+  workflowNodeAtSourcePosition,
+  workflowSourceLocationForNode,
+  type WorkflowIdeBridge,
+  type WorkflowSourceLocation,
+  type WorkflowSourcePosition,
+  type WorkflowSourceProjection
+} from './utils/workflowSourceNavigation'
