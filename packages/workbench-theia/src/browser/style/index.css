@@ -54,6 +54,11 @@
   background: var(--unilab-color-primary-soft);
 }
 
+.unilab-theia-prototype__bar nav button:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
 .unilab-theia-prototype__bar nav button:focus-visible,
 .unilab-environment-manager button:focus-visible,
 .unilab-environment-manager input:focus-visible {

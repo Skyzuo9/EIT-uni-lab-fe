@@ -48,7 +48,7 @@ import {
 } from './desktopSurface'
 import { RendererConsoleLogLimiter } from './rendererConsoleLogLimiter'
 import { cleanupPackagedWorkbench, configurePackagedDeviceCardBuilder } from './packagedRuntime'
-import { registerWorkbenchRemoteAccessIpc } from './workbenchRemoteIpc'
+import { isWorkbenchWorkspaceNavigationAllowed, registerWorkbenchRemoteAccessIpc, workbenchUnloadPrompt } from './workbenchRemoteIpc'
 
 // 保存文件的入参:path 为 null 时弹出"另存为"对话框
 interface SaveFilePayload {
@@ -205,19 +205,19 @@ function createWindow(): void {
   mainWindow.webContents.on('will-prevent-unload', (event) => {
     const window = mainWindow
     if (!window || window.isDestroyed()) return
-
+    const prompt = workbenchUnloadPrompt()
     const choice = dialog.showMessageBoxSync(window, {
       type: 'warning',
-      buttons: ['继续编辑', '放弃修改并关闭'],
+      buttons: prompt.buttons,
       defaultId: 0,
       cancelId: 0,
       noLink: true,
       title: '工作流尚未保存',
       message: '工作流代码有未保存的修改。',
-      detail: '关闭窗口将丢失这些修改。'
+      detail: prompt.detail
     })
     if (choice === 1) {
-      electronObservability.record('electron.renderer.unsaved_changes_discarded')
+      electronObservability.record(prompt.discardedEvent)
       event.preventDefault()
     }
   })
@@ -253,7 +253,7 @@ function createWindow(): void {
   })
 
   mainWindow.webContents.on('will-navigate', (event, targetUrl) => {
-    if (isDesktopSurfaceNavigationAllowed(desktopSurface, targetUrl)) return
+    if (isDesktopSurfaceNavigationAllowed(desktopSurface, targetUrl) || isWorkbenchWorkspaceNavigationAllowed(targetUrl)) return
     event.preventDefault()
     logLine(`阻止 Workbench renderer 跨 origin 导航: ${targetUrl}`)
     if (/^https?:/u.test(targetUrl)) void shell.openExternal(targetUrl)
@@ -318,7 +318,7 @@ app.whenReady().then(async () => {
     app.dock.setIcon(localAppIcon)
   }
   ipcMain.handle('app:getVersion', () => app.getVersion())
-  registerWorkbenchRemoteAccessIpc({ observability: electronObservability, assertSender: assertMainWindowSender })
+  registerWorkbenchRemoteAccessIpc({ observability: electronObservability, assertSender: assertMainWindowSender, getMainWindow: () => mainWindow })
   deviceCardManager = new DeviceCardManager({
     getMainWindow: () => mainWindow,
     preloadPath: join(__dirname, '../preload/deviceCard.js'),

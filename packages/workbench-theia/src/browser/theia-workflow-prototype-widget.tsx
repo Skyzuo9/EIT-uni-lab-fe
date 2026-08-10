@@ -80,6 +80,7 @@ import {
   WorkbenchSessionServer
 } from '../common/workbench-session-protocol'
 import { WorkbenchSessionClientImpl } from './workbench-session-client'
+import { DesktopWorkspaceSwitchButton } from './desktop-workspace-switch'
 import { EnvironmentManager } from './environment-manager'
 import { createTheiaWorkflowIdeAdapter } from './theia-workflow-ide-adapter'
 import { WorkbenchSessionGate } from './workbench-session-gate'
@@ -635,6 +636,7 @@ function WorkbenchSurface({
               />
               环境管理
             </button>
+            <DesktopWorkspaceSwitchButton />
           </nav>
         </header>
         {environmentOpen ? (

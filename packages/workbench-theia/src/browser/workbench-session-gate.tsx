@@ -1,6 +1,8 @@
 import type { WorkbenchSessionSnapshot } from '@unilab/workbench-session'
 import * as React from 'react'
 
+import { DesktopWorkspaceSwitchButton } from './desktop-workspace-switch'
+
 export async function captureWorkbenchUiOperation(
   operation: () => Promise<void>,
   onError: (message: string) => void
@@ -88,6 +90,7 @@ export function WorkbenchSessionGate({
           aria-expanded={environmentOpen}
           onClick={() => setEnvironmentOpen(value => !value)}
         >环境管理</button>
+        <DesktopWorkspaceSwitchButton />
       </section>
       {environmentOpen
         ? renderEnvironmentManager(() => setEnvironmentOpen(false))

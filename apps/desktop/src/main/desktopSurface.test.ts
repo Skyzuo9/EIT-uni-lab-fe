@@ -59,6 +59,25 @@ describe('shared Electron desktop surface', () => {
     }).openDevTools).toBe(true)
   })
 
+  it('accepts only the launcher-owned welcome file renderer', () => {
+    const welcomeUrl = 'file:///Applications/UniLab.app/Contents/Resources/welcome.html'
+    const config = resolveDesktopSurfaceConfig({
+      environment: {
+        UNILAB_DESKTOP_SURFACE: 'workbench',
+        UNILAB_DESKTOP_RENDERER_URL: welcomeUrl,
+        UNILAB_DESKTOP_WELCOME_URL: welcomeUrl
+      },
+      isDevelopment: false
+    })
+
+    expect(config.rendererUrl).toBe(welcomeUrl)
+    expect(isDesktopSurfaceNavigationAllowed(config, welcomeUrl)).toBe(true)
+    expect(isDesktopSurfaceNavigationAllowed(
+      config,
+      'file:///tmp/welcome.html'
+    )).toBe(false)
+  })
+
   it.each([
     {},
     { UNILAB_DESKTOP_RENDERER_URL: 'https://127.0.0.1:3110/' },

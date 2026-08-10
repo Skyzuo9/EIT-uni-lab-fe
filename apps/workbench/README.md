@@ -19,6 +19,13 @@ Conda location contains both Python and the `unilab` CLI. An explicitly selected
 environment is authoritative: if it becomes invalid, Workbench fails closed and
 does not silently switch environments.
 
+Workbench resolves an optional OS source checkout through that interpreter's
+`unilabos` import location. An editable install therefore maps to its real
+checkout regardless of where the Workspace lives; an ordinary wheel install
+continues to run from the selected environment with no synthetic source path.
+Workbench never infers OS from a sibling Workspace directory. `--os-project`
+or `UNILAB_OS_PROJECT` is the explicit override for controlled development.
+
 When an environment is selected, the launcher gives Theia's Python extension,
 integrated terminals and the managed OS the same activated `PATH`, `CONDA_PREFIX`
 and `PYTHONPATH` view (OS source root plus Editable Package root).
@@ -127,6 +134,27 @@ and Agent conversation/session bodies are excluded.
 
 ## Start as a desktop application
 
+The packaged app opens on a dedicated Workspace welcome surface. No Theia,
+managed OS, Workbench Agent or PLC-Sim process is started until a Workspace has
+been selected and its Python environment has passed validation. Successful
+selections are recorded as canonical paths in the machine-local application
+configuration; invalid launches return to the welcome surface without replacing
+the last successful entry.
+
+From a running desktop Workbench, use **切换工作区** in the authoring
+toolbar. Unsaved editors keep Electron's native discard confirmation. After
+confirmation, the current managed process tree is stopped within the bounded
+shutdown window, and the same BrowserWindow returns to the welcome surface.
+
+To exercise the packaged launcher in development without starting a Workspace:
+
+```bash
+pnpm --filter @unilab/workbench desktop:welcome
+```
+
+An explicit `--workspace` or `THEIA_WORKSPACE` remains the automation-compatible
+direct-launch path and bypasses the welcome surface after successful validation.
+
 ```bash
 THEIA_WORKSPACE=/absolute/path/to/Uni-Lab-SZLab \
 UNILAB_OS_PROJECT=/absolute/path/to/Uni-Lab-OS \
@@ -139,8 +167,9 @@ This builds the existing `apps/desktop` shell and the Workbench, waits for the
 local Theia server, then opens it in Electron. Workbench therefore reuses the
 Desktop preload/IPC, authentication, file dialogs, local runtime, device-card,
 device-provisioning, diagnostics and safe-quit implementation. The privileged
-renderer is restricted to its original `http://127.0.0.1` origin; remote
-renderer URLs and cross-origin navigation are rejected.
+renderer is restricted to the launcher-owned local welcome file and the active
+managed `http://127.0.0.1` origin; remote renderer URLs and cross-origin
+navigation are rejected.
 
 The desktop Environment Manager can enable or stop an authenticated remote
 browser entrance while Electron stays open. Both entrances use the same Theia
@@ -175,9 +204,10 @@ validated PLC-Sim launch contract.
 
 The formal macOS arm64 application packages the shared Electron shell, Theia
 frontend/backend, Pyright and Git plugins, and a pinned Node backend runtime.
-It discovers an installed UniLab OS environment at first launch; an OS source
-checkout is optional. The first launch opens a native Workspace directory
-picker, while later launches restore the last valid selection.
+It discovers an installed UniLab OS environment after Workspace selection; an
+OS source checkout is optional. Every ordinary launch opens the Workspace
+welcome surface with native open/create dialogs and recent successful
+selections.
 
 ```bash
 # Local artifact and cold-start acceptance; intentionally unsigned.

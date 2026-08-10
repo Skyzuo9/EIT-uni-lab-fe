@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url'
 
 import {
   createWorkbenchRendererUrl,
+  discoverWorkbenchOsProject,
   discoverWorkbenchPythonEnvironment,
   resolveWorkbenchLaunchConfiguration,
   workbenchEnvironmentPathEntries
@@ -28,7 +29,6 @@ const launchMode = launch.mode
 const desktopEnabled = launchMode === 'desktop' || launchMode === 'desktop-remote'
 const remoteEnabled = launchMode === 'remote' || launchMode === 'desktop-remote'
 const workspace = launch.workspace
-const osProject = launch.osProject
 const port = launch.port
 const remoteConfiguration = launch.remote ?? (
   desktopEnabled
@@ -54,11 +54,12 @@ if (remoteConfiguration?.accessUrlFile
 if (!existsSync(workspace)) {
   throw new Error(`Workspace does not exist: ${workspace}`)
 }
-if (osProject && !existsSync(path.resolve(osProject))) {
-  throw new Error(`Uni-Lab-OS project does not exist: ${osProject}`)
-}
 const pythonEnvironment = await discoverWorkbenchPythonEnvironment({
   selected: launch.pythonEnvironment
+})
+const osProject = await discoverWorkbenchOsProject({
+  selected: launch.osProject,
+  pythonEnvironment
 })
 
 console.log(`[UniLab Workbench] workspace: ${workspace}`)

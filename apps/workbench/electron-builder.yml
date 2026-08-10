@@ -6,6 +6,9 @@ directories:
   buildResources: ../desktop/build
 files:
   - desktop/main.cjs
+  - desktop/welcome.html
+  - desktop/welcome.css
+  - desktop/welcome.js
   - package.json
   - '!node_modules/**'
 extraResources:

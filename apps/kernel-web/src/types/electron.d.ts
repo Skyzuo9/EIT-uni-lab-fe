@@ -294,9 +294,35 @@ export interface DesktopWorkbenchRemoteApi {
   stop: () => Promise<WorkbenchRemoteAccessSnapshot>
 }
 
+export interface WorkbenchWorkspaceSnapshot {
+  phase: 'unavailable' | 'welcome' | 'starting' | 'ready' | 'stopping' | 'failed'
+  activeWorkspace: string | null
+  recentWorkspaces: Array<{
+    path: string
+    name: string
+    lastOpenedAt: string
+  }>
+  error: string | null
+}
+
+export interface DesktopWorkbenchWorkspaceApi {
+  getSnapshot: () => Promise<WorkbenchWorkspaceSnapshot>
+  openDirectory: () => Promise<WorkbenchWorkspaceSnapshot>
+  createDirectory: () => Promise<WorkbenchWorkspaceSnapshot>
+  openRecent: (path: string) => Promise<WorkbenchWorkspaceSnapshot>
+  switchToWelcome: () => Promise<{
+    switched: boolean
+    snapshot: WorkbenchWorkspaceSnapshot
+  }>
+  onSnapshot: (
+    listener: (snapshot: WorkbenchWorkspaceSnapshot) => void
+  ) => () => void
+}
+
 interface DesktopApi {
   getVersion: () => Promise<string>
   workbenchRemote?: DesktopWorkbenchRemoteApi
+  workbenchWorkspace?: DesktopWorkbenchWorkspaceApi
   auth: {
     getSession: () => Promise<AuthSession | null>
     login: () => Promise<AuthSession | null>
