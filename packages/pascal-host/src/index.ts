@@ -1,4 +1,5 @@
 export { PascalHost, type PascalHostProps } from './PascalHost'
+export { ensurePascalRendererDefaults } from './rendererFeatures'
 export {
   PascalEditorHost,
   type PascalEditorHostProps

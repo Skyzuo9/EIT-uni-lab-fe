@@ -27,7 +27,7 @@
 
     :global(.persistent-authoring__workbench.is-canvas-mode) {
       grid-template-rows: auto;
-      flex: 0 0 auto;
+      flex: 1 1 auto;
     }
 
     :global(.workflow__toolbar-actions) {
@@ -78,7 +78,7 @@
 
     :global(.persistent-authoring__graph-stage) {
       grid-area: graph;
-      height: 260px;
+      height: 100%;
       min-height: 260px;
     }
 

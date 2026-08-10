@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { extname, resolve } from 'node:path'
 import process from 'node:process'
 import ts from 'typescript'
@@ -58,6 +58,9 @@ function changedFiles(base) {
   collect(['ls-files', '--others', '--exclude-standard', '--'])
 
   return [...names]
+    // `git diff --name-only` reports both sides of a detected rename. The old
+    // path is not a source file in the candidate tree and must not be read.
+    .filter((name) => existsSync(resolve(ROOT, name)))
     .filter((name) => name.startsWith('apps/') || name.startsWith('packages/'))
     .filter((name) => SOURCE_EXTENSIONS.has(extname(name)) || STYLE_EXTENSIONS.has(extname(name)))
     .filter((name) => !/(?:^|\/)(?:dist|coverage|node_modules)\//.test(name))

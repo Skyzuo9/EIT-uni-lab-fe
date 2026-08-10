@@ -56,8 +56,14 @@ export default defineConfig(({ mode }) => ({
     alias: {
       '@': resolve(__dirname, 'src'),
       '@renderer': resolve(__dirname, 'src'),
-      'next/image': resolve(__dirname, 'src/shims/next-image.tsx'),
-      'next/link': resolve(__dirname, 'src/shims/next-link.tsx')
+      'next/image': resolve(
+        __dirname,
+        '../../packages/pascal-host/src/shims/next-image.tsx'
+      ),
+      'next/link': resolve(
+        __dirname,
+        '../../packages/pascal-host/src/shims/next-link.tsx'
+      )
     }
   }
 }))

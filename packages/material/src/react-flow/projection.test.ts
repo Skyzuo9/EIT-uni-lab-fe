@@ -33,6 +33,21 @@ describe('Material React Flow projection', () => {
     })
   })
 
+  it('projects selection exclusively from the controlled material IDs', () => {
+    const first = materialAggregate('first')
+    const second = materialAggregate('second')
+
+    const nodes = projectMaterialFlowNodes({
+      aggregatesById: { first, second },
+      selectedMaterialIds: ['second']
+    })
+
+    expect(nodes.map(({ id, selected }) => ({ id, selected }))).toEqual([
+      { id: 'first', selected: false },
+      { id: 'second', selected: true }
+    ])
+  })
+
   it('projects a rotated parent without asking React Flow to inherit rotation', () => {
     const parent = materialAggregate('parent', {
       placement: {

@@ -21,6 +21,7 @@ export interface MaterialSourceInspectorProps {
   status: string
   diagnostics: readonly WorkflowAuthoringDiagnostic[]
   onChange: (patch: Partial<MaterialSourceSelectorUpdate>) => void
+  onRevealSource?: (sourceUri: string) => void
 }
 
 /**
@@ -34,13 +35,17 @@ export function MaterialSourceInspector({
   editable,
   status,
   diagnostics,
-  onChange
+  onChange,
+  onRevealSource
 }: MaterialSourceInspectorProps): React.JSX.Element {
   const resolvedAccent = accent ?? materialTraceAccent(editor.nodeUuid)
   const [siteQuery, setSiteQuery] = useState('')
   const visibleSites = useMemo(
     () => filterMaterialSourceSites(editor.sites, siteQuery),
     [editor.sites, siteQuery]
+  )
+  const selectedResourceTemplate = editor.resourceTemplates.find(
+    template => template.uuid === editor.resourceTemplateUuid
   )
   useEffect(() => setSiteQuery(''), [editor.nodeUuid])
   return (
@@ -105,6 +110,15 @@ export function MaterialSourceInspector({
             ))}
           </select>
         </label>
+        {selectedResourceTemplate?.sourceUri && onRevealSource ? (
+          <WorkflowButton
+            type="button"
+            disabledReason="资源模板没有可导航的 Package 源码身份"
+            onClick={() => onRevealSource(selectedResourceTemplate.sourceUri!)}
+          >
+            在代码中打开资源模板
+          </WorkflowButton>
+        ) : null}
       </fieldset>
 
       <fieldset>

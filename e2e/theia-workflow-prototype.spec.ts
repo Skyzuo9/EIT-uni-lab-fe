@@ -2,13 +2,117 @@ import { expect, test } from '@playwright/test'
 
 const prototypeUrl = process.env.UNILAB_THEIA_PROTOTYPE_URL
 
-test.describe('Theia workflow prototype visual contract', () => {
+test.describe('UniLab Authoring Workbench real-system contract', () => {
   test.skip(!prototypeUrl, 'UNILAB_THEIA_PROTOTYPE_URL is required')
 
-  test('renders Python tokens and keeps the workflow canvas usable', async ({
+  test('keeps the renderer responsive after UniLab Agent branding mounts', async ({
+    page
+  }) => {
+    test.setTimeout(15_000)
+    await page.goto(prototypeUrl!, { waitUntil: 'domcontentloaded' })
+    await expect(page.locator('iframe.unilab-aionui__frame')).toBeAttached()
+
+    await page.waitForTimeout(2_000)
+    const agentFrame = page.frameLocator('iframe.unilab-aionui__frame')
+    await expect(agentFrame.getByText(/今天有什么安排/)).toBeVisible()
+    await expect(agentFrame.locator(
+      'input[placeholder="请输入用户名"]'
+    )).toHaveCount(0)
+    await expect(agentFrame.getByTestId('opening-guide')).toHaveCount(0)
+    const agentStatus = await agentFrame.locator('body').evaluate(async () => {
+      const response = await fetch('/__unilab/status')
+      return response.json() as Promise<{
+        workspacePath: string
+        workDir: string
+      }>
+    })
+    const expectedWorkspace = decodeURIComponent(
+      new URL(prototypeUrl!).hash.replace(/^#\/?/, '/')
+    )
+    expect(agentStatus).toMatchObject({
+      workspacePath: expectedWorkspace,
+      workDir: expectedWorkspace
+    })
+    const managedConversation = await agentFrame.locator('body').evaluate(
+      async (_, workspacePath) => {
+        const response = await fetch('/api/conversations', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            name: 'UniLab managed Workspace E2E',
+            assistant: {
+              id: 'bare:8e1acf31',
+              locale: 'zh-CN',
+              conversation_overrides: {
+                model: 'gpt-5.6-sol',
+                permission: 'auto',
+                thought_level: 'low',
+                skill_ids: [],
+                disabled_builtin_skill_ids: [],
+                mcp_ids: []
+              }
+            },
+            extra: {
+              workspace: '',
+              custom_workspace: false,
+              default_files: []
+            }
+          })
+        })
+        if (!response.ok) throw new Error(`create failed: ${response.status}`)
+        const envelope = await response.json() as {
+          data: {
+            id: string
+            assistant?: { backend?: string }
+            extra?: Record<string, unknown>
+          }
+        }
+        return envelope.data
+      },
+      expectedWorkspace
+    )
+    expect(managedConversation).toMatchObject({
+      assistant: { backend: 'codex' },
+      extra: {
+        workspace: expectedWorkspace
+      }
+    })
+    await agentFrame.locator('body').evaluate(async (_, conversationId) => {
+      const response = await fetch(`/api/conversations/${conversationId}`, {
+        method: 'DELETE'
+      })
+      if (!response.ok) throw new Error(`cleanup failed: ${response.status}`)
+    }, managedConversation.id)
+    await expect.poll(async () => page.evaluate(() => ({
+      readyState: document.readyState,
+      title: document.title
+    })), { timeout: 2_000 }).toEqual({
+      readyState: 'complete',
+      title: 'UniLab Authoring - Uni-Lab-SZLab'
+    })
+
+    await page.getByRole('button', { name: '查看 OS 日志' }).click()
+    await expect(page.getByTestId('session-log-tail')).toBeVisible()
+  })
+
+  test('binds the exact package source and keeps bidirectional authoring usable', async ({
     page
   }) => {
     await page.goto(prototypeUrl!)
+    const workbench = page.locator('[data-package-mount-count="1"]')
+    await expect(workbench).toBeVisible()
+    await expect(workbench).toHaveAttribute('data-session-mode', 'simulation')
+    await expect(workbench).toHaveAttribute(
+      'data-workspace-graph-fingerprint',
+      /^[0-9a-f]{64}$/
+    )
+    await expect(workbench).toHaveAttribute(
+      'data-package-catalog-revision',
+      /^sha256:[0-9a-f]{64}$/
+    )
+    await page.getByRole('button', { name: '查看 OS 日志' }).click()
+    await expect(page.getByTestId('session-log-tail')).toContainText(/\S/)
+    await page.getByText('OS 日志尾部', { exact: true }).click()
     await expect(page.getByText('完整控制流 DAG')).toBeVisible()
     await page.locator('.react-flow__node').first().click()
     await expect(page.locator('.monaco-editor .view-line').first()).toBeVisible()
@@ -63,11 +167,15 @@ test.describe('Theia workflow prototype visual contract', () => {
 
     await page.keyboard.press('Escape')
     await page.getByRole('button', { name: '画布模式', exact: true }).click()
-    await page.locator('.wf-node__id').first().click()
-    await expect(page.locator('[role="dialog"]:visible')).toHaveCount(0)
-    await expect(page.getByRole('complementary', {
+    const nodeEditor = page.getByRole('complementary', {
       name: '画布节点编辑器'
-    })).toBeVisible()
+    })
+    await expect(nodeEditor).toBeVisible()
+    await page.locator('.react-flow__node').filter({
+      hasText: 'run_solvent_addition'
+    }).click()
+    await expect(page.locator('[role="dialog"]:visible')).toHaveCount(0)
+    await expect(nodeEditor).toBeVisible()
 
     const layout = await page.evaluate(() => {
       const workflow = document.querySelector<HTMLElement>('.workflow-runtime')

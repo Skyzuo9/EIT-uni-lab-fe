@@ -12,7 +12,8 @@ vi.mock('reactflow', () => ({
     children,
     deleteKeyCode,
     nodes,
-    edges
+    edges,
+    fitViewOptions
   }: PropsWithChildren<{
     deleteKeyCode?: string[] | null
     nodes: Array<{
@@ -22,6 +23,7 @@ vi.mock('reactflow', () => ({
       selected?: boolean
     }>
     edges: Array<{ id: string; deletable?: boolean }>
+    fitViewOptions?: { maxZoom?: number }
   }>) => (
     <div
       data-delete-keys={JSON.stringify(deleteKeyCode)}
@@ -29,6 +31,7 @@ vi.mock('reactflow', () => ({
       data-node-selection={nodes.map((node) => String(node.selected)).join(',')}
       data-node-classes={nodes.map((node) => node.className).join('|')}
       data-edge-id={edges[0]?.id}
+      data-fit-max-zoom={fitViewOptions?.maxZoom}
     >
       {children}
     </div>
@@ -182,6 +185,36 @@ describe('WorkflowDag material role filter', () => {
     expect(markup).toContain('主样品')
     expect(markup).toContain('试剂')
     expect(markup).toContain('全部物料')
+  })
+})
+
+describe('WorkflowDag host sizing', () => {
+  /** 小型纵向流程应允许适度放大，避免在高画布中只占顶部一小块。 */
+  it('lets fitView use the available authoring canvas', () => {
+    const markup = renderToStaticMarkup(
+      <WorkflowDag
+        nodes={[workflowNode]}
+        links={[]}
+        onNodeSelect={vi.fn()}
+      />
+    )
+
+    expect(markup).toContain('data-fit-max-zoom="1.35"')
+  })
+
+  /** Theia 窄分栏仍是高桌面面板，不能套用移动端 260px 固定画布。 */
+  it('keeps the responsive graph stage stretched to its grid row', () => {
+    const stylesheet = readFileSync(
+      new URL('./workflow-persistent/_section-06.scss', import.meta.url),
+      'utf8'
+    )
+
+    expect(stylesheet).toMatch(
+      /persistent-authoring__graph-stage[\s\S]*height:\s*100%/
+    )
+    expect(stylesheet).not.toMatch(
+      /persistent-authoring__graph-stage[\s\S]{0,160}\n\s+height:\s*260px/
+    )
   })
 })
 

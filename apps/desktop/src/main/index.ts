@@ -41,6 +41,12 @@ import type {
   LocalRuntimeLogQuery,
   LocalRuntimePathKind
 } from '../shared/localRuntime'
+import {
+  isDesktopSurfaceNavigationAllowed,
+  resolveDesktopSurfaceConfig,
+  shouldQuitWhenAllDesktopWindowsClose
+} from './desktopSurface'
+import { RendererConsoleLogLimiter } from './rendererConsoleLogLimiter'
 
 // 保存文件的入参:path 为 null 时弹出"另存为"对话框
 interface SaveFilePayload {
@@ -90,6 +96,14 @@ function logLine(message: string): void {
 }
 
 const isDev = !app.isPackaged
+const desktopSurface = resolveDesktopSurfaceConfig({
+  environment: process.env,
+  isDevelopment: isDev
+})
+const rendererConsoleLogLimiter = new RendererConsoleLogLimiter({
+  limit: 20,
+  windowMs: 10_000
+})
 const electronObservability = createMainObservability()
 remoteLogSink = (message) => electronObservability.log(message)
 
@@ -127,8 +141,10 @@ process.on('unhandledRejection', (reason) => {
     reason
   )
 })
-logLine(`main 加载 electron=${process.versions.electron ?? 'unknown'} node=${process.versions.node}`)
-electronObservability.record('electron.app.loaded')
+logLine(`main 加载 electron=${process.versions.electron ?? 'unknown'} node=${process.versions.node} surface=${desktopSurface.kind}`)
+electronObservability.record('electron.app.loaded', {
+  'desktop.surface': desktopSurface.kind
+})
 
 // electron-vite 的开发态 main bundle 位于 out/main；本地图标保留在
 // apps/desktop/build。安装包继续由 electron-builder 的 icns/png 配置负责。
@@ -145,13 +161,10 @@ let deviceCardAgentCli: DeviceCardAgentCliManager | null = null
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
-    minWidth: 800,
-    minHeight: 600,
+    ...desktopSurface.window,
     show: false,
     autoHideMenuBar: true,
-    title: 'Lab PC Client',
+    title: desktopSurface.title,
     ...(isDev ? { icon: localAppIcon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -197,13 +210,11 @@ function createWindow(): void {
     'console-message',
     (_e, level, message, line, sourceId) => {
       if (level >= 2) {
-        logLine(`renderer console: ${message} (${sourceId}:${line})`)
-        electronObservability.record('electron.renderer.console', {
-          'log.severity_number': level,
-          'log.message': message,
-          'code.filepath': sourceId,
-          'code.lineno': line
-        })
+        rendererConsoleLogLimiter.record(
+          { level, message, line, sourceId },
+          logLine,
+          electronObservability
+        )
       }
     }
   )
@@ -257,22 +268,33 @@ function createWindow(): void {
     return { action: 'deny' }
   })
 
-  // In development load the Vite dev server URL, otherwise load the built file.
-  const devServerUrl = process.env['ELECTRON_RENDERER_URL']
-  if (isDev && devServerUrl) {
-    logLine(`加载 dev 渲染地址: ${devServerUrl}`)
+  mainWindow.webContents.on('will-navigate', (event, targetUrl) => {
+    if (isDesktopSurfaceNavigationAllowed(desktopSurface, targetUrl)) return
+    event.preventDefault()
+    logLine(`阻止 Workbench renderer 跨 origin 导航: ${targetUrl}`)
+    if (/^https?:/u.test(targetUrl)) void shell.openExternal(targetUrl)
+  })
+
+  // Workbench uses its managed loopback Theia server. Kernel Web keeps the
+  // existing electron-vite development and packaged renderer paths.
+  const rendererUrl = desktopSurface.rendererUrl
+    ?? (isDev ? process.env['ELECTRON_RENDERER_URL'] : undefined)
+  if (rendererUrl) {
+    const rendererMode = desktopSurface.kind === 'workbench'
+      ? 'workbench'
+      : 'development'
+    logLine(`加载 ${rendererMode} 渲染地址: ${rendererUrl}`)
     void electronObservability
       .run(
         'electron.renderer.load',
-        { 'renderer.mode': 'development', 'renderer.url': devServerUrl },
-        () => mainWindow?.loadURL(devServerUrl) ?? Promise.resolve()
+        { 'renderer.mode': rendererMode, 'renderer.url': rendererUrl },
+        () => mainWindow?.loadURL(rendererUrl) ?? Promise.resolve()
       )
       .catch((error) => {
         logLine(
-          `加载 dev 渲染地址失败: ${error instanceof Error ? error.message : String(error)}`
+          `加载 ${rendererMode} 渲染地址失败: ${error instanceof Error ? error.message : String(error)}`
         )
       })
-    mainWindow.webContents.openDevTools({ mode: 'detach' })
   } else {
     const file = join(__dirname, '../renderer/index.html')
     logLine(`加载生产渲染文件: ${file}`)
@@ -287,6 +309,9 @@ function createWindow(): void {
           `加载生产渲染文件失败: ${error instanceof Error ? error.message : String(error)}`
         )
       })
+  }
+  if (desktopSurface.openDevTools) {
+    mainWindow.webContents.openDevTools({ mode: 'detach' })
   }
 }
 
@@ -640,7 +665,10 @@ app.whenReady().then(async () => {
 })
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
+  if (shouldQuitWhenAllDesktopWindowsClose(
+    process.platform,
+    desktopSurface.kind
+  )) {
     app.quit()
   }
 })

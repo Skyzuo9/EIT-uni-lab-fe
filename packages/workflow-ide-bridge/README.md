@@ -7,7 +7,7 @@ The package owns the parts that must behave identically in both products:
 
 - the `WorkflowIdeBridge` React port used by `@unilab/workflow-editor`;
 - node-to-range and cursor-to-node mapping;
-- `package://` parsing and workspace candidate paths;
+- `package://` parsing and exact OS-published package mount resolution;
 - the dirty/save/source-version state machine that prevents stale reverse
   mapping.
 
@@ -20,6 +20,6 @@ Each IDE keeps a deliberately small adapter. It only needs to:
    `reduceWorkflowIdeSync`.
 
 Theia implements that adapter in
-`@unilab/theia-workflow-prototype-extension`. A VS Code extension can use the
+`@unilab/workbench-theia`. A VS Code extension can use the
 same package from its extension host; only its manifest/activation entrypoint
 and `vscode.*` calls stay host-specific.

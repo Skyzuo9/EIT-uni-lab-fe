@@ -9,9 +9,9 @@ vendored Pascal source tree.
 
 The host currently validates `@pascal-app/core`, `@pascal-app/editor` and
 `@pascal-app/viewer` at `0.9.2`. It is client-only and is loaded lazily by
-`kernel-web`. The Vite application supplies small `next/image` and `next/link`
-compatibility components for the upstream imports; this package does not require
-Next or server-side rendering.
+`kernel-web`, the desktop shell, and the Theia workbench. This package supplies
+small shared `next/image` and `next/link` compatibility components for the
+upstream imports; this package does not require Next or server-side rendering.
 
 ## Scene 保真边界
 

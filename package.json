@@ -8,7 +8,8 @@
   "scripts": {
     "dev": "pnpm --filter @unilab/kernel-web dev",
     "dev:desktop": "pnpm --filter @unilab/desktop dev",
-    "prototype:theia": "pnpm --filter @unilab/theia-workflow-prototype-extension build && pnpm --filter @unilab/theia-workflow-prototype build && pnpm --filter @unilab/theia-workflow-prototype start",
+    "workbench": "pnpm --filter @unilab/workbench-theia build && pnpm --filter @unilab/workbench build && pnpm --filter @unilab/workbench start",
+    "workbench:desktop": "pnpm --filter @unilab/workbench desktop",
     "build": "pnpm -r --if-present build",
     "build:web": "pnpm --filter @unilab/kernel-web build",
     "build:desktop": "pnpm --filter @unilab/desktop build",
@@ -38,7 +39,8 @@
     "test:e2e:device-catalog": "playwright test e2e/device-catalog-real-os.spec.ts",
     "test:e2e:device-manual-unlock": "playwright test e2e/device-manual-unlock-real-os.spec.ts",
     "test:e2e:device-single-action": "playwright test e2e/device-single-action-real-os.spec.ts",
-    "test:e2e:desktop-local-runtime": "node scripts/run-playwright-e2e.mjs --env UNILAB_E2E_ELECTRON=1 -- e2e/local-runtime-electron-real-edge.spec.ts"
+    "test:e2e:desktop-local-runtime": "node scripts/run-playwright-e2e.mjs --env UNILAB_E2E_ELECTRON=1 -- e2e/local-runtime-electron-real-edge.spec.ts",
+    "test:e2e:workbench": "playwright test e2e/theia-workflow-prototype.spec.ts"
   },
   "devDependencies": {
     "@playwright/test": "1.55.0",

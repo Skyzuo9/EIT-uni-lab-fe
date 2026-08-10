@@ -3,11 +3,13 @@ import { describe, expect, it } from 'vitest'
 import {
   createWorkflowIdeSyncState,
   parseWorkflowPackageSource,
+  packageSourceUriForResolvedUri,
   reduceWorkflowIdeSync,
+  resolveWorkflowPackageSource,
+  resolveWorkflowPackageSourceUri,
   synchronizeSavedWorkflowSource,
   workflowIdeMappingStatus,
   workflowNodeAtSourcePosition,
-  workflowPackageCandidatePaths,
   workflowSourceLocationForNode,
   type WorkflowSourceProjection
 } from './index'
@@ -16,6 +18,7 @@ const projection: WorkflowSourceProjection = {
   workflowUuid: 'workflow-1',
   sourceUri: 'package://szlab_poly_studio/workflows/s06_robot.py',
   sourceVersion: 'v1',
+  mappingAvailable: true,
   sourceMap: [{
     workflow_node_uuid: 'node-1',
     start_line: 19,
@@ -44,10 +47,81 @@ describe('workflow IDE bridge', () => {
       relativePath: 'workflows/s06_robot.py'
     })
     expect(parseWorkflowPackageSource('package://pkg/../secret')).toBeNull()
-    expect(workflowPackageCandidatePaths(projection.sourceUri)).toEqual([
-      'szlab_poly_studio/workflows/s06_robot.py',
-      'workflows/s06_robot.py'
-    ])
+    expect(resolveWorkflowPackageSourceUri(projection.sourceUri, [{
+      packageId: 'szlab_poly_studio',
+      packageRootUri: 'file:///workspace/szlab_poly_studio',
+      editable: true,
+      readOnly: false
+    }])).toBe('file:///workspace/szlab_poly_studio/workflows/s06_robot.py')
+    expect(resolveWorkflowPackageSourceUri(projection.sourceUri, [])).toBeNull()
+  })
+
+  it('re-resolves the same package identity after a Workspace move', () => {
+    const before = [{
+      packageId: 'szlab_poly_studio',
+      packageRootUri: 'file:///old/SZLab/szlab_poly_studio',
+      editable: true,
+      readOnly: false
+    }]
+    const after = [{
+      ...before[0]!,
+      packageRootUri: 'file:///moved/SZLab/szlab_poly_studio'
+    }]
+
+    expect(resolveWorkflowPackageSourceUri(projection.sourceUri, before))
+      .toBe('file:///old/SZLab/szlab_poly_studio/workflows/s06_robot.py')
+    expect(resolveWorkflowPackageSourceUri(projection.sourceUri, after))
+      .toBe('file:///moved/SZLab/szlab_poly_studio/workflows/s06_robot.py')
+    expect(packageSourceUriForResolvedUri(
+      'file:///moved/SZLab/szlab_poly_studio/workflows/s06_robot.py',
+      after
+    )).toBe(projection.sourceUri)
+  })
+
+  it('preserves the OS dependency read-only contract with exact navigation', () => {
+    const dependency = {
+      packageId: 'vendor_protocols',
+      packageRootUri: 'file:///deps/vendor_protocols',
+      editable: false,
+      readOnly: true
+    }
+    expect(resolveWorkflowPackageSource(
+      'package://vendor_protocols/workflows/shared.py',
+      [dependency]
+    )).toEqual({
+      source: { packageId: 'vendor_protocols', relativePath: 'workflows/shared.py' },
+      mount: dependency
+    })
+  })
+
+  it('maps only the current exact tab and restores mapping after close and reopen', () => {
+    const sourceUri = 'file:///workspace/workflows/s06_robot.py'
+    let state = reduceWorkflowIdeSync(createWorkflowIdeSyncState(), {
+      type: 'source-projection-changed',
+      projection,
+      resolvedSourceUri: sourceUri
+    })
+    state = reduceWorkflowIdeSync(state, {
+      type: 'editor-changed',
+      currentUri: 'file:///workspace/notes.py',
+      dirty: false,
+      cursor: { line: 19, column: 8 }
+    })
+    expect(state.sourcePosition).toBeNull()
+    state = reduceWorkflowIdeSync(state, {
+      type: 'editor-changed',
+      currentUri: null,
+      dirty: false,
+      cursor: null
+    })
+    expect(state.sourcePosition).toBeNull()
+    state = reduceWorkflowIdeSync(state, {
+      type: 'editor-changed',
+      currentUri: sourceUri,
+      dirty: false,
+      cursor: { line: 19, column: 8 }
+    })
+    expect(state.sourcePosition).toEqual({ line: 19, column: 8 })
   })
 
   it('pauses after edits until OS publishes a new source version', () => {
@@ -81,6 +155,24 @@ describe('workflow IDE bridge', () => {
     })
     expect(workflowIdeMappingStatus(state)).toBe('active')
     expect(state.sourcePosition).toEqual({ line: 19, column: 5 })
+  })
+
+  it('keeps navigation paused when the source file is known but its map is not', () => {
+    const resolvedSourceUri = 'file:///workspace/workflows/s06_robot.py'
+    const state = reduceWorkflowIdeSync(createWorkflowIdeSyncState(), {
+      type: 'source-projection-changed',
+      projection: {
+        ...projection,
+        sourceMap: [],
+        mappingAvailable: false
+      },
+      resolvedSourceUri
+    })
+
+    expect(workflowIdeMappingStatus(state)).toBe(
+      'paused: waiting for OS source map'
+    )
+    expect(state.sourcePosition).toBeNull()
   })
 
   it('recompiles an IDE-saved file with the hash OS just observed', async () => {

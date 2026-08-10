@@ -42,6 +42,8 @@ export interface WorkflowMaterialSourceNodeTemplate {
 export interface WorkflowMaterialSourceResourceTemplate {
   uuid: string
   displayName: string
+  /** OS PackageCatalog-signed declaration identity; never an absolute path. */
+  sourceUri?: string
   shape?: MaterialShapeSpec
 }
 
@@ -75,6 +77,7 @@ export interface WorkflowMaterialSourceCatalogSnapshot {
 interface RegisteredWorkflowResourceTemplate {
   uuid: string
   displayName: string
+  sourceUri?: string
   shape?: MaterialShapeSpec
 }
 
@@ -304,6 +307,7 @@ function mergeRegisteredResourceTemplates(
     templatesByUuid.set(registered.uuid, {
       uuid: registered.uuid,
       displayName: registered.displayName,
+      ...(registered.sourceUri ? { sourceUri: registered.sourceUri } : {}),
       ...(registered.shape
         ? { shape: registered.shape }
         : current?.shape
@@ -365,6 +369,9 @@ async function loadRegisteredMaterialSourceTemplates(
       projected.push({
         uuid,
         displayName,
+        ...(packageSourceUri(template.source_uri)
+          ? { sourceUri: packageSourceUri(template.source_uri)! }
+          : {}),
         ...(shape ? { shape } : {})
       })
     }
@@ -476,6 +483,16 @@ function uuidString(value: unknown): string {
 /** 解析可空字符串；参数是未信任值，返回字符串或 null，非空值非法时关闭失败。 */
 function nullableString(value: unknown): string | null {
   return value === null || value === undefined ? null : nonEmptyString(value)
+}
+
+/** Accept only move-stable package source identities from the OS catalog. */
+function packageSourceUri(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const match = /^package:\/\/([^/]+)\/(.+)$/.exec(value)
+  if (!match || (match[2] ?? '').split('/').some(segment =>
+    !segment || segment === '.' || segment === '..'
+  )) return null
+  return value
 }
 
 /** 解析非空字符串集合；参数是可选数组，返回合法项目，非数组返回空集合且不抛错。 */

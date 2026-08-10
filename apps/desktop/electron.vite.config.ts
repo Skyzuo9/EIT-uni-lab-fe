@@ -70,8 +70,8 @@ export default defineConfig(({ mode }) => ({
       alias: {
         '@': resolve(__dirname, '../kernel-web/src'),
         '@renderer': resolve(__dirname, '../kernel-web/src'),
-        'next/image': resolve(__dirname, '../kernel-web/src/shims/next-image.tsx'),
-        'next/link': resolve(__dirname, '../kernel-web/src/shims/next-link.tsx')
+        'next/image': resolve(__dirname, '../../packages/pascal-host/src/shims/next-image.tsx'),
+        'next/link': resolve(__dirname, '../../packages/pascal-host/src/shims/next-link.tsx')
       }
     },
     build: {

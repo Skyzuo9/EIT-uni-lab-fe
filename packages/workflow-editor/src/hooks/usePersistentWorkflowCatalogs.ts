@@ -114,10 +114,10 @@ export function usePersistentWorkflowCatalogs({
 
   const effectiveMaterialSourceCatalog = useMemo(() => {
     if (!materialSourceCatalog) return null
-    const templateLabels = new Map(
+    const templatesByUuid = new Map(
       materialSourceCatalog.resourceTemplates.map((template) => [
         template.uuid,
-        template.displayName
+        template
       ])
     )
     for (const node of graph?.nodes ?? []) {
@@ -126,9 +126,12 @@ export function usePersistentWorkflowCatalogs({
       }
       const templateUuid = node.param.resource_template_uuid
       if (typeof templateUuid !== 'string' || !templateUuid) continue
-      templateLabels.set(
+      templatesByUuid.set(
         templateUuid,
-        templateLabels.get(templateUuid) ?? shortTemplateLabel(templateUuid)
+        templatesByUuid.get(templateUuid) ?? {
+          uuid: templateUuid,
+          displayName: shortTemplateLabel(templateUuid)
+        }
       )
     }
     for (const template of [
@@ -137,17 +140,19 @@ export function usePersistentWorkflowCatalogs({
     ]) {
       for (const handle of template.handles) {
         for (const templateUuid of handle.allowedResourceTemplateUuids ?? []) {
-          templateLabels.set(
+          templatesByUuid.set(
             templateUuid,
-            templateLabels.get(templateUuid) ?? shortTemplateLabel(templateUuid)
+            templatesByUuid.get(templateUuid) ?? {
+              uuid: templateUuid,
+              displayName: shortTemplateLabel(templateUuid)
+            }
           )
         }
       }
     }
     return {
       ...materialSourceCatalog,
-      resourceTemplates: [...templateLabels.entries()]
-        .map(([uuid, displayName]) => ({ uuid, displayName }))
+      resourceTemplates: [...templatesByUuid.values()]
         .sort((left, right) => left.uuid.localeCompare(right.uuid))
     }
   }, [actionCatalog, graph, materialSourceCatalog])

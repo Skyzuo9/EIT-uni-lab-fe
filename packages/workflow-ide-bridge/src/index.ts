@@ -21,11 +21,21 @@ export interface WorkflowSourceLocation extends WorkflowSourcePosition {
   endColumn: number
 }
 
+export interface PackageSourceLocation {
+  sourceUri: string
+  line?: number
+  column?: number
+  endLine?: number
+  endColumn?: number
+}
+
 export interface WorkflowSourceProjection {
   workflowUuid: string
   sourceUri: string
-  /** 与 sourceMap 同一份 OS 权威结果的稳定身份。 */
+  /** OS 已观测源码代；mappingAvailable 时也与 sourceMap 属于同一结果。 */
   sourceVersion: string
+  /** false 表示只绑定了已保存文件，仍在等待 OS 签发 source map。 */
+  mappingAvailable: boolean
   sourceMap: readonly WorkflowSourceMapEntry[]
 }
 
@@ -33,7 +43,10 @@ export interface WorkflowSourceProjection {
 export interface WorkflowIdeBridge {
   /** 外部编辑器当前光标；宿主在文件 dirty 时应传 null。 */
   sourcePosition?: WorkflowSourcePosition | null
+  /** Current exact package source identity, including non-Workflow files. */
+  activeSourceUri?: string | null
   onRevealSourceLocation?: (location: WorkflowSourceLocation) => void
+  onRevealPackageSource?: (location: PackageSourceLocation) => void
   onSourceProjectionChange?: (
     projection: WorkflowSourceProjection | null
   ) => void
@@ -42,6 +55,13 @@ export interface WorkflowIdeBridge {
 export interface WorkflowPackageSource {
   packageId: string
   relativePath: string
+}
+
+export interface WorkflowPackageMount {
+  packageId: string
+  packageRootUri: string
+  editable: boolean
+  readOnly: boolean
 }
 
 export interface WorkflowSavedSourceRuntime {
@@ -165,6 +185,9 @@ export function workflowIdeMappingStatus(
   if (state.staleSourceVersion !== null) {
     return 'paused: waiting for OS source map'
   }
+  if (state.sourceProjection?.mappingAvailable === false) {
+    return 'paused: waiting for OS source map'
+  }
   return 'active'
 }
 
@@ -183,14 +206,58 @@ export function parseWorkflowPackageSource(
   return { packageId, relativePath: segments.join('/') }
 }
 
-/** 同时兼容“工作区根包含包目录”和“工作区根就是包目录”两种 IDE 布局。 */
-export function workflowPackageCandidatePaths(sourceUri: string): string[] {
+/** 只使用 OS 同代签发的精确挂载解析 package URI，不探测宿主候选路径。 */
+export function resolveWorkflowPackageSourceUri(
+  sourceUri: string,
+  mounts: readonly WorkflowPackageMount[]
+): string | null {
+  const resolved = resolveWorkflowPackageSource(sourceUri, mounts)
+  if (!resolved) return null
+  try {
+    const root = new URL(resolved.mount.packageRootUri.endsWith('/')
+      ? resolved.mount.packageRootUri
+      : `${resolved.mount.packageRootUri}/`)
+    if (root.protocol !== 'file:') return null
+    return new URL(resolved.source.relativePath, root).toString()
+  } catch {
+    return null
+  }
+}
+
+/** Return the exact OS-signed mount together with the host-neutral package path. */
+export function resolveWorkflowPackageSource(
+  sourceUri: string,
+  mounts: readonly WorkflowPackageMount[]
+): { source: WorkflowPackageSource; mount: WorkflowPackageMount } | null {
   const source = parseWorkflowPackageSource(sourceUri)
-  if (!source) return [sourceUri.replace(/^\/+/, '')]
-  return [
-    `${source.packageId}/${source.relativePath}`,
-    source.relativePath
-  ]
+  if (!source) return null
+  const mount = mounts.find(candidate => candidate.packageId === source.packageId)
+  return mount ? { source, mount } : null
+}
+
+/** Reverse one host file URI to the exact OS-signed package identity. */
+export function packageSourceUriForResolvedUri(
+  resolvedUri: string,
+  mounts: readonly WorkflowPackageMount[]
+): string | null {
+  try {
+    const target = new URL(resolvedUri)
+    if (target.protocol !== 'file:') return null
+    for (const mount of mounts) {
+      const root = new URL(mount.packageRootUri.endsWith('/')
+        ? mount.packageRootUri
+        : `${mount.packageRootUri}/`)
+      if (root.protocol !== 'file:' || !target.href.startsWith(root.href)) continue
+      const relativePath = decodeURIComponent(target.href.slice(root.href.length))
+      if (!relativePath || relativePath.split('/').some(segment =>
+        !segment || segment === '.' || segment === '..'
+      )) return null
+      return `package://${mount.packageId}/${relativePath}`
+    }
+  } catch {
+    return null
+  }
+  return null
 }
 
 /**
@@ -267,7 +334,8 @@ function deriveSourcePosition(
 ): WorkflowIdeSyncState {
   const mapped = Boolean(
     state.currentUri && state.currentUri === state.resolvedSourceUri &&
-    !state.dirty && state.staleSourceVersion === null
+    !state.dirty && state.staleSourceVersion === null &&
+    state.sourceProjection?.mappingAvailable !== false
   )
   return {
     ...state,

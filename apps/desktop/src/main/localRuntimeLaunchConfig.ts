@@ -7,7 +7,10 @@ import {
   resolveLocalRuntimeEdgeCommand,
   type ResolvedLocalRuntimeEdgeCommand
 } from './localRuntimeEdgeCommand'
-import { runtimeExecutablePaths } from './localRuntimeEnvironment'
+import {
+  resolvePlcSimulatorLaunch,
+  runtimeExecutablePaths
+} from './localRuntimeEnvironment'
 import {
   normalizeLocalRuntimePorts,
   type LocalRuntimePorts
@@ -166,53 +169,21 @@ export async function resolveSimulatorConfig(
     config.simulatorProjectPath,
     '请选择 PLC-Sim 项目根目录'
   )
-  await requireDirectory(environmentPath, 'unilab Conda 环境目录不存在')
-  await requireDirectory(simulatorProjectPath, 'PLC-Sim 项目根目录不存在')
-  const { pythonExecutable } = runtimeExecutablePaths(environmentPath, platform)
-  await requireExecutable(
-    pythonExecutable,
-    platform === 'win32'
-      ? '所选 Conda 环境缺少 python.exe'
-      : '所选 Conda 环境缺少 bin/python'
-  )
+  const resolvedPorts = normalizeLocalRuntimePorts(ports)
+  const launch = await resolvePlcSimulatorLaunch({
+    environmentPath,
+    projectPath: simulatorProjectPath,
+    platform,
+    guiPort: resolvedPorts.simulatorGui,
+    opcUaPort: resolvedPorts.simulatorOpcUa
+  })
   return {
     platform,
     environmentPath,
-    pythonExecutable,
-    workingDirectory: await resolveSimulatorWorkingDirectory(
-      simulatorProjectPath
-    ),
-    ports: normalizeLocalRuntimePorts(ports)
+    pythonExecutable: launch.command,
+    workingDirectory: launch.cwd,
+    ports: resolvedPorts
   }
-}
-
-/**
- * 兼容解析 PLC-Sim 仓库根目录或 OpcUaSim 子目录。
- *
- * @param simulatorProjectPath 用户选择且已规范化的项目目录。
- * @returns 包含 gui/backend.py 的实际工作目录。
- * @throws 两种支持布局都不匹配时抛出中文诊断。
- * @safety 只读取固定候选文件，不递归扫描目录。
- */
-async function resolveSimulatorWorkingDirectory(
-  simulatorProjectPath: string
-): Promise<string> {
-  const candidates = [
-    join(simulatorProjectPath, 'OpcUaSim'),
-    simulatorProjectPath
-  ]
-  for (const candidate of candidates) {
-    try {
-      await requireFile(
-        join(candidate, 'gui', 'backend.py'),
-        'PLC-Sim 缺少 OpcUaSim/gui/backend.py'
-      )
-      return candidate
-    } catch {
-      // 继续兼容用户直接选择 OpcUaSim 目录的情况。
-    }
-  }
-  throw new Error(`所选目录不是有效的 PLC-Sim 项目：${simulatorProjectPath}`)
 }
 
 /**

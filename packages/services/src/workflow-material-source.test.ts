@@ -204,6 +204,7 @@ async function loadsMaterialSourceCatalogInPublicGraphOrder(): Promise<void> {
         {
           uuid: sampleTemplateUuid,
           displayName: 'Plate96',
+          sourceUri: 'package://catalog_lab/definitions.py',
           shape: {
             id: 'plate96',
             bundle: 'test',
@@ -392,6 +393,7 @@ function responses(): Record<string, unknown> {
           name: 'test.Plate96',
           display_name: 'Plate96',
           resource_type: 'resource',
+          source_uri: 'package://catalog_lab/definitions.py',
           tags: []
         }],
         has_more: false,
