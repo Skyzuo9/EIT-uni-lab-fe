@@ -643,6 +643,7 @@ function WorkbenchSurface({
         runtime={services.workflow}
         active={viewMode === 'workflow' || viewMode === 'split'}
         workflowUuid={workflowUuid}
+        allowWorkflowSelection
         hideEmbeddedCodeEditor
         ideBridge={ideBridge}
         onSelectedWorkflowStepChange={setSelectedWorkflowNode}

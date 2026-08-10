@@ -36,6 +36,7 @@ export interface WorkflowPanelProps {
   onMaterialRoleFilterChange?: (materialRole: string | null) => void
   ideBridge?: WorkflowIdeBridge
   hideEmbeddedCodeEditor?: boolean
+  allowWorkflowSelection?: boolean
 }
 
 /**
@@ -59,7 +60,8 @@ export default function WorkflowPanel({
   materialRoleFilter,
   onMaterialRoleFilterChange,
   ideBridge,
-  hideEmbeddedCodeEditor = false
+  hideEmbeddedCodeEditor = false,
+  allowWorkflowSelection = false
 }: WorkflowPanelProps): React.JSX.Element {
   const [selectedWorkflowUuid, setSelectedWorkflowUuid] = useState<
     string | null
@@ -68,7 +70,8 @@ export default function WorkflowPanel({
   const handledCatalogRequestRevision = useRef(catalogRequestRevision)
   const workflowUuid = showCatalog
     ? null
-    : explicitWorkflowUuid || selectedWorkflowUuid ||
+    : (allowWorkflowSelection ? selectedWorkflowUuid : null) ||
+      explicitWorkflowUuid || selectedWorkflowUuid ||
       readActiveWorkflowId(activeWorkflowStorageKey)
 
   useEffect(() => {
@@ -113,11 +116,10 @@ export default function WorkflowPanel({
         hideEmbeddedCodeEditor={hideEmbeddedCodeEditor}
         materialRoleFilter={materialRoleFilter}
         onMaterialRoleFilterChange={onMaterialRoleFilterChange}
-        onChooseWorkflow={explicitWorkflowUuid
+        onChooseWorkflow={explicitWorkflowUuid && !allowWorkflowSelection
           ? undefined
           : () => {
               persistActiveWorkflowId(activeWorkflowStorageKey, '')
-              setSelectedWorkflowUuid(null)
               setShowCatalog(true)
             }}
       />

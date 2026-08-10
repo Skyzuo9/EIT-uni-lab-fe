@@ -97,7 +97,7 @@ export function usePersistentWorkflowTaskPanel({
   const [resourceSlotOptions, setResourceSlotOptions] =
     useState<WorkflowResourceSlotOptionsState | undefined>(undefined)
   const [traceViewerOpen, setTraceViewerOpen] = useState(false)
-  const [outputExpanded, setOutputExpanded] = useState(true)
+  const [outputExpanded, setOutputExpanded] = useState(false)
   const [outputTab, setOutputTab] = useState<WorkflowOutputTab>('nodes')
   const [selectedJobNodeUuid, setSelectedJobNodeUuid] =
     useState<string | null>(null)

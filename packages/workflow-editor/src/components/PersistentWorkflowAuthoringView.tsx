@@ -5,10 +5,7 @@ import {
   canRetryWorkflowRuntimeRead,
   workflowRuntimeProblemHeading
 } from '../utils/workflowRuntimeProblem'
-import { workflowTaskControlStatusLabel, workflowTaskStatusLabel, workflowTaskVisualStatus } from '../utils/workflowTaskPresentation'
-import { workflowTaskMetadata } from '../utils/workflowTaskPanelProjection'
 import WorkflowDag from './WorkflowDag'
-import { WorkflowDebugger } from './WorkflowDebugger'
 import { WorkflowOutput } from './WorkflowOutput'
 import { WorkflowButton } from './WorkflowButton'
 import { MaterialSourceInspector } from './MaterialSourceInspector'
@@ -89,13 +86,10 @@ export function PersistentWorkflowAuthoringView({
     setSelectedNodeName,
     setSelectedNodeNameDirty,
     setSelectedNodeUuid,
-    setTraceViewerOpen,
     setWorkflowIoOpen,
     sourceSelectedNodeUuid,
     sourceProjection,
     structure,
-    task,
-    taskControls,
     taskJobs,
     taskNodeNames,
     taskNodeStates,
@@ -104,7 +98,6 @@ export function PersistentWorkflowAuthoringView({
     taskRuntimeEvents,
     toggleDebugBreakpoint,
     toggleDebugStartNode,
-    traceRuntime,
     updateMaterialSource,
     workflowUuid,
   } = model
@@ -600,30 +593,6 @@ export function PersistentWorkflowAuthoringView({
         className="persistent-authoring__runtime"
         aria-label="工作流任务运行控制"
       >
-        <WorkflowDebugger
-          debugStatus={workflowTaskVisualStatus(task)}
-          runStatus={task?.status || 'draft'}
-          heading="工作流运行"
-          subtitle="OS 任务控制"
-          statusText={workflowTaskControlStatusLabel(task)}
-          runStatusText={workflowTaskStatusLabel(task?.status)}
-          runStatusPrefix="任务"
-          metadata={workflowTaskMetadata(
-            task,
-            taskRuntime.snapshot.lastCommand,
-            taskRuntime.snapshot
-          )}
-          actionGroupLabel="任务执行控制"
-          dangerGroupLabel="任务取消控制"
-          commandDataAttribute="runtime"
-          controls={taskControls}
-          traceAvailable={Boolean(traceRuntime)}
-          onTraceOpen={() => setTraceViewerOpen(true)}
-          onCommand={(command) => runRuntime(
-            () => taskRuntime.command(command)
-          )}
-        />
-
         <WorkflowOutput
           expanded={outputExpanded}
           activeTab={outputTab}
