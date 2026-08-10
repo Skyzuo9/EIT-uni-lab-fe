@@ -2,7 +2,6 @@ import type { WorkflowNode } from './parseWorkflow'
 import type { WorkflowNodePortLayout } from './dagLayout'
 
 export const WORKFLOW_SUPPORTING_BRANCH_NODE_GAP = 208
-export const WORKFLOW_SUPPORTING_BRANCH_TRACK_GAP = 28
 
 const WORKFLOW_SUPPORTING_BRANCH_INTERVAL_GAP = 24
 const WORKFLOW_SUPPORTING_BRANCH_MAX_NODE_WIDTH = 184
@@ -43,9 +42,8 @@ export function workflowBackboneColumnForIndex(
 /**
  * 将同一主样品行的辅助物料支线压缩成可共享垂直带的局部短链。
  *
- * 每条支线的汇入端贴近主样品（Primary Sample）动作，前序节点向画布外侧
- * 展开；互不重叠的支线共享同一垂直带，同一接入点则使用短距离错开的独立
- * 供料轨道，避免为压缩高度而制造支线交叉。
+ * 每条支线的汇入端与主样品（Primary Sample）动作保持同列，前序节点向画布
+ * 内侧展开；互不重叠的支线共享同一垂直带，发生水平碰撞时才增加新带。
  *
  * @param branches 已按接入位置和声明顺序稳定排序的辅助物料支线。
  * @param originX 主样品主干最西侧坐标。
@@ -65,35 +63,34 @@ export function packWorkflowSupportingBranches(
   }> = []
 
   for (const branch of branches) {
-    const expandsEast = branch.anchorColumn >= mainColumnCount / 2
-    const outwardDirection = expandsEast ? 1 : -1
+    const candidates = supportingBranchCandidates(
+      branch,
+      originX,
+      mainColumnGap
+    )
+    const canvasEnd = originX +
+      (mainColumnCount - 1) * mainColumnGap +
+      WORKFLOW_SUPPORTING_BRANCH_MAX_NODE_WIDTH
     let installed = false
-    for (const [bandIndex, band] of bands.entries()) {
-      const layout = layoutSupportingBranch(
-        branch,
-        originX,
-        mainColumnGap,
-        outwardDirection * bandIndex * WORKFLOW_SUPPORTING_BRANCH_TRACK_GAP,
-        expandsEast
-      )
-      const interval = branchInterval(layout)
-      if (band.intervals.some((occupied) =>
-        intervalsOverlap(interval, occupied)
-      )) continue
+    for (const band of bands) {
+      const layout = candidates.find((candidate) => {
+        const interval = branchInterval(candidate)
+        return interval.start >= originX && interval.end <= canvasEnd &&
+          band.intervals.every((occupied) =>
+            !intervalsOverlap(interval, occupied)
+          )
+      })
+      if (!layout) continue
       band.intervals.push(branchInterval(layout))
       band.placements.push(...layout)
       installed = true
       break
     }
     if (installed) continue
-    const bandIndex = bands.length
-    const layout = layoutSupportingBranch(
-      branch,
-      originX,
-      mainColumnGap,
-      outwardDirection * bandIndex * WORKFLOW_SUPPORTING_BRANCH_TRACK_GAP,
-      expandsEast
-    )
+    const layout = candidates.find((candidate) => {
+      const interval = branchInterval(candidate)
+      return interval.start >= originX && interval.end <= canvasEnd
+    }) ?? candidates[0] ?? []
     bands.push({
       intervals: [branchInterval(layout)],
       placements: [...layout]
@@ -103,6 +100,57 @@ export function packWorkflowSupportingBranches(
   return bands.map(({ placements }) => placements.sort(
     (left, right) => left.x - right.x
   ))
+}
+
+/**
+ * 生成支线贴合接入点、向近侧错开和向远侧错开的三个候选位置。
+ *
+ * @param branch 当前辅助物料支线。
+ * @param originX 主干最西侧坐标。
+ * @param mainColumnGap 主干列间距。
+ * @returns 由短到长排列的候选坐标；打包器优先复用已有垂直带。
+ */
+function supportingBranchCandidates(
+  branch: WorkflowSupportingBranch,
+  originX: number,
+  mainColumnGap: number
+): WorkflowSupportingBranchPlacement[][] {
+  const nearOffset = branch.anchorColumn === 0 || branch.anchorColumn === 2
+    ? WORKFLOW_SUPPORTING_BRANCH_NODE_GAP
+    : -WORKFLOW_SUPPORTING_BRANCH_NODE_GAP
+  const preferredExpansion = branch.anchorColumn < 2
+  return [
+    layoutSupportingBranch(
+      branch,
+      originX,
+      mainColumnGap,
+      0,
+      preferredExpansion
+    ),
+    layoutSupportingBranch(
+      branch,
+      originX,
+      mainColumnGap,
+      0,
+      !preferredExpansion
+    ),
+    ...[nearOffset, -nearOffset].flatMap((attachmentOffset) => [
+      layoutSupportingBranch(
+        branch,
+        originX,
+        mainColumnGap,
+        attachmentOffset,
+        preferredExpansion
+      ),
+      layoutSupportingBranch(
+        branch,
+        originX,
+        mainColumnGap,
+        attachmentOffset,
+        !preferredExpansion
+      )
+    ])
+  ]
 }
 
 /**

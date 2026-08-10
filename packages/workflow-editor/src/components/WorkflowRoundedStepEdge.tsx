@@ -19,7 +19,6 @@ export interface WorkflowRoundedStepEdgeData {
   targetHandleUuid: string
   materialRole?: string
   materialEmphasis?: 'primary' | 'supporting'
-  supportingMaterialLabel?: string
 }
 
 /**
@@ -72,7 +71,6 @@ export default function WorkflowRoundedStepEdge({
       data-workflow-edge-target-handle-uuid={data?.targetHandleUuid}
       data-workflow-material-role={data?.materialRole}
       data-workflow-material-emphasis={data?.materialEmphasis}
-      data-workflow-supporting-material-label={data?.supportingMaterialLabel}
     >
       <BaseEdge path={path} markerEnd={markerEnd} style={style} />
       {label !== undefined && label !== null && (

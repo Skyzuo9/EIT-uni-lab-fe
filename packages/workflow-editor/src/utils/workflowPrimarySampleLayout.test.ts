@@ -318,8 +318,8 @@ describe('layoutWorkflowPrimarySampleFlow', () => {
     expect(positions.get('reagent-source')?.y)
       .toBe(positions.get('prepare-reagent')?.y)
     expect(result.nodePorts?.get('prepare-reagent')).toEqual({
-      target: 'right',
-      source: 'left'
+      target: 'left',
+      source: 'right'
     })
   })
 })

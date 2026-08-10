@@ -19,13 +19,8 @@ import {
 import { layoutWorkflowMaterialSwimlanes } from '../utils/workflowMaterialSwimlaneLayout'
 import { layoutWorkflowPrimarySampleFlow } from '../utils/workflowPrimarySampleLayout'
 import { reconcileReactFlowNodeMeasurements } from '../utils/reactFlowNodeMeasurement'
-import {
-  materialTraceAccent,
-  projectMaterialTraces,
-  workflowMaterialRoleLabel
-} from '../utils/workflowMaterialTrace'
+import { materialTraceAccent, projectMaterialTraces } from '../utils/workflowMaterialTrace'
 import type { WorkflowMaterialTraceProjection } from '../utils/workflowMaterialTrace'
-import type { WorkflowMaterialLineage } from '../utils/workflowMaterialTrace'
 
 interface UseWorkflowDagResult {
   nodes: Node<WorkflowNodeData>[]
@@ -45,8 +40,6 @@ interface WorkflowFlowEdgeContext {
   layout: LayoutResult
   materialTraces: WorkflowMaterialTraceProjection
   materialRoleByLineage: ReadonlyMap<string, string>
-  materialLineageByKey: ReadonlyMap<string, WorkflowMaterialLineage>
-  primaryBackboneNodeIds: ReadonlySet<string>
   handleByUuid: ReadonlyMap<string, WorkflowHandlePort>
   nodeNames: ReadonlyMap<string, string>
   compactPrimarySampleLayout: boolean
@@ -226,46 +219,6 @@ function buildFlowElements(
       lineage.materialRole
     ])
   )
-  // `materialLineageByKey` 为辅助供料说明提供权威来源名称，不从节点文案猜测物料身份。
-  const materialLineageByKey = new Map(
-    materialTraces.lineages.map((lineage) => [lineage.key, lineage])
-  )
-  // `primaryBackboneNodeIds` 只标识本次只读布局投影中的主样品（primary_sample）主干。
-  const primaryBackboneNodeIds = new Set(
-    layout.primarySample?.backboneNodeIds ?? []
-  )
-  // `supportingMaterialLabelsByNode` 把参考图式供料说明落到主干动作的真实边界句柄。
-  const supportingMaterialLabelsByNode = new Map<
-    string,
-    Map<string, string>
-  >()
-  layout.links.forEach((link, index) => {
-    const lineageKey = materialTraces.edgeLineages.get(index) ?? ''
-    const lineage = materialLineageByKey.get(lineageKey)
-    if (!lineage || lineage.materialRole === 'primary_sample') return
-    const sourceOnBackbone = primaryBackboneNodeIds.has(link.source)
-    const targetOnBackbone = primaryBackboneNodeIds.has(link.target)
-    if (sourceOnBackbone === targetOnBackbone) return
-    const nodeUuid = sourceOnBackbone ? link.source : link.target
-    const boundaryHandleUuid = sourceOnBackbone
-      ? link.sourceHandleUuid
-      : link.targetHandleUuid
-    const matchingHandleUuids = [...(
-      materialTraces.handleLineagesByNode.get(nodeUuid) ?? new Map()
-    )]
-      .filter(([, candidateLineageKey]) => candidateLineageKey === lineageKey)
-      .map(([handleUuid]) => handleUuid)
-    if (matchingHandleUuids.length === 0 && boundaryHandleUuid) {
-      matchingHandleUuids.push(boundaryHandleUuid)
-    }
-    if (matchingHandleUuids.length === 0) return
-    const labels = supportingMaterialLabelsByNode.get(nodeUuid) ?? new Map()
-    const label = `${workflowMaterialRoleLabel(lineage.materialRole)}：${
-      lineage.sourceNodeName
-    }`
-    matchingHandleUuids.forEach((handleUuid) => labels.set(handleUuid, label))
-    supportingMaterialLabelsByNode.set(nodeUuid, labels)
-  })
   const flowNodes: Node<WorkflowNodeData>[] = layout.nodes.map((node) => {
     const laneLayout = layout.swimlanes?.nodeLayouts.get(node.id)
     const handleLanes = layout.swimlanes?.handleLaneIndexes.get(node.id)
@@ -310,9 +263,6 @@ function buildFlowElements(
           materialTraces.handleRolesByNode.get(node.id) ?? []
         ),
         materialChips: materialTraces.chipsByNode.get(node.id) ?? [],
-        supportingMaterialLabelsByHandle: Object.fromEntries(
-          supportingMaterialLabelsByNode.get(node.id) ?? []
-        ),
         layoutStrategy: strategy,
         materialLaneDirection: layout.swimlanes?.direction ?? (
           strategy === 'primary-sample-serpentine'
@@ -335,8 +285,6 @@ function buildFlowElements(
     layout,
     materialTraces,
     materialRoleByLineage,
-    materialLineageByKey,
-    primaryBackboneNodeIds,
     handleByUuid,
     nodeNames,
     compactPrimarySampleLayout
@@ -357,8 +305,6 @@ function buildWorkflowFlowEdge({
   layout,
   materialTraces,
   materialRoleByLineage,
-  materialLineageByKey,
-  primaryBackboneNodeIds,
   handleByUuid,
   nodeNames,
   compactPrimarySampleLayout
@@ -373,20 +319,9 @@ function buildWorkflowFlowEdge({
   const supportingMaterial = compactPrimarySampleLayout &&
     Boolean(materialAccent) &&
     materialRole !== 'primary_sample'
-  const lineageKey = materialTraces.edgeLineages.get(index) ?? ''
-  const lineage = materialLineageByKey.get(lineageKey)
   const ready = workflowEdgeIsReady(link, materialAccent, handleByUuid)
   const sourceName = nodeNames.get(link.source) ?? link.source
   const targetName = nodeNames.get(link.target) ?? link.target
-  const crossesPrimaryBoundary =
-    primaryBackboneNodeIds.has(link.source) !==
-      primaryBackboneNodeIds.has(link.target)
-  // 辅助供料说明只出现在支线与主样品主干的边界，避免每段短链重复标注。
-  const supportingMaterialLabel = supportingMaterial && crossesPrimaryBoundary
-    ? `${workflowMaterialRoleLabel(materialRole || 'unclassified')}：${
-      lineage?.sourceNodeName || sourceName
-    }`
-    : undefined
   return {
     id: link.id || `e-${link.source}-${link.target}-${index}`,
     source: link.source,
@@ -412,7 +347,6 @@ function buildWorkflowFlowEdge({
       sourceHandleUuid: link.sourceHandleUuid || '',
       targetHandleUuid: link.targetHandleUuid || '',
       materialRole,
-      supportingMaterialLabel,
       materialEmphasis: workflowMaterialEmphasis(
         materialAccent,
         supportingMaterial

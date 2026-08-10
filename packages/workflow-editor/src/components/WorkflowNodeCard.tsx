@@ -55,7 +55,6 @@ export interface WorkflowNodeData {
   materialHandleAccents?: Record<string, string>
   materialHandleRoles?: Record<string, string>
   materialChips?: WorkflowMaterialChip[]
-  supportingMaterialLabelsByHandle?: Record<string, string>
   layoutStrategy?: WorkflowDagLayoutStrategy
   materialLaneDirection?: WorkflowMaterialSwimlaneDirection
   materialLaneRange?: { start: number; end: number }
@@ -91,13 +90,11 @@ export default function WorkflowNodeCard({
   const sourceHandles = data.handles?.filter(
     (handle) => handle.ioType === 'source'
   )
-  const serpentineFlow = data.layoutStrategy === 'primary-sample-serpentine'
   const materialPorts = workflowMaterialPortCards(
     [...(targetHandles ?? []), ...(sourceHandles ?? [])],
     data.materialHandleAccents,
     data.materialLaneByHandle,
-    data.materialHandleRoles,
-    serpentineFlow ? data.supportingMaterialLabelsByHandle : undefined
+    data.materialHandleRoles
   )
   const projectedMaterialHandleIds = new Set(
     materialPorts.flatMap((port) => [
@@ -105,6 +102,7 @@ export default function WorkflowNodeCard({
       port.sourceHandle?.uuid
     ]).filter((uuid): uuid is string => Boolean(uuid))
   )
+  const serpentineFlow = data.layoutStrategy === 'primary-sample-serpentine'
   if (materialSource) {
     return (
       <WorkflowMaterialSourceNode
@@ -169,9 +167,6 @@ export default function WorkflowNodeCard({
       data-workflow-layout-direction={data.materialLaneDirection}
       data-workflow-material-port-count={materialPorts.length}
       data-workflow-multi-material={materialPorts.length > 1 ? 'true' : undefined}
-      data-workflow-supporting-feed-labels={Object.values(
-        data.supportingMaterialLabelsByHandle ?? {}
-      ).join('|') || undefined}
       data-workflow-node-description={data.description}
       aria-label={data.description
         ? `${data.name || data.id}：${data.description}`
@@ -433,15 +428,13 @@ export interface WorkflowMaterialPortCard {
  * @param materialHandleAccents 按 Handle UUID 索引的物料流颜色。
  * @param materialLaneByHandle 按 Handle UUID 索引的物料泳道序号。
  * @param materialRoleByHandle 按 Handle UUID 索引的物料流角色（MaterialFlowRole）。
- * @param supportingMaterialLabelsByHandle 辅助物料边界句柄到中文供料说明的索引。
  * @returns 按逻辑字段合并后的物料标签；同字段输入、输出只占一项。
  */
 export function workflowMaterialPortCards(
   handles: readonly WorkflowHandlePort[],
   materialHandleAccents: Record<string, string> | undefined,
   materialLaneByHandle: Record<string, number> | undefined = undefined,
-  materialRoleByHandle: Record<string, string> | undefined = undefined,
-  supportingMaterialLabelsByHandle: Record<string, string> | undefined = undefined
+  materialRoleByHandle: Record<string, string> | undefined = undefined
 ): WorkflowMaterialPortCard[] {
   const cards: WorkflowMaterialPortCard[] = []
   const resourceHandles = handles.filter(isResourceSlotHandle)
@@ -483,11 +476,7 @@ export function workflowMaterialPortCards(
       if (handle.ioType === 'target' && materialRole) {
         existing.materialRole = materialRole
       }
-      existing.label = preferredMaterialPortLabel(
-        existing,
-        handle,
-        supportingMaterialLabelsByHandle?.[handle.uuid]
-      )
+      existing.label = preferredMaterialPortLabel(existing, handle)
       existing.description = mergeDescriptions(
         existing.description,
         handle.description
@@ -497,8 +486,7 @@ export function workflowMaterialPortCards(
     cards.push({
       key: `${variableName}:${accent}:${cards.length}`,
       variableName,
-      label: supportingMaterialLabelsByHandle?.[handle.uuid] || handle.title ||
-        variableName || handle.displayName,
+      label: handle.title || variableName || handle.displayName,
       ...(handle.description ? { description: handle.description } : {}),
       accent,
       materialRole,
@@ -514,14 +502,12 @@ export function workflowMaterialPortCards(
 
 function preferredMaterialPortLabel(
   card: WorkflowMaterialPortCard,
-  handle: WorkflowHandlePort,
-  sourceNodeName?: string
+  handle: WorkflowHandlePort
 ): string {
   const target = handle.ioType === 'target'
     ? handle
     : card.targetHandle
-  return sourceNodeName || target?.title || handle.title ||
-    card.variableName || handle.displayName
+  return target?.title || handle.title || card.variableName || handle.displayName
 }
 
 function mergeDescriptions(
