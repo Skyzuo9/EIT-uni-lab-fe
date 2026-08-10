@@ -7,6 +7,11 @@ import {
   isResourceSlotHandle,
   projectMaterialTraces
 } from './workflowMaterialTrace'
+import {
+  packWorkflowSupportingBranches,
+  type WorkflowSupportingBranch,
+  workflowBackboneColumnForIndex
+} from './workflowPrimarySampleBranchLayout'
 
 export const WORKFLOW_PRIMARY_SAMPLE_NODES_PER_ROW = 4
 export const WORKFLOW_PRIMARY_SAMPLE_COLUMN_GAP = 328
@@ -14,21 +19,11 @@ export const WORKFLOW_PRIMARY_SAMPLE_MIN_ROW_GAP = 300
 
 const ORIGIN_X = 72
 const ORIGIN_Y = 72
-const NODE_VERTICAL_GAP = 72
+const SUPPORTING_BRANCH_VERTICAL_GAP = 44
 const ROW_CLEARANCE = 112
 const COMPACT_NODE_BASE_HEIGHT = 48
 const COMPACT_MATERIAL_CARD_HEIGHT = 33
 const SPECIAL_NODE_HEIGHT = 72
-
-interface SecondaryNodePlacement {
-  node: WorkflowNode
-  anchorIndex: number
-  anchorColumn: number
-}
-
-interface PackedSecondaryNodePlacement extends SecondaryNodePlacement {
-  column: number
-}
 
 /**
  * 以主样品物料流角色（MaterialFlowRole）的第一条物料链为主干生成蛇形布局。
@@ -88,9 +83,10 @@ export function layoutWorkflowPrimarySampleFlow(
     backboneNodeIds.map((nodeId, index) => [nodeId, index])
   )
   const rowByNode = new Map<string, number>()
-  const secondaryByRow = groupSecondaryNodesByBackboneRow(
+  const secondaryBranchesByRow = groupSecondaryBranchesByBackboneRow(
     nodes,
     visibleLinks,
+    traces,
     backboneIndexes,
     layerByNode,
     nodeOrder
@@ -129,23 +125,26 @@ export function layoutWorkflowPrimarySampleFlow(
       nodePorts.set(nodeId, backboneHorizontalPortLayout(absoluteIndex))
     }
 
-    const secondaryRows = packSecondaryNodes(
-      secondaryByRow.get(row) ?? []
+    const secondaryBands = packWorkflowSupportingBranches(
+      secondaryBranchesByRow.get(row) ?? [],
+      ORIGIN_X,
+      WORKFLOW_PRIMARY_SAMPLE_COLUMN_GAP,
+      WORKFLOW_PRIMARY_SAMPLE_NODES_PER_ROW
     )
     let occupiedBottom = mainRowY + mainRowHeight
-    for (const branchNodes of secondaryRows) {
-      const branchY = occupiedBottom + NODE_VERTICAL_GAP
+    for (const branchNodes of secondaryBands) {
+      const branchY = occupiedBottom + SUPPORTING_BRANCH_VERTICAL_GAP
       const branchHeight = Math.max(
         SPECIAL_NODE_HEIGHT,
         ...branchNodes.map(({ node }) => estimatedHorizontalNodeHeight(node))
       )
-      for (const { node, column } of branchNodes) {
+      for (const { node, x, ports } of branchNodes) {
         positionByNode.set(node.id, {
-          x: ORIGIN_X + column * WORKFLOW_PRIMARY_SAMPLE_COLUMN_GAP,
+          x,
           y: branchY
         })
         rowByNode.set(node.id, row)
-        nodePorts.set(node.id, { target: 'left', source: 'right' })
+        nodePorts.set(node.id, ports)
       }
       occupiedBottom = branchY + branchHeight
     }
@@ -217,44 +216,74 @@ function primaryLineageNodeIds(
 }
 
 /**
- * 将非主干节点分配给图距离最近的主样品节点所在行。
+ * 将移除主样品主干后仍相连的节点收束为局部辅助物料支线。
  *
  * @param nodes 当前可见工作流节点。
  * @param links 当前可见工作流边。
+ * @param traces 当前物料流追踪投影。
  * @param backboneIndexes 主干节点到序号的映射。
  * @param layerByNode 节点到拓扑层号的映射。
  * @param nodeOrder 节点声明顺序。
- * @returns 按蛇形行号分组且稳定排序的辅助节点。
+ * @returns 按蛇形行号分组且稳定排序的辅助物料支线。
  */
-function groupSecondaryNodesByBackboneRow(
+function groupSecondaryBranchesByBackboneRow(
   nodes: readonly WorkflowNode[],
   links: readonly WorkflowLink[],
+  traces: ReturnType<typeof projectMaterialTraces>,
   backboneIndexes: ReadonlyMap<string, number>,
   layerByNode: ReadonlyMap<string, number>,
   nodeOrder: ReadonlyMap<string, number>
-): Map<number, SecondaryNodePlacement[]> {
+): Map<number, WorkflowSupportingBranch[]> {
   const adjacency = new Map(nodes.map((node) => [node.id, [] as string[]]))
-  for (const link of links) {
+  links.forEach((link, index) => {
+    // 只用物料边构造支线，避免纯执行依赖把互不相关的试剂链粘成一条长支线。
+    if (!traces.edgeLineages.has(index)) return
     adjacency.get(link.source)?.push(link.target)
     adjacency.get(link.target)?.push(link.source)
-  }
-  const assigned = new Map<number, SecondaryNodePlacement[]>()
-  for (const node of nodes) {
-    if (backboneIndexes.has(node.id)) continue
-    const anchorIndex = nearestBackboneIndex(
-      node.id,
+  })
+  const secondaryNodeIds = new Set(
+    nodes.filter((node) => !backboneIndexes.has(node.id)).map((node) => node.id)
+  )
+  const visited = new Set<string>()
+  const assigned = new Map<number, WorkflowSupportingBranch[]>()
+
+  for (const startNodeId of secondaryNodeIds) {
+    if (visited.has(startNodeId)) continue
+    const componentIds = connectedSecondaryNodeIds(
+      startNodeId,
+      adjacency,
+      secondaryNodeIds,
+      visited
+    )
+    const componentNodes = nodes
+      .filter((node) => componentIds.has(node.id))
+      .sort((left, right) =>
+        (layerByNode.get(left.id) ?? 0) -
+          (layerByNode.get(right.id) ?? 0) ||
+        (nodeOrder.get(left.id) ?? 0) - (nodeOrder.get(right.id) ?? 0)
+      )
+    const attachment = branchBackboneAttachment(
+      componentIds,
+      links,
       adjacency,
       backboneIndexes
     )
     const row = Math.floor(
-      anchorIndex / WORKFLOW_PRIMARY_SAMPLE_NODES_PER_ROW
+      attachment.anchorIndex / WORKFLOW_PRIMARY_SAMPLE_NODES_PER_ROW
     )
     assigned.set(row, [
       ...(assigned.get(row) ?? []),
       {
-        node,
-        anchorIndex,
-        anchorColumn: backboneColumnForIndex(anchorIndex)
+        nodes: componentNodes,
+        anchorIndex: attachment.anchorIndex,
+        anchorColumn: workflowBackboneColumnForIndex(
+          attachment.anchorIndex,
+          WORKFLOW_PRIMARY_SAMPLE_NODES_PER_ROW
+        ),
+        order: Math.min(...componentNodes.map(
+          (node) => nodeOrder.get(node.id) ?? Number.MAX_SAFE_INTEGER
+        )),
+        flowDirection: attachment.flowDirection
       }
     ])
   }
@@ -262,99 +291,98 @@ function groupSecondaryNodesByBackboneRow(
     row,
     entries
       .sort((left, right) =>
-        // 辅助物料按主干的实际画布列排序。蛇形奇数行的主干顺序从东向西，
-        // 若仍按拓扑序号排列，辅助来源与接入动作之间会形成系统性交叉。
         left.anchorColumn - right.anchorColumn ||
-        (layerByNode.get(left.node.id) ?? 0) -
-          (layerByNode.get(right.node.id) ?? 0) ||
         left.anchorIndex - right.anchorIndex ||
-        (nodeOrder.get(left.node.id) ?? 0) -
-          (nodeOrder.get(right.node.id) ?? 0)
+        left.order - right.order
       )
   ]))
 }
 
 /**
- * 把同一主干行的辅助节点装入最靠近接入动作的稀疏画布列。
+ * 找出不穿过主样品主干的辅助节点连通分量。
  *
- * 每行仍保持最多四个节点；行内在不改变接入点左右顺序的前提下，选择总距离
- * 最短的列组合。这样既避免稀疏物料被强制挤到西侧，也不因同列物料较多而
- * 形成过高的垂直塔。
- *
- * @param entries 已按实际主干列稳定排序的辅助节点。
- * @returns 每个辅助行内不重复列的节点集合。
+ * @param startNodeId 当前分量的起始节点 UUID。
+ * @param adjacency 当前可见图的无向邻接表。
+ * @param secondaryNodeIds 全部非主干节点 UUID。
+ * @param visited 已归入其它辅助物料支线的节点 UUID。
+ * @returns 当前局部支线覆盖的节点 UUID。
  */
-function packSecondaryNodes(
-  entries: readonly SecondaryNodePlacement[]
-): PackedSecondaryNodePlacement[][] {
-  const rows: PackedSecondaryNodePlacement[][] = []
-  for (
-    let start = 0;
-    start < entries.length;
-    start += WORKFLOW_PRIMARY_SAMPLE_NODES_PER_ROW
-  ) {
-    const rowEntries = entries.slice(
-      start,
-      start + WORKFLOW_PRIMARY_SAMPLE_NODES_PER_ROW
-    )
-    const columns = closestOrderedColumns(
-      rowEntries.map(({ anchorColumn }) => anchorColumn)
-    )
-    rows.push(rowEntries.map((entry, index) => ({
-      ...entry,
-      column: columns[index] ?? entry.anchorColumn
-    })))
-  }
-  return rows
-}
-
-/**
- * 为一行已排序辅助节点选择保持顺序且总水平距离最小的互异列。
- *
- * @param preferredColumns 各节点最接近的主干列，长度不超过四。
- * @returns 与输入同序的互异画布列。
- */
-function closestOrderedColumns(
-  preferredColumns: readonly number[]
-): number[] {
-  let bestColumns: number[] = []
-  let bestDistance = Number.POSITIVE_INFINITY
-  const visit = (nextColumn: number, selected: number[]): void => {
-    if (selected.length === preferredColumns.length) {
-      const distance = selected.reduce((total, column, index) =>
-        total + Math.abs(column - (preferredColumns[index] ?? column)), 0
-      )
-      if (distance < bestDistance) {
-        bestColumns = [...selected]
-        bestDistance = distance
-      }
-      return
+function connectedSecondaryNodeIds(
+  startNodeId: string,
+  adjacency: ReadonlyMap<string, readonly string[]>,
+  secondaryNodeIds: ReadonlySet<string>,
+  visited: Set<string>
+): Set<string> {
+  const component = new Set<string>()
+  const pending = [startNodeId]
+  visited.add(startNodeId)
+  while (pending.length > 0) {
+    const nodeId = pending.shift()
+    if (!nodeId) continue
+    component.add(nodeId)
+    for (const neighbor of adjacency.get(nodeId) ?? []) {
+      if (!secondaryNodeIds.has(neighbor) || visited.has(neighbor)) continue
+      visited.add(neighbor)
+      pending.push(neighbor)
     }
-    const remaining = preferredColumns.length - selected.length
-    for (
-      let column = nextColumn;
-      column <= WORKFLOW_PRIMARY_SAMPLE_NODES_PER_ROW - remaining;
-      column += 1
-    ) visit(column + 1, [...selected, column])
   }
-  visit(0, [])
-  return bestColumns
+  return component
 }
 
 /**
- * 把主样品主干序号转换为该节点在蛇形行内的实际画布列。
+ * 确定一条辅助物料支线应贴近的主样品节点。
  *
- * @param nodeIndex 节点在主样品主干中的零基序号。
- * @returns 从西向东计数的零基画布列。
+ * 优先采用从辅助支线汇入主干的有向边；若图中没有直接汇入边，则回退到
+ * 无向图距离最近的主干节点，保持异常或不完整投影仍可布局。
+ *
+ * @param componentIds 当前辅助物料支线节点 UUID。
+ * @param links 当前可见工作流边。
+ * @param adjacency 当前可见图的无向邻接表。
+ * @param backboneIndexes 主干节点到序号的映射。
+ * @returns 支线接入的主干序号及物料相对主干的流向。
  */
-function backboneColumnForIndex(nodeIndex: number): number {
-  const row = Math.floor(
-    nodeIndex / WORKFLOW_PRIMARY_SAMPLE_NODES_PER_ROW
-  )
-  const indexInRow = nodeIndex % WORKFLOW_PRIMARY_SAMPLE_NODES_PER_ROW
-  return row % 2 === 0
-    ? indexInRow
-    : WORKFLOW_PRIMARY_SAMPLE_NODES_PER_ROW - 1 - indexInRow
+function branchBackboneAttachment(
+  componentIds: ReadonlySet<string>,
+  links: readonly WorkflowLink[],
+  adjacency: ReadonlyMap<string, readonly string[]>,
+  backboneIndexes: ReadonlyMap<string, number>
+): {
+  anchorIndex: number
+  flowDirection: WorkflowSupportingBranch['flowDirection']
+} {
+  const directJoinIndexes = links
+    .filter((link) =>
+      componentIds.has(link.source) && backboneIndexes.has(link.target)
+    )
+    .map((link) => backboneIndexes.get(link.target))
+    .filter((index): index is number => index !== undefined)
+  if (directJoinIndexes.length > 0) return {
+    anchorIndex: Math.min(...directJoinIndexes),
+    flowDirection: 'into-primary'
+  }
+
+  const directDepartureIndexes = links
+    .filter((link) =>
+      backboneIndexes.has(link.source) && componentIds.has(link.target)
+    )
+    .map((link) => backboneIndexes.get(link.source))
+    .filter((index): index is number => index !== undefined)
+  if (directDepartureIndexes.length > 0) return {
+    anchorIndex: Math.min(...directDepartureIndexes),
+    flowDirection: 'out-of-primary'
+  }
+
+  let fallback = Number.POSITIVE_INFINITY
+  for (const nodeId of componentIds) {
+    fallback = Math.min(
+      fallback,
+      nearestBackboneIndex(nodeId, adjacency, backboneIndexes)
+    )
+  }
+  return {
+    anchorIndex: Number.isFinite(fallback) ? fallback : 0,
+    flowDirection: 'into-primary'
+  }
 }
 
 /**

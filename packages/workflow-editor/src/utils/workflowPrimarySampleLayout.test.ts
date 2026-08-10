@@ -7,8 +7,10 @@ import type {
 } from './parseWorkflow'
 import {
   layoutWorkflowPrimarySampleFlow,
+  WORKFLOW_PRIMARY_SAMPLE_COLUMN_GAP,
   WORKFLOW_PRIMARY_SAMPLE_NODES_PER_ROW
 } from './workflowPrimarySampleLayout'
+import { WORKFLOW_SUPPORTING_BRANCH_NODE_GAP } from './workflowPrimarySampleBranchLayout'
 
 describe('layoutWorkflowPrimarySampleFlow', () => {
   /** 验证主样品路径优先于声明顺序，并在第四个节点后反向换行。 */
@@ -212,10 +214,113 @@ describe('layoutWorkflowPrimarySampleFlow', () => {
       .toBeLessThan(positions.get('east-reagent-source')?.x ?? 0)
     expect(positions.get('step-6')?.x)
       .toBeLessThan(positions.get('step-4')?.x ?? 0)
-    expect(positions.get('west-reagent-source')?.x)
-      .toBe(positions.get('step-6')?.x)
-    expect(positions.get('east-reagent-source')?.x)
-      .toBe(positions.get('step-4')?.x)
+    expect(Math.abs(
+      (positions.get('west-reagent-source')?.x ?? 0) -
+      (positions.get('step-6')?.x ?? 0)
+    )).toBeLessThanOrEqual(WORKFLOW_SUPPORTING_BRANCH_NODE_GAP)
+    expect(Math.abs(
+      (positions.get('east-reagent-source')?.x ?? 0) -
+      (positions.get('step-4')?.x ?? 0)
+    )).toBeLessThanOrEqual(WORKFLOW_SUPPORTING_BRANCH_NODE_GAP)
+  })
+
+  /** 验证辅助物料来源与预处理动作聚成短链，并让汇入端贴近主样品动作。 */
+  it('packs a supporting material chain next to its primary join', () => {
+    const primaryOutput = resourceSlotHandle(
+      'primary-output',
+      'sample',
+      'source'
+    )
+    const reagentOutput = resourceSlotHandle(
+      'reagent-output',
+      'reagent',
+      'source'
+    )
+    const reagentPreparedOutput = resourceSlotHandle(
+      'reagent-prepared-output',
+      'reagent',
+      'source'
+    )
+    const step1 = sampleAction('step-1', true)
+    const step2 = sampleAction('step-2', false)
+    step2.handles?.push(resourceSlotHandle(
+      'step-2-reagent-input',
+      'reagent',
+      'target'
+    ))
+    const reagentPreparation: WorkflowNode = {
+      id: 'prepare-reagent',
+      name: '准备辅助试剂',
+      type: 'action',
+      className: 'Action',
+      labNodeType: 'Action',
+      handles: [
+        resourceSlotHandle('prepare-reagent-input', 'reagent', 'target'),
+        reagentPreparedOutput
+      ]
+    }
+    const nodes = [
+      materialSource(
+        'primary-source',
+        '主样品',
+        'primary_sample',
+        primaryOutput
+      ),
+      materialSource(
+        'reagent-source',
+        '辅助试剂',
+        'reagent',
+        reagentOutput
+      ),
+      reagentPreparation,
+      step1,
+      step2
+    ]
+    const links = [
+      materialLink(
+        'primary-source',
+        primaryOutput.uuid,
+        'step-1',
+        'step-1-input'
+      ),
+      materialLink(
+        'step-1',
+        'step-1-output',
+        'step-2',
+        'step-2-input'
+      ),
+      materialLink(
+        'reagent-source',
+        reagentOutput.uuid,
+        'prepare-reagent',
+        'prepare-reagent-input'
+      ),
+      materialLink(
+        'prepare-reagent',
+        reagentPreparedOutput.uuid,
+        'step-2',
+        'step-2-reagent-input'
+      )
+    ]
+
+    const result = layoutWorkflowPrimarySampleFlow(nodes, links)
+    const positions = new Map(result.nodes.map((node) => [node.id, node]))
+    const sourceX = positions.get('reagent-source')?.x ?? 0
+    const preparationX = positions.get('prepare-reagent')?.x ?? 0
+    const joinX = positions.get('step-2')?.x ?? 0
+
+    expect(Math.abs(sourceX - preparationX))
+      .toBe(WORKFLOW_SUPPORTING_BRANCH_NODE_GAP)
+    expect(Math.abs(sourceX - preparationX))
+      .toBeLessThan(WORKFLOW_PRIMARY_SAMPLE_COLUMN_GAP)
+    expect(Math.abs(preparationX - joinX))
+      .toBeLessThanOrEqual(WORKFLOW_SUPPORTING_BRANCH_NODE_GAP)
+    expect(positions.get('reagent-source')?.y)
+      .toBe(positions.get('prepare-reagent')?.y)
+    expect(result.nodePorts?.get('prepare-reagent')).toEqual({
+      target: 'left',
+      source: 'right'
+    })
   })
 })
 

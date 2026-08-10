@@ -432,7 +432,7 @@ function workflowEdgeMarker(
   height: number
 } | undefined {
   if (!materialAccent) return undefined
-  const size = supportingMaterial ? 10 : 14
+  const size = supportingMaterial ? 8 : 14
   return {
     type: MarkerType.ArrowClosed,
     color: materialAccent,
@@ -462,7 +462,7 @@ function workflowEdgeStyle(
   return {
     stroke: materialAccent ?? STRUCTURAL_EDGE_COLOR,
     strokeWidth: materialAccent
-      ? supportingMaterial ? 1.35 : 2.4
+      ? supportingMaterial ? 1.1 : 2.4
       : 1.5,
     strokeDasharray: communication && !materialAccent ? '4 4' : undefined
   }
