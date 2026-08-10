@@ -49,6 +49,7 @@ export default function WorkflowRoundedStepEdge({
     sourceY,
     targetX,
     targetY,
+    targetPosition,
     direction: data?.direction
   })
   const [path, labelX, labelY] = getSmoothStepPath({
