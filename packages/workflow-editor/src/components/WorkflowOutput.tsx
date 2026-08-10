@@ -211,6 +211,7 @@ function WorkflowOutputBody({
       >
         <WorkflowOutputNodeList
           nodes={nodes}
+          nodeNames={nodeNames}
           selectedNodeId={selectedNodeId}
           pausedBeforeNodeId={pausedBeforeNodeId}
           onNodeSelect={onNodeSelect}
@@ -377,11 +378,13 @@ function WorkflowOutputBody({
 /** 把运行节点状态投影为可选择列表，隔离暂停和选中态的展示分支。 */
 function WorkflowOutputNodeList({
   nodes,
+  nodeNames,
   selectedNodeId,
   pausedBeforeNodeId,
   onNodeSelect
 }: {
   nodes: readonly WorkflowOutputNode[]
+  nodeNames: Readonly<Record<string, string>>
   selectedNodeId: string | null
   pausedBeforeNodeId: string | null
   onNodeSelect: (nodeId: string) => void
@@ -390,6 +393,8 @@ function WorkflowOutputNodeList({
     <div className="workflow-runtime__node-list">
       {nodes.map((node) => {
         const pausedBefore = pausedBeforeNodeId === node.sourceNodeId
+        const nodeName = nodeNames[node.sourceNodeId] || '未命名节点'
+        const jobIdentity = compactWorkflowIdentity(node.nodeId)
         return (
           <button
             key={node.nodeId}
@@ -399,6 +404,9 @@ function WorkflowOutputNodeList({
               selectedNodeId === node.sourceNodeId ? 'is-selected' : '',
               pausedBefore ? 'is-paused-before' : ''
             ].filter(Boolean).join(' ')}
+            aria-label={`${nodeName}，${nodeTypeLabel(node.nodeType)}，${
+              pausedBefore ? '暂停位置' : nodeStateLabel(node.state)
+            }`}
             onClick={() => onNodeSelect(node.sourceNodeId)}
           >
             <i
@@ -406,9 +414,13 @@ function WorkflowOutputNodeList({
                 pausedBefore ? 'is-paused-before' : `is-${node.state}`
               }
             />
-            <span className="is-node-id">{node.sourceNodeId}</span>
-            <span className="is-node-type">
-              {nodeTypeLabel(node.nodeType)}
+            <span className="is-node-name">{nodeName}</span>
+            <span className="is-node-meta">
+              <span>{nodeTypeLabel(node.nodeType)}</span>
+              <code title={`工作流节点作业 UUID：${node.nodeId}`}>
+                作业 {jobIdentity}
+              </code>
+              {node.attempt > 0 && <span>第 {node.attempt} 次</span>}
             </span>
             <em>
               {pausedBefore ? '暂停位置' : nodeStateLabel(node.state)}
@@ -418,6 +430,16 @@ function WorkflowOutputNodeList({
       })}
     </div>
   )
+}
+
+/**
+ * 把长身份标识压缩为供追溯的末八位，完整值保留在提示中。
+ *
+ * @param identity 工作流节点作业（WorkflowNodeJob）身份标识。
+ * @returns 最多八个可识别字符。
+ */
+function compactWorkflowIdentity(identity: string): string {
+  return identity.length > 8 ? identity.slice(-8) : identity
 }
 
 function OutputTabButton({

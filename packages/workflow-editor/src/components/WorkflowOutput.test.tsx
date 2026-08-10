@@ -7,6 +7,45 @@ import {
 } from './WorkflowOutput'
 
 describe('WorkflowOutput', () => {
+  it('uses the node name as the primary execution history identity', () => {
+    const jobUuid = '40000000-0000-4000-8000-000000000042'
+    const html = renderToStaticMarkup(
+      <WorkflowOutput
+        expanded
+        activeTab="nodes"
+        completedNodeCount={1}
+        expectedNodeCount={1}
+        nodes={[{
+          nodeId: jobUuid,
+          sourceNodeId: '20000000-0000-4000-8000-000000000011',
+          nodeType: 'action',
+          state: 'success',
+          result: {},
+          attempt: 2
+        }]}
+        nodeNames={{
+          '20000000-0000-4000-8000-000000000011': '称量样品'
+        }}
+        events={[]}
+        error={null}
+        selectedNode={undefined}
+        selectedNodeId={null}
+        pausedBeforeNodeId={null}
+        onExpandedChange={() => {}}
+        onTabChange={() => {}}
+        onNodeSelect={() => {}}
+        onClearError={() => {}}
+      />
+    )
+
+    expect(html).toContain('class="is-node-name">称量样品</span>')
+    expect(html).toContain('作业 00000042')
+    expect(html).toContain(`工作流节点作业 UUID：${jobUuid}`)
+    expect(html).not.toContain(
+      'class="is-node-id">20000000-0000-4000-8000-000000000011'
+    )
+  })
+
   it('shows the failed node error log in runtime exceptions', () => {
     const html = renderToStaticMarkup(
       <WorkflowOutput

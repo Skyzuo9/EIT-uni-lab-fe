@@ -15,6 +15,7 @@ import { MaterialSourceInspector } from './MaterialSourceInspector'
 import type { PersistentWorkflowAuthoringModel } from './persistentWorkflowAuthoringModel'
 import { PersistentWorkflowOverlays } from './PersistentWorkflowOverlays'
 import { PersistentWorkflowToolbar } from './PersistentWorkflowToolbar'
+import { WorkflowNodePalette } from './WorkflowNodePalette'
 import styles from './workflow.module.scss'
 
 export function PersistentWorkflowAuthoringView({
@@ -107,6 +108,7 @@ export function PersistentWorkflowAuthoringView({
       className={[
         styles.workflow,
         'workflow-runtime persistent-authoring',
+        mode === 'canvas' ? 'persistent-authoring--canvas' : '',
         'relative flex h-full w-full flex-col',
         'bg-[var(--unilab-color-canvas)] text-[var(--unilab-color-text)]'
       ].join(' ')}
@@ -252,15 +254,24 @@ export function PersistentWorkflowAuthoringView({
               </span>
             </div>
             <div className="persistent-authoring__stage-context">
-              <p>
-                {projectionKind === 'candidate'
+              <span
+                className="persistent-authoring__projection-status"
+                title={projectionKind === 'candidate'
                   ? mode === 'code'
                     ? '当前画布是服务器候选版本的只读预览'
                     : '画布编辑区基于候选版本；保存时由 OS 生成完整 Python'
                   : mode === 'code'
                     ? '当前显示已应用版本；暂无待应用修改'
                     : '画布编辑区基于已应用版本；暂无待应用修改'}
-              </p>
+              >
+                {projectionKind === 'candidate'
+                  ? mode === 'code'
+                    ? '候选版本 · 只读'
+                    : '候选版本 · 待保存'
+                  : mode === 'code'
+                    ? '已应用版本 · 只读'
+                    : '已应用版本 · 可编辑'}
+              </span>
               <div className="persistent-authoring__stage-tools">
                 {mode === 'canvas' && (
                   <button
@@ -305,115 +316,26 @@ export function PersistentWorkflowAuthoringView({
             {graph ? (
               <>
                 {mode === 'canvas' && nodePaletteOpen && (
-                  <aside
-                    id="persistent-authoring-node-palette"
-                    className="persistent-authoring__palette"
-                    aria-label="工作流节点面板"
-                  >
-                  <header>
-                    <strong>节点</strong>
-                    <span>添加到画布编辑区</span>
-                  </header>
-                  <section aria-label="物料来源（MaterialSource）模板">
-                    <h3>物料</h3>
-                    <WorkflowButton
-                      type="button"
-                      className="persistent-authoring__palette-source"
-                      disabled={
-                        busy ||
-                        !policy.canvasMutationEnabled ||
-                        !effectiveMaterialSourceCatalog ||
-                        materialSourceAuthorityBlocked
-                      }
-                      disabledReason={busy
-                        ? '正在处理工作流，请稍后添加物料来源'
-                        : !policy.canvasMutationEnabled
-                          ? '当前模式只允许查看工作流画布'
-                          : materialSourceAuthorityBlocked
-                            ? '物料来源目录或引用已失效，请先刷新'
-                            : '物料与库位目录尚未加载完成'}
-                      onClick={addMaterialSourceNode}
-                    >
-                      <span aria-hidden="true">▱</span>
-                      <span>
-                        <strong>物料来源</strong>
-                        <small>OS 准入声明</small>
-                      </span>
-                    </WorkflowButton>
-                    {materialSourceCatalogLoading && (
-                      <p role="status">正在读取物料与库位目录…</p>
+                  <WorkflowNodePalette
+                    catalog={actionCatalog}
+                    busy={busy}
+                    canvasMutationEnabled={policy.canvasMutationEnabled}
+                    graphAvailable={Boolean(graph)}
+                    materialSourceCatalogAvailable={Boolean(
+                      effectiveMaterialSourceCatalog
                     )}
-                    {materialSourceCatalogError && (
-                      <div className="persistent-authoring__palette-problem">
-                        <p>{materialSourceCatalogError}</p>
-                        <button
-                          type="button"
-                          onClick={() => void refreshMaterialSourceCatalog()}
-                        >
-                          重新读取
-                        </button>
-                      </div>
-                    )}
-                  </section>
-                  <section aria-label="动作（Action）模板">
-                    <h3>操作</h3>
-                    <div className="persistent-authoring__palette-actions">
-                      {actionCatalog?.actionTemplates.map((template) => (
-                        <WorkflowButton
-                          type="button"
-                          key={template.uuid}
-                          disabled={
-                            busy ||
-                            !policy.canvasMutationEnabled ||
-                            !graph
-                          }
-                          disabledReason={busy
-                            ? '正在处理工作流，请稍后添加操作节点'
-                            : !policy.canvasMutationEnabled
-                              ? '当前模式只允许查看工作流画布'
-                              : '工作流图尚未加载完成'}
-                          onClick={() => addTypedActionNode(template.uuid)}
-                        >
-                          <span aria-hidden="true">⌁</span>
-                          <span>
-                            <strong>{template.displayName}</strong>
-                            <small>{template.name}</small>
-                          </span>
-                        </WorkflowButton>
-                      ))}
-                    </div>
-                  </section>
-                  {Boolean(actionCatalog?.workflowTemplates.length) && (
-                    <section aria-label="子工作流（Workflow）模板">
-                      <h3>子工作流</h3>
-                      <div className="persistent-authoring__palette-actions">
-                        {actionCatalog?.workflowTemplates.map((template) => (
-                          <WorkflowButton
-                            type="button"
-                            key={template.uuid}
-                            disabled={
-                              busy ||
-                              !policy.canvasMutationEnabled ||
-                              !graph
-                            }
-                            disabledReason={busy
-                              ? '正在处理工作流，请稍后添加子工作流'
-                              : !policy.canvasMutationEnabled
-                                ? '当前模式只允许查看工作流画布'
-                                : '工作流图尚未加载完成'}
-                            onClick={() => addPublishedWorkflowNode(template.uuid)}
-                          >
-                            <span aria-hidden="true">▣</span>
-                            <span>
-                              <strong>{template.displayName}</strong>
-                              <small>{template.source.symbol}</small>
-                            </span>
-                          </WorkflowButton>
-                        ))}
-                      </div>
-                    </section>
-                  )}
-                  </aside>
+                    materialSourceAuthorityBlocked={
+                      materialSourceAuthorityBlocked
+                    }
+                    materialSourceCatalogLoading={materialSourceCatalogLoading}
+                    materialSourceCatalogError={materialSourceCatalogError}
+                    onAddMaterialSource={addMaterialSourceNode}
+                    onAddAction={addTypedActionNode}
+                    onAddWorkflow={addPublishedWorkflowNode}
+                    onRefreshMaterialSourceCatalog={
+                      refreshMaterialSourceCatalog
+                    }
+                  />
                 )}
                 <div className="persistent-authoring__graph-stage">
                   <WorkflowDag

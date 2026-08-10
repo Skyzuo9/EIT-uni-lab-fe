@@ -41,14 +41,37 @@ export function PersistentWorkflowToolbar({
   } = model
   const moreMenuRef = useRef<HTMLDetailsElement | null>(null)
 
+  /** 收起更多操作菜单，避免后续页面或文件选择器上方残留浮层。 */
+  const closeMoreMenu = (): void => {
+    moreMenuRef.current?.removeAttribute('open')
+  }
+
   /**
    * 从“更多”菜单仅保存工作流源码（Workflow Source）并收起菜单。
    *
    * @returns 无返回值；双 CAS 仍由创作会话执行。
    */
   const saveDraftFromMoreMenu = (): void => {
-    moreMenuRef.current?.removeAttribute('open')
+    closeMoreMenu()
     saveDraft()
+  }
+
+  /** 从更多操作菜单返回工作流（Workflow）列表。 */
+  const chooseWorkflowFromMoreMenu = (): void => {
+    closeMoreMenu()
+    onChooseWorkflow?.()
+  }
+
+  /** 从更多操作菜单打开 Python 工作流源码（Workflow Source）选择器。 */
+  const importPythonFromMoreMenu = (): void => {
+    closeMoreMenu()
+    fileUpload.openFilePicker('python')
+  }
+
+  /** 从更多操作菜单打开规范 JSON 工作流图（Workflow Graph）选择器。 */
+  const importJsonFromMoreMenu = (): void => {
+    closeMoreMenu()
+    fileUpload.openFilePicker('json')
   }
 
   useEffect(() => {
@@ -142,55 +165,6 @@ export function PersistentWorkflowToolbar({
           aria-label="选择工作流文件"
           onChange={fileUpload.handleFileChange}
         />
-        <div
-          className="persistent-authoring__toolbar-group"
-          role="group"
-          aria-label="工作流导航与导入"
-        >
-          {onChooseWorkflow && (
-            <WorkflowButton
-              type="button"
-              className="workflow__upload"
-              disabled={busy || dirty}
-              disabledReason={busy
-                ? '正在处理工作流，请稍后返回列表'
-                : '请先保存当前可写内容'}
-              title={dirty ? '请先保存当前可写表示' : undefined}
-              onClick={onChooseWorkflow}
-            >
-              工作流列表
-            </WorkflowButton>
-          )}
-          <WorkflowButton
-            type="button"
-            className="workflow__upload"
-            disabled={busy || dirty || !aggregate}
-            disabledReason={busy
-              ? '正在处理工作流，请稍后导入 Python'
-              : dirty
-                ? '请先保存当前可写内容'
-                : '工作流尚未加载完成'}
-            title={dirty ? '请先保存当前可写表示' : undefined}
-            onClick={() => fileUpload.openFilePicker('python')}
-          >
-            导入 Python
-          </WorkflowButton>
-          <WorkflowButton
-            type="button"
-            className="workflow__upload"
-            disabled={busy || dirty || !aggregate}
-            disabledReason={busy
-              ? '正在处理工作流，请稍后导入 JSON'
-              : dirty
-                ? '请先保存当前可写内容'
-                : '工作流尚未加载完成'}
-            title={dirty ? '请先保存当前可写表示' : undefined}
-            onClick={() => fileUpload.openFilePicker('json')}
-          >
-            导入 JSON
-          </WorkflowButton>
-        </div>
-
         <details ref={moreMenuRef} className="persistent-authoring__more">
           <summary aria-label="更多工作流操作">更多</summary>
           <div
@@ -198,6 +172,45 @@ export function PersistentWorkflowToolbar({
             role="menu"
             aria-label="更多工作流操作"
           >
+            {onChooseWorkflow && (
+              <WorkflowButton
+                type="button"
+                role="menuitem"
+                disabled={busy || dirty}
+                disabledReason={busy
+                  ? '正在处理工作流，请稍后返回列表'
+                  : '请先保存当前可写内容'}
+                onClick={chooseWorkflowFromMoreMenu}
+              >
+                <span>工作流列表</span>
+              </WorkflowButton>
+            )}
+            <WorkflowButton
+              type="button"
+              role="menuitem"
+              disabled={busy || dirty || !aggregate}
+              disabledReason={busy
+                ? '正在处理工作流，请稍后导入 Python'
+                : dirty
+                  ? '请先保存当前可写内容'
+                  : '工作流尚未加载完成'}
+              onClick={importPythonFromMoreMenu}
+            >
+              <span>导入 Python</span>
+            </WorkflowButton>
+            <WorkflowButton
+              type="button"
+              role="menuitem"
+              disabled={busy || dirty || !aggregate}
+              disabledReason={busy
+                ? '正在处理工作流，请稍后导入 JSON'
+                : dirty
+                  ? '请先保存当前可写内容'
+                  : '工作流尚未加载完成'}
+              onClick={importJsonFromMoreMenu}
+            >
+              <span>导入 JSON</span>
+            </WorkflowButton>
             <WorkflowButton
               type="button"
               role="menuitem"

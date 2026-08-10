@@ -100,6 +100,11 @@ interface WorkflowDagProps {
 // 注册自定义节点类型(在组件外定义,避免每次渲染重建)
 const nodeTypes = { wfNode: WorkflowNodeCard }
 const edgeTypes = { workflowRoundedStep: WorkflowRoundedStepEdge }
+const WORKFLOW_FIT_VIEW_OPTIONS = {
+  padding: 0.16,
+  minZoom: 0.2,
+  maxZoom: 1
+} as const
 
 /**
  * 渲染工作流拓扑、运行状态、物料流句柄及可选的画布编辑控制。
@@ -147,7 +152,6 @@ export default function WorkflowDag({
   const activeMaterialRoleFilter = materialRoleFilter === undefined
     ? localMaterialRoleFilter
     : materialRoleFilter
-  const containerRef = useRef<HTMLDivElement | null>(null)
   const flowInstanceRef = useRef<ReactFlowInstance | null>(null)
   const beautifyTimerRef = useRef<
     ReturnType<typeof globalThis.setTimeout> | null
@@ -372,52 +376,13 @@ export default function WorkflowDag({
     if (deletionDisabledReason || !onDeleteRequest) return
     onDeleteRequest(deletionSelection)
   }, [deletionDisabledReason, deletionSelection, onDeleteRequest])
-  const graphSignature = useMemo(
-    () => JSON.stringify({
-      nodes: flowNodes.map((node) => [
-        node.id,
-        node.position.x,
-        node.position.y
-      ]),
-      links: flowEdges.map((edge) => [edge.source, edge.target])
-    }),
-    [flowEdges, flowNodes]
-  )
-  useEffect(() => {
-    let fitFrame = 0
-    const syncFrame = requestAnimationFrame(() => {
-      fitFrame = requestAnimationFrame(() => {
-        void flowInstanceRef.current?.fitView({
-          padding: 0.16,
-          minZoom: 0.2,
-          maxZoom: 1
-        })
-      })
-    })
-    return () => {
-      cancelAnimationFrame(syncFrame)
-      cancelAnimationFrame(fitFrame)
-    }
-  }, [graphSignature])
-  useEffect(() => {
-    const container = containerRef.current
-    if (!container || typeof ResizeObserver === 'undefined') return
-    let fitFrame = 0
-    const observer = new ResizeObserver(() => {
-      cancelAnimationFrame(fitFrame)
-      fitFrame = requestAnimationFrame(() => {
-        void flowInstanceRef.current?.fitView({
-          padding: 0.16,
-          minZoom: 0.2,
-          maxZoom: 1
-        })
-      })
-    })
-    observer.observe(container)
-    return () => {
-      observer.disconnect()
-      cancelAnimationFrame(fitFrame)
-    }
+  /**
+   * 仅在用户明确请求时适应完整工作流（Workflow）视图。
+   *
+   * @returns 无返回值；不会在面板尺寸或节点选择变化时改写用户缩放。
+   */
+  const fitWorkflowView = useCallback((): void => {
+    void flowInstanceRef.current?.fitView(WORKFLOW_FIT_VIEW_OPTIONS)
   }, [])
   const handleBeautify = useCallback(() => {
     if (!canBeautify || !onBeautify) return
@@ -475,7 +440,6 @@ export default function WorkflowDag({
 
   return (
     <div
-      ref={containerRef}
       className={styles.dag}
       onKeyDownCapture={(event) => {
         if (
@@ -528,7 +492,7 @@ export default function WorkflowDag({
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         fitView
-        fitViewOptions={{ padding: 0.16, minZoom: 0.2, maxZoom: 1 }}
+        fitViewOptions={WORKFLOW_FIT_VIEW_OPTIONS}
         minZoom={0.2}
         {...(
           canvasMutationEnabled
@@ -567,6 +531,16 @@ export default function WorkflowDag({
             className="workflow-runtime__layout-tools"
             aria-label="工作流布局工具"
           >
+            <WorkflowButton
+              type="button"
+              className="workflow-runtime__fit-view"
+              aria-label="适应完整工作流视图"
+              disabledReason="工作流图尚未加载完成"
+              onClick={fitWorkflowView}
+            >
+              <span aria-hidden="true">⊡</span>
+              适应视图
+            </WorkflowButton>
             {onDeleteRequest && (
               <WorkflowButton
                 type="button"
