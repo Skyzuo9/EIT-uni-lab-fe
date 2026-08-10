@@ -1,5 +1,5 @@
 {
-  "name": "@unilab/workbench-session",
+  "name": "@unilab/local-environment",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -14,10 +14,5 @@
   },
   "exports": {
     ".": "./src/index.ts"
-  },
-  "dependencies": {
-    "@electron/asar": "3.4.1",
-    "@unilab/local-environment": "workspace:*",
-    "original-fs": "1.2.0"
   }
 }

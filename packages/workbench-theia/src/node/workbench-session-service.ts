@@ -25,7 +25,8 @@ implements WorkbenchSessionServer, BackendApplicationContribution {
       environmentPath: process.env['UNILAB_PYTHON_ENV'],
       enableAgent: process.env['UNILAB_AGENT_ENABLED'] !== '0',
       agentAppPath: process.env['UNILAB_AIONUI_APP'],
-      agentBrandIconPath: process.env['UNILAB_AGENT_ICON']
+      agentBrandIconPath: process.env['UNILAB_AGENT_ICON'],
+      plcSimulatorProjectPath: process.env['UNILAB_PLC_SIM_PROJECT']
     })
   private sessionListener: Disposable | undefined
 
@@ -36,7 +37,7 @@ implements WorkbenchSessionServer, BackendApplicationContribution {
   }
 
   onStop(): Promise<void> {
-    return this.session.stop().then(() => undefined)
+    return this.session.stopAll().then(() => undefined)
   }
 
   getSnapshot() {
@@ -57,6 +58,25 @@ implements WorkbenchSessionServer, BackendApplicationContribution {
 
   readLogTail(maxBytes?: number) {
     return this.session.readLogTail(maxBytes)
+  }
+
+  readEnvironmentLog(
+    kind: Parameters<WorkbenchSession['readEnvironmentLog']>[0],
+    maxBytes?: number
+  ) {
+    return this.session.readEnvironmentLog(kind, maxBytes)
+  }
+
+  configurePlcSimulator(projectPath: string) {
+    return this.session.configurePlcSimulator(projectPath)
+  }
+
+  startPlcSimulator() {
+    return this.session.startPlcSimulator()
+  }
+
+  stopPlcSimulator() {
+    return this.session.stopPlcSimulator()
   }
 
   setClient(client: WorkbenchSessionClient): void {

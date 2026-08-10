@@ -179,7 +179,80 @@ describe('managed local Workbench session', () => {
       phase: 'idle',
       message: 'Uni-Lab OS 已停止',
       identity: null,
-      diagnostic: null
+      diagnostic: null,
+      plcSimulator: {
+        phase: 'idle',
+        message: '尚未选择 PLC-Sim 项目目录',
+        projectPath: '',
+        pid: null,
+        guiUrl: 'http://127.0.0.1:18765',
+        opcUaUrl: 'opc.tcp://127.0.0.1:4855',
+        logPath: '',
+        diagnostic: null
+      }
+    })
+  })
+
+  it('keeps PLC-Sim independent from OS stop and cleans both on stopAll', async () => {
+    const fixture = await createFixture()
+    const session = createManagedLocalWorkbenchSession({
+      workspacePath: fixture.workspacePath,
+      osProjectPath: fixture.osProjectPath,
+      environmentPath: fixture.environmentPath,
+      readinessTimeoutMs: 5_000
+    })
+    sessions.push(session)
+
+    await session.start()
+    await session.configurePlcSimulator(fixture.plcSimulatorPath)
+    const plcReady = await session.startPlcSimulator()
+
+    expect(plcReady.plcSimulator).toMatchObject({
+      phase: 'ready',
+      projectPath: fixture.plcSimulatorPath,
+      guiUrl: 'http://127.0.0.1:18765',
+      opcUaUrl: 'opc.tcp://127.0.0.1:4855'
+    })
+    expect(plcReady.plcSimulator.pid).toBeGreaterThan(0)
+    await expect(session.readEnvironmentLog('plc-sim')).resolves.toContain(
+      'starting PLC-Sim'
+    )
+
+    await session.stop()
+    expect(session.getSnapshot()).toMatchObject({
+      phase: 'idle',
+      plcSimulator: { phase: 'ready' }
+    })
+    await session.stopAll()
+    expect(session.getSnapshot()).toMatchObject({
+      phase: 'idle',
+      plcSimulator: { phase: 'idle', pid: null }
+    })
+    await expect(readFile(
+      join(fixture.workspacePath, '.unilabos', 'environment.local.json'),
+      'utf8'
+    )).resolves.toContain(fixture.plcSimulatorPath)
+  })
+
+  it('cancels PLC-Sim while its launch plan is still validating', async () => {
+    const fixture = await createFixture()
+    const session = createManagedLocalWorkbenchSession({
+      workspacePath: fixture.workspacePath,
+      osProjectPath: fixture.osProjectPath,
+      environmentPath: fixture.environmentPath,
+      readinessTimeoutMs: 5_000
+    })
+    sessions.push(session)
+
+    await session.start()
+    await session.configurePlcSimulator(fixture.plcSimulatorPath)
+    const starting = session.startPlcSimulator()
+    await session.stopPlcSimulator()
+
+    await expect(starting).resolves.toMatchObject({
+      phase: 'ready',
+      message: 'Workspace 与 Uni-Lab OS 已就绪',
+      plcSimulator: { phase: 'idle', pid: null }
     })
   })
 
@@ -267,6 +340,7 @@ async function createFixture(): Promise<{
   workspacePath: string
   osProjectPath: string
   environmentPath: string
+  plcSimulatorPath: string
 }> {
   const root = await realpath(
     await mkdtemp(join(tmpdir(), 'unilab-workbench-session-'))
@@ -275,10 +349,12 @@ async function createFixture(): Promise<{
   const workspacePath = join(root, 'Uni-Lab-SZLab')
   const osProjectPath = join(root, 'Uni-Lab-OS')
   const environmentPath = join(root, 'unilab-env')
+  const plcSimulatorPath = join(root, 'PLC-Sim')
   await Promise.all([
     mkdir(join(workspacePath, 'deployment', 'graphs'), { recursive: true }),
     mkdir(join(osProjectPath, 'unilabos'), { recursive: true }),
-    mkdir(join(environmentPath, 'bin'), { recursive: true })
+    mkdir(join(environmentPath, 'bin'), { recursive: true }),
+    mkdir(join(plcSimulatorPath, 'OpcUaSim', 'gui'), { recursive: true })
   ])
   await Promise.all([
     writeFile(join(workspacePath, 'deployment', 'local_config.py'), 'class BasicConfig:\n    pass\n'),
@@ -286,14 +362,36 @@ async function createFixture(): Promise<{
       join(workspacePath, 'deployment', 'graphs', 'szlab-local-debug.json'),
       '{}\n'
     ),
-    writeFile(join(environmentPath, 'bin', 'python'), '#!/bin/sh\nexit 0\n'),
-    writeFile(join(environmentPath, 'bin', 'unilab'), fakeUnilabExecutable())
+    writeFile(join(environmentPath, 'bin', 'python'), fakePlcSimulatorExecutable()),
+    writeFile(join(environmentPath, 'bin', 'unilab'), fakeUnilabExecutable()),
+    writeFile(
+      join(plcSimulatorPath, 'OpcUaSim', 'gui', 'backend.py'),
+      '# fixture\n'
+    )
   ])
   await Promise.all([
     chmod(join(environmentPath, 'bin', 'python'), 0o755),
     chmod(join(environmentPath, 'bin', 'unilab'), 0o755)
   ])
-  return { workspacePath, osProjectPath, environmentPath }
+  return {
+    workspacePath,
+    osProjectPath,
+    environmentPath,
+    plcSimulatorPath
+  }
+}
+
+function fakePlcSimulatorExecutable(): string {
+  return `#!/usr/bin/env node
+const http = require('node:http')
+const args = process.argv.slice(2)
+const port = Number(args[args.indexOf('--port') + 1])
+const server = http.createServer((_request, response) => response.end('ok'))
+server.listen(port, '127.0.0.1')
+const stop = () => server.close(() => process.exit(0))
+process.on('SIGTERM', stop)
+process.on('SIGINT', stop)
+`
 }
 
 function fakeUnilabExecutable(): string {

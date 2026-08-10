@@ -13,7 +13,7 @@ import {
   stat,
   writeFile
 } from 'node:fs/promises'
-import { createServer } from 'node:net'
+import { createConnection, createServer } from 'node:net'
 import { homedir } from 'node:os'
 import {
   delimiter,
@@ -26,16 +26,20 @@ import {
 } from 'node:path'
 
 import {
+  activatedCondaEnvironment,
+  discoverDefaultCondaEnvironment,
+  PLC_SIMULATOR_GUI_PORT,
+  PLC_SIMULATOR_OPC_UA_PORT,
+  resolvePlcSimulatorLaunch,
+  runtimeExecutablePaths,
+  validRuntimeEnvironment
+} from '@unilab/local-environment'
+
+import {
   startManagedWorkbenchAgent,
   type ManagedWorkbenchAgent,
   type WorkbenchAgentIdentity
 } from './agent-sidecar'
-import {
-  activatedRuntimeEnvironment,
-  runtimeExecutablePaths,
-  validRuntimeEnvironment
-} from './runtime-environment'
-
 export type WorkbenchSessionPhase =
   | 'idle'
   | 'validating'
@@ -73,6 +77,28 @@ export interface WorkbenchSessionIdentity {
   agent: WorkbenchAgentIdentity | null
 }
 
+export type WorkbenchEnvironmentLogKind = 'os' | 'plc-sim' | 'agent'
+
+export type WorkbenchPlcSimulatorPhase =
+  | 'idle'
+  | 'validating'
+  | 'starting'
+  | 'waiting'
+  | 'ready'
+  | 'stopping'
+  | 'failed'
+
+export interface WorkbenchPlcSimulatorSnapshot {
+  phase: WorkbenchPlcSimulatorPhase
+  message: string
+  projectPath: string
+  pid: number | null
+  guiUrl: string
+  opcUaUrl: string
+  logPath: string
+  diagnostic: string | null
+}
+
 export interface WorkspacePackageMount {
   packageId: string
   distributionName: string
@@ -101,6 +127,7 @@ export interface WorkbenchSessionSnapshot {
   message: string
   identity: WorkbenchSessionIdentity | null
   diagnostic: WorkbenchSessionDiagnostic | null
+  plcSimulator: WorkbenchPlcSimulatorSnapshot
 }
 
 export interface ManagedLocalWorkbenchSessionOptions {
@@ -117,6 +144,9 @@ export interface ManagedLocalWorkbenchSessionOptions {
   enableAgent?: boolean
   agentAppPath?: string
   agentBrandIconPath?: string
+  plcSimulatorProjectPath?: string
+  plcSimulatorGuiPort?: number
+  plcSimulatorOpcUaPort?: number
 }
 
 export interface WorkbenchSession {
@@ -126,8 +156,16 @@ export interface WorkbenchSession {
   }
   start(): Promise<WorkbenchSessionSnapshot>
   stop(): Promise<WorkbenchSessionSnapshot>
+  stopAll(): Promise<WorkbenchSessionSnapshot>
   restart(): Promise<WorkbenchSessionSnapshot>
   readLogTail(maxBytes?: number): Promise<string>
+  readEnvironmentLog(
+    kind: WorkbenchEnvironmentLogKind,
+    maxBytes?: number
+  ): Promise<string>
+  configurePlcSimulator(projectPath: string): Promise<WorkbenchSessionSnapshot>
+  startPlcSimulator(): Promise<WorkbenchSessionSnapshot>
+  stopPlcSimulator(): Promise<WorkbenchSessionSnapshot>
 }
 
 interface ResolvedWorkbenchLaunch {
@@ -142,6 +180,7 @@ interface ResolvedWorkbenchLaunch {
 
 const LOOPBACK_HOST = '127.0.0.1'
 const DEFAULT_READINESS_TIMEOUT_MS = 90_000
+const LOCAL_ENVIRONMENT_CONFIG = 'environment.local.json'
 
 /** Create the single managed OS lifecycle owned by one Workbench window. */
 export function createManagedLocalWorkbenchSession(
@@ -151,22 +190,34 @@ export function createManagedLocalWorkbenchSession(
 }
 
 class ManagedLocalWorkbenchSession implements WorkbenchSession {
-  private snapshot: WorkbenchSessionSnapshot = {
-    phase: 'idle',
-    message: '尚未启动 Uni-Lab OS',
-    identity: null,
-    diagnostic: null
-  }
+  private snapshot: WorkbenchSessionSnapshot
   private readonly listeners = new Set<(
     snapshot: WorkbenchSessionSnapshot
   ) => void>()
   private child: ChildProcessWithoutNullStreams | null = null
+  private plcSimulatorChild: ChildProcessWithoutNullStreams | null = null
   private agent: ManagedWorkbenchAgent | null = null
   private starting: Promise<WorkbenchSessionSnapshot> | null = null
+  private plcSimulatorStarting: Promise<WorkbenchSessionSnapshot> | null = null
   private expectedExit = false
+  private expectedPlcSimulatorExit = false
   private stopRequested = false
+  private plcSimulatorStopRequested = false
 
-  constructor(private readonly options: ManagedLocalWorkbenchSessionOptions) {}
+  constructor(private readonly options: ManagedLocalWorkbenchSessionOptions) {
+    this.snapshot = {
+      phase: 'idle',
+      message: '尚未启动 Uni-Lab OS',
+      identity: null,
+      diagnostic: null,
+      plcSimulator: idlePlcSimulatorSnapshot(
+        options.plcSimulatorProjectPath
+          ?? options.environment?.['UNILAB_PLC_SIM_PROJECT']
+          ?? process.env['UNILAB_PLC_SIM_PROJECT']
+          ?? ''
+      )
+    }
+  }
 
   getSnapshot(): WorkbenchSessionSnapshot {
     return cloneSnapshot(this.snapshot)
@@ -223,24 +274,230 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
     return this.getSnapshot()
   }
 
+  async stopAll(): Promise<WorkbenchSessionSnapshot> {
+    await this.stop()
+    return await this.stopPlcSimulator()
+  }
+
   async restart(): Promise<WorkbenchSessionSnapshot> {
     await this.stop()
     return await this.start()
   }
 
   async readLogTail(maxBytes = 64 * 1024): Promise<string> {
-    if (!Number.isInteger(maxBytes) || maxBytes < 1 || maxBytes > 1024 * 1024) {
-      throw new Error('Workbench 日志读取上限必须在 1–1048576 字节之间')
+    return await readLogTailFromPath(this.snapshot.identity?.logPath, maxBytes)
+  }
+
+  async readEnvironmentLog(
+    kind: WorkbenchEnvironmentLogKind,
+    maxBytes = 64 * 1024
+  ): Promise<string> {
+    const logPath = kind === 'os'
+      ? this.snapshot.identity?.logPath
+      : kind === 'plc-sim'
+        ? this.snapshot.plcSimulator.logPath
+        : this.snapshot.identity?.agent?.logPath
+    return await readLogTailFromPath(logPath, maxBytes)
+  }
+
+  async configurePlcSimulator(
+    projectPath: string
+  ): Promise<WorkbenchSessionSnapshot> {
+    if (this.plcSimulatorChild || this.plcSimulatorStarting) {
+      throw new Error('请先停止 PLC-Sim，再修改项目目录')
     }
-    const logPath = this.snapshot.identity?.logPath
-    if (!logPath) return ''
+    const normalizedProjectPath = projectPath.trim()
+    if (normalizedProjectPath.includes('\0')) {
+      throw new Error('PLC-Sim 项目目录包含非法字符')
+    }
+    await writeLocalEnvironmentConfiguration(
+      this.options.workspacePath,
+      normalizedProjectPath
+    )
+    this.publishPlcSimulator({
+      ...idlePlcSimulatorSnapshot(normalizedProjectPath),
+      message: normalizedProjectPath
+        ? 'PLC-Sim 项目目录已保存'
+        : 'PLC-Sim 项目目录已清除'
+    })
+    return this.getSnapshot()
+  }
+
+  startPlcSimulator(): Promise<WorkbenchSessionSnapshot> {
+    if (this.snapshot.plcSimulator.phase === 'ready') {
+      return Promise.resolve(this.getSnapshot())
+    }
+    if (this.plcSimulatorStarting) return this.plcSimulatorStarting
+    this.plcSimulatorStopRequested = false
+    this.plcSimulatorStarting = this.startManagedPlcSimulator()
+    return this.plcSimulatorStarting.finally(() => {
+      this.plcSimulatorStarting = null
+    })
+  }
+
+  async stopPlcSimulator(): Promise<WorkbenchSessionSnapshot> {
+    this.plcSimulatorStopRequested = true
+    const projectPath = this.snapshot.plcSimulator.projectPath
+    const child = this.plcSimulatorChild
+    this.plcSimulatorChild = null
+    if (!child) {
+      this.publishPlcSimulator({
+        ...idlePlcSimulatorSnapshot(projectPath),
+        message: 'PLC-Sim 已停止'
+      })
+      return this.getSnapshot()
+    }
+    this.publishPlcSimulator({
+      ...this.snapshot.plcSimulator,
+      phase: 'stopping',
+      message: '正在停止 PLC-Sim…',
+      diagnostic: null
+    })
+    this.expectedPlcSimulatorExit = true
+    await stopProcessTree(child)
+    this.expectedPlcSimulatorExit = false
+    this.publishPlcSimulator({
+      ...idlePlcSimulatorSnapshot(projectPath),
+      message: 'PLC-Sim 已停止'
+    })
+    return this.getSnapshot()
+  }
+
+  private async startManagedPlcSimulator(): Promise<WorkbenchSessionSnapshot> {
+    const identity = this.snapshot.identity
+    if (this.snapshot.phase !== 'ready' || !identity) {
+      throw new Error('请先启动 OS，再启动 PLC-Sim')
+    }
+    const projectPath = this.snapshot.plcSimulator.projectPath
+    this.publishPlcSimulator({
+      ...this.snapshot.plcSimulator,
+      phase: 'validating',
+      message: '正在校验 PLC-Sim 与 Python 环境…',
+      diagnostic: null
+    })
     try {
-      const content = await readFile(logPath)
-      return content.subarray(Math.max(0, content.length - maxBytes)).toString('utf8')
+      const plan = await resolvePlcSimulatorLaunch({
+        environmentPath: identity.environmentPath,
+        projectPath,
+        platform: this.options.platform,
+        inheritedEnvironment: this.options.environment,
+        guiPort: this.options.plcSimulatorGuiPort,
+        opcUaPort: this.options.plcSimulatorOpcUaPort
+      })
+      await Promise.all([
+        requireAvailableLoopbackPort(plan.guiPort, 'PLC-Sim Web GUI'),
+        requireAvailableLoopbackPort(plan.opcUaPort, 'PLC-Sim OPC UA')
+      ])
+      if (this.plcSimulatorStopRequested) {
+        this.publishPlcSimulator({
+          ...idlePlcSimulatorSnapshot(projectPath),
+          message: 'PLC-Sim 已停止'
+        })
+        return this.getSnapshot()
+      }
+      const logPath = join(
+        identity.workspacePath,
+        '.unilabos',
+        'logs',
+        'workbench',
+        'plc-sim.log'
+      )
+      await mkdir(dirname(logPath), { recursive: true })
+      const log = createWriteStream(logPath, { flags: 'a' })
+      log.write(`[workbench] ${new Date().toISOString()} starting PLC-Sim\n`)
+      this.publishPlcSimulator({
+        phase: 'starting',
+        message: '正在启动 PLC-Sim…',
+        projectPath: plan.projectPath,
+        pid: null,
+        guiUrl: plan.guiUrl,
+        opcUaUrl: plan.opcUaUrl,
+        logPath,
+        diagnostic: null
+      })
+      const child = spawn(plan.command, plan.args, {
+        cwd: plan.cwd,
+        env: plan.environment,
+        detached: process.platform !== 'win32',
+        shell: false,
+        windowsHide: true
+      })
+      this.plcSimulatorChild = child
+      const pid = requireProcessId(child.pid)
+      child.stdout.pipe(log, { end: false })
+      child.stderr.pipe(log, { end: false })
+      child.once('error', error => {
+        log.write(`[workbench] PLC-Sim spawn error: ${error.message}\n`)
+      })
+      child.once('close', (code, signal) => {
+        log.end(
+          `[workbench] PLC-Sim exited code=${String(code)} signal=${String(signal)}\n`
+        )
+        if (this.plcSimulatorChild === child) this.plcSimulatorChild = null
+        if (!this.expectedPlcSimulatorExit) {
+          this.publishPlcSimulator({
+            ...this.snapshot.plcSimulator,
+            phase: 'failed',
+            message: 'PLC-Sim 已意外退出',
+            pid: null,
+            diagnostic: `进程退出（code=${String(code)}, signal=${String(signal)}）`
+          })
+        }
+      })
+      this.publishPlcSimulator({
+        ...this.snapshot.plcSimulator,
+        phase: 'waiting',
+        message: 'PLC-Sim 进程已启动，正在等待 Web GUI…',
+        pid
+      })
+      await waitForLoopbackPort(
+        plan.guiPort,
+        child,
+        this.options.readinessTimeoutMs ?? DEFAULT_READINESS_TIMEOUT_MS
+      )
+      if (this.plcSimulatorStopRequested) return this.getSnapshot()
+      this.publishPlcSimulator({
+        ...this.snapshot.plcSimulator,
+        phase: 'ready',
+        message: 'PLC-Sim 已就绪；可上传 PLC 变量表',
+        pid,
+        diagnostic: null
+      })
+      return this.getSnapshot()
     } catch (error) {
-      if (isRecord(error) && error['code'] === 'ENOENT') return ''
-      throw error
+      const child = this.plcSimulatorChild
+      this.plcSimulatorChild = null
+      if (child) {
+        this.expectedPlcSimulatorExit = true
+        await stopProcessTree(child)
+        this.expectedPlcSimulatorExit = false
+      }
+      const message = error instanceof Error ? error.message : String(error)
+      if (this.plcSimulatorStopRequested) {
+        this.publishPlcSimulator({
+          ...idlePlcSimulatorSnapshot(projectPath),
+          message: 'PLC-Sim 已停止'
+        })
+        return this.getSnapshot()
+      }
+      this.publishPlcSimulator({
+        ...this.snapshot.plcSimulator,
+        phase: 'failed',
+        message: 'PLC-Sim 启动失败',
+        pid: null,
+        diagnostic: message
+      })
+      throw new Error(message)
     }
+  }
+
+  private publishPlcSimulator(
+    plcSimulator: WorkbenchPlcSimulatorSnapshot
+  ): void {
+    this.publish({
+      ...this.snapshot,
+      plcSimulator
+    })
   }
 
   private async startManaged(): Promise<WorkbenchSessionSnapshot> {
@@ -253,6 +510,17 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
     let launch: ResolvedWorkbenchLaunch
     try {
       launch = await resolveWorkbenchLaunch(this.options)
+      const savedPlcSimulatorProjectPath =
+        await readLocalEnvironmentConfiguration(launch.identity.workspacePath)
+      if (
+        savedPlcSimulatorProjectPath
+        && !this.snapshot.plcSimulator.projectPath
+      ) {
+        this.snapshot = {
+          ...this.snapshot,
+          plcSimulator: idlePlcSimulatorSnapshot(savedPlcSimulatorProjectPath)
+        }
+      }
     } catch (error) {
       const diagnostic = diagnosticFromError(error)
       this.publish({
@@ -454,8 +722,15 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
     }
   }
 
-  private publish(snapshot: WorkbenchSessionSnapshot): void {
-    this.snapshot = cloneSnapshot(snapshot)
+  private publish(
+    snapshot: Omit<WorkbenchSessionSnapshot, 'plcSimulator'> & {
+      plcSimulator?: WorkbenchPlcSimulatorSnapshot
+    }
+  ): void {
+    this.snapshot = cloneSnapshot({
+      ...snapshot,
+      plcSimulator: snapshot.plcSimulator ?? this.snapshot.plcSimulator
+    })
     for (const listener of this.listeners) listener(this.getSnapshot())
   }
 }
@@ -610,7 +885,7 @@ async function resolveWorkbenchLaunch(
     ],
     cwd: workspacePath,
     environment: {
-      ...activatedRuntimeEnvironment(environmentPath, platform, environment),
+      ...activatedCondaEnvironment(environmentPath, platform, environment),
       PYTHONPATH: mergePathList(
         [osProjectPath, workspacePath, environment['PYTHONPATH']],
         platform === 'win32' ? ';' : ':'
@@ -642,7 +917,13 @@ async function ensureWorkbenchStateIgnored(workbenchRoot: string): Promise<void>
   }
   const lines = new Set(existing.split(/\r?\n/).filter(Boolean))
   let changed = false
-  for (const rule of ['runtime/', 'logs/', 'agent/', '.gitignore']) {
+  for (const rule of [
+    'runtime/',
+    'logs/',
+    'agent/',
+    LOCAL_ENVIRONMENT_CONFIG,
+    '.gitignore'
+  ]) {
     if (lines.has(rule)) continue
     lines.add(rule)
     changed = true
@@ -853,35 +1134,11 @@ async function resolveRuntimeEnvironmentPath({
       '重新选择同时包含 Python 与 unilab CLI 的兼容环境'
     )
   }
-  const pathCandidates = (environment['PATH'] ?? '')
-    .split(platform === 'win32' ? ';' : ':')
-    .filter(Boolean)
-    .map(pathEntry => platform === 'win32'
-      ? dirname(pathEntry)
-      : dirname(pathEntry))
-  const candidates = [
-    environment['CONDA_PREFIX'],
-    ...pathCandidates,
-    join(homeDirectory, 'miniforge3', 'envs', 'unilab'),
-    join(homeDirectory, 'mambaforge', 'envs', 'unilab'),
-    join(homeDirectory, 'miniconda3', 'envs', 'unilab'),
-    join(homeDirectory, 'anaconda3', 'envs', 'unilab'),
-    join(homeDirectory, '.conda', 'envs', 'unilab'),
-    join(homeDirectory, '.micromamba', 'envs', 'unilab')
-  ]
-  const visited = new Set<string>()
-  for (const candidate of candidates) {
-    if (!candidate) continue
-    const normalizedCandidate = normalize(resolve(candidate))
-    if (visited.has(normalizedCandidate)) continue
-    visited.add(normalizedCandidate)
-    const resolvedCandidate = await validRuntimeEnvironment(
-      normalizedCandidate,
-      platform
-    )
-    if (resolvedCandidate) return resolvedCandidate
-  }
-  return null
+  return await discoverDefaultCondaEnvironment({
+    environment,
+    homeDirectory,
+    platform
+  })
 }
 
 async function requireRealDirectory(
@@ -1027,6 +1284,104 @@ async function stopProcessTree(child: ChildProcessWithoutNullStreams): Promise<v
   }
 }
 
+function idlePlcSimulatorSnapshot(
+  projectPath: string
+): WorkbenchPlcSimulatorSnapshot {
+  return {
+    phase: 'idle',
+    message: projectPath ? 'PLC-Sim 尚未启动' : '尚未选择 PLC-Sim 项目目录',
+    projectPath,
+    pid: null,
+    guiUrl: `http://${LOOPBACK_HOST}:${PLC_SIMULATOR_GUI_PORT}`,
+    opcUaUrl: `opc.tcp://${LOOPBACK_HOST}:${PLC_SIMULATOR_OPC_UA_PORT}`,
+    logPath: '',
+    diagnostic: null
+  }
+}
+
+async function readLogTailFromPath(
+  logPath: string | undefined,
+  maxBytes: number
+): Promise<string> {
+  if (!Number.isInteger(maxBytes) || maxBytes < 1 || maxBytes > 1024 * 1024) {
+    throw new Error('Workbench 日志读取上限必须在 1–1048576 字节之间')
+  }
+  if (!logPath) return ''
+  try {
+    const content = await readFile(logPath)
+    return content.subarray(Math.max(0, content.length - maxBytes)).toString('utf8')
+  } catch (error) {
+    if (isRecord(error) && error['code'] === 'ENOENT') return ''
+    throw error
+  }
+}
+
+async function waitForLoopbackPort(
+  port: number,
+  child: ChildProcessWithoutNullStreams,
+  timeoutMs: number
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (child.exitCode !== null || child.signalCode !== null) {
+      throw new Error('PLC-Sim 在 Web GUI 就绪前退出')
+    }
+    if (await canConnectToLoopbackPort(port)) return
+    await delay(250)
+  }
+  throw new Error(`等待 PLC-Sim Web GUI 就绪超时：${LOOPBACK_HOST}:${port}`)
+}
+
+function canConnectToLoopbackPort(port: number): Promise<boolean> {
+  return new Promise(resolveConnected => {
+    const socket = createConnection({ host: LOOPBACK_HOST, port })
+    let settled = false
+    const finish = (connected: boolean): void => {
+      if (settled) return
+      settled = true
+      socket.destroy()
+      resolveConnected(connected)
+    }
+    socket.setTimeout(750)
+    socket.once('connect', () => finish(true))
+    socket.once('timeout', () => finish(false))
+    socket.once('error', () => finish(false))
+  })
+}
+
+async function readLocalEnvironmentConfiguration(
+  workspacePath: string
+): Promise<string | null> {
+  try {
+    const content = JSON.parse(await readFile(
+      join(workspacePath, '.unilabos', LOCAL_ENVIRONMENT_CONFIG),
+      'utf8'
+    )) as unknown
+    return isRecord(content) && content['schemaVersion'] === 1
+      && typeof content['plcSimulatorProjectPath'] === 'string'
+      ? content['plcSimulatorProjectPath']
+      : null
+  } catch {
+    return null
+  }
+}
+
+async function writeLocalEnvironmentConfiguration(
+  workspacePath: string,
+  plcSimulatorProjectPath: string
+): Promise<void> {
+  const resolvedWorkspacePath = await realpath(resolve(workspacePath))
+  const workbenchRoot = join(resolvedWorkspacePath, '.unilabos')
+  await ensureWorkbenchStateIgnored(workbenchRoot)
+  const configPath = join(workbenchRoot, LOCAL_ENVIRONMENT_CONFIG)
+  const temporaryPath = `${configPath}.${process.pid}.tmp`
+  await writeFile(temporaryPath, `${JSON.stringify({
+    schemaVersion: 1,
+    plcSimulatorProjectPath
+  }, null, 2)}\n`, { mode: 0o600 })
+  await rename(temporaryPath, configPath)
+}
+
 function isHealthReady(payload: unknown): boolean {
   return isRecord(payload) && payload['status'] === 'ok'
 }
@@ -1060,6 +1415,7 @@ function mergePathList(
 function cloneSnapshot(snapshot: WorkbenchSessionSnapshot): WorkbenchSessionSnapshot {
   return {
     ...snapshot,
+    plcSimulator: { ...snapshot.plcSimulator },
     identity: snapshot.identity ? {
       ...snapshot.identity,
       packageMounts: snapshot.identity.packageMounts ? {
