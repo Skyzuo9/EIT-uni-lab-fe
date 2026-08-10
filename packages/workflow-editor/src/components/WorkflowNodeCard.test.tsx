@@ -146,6 +146,30 @@ describe('Action node presentation', () => {
       laneIndex: 4
     }))
   })
+
+  /** 验证主样品蛇形布局可用物料来源中文名称替代不透明的 Python 变量名。 */
+  it('uses the traced material source name as the compact feed label', () => {
+    const reagent = materialHandle(
+      'coarse-powder-target',
+      'coarse_powder_cartridge',
+      'target',
+      { title: 'coarse_powder_cartridge' }
+    )
+
+    const cards = workflowMaterialPortCards(
+      [reagent],
+      { 'coarse-powder-target': '#8056a8' },
+      undefined,
+      { 'coarse-powder-target': 'reagent' },
+      { 'coarse-powder-target': '试剂：选择粗投粉桶' }
+    )
+
+    expect(cards[0]).toEqual(expect.objectContaining({
+      label: '试剂：选择粗投粉桶',
+      variableName: 'coarse_powder_cartridge',
+      materialRole: 'reagent'
+    }))
+  })
 })
 
 function materialHandle(
