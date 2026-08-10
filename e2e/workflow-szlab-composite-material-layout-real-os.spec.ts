@@ -296,6 +296,12 @@ test('SZLab composite material workflow uses one orthogonal visible layout', asy
   expect(verticalTransferEvidence.every((item) =>
     item.crossAxisDelta <= 1 && item.edgeDelta <= 2
   ), JSON.stringify(verticalTransferEvidence, null, 2)).toBe(true)
+  const verticalTransferCopyEvidence = await transferCopyEvidence(
+    robotTransferNodes
+  )
+  expect(verticalTransferCopyEvidence.every((item) =>
+    item.direction === 'vertical' && item.onExpectedSide && !item.overlap
+  ), JSON.stringify(verticalTransferCopyEvidence, null, 2)).toBe(true)
   await focusViewportOn(panel, reagentNode, 1)
   await screenshotAround(page, reagentNode, resolve(
     artifactDirectory,
@@ -491,6 +497,12 @@ test('SZLab composite material workflow uses one orthogonal visible layout', asy
   expect(horizontalTransferEvidence.every((item) =>
     item.crossAxisDelta <= 1 && item.edgeDelta <= 2
   ), JSON.stringify(horizontalTransferEvidence, null, 2)).toBe(true)
+  const horizontalTransferCopyEvidence = await transferCopyEvidence(
+    robotTransferNodes
+  )
+  expect(horizontalTransferCopyEvidence.every((item) =>
+    item.direction === 'horizontal' && item.onExpectedSide && !item.overlap
+  ), JSON.stringify(horizontalTransferCopyEvidence, null, 2)).toBe(true)
   await focusViewportOn(panel, reagentNode, 1)
   await screenshotAround(page, reagentNode, resolve(
     artifactDirectory,
@@ -508,7 +520,9 @@ test('SZLab composite material workflow uses one orthogonal visible layout', asy
     robot_transfer_nodes: {
       count: await robotTransferNodes.count(),
       vertical_handles: verticalTransferEvidence,
-      horizontal_handles: horizontalTransferEvidence
+      vertical_copy: verticalTransferCopyEvidence,
+      horizontal_handles: horizontalTransferEvidence,
+      horizontal_copy: horizontalTransferCopyEvidence
     },
     material_edges: await materialEdges.count(),
     ready_edges: await readyEdges.count(),
@@ -604,6 +618,57 @@ interface TransferHandleEvidence {
   io: string
   crossAxisDelta: number
   edgeDelta: number
+}
+
+interface TransferCopyEvidence {
+  nodeId: string
+  direction: string
+  gap: number
+  onExpectedSide: boolean
+  overlap: boolean
+}
+
+/** 验证机械臂复合节点的外浮文字按画布方向置于菱形上方或左侧。 */
+async function transferCopyEvidence(
+  nodes: Locator
+): Promise<TransferCopyEvidence[]> {
+  return nodes.evaluateAll((elements) => elements.map((element) => {
+    const node = element as HTMLElement
+    const copy = node.querySelector<HTMLElement>(
+      '.wf-node__robot-transfer-copy'
+    )
+    const visual = node.querySelector<HTMLElement>(
+      '[data-workflow-robot-arm]'
+    )
+    if (!copy || !visual) {
+      return {
+        nodeId: node.dataset.workflowNodeUuid ?? '',
+        direction: node.dataset.workflowLayoutDirection ?? '',
+        gap: Number.NEGATIVE_INFINITY,
+        onExpectedSide: false,
+        overlap: true
+      }
+    }
+    const copyRect = copy.getBoundingClientRect()
+    const visualRect = visual.getBoundingClientRect()
+    const direction = node.dataset.workflowLayoutDirection ?? ''
+    const horizontal = direction === 'horizontal'
+    return {
+      nodeId: node.dataset.workflowNodeUuid ?? '',
+      direction,
+      gap: horizontal
+        ? visualRect.top - copyRect.bottom
+        : visualRect.left - copyRect.right,
+      onExpectedSide: horizontal
+        ? copyRect.bottom <= visualRect.top
+        : copyRect.right <= visualRect.left,
+      overlap:
+        copyRect.left < visualRect.right &&
+        copyRect.right > visualRect.left &&
+        copyRect.top < visualRect.bottom &&
+        copyRect.bottom > visualRect.top
+    }
+  }))
 }
 
 /** 验证物料流（MaterialFlow）句柄位于机械臂菱形外缘并与其中心轴对齐。 */

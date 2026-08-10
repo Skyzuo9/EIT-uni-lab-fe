@@ -77,11 +77,11 @@ describe('layoutVisibleWorkflowDag', () => {
     const result = await layoutVisibleWorkflowDag(nodes, links)
     const byId = new Map(result.nodes.map((node) => [node.id, node]))
 
-    expect(byId.get('beaker-source')?.x).toBe(
-      (byId.get('prepare-beaker')?.x ?? 0) + 81
+    expect((byId.get('beaker-source')?.x ?? 0) + 148).toBe(
+      (byId.get('prepare-beaker')?.x ?? 0) + 149
     )
-    expect(byId.get('powder-source')?.x).toBe(
-      (byId.get('prepare-powder')?.x ?? 0) + 81
+    expect((byId.get('powder-source')?.x ?? 0) + 148).toBe(
+      (byId.get('prepare-powder')?.x ?? 0) + 149
     )
   })
 

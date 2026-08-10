@@ -97,6 +97,28 @@ export default function WorkflowTransferNode({
         <small title={materialPort.description}>
           {materialPort.label} · 机械臂转运
         </small>
+        {data.groupKind === 'subworkflow' && (
+          <button
+            type="button"
+            className="wf-node__robot-transfer-toggle"
+            data-subworkflow-toggle
+            aria-expanded={Boolean(data.groupExpanded)}
+            aria-label={`${data.groupExpanded ? '折叠' : '展开'}子工作流 ${data.name || data.id}`}
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation()
+              data.onToggleGroup?.(data.id)
+            }}
+          >
+            <span aria-hidden="true">{data.groupExpanded ? '▾' : '▸'}</span>
+            {data.descendantCount || 0} 个内部节点
+          </button>
+        )}
+        {stateVisible && (
+          <span className={`wf-node__robot-transfer-state wf-node__state--${data.status || 'pending'}`}>
+            {stateLabel}
+          </span>
+        )}
       </span>
       {(data.startNode || data.breakpoint || data.pausedBefore || data.beforeStart) && (
         <span className="wf-node__robot-transfer-flags" aria-label="调试标记">
@@ -104,28 +126,6 @@ export default function WorkflowTransferNode({
           {data.breakpoint && <span title="断点">●</span>}
           {data.pausedBefore && <span title="下一步执行">▶</span>}
           {data.beforeStart && <span title="不执行">⊘</span>}
-        </span>
-      )}
-      {data.groupKind === 'subworkflow' && (
-        <button
-          type="button"
-          className="wf-node__robot-transfer-toggle"
-          data-subworkflow-toggle
-          aria-expanded={Boolean(data.groupExpanded)}
-          aria-label={`${data.groupExpanded ? '折叠' : '展开'}子工作流 ${data.name || data.id}`}
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={(event) => {
-            event.stopPropagation()
-            data.onToggleGroup?.(data.id)
-          }}
-        >
-          <span aria-hidden="true">{data.groupExpanded ? '▾' : '▸'}</span>
-          {data.descendantCount || 0} 个内部节点
-        </button>
-      )}
-      {stateVisible && (
-        <span className={`wf-node__robot-transfer-state wf-node__state--${data.status || 'pending'}`}>
-          {stateLabel}
         </span>
       )}
       {(data.onSetStart || data.onToggleBreakpoint) && (

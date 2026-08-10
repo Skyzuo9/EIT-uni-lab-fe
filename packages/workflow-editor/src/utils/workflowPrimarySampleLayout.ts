@@ -26,7 +26,7 @@ const SUPPORTING_BRANCH_VERTICAL_GAP = 44
 const ROW_CLEARANCE = 112
 const COMPACT_NODE_BASE_HEIGHT = 48
 const COMPACT_MATERIAL_CARD_HEIGHT = 33
-const SPECIAL_NODE_HEIGHT = 72
+const SPECIAL_NODE_HEIGHT = 126
 
 export interface WorkflowPrimarySampleLayoutOptions {
   supportingMaterialPresentation?: WorkflowSupportingMaterialPresentation

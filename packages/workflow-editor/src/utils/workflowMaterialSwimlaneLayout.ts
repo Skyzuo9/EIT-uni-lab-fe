@@ -5,18 +5,23 @@ import { projectMaterialTraces } from './workflowMaterialTrace'
 export const WORKFLOW_MATERIAL_LANE_GAP = 192
 export const WORKFLOW_MATERIAL_ACTION_FIRST_HANDLE_X = 191
 export const WORKFLOW_MATERIAL_ACTION_FIRST_HANDLE_Y = 56
-export const WORKFLOW_TRANSFER_NODE_HANDLE_AXIS = 36
+export const WORKFLOW_VERTICAL_MATERIAL_SOURCE_HANDLE_AXIS = 148
+export const WORKFLOW_HORIZONTAL_MATERIAL_SOURCE_HANDLE_AXIS = 90
+export const WORKFLOW_VERTICAL_TRANSFER_NODE_HANDLE_AXIS = 140
+export const WORKFLOW_HORIZONTAL_TRANSFER_NODE_HANDLE_AXIS = 90
 
 const LANE_ORIGIN_X = 320
 const LANE_ORIGIN_Y = 220
-const MATERIAL_SOURCE_WIDTH = 136
-const MATERIAL_SOURCE_HEIGHT = 148
-const HORIZONTAL_MATERIAL_SOURCE_WIDTH = 180
-const HORIZONTAL_MATERIAL_SOURCE_HEIGHT = 72
+const MATERIAL_SOURCE_WIDTH = 184
+const MATERIAL_SOURCE_HEIGHT = 72
+const HORIZONTAL_MATERIAL_SOURCE_WIDTH = 112
+const HORIZONTAL_MATERIAL_SOURCE_HEIGHT = 126
 const ACTION_NODE_HEIGHT = 64
 const HORIZONTAL_ACTION_NODE_WIDTH = 280
-const TRANSFER_NODE_WIDTH = 168
+const TRANSFER_NODE_WIDTH = 176
 const TRANSFER_NODE_HEIGHT = 72
+const HORIZONTAL_TRANSFER_NODE_WIDTH = 120
+const HORIZONTAL_TRANSFER_NODE_HEIGHT = 126
 const ACTION_NODE_TRAILING_WIDTH = 150
 const ACTION_NODE_MIN_WIDTH = 248
 const NODE_HORIZONTAL_GAP = 36
@@ -160,7 +165,7 @@ function layoutVerticalMaterialSwimlanes(
       const laneIndex = Math.min(...laneIndexes)
       return {
         node,
-        x: lanes[laneIndex]!.x - MATERIAL_SOURCE_WIDTH / 2,
+        x: lanes[laneIndex]!.x - WORKFLOW_VERTICAL_MATERIAL_SOURCE_HANDLE_AXIS,
         width: MATERIAL_SOURCE_WIDTH,
         height: MATERIAL_SOURCE_HEIGHT
       }
@@ -175,7 +180,7 @@ function layoutVerticalMaterialSwimlanes(
       })
       return {
         node,
-        x: lanes[laneIndex]!.x - WORKFLOW_TRANSFER_NODE_HANDLE_AXIS,
+        x: lanes[laneIndex]!.x - WORKFLOW_VERTICAL_TRANSFER_NODE_HANDLE_AXIS,
         width: TRANSFER_NODE_WIDTH,
         height: TRANSFER_NODE_HEIGHT
       }
@@ -268,7 +273,8 @@ function layoutHorizontalMaterialSwimlanes(
       const laneIndex = Math.min(...laneIndexes)
       return {
         node,
-        y: lanes[laneIndex]!.axis - HORIZONTAL_MATERIAL_SOURCE_HEIGHT / 2,
+        y: lanes[laneIndex]!.axis -
+          WORKFLOW_HORIZONTAL_MATERIAL_SOURCE_HANDLE_AXIS,
         width: HORIZONTAL_MATERIAL_SOURCE_WIDTH,
         height: HORIZONTAL_MATERIAL_SOURCE_HEIGHT
       }
@@ -278,14 +284,14 @@ function layoutHorizontalMaterialSwimlanes(
       nodeLayouts.set(node.id, {
         startLane: laneIndex,
         endLane: laneIndex,
-        width: TRANSFER_NODE_WIDTH,
-        height: TRANSFER_NODE_HEIGHT
+        width: HORIZONTAL_TRANSFER_NODE_WIDTH,
+        height: HORIZONTAL_TRANSFER_NODE_HEIGHT
       })
       return {
         node,
-        y: lanes[laneIndex]!.axis - WORKFLOW_TRANSFER_NODE_HANDLE_AXIS,
-        width: TRANSFER_NODE_WIDTH,
-        height: TRANSFER_NODE_HEIGHT
+        y: lanes[laneIndex]!.axis - WORKFLOW_HORIZONTAL_TRANSFER_NODE_HANDLE_AXIS,
+        width: HORIZONTAL_TRANSFER_NODE_WIDTH,
+        height: HORIZONTAL_TRANSFER_NODE_HEIGHT
       }
     }
     if (laneIndexes.length > 0) {

@@ -9,8 +9,11 @@ import {
   layoutWorkflowMaterialSwimlanes,
   WORKFLOW_MATERIAL_ACTION_FIRST_HANDLE_X,
   WORKFLOW_MATERIAL_ACTION_FIRST_HANDLE_Y,
+  WORKFLOW_HORIZONTAL_MATERIAL_SOURCE_HANDLE_AXIS,
+  WORKFLOW_HORIZONTAL_TRANSFER_NODE_HANDLE_AXIS,
   WORKFLOW_MATERIAL_LANE_GAP,
-  WORKFLOW_TRANSFER_NODE_HANDLE_AXIS
+  WORKFLOW_VERTICAL_MATERIAL_SOURCE_HANDLE_AXIS,
+  WORKFLOW_VERTICAL_TRANSFER_NODE_HANDLE_AXIS
 } from './workflowMaterialSwimlaneLayout'
 
 describe('layoutWorkflowMaterialSwimlanes', () => {
@@ -166,15 +169,15 @@ describe('layoutWorkflowMaterialSwimlanes', () => {
     const horizontal = layoutWorkflowMaterialSwimlanes(nodes, links, 'horizontal')
 
     expect(vertical.swimlanes.nodeLayouts.get('transfer')).toMatchObject({
-      width: 168,
+      width: 176,
       height: 72
     })
     expect(handleCenterX(vertical, 'transfer', transferInput.uuid)).toBe(
       vertical.swimlanes.lanes[0]!.axis
     )
     expect(horizontal.swimlanes.nodeLayouts.get('transfer')).toMatchObject({
-      width: 168,
-      height: 72
+      width: 120,
+      height: 126
     })
     expect(handleCenterY(horizontal, 'transfer', transferOutput.uuid)).toBe(
       horizontal.swimlanes.lanes[0]!.axis
@@ -199,9 +202,11 @@ function handleCenterX(
   const laneIndex = result.swimlanes.handleLaneIndexes
     .get(nodeId)?.get(handleUuid)
   if (!node || laneIndex === undefined) throw new Error('测试物料句柄缺少泳道')
-  if (node.type === 'material_source') return node.x + 68
+  if (node.type === 'material_source') {
+    return node.x + WORKFLOW_VERTICAL_MATERIAL_SOURCE_HANDLE_AXIS
+  }
   if (node.visualKind === 'robot-transfer') {
-    return node.x + WORKFLOW_TRANSFER_NODE_HANDLE_AXIS
+    return node.x + WORKFLOW_VERTICAL_TRANSFER_NODE_HANDLE_AXIS
   }
   const layout = result.swimlanes.nodeLayouts.get(nodeId)
   if (!layout) throw new Error('测试动作节点缺少泳道尺寸')
@@ -226,9 +231,11 @@ function handleCenterY(
   const laneIndex = result.swimlanes.handleLaneIndexes
     .get(nodeId)?.get(handleUuid)
   if (!node || laneIndex === undefined) throw new Error('测试物料句柄缺少泳道')
-  if (node.type === 'material_source') return node.y + 36
+  if (node.type === 'material_source') {
+    return node.y + WORKFLOW_HORIZONTAL_MATERIAL_SOURCE_HANDLE_AXIS
+  }
   if (node.visualKind === 'robot-transfer') {
-    return node.y + WORKFLOW_TRANSFER_NODE_HANDLE_AXIS
+    return node.y + WORKFLOW_HORIZONTAL_TRANSFER_NODE_HANDLE_AXIS
   }
   const layout = result.swimlanes.nodeLayouts.get(nodeId)
   if (!layout) throw new Error('测试动作节点缺少泳道尺寸')

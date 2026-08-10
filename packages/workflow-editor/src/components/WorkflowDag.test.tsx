@@ -262,6 +262,10 @@ describe('WorkflowDag material handles and execution signals', () => {
     expect(stylesheet).toMatch(
       /wf-flow-node--success[\s\S]*wf-node__material-source-visual[\s\S]*wf-node__robot-transfer-visual[\s\S]*drop-shadow[\s\S]*unilab-color-success/
     )
+    const shapeSignalBlock = stylesheet
+      .split('/* 图形节点的运行信号')[1]
+      ?.split('.workflow :global(.wf-node__state--running)')[0] ?? ''
+    expect(shapeSignalBlock).not.toMatch(/background:/)
     expect(stylesheet).toContain('@keyframes workflow-execution-running-signal')
     expect(stylesheet).toContain(
       '@keyframes workflow-execution-running-shape-signal'
@@ -306,6 +310,12 @@ describe('WorkflowDag material handles and execution signals', () => {
     )
     expect(transferStylesheet).toMatch(
       /robot-transfer-visual\)::before[\s\S]*background:\s*var\(--unilab-color-surface\)/
+    )
+    expect(transferStylesheet).toMatch(
+      /wf-node--robot-transfer[\s\S]*flex-direction:\s*row-reverse/
+    )
+    expect(transferStylesheet).toMatch(
+      /layout-direction='horizontal'[\s\S]*flex-direction:\s*column-reverse/
     )
   })
 })
