@@ -30,6 +30,7 @@ export function PersistentWorkflowAuthoringView({
 }): React.JSX.Element {
   const {
     actionCatalog,
+    actionCatalogError,
     addMaterialSourceNode,
     addPublishedWorkflowNode,
     addTypedActionNode,
@@ -371,6 +372,11 @@ export function PersistentWorkflowAuthoringView({
                   </section>
                   <section aria-label="动作（Action）模板">
                     <h3>操作</h3>
+                    {actionCatalogError && (
+                      <div className="persistent-authoring__palette-problem">
+                        <p>{actionCatalogError}；正在自动重试</p>
+                      </div>
+                    )}
                     <div className="persistent-authoring__palette-actions">
                       {actionCatalog?.actionTemplates.map((template) => (
                         <WorkflowButton

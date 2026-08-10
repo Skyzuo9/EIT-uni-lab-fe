@@ -79,6 +79,10 @@ implements WorkbenchSessionServer, BackendApplicationContribution {
     return this.session.stopPlcSimulator()
   }
 
+  setRuntimeMode(mode: Parameters<WorkbenchSession['setRuntimeMode']>[0]) {
+    return this.session.setRuntimeMode(mode)
+  }
+
   setClient(client: WorkbenchSessionClient): void {
     this.sessionListener?.dispose()
     this.sessionListener = this.session.onDidChange(snapshot => {

@@ -22,7 +22,7 @@ const sessions: WorkbenchSession[] = []
 const fixtureRoots: string[] = []
 
 afterEach(async () => {
-  await Promise.allSettled(sessions.splice(0).map(session => session.stop()))
+  await Promise.allSettled(sessions.splice(0).map(session => session.stopAll()))
   await Promise.all(fixtureRoots.splice(0).map(root => rm(root, {
     recursive: true,
     force: true
@@ -63,7 +63,7 @@ describe('managed local Workbench session', () => {
           'graphs',
           'szlab-local-debug.json'
         ),
-        mode: 'simulation'
+        mode: 'normal'
       }
     })
     expect(ready.identity?.pid).toBeGreaterThan(0)
@@ -199,6 +199,8 @@ describe('managed local Workbench session', () => {
       workspacePath: fixture.workspacePath,
       osProjectPath: fixture.osProjectPath,
       environmentPath: fixture.environmentPath,
+      plcSimulatorGuiPort: fixture.plcSimulatorGuiPort,
+      plcSimulatorOpcUaPort: fixture.plcSimulatorOpcUaPort,
       readinessTimeoutMs: 5_000
     })
     sessions.push(session)
@@ -210,8 +212,8 @@ describe('managed local Workbench session', () => {
     expect(plcReady.plcSimulator).toMatchObject({
       phase: 'ready',
       projectPath: fixture.plcSimulatorPath,
-      guiUrl: 'http://127.0.0.1:18765',
-      opcUaUrl: 'opc.tcp://127.0.0.1:4855'
+      guiUrl: `http://127.0.0.1:${fixture.plcSimulatorGuiPort}`,
+      opcUaUrl: `opc.tcp://127.0.0.1:${fixture.plcSimulatorOpcUaPort}`
     })
     expect(plcReady.plcSimulator.pid).toBeGreaterThan(0)
     await expect(session.readEnvironmentLog('plc-sim')).resolves.toContain(
@@ -232,6 +234,50 @@ describe('managed local Workbench session', () => {
       join(fixture.workspacePath, '.unilabos', 'environment.local.json'),
       'utf8'
     )).resolves.toContain(fixture.plcSimulatorPath)
+  })
+
+  it('defaults to normal actions and exposes isolated Dry-run as an explicit restart', async () => {
+    const fixture = await createFixture()
+    const session = createManagedLocalWorkbenchSession({
+      workspacePath: fixture.workspacePath,
+      osProjectPath: fixture.osProjectPath,
+      environmentPath: fixture.environmentPath,
+      plcSimulatorGuiPort: fixture.plcSimulatorGuiPort,
+      plcSimulatorOpcUaPort: fixture.plcSimulatorOpcUaPort,
+      readinessTimeoutMs: 5_000
+    })
+    sessions.push(session)
+
+    const normal = await session.start()
+    expect(normal.identity?.mode).toBe('normal')
+    const dryRun = await session.setRuntimeMode('dry-run')
+
+    expect(dryRun.identity).toMatchObject({
+      mode: 'dry-run',
+      graphPath: join(
+        fixture.workspacePath,
+        'deployment',
+        'graphs',
+        'szlab-local-debug.json'
+      )
+    })
+    await session.configurePlcSimulator(fixture.plcSimulatorPath)
+    await session.startPlcSimulator()
+    const normalAgain = await session.setRuntimeMode('normal')
+
+    expect(normalAgain.identity).toMatchObject({
+      mode: 'normal',
+      graphPath: join(
+        fixture.workspacePath,
+        'deployment',
+        'graphs',
+        'szlab-plc-sim-local.json'
+      )
+    })
+    await expect(readFile(
+      join(fixture.workspacePath, '.unilabos', 'environment.local.json'),
+      'utf8'
+    )).resolves.toContain('"runtimeMode": "normal"')
   })
 
   it('cancels PLC-Sim while its launch plan is still validating', async () => {
@@ -341,6 +387,8 @@ async function createFixture(): Promise<{
   osProjectPath: string
   environmentPath: string
   plcSimulatorPath: string
+  plcSimulatorGuiPort: number
+  plcSimulatorOpcUaPort: number
 }> {
   const root = await realpath(
     await mkdtemp(join(tmpdir(), 'unilab-workbench-session-'))
@@ -350,6 +398,10 @@ async function createFixture(): Promise<{
   const osProjectPath = join(root, 'Uni-Lab-OS')
   const environmentPath = join(root, 'unilab-env')
   const plcSimulatorPath = join(root, 'PLC-Sim')
+  const plcSimulatorGuiPort = await findAvailableLoopbackPort()
+  const plcSimulatorOpcUaPort = await findAvailableLoopbackPort(
+    plcSimulatorGuiPort
+  )
   await Promise.all([
     mkdir(join(workspacePath, 'deployment', 'graphs'), { recursive: true }),
     mkdir(join(osProjectPath, 'unilabos'), { recursive: true }),
@@ -360,6 +412,10 @@ async function createFixture(): Promise<{
     writeFile(join(workspacePath, 'deployment', 'local_config.py'), 'class BasicConfig:\n    pass\n'),
     writeFile(
       join(workspacePath, 'deployment', 'graphs', 'szlab-local-debug.json'),
+      '{}\n'
+    ),
+    writeFile(
+      join(workspacePath, 'deployment', 'graphs', 'szlab-plc-sim-local.json'),
       '{}\n'
     ),
     writeFile(join(environmentPath, 'bin', 'python'), fakePlcSimulatorExecutable()),
@@ -377,8 +433,26 @@ async function createFixture(): Promise<{
     workspacePath,
     osProjectPath,
     environmentPath,
-    plcSimulatorPath
+    plcSimulatorPath,
+    plcSimulatorGuiPort,
+    plcSimulatorOpcUaPort
   }
+}
+
+async function findAvailableLoopbackPort(excludedPort?: number): Promise<number> {
+  const server = createServer()
+  await new Promise<void>((resolveListen, reject) => {
+    server.once('error', reject)
+    server.listen(0, '127.0.0.1', resolveListen)
+  })
+  const address = server.address()
+  if (!address || typeof address === 'string') {
+    server.close()
+    throw new Error('fixture server did not expose a TCP port')
+  }
+  await new Promise<void>(resolveClose => server.close(() => resolveClose()))
+  if (address.port === excludedPort) return findAvailableLoopbackPort(excludedPort)
+  return address.port
 }
 
 function fakePlcSimulatorExecutable(): string {

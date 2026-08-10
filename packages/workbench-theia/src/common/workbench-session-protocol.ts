@@ -1,5 +1,6 @@
 import type {
   WorkbenchEnvironmentLogKind,
+  WorkbenchRuntimeMode,
   WorkbenchSessionSnapshot
 } from '@unilab/workbench-session'
 
@@ -25,4 +26,5 @@ export interface WorkbenchSessionServer {
   configurePlcSimulator(projectPath: string): Promise<WorkbenchSessionSnapshot>
   startPlcSimulator(): Promise<WorkbenchSessionSnapshot>
   stopPlcSimulator(): Promise<WorkbenchSessionSnapshot>
+  setRuntimeMode(mode: WorkbenchRuntimeMode): Promise<WorkbenchSessionSnapshot>
 }

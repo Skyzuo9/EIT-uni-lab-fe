@@ -53,6 +53,7 @@ import {
 } from '@unilab/workflow-ide-bridge'
 import type {
   WorkbenchEnvironmentLogKind,
+  WorkbenchRuntimeMode,
   WorkbenchSessionSnapshot
 } from '@unilab/workbench-session'
 import * as React from 'react'
@@ -224,6 +225,20 @@ export class TheiaWorkflowPrototypeWidget extends ReactWidget {
   protected readonly stopPlcSimulator = async (): Promise<void> => {
     await this.workbenchSession.stopPlcSimulator()
     await this.refreshSessionSnapshot()
+  }
+
+  protected readonly setRuntimeMode = async (
+    mode: WorkbenchRuntimeMode
+  ): Promise<void> => {
+    try {
+      await this.workbenchSession.setRuntimeMode(mode)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      void this.messages.error(`OS 模式切换失败：${message}`)
+      throw error
+    } finally {
+      await this.refreshSessionSnapshot()
+    }
   }
 
   protected observeCurrentEditor(render = true): void {
@@ -463,6 +478,7 @@ export class TheiaWorkflowPrototypeWidget extends ReactWidget {
         onConfigurePlcSimulator={this.configurePlcSimulator}
         onStartPlcSimulator={this.startPlcSimulator}
         onStopPlcSimulator={this.stopPlcSimulator}
+        onSetRuntimeMode={this.setRuntimeMode}
         onStopSession={this.stopSession}
       />
     )
@@ -531,6 +547,7 @@ function EnvironmentManager({
   onConfigurePlcSimulator,
   onStartPlcSimulator,
   onStopPlcSimulator,
+  onSetRuntimeMode,
   onStopSession
 }: {
   session: WorkbenchSessionSnapshot
@@ -540,6 +557,7 @@ function EnvironmentManager({
   onConfigurePlcSimulator: (projectPath: string) => Promise<void>
   onStartPlcSimulator: () => Promise<void>
   onStopPlcSimulator: () => Promise<void>
+  onSetRuntimeMode: (mode: WorkbenchRuntimeMode) => Promise<void>
   onStopSession: () => Promise<void>
 }): React.JSX.Element {
   const identity = session.identity
@@ -619,9 +637,41 @@ function EnvironmentManager({
           message={session.message}
           facts={[
             ['PID', String(identity?.pid ?? '—')],
+            ['启动模式', identity?.mode === 'dry-run' ? 'Dry-run' : '正常运行'],
             ['API', identity?.backendUrl ?? '—'],
             ['Python', identity?.environmentPath ?? '—']
           ]}
+          content={(
+            <div
+              className="unilab-environment-manager__mode"
+              role="group"
+              aria-label="OS 运行模式"
+            >
+              <button
+                type="button"
+                className={identity?.mode === 'normal' ? 'is-active' : ''}
+                disabled={Boolean(busyAction)}
+                onClick={() => {
+                  if (identity?.mode === 'normal') return
+                  if (!globalThis.confirm('关闭 Dry-run 并以正常动作路径重启 OS？')) return
+                  void run('switch-mode', () => onSetRuntimeMode('normal'))
+                }}
+              >正常运行</button>
+              <button
+                type="button"
+                className={identity?.mode === 'dry-run' ? 'is-active' : ''}
+                disabled={Boolean(busyAction)}
+                title="动作返回模拟成功；每次 OS 重启使用新的隔离运行数据库"
+                onClick={() => {
+                  if (identity?.mode === 'dry-run') return
+                  if (!globalThis.confirm(
+                    '启用 Dry-run 将以 --action_mode simulate 重启 OS，动作不会发送给设备。确认继续？'
+                  )) return
+                  void run('switch-mode', () => onSetRuntimeMode('dry-run'))
+                }}
+              >Dry-run</button>
+            </div>
+          )}
           actions={(
             <>
               <button
@@ -787,6 +837,7 @@ function WorkbenchSurface({
   onConfigurePlcSimulator,
   onStartPlcSimulator,
   onStopPlcSimulator,
+  onSetRuntimeMode,
   onStopSession
 }: {
   backendUrl: string
@@ -799,6 +850,7 @@ function WorkbenchSurface({
   onConfigurePlcSimulator: (projectPath: string) => Promise<void>
   onStartPlcSimulator: () => Promise<void>
   onStopPlcSimulator: () => Promise<void>
+  onSetRuntimeMode: (mode: WorkbenchRuntimeMode) => Promise<void>
   onStopSession: () => Promise<void>
 }): React.JSX.Element {
   const [surface, setSurface] = useState<'workflow' | 'material'>('workflow')
@@ -914,6 +966,7 @@ function WorkbenchSurface({
             onConfigurePlcSimulator={onConfigurePlcSimulator}
             onStartPlcSimulator={onStartPlcSimulator}
             onStopPlcSimulator={onStopPlcSimulator}
+            onSetRuntimeMode={onSetRuntimeMode}
             onStopSession={onStopSession}
           />
         ) : null}

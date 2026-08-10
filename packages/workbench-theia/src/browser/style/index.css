@@ -255,6 +255,32 @@
   font: 10px/1 var(--unilab-font-mono);
 }
 
+.unilab-environment-manager__mode {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 4px;
+  border: 1px solid var(--unilab-color-border);
+  border-radius: var(--unilab-radius-control);
+  background: var(--unilab-color-canvas);
+}
+
+.unilab-environment-manager__mode button {
+  padding: 6px 10px;
+  border: 0;
+  border-radius: calc(var(--unilab-radius-control) - 2px);
+  color: var(--unilab-color-text-muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.unilab-environment-manager__mode button.is-active {
+  color: var(--unilab-color-primary);
+  background: var(--unilab-color-primary-soft);
+  box-shadow: var(--unilab-shadow-control);
+}
+
 .unilab-environment-card__actions {
   display: flex;
   flex-wrap: wrap;
@@ -329,14 +355,6 @@
   background: var(--unilab-color-canvas);
   font: 10px/1.45 var(--unilab-font-mono);
   white-space: pre-wrap;
-}
-
-.unilab-theia-prototype__debug {
-  flex: 0 0 auto;
-  padding: 4px 10px;
-  border-bottom: 1px solid var(--unilab-color-border);
-  color: var(--unilab-color-text-muted);
-  background: var(--unilab-color-surface-subtle);
 }
 
 .unilab-theia-prototype__debug dl {

@@ -62,6 +62,8 @@ export interface WorkbenchSessionDiagnostic {
   recovery: string
 }
 
+export type WorkbenchRuntimeMode = 'normal' | 'dry-run'
+
 export interface WorkbenchSessionIdentity {
   workspacePath: string
   osProjectPath: string
@@ -72,7 +74,7 @@ export interface WorkbenchSessionIdentity {
   pid: number
   generation: string
   logPath: string
-  mode: 'simulation'
+  mode: WorkbenchRuntimeMode
   packageMounts: WorkspacePackageMountProjection | null
   agent: WorkbenchAgentIdentity | null
 }
@@ -147,6 +149,7 @@ export interface ManagedLocalWorkbenchSessionOptions {
   plcSimulatorProjectPath?: string
   plcSimulatorGuiPort?: number
   plcSimulatorOpcUaPort?: number
+  runtimeMode?: WorkbenchRuntimeMode
 }
 
 export interface WorkbenchSession {
@@ -166,6 +169,7 @@ export interface WorkbenchSession {
   configurePlcSimulator(projectPath: string): Promise<WorkbenchSessionSnapshot>
   startPlcSimulator(): Promise<WorkbenchSessionSnapshot>
   stopPlcSimulator(): Promise<WorkbenchSessionSnapshot>
+  setRuntimeMode(mode: WorkbenchRuntimeMode): Promise<WorkbenchSessionSnapshot>
 }
 
 interface ResolvedWorkbenchLaunch {
@@ -203,8 +207,10 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
   private expectedPlcSimulatorExit = false
   private stopRequested = false
   private plcSimulatorStopRequested = false
+  private selectedMode: WorkbenchRuntimeMode
 
   constructor(private readonly options: ManagedLocalWorkbenchSessionOptions) {
+    this.selectedMode = options.runtimeMode ?? 'normal'
     this.snapshot = {
       phase: 'idle',
       message: '尚未启动 Uni-Lab OS',
@@ -310,10 +316,10 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
     if (normalizedProjectPath.includes('\0')) {
       throw new Error('PLC-Sim 项目目录包含非法字符')
     }
-    await writeLocalEnvironmentConfiguration(
-      this.options.workspacePath,
-      normalizedProjectPath
-    )
+    await writeLocalEnvironmentConfiguration(this.options.workspacePath, {
+      plcSimulatorProjectPath: normalizedProjectPath,
+      runtimeMode: this.selectedMode
+    })
     this.publishPlcSimulator({
       ...idlePlcSimulatorSnapshot(normalizedProjectPath),
       message: normalizedProjectPath
@@ -321,6 +327,21 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
         : 'PLC-Sim 项目目录已清除'
     })
     return this.getSnapshot()
+  }
+
+  async setRuntimeMode(
+    mode: WorkbenchRuntimeMode
+  ): Promise<WorkbenchSessionSnapshot> {
+    if (mode !== 'normal' && mode !== 'dry-run') {
+      throw new Error(`不支持的 OS 运行模式：${String(mode)}`)
+    }
+    if (this.snapshot.identity?.mode === mode) return this.getSnapshot()
+    this.selectedMode = mode
+    await writeLocalEnvironmentConfiguration(this.options.workspacePath, {
+      plcSimulatorProjectPath: this.snapshot.plcSimulator.projectPath,
+      runtimeMode: mode
+    })
+    return await this.restart()
   }
 
   startPlcSimulator(): Promise<WorkbenchSessionSnapshot> {
@@ -509,9 +530,19 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
     })
     let launch: ResolvedWorkbenchLaunch
     try {
-      launch = await resolveWorkbenchLaunch(this.options)
+      const localConfiguration = await readLocalEnvironmentConfiguration(
+        this.options.workspacePath
+      )
+      this.selectedMode = this.options.runtimeMode
+        ?? localConfiguration.runtimeMode
+        ?? this.selectedMode
+      launch = await resolveWorkbenchLaunch(
+        this.options,
+        this.selectedMode,
+        this.snapshot.plcSimulator.phase === 'ready'
+      )
       const savedPlcSimulatorProjectPath =
-        await readLocalEnvironmentConfiguration(launch.identity.workspacePath)
+        localConfiguration.plcSimulatorProjectPath
       if (
         savedPlcSimulatorProjectPath
         && !this.snapshot.plcSimulator.projectPath
@@ -736,7 +767,9 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
 }
 
 async function resolveWorkbenchLaunch(
-  options: ManagedLocalWorkbenchSessionOptions
+  options: ManagedLocalWorkbenchSessionOptions,
+  mode: WorkbenchRuntimeMode,
+  plcSimulatorReady: boolean
 ): Promise<ResolvedWorkbenchLaunch> {
   const environment = options.environment ?? process.env
   const platform = options.platform ?? process.platform
@@ -755,9 +788,18 @@ async function resolveWorkbenchLaunch(
   const graphPath = await requireRealFile(
     options.graphPath
       ? resolve(workspacePath, options.graphPath)
-      : join(workspacePath, 'deployment', 'graphs', 'szlab-local-debug.json'),
+      : join(
+        workspacePath,
+        'deployment',
+        'graphs',
+        mode === 'normal' && plcSimulatorReady
+          ? 'szlab-plc-sim-local.json'
+          : 'szlab-local-debug.json'
+      ),
     'invalid_workspace',
-    '所选 Workspace 缺少 deployment/graphs/szlab-local-debug.json'
+    mode === 'normal' && plcSimulatorReady
+      ? '所选 Workspace 缺少 deployment/graphs/szlab-plc-sim-local.json'
+      : '所选 Workspace 缺少 deployment/graphs/szlab-local-debug.json'
   )
   ensureInsideWorkspace(workspacePath, graphPath)
 
@@ -854,7 +896,7 @@ async function resolveWorkbenchLaunch(
     pid: 0,
     generation,
     logPath,
-    mode: 'simulation',
+    mode,
     packageMounts: null,
     agent: null
   }
@@ -878,7 +920,7 @@ async function resolveWorkbenchLaunch(
       String(backendPort),
       '--disable_browser',
       '--action_mode',
-      'simulate',
+      mode === 'normal' ? 'real' : 'simulate',
       '--external_devices_only',
       '--ros_discovery_server',
       'off'
@@ -894,6 +936,10 @@ async function resolveWorkbenchLaunch(
       UNILABOS_HOSTLINKCONFIG_PORT: String(hostLinkPort),
       UNILABOS_OBSERVABILITYCONFIG_ENABLED: 'true',
       UNILABOS_OBSERVABILITYCONFIG_PROJECT_NAME: 'uni-lab-workbench',
+      UNILABOS_WORKBENCH_RUNTIME_MODE: mode,
+      UNILABOS_WORKBENCH_GENERATION: generation,
+      UNILABOS_WORKBENCH_WORKSPACE: workspacePath,
+      UNILABOS_WORKBENCH_GRAPH_FINGERPRINT: graphFingerprint,
       ROS_DOMAIN_ID: String(2 + Math.floor(Math.random() * 98))
     },
     runtimeDirectory,
@@ -1349,26 +1395,48 @@ function canConnectToLoopbackPort(port: number): Promise<boolean> {
   })
 }
 
+interface LocalEnvironmentConfiguration {
+  plcSimulatorProjectPath: string | null
+  runtimeMode: WorkbenchRuntimeMode | null
+}
+
 async function readLocalEnvironmentConfiguration(
   workspacePath: string
-): Promise<string | null> {
+): Promise<LocalEnvironmentConfiguration> {
   try {
     const content = JSON.parse(await readFile(
       join(workspacePath, '.unilabos', LOCAL_ENVIRONMENT_CONFIG),
       'utf8'
     )) as unknown
-    return isRecord(content) && content['schemaVersion'] === 1
-      && typeof content['plcSimulatorProjectPath'] === 'string'
-      ? content['plcSimulatorProjectPath']
-      : null
+    if (!isRecord(content) || content['schemaVersion'] !== 1) {
+      return { plcSimulatorProjectPath: null, runtimeMode: null }
+    }
+    const runtimeMode = content['runtimeMode']
+    return {
+      plcSimulatorProjectPath:
+        typeof content['plcSimulatorProjectPath'] === 'string'
+          ? content['plcSimulatorProjectPath']
+          : null,
+      runtimeMode:
+        runtimeMode === 'normal' || runtimeMode === 'dry-run'
+          ? runtimeMode
+          : runtimeMode === 'real-device'
+            ? 'normal'
+            : runtimeMode === 'simulation'
+              ? 'dry-run'
+              : null
+    }
   } catch {
-    return null
+    return { plcSimulatorProjectPath: null, runtimeMode: null }
   }
 }
 
 async function writeLocalEnvironmentConfiguration(
   workspacePath: string,
-  plcSimulatorProjectPath: string
+  configuration: {
+    plcSimulatorProjectPath: string
+    runtimeMode: WorkbenchRuntimeMode
+  }
 ): Promise<void> {
   const resolvedWorkspacePath = await realpath(resolve(workspacePath))
   const workbenchRoot = join(resolvedWorkspacePath, '.unilabos')
@@ -1377,7 +1445,7 @@ async function writeLocalEnvironmentConfiguration(
   const temporaryPath = `${configPath}.${process.pid}.tmp`
   await writeFile(temporaryPath, `${JSON.stringify({
     schemaVersion: 1,
-    plcSimulatorProjectPath
+    ...configuration
   }, null, 2)}\n`, { mode: 0o600 })
   await rename(temporaryPath, configPath)
 }
