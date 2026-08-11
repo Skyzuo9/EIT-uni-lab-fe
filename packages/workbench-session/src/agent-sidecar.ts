@@ -14,6 +14,7 @@ import net from 'node:net'
 import { dirname, extname, join, resolve, sep } from 'node:path'
 import * as asar from '@electron/asar'
 
+import { prepareExternalAgentCliEnvironment } from './external-agent-cli'
 import {
   resolveManagedWorkspaceSkillSource,
   seedManagedWorkspaceSkills
@@ -127,7 +128,11 @@ export async function startManagedWorkbenchAgent(
   const backendPort = await availablePort()
   let publicPort = await availablePort()
   while (publicPort === backendPort) publicPort = await availablePort()
+  const externalCli = await prepareExternalAgentCliEnvironment(environment)
   const log = createWriteStream(logPath, { flags: 'a' })
+  log.write(externalCli.codex
+    ? `[workbench-agent] external codex=${externalCli.codex.executable} version=${externalCli.codex.version}\n`
+    : '[workbench-agent] external codex not found\n')
   const child = spawn(corePath, [
     '--host', '127.0.0.1',
     '--port', String(backendPort),
@@ -141,7 +146,7 @@ export async function startManagedWorkbenchAgent(
   ], {
     cwd: options.workspacePath,
     env: {
-      ...environment,
+      ...externalCli.environment,
       AIONUI_CACHE_DIR: join(dataDir, 'cache'),
       AIONUI_WORK_DIR: options.workspacePath,
       AIONUI_LOG_DIR: dirname(logPath)
