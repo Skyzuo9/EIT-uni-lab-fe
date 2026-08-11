@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import type { WorkflowNode } from './parseWorkflow'
 import {
   packWorkflowSupportingBranches,
+  WORKFLOW_SUPPORTING_BRANCH_LEADING_LEFT_SHIFT,
   WORKFLOW_SUPPORTING_BRANCH_NODE_GAP,
   type WorkflowSupportingBranch
 } from './workflowPrimarySampleBranchLayout'
@@ -20,29 +21,39 @@ describe('packWorkflowSupportingBranches', () => {
     const firstBandX = bands[0]?.map(({ x }) => x) ?? []
 
     expect(bands).toHaveLength(2)
-    expect(firstBandX).toEqual([72, 72 + WORKFLOW_SUPPORTING_BRANCH_NODE_GAP])
+    expect(firstBandX).toEqual([
+      72 - WORKFLOW_SUPPORTING_BRANCH_LEADING_LEFT_SHIFT,
+      72 + WORKFLOW_SUPPORTING_BRANCH_NODE_GAP -
+        WORKFLOW_SUPPORTING_BRANCH_LEADING_LEFT_SHIFT
+    ])
     expect(bands.flat()).toHaveLength(3)
   })
 
-  /** 验证前部汇入支线沿主样品上游前置，为后续主线保留清晰通道。 */
-  it('places leading inbound branches before their primary join', () => {
+  /** 验证前两条支线仅整组左移，内部顺序和第三条支线位置保持原样。 */
+  it('translates only the first two branches left', () => {
     const branches: WorkflowSupportingBranch[] = [
       supportingBranchChain('reagent-a', 0),
-      supportingBranchChain('reagent-b', 1)
+      supportingBranchChain('reagent-b', 1),
+      supportingBranchChain('reagent-c', 2)
     ]
 
     const bands = packWorkflowSupportingBranches(branches, 72, 328, 4)
     const placements = bands.flat()
 
-    expect(bands).toHaveLength(2)
+    expect(bands).toHaveLength(3)
     for (const branchId of ['reagent-a', 'reagent-b']) {
       const sourceX = placements.find(({ node }) =>
         node.id === `${branchId}-source`)?.x ?? 0
       const joinX = placements.find(({ node }) =>
         node.id === `${branchId}-join`)?.x ?? 0
-      expect(sourceX).toBeLessThan(joinX)
-      expect(joinX - sourceX).toBe(WORKFLOW_SUPPORTING_BRANCH_NODE_GAP)
+      expect(sourceX).toBeGreaterThan(joinX)
+      expect(sourceX - joinX).toBe(WORKFLOW_SUPPORTING_BRANCH_NODE_GAP)
+      expect(joinX).toBe(
+        72 + 328 - WORKFLOW_SUPPORTING_BRANCH_LEADING_LEFT_SHIFT
+      )
     }
+    expect(placements.find(({ node }) =>
+      node.id === 'reagent-c-join')?.x).toBe(72 + 328)
   })
 })
 
