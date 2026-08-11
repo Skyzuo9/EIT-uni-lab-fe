@@ -45,6 +45,10 @@ extraResources:
     to: agent-runtime
     filter:
       - '**/*'
+  - from: resources/workspace-skills
+    to: workspace-skills
+    filter:
+      - '**/*'
   - from: ../desktop/resources/default-workspace
     to: default-workspace
     filter:

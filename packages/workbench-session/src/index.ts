@@ -53,6 +53,13 @@ import {
 } from './plc-variable-tables'
 import { waitForWorkbenchReadiness } from './readiness'
 import { prepareWorkbenchState } from './workbench-state'
+export {
+  MANAGED_WORKSPACE_SKILL_NAMES,
+  resolveManagedWorkspaceSkillSource,
+  seedManagedWorkspaceSkills,
+  type ManagedWorkspaceSkillName,
+  type ManagedWorkspaceSkillResult
+} from './workspace-skills'
 export { parseWorkspacePackageMountProjection } from './readiness'
 export {
   createWorkbenchDiagnosticBundle,

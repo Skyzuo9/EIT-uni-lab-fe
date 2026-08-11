@@ -132,6 +132,18 @@ export function validatePackagedWorkbench(
     join(resources, 'desktop', 'node_modules', '@arizeai', 'phoenix-otel'),
     join(resources, 'device-card-builder', 'esbuild'),
     join(resources, 'device-card-agent', 'cli.mjs'),
+    join(resources, 'workspace-skills', 'manifest.json'),
+    join(resources, 'workspace-skills', 'add-device', 'SKILL.md'),
+    join(resources, 'workspace-skills', 'add-resource', 'SKILL.md'),
+    join(resources, 'workspace-skills', 'add-workstation', 'SKILL.md'),
+    join(resources, 'workspace-skills', 'create-device-package', 'SKILL.md'),
+    join(resources, 'workspace-skills', 'create-device-skill', 'SKILL.md'),
+    join(
+      resources,
+      'workspace-skills',
+      'unilab-domain-repo-builder',
+      'SKILL.md'
+    ),
     join(resources, 'compatibility.json')
   ]
   const missing = required.filter(entry => !existsSync(entry))

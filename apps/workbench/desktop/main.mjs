@@ -93,7 +93,8 @@ async function startPackagedWorkbench() {
     // archive file itself through the patched fs therefore returns ENOENT even
     // when the physical package exists; original-fs bypasses that interception.
     originalFsPromises.access(resources.agentAsar),
-    access(resources.agentCore)
+    access(resources.agentCore),
+    access(resources.workspaceSkills)
   ])
   if (process.env['UNILAB_WORKBENCH_PACKAGE_SMOKE'] === '1') {
     console.log('UNILAB_WORKBENCH_PACKAGE_SMOKE_OK')
@@ -118,6 +119,7 @@ async function startPackagedWorkbench() {
   process.env['UNILAB_DESKTOP_WELCOME_URL'] = welcomeUrl
   process.env['UNILAB_AGENT_ICON'] = resources.brandIcon
   process.env['UNILAB_AIONUI_APP'] = resources.agentRuntime
+  process.env['UNILAB_WORKBENCH_SKILLS'] = resources.workspaceSkills
   process.env['ESBUILD_BINARY_PATH'] = resources.esbuildBinary
   if (hasExplicitWorkspace) {
     try {
@@ -174,6 +176,8 @@ function resolvePackagedResources() {
         'icon.png'
       ),
       agentRuntime,
+      workspaceSkills: process.env['UNILAB_WORKBENCH_SKILLS']
+        ?? path.join(workbench, 'resources', 'workspace-skills'),
       agentAsar: path.join(agentResources, 'app.asar'),
       agentCore: path.join(
         agentResources,
@@ -206,6 +210,7 @@ function resolvePackagedResources() {
     ),
     brandIcon: path.join(root, 'branding', 'icon.png'),
     agentRuntime,
+    workspaceSkills: path.join(root, 'workspace-skills'),
     agentAsar: path.join(agentRuntime, 'app.asar'),
     agentCore: path.join(
       agentRuntime,
@@ -480,7 +485,8 @@ function workspaceChildEnvironment({
     UNILAB_PYTHON_ENV: pythonEnvironment,
     UNILAB_DESKTOP_SURFACE: 'workbench',
     UNILAB_AGENT_ICON: resources.brandIcon,
-    UNILAB_AIONUI_APP: resources.agentRuntime
+    UNILAB_AIONUI_APP: resources.agentRuntime,
+    UNILAB_WORKBENCH_SKILLS: resources.workspaceSkills
   }
   if (osProject) environment.UNILAB_OS_PROJECT = osProject
   else delete environment.UNILAB_OS_PROJECT

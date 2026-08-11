@@ -14,6 +14,11 @@ import net from 'node:net'
 import { dirname, extname, join, resolve, sep } from 'node:path'
 import * as asar from '@electron/asar'
 
+import {
+  resolveManagedWorkspaceSkillSource,
+  seedManagedWorkspaceSkills
+} from './workspace-skills'
+
 export interface WorkbenchAgentIdentity {
   implementation: 'aioncore'
   productName: 'UniLab Agent'
@@ -102,6 +107,13 @@ export async function startManagedWorkbenchAgent(
     throw new Error(
       `UniLab Agent requires AionUi ${expectedVersion}; found ${distributionVersion}`
     )
+  }
+  const workspaceSkillSource = resolveManagedWorkspaceSkillSource(environment)
+  if (workspaceSkillSource) {
+    await seedManagedWorkspaceSkills({
+      workspacePath: options.workspacePath,
+      sourceDirectory: workspaceSkillSource
+    })
   }
   const dataDir = join(options.workspacePath, '.unilabos', 'agent', 'aionui')
   const selectedBrandIcon = options.brandIconPath ??
