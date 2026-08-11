@@ -63,7 +63,7 @@ export async function installLocalRuntimeTestPage(page: Page): Promise<void> {
 
 export function isExpectedMissingDeviceSocketError(message: string): boolean {
   return message.includes(
-    "WebSocket connection to 'ws://127.0.0.1:18003/api/v1/ws/device_status'"
+    "WebSocket connection to 'ws://127.0.0.1:18003/api/v1/ws/device_status"
   ) && message.includes('ERR_CONNECTION_REFUSED')
 }
 
