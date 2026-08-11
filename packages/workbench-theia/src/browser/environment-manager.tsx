@@ -215,7 +215,9 @@ export function EnvironmentManager({
           facts={[
             ['PID', String(identity?.pid ?? '—')],
             ['设备图', identity?.graphPath ?? session.configuredGraphPath],
-            ['启动模式', identity?.mode === 'dry-run' ? 'Dry-run' : '正常运行'],
+            ['启动模式', (identity?.mode ?? session.configuredRuntimeMode) === 'dry-run'
+              ? 'Dry-run'
+              : '正常运行'],
             ['API', identity?.backendUrl ?? '—'],
             ['Python', identity?.environmentPath ?? '—']
           ]}
@@ -231,7 +233,7 @@ export function EnvironmentManager({
                 />
               </label>
               <RuntimeModeControl
-                mode={identity?.mode}
+                mode={identity?.mode ?? session.configuredRuntimeMode}
                 disabled={Boolean(busyAction)}
                 onSetRuntimeMode={mode => run(
                   'switch-mode',
@@ -590,7 +592,7 @@ function formatRemoteExpiry(expiresAt: number | null): string {
   return new Date(expiresAt).toLocaleString()
 }
 
-function RuntimeModeControl({
+export function RuntimeModeControl({
   mode,
   disabled,
   onSetRuntimeMode
@@ -608,21 +610,37 @@ function RuntimeModeControl({
         )
     if (confirmed) void onSetRuntimeMode(next)
   }
+  const button = (
+    value: WorkbenchRuntimeMode,
+    label: string,
+    title?: string
+  ): React.JSX.Element => {
+    const selected = mode === value
+    return (
+      <button
+        type="button"
+        className={selected ? 'is-active' : ''}
+        aria-label={selected ? `${label}（当前）` : label}
+        aria-pressed={selected}
+        disabled={disabled}
+        title={title}
+        onClick={() => select(value)}
+      >
+        {selected ? (
+          <span className="codicon codicon-check" aria-hidden="true" />
+        ) : null}
+        <span>{label}</span>
+      </button>
+    )
+  }
   return (
     <div className="unilab-environment-manager__mode" role="group" aria-label="OS 运行模式">
-      <button
-        type="button"
-        className={mode === 'normal' ? 'is-active' : ''}
-        disabled={disabled}
-        onClick={() => select('normal')}
-      >正常运行</button>
-      <button
-        type="button"
-        className={mode === 'dry-run' ? 'is-active' : ''}
-        disabled={disabled}
-        title="动作返回模拟成功；每次 OS 重启使用新的隔离运行数据库"
-        onClick={() => select('dry-run')}
-      >Dry-run</button>
+      {button('normal', '正常运行')}
+      {button(
+        'dry-run',
+        'Dry-run',
+        '动作返回模拟成功；每次 OS 重启使用新的隔离运行数据库'
+      )}
     </div>
   )
 }
