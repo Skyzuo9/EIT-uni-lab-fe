@@ -7,6 +7,7 @@ import { installWorkflowPanel } from './helpers/workflow-runtime-ui'
 const WORKFLOW_UUID = '6d9fb3e2-4dcb-5f23-93b4-74d1b6083393'
 
 test.use({
+  deviceScaleFactor: 2,
   launchOptions: {
     args: ['--disable-gpu', '--disable-software-rasterizer']
   },
@@ -166,8 +167,53 @@ test('single sample workflow presents supporting materials as reactants', async 
   await fullBranches.click()
   await expect(fullBranches).toHaveAttribute('aria-pressed', 'true')
   await expect(reactionAnnotations).toHaveCount(0)
-  expect(await supportingEdges.count()).toBeGreaterThan(0)
-  expect(await materialSources.count()).toBeGreaterThan(1)
+  const fullSupportingEdgeCount = await supportingEdges.count()
+  const fullMaterialSourceCount = await materialSources.count()
+  expect(fullSupportingEdgeCount).toBeGreaterThan(0)
+  expect(fullMaterialSourceCount).toBeGreaterThan(1)
+  await panel.getByRole('button', {
+    name: '适应完整工作流视图'
+  }).click()
+  await page.waitForTimeout(600)
+
+  const primaryMaterialEdges = panel.locator(
+    '.wf-flow-edge--material-trace:not(.wf-flow-edge--supporting-material)'
+  )
+  const supportingEdgeStyles = await workflowEdgeStyles(supportingEdges)
+  const primaryEdgeStyles = await workflowEdgeStyles(primaryMaterialEdges)
+  expect(supportingEdgeStyles.every(({ opacity }) => opacity === 1)).toBe(true)
+  expect(new Set(supportingEdgeStyles.map(({ stroke }) => stroke)).size)
+    .toBeGreaterThan(1)
+  expect(supportingEdgeStyles.every(({ strokeWidth }) =>
+    strokeWidth === 2.4)).toBe(true)
+  expect(primaryEdgeStyles.every(({ strokeWidth }) =>
+    strokeWidth === 3.6)).toBe(true)
+  const fullOverlapPairs = await visibleOverlapPairs(panel.locator(
+    '.react-flow__node:visible'
+  ))
+  expect(fullOverlapPairs, JSON.stringify(fullOverlapPairs, null, 2))
+    .toEqual([])
+  const transferHandlePositions = await workflowTransferHandlePositions(panel)
+  const edgeRoutes = await workflowEdgeRoutes(panel)
+  const powderTransferHandles = transferHandlePositions.filter(({ name }) =>
+    name.includes('粗投粉桶') || name.includes('精投粉桶')
+  )
+  const powderMaterialSources = powderTransferHandles.filter(({ kind, io }) =>
+    kind === 'material' && io === 'source'
+  )
+  expect(powderMaterialSources).toHaveLength(2)
+  expect(powderMaterialSources.every(({ position }) => position === 'top'))
+    .toBe(true)
+
+  const fullBranchesScreenshotPath = resolve(
+    artifactDirectory,
+    'single_sample_atomic_material-full-branches-2x.png'
+  )
+  await canvas.screenshot({
+    path: fullBranchesScreenshotPath,
+    animations: 'disabled',
+    scale: 'device'
+  })
 
   expect(browserErrors).toEqual([])
   writeFileSync(resolve(artifactDirectory, 'evidence.json'), `${JSON.stringify({
@@ -182,10 +228,93 @@ test('single sample workflow presents supporting materials as reactants', async 
     material_source_count_in_reaction_formula: 1,
     overlap_pairs: overlapPairs,
     full_branches_available: true,
+    full_branches_screenshot: fullBranchesScreenshotPath,
+    full_branches_material_source_count: fullMaterialSourceCount,
+    full_branches_supporting_edge_count: fullSupportingEdgeCount,
+    full_branches_primary_edge_count: primaryEdgeStyles.length,
+    full_branches_supporting_edge_styles: supportingEdgeStyles,
+    full_branches_primary_edge_styles: primaryEdgeStyles,
+    full_branches_overlap_pairs: fullOverlapPairs,
+    full_branches_transfer_handle_positions: transferHandlePositions,
+    full_branches_edge_routes: edgeRoutes,
+    device_scale_factor: 2,
     browser_errors: browserErrors,
     screenshot: screenshotPath
   }, null, 2)}\n`)
 })
+
+/**
+ * 读取一组工作流物料流（MaterialFlow）边的实际颜色、线宽与透明度。
+ *
+ * @param locator ReactFlow 物料边的定位器集合。
+ * @returns 每条边在浏览器中最终生效的可视样式。
+ */
+async function workflowEdgeStyles(
+  locator: import('@playwright/test').Locator
+): Promise<Array<{ stroke: string; strokeWidth: number; opacity: number }>> {
+  return locator.evaluateAll((elements) => elements.map((element) => {
+    const path = element.querySelector<SVGPathElement>(
+      '.react-flow__edge-path'
+    )
+    const pathStyle = path ? getComputedStyle(path) : getComputedStyle(element)
+    return {
+      stroke: pathStyle.stroke,
+      strokeWidth: Number.parseFloat(pathStyle.strokeWidth),
+      opacity: Number.parseFloat(getComputedStyle(element).opacity)
+    }
+  }))
+}
+
+/** 返回转运节点各类 Handle 的实际方位，供支线路由验收复核。 */
+async function workflowTransferHandlePositions(
+  panel: import('@playwright/test').Locator
+): Promise<Array<{
+  nodeId: string
+  name: string
+  kind: string
+  io: string
+  position: string
+}>> {
+  return panel.locator('.wf-node--robot-transfer').evaluateAll((nodes) =>
+    nodes.flatMap((node) => {
+      const name = node.querySelector('strong')?.textContent?.trim() ?? ''
+      const nodeId = node.getAttribute('data-workflow-node-uuid') ?? ''
+      return [...node.querySelectorAll<HTMLElement>('.react-flow__handle')]
+        .map((handle) => ({
+          nodeId,
+          name,
+          kind: handle.getAttribute('data-workflow-handle-kind') ?? '',
+          io: handle.getAttribute('data-workflow-handle-io') ?? '',
+          position: ['top', 'right', 'bottom', 'left'].find((side) =>
+            handle.classList.contains(`react-flow__handle-${side}`)
+          ) ?? ''
+        }))
+    })
+  )
+}
+
+/** 返回全部画布边的端点身份、语义样式与浏览器最终正交路径。 */
+async function workflowEdgeRoutes(
+  panel: import('@playwright/test').Locator
+): Promise<Array<{
+  sourceNodeId: string
+  targetNodeId: string
+  className: string
+  path: string
+}>> {
+  return panel.locator('.react-flow__edge').evaluateAll((edges) =>
+    edges.map((edge) => ({
+      sourceNodeId: edge.querySelector('g')?.getAttribute(
+        'data-workflow-edge-source-node-uuid'
+      ) ?? '',
+      targetNodeId: edge.querySelector('g')?.getAttribute(
+        'data-workflow-edge-target-node-uuid'
+      ) ?? '',
+      className: edge.getAttribute('class') ?? '',
+      path: edge.querySelector('.react-flow__edge-path')?.getAttribute('d') ?? ''
+    }))
+  )
+}
 
 /** 返回当前可见 ReactFlow 节点之间的矩形重叠对。 */
 async function visibleOverlapPairs(locator: import('@playwright/test').Locator):

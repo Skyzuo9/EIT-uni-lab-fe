@@ -227,7 +227,9 @@
   :global(.wf-node__robot-transfer-port)
   > :global(.wf-node__robot-transfer-handle.react-flow__handle-top) {
   top: 9px;
+  right: auto;
   bottom: auto;
+  left: 36px;
   transform: translate(-50%, -50%);
 }
 
@@ -236,7 +238,9 @@
   :global(.wf-node__robot-transfer-port)
   > :global(.wf-node__robot-transfer-handle.react-flow__handle-bottom) {
   top: auto;
+  right: auto;
   bottom: 9px;
+  left: 36px;
   transform: translate(-50%, 50%);
 }
 
@@ -253,6 +257,7 @@
   :global(.wf-node__robot-transfer-port)
   > :global(.wf-node__robot-transfer-handle.react-flow__handle-left) {
   right: auto;
+  bottom: auto;
   left: 9px;
   transform: translate(-50%, -50%);
 }
@@ -262,6 +267,7 @@
   :global(.wf-node__robot-transfer-port)
   > :global(.wf-node__robot-transfer-handle.react-flow__handle-right) {
   right: 9px;
+  bottom: auto;
   left: auto;
   transform: translate(50%, -50%);
 }
