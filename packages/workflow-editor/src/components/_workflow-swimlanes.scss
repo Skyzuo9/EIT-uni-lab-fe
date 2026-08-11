@@ -16,6 +16,7 @@
 .workflow:global(.workflow-runtime)
   :global(.wf-node--action-strip[data-workflow-layout-strategy='material-swimlanes'])
   :global(.wf-node__body) {
+  box-sizing: border-box;
   width: 100%;
 }
 

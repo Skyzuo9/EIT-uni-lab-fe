@@ -372,6 +372,80 @@ describe('layoutWorkflowPrimarySampleFlow', () => {
       (positions.get('transfer') ?? 0))
       .toBe((WORKFLOW_PRIMARY_SAMPLE_COLUMN_GAP + 120) / 2)
   })
+
+  /** 同一蛇形行必须按主样品 Handle 轴对齐，而不是按不同高度节点的顶边对齐。 */
+  it('aligns primary material handles across action, transfer and source nodes', () => {
+    const primaryOutput = resourceSlotHandle(
+      'primary-output',
+      'sample',
+      'source'
+    )
+    const reagentOutput = resourceSlotHandle(
+      'reagent-output',
+      'reagent',
+      'source'
+    )
+    const catalystOutput = resourceSlotHandle(
+      'catalyst-output',
+      'catalyst',
+      'source'
+    )
+    const first = sampleAction('first', true)
+    const second: WorkflowNode = {
+      ...sampleAction('second', true),
+      handles: [
+        resourceSlotHandle('second-catalyst-input', 'catalyst', 'target'),
+        resourceSlotHandle('second-reagent-input', 'reagent', 'target'),
+        resourceSlotHandle('second-input', 'sample', 'target'),
+        resourceSlotHandle('second-output', 'sample', 'source')
+      ]
+    }
+    const transfer: WorkflowNode = {
+      ...sampleAction('transfer', false),
+      visualKind: 'robot-transfer'
+    }
+    const nodes = [
+      materialSource('reagent-source', '试剂', 'reagent', reagentOutput),
+      materialSource('catalyst-source', '催化剂', 'reagent', catalystOutput),
+      materialSource(
+        'primary-source',
+        '主样品',
+        'primary_sample',
+        primaryOutput
+      ),
+      first,
+      second,
+      transfer
+    ]
+    const links = [
+      materialLink('primary-source', primaryOutput.uuid, 'first', 'first-input'),
+      materialLink('first', 'first-output', 'second', 'second-input'),
+      materialLink('second', 'second-output', 'transfer', 'transfer-input'),
+      materialLink(
+        'reagent-source',
+        reagentOutput.uuid,
+        'second',
+        'second-reagent-input'
+      ),
+      materialLink(
+        'catalyst-source',
+        catalystOutput.uuid,
+        'second',
+        'second-catalyst-input'
+      )
+    ]
+
+    const result = layoutWorkflowPrimarySampleFlow(nodes, links)
+    const yByNode = new Map(result.nodes.map((node) => [node.id, node.y ?? 0]))
+    const handleAxes = [
+      (yByNode.get('primary-source') ?? 0) + 92,
+      (yByNode.get('first') ?? 0) + 63,
+      (yByNode.get('second') ?? 0) + 125,
+      (yByNode.get('transfer') ?? 0) + 90
+    ]
+
+    expect(new Set(handleAxes).size).toBe(1)
+  })
 })
 
 /**

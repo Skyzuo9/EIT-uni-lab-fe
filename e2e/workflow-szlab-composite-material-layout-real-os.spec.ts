@@ -248,6 +248,14 @@ test('SZLab composite material workflow uses one orthogonal visible layout', asy
   expect(primaryTransferSpacingEvidence.ordinary.length).toBeGreaterThan(0)
   expect(average(primaryTransferSpacingEvidence.transfer))
     .toBeLessThan(average(primaryTransferSpacingEvidence.ordinary) * 0.75)
+  const primaryStraightEvidence = await primaryStraightSegmentEvidence(
+    panel
+  )
+  expect(primaryStraightEvidence.sameRowCount).toBeGreaterThan(0)
+  expect(
+    primaryStraightEvidence.bentSameRowEdges,
+    JSON.stringify(primaryStraightEvidence, null, 2)
+  ).toEqual([])
   await panel.locator('.react-flow').screenshot({
     path: resolve(artifactDirectory, '14-primary-full-branches.png')
   })
@@ -539,7 +547,8 @@ test('SZLab composite material workflow uses one orthogonal visible layout', asy
     },
     primary_full_branches: {
       supporting_sources: primarySupportingSourceEvidence,
-      transfer_spacing: primaryTransferSpacingEvidence
+      transfer_spacing: primaryTransferSpacingEvidence,
+      straight_segments: primaryStraightEvidence
     },
     material_edges: await materialEdges.count(),
     ready_edges: await readyEdges.count(),
@@ -587,6 +596,16 @@ interface SupportingSourcePlacementEvidence {
   targetSide: string
   above: boolean
   before: boolean
+}
+
+interface PrimaryStraightSegmentEvidence {
+  sameRowCount: number
+  turnCount: number
+  bentSameRowEdges: Array<{
+    sourceId: string
+    targetId: string
+    crossRange: number
+  }>
 }
 
 /**
@@ -693,10 +712,7 @@ async function primaryTransferSpacing(panel: Locator): Promise<{
       if (!source || !target) continue
       const sourceRect = source.getBoundingClientRect()
       const targetRect = target.getBoundingClientRect()
-      const sameRow = Math.abs(
-        sourceRect.top + sourceRect.height / 2 -
-        (targetRect.top + targetRect.height / 2)
-      ) <= 4
+      const sameRow = Math.abs(nodeGraphY(source) - nodeGraphY(target)) < 200
       if (!sameRow) continue
       const gap = Math.max(
         0,
@@ -709,6 +725,71 @@ async function primaryTransferSpacing(panel: Locator): Promise<{
       result[includesTransfer ? 'transfer' : 'ordinary'].push(gap)
     }
     return result
+
+    /** 返回 React Flow 节点包装层的画布纵坐标。 */
+    function nodeGraphY(node: HTMLElement): number {
+      const transform = node.closest<HTMLElement>('.react-flow__node')
+        ?.style.transform ?? ''
+      return Number(
+        transform.match(/translate\([^,]+,\s*(-?[\d.]+)px\)/)?.[1] ?? 0
+      )
+    }
+  })
+}
+
+/** 验证蛇形主样品同一行内没有多余折线，并允许真实换行转向。 */
+async function primaryStraightSegmentEvidence(
+  panel: Locator
+): Promise<PrimaryStraightSegmentEvidence> {
+  return panel.evaluate((root) => {
+    const nodeById = new Map(
+      [...root.querySelectorAll<HTMLElement>(
+        '.wf-node[data-workflow-node-uuid]'
+      )].map((node) => [node.dataset.workflowNodeUuid ?? '', node])
+    )
+    const evidence: PrimaryStraightSegmentEvidence = {
+      sameRowCount: 0,
+      turnCount: 0,
+      bentSameRowEdges: []
+    }
+    const edges = [...root.querySelectorAll<SVGGElement>(
+      '[data-workflow-material-role="primary_sample"]'
+    )].filter((edge) => edge.dataset.workflowEdgeSourceNodeUuid)
+    for (const edge of edges) {
+      const sourceId = edge.dataset.workflowEdgeSourceNodeUuid ?? ''
+      const targetId = edge.dataset.workflowEdgeTargetNodeUuid ?? ''
+      const source = nodeById.get(sourceId)
+      const target = nodeById.get(targetId)
+      const path = edge.closest('.react-flow__edge')
+        ?.querySelector<SVGPathElement>('.react-flow__edge-path')
+      if (!source || !target || !path) continue
+      const sameRow = Math.abs(nodeGraphY(source) - nodeGraphY(target)) < 200
+      if (!sameRow) {
+        evidence.turnCount += 1
+        continue
+      }
+      evidence.sameRowCount += 1
+      const values = (path.getAttribute('d')?.match(
+        /-?\d+(?:\.\d+)?(?:e[+-]?\d+)?/gi
+      ) ?? []).map(Number)
+      const yValues = values.filter((_value, index) => index % 2 === 1)
+      const crossRange = yValues.length > 0
+        ? Math.max(...yValues) - Math.min(...yValues)
+        : 0
+      if (crossRange > 1) {
+        evidence.bentSameRowEdges.push({ sourceId, targetId, crossRange })
+      }
+    }
+    return evidence
+
+    /** 返回 React Flow 节点包装层的画布纵坐标。 */
+    function nodeGraphY(node: HTMLElement): number {
+      const transform = node.closest<HTMLElement>('.react-flow__node')
+        ?.style.transform ?? ''
+      return Number(
+        transform.match(/translate\([^,]+,\s*(-?[\d.]+)px\)/)?.[1] ?? 0
+      )
+    }
   })
 }
 

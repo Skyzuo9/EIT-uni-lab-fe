@@ -6,6 +6,7 @@ import {
 } from 'reactflow'
 
 import {
+  alignPrimaryMaterialEdgeEndpoints,
   getWorkflowSmoothStepCenter,
   WORKFLOW_SMOOTHSTEP_OFFSET
 } from '../utils/workflowDagEdgeRouting'
@@ -44,20 +45,28 @@ export default function WorkflowRoundedStepEdge({
   labelBgBorderRadius,
   data
 }: EdgeProps<WorkflowRoundedStepEdgeData>): React.JSX.Element {
-  const { centerX, centerY } = getWorkflowSmoothStepCenter({
+  const aligned = alignPrimaryMaterialEdgeEndpoints({
     sourceX,
     sourceY,
     targetX,
     targetY,
+    direction: data?.direction ?? 'TB',
+    materialRole: data?.materialRole
+  })
+  const { centerX, centerY } = getWorkflowSmoothStepCenter({
+    sourceX: aligned.sourceX,
+    sourceY: aligned.sourceY,
+    targetX: aligned.targetX,
+    targetY: aligned.targetY,
     targetPosition,
     direction: data?.direction
   })
   const [path, labelX, labelY] = getSmoothStepPath({
-    sourceX,
-    sourceY,
+    sourceX: aligned.sourceX,
+    sourceY: aligned.sourceY,
     sourcePosition,
-    targetX,
-    targetY,
+    targetX: aligned.targetX,
+    targetY: aligned.targetY,
     targetPosition,
     borderRadius: data?.borderRadius ?? 8,
     centerX,

@@ -318,6 +318,18 @@ describe('WorkflowDag material handles and execution signals', () => {
       /layout-direction='horizontal'[\s\S]*flex-direction:\s*column-reverse/
     )
   })
+
+  /** 泳道尺寸常量包含节点内边距，动作内容必须使用 border-box 才能对齐 Handle。 */
+  it('keeps material swimlane action handles inside the declared node box', () => {
+    const stylesheet = readFileSync(
+      new URL('./_workflow-swimlanes.scss', import.meta.url),
+      'utf8'
+    )
+
+    expect(stylesheet).toMatch(
+      /layout-strategy='material-swimlanes'[\s\S]*wf-node__body[\s\S]*box-sizing:\s*border-box/
+    )
+  })
 })
 
 describe('WorkflowDag material role filter', () => {

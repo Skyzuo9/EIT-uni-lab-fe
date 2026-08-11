@@ -31,6 +31,10 @@ const SPECIAL_NODE_HEIGHT = 126
 const COMPACT_ACTION_NODE_WIDTH = 184
 const HORIZONTAL_MATERIAL_SOURCE_WIDTH = 112
 const HORIZONTAL_TRANSFER_NODE_WIDTH = 120
+const PRIMARY_SAMPLE_ACTION_FIRST_HANDLE_AXIS = 63
+const PRIMARY_SAMPLE_ACTION_HANDLE_PITCH = 31
+const PRIMARY_SAMPLE_MATERIAL_SOURCE_HANDLE_AXIS = 92
+const PRIMARY_SAMPLE_TRANSFER_HANDLE_AXIS = 90
 
 export interface WorkflowPrimarySampleLayoutOptions {
   supportingMaterialPresentation?: WorkflowSupportingMaterialPresentation
@@ -128,10 +132,19 @@ export function layoutWorkflowPrimarySampleFlow(
       rowStart,
       rowStart + WORKFLOW_PRIMARY_SAMPLE_NODES_PER_ROW
     )
+    const primaryHandleAxes = new Map(rowNodeIds.map((nodeId) => [
+      nodeId,
+      primarySampleHandleAxis(
+        nodeById.get(nodeId),
+        traces
+      )
+    ]))
+    const rowHandleAxis = Math.max(...primaryHandleAxes.values())
     const mainRowHeight = Math.max(
       SPECIAL_NODE_HEIGHT,
       ...rowNodeIds.map((nodeId) =>
-        estimatedHorizontalNodeHeight(nodeById.get(nodeId))
+        rowHandleAxis - (primaryHandleAxes.get(nodeId) ?? rowHandleAxis) +
+          estimatedHorizontalNodeHeight(nodeById.get(nodeId))
       )
     )
     const flowSign = row % 2 === 0 ? 1 : -1
@@ -189,7 +202,13 @@ export function layoutWorkflowPrimarySampleFlow(
       : mainRowY
     for (const nodeId of rowNodeIds) {
       const current = positionByNode.get(nodeId)
-      if (current) positionByNode.set(nodeId, { ...current, y: resolvedMainRowY })
+      if (current) {
+        positionByNode.set(nodeId, {
+          ...current,
+          y: resolvedMainRowY + rowHandleAxis -
+            (primaryHandleAxes.get(nodeId) ?? rowHandleAxis)
+        })
+      }
     }
     mainRowY = resolvedMainRowY + Math.max(
       WORKFLOW_PRIMARY_SAMPLE_MIN_ROW_GAP,
@@ -569,6 +588,81 @@ function placePrimarySupportingSources(
       ? { target: 'left', source: 'right' }
       : { target: 'right', source: 'left' })
   }
+}
+
+/**
+ * 估算横向紧凑节点内主样品 Handle 距节点顶边的轴线。
+ *
+ * 动作节点的物料卡片保持作者字段顺序；每增加一个位于主样品之前的物料卡片，
+ * 主样品轴线向下移动一个卡片节距。MaterialSource 与机械臂使用各自特殊视觉
+ * 的固定轴线。布局只使用相对差值，因此能让同一蛇形行保持严格水平。
+ */
+function primarySampleHandleAxis(
+  node: WorkflowNode | undefined,
+  traces: ReturnType<typeof projectMaterialTraces>
+): number {
+  if (node?.type === 'material_source') {
+    return PRIMARY_SAMPLE_MATERIAL_SOURCE_HANDLE_AXIS
+  }
+  if (node?.visualKind === 'robot-transfer') {
+    return PRIMARY_SAMPLE_TRANSFER_HANDLE_AXIS
+  }
+  if (!node) {
+    return PRIMARY_SAMPLE_ACTION_FIRST_HANDLE_AXIS
+  }
+
+  const accentByHandle = traces.handleAccentsByNode.get(node.id)
+  const roleByHandle = traces.handleRolesByNode.get(node.id)
+  const accentByVariable = new Map<string, string>()
+  const roleByVariable = new Map<string, string>()
+  const resourceHandles = node.handles?.filter(isResourceSlotHandle) ?? []
+  for (const handle of resourceHandles) {
+    const variableName = handle.dataKey?.trim() || handle.handleKey
+    const accent = accentByHandle?.get(handle.uuid)
+    if (accent && (
+      !accentByVariable.has(variableName) || handle.ioType === 'target'
+    )) accentByVariable.set(variableName, accent)
+    const role = roleByHandle?.get(handle.uuid)
+    if (role && (
+      !roleByVariable.has(variableName) || handle.ioType === 'target'
+    )) roleByVariable.set(variableName, role)
+  }
+  const cards: Array<{
+    variableName: string
+    target: boolean
+    source: boolean
+    primary: boolean
+  }> = []
+  for (const handle of resourceHandles) {
+    const variableName = handle.dataKey?.trim() || handle.handleKey
+    const accent = accentByHandle?.get(handle.uuid) ??
+      accentByVariable.get(variableName)
+    if (!accent) continue
+    const slot = handle.ioType === 'target' ? 'target' : 'source'
+    const existing = cards.find((card) =>
+      card.variableName === variableName && !card[slot]
+    )
+    const primary = (
+      roleByHandle?.get(handle.uuid) ?? roleByVariable.get(variableName)
+    ) === 'primary_sample'
+    if (existing) {
+      existing[slot] = true
+      existing.primary ||= primary
+    } else {
+      cards.push({
+        variableName,
+        target: slot === 'target',
+        source: slot === 'source',
+        primary
+      })
+    }
+  }
+  const primaryCardIndex = Math.max(
+    0,
+    cards.findIndex((card) => card.primary)
+  )
+  return PRIMARY_SAMPLE_ACTION_FIRST_HANDLE_AXIS +
+    primaryCardIndex * PRIMARY_SAMPLE_ACTION_HANDLE_PITCH
 }
 
 /**

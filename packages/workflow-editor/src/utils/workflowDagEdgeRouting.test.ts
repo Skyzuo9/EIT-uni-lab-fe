@@ -2,6 +2,7 @@ import { Position, getSmoothStepPath } from 'reactflow'
 import { describe, expect, it } from 'vitest'
 
 import {
+  alignPrimaryMaterialEdgeEndpoints,
   getWorkflowSmoothStepCenter,
   WORKFLOW_SMOOTHSTEP_OFFSET
 } from './workflowDagEdgeRouting'
@@ -57,5 +58,66 @@ describe('workflowDagEdgeRouting', () => {
       targetPosition: Position.Right,
       direction: 'LR'
     })).toEqual({ centerX: 505 })
+  })
+
+  /** 主样品横向端口只差一个卡片节距时应吸附为同一水平轴。 */
+  it('straightens near-aligned horizontal primary material edges', () => {
+    expect(alignPrimaryMaterialEdgeEndpoints({
+      sourceX: 100,
+      sourceY: 166,
+      targetX: 300,
+      targetY: 197,
+      direction: 'LR',
+      materialRole: 'primary_sample'
+    })).toEqual({
+      sourceX: 100,
+      sourceY: 181.5,
+      targetX: 300,
+      targetY: 181.5,
+      direction: 'LR',
+      materialRole: 'primary_sample'
+    })
+  })
+
+  /** 主样品纵向端口的 React Flow 微偏移同样吸附为竖直轴。 */
+  it('straightens near-aligned vertical primary material edges', () => {
+    expect(alignPrimaryMaterialEdgeEndpoints({
+      sourceX: 528,
+      sourceY: 100,
+      targetX: 512,
+      targetY: 300,
+      direction: 'TB',
+      materialRole: 'primary_sample'
+    })).toEqual({
+      sourceX: 520,
+      sourceY: 100,
+      targetX: 520,
+      targetY: 300,
+      direction: 'TB',
+      materialRole: 'primary_sample'
+    })
+  })
+
+  /** 蛇形换行及辅助物料仍保留真实转向，不被近同轴规则改写。 */
+  it('preserves real turns and non-primary material routes', () => {
+    const turn = {
+      sourceX: 100,
+      sourceY: 166,
+      targetX: 300,
+      targetY: 466,
+      direction: 'LR' as const,
+      materialRole: 'primary_sample'
+    }
+    const supporting = {
+      sourceX: 100,
+      sourceY: 166,
+      targetX: 300,
+      targetY: 197,
+      direction: 'LR' as const,
+      materialRole: 'reagent'
+    }
+
+    expect(alignPrimaryMaterialEdgeEndpoints(turn)).toEqual(turn)
+    expect(alignPrimaryMaterialEdgeEndpoints(supporting)).toEqual(supporting)
   })
 })
