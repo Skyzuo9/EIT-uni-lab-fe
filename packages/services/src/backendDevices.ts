@@ -36,6 +36,7 @@ export async function loadBackendDeviceCatalog(
 ): Promise<DeviceCatalogItem[]> {
   return (await loadBackendDevices(http)).map((device) => ({
     deviceId: device.id,
+    materialUuid: device.id,
     deviceTypeId: device.deviceTypeId,
     deviceKey: device.deviceKey,
     namespace: device.namespace,
@@ -61,6 +62,7 @@ export async function loadBackendOnlineDevices(
 ): Promise<OnlineDevice[]> {
   return (await loadBackendDevices(http, signal)).map((device) => ({
     id: device.id,
+    materialUuid: device.id,
     deviceKey: device.deviceKey,
     namespace: device.namespace,
     machineName: device.label,

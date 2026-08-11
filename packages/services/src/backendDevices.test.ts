@@ -18,6 +18,7 @@ describe('Backend 设备目录 adapter', () => {
       loadBackendDeviceCatalog(mockHttp(request))
     ).resolves.toEqual([{
       deviceId: 'material-pump',
+      materialUuid: 'material-pump',
       deviceTypeId: 'template-pump',
       deviceKey: 'pump-01',
       namespace: 'edge-01',
@@ -49,6 +50,7 @@ describe('Backend 设备目录 adapter', () => {
       loadBackendOnlineDevices(mockHttp(request))
     ).resolves.toMatchObject([{
       id: 'material-pump',
+      materialUuid: 'material-pump',
       online: false,
       actions: [{
         actionName: 'dispense',

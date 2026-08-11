@@ -7,8 +7,38 @@ import {
   DeviceLockControl,
   UnlockConfirmationDialog
 } from './DevicePanel'
+import { deviceActionReadiness } from './DeviceActionAvailability'
 
 describe('device action Runtime availability', () => {
+  /** 设备目录缺少实际物料（Material）身份时应在提交前给出通俗提示。 */
+  it('disables the run control when the device material identity is missing', () => {
+    const state = deviceActionReadiness({
+      action: actionFixture(),
+      device: {
+        id: 'pump-1',
+        materialUuid: '',
+        deviceKey: '/devices/pump-1',
+        namespace: '/devices',
+        machineName: '本地',
+        online: true,
+        actions: [actionFixture()],
+        displayName: '一号泵',
+        displayDetail: '本地'
+      },
+      template: null,
+      canRunActionTask: true,
+      connection: 'connected',
+      catalogLoading: false,
+      catalogError: null
+    })
+
+    expect(state).toEqual({
+      kind: 'unavailable',
+      reason: 'device_identity_missing',
+      message: '当前设备缺少运行标识，请刷新设备列表后重试'
+    })
+  })
+
   it('re-enables the original run control only for a typed D1A Action', () => {
     const markup = renderToStaticMarkup(
       <DeviceActionAvailability
@@ -162,6 +192,23 @@ describe('device action Runtime availability', () => {
     expect(markup).toContain('&quot;progress&quot;: 0.5')
   })
 })
+
+/** 构造设备页动作（Action）展示夹具。 */
+function actionFixture(): DeviceAction {
+  return {
+    actionName: 'dose',
+    actionRef: 'pump-1.dose',
+    displayName: '加液',
+    label: '加液',
+    typeName: 'Dose',
+    isBusy: false,
+    currentJobId: null,
+    schema: null,
+    inputSchema: {},
+    outputSchema: {},
+    riskLevel: 'normal'
+  }
+}
 
 describe('device Action lock controls', () => {
   const busyAction: DeviceAction = {

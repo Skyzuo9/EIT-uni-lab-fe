@@ -37,6 +37,7 @@ describe('laboratory service', () => {
             items: [
               {
                 id: 'pump-1',
+                materialUuid: '10000000-0000-4000-8000-000000000001',
                 deviceKey: '/cell/pump-1',
                 namespace: '/cell',
                 name: '蠕动泵',
@@ -71,6 +72,7 @@ describe('laboratory service', () => {
     await expect(service.getOnlineDevices()).resolves.toEqual([
       {
         id: 'pump-1',
+        materialUuid: '10000000-0000-4000-8000-000000000001',
         deviceKey: '/cell/pump-1',
         namespace: '/cell',
         machineName: '蠕动泵',
@@ -90,6 +92,7 @@ describe('laboratory service', () => {
     await expect(service.getDeviceCatalog()).resolves.toEqual([
       {
         deviceId: 'pump-1',
+        materialUuid: '10000000-0000-4000-8000-000000000001',
         deviceTypeId: 'pump-1',
         deviceKey: '/cell/pump-1',
         namespace: '/cell',

@@ -2,36 +2,25 @@ import { ServiceError } from './errors'
 import type { HttpClient } from './http'
 
 export interface DeviceActionTaskCreateRequest {
-  authority_id: string
-  template_catalog_fingerprint: string
+  material_uuid: string
   workflow_node_template_uuid: string
-  device_id: string
-  input: Record<string, unknown>
+  param: Record<string, unknown>
+  execution_policy?: Record<string, unknown>
   idempotency_key: string
   description?: string
+  meta_data?: Record<string, unknown>
 }
 
 export interface DeviceActionTaskView {
   task_uuid: string
   job_uuid: string
-  authority_id: string
-  template_catalog_fingerprint: string
-  workflow_node_template_uuid: string
-  name: string
-  display_name: string
-  device_id: string
   status: string
   control_status: string
   cleanup_status: string
-  input: Record<string, unknown>
   output: Record<string, unknown>
   error_info: unknown[]
   job_status: string
   feedback_cursor: number
-  create_time: string
-  update_time: string
-  started_at: string | null
-  finished_at: string | null
 }
 
 export interface DeviceActionTaskRuntimePort {
@@ -47,61 +36,45 @@ export function createDeviceActionTaskRuntime(
   const request = async (
     path: string,
     init?: RequestInit
-  ): Promise<DeviceActionTaskView> => {
+  ): Promise<unknown> => {
     const raw = await http.request<unknown>(path, init)
-    return parseEnvelope(raw)
+    return parseEnvelopeData(raw)
   }
 
   return {
-    createDeviceActionTask: (body) => request(
-      '/api/v1/device-action-tasks',
-      {
+    createDeviceActionTask: async (body) => parseActionRunResult(
+      await request('/api/v1/device-action-runs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
-      }
+      })
     ),
-    getDeviceActionTask: (taskUuid) => request(
-      `/api/v1/device-action-tasks/${encodeURIComponent(taskUuid)}`
-    )
+    getDeviceActionTask: async (taskUuid) => {
+      const encodedTaskUuid = encodeURIComponent(taskUuid)
+      const [task, jobsValue] = await Promise.all([
+        request(`/api/v1/workflow-tasks/${encodedTaskUuid}`),
+        request(`/api/v1/workflow-tasks/${encodedTaskUuid}/jobs`)
+      ])
+      const jobs = array(jobsValue)
+      if (jobs.length !== 1) throw invalidResponse()
+      return parseTaskAndJob(task, jobs[0])
+    }
   }
 }
 
-const VIEW_KEYS = new Set([
-  'task_uuid',
-  'job_uuid',
-  'authority_id',
-  'template_catalog_fingerprint',
-  'workflow_node_template_uuid',
-  'name',
-  'display_name',
-  'device_id',
-  'status',
-  'control_status',
-  'cleanup_status',
-  'input',
-  'output',
-  'error_info',
-  'job_status',
-  'feedback_cursor',
-  'create_time',
-  'update_time',
-  'started_at',
-  'finished_at'
-])
-
-function parseEnvelope(raw: unknown): DeviceActionTaskView {
+/** 读取 Uni-Lab OS 的统一响应包并保留可处理的服务错误。 */
+function parseEnvelopeData(raw: unknown): unknown {
   const envelope = record(raw)
   if (envelope.code !== 0) {
+    const businessCode = integer(envelope.code)
     const error = record(envelope.error)
-    const code = string(error.code)
-    const message = string(error.message)
-    if (code && message) {
+    const message = string(error.message) || string(error.msg)
+    if (message) {
       throw new ServiceError({
-        code,
+        code: string(error.code) ||
+          `DEVICE_ACTION_RUN_REJECTED_${businessCode}`,
         message,
-        status: integer(envelope.code),
-        retryable: integer(envelope.code) >= 500
+        retryable: businessCode >= 5000
       })
     }
     throw invalidResponse()
@@ -112,51 +85,51 @@ function parseEnvelope(raw: unknown): DeviceActionTaskView {
   ) {
     throw invalidResponse()
   }
-  return parseView(envelope.data)
+  return envelope.data
 }
 
-function parseView(raw: unknown): DeviceActionTaskView {
-  const value = record(raw)
-  if (
-    Object.keys(value).some((key) => !VIEW_KEYS.has(key)) ||
-    Object.keys(value).length !== VIEW_KEYS.size
-  ) {
+/** 把 Backend 标准任务与作业创建结果投影为设备页所需的紧凑运行视图。 */
+function parseActionRunResult(raw: unknown): DeviceActionTaskView {
+  const result = record(raw)
+  if (typeof result.created !== 'boolean') throw invalidResponse()
+  return parseTaskAndJob(result.task, result.job)
+}
+
+/** 校验同一设备单动作运行的任务与唯一作业，并生成前端只读投影。 */
+function parseTaskAndJob(
+  taskValue: unknown,
+  jobValue: unknown
+): DeviceActionTaskView {
+  const task = record(taskValue)
+  const job = record(jobValue)
+  const taskUuid = requiredString(task.uuid)
+  if (requiredString(job.workflow_task_uuid ?? taskUuid) !== taskUuid) {
     throw invalidResponse()
   }
-  const input = record(value.input)
-  const output = record(value.output)
-  const errorInfo = value.error_info
-  const feedbackCursor = integer(value.feedback_cursor)
+  const feedbackCursor = integer(job.feedback_sequence)
+  const taskErrors = array(task.error_info)
+  const jobErrors = array(job.error_info)
   const parsed: DeviceActionTaskView = {
-    task_uuid: requiredString(value.task_uuid),
-    job_uuid: requiredString(value.job_uuid),
-    authority_id: requiredString(value.authority_id),
-    template_catalog_fingerprint: fingerprint(
-      value.template_catalog_fingerprint
-    ),
-    workflow_node_template_uuid: requiredString(
-      value.workflow_node_template_uuid
-    ),
-    name: requiredString(value.name),
-    display_name: requiredString(value.display_name),
-    device_id: requiredString(value.device_id),
-    status: requiredString(value.status),
-    control_status: requiredString(value.control_status),
-    cleanup_status: requiredString(value.cleanup_status),
-    input,
-    output,
-    error_info: Array.isArray(errorInfo) ? [...errorInfo] : invalidResponse(),
-    job_status: requiredString(value.job_status),
-    feedback_cursor: feedbackCursor,
-    create_time: requiredString(value.create_time),
-    update_time: requiredString(value.update_time),
-    started_at: nullableString(value.started_at),
-    finished_at: nullableString(value.finished_at)
+    task_uuid: taskUuid,
+    job_uuid: requiredString(job.uuid),
+    status: requiredString(task.status),
+    control_status: requiredString(task.control_status),
+    cleanup_status: requiredString(task.cleanup_status),
+    output: record(job.return_info),
+    error_info: jobErrors.length > 0 ? jobErrors : taskErrors,
+    job_status: requiredString(job.status),
+    feedback_cursor: feedbackCursor
   }
   if (feedbackCursor < 0) {
     throw invalidResponse()
   }
   return parsed
+}
+
+/** 校验并复制服务端数组，避免后续修改原始响应。 */
+function array(value: unknown): unknown[] {
+  if (!Array.isArray(value)) throw invalidResponse()
+  return [...value]
 }
 
 function record(value: unknown): Record<string, unknown> {
@@ -176,26 +149,15 @@ function requiredString(value: unknown): string {
   return parsed
 }
 
-function nullableString(value: unknown): string | null {
-  if (value === null) return null
-  return requiredString(value)
-}
-
 function integer(value: unknown): number {
   if (!Number.isInteger(value)) throw invalidResponse()
   return value as number
 }
 
-function fingerprint(value: unknown): string {
-  const parsed = requiredString(value)
-  if (!/^sha256:[0-9a-f]{64}$/.test(parsed)) throw invalidResponse()
-  return parsed
-}
-
 function invalidResponse(): never {
   throw new ServiceError({
     code: 'INVALID_DEVICE_ACTION_TASK_RESPONSE',
-    message: '设备 Action Task 服务返回了无效响应',
+    message: '设备单动作服务返回了无效响应',
     retryable: false
   })
 }
