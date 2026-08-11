@@ -567,7 +567,14 @@ function workflowEdgeAriaLabel(
   return undefined
 }
 
-/** 返回工作流边的线型；辅助物料加入使用更轻线宽。 */
+/**
+ * 返回工作流边的线型；物料谱系颜色保持不变，仅加粗主样品主线。
+ *
+ * @param materialAccent 当前物料谱系的稳定强调色；非物料边为空。
+ * @param communication 当前边是否为通信控制边。
+ * @param supportingMaterial 当前物料边是否属于辅助物料支线。
+ * @returns ReactFlow 边可直接使用的颜色、线宽与虚线样式。
+ */
 function workflowEdgeStyle(
   materialAccent: string | undefined,
   communication: boolean,
@@ -576,7 +583,7 @@ function workflowEdgeStyle(
   return {
     stroke: materialAccent ?? STRUCTURAL_EDGE_COLOR,
     strokeWidth: materialAccent
-      ? supportingMaterial ? 1.1 : 2.4
+      ? supportingMaterial ? 2.4 : 3.6
       : 1.5,
     strokeDasharray: communication && !materialAccent ? '4 4' : undefined
   }

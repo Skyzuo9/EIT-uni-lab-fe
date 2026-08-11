@@ -63,22 +63,36 @@ export function packWorkflowSupportingBranches(
   }> = []
 
   for (const branch of branches) {
-    const candidates = supportingBranchCandidates(
+    const candidateGroups = supportingBranchCandidates(
       branch,
       originX,
-      mainColumnGap
+      mainColumnGap,
+      mainColumnCount
     )
     const canvasEnd = originX +
       (mainColumnCount - 1) * mainColumnGap +
       WORKFLOW_SUPPORTING_BRANCH_MAX_NODE_WIDTH
+    const preferredCandidates = candidateGroups.preferred.filter(
+      (candidate) => {
+        const interval = branchInterval(candidate)
+        return interval.start >= originX && interval.end <= canvasEnd
+      }
+    )
+    // `placementCandidates` 只有上游方向确实放不下时才改用另一侧，避免为了
+    // 复用垂直带而把前两条支线重新推到后续主线通道。
+    const placementCandidates = preferredCandidates.length > 0
+      ? preferredCandidates
+      : candidateGroups.alternate.filter((candidate) => {
+          const interval = branchInterval(candidate)
+          return interval.start >= originX && interval.end <= canvasEnd
+        })
     let installed = false
     for (const band of bands) {
-      const layout = candidates.find((candidate) => {
+      const layout = placementCandidates.find((candidate) => {
         const interval = branchInterval(candidate)
-        return interval.start >= originX && interval.end <= canvasEnd &&
-          band.intervals.every((occupied) =>
-            !intervalsOverlap(interval, occupied)
-          )
+        return band.intervals.every((occupied) =>
+          !intervalsOverlap(interval, occupied)
+        )
       })
       if (!layout) continue
       band.intervals.push(branchInterval(layout))
@@ -87,10 +101,9 @@ export function packWorkflowSupportingBranches(
       break
     }
     if (installed) continue
-    const layout = candidates.find((candidate) => {
-      const interval = branchInterval(candidate)
-      return interval.start >= originX && interval.end <= canvasEnd
-    }) ?? candidates[0] ?? []
+    const layout = placementCandidates[0] ??
+      candidateGroups.preferred[0] ??
+      candidateGroups.alternate[0] ?? []
     bands.push({
       intervals: [branchInterval(layout)],
       placements: [...layout]
@@ -108,40 +121,42 @@ export function packWorkflowSupportingBranches(
  * @param branch 当前辅助物料支线。
  * @param originX 主干最西侧坐标。
  * @param mainColumnGap 主干列间距。
- * @returns 由短到长排列的候选坐标；打包器优先复用已有垂直带。
+ * @param mainColumnCount 单行主样品主干的固定列数。
+ * @returns 优先沿主样品流向前置的候选坐标；打包器随后复用已有垂直带。
  */
 function supportingBranchCandidates(
   branch: WorkflowSupportingBranch,
   originX: number,
-  mainColumnGap: number
-): WorkflowSupportingBranchPlacement[][] {
+  mainColumnGap: number,
+  mainColumnCount: number
+): {
+  preferred: WorkflowSupportingBranchPlacement[][]
+  alternate: WorkflowSupportingBranchPlacement[][]
+} {
   const nearOffset = branch.anchorColumn === 0 || branch.anchorColumn === 2
     ? WORKFLOW_SUPPORTING_BRANCH_NODE_GAP
     : -WORKFLOW_SUPPORTING_BRANCH_NODE_GAP
-  const preferredExpansion = branch.anchorColumn < 2
-  return [
-    layoutSupportingBranch(
-      branch,
-      originX,
-      mainColumnGap,
-      0,
-      preferredExpansion
-    ),
-    layoutSupportingBranch(
-      branch,
-      originX,
-      mainColumnGap,
-      0,
-      !preferredExpansion
-    ),
-    ...[nearOffset, -nearOffset].flatMap((attachmentOffset) => [
+  // `backboneFlowsEast` 表示当前蛇形行的主样品（Primary Sample）阅读方向。
+  const backboneFlowsEast = Math.floor(
+    branch.anchorIndex / mainColumnCount
+  ) % 2 === 0
+  // 汇入支线放在接入动作上游，流出支线放在动作下游，避免前部支线
+  // 占据后续主样品物料流（MaterialFlow）的主要阅读通道。
+  const preferredExpansion = branch.flowDirection === 'into-primary'
+    ? !backboneFlowsEast
+    : backboneFlowsEast
+  const attachmentOffsets = [0, nearOffset, -nearOffset]
+  return {
+    preferred: attachmentOffsets.map((attachmentOffset) =>
       layoutSupportingBranch(
         branch,
         originX,
         mainColumnGap,
         attachmentOffset,
         preferredExpansion
-      ),
+      )
+    ),
+    alternate: attachmentOffsets.map((attachmentOffset) =>
       layoutSupportingBranch(
         branch,
         originX,
@@ -149,8 +164,8 @@ function supportingBranchCandidates(
         attachmentOffset,
         !preferredExpansion
       )
-    ])
-  ]
+    )
+  }
 }
 
 /**

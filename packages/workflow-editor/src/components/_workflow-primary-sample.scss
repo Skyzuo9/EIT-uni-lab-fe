@@ -193,7 +193,7 @@
   align-self: flex-end;
 }
 
-/* 辅助物料加入保持可读和可操作，只降低色面、线宽与运动强度。 */
+/* 辅助物料节点保持低色面；物料支线保留对应谱系原色，由主线线宽建立层级。 */
 .workflow
   :global([data-workflow-layout-strategy='primary-sample-serpentine'][data-workflow-material-emphasis='supporting'])
   :global(.wf-node__material-source-label) strong {
@@ -258,8 +258,7 @@
 }
 
 .workflow :global(.react-flow__edge.wf-flow-edge--supporting-material) {
-  opacity: .28;
-  transition: opacity var(--unilab-motion-fast) ease;
+  opacity: 1;
 }
 
 /* 用户检查辅助物料时恢复完整色彩，不牺牲 hover、选中和键盘聚焦反馈。 */
@@ -316,10 +315,4 @@
   :global(.wf-node__material-port[data-workflow-material-emphasis='supporting'])
   > :global(.wf-node__handle) {
   opacity: 1;
-}
-
-.workflow :global(.react-flow__edge.wf-flow-edge--supporting-material:hover),
-.workflow :global(.react-flow__edge.wf-flow-edge--supporting-material.selected),
-.workflow :global(.react-flow__edge.wf-flow-edge--supporting-material:focus-visible) {
-  opacity: .9;
 }
