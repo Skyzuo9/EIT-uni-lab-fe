@@ -70,6 +70,31 @@ describe('device Action Task REST rehydrate recovery', () => {
     vi.useFakeTimers()
   })
 
+  /** 当前 OS 只发送标准工作流运行失效事件，设备单动作也必须响应补读。 */
+  it('rehydrates a device action after the standard workflow runtime event', async () => {
+    const environment = createEnvironment()
+    const subscription = createSubscriptionPort()
+    const read = vi.fn(async () => false)
+    const recovery = startDeviceActionTaskRecovery({
+      tasks: [{ taskUuid: 'task-1', actionRef: 'action-1' }],
+      environment,
+      subscribe: subscription.subscribe,
+      read
+    })
+    await flushMicrotasks()
+    expect(read).toHaveBeenCalledTimes(1)
+
+    subscription.emit.listener({
+      id: 'event-2',
+      event: 'workflow.runtime.changed',
+      data: { workflow_task_uuid: 'task-1' }
+    })
+    await flushMicrotasks()
+
+    expect(read).toHaveBeenCalledTimes(2)
+    recovery.dispose()
+  })
+
   it('closes the subscribe race and treats duplicate SSE as invalidation only', async () => {
     const environment = createEnvironment()
     const subscription = createSubscriptionPort()
@@ -87,13 +112,13 @@ describe('device Action Task REST rehydrate recovery', () => {
     expect(read).toHaveBeenCalledTimes(1)
     subscription.emit.listener({
       id: 'event-1',
-      event: 'device_action_task.changed',
-      data: { task_uuid: 'task-1' }
+      event: 'workflow.runtime.changed',
+      data: { workflow_task_uuid: 'task-1' }
     })
     subscription.emit.listener({
       id: 'event-1',
-      event: 'device_action_task.changed',
-      data: { task_uuid: 'task-1' }
+      event: 'workflow.runtime.changed',
+      data: { workflow_task_uuid: 'task-1' }
     })
     expect(read).toHaveBeenCalledTimes(1)
 

@@ -9,6 +9,7 @@ import CloudDeviceSquareView from './CloudDeviceSquareView'
 import DevicePackageUploadView from './DevicePackageUploadView'
 import LocalDeviceWishlistView from './LocalDeviceWishlistView'
 import type { DeviceProvisioningApi } from './deviceProvisioningUi'
+import PlatformCapabilityNotice from '../PlatformCapabilityNotice'
 import styles from './DeviceSquarePanel.module.scss'
 
 type DeviceProvisioningTab = 'square' | 'wishlist' | 'upload'
@@ -80,7 +81,15 @@ export default function DeviceSquarePanel(): React.JSX.Element {
     []
   )
 
-  if (!api) return <DesktopOnlyNotice />
+  if (!api) {
+    return (
+      <PlatformCapabilityNotice
+        title="请在 Uni-Lab Workbench 中完成设备接入"
+        description="启动完整 Workbench 后，可继续下载设备定义、写入本地设备图并验证 Action。"
+        dependency="该流程需要 Workbench 的本地后端调用当前 Uni-Lab-OS CLI、访问本地文件系统，并在确认后受控重启 Edge；当前界面没有这些系统权限。"
+      />
+    )
+  }
 
   return (
     <section className={styles.workspace} aria-label="设备包与本地设备接入">
@@ -162,19 +171,6 @@ export default function DeviceSquarePanel(): React.JSX.Element {
           />
         ) : null}
       </div>
-    </section>
-  )
-}
-
-/** 在普通浏览器构建中诚实说明该能力的 Electron Main 依赖。 */
-function DesktopOnlyNotice(): React.JSX.Element {
-  return (
-    <section className={styles.desktopOnly}>
-      <div aria-hidden="true" className={styles.desktopOnlyMark}>⌁</div>
-      <h1>设备包操作仅在 Electron 调试台可用</h1>
-      <p>
-        该流程需要 Main 进程调用当前 Uni-Lab-OS CLI、修改本地设备图并受控重启 Edge。
-      </p>
     </section>
   )
 }

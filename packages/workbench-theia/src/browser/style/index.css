@@ -19,11 +19,17 @@
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  min-height: 42px;
-  padding: 7px 12px;
+  min-height: 50px;
+  padding: 8px 14px;
   border-bottom: 1px solid var(--unilab-color-border);
   background: var(--unilab-color-surface);
   box-shadow: var(--unilab-shadow-control);
+}
+
+.unilab-theia-prototype__bar strong {
+  font-size: 18px;
+  font-weight: 760;
+  letter-spacing: -.02em;
 }
 
 .unilab-theia-prototype__bar > div,
@@ -357,27 +363,115 @@
   white-space: pre-wrap;
 }
 
-.unilab-theia-prototype__debug dl {
-  display: grid;
-  grid-template-columns: max-content minmax(0, 1fr);
-  gap: 2px 8px;
-  margin: 6px 0;
-  font-family: var(--unilab-font-mono);
-}
-
-.unilab-theia-prototype__debug dd {
-  min-width: 0;
-  margin: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .unilab-theia-prototype__surface {
   flex: 1;
   min-height: 0;
   overflow: hidden;
   background: var(--unilab-color-canvas);
+}
+
+/* 文档明确排除的活动栏入口在布局恢复期间也不得闪现。 */
+#theia-top-panel .lm-MenuBar-content > .lm-MenuBar-item:first-child,
+#theia-top-panel .lm-MenuBar-content > .lm-MenuBar-item:last-child,
+#theia-left-content-panel [data-id='search-view-container'],
+#theia-left-content-panel [data-id='scm-view-container'],
+#theia-left-content-panel [data-id='debug'],
+#theia-left-content-panel [data-id='vsx-extensions-view-container'],
+#theia-left-content-panel [data-id='test-view-container'],
+#theia-left-content-panel [id='search-view-container'],
+#theia-left-content-panel [id='scm-view-container'],
+#theia-left-content-panel [id='debug'],
+#theia-left-content-panel [id='vsx-extensions-view-container'],
+#theia-left-content-panel [id='test-view-container'] {
+  display: none !important;
+}
+
+/* 设置已有独立模块，隐藏 Theia 底部 Manage 菜单。 */
+#theia-left-content-panel > .theia-app-sidebar-container > .theia-sidebar-menu:last-child {
+  display: none !important;
+}
+
+.unilab-settings-widget {
+  min-width: 220px;
+  color: var(--theia-foreground);
+  background: var(--theia-sideBar-background);
+}
+
+.unilab-settings {
+  display: grid;
+  align-content: start;
+  gap: 18px;
+  min-height: 100%;
+  padding: 18px 14px;
+}
+
+.unilab-settings h2,
+.unilab-settings p {
+  margin: 0;
+}
+
+.unilab-settings h2 {
+  font-size: 16px;
+  line-height: 1.4;
+}
+
+.unilab-settings header p,
+.unilab-settings__status {
+  margin-top: 5px;
+  color: var(--theia-descriptionForeground);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.unilab-settings__theme {
+  display: grid;
+  gap: 9px;
+}
+
+.unilab-settings__theme button {
+  display: grid;
+  min-height: 74px;
+  grid-template-columns: 30px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  gap: 3px 10px;
+  align-items: center;
+  padding: 12px;
+  color: var(--theia-foreground);
+  border: 1px solid var(--theia-panel-border);
+  border-radius: 10px;
+  background: var(--theia-sideBar-background);
+  cursor: pointer;
+  text-align: left;
+}
+
+.unilab-settings__theme button:hover {
+  background: var(--theia-list-hoverBackground);
+}
+
+.unilab-settings__theme button[aria-pressed='true'] {
+  color: var(--theia-button-background);
+  border-color: var(--theia-button-background);
+  background: var(--theia-list-activeSelectionBackground);
+}
+
+.unilab-settings__theme button:focus-visible {
+  outline: 2px solid var(--theia-focusBorder);
+  outline-offset: 2px;
+}
+
+.unilab-settings__theme .codicon {
+  grid-row: 1 / 3;
+  font-size: 21px;
+  text-align: center;
+}
+
+.unilab-settings__theme strong {
+  font-size: 12px;
+}
+
+.unilab-settings__theme small {
+  color: var(--theia-descriptionForeground);
+  font-size: 11px;
 }
 
 .unilab-theia-prototype__surface .material-workbench,

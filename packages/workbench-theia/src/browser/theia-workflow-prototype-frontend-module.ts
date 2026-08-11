@@ -4,6 +4,7 @@ import {
   WebSocketConnectionProvider,
   WidgetFactory
 } from '@theia/core/lib/browser'
+import { TabBarToolbarContribution } from '@theia/core/lib/browser/shell/tab-bar-toolbar/tab-bar-toolbar-registry'
 import { ContainerModule } from '@theia/core/shared/inversify'
 import { PreferenceContribution } from '@theia/core/lib/common/preferences'
 import '@unilab/design-system/theme.css'
@@ -19,6 +20,8 @@ import { WorkbenchSessionClientImpl } from './workbench-session-client'
 import { WorkbenchPrivateStatePreferenceContribution } from './workbench-private-state-preferences'
 import { UniLabAgentContribution } from './unilab-agent-contribution'
 import { UniLabAgentWidget } from './unilab-agent-widget'
+import { UniLabSettingsContribution } from './unilab-settings-contribution'
+import { UniLabSettingsWidget } from './unilab-settings-widget'
 import '../../src/browser/style/index.css'
 
 export default new ContainerModule((bind) => {
@@ -42,6 +45,15 @@ export default new ContainerModule((bind) => {
   bind(WidgetFactory).toDynamicValue(context => ({
     id: UniLabAgentWidget.ID,
     createWidget: () => context.container.get(UniLabAgentWidget)
+  })).inSingletonScope()
+
+  bindViewContribution(bind, UniLabSettingsContribution)
+  bind(FrontendApplicationContribution).toService(UniLabSettingsContribution)
+  bind(TabBarToolbarContribution).toService(UniLabSettingsContribution)
+  bind(UniLabSettingsWidget).toSelf()
+  bind(WidgetFactory).toDynamicValue(context => ({
+    id: UniLabSettingsWidget.ID,
+    createWidget: () => context.container.get(UniLabSettingsWidget)
   })).inSingletonScope()
 
   bindViewContribution(bind, TheiaWorkflowPrototypeContribution)

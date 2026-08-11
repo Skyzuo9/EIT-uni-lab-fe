@@ -21,14 +21,8 @@ import {
   readMaterial2DVisual
 } from './visual'
 
-export interface MaterialFlowNodeData {
-  materialId: MaterialId
-}
-
-export type MaterialFlowNode = Node<
-  MaterialFlowNodeData,
-  'material'
->
+import type { MaterialFlowNode } from './projectionTypes'
+export type { MaterialFlowNode, MaterialFlowNodeData } from './projectionTypes'
 
 export const MATERIAL_FLOW_SCALE = 0.5
 const MATERIAL_REVIEW_SCALE = 0.28
@@ -122,7 +116,6 @@ export function projectMaterialFlowNodes(options: {
 
   return options.reviewLayout ? avoidReviewCollisions(nodes) : nodes
 }
-
 function createPhysicalRootPositions(
   aggregatesById: Readonly<Record<MaterialId, MaterialAggregate>>
 ): Record<MaterialId, XYPosition> {

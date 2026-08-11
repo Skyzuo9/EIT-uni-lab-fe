@@ -24,6 +24,7 @@ import DeviceSquarePanel from './device-provisioning/DeviceSquarePanel';
 import DeviceCardWorkbench from './device-cards/DeviceCardWorkbench';
 import { LabPanelWorkspace } from '../integrations/lab-workbench/LabPanelWorkspace';
 import type { WorkbenchSection } from '../data/lab';
+import type { WorkflowCatalogState } from '@unilab/workflow-editor';
 
 const DEVICE_NAV_ITEM: AppShellNavigationItem = {
   id: 'device',
@@ -60,11 +61,21 @@ const NAV_ITEMS: readonly AppShellNavigationItem[] = [
 
 // 统一外壳:顶栏 + 左侧导航 + 主区
 export default function AppShell(): React.JSX.Element {
-  const { section, setSection } = useWorkbench();
+  const {
+    section,
+    setSection,
+    recoveryRevision,
+    reportCapabilityHealth
+  } = useWorkbench();
   const { session, logout } = useAuth();
   const [workflowCatalogRequestRevision, setWorkflowCatalogRequestRevision] =
     useState(0);
   const dirtyWorkflowSections = useRef<Set<WorkbenchSection>>(new Set());
+  const handleWorkflowCatalogStateChange = useCallback((
+    state: WorkflowCatalogState
+  ) => {
+    reportCapabilityHealth('workflows', state);
+  }, [reportCapabilityHealth]);
   const handleNavigate = useCallback(
     (navigationId: string) => {
       const nextSection = navigationId as WorkbenchSection;
@@ -120,6 +131,8 @@ export default function AppShell(): React.JSX.Element {
       <VisitedSectionViews
         section={section}
         workflowCatalogRequestRevision={workflowCatalogRequestRevision}
+        recoveryRevision={recoveryRevision}
+        onWorkflowCatalogStateChange={handleWorkflowCatalogStateChange}
         onWorkflowUnsavedChangesChange={handleWorkflowUnsavedChangesChange}
       />
     </AppShellLayout>
@@ -135,10 +148,14 @@ function preventUnsavedUnload(event: BeforeUnloadEvent): void {
 function VisitedSectionViews({
   section,
   workflowCatalogRequestRevision,
+  recoveryRevision,
+  onWorkflowCatalogStateChange,
   onWorkflowUnsavedChangesChange
 }: {
   section: WorkbenchSection;
   workflowCatalogRequestRevision: number;
+  recoveryRevision: number;
+  onWorkflowCatalogStateChange: (state: WorkflowCatalogState) => void;
   onWorkflowUnsavedChangesChange: (
     section: WorkbenchSection,
     hasUnsavedChanges: boolean
@@ -168,6 +185,8 @@ function VisitedSectionViews({
           <SectionView
             section={visitedSection}
             workflowCatalogRequestRevision={workflowCatalogRequestRevision}
+            recoveryRevision={recoveryRevision}
+            onWorkflowCatalogStateChange={onWorkflowCatalogStateChange}
             onWorkflowUnsavedChangesChange={onWorkflowUnsavedChangesChange}
           />
         </div>
@@ -180,10 +199,14 @@ function VisitedSectionViews({
 function SectionView({
   section,
   workflowCatalogRequestRevision,
+  recoveryRevision,
+  onWorkflowCatalogStateChange,
   onWorkflowUnsavedChangesChange
 }: {
   section: WorkbenchSection;
   workflowCatalogRequestRevision: number;
+  recoveryRevision: number;
+  onWorkflowCatalogStateChange: (state: WorkflowCatalogState) => void;
   onWorkflowUnsavedChangesChange: (
     section: WorkbenchSection,
     hasUnsavedChanges: boolean
@@ -201,32 +224,45 @@ function SectionView({
   if (section === 'cards') return <DeviceCardWorkbench />;
   if (section === 'material') {
     return (
-      <LabPanelWorkspace
-        key="material-workspace"
-        preset="lab"
-        onWorkflowUnsavedChangesChange={handleWorkflowUnsavedChangesChange}
-      />
+      <>
+        <h1 className="workbench-page-title">物料工作台</h1>
+        <LabPanelWorkspace
+          key="material-workspace"
+          preset="lab"
+          onWorkflowUnsavedChangesChange={handleWorkflowUnsavedChangesChange}
+          recoveryRevision={recoveryRevision}
+          onWorkflowCatalogStateChange={onWorkflowCatalogStateChange}
+        />
+      </>
     );
   }
   if (section === 'scene') {
     // 3D 场景内部依赖 Pascal/WebGPU，运行时报错时用错误边界兜底，避免整页崩溃
     return (
       <ErrorBoundary title="3D 场景加载失败">
+        <h1 className="workbench-page-title">三维实验室场景</h1>
         <LabPanelWorkspace
           key="scene-workspace"
           preset="scene"
           onWorkflowUnsavedChangesChange={handleWorkflowUnsavedChangesChange}
+          recoveryRevision={recoveryRevision}
+          onWorkflowCatalogStateChange={onWorkflowCatalogStateChange}
         />
       </ErrorBoundary>
     );
   }
   return (
-    <LabPanelWorkspace
-      key="workflow-workspace"
-      preset="workflow"
-      workflowCatalogRequestRevision={workflowCatalogRequestRevision}
-      onWorkflowUnsavedChangesChange={handleWorkflowUnsavedChangesChange}
-    />
+    <>
+      <h1 className="workbench-page-title">工作流工作台</h1>
+      <LabPanelWorkspace
+        key="workflow-workspace"
+        preset="workflow"
+        workflowCatalogRequestRevision={workflowCatalogRequestRevision}
+        recoveryRevision={recoveryRevision}
+        onWorkflowCatalogStateChange={onWorkflowCatalogStateChange}
+        onWorkflowUnsavedChangesChange={handleWorkflowUnsavedChangesChange}
+      />
+    </>
   );
 }
 

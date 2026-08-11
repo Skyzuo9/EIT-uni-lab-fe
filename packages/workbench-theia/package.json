@@ -45,6 +45,9 @@
   },
   "theiaExtensions": [
     {
+      "frontendPreload": "lib/browser/unilab-text-replacements-frontend-module"
+    },
+    {
       "frontend": "lib/browser/theia-workflow-prototype-frontend-module"
     },
     {

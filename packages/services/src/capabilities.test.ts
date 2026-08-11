@@ -24,14 +24,30 @@ describe('server capability matrix', () => {
       )
 
       for (const capability of SERVER_CAPABILITY_KEYS) {
-        const expected =
-          (backendId === 'local-python' &&
-            (capability === 'devices.listOnline' ||
-              capability === 'devices.listActions' ||
-              capability === 'devices.subscribeStatus' ||
-              capability === 'devices.forceUnlock' ||
-              capability === 'devices.runActionTask' ||
-              capability === 'material.readGraph'))
+        const localPythonCapabilities = [
+          'devices.listOnline',
+          'devices.listActions',
+          'devices.subscribeStatus',
+          'devices.forceUnlock',
+          'devices.runActionTask',
+          'material.readGraph',
+          'workflow.readDefinitions',
+          'workflow.authoring',
+          'workflow.runTasks',
+          'workflow.subscribeEvents'
+        ]
+        const localGoCapabilities = [
+          'devices.listOnline',
+          'devices.listActions',
+          'material.readTemplates',
+          'material.readGraph',
+          'workflow.readDefinitions'
+        ]
+        const expected = backendId === 'local-python'
+          ? localPythonCapabilities.includes(capability)
+          : backendId === 'local-go'
+            ? localGoCapabilities.includes(capability)
+            : false
         expect(hasServerCapability(capabilities, capability)).toBe(expected)
 
         const status = getCapabilityStatus(

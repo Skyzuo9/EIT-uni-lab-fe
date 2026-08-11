@@ -17,14 +17,16 @@ Profile 是一组完整连接配置，不是单个 base URL。它至少确定后
 
 当前默认语义：
 
-| Profile | 物料能力 | 说明 |
+| Profile | 已开放能力 | 说明 |
 |---|---|---|
 | `local-python` / edge | `material.readGraph`、`material.readTemplates` | OS 当前内存图只读投影；模板来自已构建 Registry |
-| `local-go` / backend | 当前物料能力 fail closed | 现有模板/行级 CRUD 未满足统一目录与 Material Graph contract |
+| `local-go` / backend | 设备目录、物料模板/物料图只读、工作流目录只读 | 写入、动作运行、工作流创作/运行和实时事件仍 fail closed |
 | cloud | fail closed | 未来迁移；未实现能力不得显示为可用 |
 
 `local-python` / Edge 的连通性探测使用统一 v1 路径
 `GET /api/v1/health`；`GET /health` 是已退出当前 Edge profile 的旧 bridge 路径。
+`local-go` / Backend 使用其公开根路径 `GET /health`，浏览器开发模式默认通过
+Vite 同源代理连接本机 `127.0.0.1:8080`。
 
 非云本地作用域是 singleton，不发送伪造的 `laboratoryId`。同一路径或相同 JSON 字段不代表
 同一业务语义；adapter 只有在能完整满足 typed port 时才能声明 capability。
@@ -35,9 +37,9 @@ Profile 是一组完整连接配置，不是单个 base URL。它至少确定后
 
 | 能力 | Services 方法 | 当前来源 |
 |---|---|---|
-| 模板列表 | `listTemplates` | Edge `/api/v1/resource-templates`，一次读取全量 summary |
-| 模板详情 | `getTemplate` | Edge `/api/v1/resource-templates/{uuid}`，按需读取 |
-| Material Graph | `getGraph` | OS 当前内存态经 `/api/v1/materials` 分页聚合投影 |
+| 模板列表 | `listTemplates` | Edge 全量 summary；Backend UUID 游标由 adapter 遍历 |
+| 模板详情 | `getTemplate` | `/api/v1/resource-templates/{uuid}`，按 profile 映射 |
+| Material Graph | `getGraph` | Edge 内存态聚合；Backend `/api/v1/materials/graph` |
 
 模板 adapter 将服务端 snake_case DTO 映射为领域 camelCase，保留 catalog
 `revision/stale`、模板 `contentHash/status/creation`，并归一化
@@ -49,8 +51,8 @@ Profile 身份（包含实际 Edge HTTP 地址）和 scope 隔离；搜索、设
 详情只有在用户选中模板后才请求。`stale=true` 只允许浏览，创建必须禁用。
 
 `getGraph` 要求每一行能还原完整 `placement`、`rendering` 和 `sites`，并合并为一个
-`MaterialAggregate`。普通 Go backend `materials` 行虽然也位于 `/api/v1/materials`，
-但当前并不保证这些聚合字段，因此不能把它冒充 `material.readGraph`。
+`MaterialAggregate`。Backend 只使用公开的 `/api/v1/materials/graph`，不得由
+`/api/v1/materials` 行级接口在浏览器中拼装物料图。
 
 OS 侧由 `unilab -g/--graph` 在启动时选择设备图。graph 文件只读一次，随后 OS 内部可继续
 修改同一个 `ResourceTreeSet`；services 每次读取都通过 bridge 刷新这份当前内存态，
@@ -69,6 +71,10 @@ OS 与 Go backend 的逐路由、字段和调用链对照记录在 Uni-Lab-OS：
 Edge FastAPI：设备目录使用 `:18003/api/v1/devices`，状态订阅使用
 `:18003/api/v1/ws/device_status`。这里不经过已退役的 `:8014` 网络 Bridge；
 未声明的其它能力仍直接降级。
+
+`local-go` 使用 Backend `/api/v1/devices` 的 DeviceOverview，只把设备物料 UUID、
+Edge 绑定、`dispatchable` 与实例动作声明映射为只读目录。动作运行、忙碌状态、参数
+schema 与强制解锁未形成完整端到端语义，因此不会因目录可读而自动启用。
 
 ## 工作流端口
 
@@ -93,6 +99,12 @@ Edge FastAPI：设备目录使用 `:18003/api/v1/devices`，状态订阅使用
 Runtime SSE 只消费 `workflow.runtime.changed`，事件体只有
 `workflow_task_uuid`。它以全局事件 `id` 去重并通过 `Last-Event-ID` 重连，只负责
 使 REST 投影失效；调用方必须重新读取 Task/Jobs/feedback，不得把事件当状态补丁。
+公共 port 不存在 Task 级 `/workflow-tasks/{uuid}/events`；反馈历史只按 Job feedback
+游标补读。
+
+Backend `/api/v1/workflows` 的 UUID 游标在 adapter 内转换为现有编号分页目录。
+Backend profile 目前只开放该只读目录；Python 创作与 WorkflowTask 运行能力在合同和
+事件恢复语义完整对齐前保持关闭。
 
 UI1D 已删除旧 `createRun`、`getRun`、Run node/event page、旧 debug command、
 `cancelRun`、Runtime WebSocket 和 polling fallback。旧

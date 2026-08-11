@@ -385,4 +385,17 @@
   .credentialGrid { grid-template-columns: 1fr; }
   .inspectionSummary { grid-template-columns: 1fr; }
   .inspectionSummary dl { justify-content: flex-start; }
+  .tab,
+  .searchForm input,
+  .searchForm button,
+  .toolbarMeta button,
+  .primaryButton,
+  .secondaryButton,
+  .dangerButton,
+  .environmentSelect select,
+  .credentialGrid input,
+  .configurationForm input,
+  .configurationForm textarea {
+    min-height: 44px;
+  }
 }

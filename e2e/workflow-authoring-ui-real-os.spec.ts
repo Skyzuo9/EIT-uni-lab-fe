@@ -235,7 +235,7 @@ test('Candidate Workflow I/O survives real OS apply and result-record round-trip
   }).click()
   await draftSaved
   await expect(page.getByRole('button', {
-    name: '应用并运行',
+    name: '应用此版本',
     exact: true
   })).toBeEnabled()
   const appliedResponse = page.waitForResponse((response) =>
@@ -490,7 +490,7 @@ test('two configured Workflow panels keep mode, dirty state and saves isolated',
   expect(readFileSync(os.sourcePath, 'utf8')).toBe(firstSourceBefore)
   await expect(panelAName).toHaveValue('prepared_panel_a')
   await expect(panelA.getByRole('button', {
-    name: '保存并运行',
+    name: '开始运行',
     exact: true
   })).toBeEnabled()
   await expect(page.getByRole('dialog', { name: '远端修改冲突' }))
@@ -587,7 +587,8 @@ test('kernel-web uses D-117 single edit authority through the real OS', async ({
   await page.keyboard.press('Control+a')
   await page.keyboard.insertText(locallyEditedSource)
   const startFlowButton = page.getByRole('button', {
-    name: /^(保存并运行|应用并运行|开始运行)$/
+    name: '开始运行',
+    exact: true
   })
   await expect(startFlowButton).toBeEnabled()
 
@@ -660,7 +661,7 @@ test('kernel-web uses D-117 single edit authority through the real OS', async ({
   await editor.click()
   await page.keyboard.press('Control+a')
   await page.keyboard.insertText(localConflictSource)
-  await expect(startFlowButton).toHaveText('保存并运行')
+  await expect(startFlowButton).toHaveText('开始运行')
   await expect(startFlowButton).toBeEnabled()
   writeFileSync(os.sourcePath, externallyEditedSource, 'utf8')
   await expect.poll(() => countRequests(

@@ -16,22 +16,12 @@ import {
 import { inject, injectable, postConstruct } from '@theia/core/shared/inversify'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
-  MaterialCapabilityNotice,
   MaterialStoreProvider,
   MaterialWorkbench,
-  UnifiedMaterialViewport,
   createMaterialStore,
-  useMaterialStore,
-  useMaterialStoreApi,
   type MaterialId,
-  type MaterialStore,
-  type MaterialWorkbenchViewportProps
+  type MaterialStore
 } from '@unilab/material'
-import type {
-  MaterialSceneMove,
-  MaterialTransferSceneRoute
-} from '@unilab/pascal-lab-plugin'
-import { ensurePascalRendererDefaults } from '@unilab/pascal-host'
 import {
   assertCapability,
   createServices,
@@ -46,10 +36,8 @@ import {
   createWorkflowIdeSyncState,
   synchronizeSavedWorkflowSource,
   WorkflowIdeHostAdapter,
-  workflowIdeMappingStatus,
   type WorkflowIdeBridge,
   type WorkflowIdeDiagnosticSeverity,
-  type WorkflowIdeSyncState,
   type WorkflowIdeResolvedDiagnostic,
   type WorkflowIdeResolvedLocation,
   type WorkflowSourceProjection
@@ -60,20 +48,7 @@ import type {
   WorkbenchSessionSnapshot
 } from '@unilab/workbench-session'
 import * as React from 'react'
-import {
-  Suspense,
-  useCallback,
-  useEffect,
-  useMemo,
-  useState
-} from 'react'
-
-ensurePascalRendererDefaults()
-
-const PascalLabWorkbench = React.lazy(async () => {
-  const module = await import('@unilab/pascal-lab-plugin')
-  return { default: module.PascalLabWorkbench }
-})
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import {
   WorkbenchSessionClient,
@@ -82,6 +57,7 @@ import {
 import { WorkbenchSessionClientImpl } from './workbench-session-client'
 import { EnvironmentManager } from './environment-manager'
 import { createTheiaWorkflowIdeAdapter } from './theia-workflow-ide-adapter'
+import { WorkbenchMaterialViewport } from './workbench-material-viewport'
 import { WorkbenchSessionGate } from './workbench-session-gate'
 
 type SourceSaveHandler = (pythonSource: string) => Promise<void>
@@ -484,7 +460,6 @@ export class TheiaWorkflowPrototypeWidget extends ReactWidget {
         backendUrl={this.sessionSnapshot.identity.backendUrl}
         ideBridge={this.ideBridge}
         session={this.sessionSnapshot}
-        snapshot={this.snapshot}
         onSourceSaveHandlerChange={this.registerSourceSaveHandler}
         onRestartSession={this.restartSession}
         onReadEnvironmentLog={this.readEnvironmentLog}
@@ -508,7 +483,6 @@ function WorkbenchSurface({
   backendUrl,
   ideBridge,
   session,
-  snapshot,
   onSourceSaveHandlerChange,
   onRestartSession,
   onReadEnvironmentLog,
@@ -522,7 +496,6 @@ function WorkbenchSurface({
   backendUrl: string
   ideBridge: WorkflowIdeBridge
   session: WorkbenchSessionSnapshot
-  snapshot: WorkflowIdeSyncState
   onSourceSaveHandlerChange: (handler: SourceSaveHandler | null) => void
   onRestartSession: () => Promise<void>
   onReadEnvironmentLog: (kind: WorkbenchEnvironmentLogKind) => Promise<string>
@@ -540,7 +513,6 @@ function WorkbenchSurface({
     useState<WorkflowPanelRuntimeProjection | null>(null)
   const [selectedMaterialIds, setSelectedMaterialIds] =
     useState<readonly MaterialId[]>([])
-  const [sourceSaveStatus, setSourceSaveStatus] = useState('idle')
   const [environmentOpen, setEnvironmentOpen] = useState(false)
   const query = new URLSearchParams(globalThis.location.search)
   const workflowUuid = query.get('workflowUuid') ?? undefined
@@ -564,18 +536,11 @@ function WorkbenchSurface({
 
   const synchronizeSavedSource = useCallback(async (pythonSource: string) => {
     if (!workflowUuid) return
-    setSourceSaveStatus('syncing')
-    try {
-      const outcome = await synchronizeSavedWorkflowSource(
-        services.workflow,
-        workflowUuid,
-        pythonSource
-      )
-      setSourceSaveStatus(outcome)
-    } catch (error) {
-      setSourceSaveStatus(error instanceof Error ? error.message : 'failed')
-      throw error
-    }
+    await synchronizeSavedWorkflowSource(
+      services.workflow,
+      workflowUuid,
+      pythonSource
+    )
   }, [services, workflowUuid])
 
   useEffect(() => {
@@ -610,20 +575,20 @@ function WorkbenchSurface({
       >
         <header className="unilab-theia-prototype__bar">
           <div>
-            <strong>UniLab Authoring Workbench</strong>
+            <strong>UniLab 调试工作台</strong>
             <span>
               OS PID {session.identity?.pid} · {session.identity?.mode} · {backendUrl}
             </span>
           </div>
-          <nav aria-label="Authoring surface">
+          <nav aria-label="工作台视图">
             <button
               className={surface === 'workflow' ? 'is-active' : ''}
               onClick={() => setSurface('workflow')}
-            >Workflow</button>
+            >工作流</button>
             <button
               className={surface === 'material' ? 'is-active' : ''}
               onClick={() => setSurface('material')}
-            >Material</button>
+            >物料</button>
             <button
               className={environmentOpen ? 'is-active' : ''}
               aria-expanded={environmentOpen}
@@ -651,27 +616,6 @@ function WorkbenchSurface({
             onStopSession={onStopSession}
           />
         ) : null}
-        <details className="unilab-theia-prototype__debug">
-          <summary>同步状态</summary>
-          <dl>
-            <dt>source URI</dt>
-            <dd data-testid="sync-source-uri">{snapshot.sourceProjection?.sourceUri ?? '—'}</dd>
-            <dt>resolved file</dt>
-            <dd data-testid="sync-resolved-file">{snapshot.resolvedSourceUri ?? '—'}</dd>
-            <dt>Monaco</dt>
-            <dd data-testid="sync-monaco-uri">{snapshot.currentUri ?? '—'}</dd>
-            <dt>mapping</dt>
-            <dd data-testid="sync-mapping">{workflowIdeMappingStatus(snapshot)}</dd>
-            <dt>cursor</dt>
-            <dd data-testid="sync-cursor">{snapshot.sourcePosition
-              ? `${snapshot.sourcePosition.line}:${snapshot.sourcePosition.column}`
-              : '—'}</dd>
-            <dt>node</dt>
-            <dd data-testid="sync-node">{selectedWorkflowNode ?? '—'}</dd>
-            <dt>saved source</dt>
-            <dd data-testid="sync-save-status">{sourceSaveStatus}</dd>
-          </dl>
-        </details>
         {surface === 'workflow' ? (
           <section className="unilab-theia-prototype__surface">
             <WorkflowPanel
@@ -721,107 +665,6 @@ function WorkbenchSurface({
         )}
       </div>
     </QueryClientProvider>
-  )
-}
-
-function WorkbenchMaterialViewport({
-  backendUrl,
-  runtimeProjection,
-  selectedWorkflowNode,
-  readStatus,
-  moveStatus,
-  selectedMaterialIds,
-  highlightedMaterialIds,
-  onSelectionChange
-}: MaterialWorkbenchViewportProps & {
-  backendUrl: string
-  runtimeProjection: WorkflowPanelRuntimeProjection | null
-  selectedWorkflowNode: string | null
-}): React.JSX.Element {
-  const store = useMaterialStoreApi()
-  const aggregatesById = useMaterialStore((state) => state.aggregatesById)
-  const shapeLibrary = useMaterialStore((state) => state.shapeLibrary)
-  const loadState = useMaterialStore((state) => state.loadState)
-  const aggregates = useMemo(
-    () => Object.values(aggregatesById),
-    [aggregatesById]
-  )
-  const materialTransferRoutes = useMemo<MaterialTransferSceneRoute[]>(
-    () => (runtimeProjection?.materialTransferRoutes ?? []).map((route) => ({
-      ...route,
-      selected: route.workflowNodeUuid === selectedWorkflowNode
-    })),
-    [runtimeProjection, selectedWorkflowNode]
-  )
-  const modelRuntime = useMemo(() => ({
-    resolveUrl: (model: { path: string }) => {
-      if (!model.path || /^https?:\/\//u.test(model.path)) return model.path
-      return new URL(
-        model.path,
-        `${backendUrl.replace(/\/+$/u, '')}/`
-      ).toString()
-    }
-  }), [backendUrl])
-
-  useEffect(() => {
-    if (!readStatus.available || loadState !== 'idle') return
-    void store.getState().loadGraph()
-  }, [loadState, readStatus.available, store])
-
-  const applyMoves = useCallback(async (
-    moves: readonly MaterialSceneMove[]
-  ): Promise<void> => {
-    for (const move of moves) {
-      await store.getState().move(move.materialId, move.placement)
-    }
-  }, [store])
-
-  if (!readStatus.available) {
-    return (
-      <MaterialCapabilityNotice
-        title="物料场景不可用"
-        status={readStatus}
-      />
-    )
-  }
-
-  if (loadState === 'idle' || loadState === 'loading') {
-    return <div className="unilab-workbench-material-loading">正在加载物料场景…</div>
-  }
-
-  return (
-    <UnifiedMaterialViewport
-      renderView={(viewMode, { showSites, showMaterialTransfers }) => (
-        <Suspense
-          fallback={(
-            <div className="unilab-workbench-material-loading">
-              正在加载 {viewMode === '3d' || viewMode === 'split'
-                ? '3D'
-                : viewMode} 物料视图…
-            </div>
-          )}
-        >
-          <PascalLabWorkbench
-            aggregates={aggregates}
-            shapes={shapeLibrary}
-            showSites={showSites}
-            showMaterialTransfers={showMaterialTransfers}
-            materialTransferRoutes={materialTransferRoutes}
-            materialTransferProjectionError={null}
-            viewMode={viewMode}
-            projectId={`unilab-workbench-${new URL(backendUrl).port}`}
-            editable={moveStatus.available}
-            selectedMaterialIds={selectedMaterialIds}
-            highlightedMaterialIds={highlightedMaterialIds}
-            modelRuntime={modelRuntime}
-            onMaterialMoves={(moves) => void applyMoves(moves)}
-            onSelectionChange={(materialIds) => {
-              onSelectionChange?.(materialIds)
-            }}
-          />
-        </Suspense>
-      )}
-    />
   )
 }
 

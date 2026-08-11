@@ -42,6 +42,13 @@ export function deviceActionReadiness({
       message: '设备或 Edge 当前离线，恢复连接后才能运行'
     }
   }
+  if (!device.materialUuid) {
+    return {
+      kind: 'unavailable',
+      reason: 'device_identity_missing',
+      message: '当前设备缺少运行标识，请刷新设备列表后重试'
+    }
+  }
   if (catalogLoading) {
     return {
       kind: 'unavailable',
@@ -149,6 +156,7 @@ export type DeviceActionRunState =
 export type DeviceActionUnavailableReason =
   | 'workflow_required'
   | 'device_offline'
+  | 'device_identity_missing'
   | 'catalog_loading'
   | 'catalog_error'
   | 'template_unmatched'
@@ -290,6 +298,8 @@ function unavailableRunLabel(reason: DeviceActionUnavailableReason): string {
       return '请在工作流中运行'
     case 'device_offline':
       return '设备离线'
+    case 'device_identity_missing':
+      return '暂时无法运行'
     case 'catalog_loading':
       return '正在读取动作信息…'
     case 'catalog_error':

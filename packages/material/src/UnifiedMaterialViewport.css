@@ -284,16 +284,40 @@
 @media (max-width: 720px) {
   .lab-viewport-controls {
     bottom: 10px;
-    gap: 5px;
+    display: grid;
+    width: min(360px, calc(100% - 20px));
+    gap: 6px;
+  }
+
+  .lab-view-mode-toggle,
+  .lab-site-layer-toggle,
+  .lab-material-role-filter {
+    width: 100%;
+    box-sizing: border-box;
+    justify-content: stretch;
   }
 
   .lab-view-mode-toggle button,
-  .lab-site-layer-toggle button {
-    padding-inline: 8px;
+  .lab-site-layer-toggle button,
+  .lab-material-role-filter > summary {
+    min-width: 0;
+    min-height: 44px;
+    flex: 1 1 0;
+    justify-content: center;
+    padding-inline: 7px;
   }
 
   .lab-site-layer-toggle button span,
   .lab-material-role-filter > summary span {
     display: none;
+  }
+
+  .lab-material-role-filter > div {
+    right: 0;
+    left: 0;
+  }
+
+  .lab-material-role-filter > div button {
+    min-height: 44px;
   }
 }

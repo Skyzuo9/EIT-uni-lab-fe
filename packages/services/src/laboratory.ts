@@ -13,6 +13,13 @@ import { requestData, type HttpClient } from './http'
 import { ServiceError } from './errors'
 import type { BackendConfig } from './backends'
 import type { DeviceCardActionRiskLevel } from '@unilab/device-card-sdk'
+import {
+  loadBackendActionDevices,
+  loadBackendActionSchema,
+  loadBackendDeviceActions,
+  loadBackendDeviceCatalog,
+  loadBackendOnlineDevices
+} from './backendDevices'
 
 export interface DeviceActionTarget {
   deviceId: string
@@ -21,6 +28,7 @@ export interface DeviceActionTarget {
 
 export interface OnlineDevice {
   id: string
+  materialUuid: string
   deviceKey: string
   namespace: string
   machineName: string
@@ -88,6 +96,7 @@ export interface DeviceCatalogAction {
 
 export interface DeviceCatalogItem {
   deviceId: string
+  materialUuid: string
   deviceTypeId: string
   deviceKey: string
   namespace: string
@@ -126,6 +135,7 @@ interface RuntimeActionTemplate {
 
 interface RuntimeDeviceCatalogItem {
   id: string
+  materialUuid: string
   deviceTypeId?: string
   deviceKey: string
   namespace: string
@@ -142,7 +152,8 @@ export function createLaboratoryService(
   return {
     async ping(signal?: AbortSignal): Promise<boolean> {
       try {
-        await http.request<unknown>('/api/v1/health', { signal })
+        const path = backend.serverKind === 'backend' ? '/health' : '/api/v1/health'
+        await http.request<unknown>(path, { signal })
         return true
       } catch {
         return false
@@ -150,6 +161,7 @@ export function createLaboratoryService(
     },
 
     async getActionDevices(): Promise<DeviceActionTarget[]> {
+      if (backend.serverKind === 'backend') return loadBackendActionDevices(http)
       return (await getRuntimeDevices(http))
         .filter((device) => device.actions.length > 0)
         .sort((left, right) => left.id.localeCompare(right.id))
@@ -157,6 +169,7 @@ export function createLaboratoryService(
     },
 
     async getDeviceCatalog(): Promise<DeviceCatalogItem[]> {
+      if (backend.serverKind === 'backend') return loadBackendDeviceCatalog(http)
       const raw = await requestData<Record<string, unknown>>(
         http,
         '/api/v1/devices'
@@ -166,10 +179,12 @@ export function createLaboratoryService(
     },
 
     async getOnlineDevices(signal?: AbortSignal): Promise<OnlineDevice[]> {
+      if (backend.serverKind === 'backend') return loadBackendOnlineDevices(http, signal)
       return (await getRuntimeDevices(http, signal))
         .sort((left, right) => left.id.localeCompare(right.id))
         .map((device) => ({
           id: device.id,
+          materialUuid: device.materialUuid,
           deviceKey: device.deviceKey,
           namespace: device.namespace,
           machineName: device.name,
@@ -179,6 +194,7 @@ export function createLaboratoryService(
     },
 
     async getDeviceActions(deviceId: string): Promise<DeviceAction[]> {
+      if (backend.serverKind === 'backend') return loadBackendDeviceActions(http, deviceId)
       const device = (await getRuntimeDevices(http)).find(
         (candidate) => candidate.id === deviceId
       )
@@ -189,6 +205,7 @@ export function createLaboratoryService(
       deviceId: string,
       actionName: string
     ): Promise<DeviceActionSchema> {
+      if (backend.serverKind === 'backend') return loadBackendActionSchema(http, deviceId, actionName)
       const actionRef = `${deviceId}.${actionName}`
       const template = (await getRuntimeDevices(http))
         .flatMap((device) => device.actions)
@@ -260,6 +277,7 @@ function mapDeviceCatalogItem(
   const deviceId = str(raw.id)
   return {
     deviceId,
+    materialUuid: str(raw.materialUuid),
     // 新目录提供 Driver 类型；保留旧 Edge 的实例 id 回退。
     deviceTypeId: str(raw.deviceTypeId ?? raw.typeId ?? raw.className) || deviceId,
     deviceKey: str(raw.deviceKey),
@@ -377,6 +395,7 @@ async function getRuntimeDevices(
     return [
       {
         id: deviceId,
+        materialUuid: str(item.materialUuid),
         deviceTypeId: optionalString(item.deviceTypeId) ?? undefined,
         deviceKey: str(item.deviceKey),
         namespace: str(item.namespace),

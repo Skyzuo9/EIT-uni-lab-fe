@@ -83,6 +83,9 @@ importers:
 
   apps/kernel-web:
     dependencies:
+      '@ant-design/icons':
+        specifier: ^6.3.2
+        version: 6.3.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@unilab/app-shell':
         specifier: workspace:*
         version: link:../../packages/app-shell
@@ -125,6 +128,9 @@ importers:
       react-dom:
         specifier: ^19.2.1
         version: 19.2.8(react@19.2.8)
+      three:
+        specifier: 0.185.0
+        version: 0.185.0
       use-sync-external-store:
         specifier: 1.6.0
         version: 1.6.0(react@19.2.8)

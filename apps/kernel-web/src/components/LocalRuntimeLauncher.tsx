@@ -680,25 +680,22 @@ export function LocalRuntimeDialog({
             </div>
           </section>
 
-          <RuntimeStatus snapshot={snapshot} />
-
-          {error ? (
-            <p className={styles.error} role="alert">
-              {error}
-            </p>
-          ) : null}
         </div>
 
-        <footer className={styles.footer}>
-          <button
-            type="button"
-            className={styles.secondaryButton}
-            disabled={transitioning}
-            onClick={onClose}
-          >
-            关闭
-          </button>
-        </footer>
+        <div className={styles.statusDock}>
+          <RuntimeStatus snapshot={snapshot} />
+          {error ? <p className={styles.error} role="alert">{error}</p> : null}
+          <footer className={styles.footer}>
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              disabled={transitioning}
+              onClick={onClose}
+            >
+              关闭
+            </button>
+          </footer>
+        </div>
       </section>
     </div>
   )

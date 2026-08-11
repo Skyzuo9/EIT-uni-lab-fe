@@ -355,7 +355,10 @@ export function WorkflowTraceViewer({
             )}
           </aside>
 
-          <main className="workflow-runtime__trace-detail">
+          <section
+            className="workflow-runtime__trace-detail"
+            aria-label="Trace 详情"
+          >
             {!selectedTraceId ? (
               <TraceState
                 title="选择一条 Trace"
@@ -457,7 +460,7 @@ export function WorkflowTraceViewer({
                 )}
               </>
             )}
-          </main>
+          </section>
         </div>
       </section>
     </div>

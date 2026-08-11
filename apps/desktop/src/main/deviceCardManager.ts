@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto'
 import { basename, join, resolve } from 'node:path'
 
 import {
@@ -14,11 +13,7 @@ import {
   installDeviceCardArchive,
   LocalDeviceCardAuthoringAutomation,
   listInstalledDeviceCards,
-  requiresDeviceCardActionConfirmation,
-  validateDeviceCardActionParams,
-  verifyArtifactKey,
-  type DeviceCardWorkspaceArtifact,
-  type InstalledDeviceCardRecord
+  verifyArtifactKey
 } from '@unilab/device-card-host'
 import type {
   DeviceCardActionRun,
@@ -28,7 +23,6 @@ import type {
   DeviceCardAuthoringSessionStatus,
   DeviceCardAuthoringTargetResponse,
   DeviceCardBounds,
-  DeviceCardHostActionRequest,
   DeviceCardRuntimeSnapshot,
   DeviceCardWorkspaceStatus,
   InstalledDeviceCard,
@@ -39,27 +33,26 @@ import type {
 
 import { ElectronDeviceCardAuthoringApprovals } from './deviceCardAgentPermissions'
 import { RendererDeviceCardAuthoringTargetPort } from './deviceCardAuthoringTargets'
-import { unavailableDeviceCardCapabilities } from './deviceCardRuntimeCapabilities'
 import { DeviceCardVisibilityController } from './deviceCardVisibility'
+import { dispatchDeviceCardAction } from './deviceCardActionDispatch'
+import {
+  assertDeviceCardRuntimeCapabilities,
+  filterAllowedState,
+  isAuthoringContext,
+  isOpenRequest,
+  isOpenWorkspaceRequest,
+  isPlainRecord,
+  normalizeBounds,
+  publicRecord,
+  workspaceRuntimeRecord,
+  type RuntimeCardRecord
+} from './deviceCardRuntimeValidation'
 
-interface RuntimeCardRecord {
-  id: string
-  deviceTypes: string[]
-  artifactDir: string
-  metadata: InstalledDeviceCardRecord['metadata']
+type RuntimeSession = {
+  view: WebContentsView; record: RuntimeCardRecord; context: DeviceCardRuntimeSnapshot
+  config: JsonObject; actions: Map<string, DeviceCardActionContract>
 }
-
-interface RuntimeSession {
-  view: WebContentsView
-  record: RuntimeCardRecord
-  context: DeviceCardRuntimeSnapshot
-  config: JsonObject
-  actions: Map<string, DeviceCardActionContract>
-}
-
-interface PendingAction {
-  resolve: (run: DeviceCardActionRun) => void
-}
+type PendingAction = { resolve: (run: DeviceCardActionRun) => void }
 
 export class DeviceCardManager {
   private readonly sessions = new Map<number, RuntimeSession>()
@@ -341,36 +334,7 @@ export class DeviceCardManager {
     record: RuntimeCardRecord,
     request: OpenDeviceCardRequest | OpenDeviceCardWorkspaceRequest
   ): Promise<void> {
-    if (!record.deviceTypes.includes(request.context.device.deviceTypeId)) {
-      throw new Error(
-        `卡片不支持设备类型 ${request.context.device.deviceTypeId}。`
-      )
-    }
-    if (request.context.mode === 'live') {
-      const unavailable = unavailableDeviceCardCapabilities(
-        record.metadata.manifest.permissions,
-        {
-          actions: request.availableActions?.map((action) => action.action),
-          state: request.availableState,
-          media: request.availableMedia
-        }
-      )
-      if (unavailable.actions.length > 0) {
-        throw new Error(
-          `当前 OS 设备目录不包含卡片请求的 Action：${unavailable.actions.join('、')}`
-        )
-      }
-      if (unavailable.state.length > 0) {
-        throw new Error(
-          `当前 OS 设备目录不包含卡片请求的实时状态：${unavailable.state.join('、')}`
-        )
-      }
-      if (unavailable.media.length > 0) {
-        throw new Error(
-          `当前 OS 设备目录不包含卡片请求的媒体资源：${unavailable.media.join('、')}`
-        )
-      }
-    }
+    assertDeviceCardRuntimeCapabilities(record, request)
     this.closeActive()
     const window = this.requireMainWindow()
     const partition = `unilab-card-${record.metadata.sourceHash.slice(0, 24)}`
@@ -465,107 +429,20 @@ export class DeviceCardManager {
     view.webContents.send('device-card:state', allowed)
   }
 
-  private async callAction(
+  private callAction(
     event: IpcMainInvokeEvent,
     payload: { action?: unknown; params?: unknown }
   ): Promise<DeviceCardActionRun> {
-    const session = this.runtimeSession(event)
-    const action = typeof payload?.action === 'string' ? payload.action : ''
-    const requestId = randomUUID()
-    if (payload?.params !== undefined && !isPlainRecord(payload.params)) {
-      return {
-        requestId,
-        action,
-        status: 'REJECTED',
-        error: 'Action 参数必须是 JSON 对象。'
+    return dispatchDeviceCardAction({
+      session: this.runtimeSession(event),
+      payload,
+      window: this.requireMainWindow(),
+      registerPending: (requestId, resolve) => {
+        // 真实终态只由 OS Action Task 投影决定；窗口关闭时统一取消 pending。
+        this.pendingActions.set(requestId, { resolve })
       }
-    }
-    const params = (payload?.params ?? {}) as Record<string, unknown>
-    if (!session.record.metadata.manifest.permissions.actions.includes(action)) {
-      return {
-        requestId,
-        action,
-        status: 'REJECTED',
-        error: 'Action 未在卡片 manifest 中授权。'
-      }
-    }
-    if (JSON.stringify(params).length > 64 * 1024) {
-      return {
-        requestId,
-        action,
-        status: 'REJECTED',
-        error: 'Action 参数超过 64 KiB。'
-      }
-    }
-    const actionContract = session.actions.get(action)
-    if (actionContract) {
-      const validation = validateDeviceCardActionParams(
-        actionContract.inputSchema,
-        params
-      )
-      if (!validation.valid) {
-        return {
-          requestId,
-          action,
-          status: 'REJECTED',
-          error: `Action 参数不符合当前 OS JSON Schema：${
-            validation.errors.join('；')
-          }`
-        }
-      }
-    }
-    if (session.context.mode === 'mock') {
-      return {
-        requestId,
-        action,
-        status: 'DONE',
-        result: { mock: true }
-      }
-    }
-    const deviceId = session.context.device.deviceId
-    if (!deviceId) {
-      return {
-        requestId,
-        action,
-        status: 'REJECTED',
-        error: 'Live 卡片没有绑定设备实例。'
-      }
-    }
-    const window = this.requireMainWindow()
-    if (!actionContract) {
-      return {
-        requestId,
-        action,
-        status: 'REJECTED',
-        error: '当前设备没有找到该动作的运行信息，请刷新设备后重试。'
-      }
-    }
-    if (!await confirmDeviceCardAction(
-      window,
-      deviceId,
-      actionContract,
-      params
-    )) {
-      return {
-        requestId,
-        action,
-        status: 'CANCELLED',
-        error: '用户取消了危险设备 Action。'
-      }
-    }
-    const request: DeviceCardHostActionRequest = {
-      requestId,
-      deviceId,
-      action,
-      params
-    }
-    window.webContents.send('device-cards:actionRequest', request)
-    return new Promise<DeviceCardActionRun>((resolveAction) => {
-      // 真实终态只由 OS Action Task 投影决定；窗口关闭时统一取消 pending。
-      this.pendingActions.set(requestId, { resolve: resolveAction })
     })
   }
-
   private saveConfig(
     event: IpcMainInvokeEvent,
     patch: JsonObject
@@ -615,163 +492,9 @@ export class DeviceCardManager {
     return active
   }
 
-  private sendWorkspaceStatus(
-    status: DeviceCardWorkspaceStatus | null
-  ): void {
+  private sendWorkspaceStatus(status: DeviceCardWorkspaceStatus | null): void {
     const window = this.options.getMainWindow()
     if (!window || window.isDestroyed()) return
     window.webContents.send('device-cards:workspaceStatus', status)
   }
-}
-
-function publicRecord(record: InstalledDeviceCardRecord): InstalledDeviceCard {
-  return {
-    key: record.key,
-    id: record.id,
-    version: record.version,
-    title: record.title,
-    deviceTypes: record.deviceTypes,
-    authoringProfile: record.authoringProfile,
-    installedAt: record.installedAt
-  }
-}
-
-function workspaceRuntimeRecord(
-  artifact: DeviceCardWorkspaceArtifact
-): RuntimeCardRecord {
-  return {
-    id: artifact.metadata.cardId,
-    deviceTypes: [...artifact.metadata.manifest.deviceTypes],
-    artifactDir: artifact.artifactDir,
-    metadata: artifact.metadata
-  }
-}
-
-function normalizeBounds(bounds: DeviceCardBounds): DeviceCardBounds {
-  if (!bounds || ![bounds.x, bounds.y, bounds.width, bounds.height]
-    .every(Number.isFinite)) {
-    throw new Error('卡片视图 bounds 无效。')
-  }
-  return {
-    x: Math.max(0, Math.floor(bounds.x)),
-    y: Math.max(0, Math.floor(bounds.y)),
-    width: Math.max(1, Math.floor(bounds.width)),
-    height: Math.max(1, Math.floor(bounds.height))
-  }
-}
-
-function filterAllowedState(
-  state: Record<string, unknown>,
-  allowedKeys: string[]
-): Record<string, unknown> {
-  const allowed = new Set(allowedKeys)
-  return Object.fromEntries(
-    Object.entries(state).filter(([key]) => allowed.has(key))
-  )
-}
-
-function isOpenRequest(value: unknown): value is OpenDeviceCardRequest {
-  return isPlainRecord(value) &&
-    typeof value.key === 'string' &&
-    isOpenPreviewRequest(value)
-}
-
-function isOpenWorkspaceRequest(
-  value: unknown
-): value is OpenDeviceCardWorkspaceRequest {
-  return isPlainRecord(value) && isOpenPreviewRequest(value)
-}
-
-function isOpenPreviewRequest(value: Record<string, unknown>): boolean {
-  const context = value.context
-  return isPlainRecord(value.bounds) &&
-    isPlainRecord(context) &&
-    (context.mode === 'mock' || context.mode === 'live') &&
-    isPlainRecord(context.device) &&
-    typeof context.device.deviceTypeId === 'string' &&
-    isPlainRecord(context.state) &&
-    isPlainRecord(context.config)
-    && (
-      value.availableActions === undefined ||
-      Array.isArray(value.availableActions) &&
-      value.availableActions.every(isDeviceCardActionContract)
-    ) && (
-      value.availableState === undefined ||
-      Array.isArray(value.availableState) &&
-      value.availableState.every((key) => typeof key === 'string')
-    ) && (
-      value.availableMedia === undefined ||
-      Array.isArray(value.availableMedia) &&
-      value.availableMedia.every((key) => typeof key === 'string')
-    )
-}
-
-function isAuthoringContext(
-  value: unknown
-): value is DeviceCardAuthoringContext {
-  return isPlainRecord(value) &&
-    value.schemaVersion === 'device-card-authoring-context/v1' &&
-    typeof value.deviceTypeId === 'string' &&
-    value.deviceTypeId.length > 0 &&
-    typeof value.title === 'string' &&
-    Array.isArray(value.actions) &&
-    value.actions.every((action) =>
-      isPlainRecord(action) &&
-      typeof action.action === 'string' &&
-      typeof action.label === 'string' &&
-      isPlainRecord(action.inputSchema) &&
-      isPlainRecord(action.outputSchema) &&
-      isDeviceCardRiskLevel(action.riskLevel)
-    ) &&
-    isPlainRecord(value.stateSchema) &&
-    isPlainRecord(value.sampleState) &&
-    Array.isArray(value.media) &&
-    value.media.every((item) => typeof item === 'string')
-}
-
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  return value != null && typeof value === 'object' && !Array.isArray(value)
-}
-
-function isDeviceCardActionContract(
-  value: unknown
-): value is DeviceCardActionContract {
-  return isPlainRecord(value) &&
-    typeof value.action === 'string' &&
-    value.action.length > 0 &&
-    typeof value.label === 'string' &&
-    isPlainRecord(value.inputSchema) &&
-    isPlainRecord(value.outputSchema) &&
-    isDeviceCardRiskLevel(value.riskLevel) &&
-    (value.busy === undefined || typeof value.busy === 'boolean')
-}
-
-function isDeviceCardRiskLevel(value: unknown): boolean {
-  return value === 'normal' || value === 'dangerous' || value === 'emergency'
-}
-
-async function confirmDeviceCardAction(
-  window: BrowserWindow,
-  deviceId: string,
-  contract: DeviceCardActionContract,
-  params: Record<string, unknown>
-): Promise<boolean> {
-  if (!requiresDeviceCardActionConfirmation(contract.riskLevel)) return true
-  const emergency = contract.riskLevel === 'emergency'
-  const result = await dialog.showMessageBox(window, {
-    type: emergency ? 'error' : 'warning',
-    title: emergency ? '确认紧急设备 Action' : '确认危险设备 Action',
-    message: `${contract.label}（${contract.action}）`,
-    detail: [
-      `目标设备：${deviceId}`,
-      `Edge 风险等级：${contract.riskLevel}`,
-      `参数：${JSON.stringify(params).slice(0, 2_000)}`,
-      '卡片代码不能降低该风险等级。只有确认现场安全后才可继续。'
-    ].join('\n'),
-    buttons: [emergency ? '确认并执行紧急 Action' : '确认并执行', '取消'],
-    defaultId: 1,
-    cancelId: 1,
-    noLink: true
-  })
-  return result.response === 0
 }

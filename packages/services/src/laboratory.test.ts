@@ -5,6 +5,21 @@ import { createLaboratoryService } from './laboratory'
 import { getDefaultBackend } from './backends'
 
 describe('laboratory service', () => {
+  it('uses the Backend root health route', async () => {
+    const requests: Array<{ path: string; method?: string; body?: string }> = []
+    const service = createLaboratoryService(
+      fixtureHttp({ '/health': { status: 'ok' } }, requests),
+      getDefaultBackend('local-go')
+    )
+
+    await expect(service.ping()).resolves.toBe(true)
+    expect(requests).toEqual([{
+      path: '/health',
+      method: undefined,
+      body: undefined
+    }])
+  })
+
   it('preserves Edge device metadata from the unified device catalog', async () => {
     const requests: Array<{
       path: string
@@ -22,6 +37,7 @@ describe('laboratory service', () => {
             items: [
               {
                 id: 'pump-1',
+                materialUuid: '10000000-0000-4000-8000-000000000001',
                 deviceKey: '/cell/pump-1',
                 namespace: '/cell',
                 name: '蠕动泵',
@@ -56,6 +72,7 @@ describe('laboratory service', () => {
     await expect(service.getOnlineDevices()).resolves.toEqual([
       {
         id: 'pump-1',
+        materialUuid: '10000000-0000-4000-8000-000000000001',
         deviceKey: '/cell/pump-1',
         namespace: '/cell',
         machineName: '蠕动泵',
@@ -75,6 +92,7 @@ describe('laboratory service', () => {
     await expect(service.getDeviceCatalog()).resolves.toEqual([
       {
         deviceId: 'pump-1',
+        materialUuid: '10000000-0000-4000-8000-000000000001',
         deviceTypeId: 'pump-1',
         deviceKey: '/cell/pump-1',
         namespace: '/cell',

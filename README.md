@@ -16,8 +16,8 @@ pnpm dev
 常用命令：
 
 ```bash
-pnpm dev             # Vite kernel-web
-pnpm dev:desktop     # Electron 外壳 + 同一个 kernel-web renderer
+pnpm workbench       # 正式 Uni-Lab Theia Workbench
+pnpm dev             # Vite kernel-web 开发入口
 pnpm typecheck       # 全工作区类型检查
 pnpm test            # 全工作区单元测试
 pnpm test:e2e:materials # 启动真实 OS 图场景并验证 2D/3D（Linux 需 Xvfb）
