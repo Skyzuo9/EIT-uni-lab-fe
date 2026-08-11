@@ -32,8 +32,11 @@ implements WorkbenchSessionServer, BackendApplicationContribution {
   private sessionListener: Disposable | undefined
 
   onStart(): void {
-    void this.session.start().catch(error => {
-      this.logger.error('Managed-local Uni-Lab OS failed to start', error)
+    void this.session.startAgent().catch(error => {
+      this.logger.warn('Workspace Agent startup failed', error)
+    })
+    void this.session.refreshPlcVariableTables().catch(error => {
+      this.logger.warn('Workspace PLC variable-table discovery failed', error)
     })
   }
 
@@ -60,6 +63,18 @@ implements WorkbenchSessionServer, BackendApplicationContribution {
     return this.session.restart()
   }
 
+  startAgent() {
+    return this.session.startAgent()
+  }
+
+  stopAgent() {
+    return this.session.stopAgent()
+  }
+
+  restartAgent() {
+    return this.session.restartAgent()
+  }
+
   readLogTail(maxBytes?: number) {
     return this.session.readLogTail(maxBytes)
   }
@@ -75,8 +90,14 @@ implements WorkbenchSessionServer, BackendApplicationContribution {
     return this.session.configureGraph(graphPath)
   }
 
-  configurePlcSimulator(projectPath: string) {
-    return this.session.configurePlcSimulator(projectPath)
+  configurePlcSimulator(
+    configuration: Parameters<WorkbenchSession['configurePlcSimulator']>[0]
+  ) {
+    return this.session.configurePlcSimulator(configuration)
+  }
+
+  refreshPlcVariableTables() {
+    return this.session.refreshPlcVariableTables()
   }
 
   startPlcSimulator() {

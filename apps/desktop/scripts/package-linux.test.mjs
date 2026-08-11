@@ -60,7 +60,7 @@ describe('Linux package publication gates', () => {
     }
 
     expect(() => validatePackagedLinuxApp(outputDirectory))
-      .toThrow(/超出 32\.0 MiB 预算/)
+      .toThrow(/超出 56\.0 MiB 预算/)
   })
 
   it('rejects a packaged app that omitted the managed Runtime payload', () => {

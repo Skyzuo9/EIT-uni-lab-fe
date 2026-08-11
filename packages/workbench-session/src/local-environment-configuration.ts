@@ -3,16 +3,21 @@ import { readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { WorkbenchLaunchError } from './launch-error'
 
 export type PersistedWorkbenchRuntimeMode = 'normal' | 'dry-run'
+export type PersistedPlcHandshakeProfile = 'szlab' | 'xuse'
 
 export interface LocalEnvironmentConfiguration {
   graphPath: string | null
   plcSimulatorProjectPath: string | null
+  plcVariableTablePath: string | null
+  plcHandshakeProfile: PersistedPlcHandshakeProfile | null
   runtimeMode: PersistedWorkbenchRuntimeMode | null
 }
 
 export interface WritableLocalEnvironmentConfiguration {
   graphPath: string
   plcSimulatorProjectPath: string
+  plcVariableTablePath: string
+  plcHandshakeProfile: PersistedPlcHandshakeProfile
   runtimeMode: PersistedWorkbenchRuntimeMode
 }
 
@@ -25,7 +30,13 @@ export async function readLocalEnvironmentConfiguration(
     source = await readFile(configurationPath, 'utf8')
   } catch (error) {
     if (isRecord(error) && error['code'] === 'ENOENT') {
-      return { graphPath: null, plcSimulatorProjectPath: null, runtimeMode: null }
+      return {
+        graphPath: null,
+        plcSimulatorProjectPath: null,
+        plcVariableTablePath: null,
+        plcHandshakeProfile: null,
+        runtimeMode: null
+      }
     }
     throw invalidLocalEnvironmentConfiguration(
       configurationPath,
@@ -57,9 +68,19 @@ export async function readLocalEnvironmentConfiguration(
     configurationPath,
     'plcSimulatorProjectPath'
   )
+  const plcVariableTablePath = optionalString(
+    content['plcVariableTablePath'],
+    configurationPath,
+    'plcVariableTablePath'
+  )
   return {
     graphPath,
     plcSimulatorProjectPath,
+    plcVariableTablePath,
+    plcHandshakeProfile: persistedPlcHandshakeProfile(
+      content['plcHandshakeProfile'],
+      configurationPath
+    ),
     runtimeMode: persistedRuntimeMode(content['runtimeMode'], configurationPath)
   }
 }
@@ -105,6 +126,18 @@ function persistedRuntimeMode(
   throw invalidLocalEnvironmentConfiguration(
     configurationPath,
     '本地环境配置 runtimeMode 无效'
+  )
+}
+
+function persistedPlcHandshakeProfile(
+  value: unknown,
+  configurationPath: string
+): PersistedPlcHandshakeProfile | null {
+  if (value === 'szlab' || value === 'xuse') return value
+  if (value === undefined || value === null) return null
+  throw invalidLocalEnvironmentConfiguration(
+    configurationPath,
+    '本地环境配置 plcHandshakeProfile 无效'
   )
 }
 

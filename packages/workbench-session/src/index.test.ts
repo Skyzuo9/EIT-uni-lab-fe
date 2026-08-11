@@ -9,7 +9,7 @@ import {
 } from 'node:fs/promises'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 
 import { afterEach, describe, expect, it } from 'vitest'
 
@@ -30,6 +30,60 @@ afterEach(async () => {
 })
 
 describe('managed local Workbench session', () => {
+  it('owns the Workspace Agent independently from the OS lifecycle', async () => {
+    const fixture = await createFixture()
+    let agentStopCalls = 0
+    const session = createManagedLocalWorkbenchSession({
+      workspacePath: fixture.workspacePath,
+      osProjectPath: fixture.osProjectPath,
+      environmentPath: fixture.environmentPath,
+      enableAgent: true,
+      agentStarter: async options => ({
+        identity: {
+          implementation: 'aioncore',
+          productName: 'UniLab Agent',
+          distributionVersion: 'fixture',
+          phase: 'ready',
+          url: 'http://127.0.0.1:19000',
+          iconUrl: null,
+          pid: 99,
+          dataDir: join(options.workspacePath, '.unilabos', 'agent', 'aionui'),
+          workDir: options.workspacePath,
+          logPath: join(options.workspacePath, '.unilabos', 'agent', 'agent.log'),
+          diagnostic: null
+        },
+        stop: async () => { agentStopCalls += 1 }
+      }),
+      plcSimulatorOpcUaPort: fixture.plcSimulatorOpcUaPort,
+      readinessTimeoutMs: 5_000
+    })
+    sessions.push(session)
+
+    const agentReady = await session.startAgent()
+    expect(agentReady).toMatchObject({
+      phase: 'idle',
+      identity: null,
+      agent: {
+        phase: 'ready',
+        workDir: fixture.workspacePath,
+        pid: 99
+      }
+    })
+
+    await session.start()
+    await session.stop()
+    expect(agentStopCalls).toBe(0)
+    expect(session.getSnapshot()).toMatchObject({
+      phase: 'idle',
+      identity: null,
+      agent: { phase: 'ready', pid: 99 }
+    })
+
+    await session.stopAgent()
+    expect(agentStopCalls).toBe(1)
+    expect(session.getSnapshot().agent).toBeNull()
+  })
+
   it('publishes normalized identity and diagnostics only after OS readiness', async () => {
     const fixture = await createFixture()
     const phases: string[] = []
@@ -267,11 +321,15 @@ describe('managed local Workbench session', () => {
       message: 'Uni-Lab OS 已停止',
       configuredGraphPath: 'deployment/graphs/szlab-local-debug.json',
       identity: null,
+      agent: null,
       diagnostic: null,
       plcSimulator: {
         phase: 'idle',
         message: '尚未选择 PLC-Sim 项目目录',
         projectPath: '',
+        variableTablePath: '',
+        variableTableCandidates: [],
+        handshakeProfile: 'szlab',
         pid: null,
         guiUrl: 'http://127.0.0.1:18765',
         opcUaUrl: 'opc.tcp://127.0.0.1:4855',
@@ -350,6 +408,46 @@ describe('managed local Workbench session', () => {
     )).resolves.toContain(fixture.plcSimulatorPath)
   })
 
+  it('starts PLC-Sim with the recommended Workspace CSV and handshake before OS', async () => {
+    const fixture = await createFixture()
+    const requestLogPath = join(fixture.workspacePath, '.unilabos', 'plc-api.log')
+    const session = createManagedLocalWorkbenchSession({
+      workspacePath: fixture.workspacePath,
+      osProjectPath: fixture.osProjectPath,
+      environmentPath: fixture.environmentPath,
+      plcSimulatorGuiPort: fixture.plcSimulatorGuiPort,
+      plcSimulatorOpcUaPort: fixture.plcSimulatorOpcUaPort,
+      readinessTimeoutMs: 5_000,
+      environment: {
+        ...process.env,
+        UNILAB_FIXTURE_PLC_REQUEST_LOG: requestLogPath
+      }
+    })
+    sessions.push(session)
+
+    await session.configurePlcSimulator(fixture.plcSimulatorPath)
+    const beforeOs = await session.startPlcSimulator()
+
+    expect(beforeOs).toMatchObject({
+      phase: 'idle',
+      identity: null,
+      plcSimulator: {
+        phase: 'ready',
+        handshakeProfile: 'szlab',
+        variableTablePath: fixture.plcVariableTablePath
+      }
+    })
+    const requests = await readFile(requestLogPath, 'utf8')
+    expect(requests).toContain('POST /api/server/start')
+    expect(requests).toContain('POST /api/agent/start')
+    expect(requests).not.toContain('/api/csv/upload')
+
+    await expect(session.start()).resolves.toMatchObject({
+      phase: 'ready',
+      plcSimulator: { phase: 'ready' }
+    })
+  })
+
   it('cleans OS and PLC-Sim even when Agent teardown rejects', async () => {
     const fixture = await createFixture()
     let agentStopCalls = 0
@@ -382,6 +480,7 @@ describe('managed local Workbench session', () => {
       readinessTimeoutMs: 5_000
     })
     sessions.push(session)
+    await session.startAgent()
     await session.start()
     await session.configurePlcSimulator(fixture.plcSimulatorPath)
     await session.startPlcSimulator()
@@ -752,6 +851,7 @@ async function createFixture(): Promise<{
   osProjectPath: string
   environmentPath: string
   plcSimulatorPath: string
+  plcVariableTablePath: string
   plcSimulatorGuiPort: number
   plcSimulatorOpcUaPort: number
 }> {
@@ -763,6 +863,13 @@ async function createFixture(): Promise<{
   const osProjectPath = join(root, 'Uni-Lab-OS')
   const environmentPath = join(root, 'unilab-env')
   const plcSimulatorPath = join(root, 'PLC-Sim')
+  const plcVariableTablePath = join(
+    workspacePath,
+    'szlab_poly_studio',
+    'devices',
+    'szlab_poly_plc',
+    'szlab_plc_0807.csv'
+  )
   const plcSimulatorGuiPort = await findAvailableLoopbackPort()
   const plcSimulatorOpcUaPort = await findAvailableLoopbackPort(
     plcSimulatorGuiPort
@@ -771,7 +878,8 @@ async function createFixture(): Promise<{
     mkdir(join(workspacePath, 'deployment', 'graphs'), { recursive: true }),
     mkdir(join(osProjectPath, 'unilabos'), { recursive: true }),
     mkdir(join(environmentPath, 'bin'), { recursive: true }),
-    mkdir(join(plcSimulatorPath, 'OpcUaSim', 'gui'), { recursive: true })
+    mkdir(join(plcSimulatorPath, 'OpcUaSim', 'gui'), { recursive: true }),
+    mkdir(dirname(plcVariableTablePath), { recursive: true })
   ])
   await Promise.all([
     writeFile(join(workspacePath, 'deployment', 'local_config.py'), 'class BasicConfig:\n    pass\n'),
@@ -797,7 +905,8 @@ async function createFixture(): Promise<{
     writeFile(
       join(plcSimulatorPath, 'OpcUaSim', 'gui', 'backend.py'),
       '# fixture\n'
-    )
+    ),
+    writeFile(plcVariableTablePath, '变量名,数据类型\n工站初始化,BOOL\n')
   ])
   await Promise.all([
     chmod(join(environmentPath, 'bin', 'python'), 0o755),
@@ -808,6 +917,7 @@ async function createFixture(): Promise<{
     osProjectPath,
     environmentPath,
     plcSimulatorPath,
+    plcVariableTablePath,
     plcSimulatorGuiPort,
     plcSimulatorOpcUaPort
   }
@@ -840,7 +950,17 @@ if (process.env.UNILAB_FIXTURE_PLC_READY_FILE) {
   fs.mkdirSync(path.dirname(process.env.UNILAB_FIXTURE_PLC_READY_FILE), { recursive: true })
   fs.writeFileSync(process.env.UNILAB_FIXTURE_PLC_READY_FILE, 'ready\\n')
 }
-const server = http.createServer((_request, response) => response.end('ok'))
+const server = http.createServer((request, response) => {
+  if (process.env.UNILAB_FIXTURE_PLC_REQUEST_LOG) {
+    fs.mkdirSync(path.dirname(process.env.UNILAB_FIXTURE_PLC_REQUEST_LOG), { recursive: true })
+    fs.appendFileSync(
+      process.env.UNILAB_FIXTURE_PLC_REQUEST_LOG,
+      request.method + ' ' + request.url + '\\n'
+    )
+  }
+  response.writeHead(200, { 'content-type': 'application/json' })
+  response.end(JSON.stringify({ ok: true }))
+})
 server.listen(port, '127.0.0.1')
 const stop = () => server.close(() => process.exit(0))
 process.on('SIGTERM', stop)

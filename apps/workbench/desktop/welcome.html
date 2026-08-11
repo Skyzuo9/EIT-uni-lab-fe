@@ -64,6 +64,16 @@
             </button>
           </div>
 
+          <section class="runtime-panel" id="runtime-panel" aria-live="polite" hidden>
+            <span class="runtime-panel__indicator" id="runtime-indicator" aria-hidden="true"></span>
+            <span class="runtime-panel__content">
+              <small>LOCAL RUNTIME / 本地运行环境</small>
+              <strong id="runtime-title">正在检查 UniLab 环境</strong>
+              <span id="runtime-detail">检查现有环境与安装包内置 Runtime…</span>
+            </span>
+            <button id="install-runtime" type="button" hidden>安装内置 Runtime</button>
+          </section>
+
           <section class="status-panel" id="status-panel" aria-live="polite" hidden>
             <span class="status-panel__indicator" aria-hidden="true"></span>
             <span>

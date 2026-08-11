@@ -46,6 +46,9 @@
   },
   "theiaExtensions": [
     {
+      "frontendPreload": "lib/browser/unilab-workbench-frontend-preload-module"
+    },
+    {
       "frontend": "lib/browser/unilab-workbench-frontend-module"
     },
     {

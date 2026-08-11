@@ -24,8 +24,9 @@ describe('WorkbenchSessionGate', () => {
         snapshot={{
           phase: 'failed',
           message: '等待 Uni-Lab OS 就绪超时',
-          configuredGraphPath: 'deployment/graphs/szlab-local-debug.json',
-          identity: {
+        configuredGraphPath: 'deployment/graphs/szlab-local-debug.json',
+        agent: null,
+        identity: {
             workspacePath: '/workspace',
             osProjectPath: '/os',
             osRuntimeSource: 'checkout',
@@ -57,6 +58,9 @@ describe('WorkbenchSessionGate', () => {
             message: 'PLC-Sim 未启动',
             diagnostic: null,
             projectPath: '/workspace/PLC-Sim',
+            variableTablePath: '/workspace/devices/plc/table.csv',
+            variableTableCandidates: [],
+            handshakeProfile: 'szlab',
             guiUrl: 'http://127.0.0.1:8080',
             opcUaUrl: 'opc.tcp://127.0.0.1:4840',
             pid: null,

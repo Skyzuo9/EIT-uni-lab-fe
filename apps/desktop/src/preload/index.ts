@@ -57,6 +57,10 @@ import type {
   DesktopWorkbenchWorkspaceApi,
   WorkbenchWorkspaceSnapshot
 } from '../shared/workbenchWorkspace'
+import type {
+  DesktopManagedRuntimeInstallationApi,
+  ManagedRuntimeInstallationSnapshot
+} from '../shared/managedRuntimeInstallation'
 
 // 登录会话结构(与主进程 authManager.AuthSession 保持一致)
 export interface AuthUserInfo {
@@ -133,6 +137,25 @@ const api = {
       )
     }
   } satisfies DesktopWorkbenchWorkspaceApi,
+  managedRuntime: {
+    getSnapshot: (): Promise<ManagedRuntimeInstallationSnapshot> =>
+      ipcRenderer.invoke('managed-runtime:getSnapshot'),
+    install: (): Promise<ManagedRuntimeInstallationSnapshot> =>
+      ipcRenderer.invoke('managed-runtime:install'),
+    onSnapshot: (
+      listener: (snapshot: ManagedRuntimeInstallationSnapshot) => void
+    ): (() => void) => {
+      const wrapped = (
+        _event: Electron.IpcRendererEvent,
+        snapshot: ManagedRuntimeInstallationSnapshot
+      ): void => listener(snapshot)
+      ipcRenderer.on('managed-runtime:snapshot', wrapped)
+      return () => ipcRenderer.removeListener(
+        'managed-runtime:snapshot',
+        wrapped
+      )
+    }
+  } satisfies DesktopManagedRuntimeInstallationApi,
   auth: {
     // 读取本地已保存的登录会话
     getSession: (): Promise<AuthSession | null> => ipcRenderer.invoke('auth:getSession'),

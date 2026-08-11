@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import {
   closeSync,
+  chmodSync,
   copyFileSync,
   existsSync,
   mkdirSync,
@@ -17,12 +18,23 @@ import {
 import { homedir, tmpdir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import * as asar from '@electron/asar'
+import {
+  prepareRuntimePayloadFromEnvironment,
+  validatePackagedRuntimeResources
+} from '../../desktop/scripts/runtime-payload.mjs'
+import {
+  prepareBundledAgentPayload,
+  validateBundledAgentPayload
+} from './agent-payload.mjs'
 
 const MEBIBYTE = 1024 * 1024
 const MIN_INSTALLER_BYTES = 50 * MEBIBYTE
 export const NODE_RUNTIME_VERSION = '24.14.0'
 export const NODE_RUNTIME_SHA256 =
   'a1a54f46a750d2523d628d924aab61758a51c9dad3e0238beb14141be9615dd3'
+export const NODE_RUNTIME_SHA256_X64 =
+  'f2879eb810e25993a0578e5d878930266fd2eafcffe9f2839b3d8db354d4879e'
 const REQUIRED_SIGNING_ENVIRONMENT = [
   'CSC_LINK',
   'CSC_KEY_PASSWORD',
@@ -37,6 +49,12 @@ const releaseDirectory = join(workbenchDirectory, 'release-macos')
 const packagingDirectory = join(workbenchDirectory, '.packaging')
 const desktopRuntimeDirectory = join(packagingDirectory, 'desktop-runtime')
 const nodeRuntimeDirectory = join(packagingDirectory, 'node-runtime')
+const runtimePayloadDirectory = join(packagingDirectory, 'runtime-installer')
+const agentPayloadDirectory = join(packagingDirectory, 'agent-runtime')
+const deviceCardBuilderDirectory = join(
+  packagingDirectory,
+  'device-card-builder'
+)
 
 export function assertMacosSigningEnvironment(environment = process.env) {
   const missing = REQUIRED_SIGNING_ENVIRONMENT.filter(
@@ -47,6 +65,20 @@ export function assertMacosSigningEnvironment(environment = process.env) {
       `签名/公证凭据不完整，缺少：${missing.join(', ')}。正式 package:mac 不会降级为 unsigned。`
     )
   }
+}
+
+export function parseDeveloperIdIdentity(output) {
+  const match = output.match(
+    /^\s*\d+\)\s+[a-f0-9]+\s+"(Developer ID Application:[^"]+)"/imu
+  )
+  if (!match) {
+    throw new Error('钥匙串中没有可用的 Developer ID Application 签名身份。')
+  }
+  return match[1]
+}
+
+export function electronBuilderIdentityName(identity) {
+  return identity.replace(/^Developer ID Application:\s*/u, '')
 }
 
 export function validateMacosInstaller(installerPath) {
@@ -72,7 +104,10 @@ export function validateMacosInstaller(installerPath) {
   return { path: installerPath, size }
 }
 
-export function validatePackagedWorkbench(outputDirectory) {
+export function validatePackagedWorkbench(
+  outputDirectory,
+  targetArchitecture = process.arch
+) {
   const appPath = findPackagedApplication(outputDirectory)
   const resources = join(appPath, 'Contents', 'Resources')
   const required = [
@@ -81,7 +116,14 @@ export function validatePackagedWorkbench(outputDirectory) {
     join(resources, 'workbench', 'package.json'),
     join(resources, 'workbench', 'lib', 'frontend', 'index.html'),
     join(resources, 'workbench', 'lib', 'backend', 'native', 'watcher.node'),
-    join(resources, 'workbench', 'lib', 'prebuilds', 'darwin-arm64', 'pty.node'),
+    join(
+      resources,
+      'workbench',
+      'lib',
+      'prebuilds',
+      `darwin-${targetArchitecture}`,
+      'pty.node'
+    ),
     join(resources, 'workbench', 'plugins'),
     join(resources, 'node-runtime', 'bin', 'node'),
     join(resources, 'desktop', 'out', 'main', 'index.js'),
@@ -99,44 +141,89 @@ export function validatePackagedWorkbench(outputDirectory) {
   return appPath
 }
 
-export function packageMacos({ signed, adhoc = false }) {
-  if (process.platform !== 'darwin' || process.arch !== 'arm64') {
-    throw new Error('T11 仅在 macOS arm64 构建；darwin-x64 仍为 unverified。')
+export function packageMacos({ signed, adhoc = false, developerId = false }) {
+  if (process.platform !== 'darwin' || !['arm64', 'x64'].includes(process.arch)) {
+    throw new Error(`macOS Workbench 不支持当前主机：${process.platform}/${process.arch}`)
   }
-  if (signed && adhoc) {
-    throw new Error('Developer ID 正式签名与 ad-hoc 临时签名不能同时启用。')
+  const targetArchitecture = process.arch
+  const targetPlatform = targetArchitecture === 'arm64'
+    ? 'osx-arm64'
+    : 'osx-64'
+  const esbuildPackage = `darwin-${targetArchitecture}`
+  const esbuildBinary = join(
+    repositoryDirectory,
+    'node_modules',
+    '.pnpm',
+    `@esbuild+${esbuildPackage}@0.21.5`,
+    'node_modules',
+    '@esbuild',
+    esbuildPackage,
+    'bin',
+    'esbuild'
+  )
+  if ([signed, adhoc, developerId].filter(Boolean).length > 1) {
+    throw new Error('正式签名、Developer ID RC 与 ad-hoc 临时签名不能同时启用。')
   }
   if (signed) assertMacosSigningEnvironment()
+  const developerIdIdentity = developerId
+    ? findDeveloperIdIdentity()
+    : undefined
 
   const outputDirectory = mkdtempSync(join(tmpdir(), 'unilab-workbench-macos-'))
   rmSync(packagingDirectory, { recursive: true, force: true })
   mkdirSync(packagingDirectory, { recursive: true })
   try {
+    runCommand(process.execPath, [
+      join(workbenchDirectory, 'scripts', 'build-desktop-launcher.mjs')
+    ], workbenchDirectory)
     copyFileSync(
       join(workbenchDirectory, 'package.json'),
       join(packagingDirectory, 'workbench-package.json')
     )
-    preparePinnedNodeRuntime()
+    prepareRuntimePayloadFromEnvironment(
+      runtimePayloadDirectory,
+      targetPlatform
+    )
+    const agentPayload = prepareBundledAgentPayload(agentPayloadDirectory, {
+      sourcePath: process.env['UNILAB_AGENT_DISTRIBUTION'],
+      platform: 'darwin',
+      architecture: targetArchitecture
+    })
+    runCommand(process.execPath, [
+      fileURLToPath(new URL('./verify-agent-runtime.mjs', import.meta.url)),
+      '--resources',
+      agentPayloadDirectory,
+      '--executable',
+      agentPayload.sourceExecutable,
+      '--platform',
+      'darwin',
+      '--architecture',
+      targetArchitecture
+    ])
+    mkdirSync(deviceCardBuilderDirectory, { recursive: true })
+    copyFileSync(esbuildBinary, join(deviceCardBuilderDirectory, 'esbuild'))
+    chmodSync(join(deviceCardBuilderDirectory, 'esbuild'), 0o755)
+    preparePinnedNodeRuntime(targetArchitecture)
     runCommand('pnpm', [
       '--filter',
       '@unilab/desktop',
       'deploy',
       '--prod',
       '--legacy',
-      '--offline',
+      '--prefer-offline',
       desktopRuntimeDirectory
     ], repositoryDirectory)
 
     const builderArgs = [
       '--mac',
       'dmg',
-      '--arm64',
+      `--${targetArchitecture}`,
       '--publish',
       'never',
       `--config.directories.output=${outputDirectory}`
     ]
     const builderEnvironment = { ...process.env }
-    if (!signed) {
+    if (!signed && !developerId) {
       builderEnvironment['CSC_IDENTITY_AUTO_DISCOVERY'] = 'false'
       builderArgs.push(
         '--config.mac.identity=null',
@@ -148,7 +235,22 @@ export function packageMacos({ signed, adhoc = false }) {
           '--config.mac.artifactName=${productName}-${version}-rc-adhoc-${arch}.${ext}',
           '--config.dmg.artifactName=${productName}-${version}-rc-adhoc-${arch}.${ext}'
         )
+      } else {
+        builderArgs.push(
+          '--config.mac.artifactName=${productName}-${version}-unsigned-development-${arch}.${ext}',
+          '--config.dmg.artifactName=${productName}-${version}-unsigned-development-${arch}.${ext}'
+        )
       }
+    }
+    if (developerId) {
+      builderEnvironment['CSC_NAME'] = electronBuilderIdentityName(
+        developerIdIdentity
+      )
+      builderArgs.push(
+        '--config.mac.notarize=false',
+        '--config.mac.artifactName=${productName}-${version}-rc-developer-id-${arch}.${ext}',
+        '--config.dmg.artifactName=${productName}-${version}-rc-developer-id-${arch}.${ext}'
+      )
     }
     runCommand(
       process.execPath,
@@ -167,19 +269,36 @@ export function packageMacos({ signed, adhoc = false }) {
       builderEnvironment
     )
 
-    const appPath = validatePackagedWorkbench(outputDirectory)
-    runCommand(process.execPath, [
-      fileURLToPath(new URL('./verify-packaged-backend.mjs', import.meta.url)),
-      '--app',
-      appPath
-    ])
+    const appPath = validatePackagedWorkbench(
+      outputDirectory,
+      targetArchitecture
+    )
+    validatePackagedRuntimeResources(
+      join(appPath, 'Contents', 'Resources'),
+      targetPlatform
+    )
+    validateBundledAgentPayload(
+      join(appPath, 'Contents', 'Resources'),
+      'darwin',
+      targetArchitecture
+    )
+    verifyPackagedLauncher(appPath)
     let installer = findInstaller(outputDirectory)
     if (signed) verifySignedAndNotarized(appPath, installer.path)
+    if (developerId) {
+      installer = signAndVerifyDeveloperIdCandidate(
+        appPath,
+        installer.path,
+        developerIdIdentity
+      )
+    }
     if (adhoc) installer = signAndVerifyAdHocCandidate(installer.path)
     publishInstaller(installer.path)
     const distribution = signed
       ? 'signed/notarized'
-      : adhoc ? 'RC ad-hoc signed' : 'unsigned'
+      : developerId
+        ? 'RC Developer ID signed (not notarized)'
+        : adhoc ? 'RC ad-hoc signed' : 'unsigned'
     console.log(
       `macOS ${distribution} 安装包已发布：${join(releaseDirectory, basename(installer.path))}（${formatMebibytes(installer.size)} MiB）`
     )
@@ -189,8 +308,33 @@ export function packageMacos({ signed, adhoc = false }) {
   }
 }
 
-function preparePinnedNodeRuntime() {
-  const archiveName = `node-v${NODE_RUNTIME_VERSION}-darwin-arm64.tar.gz`
+export function verifyPackagedLauncher(appPath) {
+  const archive = join(
+    appPath,
+    'Contents',
+    'Resources',
+    'app.asar'
+  )
+  const launcher = asar.extractFile(archive, 'desktop/main.cjs').toString('utf8')
+  const requiredMarkers = [
+    'require("original-fs")',
+    'UNILAB_WORKBENCH_PACKAGE_SMOKE_OK'
+  ]
+  const missing = requiredMarkers.filter(marker => !launcher.includes(marker))
+  if (missing.length > 0) {
+    throw new Error(
+      `打包 Electron launcher 不是最新构建，缺少：${missing.join(', ')}`
+    )
+  }
+  console.log('打包 Electron launcher bundle smoke 通过')
+}
+
+function preparePinnedNodeRuntime(targetArchitecture) {
+  const archiveName =
+    `node-v${NODE_RUNTIME_VERSION}-darwin-${targetArchitecture}.tar.gz`
+  const expectedSha256 = targetArchitecture === 'arm64'
+    ? NODE_RUNTIME_SHA256
+    : NODE_RUNTIME_SHA256_X64
   const cacheDirectory = join(
     homedir(),
     'Library',
@@ -200,7 +344,7 @@ function preparePinnedNodeRuntime() {
   )
   const archivePath = join(cacheDirectory, archiveName)
   mkdirSync(cacheDirectory, { recursive: true })
-  if (!hasExpectedSha256(archivePath, NODE_RUNTIME_SHA256)) {
+  if (!hasExpectedSha256(archivePath, expectedSha256)) {
     rmSync(archivePath, { force: true })
     runCommand('curl', [
       '-fL',
@@ -211,7 +355,7 @@ function preparePinnedNodeRuntime() {
       archivePath
     ])
   }
-  if (!hasExpectedSha256(archivePath, NODE_RUNTIME_SHA256)) {
+  if (!hasExpectedSha256(archivePath, expectedSha256)) {
     throw new Error(`Node ${NODE_RUNTIME_VERSION} runtime SHA-256 校验失败。`)
   }
 
@@ -223,13 +367,8 @@ function preparePinnedNodeRuntime() {
     '-C',
     binaryDirectory,
     '--strip-components=2',
-    `node-v${NODE_RUNTIME_VERSION}-darwin-arm64/bin/node`
+    `node-v${NODE_RUNTIME_VERSION}-darwin-${targetArchitecture}/bin/node`
   ])
-  const binaryPath = join(binaryDirectory, 'node')
-  const version = spawnSync(binaryPath, ['--version'], { encoding: 'utf8' })
-  if (version.status !== 0 || version.stdout.trim() !== `v${NODE_RUNTIME_VERSION}`) {
-    throw new Error(`Node backend runtime 不可执行：${binaryPath}`)
-  }
 }
 
 function hasExpectedSha256(filePath, expected) {
@@ -269,6 +408,51 @@ function verifySignedAndNotarized(appPath, installerPath) {
   runCommand('spctl', ['--assess', '--type', 'execute', '--verbose=2', appPath])
   runCommand('xcrun', ['stapler', 'validate', appPath])
   runCommand('xcrun', ['stapler', 'validate', installerPath])
+}
+
+function findDeveloperIdIdentity() {
+  const args = ['find-identity', '-v', '-p', 'codesigning']
+  if (process.env['CSC_KEYCHAIN']) {
+    args.push(process.env['CSC_KEYCHAIN'])
+  }
+  const result = spawnSync(
+    'security',
+    args,
+    { encoding: 'utf8' }
+  )
+  if (result.error) throw result.error
+  if (result.status !== 0) {
+    throw new Error(`security find-identity 执行失败，退出码 ${result.status}`)
+  }
+  return parseDeveloperIdIdentity(result.stdout)
+}
+
+function signAndVerifyDeveloperIdCandidate(
+  appPath,
+  installerPath,
+  identity
+) {
+  const keychainArgs = process.env['CSC_KEYCHAIN']
+    ? ['--keychain', process.env['CSC_KEYCHAIN']]
+    : []
+  runCommand('codesign', [
+    '--verify',
+    '--deep',
+    '--strict',
+    '--verbose=2',
+    appPath
+  ])
+  runCommand('codesign', [
+    '--force',
+    '--sign',
+    identity,
+    ...keychainArgs,
+    '--timestamp',
+    installerPath
+  ])
+  runCommand('codesign', ['--verify', '--verbose=2', installerPath])
+  runCommand('hdiutil', ['verify', installerPath])
+  return validateMacosInstaller(installerPath)
 }
 
 function signAndVerifyAdHocCandidate(installerPath) {
@@ -327,13 +511,16 @@ function formatMebibytes(bytes) {
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const mode = process.argv[2]
-  if (!['--signed', '--adhoc', '--unsigned'].includes(mode)) {
-    console.error('用法：package-macos.mjs --signed|--adhoc|--unsigned')
+  if (!['--signed', '--developer-id', '--adhoc', '--unsigned'].includes(mode)) {
+    console.error(
+      '用法：package-macos.mjs --signed|--developer-id|--adhoc|--unsigned'
+    )
     process.exitCode = 1
   } else {
     try {
       packageMacos({
         signed: mode === '--signed',
+        developerId: mode === '--developer-id',
         adhoc: mode === '--adhoc'
       })
     } catch (error) {

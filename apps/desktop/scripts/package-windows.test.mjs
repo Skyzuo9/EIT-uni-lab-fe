@@ -18,6 +18,7 @@ import {
   resolvePackagingCliPaths,
   validatePackagedApp
 } from './package-windows.mjs'
+import { createPackagedRuntimeFixture } from './runtime-payload.test-support.mjs'
 
 const DEVICE_CARD_APP_ARCHIVE_BYTES = 50 * 1024 * 1024
 const temporaryDirectories = []
@@ -77,6 +78,7 @@ describe('Windows package publication gates', () => {
     )
     mkdirSync(join(archivePath, '..'), { recursive: true })
     createSparseFile(archivePath, DEVICE_CARD_APP_ARCHIVE_BYTES)
+    createPackagedRuntimeFixture(join(archivePath, '..'), 'win-64')
 
     expect(validatePackagedApp(outputDirectory)).toEqual({
       path: archivePath,

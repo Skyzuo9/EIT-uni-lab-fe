@@ -8,6 +8,19 @@ import type { WorkbenchSessionClient } from '../common/workbench-session-protoco
 import { WorkbenchSessionService } from './workbench-session-service'
 
 describe('WorkbenchSessionService', () => {
+  it('starts the Workspace Agent when the backend opens, before OS startup', async () => {
+    const startAgent = vi.fn().mockResolvedValue(snapshot('idle', null))
+    const session = {
+      startAgent,
+      refreshPlcVariableTables: vi.fn().mockResolvedValue(snapshot('idle', null))
+    } as unknown as WorkbenchSession
+    const service = new WorkbenchSessionService()
+    Object.assign(service, { session })
+
+    service.onStart()
+    await vi.waitFor(() => expect(startAgent).toHaveBeenCalledOnce())
+  })
+
   it('publishes one managed session snapshot to every connected renderer', () => {
     const initial = snapshot('starting', null)
     const restarted = snapshot('ready', 59682)
@@ -70,6 +83,7 @@ function snapshot(
     phase,
     message: phase,
     configuredGraphPath: 'deployment/graphs/szlab-plc-sim-local.json',
+    agent: null,
     identity: pid === null ? null : {
       workspacePath: '/workspace',
       osProjectPath: '/os',
@@ -90,6 +104,9 @@ function snapshot(
       phase: 'idle',
       message: 'idle',
       projectPath: '',
+      variableTablePath: '',
+      variableTableCandidates: [],
+      handshakeProfile: 'szlab',
       pid: null,
       guiUrl: 'http://127.0.0.1:18765',
       opcUaUrl: 'opc.tcp://127.0.0.1:4855',

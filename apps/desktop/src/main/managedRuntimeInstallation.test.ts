@@ -83,7 +83,9 @@ describe('ManagedRuntimeInstallation', () => {
       resourcesDirectory,
       dataDirectory,
       platform: 'linux',
-      runInstaller: runner
+      architecture: 'x64',
+      runInstaller: runner,
+      verifyInstallation: vi.fn(async () => undefined)
     })
 
     await expect(installation.getModeInfo()).resolves.toEqual({
@@ -101,7 +103,14 @@ describe('ManagedRuntimeInstallation', () => {
         osProjectPath: '',
         szlabProjectPath: join(resourcesDirectory, 'default-workspace'),
         environmentPath: '',
-        simulatorProjectPath: ''
+        simulatorProjectPath: '',
+        edgeCommandMode: 'generated',
+        customEdgeCommand: {
+          executable: '',
+          workingDirectory: '{{workspace}}',
+          args: [],
+          environment: []
+        }
       }
     })
     expect(runner).not.toHaveBeenCalled()
@@ -300,6 +309,8 @@ async function createInstallationFixture(
 ): Promise<{
   resourcesDirectory: string
   dataDirectory: string
+  architecture: string
+  verifyInstallation: () => Promise<void>
 }> {
   const root = await mkdtemp(join(tmpdir(), 'unilab-managed-runtime-lock-'))
   temporaryDirectories.push(root)
@@ -316,7 +327,12 @@ async function createInstallationFixture(
     installerFile: installerName,
     sha256: createHash('sha256').update(installerBytes).digest('hex')
   }))
-  return { resourcesDirectory, dataDirectory }
+  return {
+    resourcesDirectory,
+    dataDirectory,
+    architecture: 'x64',
+    verifyInstallation: async () => undefined
+  }
 }
 
 async function writeLinuxRuntime(prefix: string): Promise<void> {

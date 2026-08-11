@@ -18,7 +18,7 @@ export interface WorkbenchAgentIdentity {
   implementation: 'aioncore'
   productName: 'UniLab Agent'
   distributionVersion: string
-  phase: 'ready' | 'failed'
+  phase: 'starting' | 'ready' | 'stopping' | 'failed'
   url: string | null
   iconUrl: string | null
   pid: number | null
@@ -68,6 +68,10 @@ const MIME_TYPES = new Map([
 ])
 export const PINNED_AIONUI_VERSION = '2.1.52'
 const MANAGED_LOCAL_DEFAULT_ASSISTANT_ID = 'bare:8e1acf31'
+const MANAGED_LOCAL_DEFAULT_LANGUAGE = 'zh-CN'
+const MANAGED_LOCAL_DEFAULT_LANGUAGE_VERSION_KEY =
+  'unilab.defaultLanguageVersion'
+const MANAGED_LOCAL_DEFAULT_LANGUAGE_VERSION = '1'
 const trackedServerSockets = new WeakMap<Server | net.Server, Set<net.Socket>>()
 
 /** Start the pinned local Agent implementation for one exact Workspace. */
@@ -77,13 +81,15 @@ export async function startManagedWorkbenchAgent(
   const environment = options.environment ?? process.env
   const appPath = options.appPath ?? environment['UNILAB_AIONUI_APP'] ??
     '/Applications/AionUi.app'
-  const resources = join(appPath, 'Contents', 'Resources')
-  const architecture = process.arch === 'arm64' ? 'darwin-arm64' : 'darwin-x64'
+  const resources = existsSync(join(appPath, 'app.asar'))
+    ? appPath
+    : join(appPath, 'Contents', 'Resources')
+  const architecture = agentCoreTarget(process.platform, process.arch)
   const corePath = environment['UNILAB_AIONCORE_PATH'] ?? join(
     resources,
     'bundled-aioncore',
-    architecture,
-    'aioncore'
+    architecture.directory,
+    architecture.executable
   )
   const asarPath = environment['UNILAB_AIONUI_ASAR'] ?? join(resources, 'app.asar')
   if (!existsSync(corePath) || !existsSync(asarPath)) {
@@ -144,13 +150,14 @@ export async function startManagedWorkbenchAgent(
   try {
     await waitForHealth(child, backendPort, options.readinessTimeoutMs ?? 60_000)
     sanitizeLocalIdentityDatabase(dataDir)
-    await ensureManagedLocalAgentDefaults(backendPort)
+    const initialLanguage = await ensureManagedLocalAgentDefaults(backendPort)
     const server = await startRendererProxy({
       backendPort,
       publicPort,
       rendererDir,
       workspacePath: options.workspacePath,
-      brandIconPath
+      brandIconPath,
+      initialLanguage
     })
     const identity: WorkbenchAgentIdentity = {
       implementation: 'aioncore',
@@ -179,6 +186,21 @@ export async function startManagedWorkbenchAgent(
     expectedExit = true
     await stopChild(child)
     throw error
+  }
+}
+
+function agentCoreTarget(
+  platform: NodeJS.Platform,
+  architecture: string
+): { directory: string; executable: string } {
+  const platformName = platform === 'win32' ? 'windows' : platform
+  if (!['darwin', 'linux', 'windows'].includes(platformName) ||
+    !['arm64', 'x64'].includes(architecture)) {
+    throw new Error(`UniLab Agent 不支持当前平台：${platform}/${architecture}`)
+  }
+  return {
+    directory: `${platformName}-${architecture}`,
+    executable: platform === 'win32' ? 'aioncore.exe' : 'aioncore'
   }
 }
 
@@ -229,35 +251,75 @@ function sanitizeLocalIdentityDatabase(dataDir: string): void {
   }
 }
 
-/** Seed Codex only for a fresh profile; later explicit assistant choices persist. */
-async function ensureManagedLocalAgentDefaults(backendPort: number): Promise<void> {
-  const endpoint = `http://127.0.0.1:${backendPort}/api/settings/client`
-  const currentResponse = await fetch(
-    `${endpoint}?keys=${encodeURIComponent('guid.lastAssistantId')}`,
-    { signal: AbortSignal.timeout(2_000) }
-  )
-  if (!currentResponse.ok) {
+/** Seed managed defaults once; later explicit assistant and language choices persist. */
+export async function ensureManagedLocalAgentDefaults(
+  backendPort: number
+): Promise<string> {
+  const settingsEndpoint = `http://127.0.0.1:${backendPort}/api/settings`
+  const clientEndpoint = `${settingsEndpoint}/client`
+  const clientKeys = [
+    'guid.lastAssistantId',
+    MANAGED_LOCAL_DEFAULT_LANGUAGE_VERSION_KEY
+  ].join(',')
+  const [currentResponse, settingsResponse] = await Promise.all([
+    fetch(`${clientEndpoint}?keys=${encodeURIComponent(clientKeys)}`, {
+      signal: AbortSignal.timeout(2_000)
+    }),
+    fetch(settingsEndpoint, { signal: AbortSignal.timeout(2_000) })
+  ])
+  if (!currentResponse.ok || !settingsResponse.ok) {
     throw new Error('UniLab Agent could not read managed-local defaults')
   }
-  const currentPayload: unknown = await currentResponse.json()
+  const [currentPayload, settingsPayload]: unknown[] = await Promise.all([
+    currentResponse.json(),
+    settingsResponse.json()
+  ])
   const currentSettings = isRecord(currentPayload) &&
     isRecord(currentPayload['data'])
     ? currentPayload['data']
     : null
-  if (currentSettings && typeof currentSettings['guid.lastAssistantId'] ===
-    'string') return
+  const systemSettings = isRecord(settingsPayload) &&
+    isRecord(settingsPayload['data'])
+    ? settingsPayload['data']
+    : null
+  let language = systemSettings && typeof systemSettings['language'] === 'string'
+    ? systemSettings['language']
+    : MANAGED_LOCAL_DEFAULT_LANGUAGE
+  const updates: Record<string, string> = {}
 
-  const updateResponse = await fetch(endpoint, {
-    method: 'PUT',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      'guid.lastAssistantId': MANAGED_LOCAL_DEFAULT_ASSISTANT_ID
-    }),
-    signal: AbortSignal.timeout(2_000)
-  })
-  if (!updateResponse.ok) {
-    throw new Error('UniLab Agent could not seed the Codex default')
+  if (!currentSettings || typeof currentSettings['guid.lastAssistantId'] !==
+    'string') {
+    updates['guid.lastAssistantId'] = MANAGED_LOCAL_DEFAULT_ASSISTANT_ID
   }
+
+  if (currentSettings?.[MANAGED_LOCAL_DEFAULT_LANGUAGE_VERSION_KEY] !==
+    MANAGED_LOCAL_DEFAULT_LANGUAGE_VERSION) {
+    const languageResponse = await fetch(settingsEndpoint, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ language: MANAGED_LOCAL_DEFAULT_LANGUAGE }),
+      signal: AbortSignal.timeout(2_000)
+    })
+    if (!languageResponse.ok) {
+      throw new Error('UniLab Agent could not seed the Chinese default')
+    }
+    language = MANAGED_LOCAL_DEFAULT_LANGUAGE
+    updates[MANAGED_LOCAL_DEFAULT_LANGUAGE_VERSION_KEY] =
+      MANAGED_LOCAL_DEFAULT_LANGUAGE_VERSION
+  }
+
+  if (Object.keys(updates).length > 0) {
+    const updateResponse = await fetch(clientEndpoint, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(updates),
+      signal: AbortSignal.timeout(2_000)
+    })
+    if (!updateResponse.ok) {
+      throw new Error('UniLab Agent could not persist managed-local defaults')
+    }
+  }
+  return language
 }
 
 /** Ordinary renderer file APIs can never address Workbench private state. */
@@ -330,6 +392,7 @@ async function startRendererProxy(options: {
   rendererDir: string
   workspacePath: string
   brandIconPath?: string
+  initialLanguage: string
 }): Promise<Server> {
   const server = createHttpServer((request, response) => {
     void routeRequest(request, response, options).catch(error => {
@@ -376,6 +439,7 @@ async function routeRequest(
     rendererDir: string
     workspacePath: string
     brandIconPath?: string
+    initialLanguage: string
   }
 ): Promise<void> {
   const pathname = new URL(request.url ?? '/', 'http://localhost').pathname
@@ -432,7 +496,8 @@ async function routeRequest(
   await serveStatic(request, response, {
     rendererDir: options.rendererDir,
     pathname,
-    brandIconPath: options.brandIconPath
+    brandIconPath: options.brandIconPath,
+    initialLanguage: options.initialLanguage
   })
 }
 
@@ -443,6 +508,7 @@ async function serveStatic(
     rendererDir: string
     pathname: string
     brandIconPath?: string
+    initialLanguage: string
   }
 ): Promise<void> {
   const requested = options.pathname === '/' ? '/index.html' : options.pathname
@@ -456,7 +522,9 @@ async function serveStatic(
     const branded = html
       .replace(
         '<head>',
-        `<head><script>${managedLocalBootstrapScript()}</script>`
+        `<head><script>${managedLocalBootstrapScript(
+          options.initialLanguage
+        )}</script>`
       )
       .replaceAll('AionUi', 'UniLab Agent')
       .replace('</head>', `${options.brandIconPath
@@ -480,8 +548,11 @@ async function serveStatic(
   else createReadStream(target).pipe(response)
 }
 
-function managedLocalBootstrapScript(): string {
+export function managedLocalBootstrapScript(initialLanguage: string): string {
+  const serializedLanguage = JSON.stringify(initialLanguage)
   return `try {
+    window.__initialLanguage = ${serializedLanguage}
+    localStorage.setItem('i18nextLng', ${serializedLanguage})
     localStorage.setItem('onboarding.openingGuideSeen_v1', 'true')
   } catch {}`
 }

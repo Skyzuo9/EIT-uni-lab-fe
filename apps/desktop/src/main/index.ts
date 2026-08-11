@@ -7,7 +7,7 @@ import {
   type IpcMainInvokeEvent
 } from 'electron'
 import { basename, dirname, join } from 'path'
-import { appendFileSync } from 'node:fs'
+import { appendFileSync, existsSync } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -27,6 +27,8 @@ import { discoverDefaultCondaEnvironment } from './localRuntimeEnvironment'
 import { registerDeviceProvisioningIpc } from './deviceProvisioningIpc'
 import { LocalDeviceProvisioningManager } from './localDeviceProvisioningManager'
 import { LocalDeviceProvisioningStore } from './localDeviceProvisioningStore'
+import { ManagedRuntimeInstallation } from './managedRuntimeInstallation'
+import { registerManagedRuntimeInstallationIpc } from './managedRuntimeInstallationIpc'
 import {
   LocalRuntimeManager,
   resolveLocalRuntimeLaunchPlan
@@ -319,6 +321,20 @@ app.whenReady().then(async () => {
   }
   ipcMain.handle('app:getVersion', () => app.getVersion())
   registerWorkbenchRemoteAccessIpc({ observability: electronObservability, assertSender: assertMainWindowSender, getMainWindow: () => mainWindow })
+  const managedRuntimeInstallation = registerManagedRuntimeInstallationIpc({
+    ipcMain,
+    installation: createManagedRuntimeInstallation(),
+    discoverExistingEnvironment: () => discoverDefaultCondaEnvironment({
+      homeDirectory: homedir()
+    }),
+    assertSender: assertMainWindowSender,
+    getMainWindow: () => mainWindow,
+    onEnvironmentReady: environmentPath => {
+      process.env['UNILAB_MANAGED_RUNTIME_PREFIX'] = environmentPath
+    },
+    log: logLine
+  })
+  await managedRuntimeInstallation.initialize()
   deviceCardManager = new DeviceCardManager({
     getMainWindow: () => mainWindow,
     preloadPath: join(__dirname, '../preload/deviceCard.js'),
@@ -759,6 +775,29 @@ function assertMainWindowSender(event: IpcMainInvokeEvent): void {
 function requireRuntimeManager(): LocalRuntimeManager {
   if (!localRuntimeManager) throw new Error('本地运行时尚未初始化')
   return localRuntimeManager
+}
+
+/**
+ * 从固定 Electron resources 构造一键安装器。开发态只有显式测试载荷时启用，
+ * 安装包缺少载荷时保持 UI 可诊断，而不是隐式搜索源码仓库。
+ */
+function createManagedRuntimeInstallation(): ManagedRuntimeInstallation | undefined {
+  const resourcesDirectory = process.env['UNILAB_MANAGED_RUNTIME_RESOURCES']
+    ?? (app.isPackaged ? process.resourcesPath : undefined)
+  if (!resourcesDirectory) return undefined
+  const manifestPath = join(
+    resourcesDirectory,
+    'runtime-installer',
+    'manifest.json'
+  )
+  if (!existsSync(manifestPath)) {
+    logLine(`未发现内置 Runtime manifest: ${manifestPath}`)
+    return undefined
+  }
+  return new ManagedRuntimeInstallation({
+    resourcesDirectory,
+    dataDirectory: app.getPath('userData')
+  })
 }
 
 /**

@@ -61,6 +61,7 @@ import {
 } from '@unilab/workflow-ide-bridge'
 import type {
   WorkbenchEnvironmentLogKind,
+  WorkbenchPlcSimulatorConfiguration,
   WorkbenchRuntimeMode,
   WorkbenchSessionSnapshot
 } from '@unilab/workbench-session'
@@ -139,6 +140,7 @@ export class UniLabWorkbenchWidget extends ReactWidget {
     message: '正在连接 Workbench Backend…',
     configuredGraphPath: 'deployment/graphs/szlab-local-debug.json',
     identity: null,
+    agent: null,
     diagnostic: null,
     plcSimulator: emptyPlcSimulatorSnapshot()
   }
@@ -187,6 +189,7 @@ export class UniLabWorkbenchWidget extends ReactWidget {
         message: 'Workbench Backend 连接失败',
         configuredGraphPath: 'deployment/graphs/szlab-local-debug.json',
         identity: null,
+        agent: null,
         diagnostic: {
           code: 'os_start_failed',
           message,
@@ -232,13 +235,25 @@ export class UniLabWorkbenchWidget extends ReactWidget {
   )
 
   protected readonly configurePlcSimulator = async (
-    projectPath: string
+    configuration: WorkbenchPlcSimulatorConfiguration
   ): Promise<void> => {
     try {
-      await this.workbenchSession.configurePlcSimulator(projectPath)
+      await this.workbenchSession.configurePlcSimulator(configuration)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       void this.messages.error(`PLC-Sim 配置失败：${message}`)
+      throw error
+    } finally {
+      await this.refreshSessionSnapshot()
+    }
+  }
+
+  protected readonly refreshPlcVariableTables = async (): Promise<void> => {
+    try {
+      await this.workbenchSession.refreshPlcVariableTables()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      void this.messages.error(`PLC 变量表扫描失败：${message}`)
       throw error
     } finally {
       await this.refreshSessionSnapshot()
@@ -271,6 +286,35 @@ export class UniLabWorkbenchWidget extends ReactWidget {
   protected readonly stopPlcSimulator = async (): Promise<void> => {
     await this.workbenchSession.stopPlcSimulator()
     await this.refreshSessionSnapshot()
+  }
+
+  protected readonly startAgent = async (): Promise<void> => {
+    try {
+      await this.workbenchSession.startAgent()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      void this.messages.error(`Agent 启动失败：${message}`)
+      throw error
+    } finally {
+      await this.refreshSessionSnapshot()
+    }
+  }
+
+  protected readonly stopAgent = async (): Promise<void> => {
+    await this.workbenchSession.stopAgent()
+    await this.refreshSessionSnapshot()
+  }
+
+  protected readonly restartAgent = async (): Promise<void> => {
+    try {
+      await this.workbenchSession.restartAgent()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      void this.messages.error(`Agent 重启失败：${message}`)
+      throw error
+    } finally {
+      await this.refreshSessionSnapshot()
+    }
   }
 
   protected readonly setRuntimeMode = async (
@@ -488,8 +532,12 @@ export class UniLabWorkbenchWidget extends ReactWidget {
               onReadEnvironmentLog={this.readEnvironmentLog}
               onConfigureGraph={this.configureGraph}
               onConfigurePlcSimulator={this.configurePlcSimulator}
+              onRefreshPlcVariableTables={this.refreshPlcVariableTables}
               onStartPlcSimulator={this.startPlcSimulator}
               onStopPlcSimulator={this.stopPlcSimulator}
+              onStartAgent={this.startAgent}
+              onStopAgent={this.stopAgent}
+              onRestartAgent={this.restartAgent}
               onSetRuntimeMode={this.setRuntimeMode}
               onStopSession={this.stopSession}
             />
@@ -509,8 +557,12 @@ export class UniLabWorkbenchWidget extends ReactWidget {
         onReadEnvironmentLog={this.readEnvironmentLog}
         onConfigureGraph={this.configureGraph}
         onConfigurePlcSimulator={this.configurePlcSimulator}
+        onRefreshPlcVariableTables={this.refreshPlcVariableTables}
         onStartPlcSimulator={this.startPlcSimulator}
         onStopPlcSimulator={this.stopPlcSimulator}
+        onStartAgent={this.startAgent}
+        onStopAgent={this.stopAgent}
+        onRestartAgent={this.restartAgent}
         onSetRuntimeMode={this.setRuntimeMode}
         onStopSession={this.stopSession}
       />
@@ -534,8 +586,12 @@ function WorkbenchSurface({
   onReadEnvironmentLog,
   onConfigureGraph,
   onConfigurePlcSimulator,
+  onRefreshPlcVariableTables,
   onStartPlcSimulator,
   onStopPlcSimulator,
+  onStartAgent,
+  onStopAgent,
+  onRestartAgent,
   onSetRuntimeMode,
   onStopSession
 }: {
@@ -548,9 +604,15 @@ function WorkbenchSurface({
   onRestartSession: () => Promise<void>
   onReadEnvironmentLog: (kind: WorkbenchEnvironmentLogKind) => Promise<string>
   onConfigureGraph: (graphPath: string) => Promise<void>
-  onConfigurePlcSimulator: (projectPath: string) => Promise<void>
+  onConfigurePlcSimulator: (
+    configuration: WorkbenchPlcSimulatorConfiguration
+  ) => Promise<void>
+  onRefreshPlcVariableTables: () => Promise<void>
   onStartPlcSimulator: () => Promise<void>
   onStopPlcSimulator: () => Promise<void>
+  onStartAgent: () => Promise<void>
+  onStopAgent: () => Promise<void>
+  onRestartAgent: () => Promise<void>
   onSetRuntimeMode: (mode: WorkbenchRuntimeMode) => Promise<void>
   onStopSession: () => Promise<void>
 }): React.JSX.Element {
@@ -761,8 +823,12 @@ function WorkbenchSurface({
             onReadEnvironmentLog={onReadEnvironmentLog}
             onConfigureGraph={onConfigureGraph}
             onConfigurePlcSimulator={onConfigurePlcSimulator}
+            onRefreshPlcVariableTables={onRefreshPlcVariableTables}
             onStartPlcSimulator={onStartPlcSimulator}
             onStopPlcSimulator={onStopPlcSimulator}
+            onStartAgent={onStartAgent}
+            onStopAgent={onStopAgent}
+            onRestartAgent={onRestartAgent}
             onSetRuntimeMode={onSetRuntimeMode}
             onStopSession={onStopSession}
           />
@@ -934,6 +1000,9 @@ function emptyPlcSimulatorSnapshot(): WorkbenchSessionSnapshot['plcSimulator'] {
     phase: 'idle',
     message: '尚未连接环境管理器',
     projectPath: '',
+    variableTablePath: '',
+    variableTableCandidates: [],
+    handshakeProfile: 'szlab',
     pid: null,
     guiUrl: '',
     opcUaUrl: '',

@@ -336,9 +336,95 @@ h1 {
 }
 
 .action:disabled,
-.recent-item:disabled {
+.recent-item:disabled,
+.runtime-panel button:disabled {
   cursor: wait;
   opacity: 0.48;
+}
+
+.runtime-panel {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  margin-top: 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  background: #0b1117;
+}
+
+.runtime-panel[hidden] {
+  display: none;
+}
+
+.runtime-panel__indicator {
+  width: 7px;
+  height: 7px;
+  border: 1px solid var(--quiet);
+  background: transparent;
+}
+
+.runtime-panel__indicator.is-ready,
+.runtime-panel__indicator.is-external {
+  border-color: var(--cyan);
+  background: var(--cyan);
+  box-shadow: 0 0 9px rgba(87, 213, 229, 0.62);
+}
+
+.runtime-panel__indicator.is-installing {
+  border-color: var(--amber);
+  animation: status-pulse 1.15s steps(2, end) infinite;
+}
+
+.runtime-panel__indicator.is-failed {
+  border-color: var(--danger);
+  background: var(--danger);
+}
+
+.runtime-panel__content,
+.runtime-panel__content small,
+.runtime-panel__content strong,
+.runtime-panel__content span {
+  display: block;
+  min-width: 0;
+}
+
+.runtime-panel__content small {
+  color: var(--quiet);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 8px;
+  letter-spacing: 0.12em;
+}
+
+.runtime-panel__content strong {
+  margin-top: 5px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.runtime-panel__content span {
+  margin-top: 4px;
+  overflow: hidden;
+  color: var(--muted);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.runtime-panel button {
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid #377481;
+  border-radius: 2px;
+  color: var(--ink);
+  background: var(--cyan-soft);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.runtime-panel button:hover:not(:disabled) {
+  border-color: var(--cyan);
 }
 
 .action__index,

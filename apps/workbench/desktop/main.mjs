@@ -11,6 +11,7 @@ import {
   writeFile
 } from 'node:fs/promises'
 import net from 'node:net'
+import { promises as originalFsPromises } from 'original-fs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
@@ -32,6 +33,14 @@ import {
 
 const STARTUP_TIMEOUT_MS = 60_000
 const BACKEND_STOP_TIMEOUT_MS = 5_000
+const DEFAULT_WORKBENCH_LOCALE = 'zh-CN'
+
+// Keep Chromium, embedded web surfaces and extension hosts aligned with the
+// product default. Theia still owns the user's explicit display-language
+// choice, while Agent language is persisted per Workspace.
+if (!app.commandLine.hasSwitch('lang')) {
+  app.commandLine.appendSwitch('lang', DEFAULT_WORKBENCH_LOCALE)
+}
 
 let backendProcess
 let remoteAccessController
@@ -79,8 +88,18 @@ async function startPackagedWorkbench() {
     access(resources.desktopMain),
     access(resources.plugins),
     access(resources.nodeBinary),
-    access(resources.welcomePage)
+    access(resources.welcomePage),
+    // Electron treats any `.asar` path as a virtual archive path. Checking the
+    // archive file itself through the patched fs therefore returns ENOENT even
+    // when the physical package exists; original-fs bypasses that interception.
+    originalFsPromises.access(resources.agentAsar),
+    access(resources.agentCore)
   ])
+  if (process.env['UNILAB_WORKBENCH_PACKAGE_SMOKE'] === '1') {
+    console.log('UNILAB_WORKBENCH_PACKAGE_SMOKE_OK')
+    app.exit(0)
+    return
+  }
   const welcomeUrl = pathToFileURL(resources.welcomePage).toString()
   const workspaceController = createPackagedWorkspaceController({
     parsed,
@@ -98,7 +117,7 @@ async function startPackagedWorkbench() {
   process.env['UNILAB_DESKTOP_SURFACE'] = 'workbench'
   process.env['UNILAB_DESKTOP_WELCOME_URL'] = welcomeUrl
   process.env['UNILAB_AGENT_ICON'] = resources.brandIcon
-  process.env['UNILAB_AIONUI_APP'] = '/Applications/AionUi.app'
+  process.env['UNILAB_AIONUI_APP'] = resources.agentRuntime
   process.env['ESBUILD_BINARY_PATH'] = resources.esbuildBinary
   if (hasExplicitWorkspace) {
     try {
@@ -123,6 +142,12 @@ function resolvePackagedResources() {
   if (!app.isPackaged) {
     const workbench = app.getAppPath()
     const repositoryRoot = path.resolve(workbench, '..', '..')
+    const agentRuntime = process.env['UNILAB_AIONUI_APP']
+      ?? '/Applications/AionUi.app'
+    const agentResources = agentRuntime.endsWith('.app')
+      ? path.join(agentRuntime, 'Contents', 'Resources')
+      : agentRuntime
+    const agentTarget = resolveAgentCoreTarget()
     return {
       workbench,
       backendMain: path.join(workbench, 'lib', 'backend', 'main.js'),
@@ -147,11 +172,21 @@ function resolvePackagedResources() {
         'desktop',
         'build',
         'icon.png'
+      ),
+      agentRuntime,
+      agentAsar: path.join(agentResources, 'app.asar'),
+      agentCore: path.join(
+        agentResources,
+        'bundled-aioncore',
+        agentTarget.directory,
+        agentTarget.executable
       )
     }
   }
   const root = process.resourcesPath
   const workbench = path.join(root, 'workbench')
+  const agentRuntime = path.join(root, 'agent-runtime')
+  const agentTarget = resolveAgentCoreTarget()
   return {
     workbench,
     backendMain: path.join(workbench, 'lib', 'backend', 'main.js'),
@@ -169,7 +204,23 @@ function resolvePackagedResources() {
       'device-card-builder',
       process.platform === 'win32' ? 'esbuild.exe' : 'esbuild'
     ),
-    brandIcon: path.join(root, 'branding', 'icon.png')
+    brandIcon: path.join(root, 'branding', 'icon.png'),
+    agentRuntime,
+    agentAsar: path.join(agentRuntime, 'app.asar'),
+    agentCore: path.join(
+      agentRuntime,
+      'bundled-aioncore',
+      agentTarget.directory,
+      agentTarget.executable
+    )
+  }
+}
+
+function resolveAgentCoreTarget() {
+  const platform = process.platform === 'win32' ? 'windows' : process.platform
+  return {
+    directory: `${platform}-${process.arch}`,
+    executable: process.platform === 'win32' ? 'aioncore.exe' : 'aioncore'
   }
 }
 
@@ -429,7 +480,7 @@ function workspaceChildEnvironment({
     UNILAB_PYTHON_ENV: pythonEnvironment,
     UNILAB_DESKTOP_SURFACE: 'workbench',
     UNILAB_AGENT_ICON: resources.brandIcon,
-    UNILAB_AIONUI_APP: '/Applications/AionUi.app'
+    UNILAB_AIONUI_APP: resources.agentRuntime
   }
   if (osProject) environment.UNILAB_OS_PROJECT = osProject
   else delete environment.UNILAB_OS_PROJECT
@@ -499,6 +550,14 @@ async function selectPythonEnvironment({ explicit, persisted }) {
       return await discoverWorkbenchPythonEnvironment({ selected: persisted })
     } catch {
       // The environment may have been replaced since the previous launch.
+    }
+  }
+  const managed = process.env['UNILAB_MANAGED_RUNTIME_PREFIX']?.trim()
+  if (managed) {
+    try {
+      return await discoverWorkbenchPythonEnvironment({ selected: managed })
+    } catch {
+      // A damaged managed prefix is surfaced by the installer controller.
     }
   }
   return discoverWorkbenchPythonEnvironment({ selected: null })

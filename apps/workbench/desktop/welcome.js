@@ -1,4 +1,5 @@
 const workspaceApi = window.api?.workbenchWorkspace
+const runtimeApi = window.api?.managedRuntime
 const openButton = document.querySelector('#open-workspace')
 const createButton = document.querySelector('#create-workspace')
 const recentList = document.querySelector('#recent-list')
@@ -9,6 +10,11 @@ const statusTitle = document.querySelector('#status-title')
 const statusDetail = document.querySelector('#status-detail')
 const errorPanel = document.querySelector('#error-panel')
 const errorMessage = document.querySelector('#error-message')
+const runtimePanel = document.querySelector('#runtime-panel')
+const runtimeIndicator = document.querySelector('#runtime-indicator')
+const runtimeTitle = document.querySelector('#runtime-title')
+const runtimeDetail = document.querySelector('#runtime-detail')
+const installRuntimeButton = document.querySelector('#install-runtime')
 
 let snapshot = {
   phase: 'welcome',
@@ -19,6 +25,30 @@ let snapshot = {
 let switchingBootstrap = new URLSearchParams(location.search)
   .get('switching') === '1'
 let requestPending = switchingBootstrap
+let runtimeSnapshot = {
+  phase: 'unavailable',
+  bundled: false,
+  managed: false,
+  runtimeVersion: null,
+  platform: null,
+  environmentPath: null,
+  error: null
+}
+
+installRuntimeButton.addEventListener('click', () => {
+  if (!runtimeApi || runtimeSnapshot.phase === 'installing') return
+  void runtimeApi.install().then(next => {
+    runtimeSnapshot = next
+    render()
+  }).catch(error => {
+    runtimeSnapshot = {
+      ...runtimeSnapshot,
+      phase: 'failed',
+      error: messageOf(error)
+    }
+    render()
+  })
+})
 
 openButton.addEventListener('click', () => runOperation(
   () => workspaceApi?.openDirectory(),
@@ -71,6 +101,24 @@ if (!workspaceApi) {
   render()
 }
 
+if (runtimeApi) {
+  runtimeApi.onSnapshot(next => {
+    runtimeSnapshot = next
+    render()
+  })
+  runtimeApi.getSnapshot().then(next => {
+    runtimeSnapshot = next
+    render()
+  }).catch(error => {
+    runtimeSnapshot = {
+      ...runtimeSnapshot,
+      phase: 'failed',
+      error: messageOf(error)
+    }
+    render()
+  })
+}
+
 async function runOperation(operation, title, detail) {
   if (!workspaceApi || requestPending) return
   requestPending = true
@@ -92,8 +140,13 @@ function render() {
   const busy = requestPending
     || snapshot.phase === 'starting'
     || snapshot.phase === 'stopping'
-  openButton.disabled = busy || !workspaceApi
-  createButton.disabled = busy || !workspaceApi
+  const runtimeBlocked = runtimeSnapshot.bundled && [
+    'not-installed',
+    'installing',
+    'failed'
+  ].includes(runtimeSnapshot.phase)
+  openButton.disabled = busy || runtimeBlocked || !workspaceApi
+  createButton.disabled = busy || runtimeBlocked || !workspaceApi
   statusPanel.hidden = !busy
   if (switchingBootstrap || snapshot.phase === 'stopping') {
     statusTitle.textContent = '正在切换工作区'
@@ -101,7 +154,42 @@ function render() {
   }
   errorPanel.hidden = snapshot.phase !== 'failed' || !snapshot.error
   errorMessage.textContent = snapshot.error ?? ''
-  renderRecents(snapshot.recentWorkspaces, busy)
+  renderRuntime()
+  renderRecents(snapshot.recentWorkspaces, busy || runtimeBlocked)
+}
+
+function renderRuntime() {
+  runtimePanel.hidden = runtimeSnapshot.phase === 'unavailable'
+  runtimePanel.dataset.phase = runtimeSnapshot.phase
+  runtimeIndicator.className = `runtime-panel__indicator is-${runtimeSnapshot.phase}`
+  installRuntimeButton.hidden = !['not-installed', 'failed'].includes(
+    runtimeSnapshot.phase
+  )
+  installRuntimeButton.disabled = runtimeSnapshot.phase === 'installing'
+  if (runtimeSnapshot.phase === 'ready') {
+    runtimeTitle.textContent = `内置 Runtime ${runtimeSnapshot.runtimeVersion ?? ''} 已就绪`
+    runtimeDetail.textContent = runtimeSnapshot.environmentPath ?? '应用私有环境'
+    return
+  }
+  if (runtimeSnapshot.phase === 'external') {
+    runtimeTitle.textContent = '已检测到现有 UniLab 环境'
+    runtimeDetail.textContent = runtimeSnapshot.error
+      ? `${runtimeSnapshot.environmentPath ?? '系统环境'}；内置载荷异常：${runtimeSnapshot.error}`
+      : runtimeSnapshot.environmentPath ?? '系统环境'
+    return
+  }
+  if (runtimeSnapshot.phase === 'installing') {
+    runtimeTitle.textContent = '正在安装内置 Runtime'
+    runtimeDetail.textContent = '离线解包并执行 unilab -h 验证，请勿退出应用…'
+    return
+  }
+  if (runtimeSnapshot.phase === 'failed') {
+    runtimeTitle.textContent = '内置 Runtime 安装或检查失败'
+    runtimeDetail.textContent = runtimeSnapshot.error ?? '可重试安装或查看应用日志。'
+    return
+  }
+  runtimeTitle.textContent = '没有检测到 UniLab 环境'
+  runtimeDetail.textContent = `可安装应用内置 Runtime ${runtimeSnapshot.runtimeVersion ?? ''}，无需另行配置 Conda。`
 }
 
 function renderRecents(recentWorkspaces, busy) {
