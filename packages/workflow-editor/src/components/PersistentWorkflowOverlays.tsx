@@ -3,6 +3,7 @@ import { SlideOverDrawer } from '@unilab/design-system'
 import { workflowIoMetadata } from '../utils/persistentAuthoringProjection'
 import { WorkflowActionParameterDrawer } from './WorkflowActionParameterDrawer'
 import { WorkflowButton } from './WorkflowButton'
+import { DebugLaunchInputForm } from './DebugLaunchInputForm'
 import { WorkflowIoEditor } from './WorkflowIoEditor'
 import { WorkflowIoSummary } from './WorkflowIoSummary'
 import { WorkflowTaskInputForm } from './WorkflowTaskInputForm'
@@ -26,11 +27,13 @@ export function PersistentWorkflowOverlays({
     adoptRemoteConflict,
     aggregate,
     appliedIo,
+    backToTaskInput,
     bindTypedFieldToWorkflowInput,
     busy,
     cancelFullSourceDiff,
     closeTaskInputForm,
     discardAndSwitch,
+    debugLaunchForm,
     fullSourceDiff,
     graph,
     mode,
@@ -54,6 +57,7 @@ export function PersistentWorkflowOverlays({
     setTraceViewerOpen,
     setWorkflowIoOpen,
     submitTaskInput,
+    submitDebugLaunch,
     task,
     taskInputAuthority,
     taskInputForm,
@@ -61,6 +65,7 @@ export function PersistentWorkflowOverlays({
     traceRuntime,
     traceViewerOpen,
     updateTaskInput,
+    updateDebugLaunchInput,
     updateTypedField,
     updateTypedFieldFromRaw,
     workflowIoOpen
@@ -179,7 +184,9 @@ export function PersistentWorkflowOverlays({
         title={(
           <span className="persistent-authoring__drawer-title">
             <span>本次运行</span>
-            <strong>确认运行参数</strong>
+            <strong>
+              {debugLaunchForm ? '补充调试输入' : '确认运行参数'}
+            </strong>
           </span>
         )}
         onClose={closeTaskInputForm}
@@ -203,17 +210,28 @@ export function PersistentWorkflowOverlays({
                 />
               </details>
             )}
-            <WorkflowTaskInputForm
-              aggregate={taskInputAuthority}
-              form={taskInputForm}
-              busy={runtimeBusy}
-              problem={taskInputProblem}
-              resourceSlotOptions={resourceSlotOptions}
-              onChange={updateTaskInput}
-              onProblem={setTaskInputProblem}
-              onSubmit={submitTaskInput}
-              onCancel={closeTaskInputForm}
-            />
+            {debugLaunchForm ? (
+              <DebugLaunchInputForm
+                form={debugLaunchForm}
+                busy={runtimeBusy}
+                problem={taskInputProblem}
+                onChange={updateDebugLaunchInput}
+                onSubmit={submitDebugLaunch}
+                onCancel={backToTaskInput}
+              />
+            ) : (
+              <WorkflowTaskInputForm
+                aggregate={taskInputAuthority}
+                form={taskInputForm}
+                busy={runtimeBusy}
+                problem={taskInputProblem}
+                resourceSlotOptions={resourceSlotOptions}
+                onChange={updateTaskInput}
+                onProblem={setTaskInputProblem}
+                onSubmit={submitTaskInput}
+                onCancel={closeTaskInputForm}
+              />
+            )}
           </div>
         )}
       </SlideOverDrawer>
