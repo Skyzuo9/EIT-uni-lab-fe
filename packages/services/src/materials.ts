@@ -16,18 +16,13 @@ import type {
   MaterialTemplateSummary
 } from '@unilab/material'
 
-import {
-  parseShapeLibrary,
-  type MaterialShapeLibrary
-} from '@unilab/material/domain'
+import { parseShapeLibrary, type MaterialShapeLibrary } from '@unilab/material/domain'
 
 import type { BackendConfig } from './backends'
-import {
-  getCapabilityStatus,
-  type ServerCapabilities
-} from './capabilities'
+import { getCapabilityStatus, type ServerCapabilities } from './capabilities'
 import { assertCapability, ServiceError } from './errors'
 import { requestData, type HttpClient } from './http'
+import { loadBackendMaterialTemplateCatalog, loadBackendMaterialTemplateDetail } from './backendMaterialCatalog'
 
 export type {
   MaterialScope,
@@ -36,9 +31,7 @@ export type {
   MaterialTemplateSummary
 } from '@unilab/material'
 
-export type MaterialService =
-  MaterialTemplateCatalogPort &
-  MaterialGraphPort
+export type MaterialService = MaterialTemplateCatalogPort & MaterialGraphPort
 
 /**
  * 外形声明按后端地址缓存：它是设备包的静态资产，一次会话内不会变，而 2.5D
@@ -89,6 +82,8 @@ export function createMaterialService(
       requireReadTemplates()
       assertSingletonScope(scope)
 
+      if (backend.serverKind === 'backend') return loadBackendMaterialTemplateCatalog(http)
+
       const response = await requestData<Record<string, unknown>>(
         http,
         '/api/v1/resource-templates'
@@ -99,6 +94,8 @@ export function createMaterialService(
     getTemplate: async (scope, templateId) => {
       requireReadTemplates()
       assertSingletonScope(scope)
+
+      if (backend.serverKind === 'backend') return loadBackendMaterialTemplateDetail(http, templateId)
 
       const response = await requestData<Record<string, unknown>>(
         http,
@@ -117,6 +114,7 @@ export function createMaterialService(
       return mapBackendMaterialGraph(response)
     },
     subscribeMoves: (onMove) => {
+      if (backend.serverKind === 'backend') return { dispose: () => undefined }
       const EventSourceConstructor = globalThis.EventSource
       if (typeof EventSourceConstructor !== 'function') {
         return { dispose: () => undefined }

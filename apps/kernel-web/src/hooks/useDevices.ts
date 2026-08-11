@@ -26,7 +26,12 @@ interface UseDevicesResult {
 }
 
 export function useDevices(): UseDevicesResult {
-  const { backendEnabled, connection } = useWorkbench()
+  const {
+    backendEnabled,
+    connection,
+    recoveryRevision,
+    reportCapabilityHealth
+  } = useWorkbench()
   const services = useServices()
   const client = services.laboratory
   const canListActions = services.capabilities.devices.listActions
@@ -35,6 +40,42 @@ export function useDevices(): UseDevicesResult {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [lastUpdated, setLastUpdated] = useState<number | null>(null)
+
+  useEffect(() => {
+    if (!backendEnabled || connection !== 'connected') {
+      reportCapabilityHealth('devices', {
+        status: 'idle',
+        summary: '等待后端连接'
+      })
+      return
+    }
+    if (loading) {
+      reportCapabilityHealth('devices', {
+        status: 'loading',
+        summary: '正在读取设备目录'
+      })
+      return
+    }
+    if (error) {
+      reportCapabilityHealth('devices', {
+        status: 'error',
+        summary: '设备目录尚未就绪',
+        technicalDetail: error
+      })
+      return
+    }
+    reportCapabilityHealth('devices', {
+      status: 'ready',
+      summary: `${devices.length} 台设备`
+    })
+  }, [
+    backendEnabled,
+    connection,
+    devices.length,
+    error,
+    loading,
+    reportCapabilityHealth
+  ])
 
   const refresh = useCallback(async (signal?: AbortSignal) => {
     if (!backendEnabled) {
@@ -68,7 +109,7 @@ export function useDevices(): UseDevicesResult {
     }
   }, [backendEnabled, canListActions, client, services])
 
-  // Edge 连通后立即刷新，并低频同步设备上线与动作忙闲变化。
+  // 后端连通或恢复代次变化时补读一次目录；实时变化必须由公开订阅触发，禁止轮询。
   useEffect(() => {
     if (!isOnline) {
       if (connection === 'error' || connection === 'disconnected') {
@@ -79,14 +120,10 @@ export function useDevices(): UseDevicesResult {
     }
     const controller = new AbortController()
     void refresh(controller.signal)
-    const timer = globalThis.setInterval(() => {
-      void refresh(controller.signal)
-    }, 5_000)
     return () => {
       controller.abort()
-      globalThis.clearInterval(timer)
     }
-  }, [connection, isOnline, refresh])
+  }, [connection, isOnline, recoveryRevision, refresh])
 
   return { devices, loading, error, lastUpdated, refresh }
 }

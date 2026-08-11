@@ -7,6 +7,7 @@ import {
   workspaceSummary
 } from './useDeviceCardWorkbench'
 import styles from './DeviceCardWorkbench.module.scss'
+import PlatformCapabilityNotice from '../PlatformCapabilityNotice'
 import { deviceInstanceOptionLabel } from './presentation'
 
 type DeviceCardWorkbenchModel = ReturnType<typeof useDeviceCardWorkbench>
@@ -53,10 +54,11 @@ export function DeviceCardWorkbenchView({
 
   if (!desktopAvailable) {
     return (
-      <section className={styles.unavailable}>
-        <h1>设备自定义卡片</h1>
-        <p>源码目录预览与安装仅在 Electron 桌面端可用。</p>
-      </section>
+      <PlatformCapabilityNotice
+        title="请在 Uni-Lab Workbench 中开发设备卡片"
+        description="启动完整 Workbench 后，可选择源码目录、预览卡片并安装到本机。"
+        dependency="设备卡片开发需要 Workbench 的本地后端读取源码目录、启动受控预览进程并安装产物；当前界面不能直接访问这些本地能力。"
+      />
     )
   }
 
@@ -313,7 +315,7 @@ export function DeviceCardWorkbenchView({
         ) : null}
       </aside>
 
-      <main className={styles.main}>
+      <section className={styles.main} aria-label="设备卡片预览">
         <header className={styles.previewHeader}>
           <div>
             <strong>{previewCard?.title ?? '卡片预览'}</strong>
@@ -347,7 +349,7 @@ export function DeviceCardWorkbenchView({
             </div>
           ) : null}
         </div>
-      </main>
+      </section>
     </section>
   )
 }

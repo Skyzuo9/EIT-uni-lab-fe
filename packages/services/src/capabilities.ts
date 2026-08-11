@@ -22,6 +22,12 @@ export interface ServerCapabilities {
     updateContents: boolean
     persistentUndo: boolean
   }
+  workflow: {
+    readDefinitions: boolean
+    authoring: boolean
+    runTasks: boolean
+    subscribeEvents: boolean
+  }
   reagentInfo: {
     read: boolean
     create: boolean
@@ -55,6 +61,10 @@ export const SERVER_CAPABILITY_KEYS = [
   'material.readContents',
   'material.updateContents',
   'material.persistentUndo',
+  'workflow.readDefinitions',
+  'workflow.authoring',
+  'workflow.runTasks',
+  'workflow.subscribeEvents',
   'reagentInfo.read',
   'reagentInfo.create',
   'realtime.pushJointState',
@@ -100,56 +110,13 @@ export function hasServerCapability(
   capabilities: ServerCapabilities,
   capability: ServerCapability
 ): boolean {
-  switch (capability) {
-    case 'devices.listOnline':
-      return capabilities.devices.listOnline
-    case 'devices.listActions':
-      return capabilities.devices.listActions
-    case 'devices.subscribeStatus':
-      return capabilities.devices.subscribeStatus
-    case 'devices.forceUnlock':
-      return capabilities.devices.forceUnlock
-    case 'devices.runActionTask':
-      return capabilities.devices.runActionTask
-    case 'material.readTemplates':
-      return capabilities.material.readTemplates
-    case 'material.readGraph':
-      return capabilities.material.readGraph
-    case 'material.create':
-      return capabilities.material.create
-    case 'material.updateConfig':
-      return capabilities.material.updateConfig
-    case 'material.updateSite':
-      return capabilities.material.updateSite
-    case 'material.move':
-      return capabilities.material.move
-    case 'material.attach':
-      return capabilities.material.attach
-    case 'material.detach':
-      return capabilities.material.detach
-    case 'material.deleteSubtrees':
-      return capabilities.material.deleteSubtrees
-    case 'material.readContents':
-      return capabilities.material.readContents
-    case 'material.updateContents':
-      return capabilities.material.updateContents
-    case 'material.persistentUndo':
-      return capabilities.material.persistentUndo
-    case 'reagentInfo.read':
-      return capabilities.reagentInfo.read
-    case 'reagentInfo.create':
-      return capabilities.reagentInfo.create
-    case 'realtime.pushJointState':
-      return capabilities.realtime.pushJointState
-    case 'realtime.setJointState':
-      return capabilities.realtime.setJointState
-    case 'realtime.jointControlLease':
-      return capabilities.realtime.jointControlLease
-    case 'edge.provisioning':
-      return capabilities.edge.provisioning
-    case 'edge.undoCreate':
-      return capabilities.edge.undoCreate
-  }
+  const [group, key] = capability.split('.') as [
+    keyof ServerCapabilities,
+    string
+  ]
+  const groupCapabilities = capabilities[group] as unknown as
+    Record<string, boolean>
+  return groupCapabilities[key] === true
 }
 
 export function getCapabilityStatus(
@@ -190,6 +157,12 @@ function unavailableCapabilities(): ServerCapabilities {
       updateContents: false,
       persistentUndo: false
     },
+    workflow: {
+      readDefinitions: false,
+      authoring: false,
+      runTasks: false,
+      subscribeEvents: false
+    },
     reagentInfo: {
       read: false,
       create: false
@@ -207,7 +180,13 @@ function unavailableCapabilities(): ServerCapabilities {
 }
 
 function localGoCapabilities(): ServerCapabilities {
-  return unavailableCapabilities()
+  const capabilities = unavailableCapabilities()
+  capabilities.devices.listOnline = true
+  capabilities.devices.listActions = true
+  capabilities.material.readTemplates = true
+  capabilities.material.readGraph = true
+  capabilities.workflow.readDefinitions = true
+  return capabilities
 }
 
 function localPythonCapabilities(): ServerCapabilities {
@@ -219,6 +198,10 @@ function localPythonCapabilities(): ServerCapabilities {
   // Edge FastAPI broadcasts at :18003/api/v1/ws/device_status (not Bridge :8014).
   capabilities.devices.subscribeStatus = true
   capabilities.material.readGraph = true
+  capabilities.workflow.readDefinitions = true
+  capabilities.workflow.authoring = true
+  capabilities.workflow.runTasks = true
+  capabilities.workflow.subscribeEvents = true
   return capabilities
 }
 
@@ -228,6 +211,7 @@ function cloneCapabilities(
   return {
     devices: { ...capabilities.devices },
     material: { ...capabilities.material },
+    workflow: { ...capabilities.workflow },
     reagentInfo: { ...capabilities.reagentInfo },
     realtime: { ...capabilities.realtime },
     edge: { ...capabilities.edge }
@@ -240,10 +224,13 @@ function unavailableReason(
 ): string {
   if (backend.id === 'local-go') {
     if (capability.startsWith('devices.')) {
-      return '当前 Go 后端尚未声明统一设备目录与实时状态订阅契约'
+      return '当前 Backend 已提供设备目录，但动作运行、强制解锁或实时状态仍缺少完整语义'
     }
     if (capability.startsWith('material.')) {
-      return '当前 Go 后端只有行级物料接口，尚未实现统一物料聚合、修订版本与原子命令契约'
+      return '当前 Backend 物料目录与物料图只读可用，写操作尚未对齐修订、幂等与补偿契约'
+    }
+    if (capability.startsWith('workflow.')) {
+      return '当前 Backend 已提供工作流目录，但前端创作模型、运行事件与安全恢复语义尚未完整对齐'
     }
     if (capability.startsWith('reagentInfo.')) {
       return '当前 Go 后端试剂信息接口尚未接入统一前端 Service Port'
@@ -260,6 +247,9 @@ function unavailableReason(
     }
     if (capability.startsWith('material.')) {
       return '当前 Uni-Lab-OS 物料图仅开放只读查询，写操作尚未提供统一命令契约'
+    }
+    if (capability.startsWith('workflow.')) {
+      return '当前 Uni-Lab-OS 尚未提供该工作流能力'
     }
     if (capability.startsWith('reagentInfo.')) {
       return '当前 Uni-Lab-OS 尚未提供统一试剂信息查询与创建契约'

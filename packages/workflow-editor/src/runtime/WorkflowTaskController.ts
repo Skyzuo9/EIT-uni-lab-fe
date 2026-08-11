@@ -20,11 +20,9 @@ export interface WorkflowTaskRuntimeSnapshot {
   error: string | null
   actionError: string | null
   projectionError: string | null
-  eventError: string | null
   feedbackError: string | null
   realtimeError: string | null
   projectionStale: boolean
-  eventStale: boolean
   feedbackStale: boolean
   realtimeStatus: 'connecting' | 'live' | 'reconnecting'
   generation: number
@@ -44,11 +42,9 @@ export class WorkflowTaskController {
     error: null,
     actionError: null,
     projectionError: null,
-    eventError: null,
     feedbackError: null,
     realtimeError: null,
     projectionStale: false,
-    eventStale: false,
     feedbackStale: false,
     realtimeStatus: 'connecting',
     generation: 0
@@ -101,7 +97,7 @@ export class WorkflowTaskController {
   }
 
   /**
-   * 创建工作流任务，并在成功响应后异步补读任务、作业、事件与反馈投影。
+   * 创建工作流任务，并在成功响应后异步补读任务、作业与反馈投影。
    * @param runMode 本次工作流任务使用的正常、单步或单节点运行模式。
    * @param input 已按工作流输入合同校验的可选任务输入。
    * @param targetNodeUuid 单节点模式选择的已应用工作流节点身份。
@@ -156,7 +152,6 @@ export class WorkflowTaskController {
     this.install({
       actionError: null,
       projectionError: null,
-      eventError: null,
       feedbackError: null,
       realtimeError: null
     })
@@ -189,7 +184,7 @@ export class WorkflowTaskController {
   }
 
   /**
-   * 通过全局 SSE 给出的失效身份补读权威任务、作业与持久事件投影。
+   * 通过全局 SSE 给出的失效身份补读权威任务、作业与反馈游标投影。
    * @param requestedTaskUuid 待补读的任务身份；为 null 时先发现当前工作流任务。
    * @returns 无；补读完成后安装一致的任务/作业快照。
    * @throws REST 异常不会向调用方传播，而会保留上一份快照并标记投影陈旧。
@@ -213,10 +208,8 @@ export class WorkflowTaskController {
             events: [],
             feedback: [],
             projectionError: null,
-            eventError: null,
             feedbackError: null,
             projectionStale: false,
-            eventStale: false,
             feedbackStale: false,
             generation: this.snapshot.generation + 1
           })
@@ -242,52 +235,12 @@ export class WorkflowTaskController {
         projectionStale: false,
         generation: this.snapshot.generation + 1
       })
-      await this.hydrateEvents(task.uuid)
       await this.hydrateFeedback(task.uuid, sortedJobs)
     } catch (error) {
       this.install({
         loading: false,
         projectionError: errorMessage(error),
         projectionStale: this.snapshot.task !== null
-      })
-    }
-  }
-
-  private async hydrateEvents(taskUuid: string): Promise<void> {
-    let events = this.snapshot.task?.uuid === taskUuid
-      ? [...this.snapshot.events]
-      : []
-    try {
-      let cursor = events.reduce(
-        (maximum, item) => Math.max(maximum, item.sequence),
-        0
-      )
-      while (true) {
-        const page = await this.runtime.listWorkflowTaskEvents(taskUuid, {
-          after_sequence: cursor,
-          limit: 100
-        })
-        events.push(...page.items)
-        const nextCursor = Math.max(
-          page.next_cursor,
-          ...page.items.map((item) => item.sequence)
-        )
-        if (page.has_more && nextCursor <= cursor) {
-          throw new Error('Workflow runtime event cursor 未向前推进')
-        }
-        cursor = Math.max(cursor, nextCursor)
-        if (!page.has_more) break
-      }
-      this.install({
-        events: uniqueRuntimeEvents(events),
-        eventStale: false,
-        eventError: null
-      })
-    } catch (error) {
-      this.install({
-        events: uniqueRuntimeEvents(events),
-        eventStale: true,
-        eventError: errorMessage(error)
       })
     }
   }
@@ -359,23 +312,10 @@ export class WorkflowTaskController {
     if (!this.active) return
     const next = { ...this.snapshot, ...patch }
     next.error = next.actionError ?? next.projectionError ??
-      next.eventError ?? next.feedbackError ?? next.realtimeError
+      next.feedbackError ?? next.realtimeError
     this.snapshot = next
     for (const listener of this.listeners) listener()
   }
-}
-
-function uniqueRuntimeEvents(
-  items: readonly WorkflowTaskRuntimeEvent[]
-): WorkflowTaskRuntimeEvent[] {
-  const sequences = new Set<number>()
-  return [...items]
-    .sort((left, right) => left.sequence - right.sequence)
-    .filter((item) => {
-      if (sequences.has(item.sequence)) return false
-      sequences.add(item.sequence)
-      return true
-    })
 }
 
 function errorMessage(value: unknown): string {

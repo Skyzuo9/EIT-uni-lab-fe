@@ -2,6 +2,21 @@ import { resolve } from 'path'
 import { defineConfig } from 'vite'
 import tailwindcss from '@tailwindcss/vite'
 
+const LOCAL_BACKEND_PROXY_PREFIX = '/__unilab_backend'
+const LOCAL_BACKEND_PROXY_TARGET = process.env.UNILAB_BACKEND_PROXY_TARGET ??
+  'http://127.0.0.1:8080'
+
+/**
+ * 移除浏览器同源代理前缀，把请求恢复为 Backend 的公开路径。
+ *
+ * @param path Vite 开发服务器收到的请求路径。
+ * @returns 交给本地 Backend 的版本化 API 或健康检查路径。
+ */
+function rewriteLocalBackendProxyPath(path: string): string {
+  const rewritten = path.slice(LOCAL_BACKEND_PROXY_PREFIX.length)
+  return rewritten || '/'
+}
+
 // kernel-web 是浏览器与 Electron 共同使用的唯一 renderer。
 export default defineConfig(({ mode }) => ({
   plugins: [tailwindcss()],
@@ -19,6 +34,13 @@ export default defineConfig(({ mode }) => ({
   server: {
     port: 5173,
     strictPort: true,
+    proxy: {
+      [LOCAL_BACKEND_PROXY_PREFIX]: {
+        target: LOCAL_BACKEND_PROXY_TARGET,
+        changeOrigin: true,
+        rewrite: rewriteLocalBackendProxyPath
+      }
+    },
     // The shared workspace can exhaust Linux's per-user inotify instance
     // budget before Vite starts. Polling keeps local web and Electron
     // development deterministic without requiring a host-level sysctl change.
@@ -42,6 +64,11 @@ export default defineConfig(({ mode }) => ({
       // use-sync-external-store/shim/with-selector.js 做 default 导入。
       // 不预打包该子路径时会因缺少 default 导出而报错，故显式纳入。
       'use-sync-external-store/shim/with-selector',
+      // Pascal imports both the WebGL and WebGPU/TSL entry points. Prebundle
+      // all three together so their relative three.core import is shared.
+      'three',
+      'three/webgpu',
+      'three/tsl',
       '@unilab/pascal-lab-plugin > @unilab/pascal-host > @pascal-app/editor > howler'
     ],
     esbuildOptions: {
@@ -53,6 +80,10 @@ export default defineConfig(({ mode }) => ({
     }
   },
   resolve: {
+    // Pascal host/plugin and the renderer must share one Three.js module
+    // instance; duplicate instances break identity checks and emit a runtime
+    // warning even when both packages declare the same version.
+    dedupe: ['three'],
     alias: {
       '@': resolve(__dirname, 'src'),
       '@renderer': resolve(__dirname, 'src'),

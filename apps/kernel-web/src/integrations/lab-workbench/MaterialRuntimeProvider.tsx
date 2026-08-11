@@ -40,7 +40,9 @@ export function MaterialRuntimeProvider({
     backend,
     backendEnabled,
     connection,
-    laboratoryId
+    laboratoryId,
+    recoveryRevision,
+    reportCapabilityHealth
   } = useWorkbench()
   const scope = useMemo(
     () => resolveMaterialScope(backend, laboratoryId),
@@ -81,7 +83,54 @@ export function MaterialRuntimeProvider({
       store,
       backendEnabled && connection === 'connected'
     )
-  }, [backendEnabled, connection, store])
+  }, [backendEnabled, connection, recoveryRevision, store])
+
+  useEffect(() => {
+    if (!scope) {
+      reportCapabilityHealth('materials', {
+        status: 'idle',
+        summary: '等待实验室范围'
+      })
+      return
+    }
+    if (!store || !backendEnabled || connection !== 'connected') {
+      reportCapabilityHealth('materials', {
+        status: 'idle',
+        summary: '等待后端连接'
+      })
+      return
+    }
+
+    const publish = (): void => {
+      const state = store.getState()
+      if (state.loadState === 'loading' || state.loadState === 'idle') {
+        reportCapabilityHealth('materials', {
+          status: 'loading',
+          summary: '正在读取物料图'
+        })
+      } else if (state.loadState === 'error') {
+        reportCapabilityHealth('materials', {
+          status: 'error',
+          summary: '物料图不可用',
+          technicalDetail: state.error ?? undefined
+        })
+      } else {
+        reportCapabilityHealth('materials', {
+          status: 'ready',
+          summary: `${Object.keys(state.aggregatesById).length} 项物料`
+        })
+      }
+    }
+
+    publish()
+    return store.subscribe(publish)
+  }, [
+    backendEnabled,
+    connection,
+    reportCapabilityHealth,
+    scope,
+    store
+  ])
 
   useEffect(() => {
     if (

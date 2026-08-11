@@ -2,6 +2,7 @@ import MenuUnfoldOutlined from '@ant-design/icons/MenuUnfoldOutlined'
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties
 } from 'react'
@@ -39,7 +40,10 @@ export function MaterialTreeSidebar({
   selectedMaterialIds = [],
   onSelectionChange
 }: MaterialTreeSidebarProps): React.JSX.Element {
-  const [open, setOpen] = useState(true)
+  const [open, setOpen] = useState(initialMaterialTreeOpen)
+  const reopenButtonRef = useRef<HTMLButtonElement>(null)
+  const closeButtonRef = useRef<HTMLButtonElement>(null)
+  const previousOpenRef = useRef(open)
   const [expandedIds, setExpandedIds] = useState<ReadonlySet<MaterialId>>(
     new Set()
   )
@@ -70,14 +74,37 @@ export function MaterialTreeSidebar({
     })
   }, [aggregatesById, selectedMaterialIds])
 
+  useEffect(() => {
+    if (previousOpenRef.current === open) return
+    const target = open ? closeButtonRef.current : reopenButtonRef.current
+    previousOpenRef.current = open
+    target?.focus()
+  }, [open])
+
+  useEffect(() => {
+    if (!open || !isMobileMaterialViewport()) return
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') setOpen(false)
+    }
+    globalThis.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.body.style.overflow = previousOverflow
+      globalThis.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [open])
+
   if (!open) {
     return (
       <button
+        ref={reopenButtonRef}
         type="button"
         className={materialScopeClassName(
           'material-tree-sidebar__reopen'
         )}
         aria-label="展开物料列表"
+        aria-controls="material-tree-sidebar"
         onClick={() => setOpen(true)}
       >
         <MenuUnfoldOutlined aria-hidden="true" />
@@ -86,15 +113,27 @@ export function MaterialTreeSidebar({
   }
 
   return (
-    <aside
-      className={materialScopeClassName('material-tree-sidebar')}
-    >
+    <>
+      <button
+        type="button"
+        className={materialScopeClassName(
+          'material-tree-sidebar__backdrop'
+        )}
+        aria-label="关闭物料列表"
+        onClick={() => setOpen(false)}
+      />
+      <aside
+        id="material-tree-sidebar"
+        className={materialScopeClassName('material-tree-sidebar')}
+        aria-label="物料目录"
+      >
       <header>
         <div>
           <span>物料列表</span>
           <strong>({Object.keys(aggregatesById).length})</strong>
         </div>
         <button
+          ref={closeButtonRef}
           type="button"
           aria-label="收起物料列表"
           onClick={() => setOpen(false)}
@@ -132,8 +171,19 @@ export function MaterialTreeSidebar({
         className="material-tree-sidebar__resize-hint"
         aria-hidden="true"
       />
-    </aside>
+      </aside>
+    </>
   )
+}
+
+export function initialMaterialTreeOpen(): boolean {
+  return !isMobileMaterialViewport()
+}
+
+function isMobileMaterialViewport(): boolean {
+  return typeof globalThis.matchMedia !== 'function'
+    ? false
+    : globalThis.matchMedia('(max-width: 720px)').matches
 }
 
 function MaterialTreeRow({

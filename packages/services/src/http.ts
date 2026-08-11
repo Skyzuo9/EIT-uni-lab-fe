@@ -15,6 +15,9 @@ export interface ApiEnvelope<Value> {
   error?: {
     code?: string
     message?: string
+    msg?: string
+    info?: unknown
+    retryable?: boolean
   }
 }
 
@@ -54,6 +57,12 @@ export interface ActiveHttpRequestTrace {
   startedAtUnixMs: number
 }
 
+/**
+ * 创建绑定单一后端权威配置的 HTTP 客户端。
+ *
+ * @param options 后端地址、Fetch 边界、令牌、超时和可选追踪上报器。
+ * @returns 统一处理超时、鉴权、Backend/Edge 错误封装与追踪的请求端口。
+ */
 export function createHttpClient(options: CreateHttpClientOptions): HttpClient {
   const fetcher = options.fetcher ?? fetch
   const timeoutMs = options.timeoutMs ?? 8000
@@ -99,6 +108,7 @@ export function createHttpClient(options: CreateHttpClientOptions): HttpClient {
           const errorEnvelope = asRecord(problemRecord.error)
           const message = String(
             errorEnvelope.message ||
+            errorEnvelope.msg ||
             detail.detail ||
             problemRecord.message ||
             problemRecord.detail ||
@@ -206,6 +216,15 @@ function asRecord(value: unknown): Record<string, unknown> {
     : {}
 }
 
+/**
+ * 解包 Backend/Edge 共享响应，并保留 HTTP 200 中的业务拒绝事实。
+ *
+ * @param http 已绑定当前后端权威的 HTTP 客户端。
+ * @param path 公开 API 路径。
+ * @param init 可选请求方法、请求头、请求体和取消信号。
+ * @returns 服务端 data 字段中的权威 DTO。
+ * @throws error.message、Backend error.msg、非零 code 或缺失 data 时抛出 ServiceError。
+ */
 export async function requestData<Value>(
   http: HttpClient,
   path: string,
@@ -214,9 +233,14 @@ export async function requestData<Value>(
   const envelope = await http.request<ApiEnvelope<Value>>(path, init)
   if (envelope.error) {
     throw new ServiceError({
-      code: envelope.error.code || 'API_REQUEST_REJECTED',
-      message: envelope.error.message || '服务端拒绝请求',
-      retryable: false
+      code: envelope.error.code || (
+        envelope.code == null
+          ? 'API_REQUEST_REJECTED'
+          : `API_${envelope.code}`
+      ),
+      message: envelope.error.message || envelope.error.msg ||
+        envelope.message || '服务端拒绝请求',
+      retryable: envelope.error.retryable === true
     })
   }
   if (envelope.code != null && envelope.code !== 0) {

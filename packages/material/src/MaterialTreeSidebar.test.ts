@@ -1,10 +1,25 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { buildMaterialGraphIndex } from './rules'
-import { buildMaterialTree } from './MaterialTreeSidebar'
+import {
+  buildMaterialTree,
+  initialMaterialTreeOpen
+} from './MaterialTreeSidebar'
 import { materialAggregate } from './testFixtures'
 
 describe('buildMaterialTree', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('starts closed on a mobile viewport and open on a desktop viewport', () => {
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: query.includes('720px')
+    }))
+    expect(initialMaterialTreeOpen()).toBe(false)
+
+    vi.stubGlobal('matchMedia', () => ({ matches: false }))
+    expect(initialMaterialTreeOpen()).toBe(true)
+  })
+
   it('derives the Cloud-style directory tree from the aggregate graph', () => {
     const host = materialAggregate('host', {
       placement: {

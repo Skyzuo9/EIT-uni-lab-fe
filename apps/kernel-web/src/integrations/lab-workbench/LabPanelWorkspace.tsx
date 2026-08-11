@@ -10,6 +10,7 @@ import {
   useRef,
   useState
 } from 'react'
+import type { WorkflowCatalogState } from '@unilab/workflow-editor'
 
 import { useLabPanelAdapter } from './panelAdapter'
 import {
@@ -22,11 +23,15 @@ import { WorkflowDirtySessions } from './workflowSessions'
 export function LabPanelWorkspace({
   preset,
   onWorkflowUnsavedChangesChange,
-  workflowCatalogRequestRevision = 0
+  workflowCatalogRequestRevision = 0,
+  recoveryRevision = 0,
+  onWorkflowCatalogStateChange
 }: {
   preset: LabPanelPreset
   onWorkflowUnsavedChangesChange?: (hasUnsavedChanges: boolean) => void
   workflowCatalogRequestRevision?: number
+  recoveryRevision?: number
+  onWorkflowCatalogStateChange?: (state: WorkflowCatalogState) => void
 }): React.JSX.Element {
   return (
     <LabPanelWorkspaceSession
@@ -34,6 +39,8 @@ export function LabPanelWorkspace({
       preset={preset}
       onWorkflowUnsavedChangesChange={onWorkflowUnsavedChangesChange}
       workflowCatalogRequestRevision={workflowCatalogRequestRevision}
+      recoveryRevision={recoveryRevision}
+      onWorkflowCatalogStateChange={onWorkflowCatalogStateChange}
     />
   )
 }
@@ -41,11 +48,15 @@ export function LabPanelWorkspace({
 function LabPanelWorkspaceSession({
   preset,
   onWorkflowUnsavedChangesChange,
-  workflowCatalogRequestRevision
+  workflowCatalogRequestRevision,
+  recoveryRevision,
+  onWorkflowCatalogStateChange
 }: {
   preset: LabPanelPreset
   onWorkflowUnsavedChangesChange?: (hasUnsavedChanges: boolean) => void
   workflowCatalogRequestRevision: number
+  recoveryRevision: number
+  onWorkflowCatalogStateChange?: (state: WorkflowCatalogState) => void
 }): React.JSX.Element {
   const parentDirtyCallback = useRef(onWorkflowUnsavedChangesChange)
   parentDirtyCallback.current = onWorkflowUnsavedChangesChange
@@ -63,7 +74,9 @@ function LabPanelWorkspaceSession({
   }, [])
   const adapter = useLabPanelAdapter(
     handleWorkflowUnsavedChangesChange,
-    workflowCatalogRequestRevision
+    workflowCatalogRequestRevision,
+    recoveryRevision,
+    onWorkflowCatalogStateChange
   )
   const storageKey = `unilab.panel-layout.${preset}.v1`
   const [document, setDocument] = useState<PanelLayoutDocument>(

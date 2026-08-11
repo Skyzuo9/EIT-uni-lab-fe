@@ -35,6 +35,10 @@
   display: none;
 }
 
+:where(.scope, .scope *):global(.material-tree-sidebar__backdrop) {
+  display: none;
+}
+
 :where(.scope, .scope *):global(.material-workbench) :global(.material-canvas__edit-control) {
   right: 132px;
 }

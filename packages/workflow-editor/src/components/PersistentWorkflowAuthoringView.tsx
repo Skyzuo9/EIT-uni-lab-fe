@@ -178,7 +178,7 @@ export function PersistentWorkflowAuthoringView({
         </section>
       )}
 
-      <main className={[
+      <section aria-label="工作流编写区" className={[
         'persistent-authoring__workbench',
         mode === 'canvas' ? 'is-canvas-mode' : '',
         hideEmbeddedCodeEditor ? 'has-external-code-editor' : ''
@@ -594,7 +594,7 @@ export function PersistentWorkflowAuthoringView({
             )}
           </div>
         </section>
-      </main>
+      </section>
 
       <section
         className="persistent-authoring__runtime"

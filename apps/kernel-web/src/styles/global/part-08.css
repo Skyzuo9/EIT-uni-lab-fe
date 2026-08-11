@@ -1,5 +1,12 @@
 
 @media (max-width: 720px) {
+  .edge-device button,
+  .edge-device input,
+  .edge-device select,
+  .edge-device textarea {
+    min-height: 44px;
+  }
+
   .edge-device__identity {
     grid-template-columns: 46px minmax(0, 1fr);
   }

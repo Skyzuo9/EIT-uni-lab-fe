@@ -1,9 +1,15 @@
 import type { MaterialGraphPort } from '@unilab/material'
 
 import type { BackendConfig } from './backends'
-import { ServiceError } from './errors'
+import {
+  getCapabilityStatus,
+  resolveServerCapabilities,
+  type ServerCapability
+} from './capabilities'
+import { assertCapability, ServiceError } from './errors'
 import type { HttpClient } from './http'
 import type { HttpRequestTraceReporter } from './http'
+import { loadBackendWorkflowPage } from './backendWorkflowCatalog'
 import {
   loadWorkflowActionCatalog
 } from './workflowActionCatalog'
@@ -28,8 +34,7 @@ import {
   workflowEventsUrl,
   workflowListPath,
   workflowNodeJobFeedbackPath,
-  workflowTaskListPath,
-  workflowTaskRuntimeEventsPath
+  workflowTaskListPath
 } from './workflowPaths'
 import type { WorkflowRuntimePort } from './workflowPort'
 import { strictRuntimeData } from './workflowRuntimeCodec'
@@ -75,6 +80,10 @@ export type {
   WorkflowAuthoringTransformResult,
   WorkflowAuthoringValidateRequest,
   WorkflowDocument,
+  WorkflowDefinitionChange,
+  WorkflowDefinitionChangeAction,
+  WorkflowDefinitionChangePage,
+  WorkflowDefinitionCreateRequest,
   WorkflowListQuery,
   WorkflowPage,
   WorkflowPersistentAuthoringCandidate,
@@ -125,8 +134,6 @@ export type {
   WorkflowTaskRunMode,
   WorkflowTaskRuntimeEvent,
   WorkflowTaskRuntimeEventKind,
-  WorkflowTaskRuntimeEventPage,
-  WorkflowTaskRuntimeEventQuery,
   WorkflowTaskStatus
 } from './workflowTaskContracts'
 
@@ -152,6 +159,7 @@ export function createWorkflowRuntime(
   dependencies: WorkflowRuntimeDependencies = {}
 ): WorkflowRuntimePort {
   const subscriptions = new Set<WorkflowEventSubscription>()
+  const capabilities = resolveServerCapabilities(backend)
   const sseTransport = createWorkflowSseTransport(
     workflowEventsUrl(backend),
     backend.serverKind === 'edge' ? dependencies.traceRequest : undefined
@@ -166,6 +174,7 @@ export function createWorkflowRuntime(
   async function getWorkflowMaterialSourceCatalog(): ReturnType<
     WorkflowRuntimePort['getWorkflowMaterialSourceCatalog']
   > {
+    requireWorkflowCapability('workflow.readDefinitions')
     const materialGraph = dependencies.materialGraph
     if (!materialGraph) {
       throw new ServiceError({
@@ -181,30 +190,75 @@ export function createWorkflowRuntime(
   const request = async <Value>(
     path: string,
     init?: RequestInit
-  ): Promise<Value> => unwrap<Value>(await http.request<unknown>(path, init))
+  ): Promise<Value> => {
+    requireWorkflowCapability('workflow.authoring')
+    return unwrap<Value>(await http.request<unknown>(path, init))
+  }
 
   /** 严格读取工作流创作（Workflow Authoring）接口。 */
   const authoringRequest = async <Value>(
     path: string,
     init?: RequestInit
-  ): Promise<Value> => strictAuthoringData<Value>(
-    await http.request<unknown>(path, init)
-  )
+  ): Promise<Value> => {
+    requireWorkflowCapability('workflow.authoring')
+    return strictAuthoringData<Value>(
+      await http.request<unknown>(path, init)
+    )
+  }
 
   /** 严格读取工作流运行（Workflow Runtime）接口。 */
   const runtimeRequest = async <Value>(
     path: string,
     init?: RequestInit
-  ): Promise<Value> => strictRuntimeData<Value>(
-    await http.request<unknown>(path, init)
-  )
+  ): Promise<Value> => {
+    requireWorkflowCapability('workflow.runTasks')
+    return strictRuntimeData<Value>(
+      await http.request<unknown>(path, init)
+    )
+  }
+
+  /** 校验当前服务端已完整实现指定工作流语义。 */
+  function requireWorkflowCapability(capability: ServerCapability): void {
+    assertCapability(
+      getCapabilityStatus(backend, capabilities, capability),
+      capability
+    )
+  }
 
   const port: WorkflowRuntimePort = {
-    getWorkflowActionCatalog: (signal) =>
-      loadWorkflowActionCatalog(http, signal),
+    getWorkflowActionCatalog: (signal) => {
+      requireWorkflowCapability('workflow.readDefinitions')
+      return loadWorkflowActionCatalog(http, signal)
+    },
     getWorkflowMaterialSourceCatalog,
-    listWorkflows: (query = {}) =>
-      runtimeRequest(workflowListPath(query)),
+    listWorkflows: async (query = {}) => {
+      requireWorkflowCapability('workflow.readDefinitions')
+      return backend.serverKind === 'backend'
+        ? loadBackendWorkflowPage(http, query)
+        : strictRuntimeData(await http.request(workflowListPath(query)))
+    },
+    createWorkflowDefinition: (body) => authoringRequest(
+      '/api/v1/workflows',
+      {
+        method: 'POST',
+        headers: jsonHeaders(),
+        body: JSON.stringify({
+          name: body.name,
+          description: body.description,
+          tags: body.tags,
+          meta_data: body.meta_data ?? {}
+        })
+      }
+    ),
+    deleteWorkflowDefinition: async (workflowUuid) => {
+      await request<void>(
+        `/api/v1/workflows/${encodeURIComponent(workflowUuid)}`,
+        { method: 'DELETE' }
+      )
+    },
+    listWorkflowDefinitionChanges: (workflowUuid) => authoringRequest(
+      `/api/v1/workflows/${encodeURIComponent(workflowUuid)}/change-log?page=1&page_size=100`
+    ),
     getWorkflowAuthoring: async (workflowUuid) =>
       decodeWorkflowAuthoringAggregate(await authoringRequest(
         `/api/v1/workflows/${encodeURIComponent(workflowUuid)}/authoring`
@@ -231,17 +285,20 @@ export function createWorkflowRuntime(
       workflowUuid,
       onInvalidate,
       options = {}
-    ) => createWorkflowSseSubscription({
-      transport: sseTransport,
-      lastEventId: options.lastEventId,
-      connectionErrorLabel: 'Authoring SSE 连接失败',
-      subscriptions,
-      onOpen: options.onOpen,
-      onError: options.onError,
-      acceptFrame: (frame) => frame.event === 'workflow.authoring.changed',
-      parseFrame: (frame) => parseAuthoringFrame(frame, workflowUuid),
-      onEvent: onInvalidate
-    }),
+    ) => {
+      requireWorkflowCapability('workflow.authoring')
+      return createWorkflowSseSubscription({
+        transport: sseTransport,
+        lastEventId: options.lastEventId,
+        connectionErrorLabel: 'Authoring SSE 连接失败',
+        subscriptions,
+        onOpen: options.onOpen,
+        onError: options.onError,
+        acceptFrame: (frame) => frame.event === 'workflow.authoring.changed',
+        parseFrame: (frame) => parseAuthoringFrame(frame, workflowUuid),
+        onEvent: onInvalidate
+      })
+    },
     generateWorkflowAuthoringPython: async (body) =>
       decodeWorkflowAuthoringTransform(await authoringRequest(
         '/api/v1/authoring/generate-python', {
@@ -320,8 +377,6 @@ export function createWorkflowRuntime(
       runtimeRequest(
         `/api/v1/workflow-tasks/${encodeURIComponent(taskUuid)}/jobs`
       ),
-    listWorkflowTaskEvents: (taskUuid, query = {}) =>
-      runtimeRequest(workflowTaskRuntimeEventsPath(taskUuid, query)),
     commandWorkflowTask: (taskUuid, body) =>
       runtimeRequest(
         `/api/v1/workflow-tasks/${encodeURIComponent(taskUuid)}/commands`,
@@ -337,13 +392,15 @@ export function createWorkflowRuntime(
       ),
     listWorkflowNodeJobFeedback: (jobUuid, query = {}) =>
       runtimeRequest(workflowNodeJobFeedbackPath(jobUuid, query)),
-    subscribeWorkflowRuntime: (onInvalidate, options = {}) =>
-      subscribeWorkflowRuntime(
+    subscribeWorkflowRuntime: (onInvalidate, options = {}) => {
+      requireWorkflowCapability('workflow.subscribeEvents')
+      return subscribeWorkflowRuntime(
         sseTransport,
         subscriptions,
         onInvalidate,
         options
-      ),
+      )
+    },
     dispose: () => {
       for (const subscription of [...subscriptions]) subscription.dispose()
     }

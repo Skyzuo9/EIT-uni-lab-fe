@@ -583,10 +583,14 @@ export default function DevicePanel(): React.JSX.Element {
         {error ? (
           <div className="edge-device__load-error" role="alert">
             <strong>设备目录不可用</strong>
-            <span>{error}</span>
+            <span>{deviceCatalogRecoveryMessage(error)}</span>
             <button type="button" onClick={() => void refresh()}>
               重新读取
             </button>
+            <details>
+              <summary>查看技术信息</summary>
+              <code>{error}</code>
+            </details>
           </div>
         ) : null}
         {devices.length === 0 ? (
@@ -624,7 +628,10 @@ export default function DevicePanel(): React.JSX.Element {
         </div>
       </aside>
 
-      <main className="section__detail edge-device__detail">
+      <section
+        className="section__detail edge-device__detail"
+        aria-label="设备调试详情"
+      >
         {selectedDevice ? (
           <DeviceWorkspace
             device={selectedDevice}
@@ -673,7 +680,7 @@ export default function DevicePanel(): React.JSX.Element {
             </p>
           </div>
         )}
-        </main>
+        </section>
       </section>
       {unlockIntent ? (
         <UnlockConfirmationDialog
@@ -687,4 +694,11 @@ export default function DevicePanel(): React.JSX.Element {
       ) : null}
     </>
   )
+}
+
+function deviceCatalogRecoveryMessage(technicalMessage: string): string {
+  if (technicalMessage.toLocaleLowerCase().includes('host node not initialized')) {
+    return 'Edge 核心服务已连接，但设备运行节点尚未初始化。请重新启动 Edge 后再读取。'
+  }
+  return '未能从当前 Edge 读取设备目录。请确认运行节点正常后重试。'
 }

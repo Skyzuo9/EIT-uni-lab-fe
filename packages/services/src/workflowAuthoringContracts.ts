@@ -51,10 +51,44 @@ export interface WorkflowSummary {
   name: string
   tags: string[]
   revision: number
+  description?: string
+  definition_status?: 'empty' | 'configured'
 }
 
 export interface WorkflowPage {
   items: WorkflowSummary[]
+  total: number
+  page: number
+  page_size: number
+}
+
+export interface WorkflowDefinitionCreateRequest {
+  name: string
+  description?: string
+  tags: string[]
+  meta_data?: Record<string, unknown>
+}
+
+export type WorkflowDefinitionChangeAction =
+  | 'created'
+  | 'current_snapshot'
+  | 'metadata_updated'
+  | 'graph_saved'
+  | 'authoring_applied'
+  | 'deleted'
+
+export interface WorkflowDefinitionChange {
+  sequence: number
+  workflow_uuid: string
+  revision: number
+  action: WorkflowDefinitionChangeAction
+  summary: string
+  details: Record<string, unknown>
+  create_time: string
+}
+
+export interface WorkflowDefinitionChangePage {
+  items: WorkflowDefinitionChange[]
   total: number
   page: number
   page_size: number

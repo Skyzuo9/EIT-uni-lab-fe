@@ -182,17 +182,6 @@ export interface WorkflowTaskRuntimeEvent {
   command_result?: Record<string, unknown>
 }
 
-export interface WorkflowTaskRuntimeEventQuery {
-  after_sequence?: number
-  limit?: number
-}
-
-export interface WorkflowTaskRuntimeEventPage {
-  items: WorkflowTaskRuntimeEvent[]
-  next_cursor: number
-  has_more: boolean
-}
-
 export interface WorkflowRuntimeChangedEvent {
   id: string
   event: 'workflow.runtime.changed'

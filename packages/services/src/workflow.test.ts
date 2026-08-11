@@ -100,6 +100,80 @@ describe('workflow authoring adapters', () => {
       })
     )
   })
+
+  it('通过 OS 权威接口创建、删除并读取工作流修改日志', async () => {
+    /** 依次模拟创建、日志与删除的统一响应外层。 */
+    const workflowUuid = '10000000-0000-4000-8000-000000000001'
+    const request = vi.fn()
+      .mockResolvedValueOnce({
+        code: 0,
+        data: {
+          uuid: workflowUuid,
+          create_time: '2026-08-11T00:00:00Z',
+          update_time: '2026-08-11T00:00:00Z',
+          meta_data: {},
+          name: '配液工作流',
+          description: '自动配液',
+          tags: ['S01'],
+          revision: 1,
+          definition_status: 'empty'
+        }
+      })
+      .mockResolvedValueOnce({
+        code: 0,
+        data: {
+          items: [{
+            sequence: 1,
+            workflow_uuid: workflowUuid,
+            revision: 1,
+            action: 'created',
+            summary: '创建工作流',
+            details: {},
+            create_time: '2026-08-11T00:00:00Z'
+          }],
+          total: 1,
+          page: 1,
+          page_size: 100
+        }
+      })
+      .mockResolvedValueOnce({ code: 0 })
+    const runtime = createWorkflowRuntime(
+      mockHttp(request),
+      getDefaultBackend('local-python')
+    )
+
+    await runtime.createWorkflowDefinition({
+      name: '配液工作流',
+      description: '自动配液',
+      tags: ['S01']
+    })
+    await runtime.listWorkflowDefinitionChanges(workflowUuid)
+    await runtime.deleteWorkflowDefinition(workflowUuid)
+
+    expect(request).toHaveBeenNthCalledWith(
+      1,
+      '/api/v1/workflows',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          name: '配液工作流',
+          description: '自动配液',
+          tags: ['S01'],
+          meta_data: {}
+        })
+      })
+    )
+    expect(request).toHaveBeenNthCalledWith(
+      2,
+      `/api/v1/workflows/${workflowUuid}/change-log?page=1&page_size=100`,
+      undefined
+    )
+    expect(request).toHaveBeenNthCalledWith(
+      3,
+      `/api/v1/workflows/${workflowUuid}`,
+      { method: 'DELETE' }
+    )
+  })
 })
 
 function mockHttp(

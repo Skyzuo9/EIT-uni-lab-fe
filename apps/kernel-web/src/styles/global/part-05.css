@@ -365,6 +365,23 @@
   font-weight: 650;
 }
 
+.edge-device__load-error details {
+  max-width: 100%;
+  color: var(--unilab-color-text-muted);
+}
+
+.edge-device__load-error details summary {
+  cursor: pointer;
+}
+
+.edge-device__load-error details code {
+  display: block;
+  margin-top: 5px;
+  overflow-wrap: anywhere;
+  color: var(--unilab-color-text-muted);
+  white-space: normal;
+}
+
 .edge-device__detail {
   padding: clamp(20px, 2.2vw, 32px);
   background: color-mix(

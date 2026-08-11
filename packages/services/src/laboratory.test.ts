@@ -5,6 +5,21 @@ import { createLaboratoryService } from './laboratory'
 import { getDefaultBackend } from './backends'
 
 describe('laboratory service', () => {
+  it('uses the Backend root health route', async () => {
+    const requests: Array<{ path: string; method?: string; body?: string }> = []
+    const service = createLaboratoryService(
+      fixtureHttp({ '/health': { status: 'ok' } }, requests),
+      getDefaultBackend('local-go')
+    )
+
+    await expect(service.ping()).resolves.toBe(true)
+    expect(requests).toEqual([{
+      path: '/health',
+      method: undefined,
+      body: undefined
+    }])
+  })
+
   it('preserves Edge device metadata from the unified device catalog', async () => {
     const requests: Array<{
       path: string
