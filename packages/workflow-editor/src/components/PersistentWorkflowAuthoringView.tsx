@@ -1,31 +1,32 @@
 import { CodeEditor } from '@unilab/code-editor'
+import { useCallback, useState } from 'react'
 
 import { diagnosticRange } from '../utils/persistentAuthoringSession'
 import {
   canRetryWorkflowRuntimeRead,
   workflowRuntimeProblemHeading
 } from '../utils/workflowRuntimeProblem'
-import { workflowTaskControlStatusLabel, workflowTaskStatusLabel, workflowTaskVisualStatus } from '../utils/workflowTaskPresentation'
-import { workflowTaskMetadata } from '../utils/workflowTaskPanelProjection'
 import WorkflowDag from './WorkflowDag'
-import { WorkflowDebugger } from './WorkflowDebugger'
 import { WorkflowOutput } from './WorkflowOutput'
 import { WorkflowButton } from './WorkflowButton'
 import { MaterialSourceInspector } from './MaterialSourceInspector'
 import type { PersistentWorkflowAuthoringModel } from './persistentWorkflowAuthoringModel'
 import { PersistentWorkflowOverlays } from './PersistentWorkflowOverlays'
 import { PersistentWorkflowToolbar } from './PersistentWorkflowToolbar'
+import { WorkflowNodePalette } from './WorkflowNodePalette'
 import styles from './workflow.module.scss'
 
 export function PersistentWorkflowAuthoringView({
   model,
-  materialRoleFilter,
-  onMaterialRoleFilterChange,
+  visibleMaterialRoles,
+  onVisibleMaterialRolesChange,
   hideEmbeddedCodeEditor = false
 }: {
   model: PersistentWorkflowAuthoringModel
-  materialRoleFilter?: string | null
-  onMaterialRoleFilterChange?: (materialRole: string | null) => void
+  visibleMaterialRoles?: readonly string[] | null
+  onVisibleMaterialRolesChange?: (
+    visibleMaterialRoles: readonly string[] | null
+  ) => void
   hideEmbeddedCodeEditor?: boolean
 }): React.JSX.Element {
   const {
@@ -58,6 +59,7 @@ export function PersistentWorkflowAuthoringView({
     nodePaletteOpen,
     outputExpanded,
     outputTab,
+    pausedBeforeNodeId,
     policy,
     projectionKind,
     refreshMaterialSourceCatalog,
@@ -89,13 +91,11 @@ export function PersistentWorkflowAuthoringView({
     setSelectedNodeName,
     setSelectedNodeNameDirty,
     setSelectedNodeUuid,
-    setTraceViewerOpen,
     setWorkflowIoOpen,
     sourceSelectedNodeUuid,
     sourceProjection,
     structure,
     task,
-    taskControls,
     taskJobs,
     taskNodeNames,
     taskNodeStates,
@@ -104,16 +104,54 @@ export function PersistentWorkflowAuthoringView({
     taskRuntimeEvents,
     toggleDebugBreakpoint,
     toggleDebugStartNode,
-    traceRuntime,
+    toggleNodeDisabled,
     updateMaterialSource,
     workflowUuid,
   } = model
+  const [canvasRevealRequest, setCanvasRevealRequest] = useState<{
+    nodeId: string
+    nonce: number
+  } | null>(null)
+  const handleCanvasNodeSelect = useCallback((nodeId: string): void => {
+    // React Flow may report the focused node again while its viewport settles.
+    // Keep the external highlight for that same node; a deliberate click on a
+    // different node still hands selection control back to the canvas.
+    setCanvasRevealRequest((current) =>
+      current?.nodeId === nodeId ? current : null
+    )
+    selectCanvasNode(nodeId)
+  }, [selectCanvasNode])
+  const handleRuntimeNodeSelect = useCallback((nodeId: string): void => {
+    setSelectedJobNodeUuid(nodeId)
+    selectCanvasNode(nodeId, 'runtime')
+    setCanvasRevealRequest((current) => ({
+      nodeId,
+      nonce: (current?.nonce ?? 0) + 1
+    }))
+  }, [selectCanvasNode, setSelectedJobNodeUuid])
+  const debugProjection = taskRuntime.snapshot.debug
+  const debugFinished = !task || [
+    'succeeded',
+    'failed',
+    'canceled',
+    'timeout'
+  ].includes(task.status) || [
+    'completed',
+    'stopped'
+  ].includes(debugProjection?.status ?? '')
+  const debugStatusLabel: Record<string, string> = {
+    paused: '已暂停',
+    running: '运行中',
+    completed: '已完成',
+    stopped: '已停止'
+  }
 
   return (
     <div
       className={[
         styles.workflow,
         'workflow-runtime persistent-authoring',
+        mode === 'canvas' ? 'persistent-authoring--canvas' : '',
         'relative flex h-full w-full flex-col',
         'bg-[var(--unilab-color-canvas)] text-[var(--unilab-color-text)]'
       ].join(' ')}
@@ -267,15 +305,24 @@ export function PersistentWorkflowAuthoringView({
               </span>
             </div>
             <div className="persistent-authoring__stage-context">
-              <p>
-                {projectionKind === 'candidate'
+              <span
+                className="persistent-authoring__projection-status"
+                title={projectionKind === 'candidate'
                   ? mode === 'code'
                     ? '当前画布是服务器候选版本的只读预览'
                     : '画布编辑区基于候选版本；保存时由 OS 生成完整 Python'
                   : mode === 'code'
                     ? '当前显示已应用版本；暂无待应用修改'
                     : '画布编辑区基于已应用版本；暂无待应用修改'}
-              </p>
+              >
+                {projectionKind === 'candidate'
+                  ? mode === 'code'
+                    ? '候选版本 · 只读'
+                    : '候选版本 · 待保存'
+                  : mode === 'code'
+                    ? '已应用版本 · 只读'
+                    : '已应用版本 · 可编辑'}
+              </span>
               <div className="persistent-authoring__stage-tools">
                 {mode === 'canvas' && (
                   <button
@@ -320,137 +367,49 @@ export function PersistentWorkflowAuthoringView({
             {graph ? (
               <>
                 {mode === 'canvas' && nodePaletteOpen && (
-                  <aside
-                    id="persistent-authoring-node-palette"
-                    className="persistent-authoring__palette"
-                    aria-label="工作流节点面板"
-                  >
-                  <header>
-                    <strong>节点</strong>
-                    <span>添加到画布编辑区</span>
-                  </header>
-                  <section aria-label="物料来源（MaterialSource）模板">
-                    <h3>物料</h3>
-                    <WorkflowButton
-                      type="button"
-                      className="persistent-authoring__palette-source"
-                      disabled={
-                        busy ||
-                        !policy.canvasMutationEnabled ||
-                        !effectiveMaterialSourceCatalog ||
-                        materialSourceAuthorityBlocked
-                      }
-                      disabledReason={busy
-                        ? '正在处理工作流，请稍后添加物料来源'
-                        : !policy.canvasMutationEnabled
-                          ? '当前模式只允许查看工作流画布'
-                          : materialSourceAuthorityBlocked
-                            ? '物料来源目录或引用已失效，请先刷新'
-                            : '物料与库位目录尚未加载完成'}
-                      onClick={addMaterialSourceNode}
-                    >
-                      <span aria-hidden="true">▱</span>
-                      <span>
-                        <strong>物料来源</strong>
-                        <small>OS 准入声明</small>
-                      </span>
-                    </WorkflowButton>
-                    {materialSourceCatalogLoading && (
-                      <p role="status">正在读取物料与库位目录…</p>
+                  <WorkflowNodePalette
+                    catalog={actionCatalog}
+                    catalogError={actionCatalogError}
+                    busy={busy}
+                    canvasMutationEnabled={policy.canvasMutationEnabled}
+                    graphAvailable={Boolean(graph)}
+                    materialSourceCatalogAvailable={Boolean(
+                      effectiveMaterialSourceCatalog
                     )}
-                    {materialSourceCatalogError && (
-                      <div className="persistent-authoring__palette-problem">
-                        <p>{materialSourceCatalogError}</p>
-                        <button
-                          type="button"
-                          onClick={() => void refreshMaterialSourceCatalog()}
-                        >
-                          重新读取
-                        </button>
-                      </div>
-                    )}
-                  </section>
-                  <section aria-label="动作（Action）模板">
-                    <h3>操作</h3>
-                    {actionCatalogError && (
-                      <div className="persistent-authoring__palette-problem">
-                        <p>{actionCatalogError}；正在自动重试</p>
-                      </div>
-                    )}
-                    <div className="persistent-authoring__palette-actions">
-                      {actionCatalog?.actionTemplates.map((template) => (
-                        <WorkflowButton
-                          type="button"
-                          key={template.uuid}
-                          disabled={
-                            busy ||
-                            !policy.canvasMutationEnabled ||
-                            !graph
-                          }
-                          disabledReason={busy
-                            ? '正在处理工作流，请稍后添加操作节点'
-                            : !policy.canvasMutationEnabled
-                              ? '当前模式只允许查看工作流画布'
-                              : '工作流图尚未加载完成'}
-                          onClick={() => addTypedActionNode(template.uuid)}
-                        >
-                          <span aria-hidden="true">⌁</span>
-                          <span>
-                            <strong>{template.displayName}</strong>
-                            <small>{template.name}</small>
-                          </span>
-                        </WorkflowButton>
-                      ))}
-                    </div>
-                  </section>
-                  {Boolean(actionCatalog?.workflowTemplates.length) && (
-                    <section aria-label="子工作流（Workflow）模板">
-                      <h3>子工作流</h3>
-                      <div className="persistent-authoring__palette-actions">
-                        {actionCatalog?.workflowTemplates.map((template) => (
-                          <WorkflowButton
-                            type="button"
-                            key={template.uuid}
-                            disabled={
-                              busy ||
-                              !policy.canvasMutationEnabled ||
-                              !graph
-                            }
-                            disabledReason={busy
-                              ? '正在处理工作流，请稍后添加子工作流'
-                              : !policy.canvasMutationEnabled
-                                ? '当前模式只允许查看工作流画布'
-                                : '工作流图尚未加载完成'}
-                            onClick={() => addPublishedWorkflowNode(template.uuid)}
-                          >
-                            <span aria-hidden="true">▣</span>
-                            <span>
-                              <strong>{template.displayName}</strong>
-                              <small>{template.source.symbol}</small>
-                            </span>
-                          </WorkflowButton>
-                        ))}
-                      </div>
-                    </section>
-                  )}
-                  </aside>
+                    materialSourceAuthorityBlocked={
+                      materialSourceAuthorityBlocked
+                    }
+                    materialSourceCatalogLoading={materialSourceCatalogLoading}
+                    materialSourceCatalogError={materialSourceCatalogError}
+                    onAddMaterialSource={addMaterialSourceNode}
+                    onAddAction={addTypedActionNode}
+                    onAddWorkflow={addPublishedWorkflowNode}
+                    onRefreshMaterialSourceCatalog={
+                      refreshMaterialSourceCatalog
+                    }
+                  />
                 )}
                 <div className="persistent-authoring__graph-stage">
                   <WorkflowDag
                     nodes={structure.nodes}
                     links={structure.links}
-                    onNodeSelect={selectCanvasNode}
+                    onNodeSelect={handleCanvasNodeSelect}
                     selectedNodeId={mode === 'code'
                       ? sourceSelectedNodeUuid
-                      : undefined}
+                      : canvasRevealRequest?.nodeId}
+                    revealNodeRequest={canvasRevealRequest}
                     onSetStart={toggleDebugStartNode}
                     onToggleBreakpoint={toggleDebugBreakpoint}
+                    onToggleDisabled={mode === 'canvas'
+                      ? toggleNodeDisabled
+                      : undefined}
                     nodeStates={taskNodeStates}
                     breakpoints={debugBreakpoints}
                     startNodeId={debugExecutionScope.startNodeId}
                     beforeStartNodeIds={
                       debugExecutionScope.beforeStartNodeIds
                     }
+                    pausedBeforeNodeId={pausedBeforeNodeId}
                     canBeautify={
                       !busy &&
                       policy.canvasMutationEnabled &&
@@ -465,8 +424,10 @@ export function PersistentWorkflowAuthoringView({
                     canvasMutationEnabled={policy.canvasMutationEnabled}
                     onConnectHandles={connectTypedHandles}
                     onDeleteRequest={deleteCanvasElements}
-                    materialRoleFilter={materialRoleFilter}
-                    onMaterialRoleFilterChange={onMaterialRoleFilterChange}
+                    visibleMaterialRoles={visibleMaterialRoles}
+                    onVisibleMaterialRolesChange={
+                      onVisibleMaterialRolesChange
+                    }
                   />
                 </div>
                 {mode === 'canvas' && selectedNodeUuid && (
@@ -600,30 +561,63 @@ export function PersistentWorkflowAuthoringView({
         className="persistent-authoring__runtime"
         aria-label="工作流任务运行控制"
       >
-        <WorkflowDebugger
-          debugStatus={workflowTaskVisualStatus(task)}
-          runStatus={task?.status || 'draft'}
-          heading="工作流运行"
-          subtitle="OS 任务控制"
-          statusText={workflowTaskControlStatusLabel(task)}
-          runStatusText={workflowTaskStatusLabel(task?.status)}
-          runStatusPrefix="任务"
-          metadata={workflowTaskMetadata(
-            task,
-            taskRuntime.snapshot.lastCommand,
-            taskRuntime.snapshot
-          )}
-          actionGroupLabel="任务执行控制"
-          dangerGroupLabel="任务取消控制"
-          commandDataAttribute="runtime"
-          controls={taskControls}
-          traceAvailable={Boolean(traceRuntime)}
-          onTraceOpen={() => setTraceViewerOpen(true)}
-          onCommand={(command) => runRuntime(
-            () => taskRuntime.command(command)
-          )}
-        />
-
+        {debugProjection && (
+          <section
+            className="persistent-authoring__debug-console"
+            aria-label="调试控制台"
+            data-debug-status={debugProjection.status}
+          >
+            <div>
+              <strong>调试控制台</strong>
+              <span>
+                {pausedBeforeNodeId
+                  ? `已在节点前暂停：${taskNodeNames[pausedBeforeNodeId] || pausedBeforeNodeId}`
+                  : debugProjection.status === 'running'
+                    ? '正在运行到下一个断点'
+                    : `调试会话：${debugStatusLabel[debugProjection.status] ?? debugProjection.status}`}
+              </span>
+            </div>
+            <div role="group" aria-label="调试执行控制">
+              <WorkflowButton
+                type="button"
+                disabled={runtimeBusy || !pausedBeforeNodeId}
+                disabledReason="当前没有可单步放行的暂停点"
+                title="只执行当前暂停节点，然后在下一节点前暂停"
+                onClick={() => runRuntime(
+                  () => taskRuntime.debugCommand('step')
+                )}
+              >
+                <span aria-hidden="true">↷</span>
+                <span>单步</span>
+              </WorkflowButton>
+              <WorkflowButton
+                type="button"
+                disabled={runtimeBusy || !pausedBeforeNodeId}
+                disabledReason="当前没有可继续放行的暂停点"
+                title="继续运行到下一个断点"
+                onClick={() => runRuntime(
+                  () => taskRuntime.debugCommand('continue')
+                )}
+              >
+                <span aria-hidden="true">▶</span>
+                <span>继续</span>
+              </WorkflowButton>
+              <WorkflowButton
+                type="button"
+                className="is-danger"
+                disabled={runtimeBusy || debugFinished}
+                disabledReason="当前没有可停止的调试任务"
+                title="停止调试并取消剩余节点作业"
+                onClick={() => runRuntime(
+                  () => taskRuntime.command('cancel')
+                )}
+              >
+                <span aria-hidden="true">■</span>
+                <span>停止</span>
+              </WorkflowButton>
+            </div>
+          </section>
+        )}
         <WorkflowOutput
           expanded={outputExpanded}
           activeTab={outputTab}
@@ -635,13 +629,13 @@ export function PersistentWorkflowAuthoringView({
           error={taskRuntime.snapshot.error}
           selectedNode={selectedTaskNode}
           selectedNodeId={selectedJobNodeUuid}
-          pausedBeforeNodeId={null}
+          pausedBeforeNodeId={pausedBeforeNodeId}
           title="运行输出"
           countLabel="个节点任务已结束"
           nodesTabLabel="节点任务状态"
           onExpandedChange={setOutputExpanded}
           onTabChange={setOutputTab}
-          onNodeSelect={setSelectedJobNodeUuid}
+          onNodeSelect={handleRuntimeNodeSelect}
           onClearError={taskRuntime.clearError}
         />
       </section>

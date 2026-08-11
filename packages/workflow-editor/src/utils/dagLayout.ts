@@ -24,6 +24,7 @@ import {
   layoutWorkflowMaterialSwimlanes,
   type WorkflowMaterialSwimlaneProjection
 } from './workflowMaterialSwimlaneLayout'
+import { layoutWorkflowPrimarySampleFlow } from './workflowPrimarySampleLayout'
 
 // 布局后的节点(带坐标)
 export interface LayoutNode extends WorkflowNode {
@@ -33,11 +34,27 @@ export interface LayoutNode extends WorkflowNode {
 
 export type DagLayoutDirection = 'horizontal' | 'vertical'
 
+export type WorkflowNodePortSide = 'top' | 'right' | 'bottom' | 'left'
+
+export interface WorkflowNodePortLayout {
+  target: WorkflowNodePortSide
+  source: WorkflowNodePortSide
+}
+
+export interface WorkflowPrimarySampleLayoutProjection {
+  hasPrimarySample: boolean
+  backboneNodeIds: readonly string[]
+  rowByNode: Map<string, number>
+}
+
 export interface LayoutResult {
   nodes: LayoutNode[]
   links: WorkflowLink[]
   direction: DagLayoutDirection
   swimlanes?: WorkflowMaterialSwimlaneProjection
+  nodePorts?: Map<string, WorkflowNodePortLayout>
+  edgeDirections?: Map<number, 'TB' | 'LR'>
+  primarySample?: WorkflowPrimarySampleLayoutProjection
 }
 
 export interface LayoutDagOptions {
@@ -50,11 +67,12 @@ const NODE_GAP_X = 360
 const ORIGIN_X = 180
 const ORIGIN_Y = 40
 const ACTION_NODE_WIDTH = 248
-const MATERIAL_SOURCE_NODE_WIDTH = 136
-const TRANSFER_NODE_WIDTH = 168
+const MATERIAL_SOURCE_NODE_WIDTH = 184
+const TRANSFER_NODE_WIDTH = 176
 const GROUP_LABEL_GAP_X = 240
 const SINGLE_MATERIAL_PORT_CENTER_X = 149
-const TRANSFER_MATERIAL_PORT_CENTER_X = 36
+const MATERIAL_SOURCE_MATERIAL_PORT_CENTER_X = 148
+const TRANSFER_MATERIAL_PORT_CENTER_X = 140
 const NODE_COLLISION_GAP_X = 80
 
 // 对 nodes/links 做从上到下的分层布局
@@ -247,7 +265,7 @@ function alignMaterialSourcesToFirstPorts(
         target.x + (target.visualKind === 'robot-transfer'
           ? TRANSFER_MATERIAL_PORT_CENTER_X
           : SINGLE_MATERIAL_PORT_CENTER_X) -
-          MATERIAL_SOURCE_NODE_WIDTH / 2
+          MATERIAL_SOURCE_MATERIAL_PORT_CENTER_X
       ]
     })
     if (anchors.length > 0) {
@@ -396,7 +414,9 @@ export function beautifyWorkflowRevision(
   const nextNodes = { ...previousNodes }
   const result = strategy === 'material-swimlanes'
     ? layoutWorkflowMaterialSwimlanes(nodes, links, swimlaneDirection)
-    : layoutDag(nodes, links, { preserveExistingPositions: false })
+    : strategy === 'primary-sample-serpentine'
+      ? layoutWorkflowPrimarySampleFlow(nodes, links)
+      : layoutDag(nodes, links, { preserveExistingPositions: false })
   for (const node of result.nodes) {
     nextNodes[node.id] = {
       ...recordValue(previousNodes[node.id]),

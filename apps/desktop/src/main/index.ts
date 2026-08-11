@@ -7,7 +7,7 @@ import {
   type IpcMainInvokeEvent
 } from 'electron'
 import { basename, dirname, join } from 'path'
-import { appendFileSync } from 'node:fs'
+import { appendFileSync, existsSync } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -27,6 +27,8 @@ import { discoverDefaultCondaEnvironment } from './localRuntimeEnvironment'
 import { registerDeviceProvisioningIpc } from './deviceProvisioningIpc'
 import { LocalDeviceProvisioningManager } from './localDeviceProvisioningManager'
 import { LocalDeviceProvisioningStore } from './localDeviceProvisioningStore'
+import { ManagedRuntimeInstallation } from './managedRuntimeInstallation'
+import { registerManagedRuntimeInstallationIpc } from './managedRuntimeInstallationIpc'
 import {
   LocalRuntimeManager,
   resolveLocalRuntimeLaunchPlan
@@ -48,7 +50,7 @@ import {
 } from './desktopSurface'
 import { RendererConsoleLogLimiter } from './rendererConsoleLogLimiter'
 import { cleanupPackagedWorkbench, configurePackagedDeviceCardBuilder } from './packagedRuntime'
-import { registerWorkbenchRemoteAccessIpc } from './workbenchRemoteIpc'
+import { isWorkbenchWorkspaceNavigationAllowed, registerWorkbenchRemoteAccessIpc, workbenchUnloadPrompt } from './workbenchRemoteIpc'
 
 // 保存文件的入参:path 为 null 时弹出"另存为"对话框
 interface SaveFilePayload {
@@ -205,19 +207,19 @@ function createWindow(): void {
   mainWindow.webContents.on('will-prevent-unload', (event) => {
     const window = mainWindow
     if (!window || window.isDestroyed()) return
-
+    const prompt = workbenchUnloadPrompt()
     const choice = dialog.showMessageBoxSync(window, {
       type: 'warning',
-      buttons: ['继续编辑', '放弃修改并关闭'],
+      buttons: prompt.buttons,
       defaultId: 0,
       cancelId: 0,
       noLink: true,
       title: '工作流尚未保存',
       message: '工作流代码有未保存的修改。',
-      detail: '关闭窗口将丢失这些修改。'
+      detail: prompt.detail
     })
     if (choice === 1) {
-      electronObservability.record('electron.renderer.unsaved_changes_discarded')
+      electronObservability.record(prompt.discardedEvent)
       event.preventDefault()
     }
   })
@@ -253,7 +255,7 @@ function createWindow(): void {
   })
 
   mainWindow.webContents.on('will-navigate', (event, targetUrl) => {
-    if (isDesktopSurfaceNavigationAllowed(desktopSurface, targetUrl)) return
+    if (isDesktopSurfaceNavigationAllowed(desktopSurface, targetUrl) || isWorkbenchWorkspaceNavigationAllowed(targetUrl)) return
     event.preventDefault()
     logLine(`阻止 Workbench renderer 跨 origin 导航: ${targetUrl}`)
     if (/^https?:/u.test(targetUrl)) void shell.openExternal(targetUrl)
@@ -318,7 +320,21 @@ app.whenReady().then(async () => {
     app.dock.setIcon(localAppIcon)
   }
   ipcMain.handle('app:getVersion', () => app.getVersion())
-  registerWorkbenchRemoteAccessIpc({ observability: electronObservability, assertSender: assertMainWindowSender })
+  registerWorkbenchRemoteAccessIpc({ observability: electronObservability, assertSender: assertMainWindowSender, getMainWindow: () => mainWindow })
+  const managedRuntimeInstallation = registerManagedRuntimeInstallationIpc({
+    ipcMain,
+    installation: createManagedRuntimeInstallation(),
+    discoverExistingEnvironment: () => discoverDefaultCondaEnvironment({
+      homeDirectory: homedir()
+    }),
+    assertSender: assertMainWindowSender,
+    getMainWindow: () => mainWindow,
+    onEnvironmentReady: environmentPath => {
+      process.env['UNILAB_MANAGED_RUNTIME_PREFIX'] = environmentPath
+    },
+    log: logLine
+  })
+  await managedRuntimeInstallation.initialize()
   deviceCardManager = new DeviceCardManager({
     getMainWindow: () => mainWindow,
     preloadPath: join(__dirname, '../preload/deviceCard.js'),
@@ -759,6 +775,29 @@ function assertMainWindowSender(event: IpcMainInvokeEvent): void {
 function requireRuntimeManager(): LocalRuntimeManager {
   if (!localRuntimeManager) throw new Error('本地运行时尚未初始化')
   return localRuntimeManager
+}
+
+/**
+ * 从固定 Electron resources 构造一键安装器。开发态只有显式测试载荷时启用，
+ * 安装包缺少载荷时保持 UI 可诊断，而不是隐式搜索源码仓库。
+ */
+function createManagedRuntimeInstallation(): ManagedRuntimeInstallation | undefined {
+  const resourcesDirectory = process.env['UNILAB_MANAGED_RUNTIME_RESOURCES']
+    ?? (app.isPackaged ? process.resourcesPath : undefined)
+  if (!resourcesDirectory) return undefined
+  const manifestPath = join(
+    resourcesDirectory,
+    'runtime-installer',
+    'manifest.json'
+  )
+  if (!existsSync(manifestPath)) {
+    logLine(`未发现内置 Runtime manifest: ${manifestPath}`)
+    return undefined
+  }
+  return new ManagedRuntimeInstallation({
+    resourcesDirectory,
+    dataDirectory: app.getPath('userData')
+  })
 }
 
 /**

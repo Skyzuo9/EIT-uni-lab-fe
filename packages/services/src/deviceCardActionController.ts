@@ -10,6 +10,7 @@ import type {
 import type { DeviceCatalogItem } from './laboratory'
 import type {
   WorkflowActionNodeTemplate,
+  WorkflowRuntimeInvalidationEvent,
   WorkflowRuntimePort
 } from './workflow'
 
@@ -97,8 +98,7 @@ export class DeviceCardActionController {
     const subscription = this.ports.workflow.subscribeWorkflowRuntime(
       (event) => {
         if (
-          event.event === 'device_action_task.changed' &&
-          event.data.task_uuid === taskUuid
+          runtimeEventTaskUuid(event) === taskUuid
         ) queueRefresh()
       },
       {
@@ -122,11 +122,6 @@ export class DeviceCardActionController {
         (candidate) => candidate.actionName === request.action
       )!
       const catalog = await this.ports.workflow.getWorkflowActionCatalog()
-      if (!catalog.authorityId || !catalog.fingerprint) {
-        throw new Error(
-          '当前目录未提供 OS 设备单点动作所需的目录权威和指纹。'
-        )
-      }
       const matches = catalog.actionTemplates.filter((template) =>
         template.name === action.actionName &&
         template.actionType === action.typeName
@@ -143,13 +138,17 @@ export class DeviceCardActionController {
         throw new Error('Action 包含物料或 Site 语义，请在工作流中运行。')
       }
       const accepted = await this.ports.tasks.createDeviceActionTask({
-        authority_id: catalog.authorityId,
-        template_catalog_fingerprint: catalog.fingerprint,
+        material_uuid: device.materialUuid,
         workflow_node_template_uuid: template.uuid,
-        device_id: request.deviceId,
-        input: request.params,
+        param: request.params,
+        execution_policy: {},
         idempotency_key: this.randomUuid(),
-        description: '设备卡片单动作运行'
+        description: '设备卡片单动作运行',
+        meta_data: {
+          source: 'device-card',
+          device_id: request.deviceId,
+          action_name: request.action
+        }
       })
       taskUuid = accepted.task_uuid
       const finished = isTerminalActionTask(accepted.status)
@@ -198,9 +197,23 @@ function assertRunnableDeviceAction(
     throw new Error(`设备绑定已变化：${request.deviceId}`)
   }
   if (!device.online) throw new Error(`设备已离线：${request.deviceId}`)
+  if (!device.materialUuid) {
+    throw new Error('当前设备缺少运行标识，请刷新设备列表后重试。')
+  }
   if (!device.actions.some((action) => action.actionName === request.action)) {
     throw new Error(`设备未声明 Action：${request.action}`)
   }
+}
+
+/** 从受支持的运行失效事件中提取工作流任务（WorkflowTask）UUID。 */
+function runtimeEventTaskUuid(
+  event: WorkflowRuntimeInvalidationEvent
+): string | null {
+  if (event.event === 'workflow.runtime.changed') {
+    return event.data.workflow_task_uuid
+  }
+  if (event.event === 'device_action_task.changed') return event.data.task_uuid
+  return null
 }
 
 /** 投影动作任务结果；参数是原请求和任务视图，返回设备卡片结果，不主动抛错。 */

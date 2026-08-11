@@ -14,6 +14,10 @@ import {
 import { tmpdir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import {
+  prepareRuntimePayloadFromEnvironment,
+  validatePackagedRuntimeResources
+} from './runtime-payload.mjs'
 
 const MEBIBYTE = 1024 * 1024
 
@@ -92,6 +96,10 @@ export function validatePackagedApp(
       `app.asar 超出 ${formatMebibytes(maximumBytes)} MiB 预算，当前为 ${formatMebibytes(size)} MiB；请检查生产依赖是否被重复打包`
     )
   }
+  validatePackagedRuntimeResources(
+    join(outputDirectory, 'win-unpacked', 'resources'),
+    'win-64'
+  )
 
   return { path: archivePath, size }
 }
@@ -127,10 +135,11 @@ export function publishWindowsArtifacts(outputDirectory, destinationDirectory) {
   )
 }
 
-function runCli(entryPath, args) {
+function runCli(entryPath, args, environment = process.env) {
   const result = spawnSync(process.execPath, [entryPath, ...args], {
     cwd: desktopDirectory,
-    stdio: 'inherit'
+    stdio: 'inherit',
+    env: environment
   })
   if (result.error) throw result.error
   if (result.status !== 0) {
@@ -140,16 +149,27 @@ function runCli(entryPath, args) {
 
 export function packageWindows() {
   const outputDirectory = mkdtempSync(join(tmpdir(), 'unilab-win-package-'))
+  const payloadDirectory = mkdtempSync(join(
+    desktopDirectory,
+    '.runtime-payload-'
+  ))
   const { electronViteCli, electronBuilderCli } = resolvePackagingCliPaths()
 
   try {
+    const payload = prepareRuntimePayloadFromEnvironment(
+      payloadDirectory,
+      'win-64'
+    )
     runCli(electronViteCli, ['build'])
     runCli(electronBuilderCli, [
       '--win',
       '--publish',
       'never',
       `--config.directories.output=${outputDirectory}`
-    ])
+    ], {
+      ...process.env,
+      UNILAB_RUNTIME_PAYLOAD_DIR: basename(payload.directory)
+    })
 
     const appArchive = validatePackagedApp(outputDirectory)
     const installer = publishWindowsArtifacts(
@@ -161,6 +181,7 @@ export function packageWindows() {
     )
   } finally {
     rmSync(outputDirectory, { recursive: true, force: true })
+    rmSync(payloadDirectory, { recursive: true, force: true })
   }
 }
 

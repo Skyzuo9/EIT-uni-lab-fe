@@ -95,6 +95,38 @@ export interface LocalRuntimeLaunchConfig {
   customEdgeCommand: LocalRuntimeCustomEdgeCommand
 }
 
+export type LocalRuntimeMode = 'managed' | 'development'
+
+export interface LocalRuntimeModeInfo {
+  mode: LocalRuntimeMode
+  label: string
+  runtimeVersion: string | null
+  defaultLaunchConfig?: LocalRuntimeLaunchConfig
+}
+
+export type LocalRuntimeAcceptanceStatus =
+  | 'unverified'
+  | 'verified'
+  | 'failed'
+
+export interface LocalRuntimeAcceptanceResult {
+  status: LocalRuntimeAcceptanceStatus
+  message: string
+  checkedAt: number | null
+  descriptorPath: string | null
+  packageName: string | null
+  packageVersion: string | null
+}
+
+export interface DevicePackageTrustInfo {
+  workspacePath: string
+  contentHash: string
+  signatureStatus: 'valid' | 'invalid' | 'unsigned'
+  signerFingerprint: string | null
+  trusted: boolean
+  confirmationRequired: boolean
+}
+
 export type LocalRuntimeProcessKind = 'simulator' | 'bridge' | 'edge'
 
 export interface LocalRuntimeLogEntry {
@@ -141,6 +173,8 @@ export type LocalRuntimePhase =
   | 'waiting_bridge'
   | 'starting_edge'
   | 'waiting_edge'
+  | 'validating_acceptance'
+  | 'cleaning_acceptance'
   | 'ready'
   | 'stopping_simulator'
   | 'stopping_edge'
@@ -152,6 +186,7 @@ export interface LocalRuntimeSnapshot {
   simulatorRunning: boolean
   bridgeRunning: boolean
   edgeRunning: boolean
+  acceptance?: LocalRuntimeAcceptanceResult
   failedProcess?: LocalRuntimeProcessKind
   error?: string
 }
@@ -163,12 +198,23 @@ export interface DesktopRuntimeApi {
     config: LocalRuntimeLaunchConfig
   ) => Promise<LocalRuntimeCommandPreview>
   getSnapshot: () => Promise<LocalRuntimeSnapshot>
+  getModeInfo: () => Promise<LocalRuntimeModeInfo>
+  inspectDevicePackage: (
+    config: LocalRuntimeLaunchConfig
+  ) => Promise<DevicePackageTrustInfo>
+  confirmDevicePackage: (
+    config: LocalRuntimeLaunchConfig,
+    expectedHash: string
+  ) => Promise<DevicePackageTrustInfo>
   startSimulator: (
     config: LocalRuntimeLaunchConfig
   ) => Promise<LocalRuntimeSnapshot>
   stopSimulator: () => Promise<LocalRuntimeSnapshot>
   startEdge: (config: LocalRuntimeLaunchConfig) => Promise<LocalRuntimeSnapshot>
   stopEdge: () => Promise<LocalRuntimeSnapshot>
+  runAcceptance: (
+    config: LocalRuntimeLaunchConfig
+  ) => Promise<LocalRuntimeSnapshot>
   readLogs: () => Promise<LocalRuntimeLogsSnapshot>
   readLog?: (query: LocalRuntimeLogQuery) => Promise<LocalRuntimeLogBatch>
   openLogFile?: (
@@ -294,9 +340,62 @@ export interface DesktopWorkbenchRemoteApi {
   stop: () => Promise<WorkbenchRemoteAccessSnapshot>
 }
 
+export interface WorkbenchWorkspaceSnapshot {
+  phase: 'unavailable' | 'welcome' | 'starting' | 'ready' | 'stopping' | 'failed'
+  activeWorkspace: string | null
+  recentWorkspaces: Array<{
+    path: string
+    name: string
+    lastOpenedAt: string
+  }>
+  error: string | null
+}
+
+export interface DesktopWorkbenchWorkspaceApi {
+  getSnapshot: () => Promise<WorkbenchWorkspaceSnapshot>
+  openDirectory: () => Promise<WorkbenchWorkspaceSnapshot>
+  createDirectory: () => Promise<WorkbenchWorkspaceSnapshot>
+  openRecent: (path: string) => Promise<WorkbenchWorkspaceSnapshot>
+  switchToWelcome: () => Promise<{
+    switched: boolean
+    snapshot: WorkbenchWorkspaceSnapshot
+  }>
+  onSnapshot: (
+    listener: (snapshot: WorkbenchWorkspaceSnapshot) => void
+  ) => () => void
+}
+
+export type ManagedRuntimeInstallationPhase =
+  | 'unavailable'
+  | 'external'
+  | 'not-installed'
+  | 'installing'
+  | 'ready'
+  | 'failed'
+
+export interface ManagedRuntimeInstallationSnapshot {
+  phase: ManagedRuntimeInstallationPhase
+  bundled: boolean
+  managed: boolean
+  runtimeVersion: string | null
+  platform: string | null
+  environmentPath: string | null
+  error: string | null
+}
+
+export interface DesktopManagedRuntimeInstallationApi {
+  getSnapshot: () => Promise<ManagedRuntimeInstallationSnapshot>
+  install: () => Promise<ManagedRuntimeInstallationSnapshot>
+  onSnapshot: (
+    listener: (snapshot: ManagedRuntimeInstallationSnapshot) => void
+  ) => () => void
+}
+
 interface DesktopApi {
   getVersion: () => Promise<string>
   workbenchRemote?: DesktopWorkbenchRemoteApi
+  workbenchWorkspace?: DesktopWorkbenchWorkspaceApi
+  managedRuntime?: DesktopManagedRuntimeInstallationApi
   auth: {
     getSession: () => Promise<AuthSession | null>
     login: () => Promise<AuthSession | null>

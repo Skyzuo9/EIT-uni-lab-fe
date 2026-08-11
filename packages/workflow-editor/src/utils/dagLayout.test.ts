@@ -101,11 +101,11 @@ describe('layoutDag', () => {
     const positions = new Map(
       result.nodes.map((node) => [node.id, { x: node.x, y: node.y }])
     )
-    expect(positions.get('source-a')?.x).toBe(
-      (positions.get('action-a')?.x ?? 0) + 81
+    expect((positions.get('source-a')?.x ?? 0) + 148).toBe(
+      (positions.get('action-a')?.x ?? 0) + 149
     )
-    expect(positions.get('source-b')?.x).toBe(
-      (positions.get('action-b')?.x ?? 0) + 81
+    expect((positions.get('source-b')?.x ?? 0) + 148).toBe(
+      (positions.get('action-b')?.x ?? 0) + 149
     )
     expect(positions.get('action-a')?.y).toBeGreaterThan(
       positions.get('source-a')?.y ?? 0

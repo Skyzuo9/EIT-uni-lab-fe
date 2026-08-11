@@ -17,6 +17,7 @@ export interface TypedActionFieldProjection {
   defaultValue: unknown
   nullable: boolean
   editorControl: WorkflowActionHandleTemplate['editorControl']
+  allowedResourceTemplateUuids?: string[] | null
   valueSchema: Record<string, unknown>
   valueState: 'missing' | 'null' | 'value'
   value: unknown
@@ -231,6 +232,10 @@ export function projectTypedActionEditor(
       defaultValue: hasDefault ? handle.valueSchema.default : undefined,
       nullable: isNullable(handle.valueSchema),
       editorControl: handle.editorControl,
+      allowedResourceTemplateUuids: resolvedResourceTemplateAllowlist(
+        handle,
+        unilab
+      ),
       valueSchema: handle.valueSchema,
       valueState: !hasValue ? 'missing' : value === null ? 'null' : 'value',
       value,
@@ -269,6 +274,47 @@ export function projectTypedActionEditor(
     })
   }
   return { nodeUuid, templateUuid, fields, diagnostics }
+}
+
+/**
+ * Resolve the effective ResourceSlot allowlist for one Action input.
+ *
+ * Generic passthrough actions can accept any material in their static Catalog,
+ * while a compiled node narrows that material through its output schema
+ * override. The output-to-input passthrough map is the authoritative bridge
+ * between those two contracts.
+ */
+function resolvedResourceTemplateAllowlist(
+  handle: WorkflowActionHandleTemplate,
+  nodeUnilab: Record<string, unknown>
+): string[] | null | undefined {
+  if (handle.allowedResourceTemplateUuids != null) {
+    return handle.allowedResourceTemplateUuids
+  }
+  const passthroughHandles = recordOrNull(
+    nodeUnilab.material_passthrough_handles
+  )
+  const outputHandleUuid = passthroughHandles
+    ? Object.entries(passthroughHandles).find(
+        ([, inputHandleUuid]) => inputHandleUuid === handle.uuid
+      )?.[0]
+    : undefined
+  if (!outputHandleUuid) return handle.allowedResourceTemplateUuids
+  const outputSchemaOverrides = recordOrNull(
+    nodeUnilab.output_schema_overrides
+  )
+  const override = outputSchemaOverrides
+    ? recordOrNull(outputSchemaOverrides[outputHandleUuid])
+    : null
+  const rawAllowlist = override?.allowed_resource_template_uuids
+  if (rawAllowlist === undefined) return handle.allowedResourceTemplateUuids
+  if (
+    !Array.isArray(rawAllowlist) ||
+    !rawAllowlist.every((value) => typeof value === 'string')
+  ) {
+    throw new Error('节点物料透传模板约束无效')
+  }
+  return [...rawAllowlist]
 }
 
 export function updateTypedActionLiteral(

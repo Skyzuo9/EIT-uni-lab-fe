@@ -4,21 +4,22 @@
 .workflow :global(.wf-node__handle--ready),
 .workflow :global(.wf-node__handle--ready):global(.connecting),
 .workflow :global(.wf-node__handle--ready):global(.connected) {
-  width: 3px;
-  height: 12px;
+  width: 12px;
+  height: 3px;
   border: 0;
   border-radius: 2px;
   background: var(--unilab-color-text-muted);
   box-shadow: 0 0 0 2px var(--unilab-color-surface);
+  cursor: crosshair;
 }
 
-.workflow :global(.wf-node__handle--ready.wf-node__handle--target) {
-  top: -6px;
-}
-
-.workflow :global(.wf-node__handle--ready.wf-node__handle--source) {
-  top: auto;
-  bottom: -6px;
+/* 横向流动时顺序端口位于东西两侧，矩形长轴与流动方向垂直。 */
+.workflow
+  :global(.wf-node__handle--ready.react-flow__handle-left),
+.workflow
+  :global(.wf-node__handle--ready.react-flow__handle-right) {
+  width: 3px;
+  height: 12px;
 }
 
 .workflow :global(.react-flow__edge.wf-flow-edge--ready) path {

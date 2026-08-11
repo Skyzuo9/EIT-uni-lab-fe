@@ -12,7 +12,9 @@ import {
 } from '../utils/workflowMaterialSource'
 import { materialTraceAccent } from '../utils/workflowMaterialTrace'
 import { WorkflowButton } from './WorkflowButton'
+import { WorkflowResourceSelector } from './WorkflowResourceSelector'
 import { workflowNodeStateLabel } from './WorkflowNodeCard'
+import { workflowResourceSlotOptionLabel } from '../utils/workflowResourceSlotOptions'
 
 export interface MaterialSourceInspectorProps {
   editor: MaterialSourceEditorProjection
@@ -165,24 +167,27 @@ export function MaterialSourceInspector({
           </select>
         </label>
         {editor.mode === 'existing' && (
-          <label>
-            固定物料
-            <select
-              aria-label="固定物料"
-              value={editor.fixedMaterialUuid ?? ''}
-              disabled={!editable}
-              onChange={(event) => onChange({
-                fixedMaterialUuid: event.target.value || null
-              })}
-            >
-              <option value="">运行时自动选择</option>
-              {editor.fixedMaterials.map((material) => (
-                <option key={material.uuid} value={material.uuid}>
-                  {material.name}
-                </option>
-              ))}
-            </select>
-          </label>
+          <WorkflowResourceSelector
+            label="固定物料"
+            value={editor.fixedMaterialUuid ?? ''}
+            optionsState={{
+              kind: 'ready',
+              options: editor.fixedMaterials.map((material) => ({
+                materialUuid: material.uuid,
+                resourceTemplateUuid: material.resourceTemplateUuid,
+                displayLabel: workflowResourceSlotOptionLabel(
+                  material.name,
+                  material.uuid
+                )
+              }))
+            }}
+            allowedResourceTemplateUuids={[editor.resourceTemplateUuid]}
+            disabled={!editable}
+            emptyLabel="运行时自动选择"
+            onChange={(materialUuid) => onChange({
+              fixedMaterialUuid: materialUuid
+            })}
+          />
         )}
       </fieldset>
 

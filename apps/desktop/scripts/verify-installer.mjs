@@ -60,6 +60,14 @@ assert.match(
   builderConfig,
   /extraResources:[\s\S]*?device-card-agent\/cli\.mjs/
 )
+assert.equal(
+  packageConfig.scripts?.['package:linux'],
+  'node scripts/package-linux.mjs'
+)
+assert.match(builderConfig, /npmRebuild: false/)
+assert.match(builderConfig, /extraResources:[\s\S]*?UNILAB_RUNTIME_PAYLOAD_DIR/)
+assert.match(builderConfig, /to: runtime-installer/)
+assert.match(builderConfig, /linux:[\s\S]*?AppImage/)
 assert.match(builderConfig, /electronLanguages:\s*\n\s*- zh-CN\s*\n\s*- en-US/)
 assert.match(builderConfig, /afterPack: scripts\/after-pack\.mjs/)
 assert.match(builderConfig, /nsis:[\s\S]*?oneClick: false/)

@@ -8,7 +8,7 @@ export const WorkbenchSessionServer = Symbol('WorkbenchSessionServer')
 export const WorkbenchSessionClient = Symbol('WorkbenchSessionClient')
 
 export interface WorkbenchSessionClient {
-  onDidChange(snapshot: WorkbenchSessionSnapshot): void
+  onDidChange(snapshot: WorkbenchSessionSnapshot): void | Promise<void>
 }
 
 type WorkbenchSessionRemoteOperations = Pick<
@@ -16,10 +16,14 @@ type WorkbenchSessionRemoteOperations = Pick<
   | 'start'
   | 'stop'
   | 'restart'
+  | 'startAgent'
+  | 'stopAgent'
+  | 'restartAgent'
   | 'readLogTail'
   | 'readEnvironmentLog'
   | 'configureGraph'
   | 'configurePlcSimulator'
+  | 'refreshPlcVariableTables'
   | 'startPlcSimulator'
   | 'stopPlcSimulator'
   | 'setRuntimeMode'

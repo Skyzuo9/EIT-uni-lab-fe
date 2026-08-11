@@ -34,7 +34,7 @@
     "electron": "33.4.11",
     "backendNode": "24.14.0",
     "theia": "1.74.1",
-    "aionUiExternal": "2.1.52",
+    "agentRuntime": "aioncore@2.1.52",
     "vscodeExtensionRelease": "vscode-v0.1.0"
   },
   "acceptedBaselines": {
@@ -46,7 +46,7 @@
     "workspace": "managed-local",
     "osRuntime": ["installed-environment", "source-checkout"],
     "workflowIdeHostAdapter": 1,
-    "agent": "external-aion-ui",
+    "agent": "bundled-managed-local-with-external-agent-clis",
     "remoteAccess": {
       "protocol": "unilab-workbench-remote-access/v1",
       "operatingSystems": ["darwin", "linux", "win32"],

@@ -53,6 +53,14 @@ import type {
   DesktopWorkbenchRemoteApi,
   WorkbenchRemoteAccessSnapshot
 } from '../shared/workbenchRemote'
+import type {
+  DesktopWorkbenchWorkspaceApi,
+  WorkbenchWorkspaceSnapshot
+} from '../shared/workbenchWorkspace'
+import type {
+  DesktopManagedRuntimeInstallationApi,
+  ManagedRuntimeInstallationSnapshot
+} from '../shared/managedRuntimeInstallation'
 
 // 登录会话结构(与主进程 authManager.AuthSession 保持一致)
 export interface AuthUserInfo {
@@ -103,6 +111,51 @@ const api = {
     stop: (): Promise<WorkbenchRemoteAccessSnapshot> =>
       ipcRenderer.invoke('workbench-remote:stop')
   } satisfies DesktopWorkbenchRemoteApi,
+  workbenchWorkspace: {
+    getSnapshot: (): Promise<WorkbenchWorkspaceSnapshot> =>
+      ipcRenderer.invoke('workbench-workspace:getSnapshot'),
+    openDirectory: (): Promise<WorkbenchWorkspaceSnapshot> =>
+      ipcRenderer.invoke('workbench-workspace:openDirectory'),
+    createDirectory: (): Promise<WorkbenchWorkspaceSnapshot> =>
+      ipcRenderer.invoke('workbench-workspace:createDirectory'),
+    openRecent: (path: string): Promise<WorkbenchWorkspaceSnapshot> =>
+      ipcRenderer.invoke('workbench-workspace:openRecent', path),
+    switchToWelcome: () => ipcRenderer.invoke(
+      'workbench-workspace:switchToWelcome'
+    ),
+    onSnapshot: (
+      listener: (snapshot: WorkbenchWorkspaceSnapshot) => void
+    ): (() => void) => {
+      const wrapped = (
+        _event: Electron.IpcRendererEvent,
+        snapshot: WorkbenchWorkspaceSnapshot
+      ): void => listener(snapshot)
+      ipcRenderer.on('workbench-workspace:snapshot', wrapped)
+      return () => ipcRenderer.removeListener(
+        'workbench-workspace:snapshot',
+        wrapped
+      )
+    }
+  } satisfies DesktopWorkbenchWorkspaceApi,
+  managedRuntime: {
+    getSnapshot: (): Promise<ManagedRuntimeInstallationSnapshot> =>
+      ipcRenderer.invoke('managed-runtime:getSnapshot'),
+    install: (): Promise<ManagedRuntimeInstallationSnapshot> =>
+      ipcRenderer.invoke('managed-runtime:install'),
+    onSnapshot: (
+      listener: (snapshot: ManagedRuntimeInstallationSnapshot) => void
+    ): (() => void) => {
+      const wrapped = (
+        _event: Electron.IpcRendererEvent,
+        snapshot: ManagedRuntimeInstallationSnapshot
+      ): void => listener(snapshot)
+      ipcRenderer.on('managed-runtime:snapshot', wrapped)
+      return () => ipcRenderer.removeListener(
+        'managed-runtime:snapshot',
+        wrapped
+      )
+    }
+  } satisfies DesktopManagedRuntimeInstallationApi,
   auth: {
     // 读取本地已保存的登录会话
     getSession: (): Promise<AuthSession | null> => ipcRenderer.invoke('auth:getSession'),

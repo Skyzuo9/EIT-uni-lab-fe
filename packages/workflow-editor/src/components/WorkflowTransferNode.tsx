@@ -10,6 +10,8 @@ import styles from './workflow.module.scss'
 interface WorkflowTransferNodeProps {
   data: WorkflowNodeData
   materialPort: WorkflowMaterialPortCard
+  materialTargetPosition: Position
+  materialSourcePosition: Position
   stateVisible: boolean
   stateLabel: string
   structuralTargetHandles: ReactNode
@@ -18,10 +20,15 @@ interface WorkflowTransferNodeProps {
 
 /**
  * 将标准物料转运子工作流投影为菱形机械臂节点，并保持物料流句柄在菱形外缘。
+ *
+ * @param props 节点数据、物料端口、逐节点端口方位、状态与结构句柄。
+ * @returns 保留物料占位符（ResourceSlot）身份和调试标记的转运节点。
  */
 export default function WorkflowTransferNode({
   data,
   materialPort,
+  materialTargetPosition,
+  materialSourcePosition,
   stateVisible,
   stateLabel,
   structuralTargetHandles,
@@ -55,7 +62,7 @@ export default function WorkflowTransferNode({
           materialPort.targetHandle,
           'target',
           materialPort,
-          data.materialLaneDirection
+          materialTargetPosition
         )}
         <span
           className="wf-node__robot-transfer-visual"
@@ -80,7 +87,7 @@ export default function WorkflowTransferNode({
           materialPort.sourceHandle,
           'source',
           materialPort,
-          data.materialLaneDirection
+          materialSourcePosition
         )}
       </span>
       <span className="wf-node__robot-transfer-copy">
@@ -90,6 +97,28 @@ export default function WorkflowTransferNode({
         <small title={materialPort.description}>
           {materialPort.label} · 机械臂转运
         </small>
+        {data.groupKind === 'subworkflow' && (
+          <button
+            type="button"
+            className="wf-node__robot-transfer-toggle"
+            data-subworkflow-toggle
+            aria-expanded={Boolean(data.groupExpanded)}
+            aria-label={`${data.groupExpanded ? '折叠' : '展开'}子工作流 ${data.name || data.id}`}
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation()
+              data.onToggleGroup?.(data.id)
+            }}
+          >
+            <span aria-hidden="true">{data.groupExpanded ? '▾' : '▸'}</span>
+            {data.descendantCount || 0} 个内部节点
+          </button>
+        )}
+        {stateVisible && (
+          <span className={`wf-node__robot-transfer-state wf-node__state--${data.status || 'pending'}`}>
+            {stateLabel}
+          </span>
+        )}
       </span>
       {(data.startNode || data.breakpoint || data.pausedBefore || data.beforeStart) && (
         <span className="wf-node__robot-transfer-flags" aria-label="调试标记">
@@ -97,28 +126,6 @@ export default function WorkflowTransferNode({
           {data.breakpoint && <span title="断点">●</span>}
           {data.pausedBefore && <span title="下一步执行">▶</span>}
           {data.beforeStart && <span title="不执行">⊘</span>}
-        </span>
-      )}
-      {data.groupKind === 'subworkflow' && (
-        <button
-          type="button"
-          className="wf-node__robot-transfer-toggle"
-          data-subworkflow-toggle
-          aria-expanded={Boolean(data.groupExpanded)}
-          aria-label={`${data.groupExpanded ? '折叠' : '展开'}子工作流 ${data.name || data.id}`}
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={(event) => {
-            event.stopPropagation()
-            data.onToggleGroup?.(data.id)
-          }}
-        >
-          <span aria-hidden="true">{data.groupExpanded ? '▾' : '▸'}</span>
-          {data.descendantCount || 0} 个内部节点
-        </button>
-      )}
-      {stateVisible && (
-        <span className={`wf-node__robot-transfer-state wf-node__state--${data.status || 'pending'}`}>
-          {stateLabel}
         </span>
       )}
       {(data.onSetStart || data.onToggleBreakpoint) && (
@@ -160,19 +167,26 @@ export default function WorkflowTransferNode({
   )
 }
 
+/**
+ * 渲染机械臂转运节点的一侧物料占位符（ResourceSlot）端口。
+ *
+ * @param handle OS 投影出的物料句柄。
+ * @param ioType 输入或输出方向。
+ * @param port 合并后的物料端口展示信息。
+ * @param position 当前节点布局指定的边缘方位。
+ * @returns 可供 React Flow 路由的物料端口元素。
+ */
 function renderTransferHandle(
   handle: WorkflowHandlePort,
   ioType: 'source' | 'target',
   port: WorkflowMaterialPortCard,
-  direction: WorkflowNodeData['materialLaneDirection']
+  position: Position
 ): React.JSX.Element {
   return (
     <Handle
       id={handle.uuid}
       type={ioType}
-      position={direction === 'horizontal'
-        ? ioType === 'target' ? Position.Left : Position.Right
-        : ioType === 'target' ? Position.Top : Position.Bottom}
+      position={position}
       className={`wf-node__handle wf-node__handle--material wf-node__robot-transfer-handle wf-node__robot-transfer-handle--${ioType}`}
       data-workflow-handle-template-uuid={handle.uuid}
       data-workflow-handle-key={handle.handleKey}

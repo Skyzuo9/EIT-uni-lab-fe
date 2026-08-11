@@ -40,6 +40,18 @@ interface WorkflowDebuggerProps<TCommand extends string> {
   ) => void
 }
 
+interface WorkflowDebugControlsProps<TCommand extends string> {
+  actionGroupLabel?: string
+  dangerGroupLabel?: string
+  commandDataAttribute?: 'debug' | 'runtime'
+  controls: readonly WorkflowRuntimeControl<TCommand>[]
+  compact?: boolean
+  onCommand: (
+    command: TCommand,
+    message: string
+  ) => void
+}
+
 export function WorkflowDebugger<TCommand extends string>({
   debugStatus,
   runStatus,
@@ -139,20 +151,51 @@ export function WorkflowDebugger<TCommand extends string>({
             查看 Trace
           </button>
         )}
-        <DebugActionGroup
-          controls={controls.filter((control) => !control.danger)}
-          ariaLabel={actionGroupLabel}
-          commandDataAttribute={commandDataAttribute}
-          onCommand={onCommand}
-        />
-        <DebugActionGroup
-          controls={controls.filter((control) => control.danger)}
-          danger
-          ariaLabel={dangerGroupLabel}
+        <WorkflowDebugControls
+          controls={controls}
+          actionGroupLabel={actionGroupLabel}
+          dangerGroupLabel={dangerGroupLabel}
           commandDataAttribute={commandDataAttribute}
           onCommand={onCommand}
         />
       </div>
+    </div>
+  )
+}
+
+/**
+ * 复用工作流运行命令按钮；紧凑模式只保留常规调试器图标。
+ */
+export function WorkflowDebugControls<TCommand extends string>({
+  actionGroupLabel = '调试执行控制',
+  dangerGroupLabel = '调试停止控制',
+  commandDataAttribute = 'debug',
+  controls,
+  compact = false,
+  onCommand
+}: WorkflowDebugControlsProps<TCommand>): React.JSX.Element {
+  return (
+    <div
+      className={[
+        'workflow-runtime__debug-control-groups',
+        compact ? 'is-compact' : ''
+      ].filter(Boolean).join(' ')}
+    >
+      <DebugActionGroup
+        controls={controls.filter((control) => !control.danger)}
+        ariaLabel={actionGroupLabel}
+        commandDataAttribute={commandDataAttribute}
+        compact={compact}
+        onCommand={onCommand}
+      />
+      <DebugActionGroup
+        controls={controls.filter((control) => control.danger)}
+        danger
+        ariaLabel={dangerGroupLabel}
+        commandDataAttribute={commandDataAttribute}
+        compact={compact}
+        onCommand={onCommand}
+      />
     </div>
   )
 }
@@ -162,14 +205,18 @@ function DebugActionGroup<TCommand extends string>({
   danger = false,
   ariaLabel,
   commandDataAttribute,
+  compact = false,
   onCommand
 }: {
   controls: readonly WorkflowRuntimeControl<TCommand>[]
   danger?: boolean
   ariaLabel: string
   commandDataAttribute: 'debug' | 'runtime'
+  compact?: boolean
   onCommand: WorkflowDebuggerProps<TCommand>['onCommand']
 }): React.JSX.Element {
+  if (controls.length === 0) return <></>
+
   return (
     <div
       className={[
@@ -209,7 +256,7 @@ function DebugActionGroup<TCommand extends string>({
           >
             {control.glyph}
           </span>
-          <span>{control.label}</span>
+          {!compact && <span>{control.label}</span>}
         </WorkflowButton>
       ))}
     </div>

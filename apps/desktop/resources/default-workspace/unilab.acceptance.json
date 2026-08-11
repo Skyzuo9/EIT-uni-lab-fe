@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "package": {
+    "name": "unilab-bundled-reference",
+    "version": "1.0.0"
+  },
+  "acceptance": {
+    "requiresSimulator": true,
+    "expectedDeviceIds": ["plc_reference_device"]
+  }
+}

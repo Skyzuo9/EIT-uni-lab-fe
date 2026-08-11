@@ -30,8 +30,10 @@ interface PersistentWorkflowAuthoringPanelProps {
     projection: WorkflowPanelRuntimeProjection | null
   ) => void
   onSelectedWorkflowStepChange?: (workflowNodeUuid: string | null) => void
-  materialRoleFilter?: string | null
-  onMaterialRoleFilterChange?: (materialRole: string | null) => void
+  visibleMaterialRoles?: readonly string[] | null
+  onVisibleMaterialRolesChange?: (
+    visibleMaterialRoles: readonly string[] | null
+  ) => void
   onChooseWorkflow?: () => void
   ideBridge?: WorkflowIdeBridge
   hideEmbeddedCodeEditor?: boolean
@@ -57,8 +59,8 @@ export function PersistentWorkflowAuthoringPanel(
   return (
     <PersistentWorkflowAuthoringView
       model={model}
-      materialRoleFilter={props.materialRoleFilter}
-      onMaterialRoleFilterChange={props.onMaterialRoleFilterChange}
+      visibleMaterialRoles={props.visibleMaterialRoles}
+      onVisibleMaterialRolesChange={props.onVisibleMaterialRolesChange}
       hideEmbeddedCodeEditor={props.hideEmbeddedCodeEditor}
     />
   )

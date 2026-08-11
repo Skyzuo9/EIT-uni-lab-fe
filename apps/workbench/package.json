@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "author": "UniLab",
-  "description": "UniLab Authoring Workbench desktop and browser application",
+  "description": "UniLab 调试工作台（UniLab Workbench）desktop and browser application",
   "main": "./desktop/main.cjs",
   "dependencies": {
     "@theia/ai-core": "1.74.1",
@@ -78,20 +78,33 @@
     "build:desktop": "pnpm --filter @unilab/desktop build && pnpm build && pnpm build:desktop-launcher",
     "build:desktop-launcher": "node scripts/build-desktop-launcher.mjs",
     "desktop": "pnpm build:desktop && pnpm start:desktop",
+    "desktop:welcome": "pnpm build:desktop && pnpm start:desktop-welcome",
     "start": "node scripts/start-workbench.mjs",
     "start:desktop": "node scripts/start-workbench.mjs --desktop",
+    "start:desktop-welcome": "electron .",
     "start:desktop-remote": "node scripts/start-workbench.mjs --desktop --remote",
     "start:remote": "node scripts/start-workbench.mjs --remote",
     "start:theia-only": "theia start \"${THEIA_WORKSPACE:-../..}\" --hostname 127.0.0.1 --port ${THEIA_PORT:-3100} --plugins=local-dir:plugins",
     "package:mac": "pnpm build:desktop && node scripts/package-macos.mjs --signed",
+    "package:mac:developer-id": "pnpm build:desktop && node scripts/package-macos.mjs --developer-id",
+    "package:mac:adhoc": "pnpm build:desktop && node scripts/package-macos.mjs --adhoc",
     "package:mac:unsigned": "pnpm build:desktop && node scripts/package-macos.mjs --unsigned",
+    "package:linux": "pnpm build:desktop && node scripts/package-linux.mjs",
+    "package:win": "pnpm build:desktop && node scripts/package-windows.mjs",
     "test": "node --test scripts/*.test.mjs",
     "watch": "theia build --watch --mode development"
   },
   "theia": {
-    "target": "browser"
+    "target": "browser",
+    "frontend": {
+      "config": {
+        "applicationName": "UniLab 调试工作台",
+        "defaultLocale": "zh-cn"
+      }
+    }
   },
   "theiaPlugins": {
+    "MS-CEINTL.vscode-language-pack-zh-hans": "https://open-vsx.org/api/MS-CEINTL/vscode-language-pack-zh-hans/1.108.0/file/MS-CEINTL.vscode-language-pack-zh-hans-1.108.0.vsix",
     "ms-pyright.pyright": "https://open-vsx.org/api/ms-pyright/pyright/1.1.402/file/ms-pyright.pyright-1.1.402.vsix",
     "vscode.git-base": "https://open-vsx.org/api/vscode/git-base/1.95.3/file/vscode.git-base-1.95.3.vsix",
     "vscode.git": "https://open-vsx.org/api/vscode/git/1.95.3/file/vscode.git-1.95.3.vsix"

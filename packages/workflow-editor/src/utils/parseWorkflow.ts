@@ -14,6 +14,8 @@ import type { WorkflowNodeVisualKind } from './workflowNodeVisualKind'
 
 export interface WorkflowNode {
   id: string
+  /** OS Authoring 图中的静态禁用；保存后 Planner 不为它创建 Job。 */
+  disabled?: boolean
   // 展示名称(JSON 导出格式携带中文名;无则回退 id)
   name: string
   // OS 节点或模板发布的完整操作说明；画布 hover 使用，不参与执行身份。

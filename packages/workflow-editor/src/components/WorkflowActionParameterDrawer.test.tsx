@@ -12,6 +12,10 @@ const nodeUuid = '10000000-0000-4000-8000-000000000001'
 const targetNodeUuid = '10000000-0000-4000-8000-000000000002'
 const inputHandleUuid = '20000000-0000-4000-8000-000000000001'
 const outputHandleUuid = '20000000-0000-4000-8000-000000000002'
+const resourceHandleUuid = '20000000-0000-4000-8000-000000000003'
+const warehouseHandleUuid = '20000000-0000-4000-8000-000000000004'
+const materialTemplateUuid = '40000000-0000-4000-8000-000000000001'
+const warehouseTemplateUuid = '40000000-0000-4000-8000-000000000002'
 
 describe('WorkflowActionParameterDrawer', () => {
   it('presents typed inputs and OS-owned outputs in one focused dialog', () => {
@@ -35,7 +39,8 @@ describe('WorkflowActionParameterDrawer', () => {
 
     expect(markup).toContain('role="dialog"')
     expect(markup).toContain('aria-label="节点参数 dose"')
-    expect(text).toMatch(/输入\s*1/)
+    expect(text).toMatch(/已配置\s*1/)
+    expect(text).toMatch(/待补\s*0/)
     expect(text).toMatch(/输出\s*1/)
     expect(text).toContain('target_mass_g')
     expect(text).toContain('commanded_mass_g')
@@ -68,6 +73,107 @@ describe('WorkflowActionParameterDrawer', () => {
     expect(outputStart).toBeGreaterThanOrEqual(0)
     expect(visibleText(markup)).toContain('OS 操作模板')
     expect(outputMarkup).not.toMatch(/<input|<select/)
+  })
+
+  it('surfaces required parameters that still need configuration', () => {
+    const missingEditor: TypedActionEditorProjection = {
+      ...editor,
+      fields: [{
+        ...editor.fields[0]!,
+        valueState: 'missing',
+        value: undefined,
+        providerKind: 'missing'
+      }],
+      diagnostics: [{
+        handleUuid: inputHandleUuid,
+        fieldPath: '/param/target_mass_g',
+        severity: 'error',
+        code: 'required_action_parameter_missing',
+        message: '目标质量为必填参数'
+      }]
+    }
+    const markup = renderToStaticMarkup(
+      <WorkflowActionParameterDrawer
+        open
+        nodeName="dose"
+        templateName="固体投料"
+        editor={missingEditor}
+        outputHandles={[outputHandle]}
+        graph={graph}
+        editable
+        onClose={vi.fn()}
+        onProviderChange={vi.fn()}
+        onLiteralBlur={vi.fn()}
+        onClear={vi.fn()}
+        onNull={vi.fn()}
+      />
+    )
+
+    expect(visibleText(markup)).toMatch(/已配置\s*0/)
+    expect(visibleText(markup)).toMatch(/待补\s*1/)
+    expect(markup).toContain('class="has-error"')
+  })
+
+  it('uses current-lab material selectors filtered by each allowed template', () => {
+    const resourceEditor: TypedActionEditorProjection = {
+      ...editor,
+      fields: [
+        resourceField(
+          resourceHandleUuid,
+          'resource',
+          '待转运物料',
+          materialTemplateUuid
+        ),
+        resourceField(
+          warehouseHandleUuid,
+          'warehouse',
+          '目标仓库',
+          warehouseTemplateUuid
+        )
+      ]
+    }
+    const markup = renderToStaticMarkup(
+      <WorkflowActionParameterDrawer
+        open
+        nodeName="transfer"
+        templateName="标准物料转运"
+        editor={resourceEditor}
+        outputHandles={[]}
+        graph={graph}
+        editable
+        resourceSlotOptions={{
+          kind: 'ready',
+          options: [
+            {
+              materialUuid: '50000000-0000-4000-8000-000000000001',
+              resourceTemplateUuid: materialTemplateUuid,
+              displayLabel: '烧杯 A · …000001'
+            },
+            {
+              materialUuid: '50000000-0000-4000-8000-000000000002',
+              resourceTemplateUuid: warehouseTemplateUuid,
+              displayLabel: 'S08 仓库 · …000002'
+            }
+          ]
+        }}
+        onClose={vi.fn()}
+        onProviderChange={vi.fn()}
+        onLiteralBlur={vi.fn()}
+        onResourceChange={vi.fn()}
+        onClear={vi.fn()}
+        onNull={vi.fn()}
+      />
+    )
+    const resourceMarkup = listItemMarkup(markup, resourceHandleUuid)
+    const warehouseMarkup = listItemMarkup(markup, warehouseHandleUuid)
+
+    expect(resourceMarkup).toContain('待转运物料 实验室物料')
+    expect(resourceMarkup).toContain('烧杯 A · …000001')
+    expect(resourceMarkup).not.toContain('S08 仓库 · …000002')
+    expect(warehouseMarkup).toContain('目标仓库 实验室物料')
+    expect(warehouseMarkup).toContain('S08 仓库 · …000002')
+    expect(warehouseMarkup).not.toContain('烧杯 A · …000001')
+    expect(markup).not.toContain('物料引用（JSON）')
   })
 })
 
@@ -146,6 +252,39 @@ const graph: WorkflowAuthoringGraph = {
   }],
   node_templates: [],
   handle_templates: []
+}
+
+function resourceField(
+  handleUuid: string,
+  dataKey: string,
+  displayName: string,
+  allowedResourceTemplateUuid: string
+): TypedActionEditorProjection['fields'][number] {
+  return {
+    handleUuid,
+    dataKey,
+    displayName,
+    required: true,
+    hasDefault: false,
+    defaultValue: undefined,
+    nullable: false,
+    editorControl: 'material_port',
+    valueSchema: { $slot: 'ResourceSlot' },
+    allowedResourceTemplateUuids: [allowedResourceTemplateUuid],
+    valueState: 'missing',
+    value: undefined,
+    enumValues: null,
+    providerKind: 'literal',
+    workflowInput: null,
+    workflowInputOptions: []
+  }
+}
+
+function listItemMarkup(markup: string, handleUuid: string): string {
+  const start = markup.indexOf(`data-workflow-handle-template-uuid="${handleUuid}"`)
+  const end = markup.indexOf('</li>', start)
+  if (start < 0 || end < 0) throw new Error(`Missing parameter ${handleUuid}`)
+  return visibleText(markup.slice(start, end))
 }
 
 function visibleText(markup: string): string {

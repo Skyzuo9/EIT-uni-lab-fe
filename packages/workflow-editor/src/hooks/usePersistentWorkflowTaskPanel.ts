@@ -48,6 +48,8 @@ interface PersistentWorkflowDebugSession {
   breakpoints: string[]
 }
 
+export type PersistentWorkflowRunMode = WorkflowTaskRunMode | 'debug'
+
 interface PersistentWorkflowTaskPanelOptions {
   runtime: WorkflowRuntimePort
   workflowUuid: string
@@ -87,7 +89,7 @@ export function usePersistentWorkflowTaskPanel({
     ) ?? null
   )
   const [taskRunMode, setTaskRunMode] =
-    useState<WorkflowTaskRunMode>('normal')
+    useState<PersistentWorkflowRunMode>('normal')
   const [runtimeBusy, setRuntimeBusy] = useState(false)
   const [taskInputAuthority, setTaskInputAuthority] =
     useState<WorkflowAuthoringAggregate | null>(null)
@@ -97,7 +99,7 @@ export function usePersistentWorkflowTaskPanel({
   const [resourceSlotOptions, setResourceSlotOptions] =
     useState<WorkflowResourceSlotOptionsState | undefined>(undefined)
   const [traceViewerOpen, setTraceViewerOpen] = useState(false)
-  const [outputExpanded, setOutputExpanded] = useState(true)
+  const [outputExpanded, setOutputExpanded] = useState(false)
   const [outputTab, setOutputTab] = useState<WorkflowOutputTab>('nodes')
   const [selectedJobNodeUuid, setSelectedJobNodeUuid] =
     useState<string | null>(null)
@@ -121,7 +123,8 @@ export function usePersistentWorkflowTaskPanel({
     [aggregate]
   )
   const singleNodeTargetMissing =
-    taskRunMode === 'single_node' && !debugExecutionScope.startNodeId
+    (taskRunMode === 'single_node' || taskRunMode === 'debug') &&
+    !debugExecutionScope.startNodeId
   const task = taskRuntime.snapshot.task
   const taskJobs = taskRuntime.snapshot.jobs
   const taskOutputNodes = useMemo(
@@ -162,17 +165,25 @@ export function usePersistentWorkflowTaskPanel({
     ]
   )
   const taskNodeStates = useMemo(
-    () => Object.fromEntries(taskJobs.map((job) => [
-      job.workflow_node_uuid,
-      workflowTaskDagState(
-        job.status,
-        structure.nodes.find((node) => node.id === job.workflow_node_uuid)
-          ?.type === 'material_source',
-        task?.status
-      )
-    ])),
+    () => ({
+      ...Object.fromEntries(structure.nodes
+        .filter((node) => node.disabled)
+        .map((node) => [node.id, 'disabled'])),
+      ...Object.fromEntries(taskJobs.map((job) => [
+        job.workflow_node_uuid,
+        workflowTaskDagState(
+          job.status,
+          structure.nodes.find((node) => node.id === job.workflow_node_uuid)
+            ?.type === 'material_source',
+          task?.status
+        )
+      ]))
+    }),
     [structure.nodes, task?.status, taskJobs]
   )
+  const pausedBeforeNodeId = taskRuntime.snapshot.debug?.holds.find(
+    (hold) => hold.status === 'open'
+  )?.workflow_node_uuid ?? null
   const codeSourceMap = useMemo(
     () => workflowSourceMap(aggregate, editorValue),
     [aggregate, editorValue]
@@ -186,7 +197,7 @@ export function usePersistentWorkflowTaskPanel({
       startNodeId: debugExecutionScope.startNodeId,
       beforeStartNodeIds: debugExecutionScope.beforeStartNodeIds,
       breakpoints: debugBreakpoints,
-      pausedBeforeNodeId: null,
+      pausedBeforeNodeId,
       nodeStates: taskNodeStates
     }),
     [
@@ -195,6 +206,7 @@ export function usePersistentWorkflowTaskPanel({
       debugExecutionScope.beforeStartNodeIds,
       debugExecutionScope.startNodeId,
       structure.nodes,
+      pausedBeforeNodeId,
       taskNodeStates
     ]
   )
@@ -254,6 +266,16 @@ export function usePersistentWorkflowTaskPanel({
       .finally(() => setRuntimeBusy(false))
   }, [])
 
+  /** Refresh the current-lab material projection shared by authoring and runs. */
+  const refreshResourceSlotOptions = useCallback(async (): Promise<
+    WorkflowResourceSlotOptionsState
+  > => {
+    setResourceSlotOptions(undefined)
+    const next = await loadWorkflowResourceSlotOptions(resourceSlotOptionsPort)
+    setResourceSlotOptions(next)
+    return next
+  }, [resourceSlotOptionsPort])
+
   const toggleDebugStartNode = (nodeUuid: string): void => {
     const removing = debugExecutionScope.startNodeId === nodeUuid
     setDebugStartNodeId(removing ? null : nodeUuid)
@@ -290,7 +312,9 @@ export function usePersistentWorkflowTaskPanel({
   ): Promise<void> => {
     setTaskInputProblem(null)
     if (singleNodeTargetMissing) {
-      throw new Error('单节点调试前请先在画布节点上设置起始点')
+      throw new Error(
+        `${taskRunMode === 'debug' ? '调试启动' : '单节点调试'}前请先在画布节点上设置起始点`
+      )
     }
     if (!hasRunnableAppliedWorkflow(authority)) {
       throw new Error('已应用版本不包含可执行节点，不能创建工作流任务')
@@ -302,20 +326,21 @@ export function usePersistentWorkflowTaskPanel({
     if (nextForm.fields.some(({ descriptor }) =>
       containsResourceSlotInput(descriptor.schema)
     )) {
-      setResourceSlotOptions(
-        await loadWorkflowResourceSlotOptions(resourceSlotOptionsPort)
-      )
+      await refreshResourceSlotOptions()
     }
     setMessage(
       (taskRunMode === 'single_node'
         ? `目标节点 ${debugExecutionScope.startNodeId}；`
-        : '') +
+        : taskRunMode === 'debug'
+          ? `调试起始点 ${debugExecutionScope.startNodeId}，断点 ${debugBreakpoints.size} 个；`
+          : '') +
       `本次运行使用已应用版本 ${authority.workflow_revision}；` +
       '未填写且没有默认值的字段将保持省略'
     )
   }, [
+    debugBreakpoints.size,
     debugExecutionScope.startNodeId,
-    resourceSlotOptionsPort,
+    refreshResourceSlotOptions,
     setMessage,
     singleNodeTargetMissing,
     taskRunMode
@@ -329,7 +354,9 @@ export function usePersistentWorkflowTaskPanel({
   const openTaskInputForm = (): void => {
     setTaskInputProblem(null)
     if (singleNodeTargetMissing) {
-      setError('单节点调试前请先在画布节点上设置起始点')
+      setError(
+        `${taskRunMode === 'debug' ? '调试启动' : '单节点调试'}前请先在画布节点上设置起始点`
+      )
       return
     }
     if (!hasRunnableAppliedWorkflow(aggregate)) {
@@ -388,13 +415,19 @@ export function usePersistentWorkflowTaskPanel({
           readApplied: () => queue.run(
             () => runtime.getWorkflowAuthoring(workflowUuid)
           ),
-          createTask: (input) => taskRuntime.create(
-            taskRunMode,
-            input,
-            taskRunMode === 'single_node'
-              ? debugExecutionScope.startNodeId ?? undefined
-              : undefined
-          )
+          createTask: (input) => taskRunMode === 'debug'
+            ? taskRuntime.createDebug(
+              debugExecutionScope.startNodeId as string,
+              [...debugBreakpoints],
+              input
+            )
+            : taskRuntime.create(
+              taskRunMode,
+              input,
+              taskRunMode === 'single_node'
+                ? debugExecutionScope.startNodeId ?? undefined
+                : undefined
+            )
         })
         if (result.kind === 'reproject_before_create') {
           setTaskInputAuthority(result.authority)
@@ -448,6 +481,7 @@ export function usePersistentWorkflowTaskPanel({
     outputExpanded,
     outputTab,
     resourceSlotOptions,
+    refreshResourceSlotOptions,
     selectSingleNodeMode,
     runRuntime,
     runtimeBusy,
@@ -471,6 +505,7 @@ export function usePersistentWorkflowTaskPanel({
     taskJobs,
     taskNodeNames,
     taskNodeStates,
+    pausedBeforeNodeId,
     taskOutputNodes,
     taskRunMode,
     singleNodeTargetMissing,

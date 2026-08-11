@@ -262,6 +262,41 @@
     opacity: .62;
   }
 
+  :global(.persistent-authoring__resource-selector) {
+    display: grid;
+    min-width: 0;
+    gap: 5px;
+  }
+
+  :global(.persistent-authoring__resource-selector-heading) {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  :global(.persistent-authoring__resource-selector-heading) > span {
+    color: var(--unilab-color-text);
+    font-weight: 650;
+  }
+
+  :global(.persistent-authoring__resource-selector-heading) small {
+    flex: 0 0 auto;
+    padding: 2px 5px;
+    color: var(--unilab-color-primary);
+    border-radius: 999px;
+    background: var(--unilab-color-primary-soft);
+    font-size: 9px;
+    font-weight: 600;
+  }
+
+  :global(.persistent-authoring__resource-selector) > span[role='status'] {
+    color: var(--unilab-color-warning);
+    font-size: 10px;
+    line-height: 1.4;
+  }
+
   :global(.persistent-authoring__parameter-meta),
   :global(.persistent-authoring__parameter-actions),
   :global(.persistent-authoring__output-destinations) {

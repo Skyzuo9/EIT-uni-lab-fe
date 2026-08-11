@@ -51,20 +51,21 @@ export function SceneWorkbench({
   const selectedWorkflowStepId = useLabInteraction(
     (state) => state.selectedWorkflowStepId
   )
-  const materialRoleFilter = useLabInteraction(
-    (state) => state.activeWorkflowMaterialRoleFilter
+  const visibleMaterialRoles = useLabInteraction(
+    (state) => state.activeWorkflowVisibleMaterialRoles
   )
   const materialTransferRoutes = useMemo<MaterialTransferSceneRoute[]>(
     () => workflowMaterialTransferRoutes
       .filter((route) =>
-        !materialRoleFilter || route.materialRole === materialRoleFilter
+        !visibleMaterialRoles ||
+          visibleMaterialRoles.includes(route.materialRole)
       )
       .map((route) => ({
         ...route,
         selected: route.workflowNodeUuid === selectedWorkflowStepId
       })),
     [
-      materialRoleFilter,
+      visibleMaterialRoles,
       selectedWorkflowStepId,
       workflowMaterialTransferRoutes
     ]

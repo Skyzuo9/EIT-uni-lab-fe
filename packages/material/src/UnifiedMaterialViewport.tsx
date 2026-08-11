@@ -2,6 +2,7 @@ import {
   Component,
   useEffect,
   useState,
+  type ChangeEvent,
   type ErrorInfo,
   type ReactNode
 } from 'react'
@@ -27,9 +28,11 @@ export interface MaterialRoleFilterOption {
 
 export interface UnifiedMaterialViewportProps {
   renderView: (mode: MaterialViewMode, options: MaterialViewOptions) => ReactNode
-  materialRoleFilter?: string | null
+  visibleMaterialRoles?: readonly string[] | null
   materialRoleOptions?: readonly MaterialRoleFilterOption[]
-  onMaterialRoleFilterChange?: (materialRole: string | null) => void
+  onVisibleMaterialRolesChange?: (
+    visibleMaterialRoles: readonly string[] | null
+  ) => void
 }
 
 /**
@@ -37,15 +40,36 @@ export interface UnifiedMaterialViewportProps {
  */
 export function UnifiedMaterialViewport({
   renderView,
-  materialRoleFilter = null,
+  visibleMaterialRoles = null,
   materialRoleOptions = [],
-  onMaterialRoleFilterChange
+  onVisibleMaterialRolesChange
 }: UnifiedMaterialViewportProps): React.JSX.Element {
   const [mode, setMode] = useState<MaterialViewMode>(readStoredMode)
   const [showSites, setShowSites] = useState(readStoredSiteLayer)
   const [showMaterialTransfers, setShowMaterialTransfers] = useState(
     readStoredMaterialTransferLayer
   )
+  const visibleMaterialRoleSet = new Set(
+    visibleMaterialRoles ?? materialRoleOptions.map((option) => option.value)
+  )
+  const allMaterialRolesVisible =
+    visibleMaterialRoleSet.size === materialRoleOptions.length
+
+  /** 切换统一物料场景中的一个物料流角色，至少保留一种角色。 */
+  function handleMaterialRoleVisibilityChange(
+    event: ChangeEvent<HTMLInputElement>
+  ): void {
+    const next = new Set(visibleMaterialRoleSet)
+    if (event.currentTarget.checked) next.add(event.currentTarget.value)
+    else next.delete(event.currentTarget.value)
+    if (next.size === 0) return
+    const ordered = materialRoleOptions
+      .map((option) => option.value)
+      .filter((value) => next.has(value))
+    onVisibleMaterialRolesChange?.(
+      ordered.length === materialRoleOptions.length ? null : ordered
+    )
+  }
 
   useEffect(() => {
     globalThis.localStorage?.setItem(STORAGE_KEY, mode)
@@ -142,50 +166,57 @@ export function UnifiedMaterialViewport({
             <i aria-hidden="true" />
           </button>
         </div>
-        {materialRoleOptions.length > 0 && onMaterialRoleFilterChange && (
+        {materialRoleOptions.length > 0 && onVisibleMaterialRolesChange && (
           <details className="lab-material-role-filter">
-            <summary aria-label={`按物料角色筛选：${
-              materialRoleOptions.find((option) =>
-                option.value === materialRoleFilter
-              )?.label ?? '全部'
+            <summary aria-label={`物料节点可见性：${
+              allMaterialRolesVisible
+                ? '全部物料'
+                : `显示 ${visibleMaterialRoleSet.size}/${
+                    materialRoleOptions.length
+                  }`
             }`}>
               <FilterIcon />
               <span>
-                {materialRoleOptions.find((option) =>
-                  option.value === materialRoleFilter
-                )?.label ?? '全部物料'}
+                {allMaterialRolesVisible
+                  ? '全部物料'
+                  : `显示 ${visibleMaterialRoleSet.size}/${
+                      materialRoleOptions.length
+                    }`}
               </span>
             </summary>
-            <div role="radiogroup" aria-label="物料画布角色">
-              <button
-                type="button"
-                role="radio"
-                aria-checked={!materialRoleFilter}
-                className={!materialRoleFilter ? 'is-active' : undefined}
-                onClick={() => onMaterialRoleFilterChange(null)}
-              >
-                <i className="is-all" aria-hidden="true" />
-                <span>全部物料</span>
-              </button>
+            <div role="group" aria-label="物料节点可见性">
               {materialRoleOptions.map((option) => (
-                <button
+                <label
                   key={option.value}
-                  type="button"
-                  role="radio"
-                  aria-checked={materialRoleFilter === option.value}
-                  className={materialRoleFilter === option.value
+                  className={visibleMaterialRoleSet.has(option.value)
                     ? 'is-active'
                     : undefined}
-                  onClick={() => onMaterialRoleFilterChange(option.value)}
                 >
+                  <input
+                    type="checkbox"
+                    value={option.value}
+                    checked={visibleMaterialRoleSet.has(option.value)}
+                    disabled={
+                      visibleMaterialRoleSet.has(option.value) &&
+                      visibleMaterialRoleSet.size === 1
+                    }
+                    onChange={handleMaterialRoleVisibilityChange}
+                  />
                   <i
                     aria-hidden="true"
                     style={{ backgroundColor: option.accent }}
                   />
                   <span>{option.label}</span>
                   <small>{option.lineageCount}</small>
-                </button>
+                </label>
               ))}
+              <button
+                type="button"
+                disabled={allMaterialRolesVisible}
+                onClick={() => onVisibleMaterialRolesChange(null)}
+              >
+                全部显示
+              </button>
             </div>
           </details>
         )}

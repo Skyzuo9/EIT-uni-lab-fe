@@ -1,0 +1,55 @@
+/* 辅助物料（Material）像有机反应式的反应物一样贴近实际加入步骤，不绘制完整支线。 */
+.workflow :global(.react-flow__node-wfReactionMaterial) {
+  z-index: 1;
+  pointer-events: none;
+}
+
+.workflow :global(.wf-reaction-materials) {
+  display: grid;
+  width: 152px;
+  gap: 2px;
+  color: var(--unilab-color-text);
+  font-family: var(--unilab-font-sans);
+}
+
+.workflow :global(.wf-reaction-materials__item) {
+  display: grid;
+  min-height: 20px;
+  grid-template-columns: 5px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 3px;
+  border-bottom: 1px solid color-mix(
+    in srgb,
+    var(--wf-material-accent) 22%,
+    var(--unilab-color-border)
+  );
+  background: color-mix(
+    in srgb,
+    var(--unilab-color-surface) 88%,
+    transparent
+  );
+}
+
+.workflow :global(.wf-reaction-materials__item strong) {
+  overflow: hidden;
+  font-size: 10px;
+  font-weight: 650;
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workflow :global(.wf-reaction-materials__item small) {
+  color: var(--unilab-color-text-muted);
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.workflow :global(.wf-reaction-materials__dot) {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--wf-material-accent);
+}

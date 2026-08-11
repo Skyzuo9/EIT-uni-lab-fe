@@ -37,6 +37,62 @@ export interface WorkflowTaskCreateRequest {
   meta_data?: Record<string, unknown>
 }
 
+export interface DebugWorkflowTaskCreateRequest {
+  workflow_uuid: string
+  start_node_uuids: string[]
+  breakpoint_node_uuids: string[]
+  input?: Record<string, unknown>
+  description?: string | null
+  meta_data?: Record<string, unknown>
+}
+
+export interface WorkflowNodeAdmissionHold {
+  uuid: string
+  workflow_task_uuid: string
+  workflow_node_job_uuid: string
+  workflow_node_uuid: string
+  attempt: number
+  reason: 'start' | 'breakpoint' | 'step'
+  status: 'open' | 'released' | 'canceled'
+  create_time: string
+  update_time: string
+  released_at?: string
+}
+
+export interface DebugWorkflowTaskProjection {
+  task: WorkflowTask
+  jobs: WorkflowNodeJob[]
+  configuration: {
+    start_node_uuids: string[]
+    breakpoint_node_uuids: string[]
+  }
+  execution_policy: 'step' | 'continue'
+  status: 'paused' | 'running' | 'completed' | 'stopped'
+  holds: WorkflowNodeAdmissionHold[]
+  active_node_uuids: string[]
+  out_of_scope_node_uuids: string[]
+  disabled_node_uuids: string[]
+}
+
+export interface DebugWorkflowTaskCommandRequest {
+  type: 'step' | 'continue'
+  scope: { type: 'hold'; hold_uuid: string }
+  idempotency_key: string
+}
+
+export interface DebugWorkflowTaskCommand {
+  uuid: string
+  workflow_task_uuid: string
+  type: 'step' | 'continue'
+  scope: { type: 'hold'; hold_uuid: string }
+  idempotency_key: string
+  status: 'pending' | 'succeeded' | 'rejected'
+  result: Record<string, unknown>
+  create_time: string
+  update_time: string
+  consumed_at?: string
+}
+
 export interface WorkflowTaskListQuery {
   page?: number
   page_size?: number

@@ -29,6 +29,7 @@ import {
   errorMessage,
   parseTypedFieldValue
 } from '../utils/persistentAuthoringProjection'
+import { updatePersistentAuthoringNodeDisabled } from '../utils/persistentAuthoringGraph'
 import { useWorkflowCanvasDeletion } from './useWorkflowCanvasDeletion'
 import {
   workflowNodeAtSourcePosition,
@@ -115,7 +116,7 @@ export function usePersistentWorkflowCanvasNodeEditor(
   /** 选择画布节点，并把代码编辑器定位到对应源码行。 */
   const selectCanvasNode = useCallback((
     nodeUuid: string,
-    origin: 'canvas' | 'source' = 'canvas'
+    origin: 'canvas' | 'source' | 'runtime' = 'canvas'
   ): void => {
     if (selectedNodeNameDirty && nodeUuid !== selectedNodeUuid) {
       setError('请先保存当前节点名称修改，再选择其他节点')
@@ -386,6 +387,24 @@ export function usePersistentWorkflowCanvasNodeEditor(
     }
   }
 
+  /** 切换 OS Authoring 节点的静态禁用状态；Planner 将自动排除已禁用节点。 */
+  const toggleNodeDisabled = (nodeUuid: string): void => {
+    if (!graph || !canvasMutationEnabled) return
+    const node = graph.nodes.find((item) => item.uuid === nodeUuid)
+    if (!node) return
+    try {
+      const disabled = node.disabled !== true
+      setGraph(updatePersistentAuthoringNodeDisabled(graph, nodeUuid, disabled))
+      setCanvasDirty(true)
+      setError(null)
+      setMessage(disabled
+        ? '节点已标记为禁用；保存后运行会自动跳过且不创建节点作业'
+        : '节点已恢复启用；保存后将重新进入执行计划')
+    } catch (updateError) {
+      setError(errorMessage(updateError))
+    }
+  }
+
   /** 解析文本字段并更新操作节点（ActionNode）的类型化字段。 */
   const updateTypedFieldFromRaw = (
     field: TypedActionFieldProjection,
@@ -468,6 +487,7 @@ export function usePersistentWorkflowCanvasNodeEditor(
     selectedMaterialSourceProjection,
     selectedNodeIsInternal,
     sourceSelectedNodeUuid,
+    toggleNodeDisabled,
     updateMaterialSource,
     updateTypedField,
     updateTypedFieldFromRaw

@@ -20,6 +20,7 @@ export class UniLabAgentWidget extends ReactWidget {
 
   protected snapshot: WorkbenchSessionSnapshot | null = null
   protected frameRevision = 0
+  protected agentActionPending = false
 
   @postConstruct()
   protected init(): void {
@@ -28,6 +29,7 @@ export class UniLabAgentWidget extends ReactWidget {
     this.title.caption = 'UniLab Agent — current Editable Package sessions'
     this.title.closable = true
     this.title.iconClass = 'codicon codicon-sparkle'
+    this.title.dataset = { unilabAgentPanel: 'true' }
     this.node.style.minWidth = '420px'
     this.toDispose.push(this.sessionClient.onSessionChanged(snapshot => {
       this.snapshot = snapshot
@@ -46,20 +48,46 @@ export class UniLabAgentWidget extends ReactWidget {
   }
 
   protected readonly openStandalone = (): void => {
-    const url = this.snapshot?.identity?.agent?.url
+    const url = this.snapshot?.agent?.url ?? this.snapshot?.identity?.agent?.url
     if (url) globalThis.open(url, '_blank', 'noopener,noreferrer')
   }
 
+  protected readonly startAgent = async (): Promise<void> => {
+    if (this.agentActionPending) return
+    this.agentActionPending = true
+    this.update()
+    try {
+      this.snapshot = await this.workbenchSession.startAgent()
+    } catch {
+      this.snapshot = await this.workbenchSession.getSnapshot()
+    } finally {
+      this.agentActionPending = false
+      this.update()
+    }
+  }
+
   protected override render(): React.ReactElement {
-    const agent = this.snapshot?.identity?.agent
+    const agent = this.snapshot?.agent ?? this.snapshot?.identity?.agent
     const workspaceName = agent?.workDir.split('/').filter(Boolean).at(-1) ??
       'Editable Package'
     if (!agent || agent.phase !== 'ready' || !agent.url) {
+      const transitioning = this.agentActionPending
+        || agent?.phase === 'starting'
+        || agent?.phase === 'stopping'
       return (
         <section className="unilab-aionui unilab-agent__gate">
-          <span className="codicon codicon-loading codicon-modifier-spin" />
+          <span className={transitioning
+            ? 'codicon codicon-loading codicon-modifier-spin'
+            : 'codicon codicon-sparkle'} />
           <strong>UniLab Agent</strong>
-          <p>{agent?.diagnostic ?? '正在启动工作区 Agent…'}</p>
+          <p>{agent?.diagnostic ?? (transitioning
+            ? '正在启动工作区 Agent…'
+            : '工作区 Agent 尚未启动')}</p>
+          <button
+            type="button"
+            disabled={transitioning}
+            onClick={() => void this.startAgent()}
+          >{agent?.phase === 'failed' ? '重试' : '启动 Agent'}</button>
         </section>
       )
     }

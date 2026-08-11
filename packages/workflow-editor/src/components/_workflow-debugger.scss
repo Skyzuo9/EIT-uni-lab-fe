@@ -239,6 +239,12 @@
   gap: var(--unilab-space-2);
 }
 
+.workflow :global(.workflow-runtime__debug-control-groups) {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--unilab-space-2);
+}
+
 .workflow :global(.workflow-runtime__debug-action-group) {
   display: inline-flex;
   align-items: center;

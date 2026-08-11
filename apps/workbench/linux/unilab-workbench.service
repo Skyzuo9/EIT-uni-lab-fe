@@ -1,5 +1,5 @@
 [Unit]
-Description=UniLab Authoring Workbench remote browser service
+Description=UniLab Workbench remote browser service
 After=network-online.target
 Wants=network-online.target
 

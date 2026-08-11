@@ -27,6 +27,12 @@ export function useWorkflowTaskRuntime(
     input?: Record<string, unknown>,
     targetNodeUuid?: string
   ) => Promise<WorkflowTask>
+  createDebug: (
+    startNodeUuid: string,
+    breakpointNodeUuids: readonly string[],
+    input?: Record<string, unknown>
+  ) => Promise<WorkflowTask>
+  debugCommand: (type: 'step' | 'continue') => Promise<void>
   command: (type: WorkflowTaskCommandType) => Promise<void>
   refresh: () => Promise<void>
   clearError: () => void
@@ -65,6 +71,9 @@ export function useWorkflowTaskRuntime(
      */
     create: (runMode, input, targetNodeUuid) =>
       controller.create(runMode, input, targetNodeUuid),
+    createDebug: (startNodeUuid, breakpointNodeUuids, input) =>
+      controller.createDebug(startNodeUuid, breakpointNodeUuids, input),
+    debugCommand: (type) => controller.debugCommand(type),
     command: (type) => controller.command(type),
     refresh: () => controller.refresh(),
     clearError: () => controller.clearError()

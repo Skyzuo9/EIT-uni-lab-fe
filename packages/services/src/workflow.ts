@@ -102,6 +102,10 @@ export type {
 } from './workflowMaterialSource'
 export type { WorkflowRuntimePort } from './workflowPort'
 export type {
+  DebugWorkflowTaskCommand,
+  DebugWorkflowTaskCommandRequest,
+  DebugWorkflowTaskCreateRequest,
+  DebugWorkflowTaskProjection,
   DeviceActionTaskChangedEvent,
   DeviceCatalogChangedEvent,
   WorkflowEventSubscription,
@@ -310,6 +314,25 @@ export function createWorkflowRuntime(
         headers: jsonHeaders(),
         body: JSON.stringify(body)
       }),
+    createDebugWorkflowTask: (body) =>
+      runtimeRequest('/api/v1/debug/workflow-tasks', {
+        method: 'POST',
+        headers: jsonHeaders(),
+        body: JSON.stringify(body)
+      }),
+    getDebugWorkflowTask: (taskUuid) =>
+      runtimeRequest(
+        `/api/v1/debug/workflow-tasks/${encodeURIComponent(taskUuid)}`
+      ),
+    commandDebugWorkflowTask: (taskUuid, body) =>
+      runtimeRequest(
+        `/api/v1/debug/workflow-tasks/${encodeURIComponent(taskUuid)}/commands`,
+        {
+          method: 'POST',
+          headers: jsonHeaders(),
+          body: JSON.stringify(body)
+        }
+      ),
     listWorkflowTasks: (query = {}) =>
       runtimeRequest(workflowTaskListPath(query)),
     getWorkflowTask: (taskUuid) =>
