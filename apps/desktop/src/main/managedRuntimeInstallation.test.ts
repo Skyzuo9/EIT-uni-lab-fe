@@ -15,7 +15,10 @@ import { promisify } from 'node:util'
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { ManagedRuntimeInstallation } from './managedRuntimeInstallation'
+import {
+  ManagedRuntimeInstallation,
+  resolveManagedRuntimeDataDirectory
+} from './managedRuntimeInstallation'
 
 const temporaryDirectories: string[] = []
 /** 把 Node 回调式进程执行接口转换为 Promise，供入口可执行性验收使用。 */
@@ -29,6 +32,32 @@ afterEach(async () => {
 })
 
 describe('ManagedRuntimeInstallation', () => {
+  it('keeps POSIX Constructor prefixes outside Application Support paths with spaces', () => {
+    const userDataDirectory = join(
+      '/Users/lc',
+      'Library',
+      'Application Support',
+      '@unilab',
+      'workbench'
+    )
+
+    expect(resolveManagedRuntimeDataDirectory({
+      platform: 'darwin',
+      homeDirectory: '/Users/lc',
+      userDataDirectory
+    })).toBe('/Users/lc/.unilabos/workbench')
+    expect(resolveManagedRuntimeDataDirectory({
+      platform: 'linux',
+      homeDirectory: '/home/lc',
+      userDataDirectory: '/home/lc/.config/@unilab/workbench'
+    })).toBe('/home/lc/.unilabos/workbench')
+    expect(resolveManagedRuntimeDataDirectory({
+      platform: 'win32',
+      homeDirectory: 'C:\\Users\\lc',
+      userDataDirectory: 'C:\\Users\\lc\\AppData\\Roaming\\@unilab\\workbench'
+    })).toBe('C:\\Users\\lc\\AppData\\Roaming\\@unilab\\workbench')
+  })
+
   it('verifies and installs the bundled Constructor payload once', async () => {
     const root = await mkdtemp(join(tmpdir(), 'unilab-managed-runtime-'))
     temporaryDirectories.push(root)

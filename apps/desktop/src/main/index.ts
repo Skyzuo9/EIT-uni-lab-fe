@@ -27,7 +27,10 @@ import { discoverDefaultCondaEnvironment } from './localRuntimeEnvironment'
 import { registerDeviceProvisioningIpc } from './deviceProvisioningIpc'
 import { LocalDeviceProvisioningManager } from './localDeviceProvisioningManager'
 import { LocalDeviceProvisioningStore } from './localDeviceProvisioningStore'
-import { ManagedRuntimeInstallation } from './managedRuntimeInstallation'
+import {
+  ManagedRuntimeInstallation,
+  resolveManagedRuntimeDataDirectory
+} from './managedRuntimeInstallation'
 import { registerManagedRuntimeInstallationIpc } from './managedRuntimeInstallationIpc'
 import {
   LocalRuntimeManager,
@@ -796,7 +799,11 @@ function createManagedRuntimeInstallation(): ManagedRuntimeInstallation | undefi
   }
   return new ManagedRuntimeInstallation({
     resourcesDirectory,
-    dataDirectory: app.getPath('userData')
+    dataDirectory: resolveManagedRuntimeDataDirectory({
+      platform: process.platform,
+      homeDirectory: homedir(),
+      userDataDirectory: app.getPath('userData')
+    })
   })
 }
 
