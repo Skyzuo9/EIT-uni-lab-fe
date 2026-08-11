@@ -16,6 +16,9 @@ describe('Workflow ResourceSlot application boundary', () => {
     expect(authoringPanel).toMatch(/WorkflowResourceSlotOptionsPort/)
     expect(authoringPanel).toMatch(/resourceSlotOptionsPort/)
     expect(authoringPanel).toMatch(/loadWorkflowResourceSlotOptions/)
+    expect(authoringPanel).toMatch(/refreshResourceSlotOptions/)
+    expect(source('./PersistentWorkflowOverlays.tsx'))
+      .toMatch(/WorkflowActionParameterDrawer[\s\S]*resourceSlotOptions/)
     expect(authoringPanel).toMatch(
       /workflowTaskInputProblem\s*\(\s*submitError\s*,\s*submittedForm\s*\)/
     )
@@ -34,17 +37,24 @@ describe('Workflow ResourceSlot application boundary', () => {
     expect(production).not.toMatch(/useMaterialStore|MaterialStoreProvider/)
   })
 
-  it('composes options in kernel-web from current scope and services.materials', () => {
-    const adapter = source(
+  it('composes the same material graph adapter in kernel-web and Theia', () => {
+    const sharedAdapter = source('../utils/workflowResourceSlotOptions.ts')
+    const kernelAdapter = source(
       '../../../../apps/kernel-web/src/integrations/lab-workbench/panelAdapter.tsx'
     )
+    const theiaAdapter = source(
+      '../../../../packages/workbench-theia/src/browser/unilab-workbench-widget.tsx'
+    )
 
-    expect(adapter).toMatch(/WorkflowRenderer[\s\S]*useMaterialRuntime\s*\(/)
-    expect(adapter).toMatch(/services\.materials\.getGraph\s*\(/)
-    expect(adapter).toMatch(/resourceSlotOptionsPort/)
-    expect(adapter).toMatch(/material\.id/)
-    expect(adapter).toMatch(/material\.sourceTemplateId/)
-    expect(adapter).toMatch(/material\.name/)
+    expect(sharedAdapter).toMatch(/graph\.getGraph\s*\(scope\)/)
+    expect(sharedAdapter).toMatch(/material\.id/)
+    expect(sharedAdapter).toMatch(/material\.sourceTemplateId/)
+    expect(sharedAdapter).toMatch(/material\.name/)
+    expect(kernelAdapter).toMatch(/WorkflowRenderer[\s\S]*useMaterialRuntime\s*\(/)
+    expect(kernelAdapter).toMatch(/createWorkflowResourceSlotOptionsPort/)
+    expect(kernelAdapter).toMatch(/resourceSlotOptionsPort/)
+    expect(theiaAdapter).toMatch(/createWorkflowResourceSlotOptionsPort/)
+    expect(theiaAdapter).toMatch(/resourceSlotOptionsPort={resourceSlotOptionsPort}/)
   })
 })
 

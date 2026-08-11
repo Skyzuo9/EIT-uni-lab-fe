@@ -266,6 +266,16 @@ export function usePersistentWorkflowTaskPanel({
       .finally(() => setRuntimeBusy(false))
   }, [])
 
+  /** Refresh the current-lab material projection shared by authoring and runs. */
+  const refreshResourceSlotOptions = useCallback(async (): Promise<
+    WorkflowResourceSlotOptionsState
+  > => {
+    setResourceSlotOptions(undefined)
+    const next = await loadWorkflowResourceSlotOptions(resourceSlotOptionsPort)
+    setResourceSlotOptions(next)
+    return next
+  }, [resourceSlotOptionsPort])
+
   const toggleDebugStartNode = (nodeUuid: string): void => {
     const removing = debugExecutionScope.startNodeId === nodeUuid
     setDebugStartNodeId(removing ? null : nodeUuid)
@@ -316,9 +326,7 @@ export function usePersistentWorkflowTaskPanel({
     if (nextForm.fields.some(({ descriptor }) =>
       containsResourceSlotInput(descriptor.schema)
     )) {
-      setResourceSlotOptions(
-        await loadWorkflowResourceSlotOptions(resourceSlotOptionsPort)
-      )
+      await refreshResourceSlotOptions()
     }
     setMessage(
       (taskRunMode === 'single_node'
@@ -332,7 +340,7 @@ export function usePersistentWorkflowTaskPanel({
   }, [
     debugBreakpoints.size,
     debugExecutionScope.startNodeId,
-    resourceSlotOptionsPort,
+    refreshResourceSlotOptions,
     setMessage,
     singleNodeTargetMissing,
     taskRunMode
@@ -473,6 +481,7 @@ export function usePersistentWorkflowTaskPanel({
     outputExpanded,
     outputTab,
     resourceSlotOptions,
+    refreshResourceSlotOptions,
     selectSingleNodeMode,
     runRuntime,
     runtimeBusy,

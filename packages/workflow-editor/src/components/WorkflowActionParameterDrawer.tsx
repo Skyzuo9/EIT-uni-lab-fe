@@ -9,7 +9,11 @@ import type {
   TypedActionEditorProjection,
   TypedActionFieldProjection
 } from '../utils/workflowActionCatalog'
+import type {
+  WorkflowResourceSlotOptionsState
+} from '../utils/workflowResourceSlotOptions'
 import { WorkflowButton } from './WorkflowButton'
+import { WorkflowResourceSelector } from './WorkflowResourceSelector'
 
 interface WorkflowActionParameterDrawerProps {
   open: boolean
@@ -19,12 +23,17 @@ interface WorkflowActionParameterDrawerProps {
   outputHandles: readonly WorkflowActionHandleTemplate[]
   graph: WorkflowAuthoringGraph | null
   editable: boolean
+  resourceSlotOptions?: WorkflowResourceSlotOptionsState
   onClose: () => void
   onProviderChange: (
     field: TypedActionFieldProjection,
     provider: string
   ) => void
   onLiteralBlur: (field: TypedActionFieldProjection, raw: string) => void
+  onResourceChange?: (
+    field: TypedActionFieldProjection,
+    materialUuid: string | null
+  ) => void
   onClear: (handleUuid: string) => void
   onNull: (handleUuid: string) => void
 }
@@ -37,9 +46,11 @@ export function WorkflowActionParameterDrawer({
   outputHandles,
   graph,
   editable,
+  resourceSlotOptions,
   onClose,
   onProviderChange,
   onLiteralBlur,
+  onResourceChange,
   onClear,
   onNull
 }: WorkflowActionParameterDrawerProps): React.JSX.Element {
@@ -180,7 +191,11 @@ export function WorkflowActionParameterDrawer({
                             )}
                           >
                             <option value="missing">未设置</option>
-                            <option value="literal">固定值</option>
+                            <option value="literal">
+                              {field.editorControl === 'material_port'
+                                ? '实验室物料'
+                                : '固定值'}
+                            </option>
                             {field.workflowInputOptions.map((name) => (
                               <option key={name} value={`workflow:${name}`}>
                                 工作流输入：{name}
@@ -198,7 +213,9 @@ export function WorkflowActionParameterDrawer({
                           field={field}
                           providerKind={providerKind}
                           editable={editable}
+                          resourceSlotOptions={resourceSlotOptions}
                           onLiteralBlur={commitLiteral}
+                          onResourceChange={onResourceChange}
                         />
                       </div>
 
@@ -331,16 +348,35 @@ function ParameterValueControl({
   field,
   providerKind,
   editable,
-  onLiteralBlur
+  resourceSlotOptions,
+  onLiteralBlur,
+  onResourceChange
 }: {
   field: TypedActionFieldProjection
   providerKind: TypedActionFieldProjection['providerKind']
   editable: boolean
+  resourceSlotOptions?: WorkflowResourceSlotOptionsState
   onLiteralBlur: (field: TypedActionFieldProjection, raw: string) => void
+  onResourceChange?: (
+    field: TypedActionFieldProjection,
+    materialUuid: string | null
+  ) => void
 }): React.JSX.Element {
   const disabled = !editable ||
     providerKind === 'workflow_input' ||
     providerKind === 'upstream_output'
+  if (field.editorControl === 'material_port') {
+    return (
+      <WorkflowResourceSelector
+        label={`${field.displayName} 实验室物料`}
+        value={resourceSlotUuid(field.value)}
+        optionsState={resourceSlotOptions}
+        allowedResourceTemplateUuids={field.allowedResourceTemplateUuids}
+        disabled={disabled || !onResourceChange}
+        onChange={(materialUuid) => onResourceChange?.(field, materialUuid)}
+      />
+    )
+  }
   if (field.enumValues) {
     return (
       <label>
@@ -364,15 +400,11 @@ function ParameterValueControl({
     <label>
       <input
         key={`${field.handleUuid}:${typedFieldInputValue(field)}`}
-        aria-label={field.editorControl === 'material_port'
-          ? `${field.displayName} 物料引用（JSON）`
-          : `${field.displayName} 参数值`}
+        aria-label={`${field.displayName} 参数值`}
         defaultValue={typedFieldInputValue(field)}
-        placeholder={field.editorControl === 'material_port'
-          ? '请输入物料引用（JSON）'
-          : field.hasDefault
-            ? `默认 ${jsonLabel(field.defaultValue)}`
-            : '未设置'}
+        placeholder={field.hasDefault
+          ? `默认 ${jsonLabel(field.defaultValue)}`
+          : '未设置'}
         disabled={disabled}
         onBlur={(event) => onLiteralBlur(field, event.target.value)}
       />
@@ -444,6 +476,16 @@ function typedFieldInputValue(field: TypedActionFieldProjection): string {
   if (field.valueState === 'missing') return ''
   if (field.enumValues) return JSON.stringify(field.value)
   return jsonLabel(field.value)
+}
+
+function resourceSlotUuid(value: unknown): string {
+  if (
+    value &&
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    typeof (value as Record<string, unknown>).uuid === 'string'
+  ) return String((value as Record<string, unknown>).uuid)
+  return ''
 }
 
 function schemaLabel(schema: Record<string, unknown>): string {

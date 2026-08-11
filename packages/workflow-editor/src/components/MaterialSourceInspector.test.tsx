@@ -55,6 +55,8 @@ function rendersClosedSelectorInPublicGraphOrder(): void {
   expect(markup).toContain('在代码中打开资源模板')
   expect(markup).toContain('已有物料')
   expect(markup).toContain('新建物料')
+  expect(markup).toContain('当前实验室 · 1 个兼容物料')
+  expect(markup).toContain('384 Well Plate A · …000011')
   expect(markup).toContain('挂载点')
   expect(markup).toContain('库位范围')
   expect(markup).toContain('搜索候选库位')
@@ -118,7 +120,11 @@ function editor(): MaterialSourceEditorProjection {
       resourceTemplateUuid: '60000000-0000-4000-8000-000000000099',
       materialClass: 'Stacker'
     }],
-    fixedMaterials: [],
+    fixedMaterials: [{
+      uuid: '80000000-0000-4000-8000-000000000011',
+      name: '384 Well Plate A',
+      resourceTemplateUuid: '60000000-0000-4000-8000-000000000001'
+    }],
     sites: [
       {
         uuid: '70000000-0000-4000-8000-000000000001',

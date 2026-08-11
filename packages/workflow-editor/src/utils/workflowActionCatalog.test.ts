@@ -86,6 +86,50 @@ describe('typed Action editor projection', () => {
     ])
   })
 
+  it('narrows a generic material input through the node passthrough override', () => {
+    const dynamicCatalog = structuredClone(catalog)
+    const dynamicTemplate = dynamicCatalog.actionTemplates[0]!
+    const materialInput = dynamicTemplate.handles.find(
+      (handle) => handle.uuid === materialHandleUuid
+    )!
+    materialInput.allowedResourceTemplateUuids = null
+    const materialOutputUuid = '30000000-0000-4000-8000-000000000012'
+    dynamicTemplate.handles.push({
+      ...materialInput,
+      uuid: materialOutputUuid,
+      ioType: 'source',
+      dataSource: 'result'
+    })
+    const dynamicGraph = structuredClone(graph)
+    const dynamicNode = dynamicGraph.nodes.find(
+      (node) => node.uuid === nodeUuid
+    )!
+    dynamicNode.meta_data = {
+      unilab: {
+        material_passthrough_handles: {
+          [materialOutputUuid]: materialHandleUuid
+        },
+        output_schema_overrides: {
+          [materialOutputUuid]: {
+            $slot: 'ResourceSlot',
+            allowed_resource_template_uuids: [sourceTemplateUuid]
+          }
+        }
+      }
+    }
+
+    const projected = projectTypedActionEditor(
+      dynamicCatalog,
+      dynamicGraph,
+      nodeUuid,
+      []
+    )
+
+    expect(projected.fields.find(
+      (field) => field.handleUuid === materialHandleUuid
+    )?.allowedResourceTemplateUuids).toEqual([sourceTemplateUuid])
+  })
+
   it('inserts one Published child invocation with only parent-owned state', () => {
     expect(boundaryModule.createPublishedWorkflowNode).toBeTypeOf('function')
     const catalogWithChild = publishedBoundaryCatalog()
@@ -975,7 +1019,9 @@ describe('typed Action editor projection', () => {
     expect(source).toContain('bindTypedActionWorkflowInput')
     expect(source).toContain('WorkflowActionParameterDrawer')
     expect(drawerSource).toContain('参数来源')
-    expect(drawerSource).toContain('物料引用（JSON）')
+    expect(drawerSource).toContain('实验室物料')
+    expect(drawerSource).toContain('WorkflowResourceSelector')
+    expect(drawerSource).not.toContain('物料引用（JSON）')
     expect(source).toContain('projectTypedActionEditor')
     expect(drawerSource).toContain('data-workflow-handle-template-uuid')
     expect(source).not.toContain('lastIndexOf')

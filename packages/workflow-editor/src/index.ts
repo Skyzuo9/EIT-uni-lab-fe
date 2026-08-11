@@ -16,6 +16,10 @@ export type {
   WorkflowResourceSlotOptionsPort,
   WorkflowResourceSlotOptionsState
 } from './utils/workflowResourceSlotOptions'
+export {
+  createWorkflowResourceSlotOptionsPort,
+  workflowResourceSlotOptionLabel
+} from './utils/workflowResourceSlotOptions'
 export type {
   WorkflowTraceDetailQuery,
   WorkflowTraceDetailResult,

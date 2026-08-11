@@ -43,6 +43,7 @@ import {
   type Services
 } from '@unilab/services'
 import {
+  createWorkflowResourceSlotOptionsPort,
   WorkflowPanel,
   type WorkflowPanelRuntimeProjection
 } from '@unilab/workflow-editor'
@@ -583,6 +584,10 @@ function WorkbenchSurface({
       assertCapability(services.getCapabilityStatus(capability), capability)
     }
   }), [scope, services])
+  const resourceSlotOptionsPort = useMemo(
+    () => createWorkflowResourceSlotOptionsPort(services.materials, scope),
+    [scope, services.materials]
+  )
   const deviceConnection: DeviceManagementConnection = session.phase === 'ready'
     ? 'connected'
     : session.phase === 'failed'
@@ -641,6 +646,7 @@ function WorkbenchSurface({
     >
       <WorkflowPanel
         runtime={services.workflow}
+        resourceSlotOptionsPort={resourceSlotOptionsPort}
         active={viewMode === 'workflow' || viewMode === 'split'}
         workflowUuid={workflowUuid}
         allowWorkflowSelection

@@ -21,10 +21,10 @@ import {
 } from '@unilab/material'
 import { useServices, type Services } from '@unilab/services'
 import {
+  createWorkflowResourceSlotOptionsPort,
   WorkflowPanel,
   workflowMaterialRoleLabel,
-  type WorkflowPanelRuntimeProjection,
-  type WorkflowResourceSlotOptionsPort
+  type WorkflowPanelRuntimeProjection
 } from '@unilab/workflow-editor'
 import { useStore } from 'zustand'
 import {
@@ -228,22 +228,11 @@ function WorkflowRenderer(
   const workflowProjectionRef = useRef<WorkflowPanelRuntimeProjection | null>(
     null
   )
-  const resourceSlotOptionsPort = useMemo<WorkflowResourceSlotOptionsPort>(
-    () => ({
-      list: async () => {
-        if (!materialRuntime.scope) {
-          throw new Error('请先选择实验室，再选择 Material ResourceSlot')
-        }
-        const aggregates = await props.scope.services.materials.getGraph(
-          materialRuntime.scope
-        )
-        return aggregates.map(({ material }) => ({
-          materialUuid: material.id,
-          resourceTemplateUuid: material.sourceTemplateId,
-          displayLabel: `${material.name} · ${material.id}`
-        }))
-      }
-    }),
+  const resourceSlotOptionsPort = useMemo(
+    () => createWorkflowResourceSlotOptionsPort(
+      props.scope.services.materials,
+      materialRuntime.scope
+    ),
     [materialRuntime.scope, props.scope.services.materials]
   )
   /** 发布当前可见工作流（Workflow）的稳定身份，并恢复该面板最后一份路线投影。 */

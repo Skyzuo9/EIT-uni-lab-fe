@@ -87,6 +87,7 @@ export function PersistentWorkflowOverlays({
         ) ?? []}
         graph={graph}
         editable={!busy && policy.canvasMutationEnabled}
+        resourceSlotOptions={resourceSlotOptions}
         onClose={() => setActionParametersOpen(false)}
         onProviderChange={(field, provider) => {
           if (provider.startsWith('workflow:')) {
@@ -99,6 +100,10 @@ export function PersistentWorkflowOverlays({
           }
         }}
         onLiteralBlur={updateTypedFieldFromRaw}
+        onResourceChange={(field, materialUuid) => updateTypedField(
+          field.handleUuid,
+          materialUuid ? { uuid: materialUuid } : undefined
+        )}
         onClear={(handleUuid) => updateTypedField(handleUuid, undefined)}
         onNull={(handleUuid) => updateTypedField(handleUuid, null)}
       />
