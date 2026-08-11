@@ -51,6 +51,23 @@ export function resizedWorkflowOutputHeight(
 }
 
 /**
+ * 读取运行输出真正所属工作流视口的高度，而不是只包裹调试器与输出的内容容器。
+ *
+ * @param panel 运行输出面板元素。
+ * @param viewportHeight 无法定位工作流视口时使用的浏览器高度。
+ * @returns 可用于计算输出上限的布局高度。
+ */
+export function workflowOutputAvailableHeight(
+  panel: HTMLElement | null,
+  viewportHeight: number
+): number {
+  const workflow = panel?.closest<HTMLElement>('.workflow-runtime')
+  return workflow?.getBoundingClientRect().height
+    ?? panel?.parentElement?.getBoundingClientRect().height
+    ?? viewportHeight
+}
+
+/**
  * 为运行输出提供指针、键盘和双击复位共用的确定性尺寸状态。
  *
  * @returns 可直接绑定到水平分隔条的状态和事件处理器。
@@ -97,8 +114,10 @@ export function useResizableWorkflowOutput(): ResizableWorkflowOutput {
   ) => {
     if (event.button !== 0) return
     const panel = event.currentTarget.parentElement
-    const availableHeight = panel?.parentElement?.getBoundingClientRect().height
-      ?? globalThis.innerHeight
+    const availableHeight = workflowOutputAvailableHeight(
+      panel,
+      globalThis.innerHeight
+    )
     const nextMaximum = Math.max(
       MINIMUM_OUTPUT_HEIGHT,
       Math.min(MAXIMUM_OUTPUT_HEIGHT, availableHeight - 160)
