@@ -227,6 +227,31 @@ test('SZLab composite material workflow uses one orthogonal visible layout', asy
   )
 
   const strategySelect = panel.getByLabel('布局策略')
+  await panel.getByRole('button', { name: '完整支线', exact: true }).click()
+  await strategySelect.selectOption('primary-sample-serpentine')
+  const applyPrimaryLayout = panel.getByRole('button', {
+    name: '应用主样品蛇形布局'
+  })
+  if (await applyPrimaryLayout.isEnabled()) await applyPrimaryLayout.click()
+  await panel.locator('.react-flow__controls-fitview').click()
+  await page.waitForTimeout(600)
+  const primarySupportingSourceEvidence = await supportingSourcePlacementEvidence(
+    panel,
+    'serpentine'
+  )
+  expect(primarySupportingSourceEvidence.length).toBeGreaterThan(0)
+  expect(primarySupportingSourceEvidence.every((source) =>
+    source.above && source.before
+  ), JSON.stringify(primarySupportingSourceEvidence, null, 2)).toBe(true)
+  const primaryTransferSpacingEvidence = await primaryTransferSpacing(panel)
+  expect(primaryTransferSpacingEvidence.transfer.length).toBeGreaterThan(0)
+  expect(primaryTransferSpacingEvidence.ordinary.length).toBeGreaterThan(0)
+  expect(average(primaryTransferSpacingEvidence.transfer))
+    .toBeLessThan(average(primaryTransferSpacingEvidence.ordinary) * 0.75)
+  await panel.locator('.react-flow').screenshot({
+    path: resolve(artifactDirectory, '14-primary-full-branches.png')
+  })
+
   await strategySelect.selectOption('material-swimlanes')
   await expect(panel.locator('.react-flow'))
     .toHaveClass(/wf-layout--material-swimlanes/)
@@ -249,8 +274,9 @@ test('SZLab composite material workflow uses one orthogonal visible layout', asy
     overlappingPairs(swimlaneNodeBoxes),
     JSON.stringify(swimlaneNodeBoxes, null, 2)
   ).toEqual([])
-  const materialPathEvidence = await materialEdges
-    .locator('.react-flow__edge-path')
+  const materialPathEvidence = await panel.locator(
+    '[data-workflow-material-role="primary_sample"] .react-flow__edge-path'
+  )
     .evaluateAll((paths) => paths.map((path) => ({
       edgeId: path.closest('.react-flow__edge')?.getAttribute('data-testid') ?? '',
       width: (path as SVGGraphicsElement).getBBox().width,
@@ -258,19 +284,13 @@ test('SZLab composite material workflow uses one orthogonal visible layout', asy
     })))
   expect(materialPathEvidence.every((edge) => edge.width <= 0.5),
     JSON.stringify(materialPathEvidence, null, 2)).toBe(true)
-  const swimlaneSourceOrder = await materialSources.evaluateAll((sources) =>
-    sources.map((source) => {
-      const label = source.querySelector(
-        '[data-workflow-material-source-name]'
-      )?.textContent?.trim() ?? ''
-      return { label, x: source.getBoundingClientRect().x }
-    }).sort((left, right) => left.x - right.x).map((source) => source.label)
+  const verticalSupportingSourceEvidence = await supportingSourcePlacementEvidence(
+    panel,
+    'vertical'
   )
-  expect(swimlaneSourceOrder).toEqual(
-    graph.nodes
-      .filter((node) => node.type === 'material_source')
-      .map((node) => node.name)
-  )
+  expect(verticalSupportingSourceEvidence.every((source) =>
+    source.above && source.before
+  ), JSON.stringify(verticalSupportingSourceEvidence, null, 2)).toBe(true)
   const stretchedActions = await panel.locator(
     '.wf-node--action-strip' +
     '[data-workflow-layout-strategy="material-swimlanes"]'
@@ -329,8 +349,9 @@ test('SZLab composite material workflow uses one orthogonal visible layout', asy
     overlappingPairs(horizontalNodeBoxes),
     JSON.stringify(horizontalNodeBoxes, null, 2)
   ).toEqual([])
-  const horizontalMaterialPathEvidence = await materialEdges
-    .locator('.react-flow__edge-path')
+  const horizontalMaterialPathEvidence = await panel.locator(
+    '[data-workflow-material-role="primary_sample"] .react-flow__edge-path'
+  )
     .evaluateAll((paths) => paths.map((path) => ({
       edgeId: path.closest('.react-flow__edge')?.getAttribute('data-testid') ?? '',
       height: (path as SVGGraphicsElement).getBBox().height,
@@ -398,19 +419,11 @@ test('SZLab composite material workflow uses one orthogonal visible layout', asy
     JSON.stringify(materialSourceLabelEvidence, null, 2)).toBe(true)
   expect(materialSourceLabelEvidence.every((item) => !item.overlap),
     JSON.stringify(materialSourceLabelEvidence, null, 2)).toBe(true)
-  const horizontalSourceOrder = await materialSources.evaluateAll((sources) =>
-    sources.map((source) => {
-      const label = source.querySelector(
-        '[data-workflow-material-source-name]'
-      )?.textContent?.trim() ?? ''
-      return { label, y: source.getBoundingClientRect().y }
-    }).sort((left, right) => left.y - right.y).map((source) => source.label)
-  )
-  expect(horizontalSourceOrder).toEqual(
-    graph.nodes
-      .filter((node) => node.type === 'material_source')
-      .map((node) => node.name)
-  )
+  const horizontalSupportingSourceEvidence =
+    await supportingSourcePlacementEvidence(panel, 'horizontal')
+  expect(horizontalSupportingSourceEvidence.every((source) =>
+    source.above && source.before
+  ), JSON.stringify(horizontalSupportingSourceEvidence, null, 2)).toBe(true)
   const verticallyStretchedActions = await panel.locator(
     '.wf-node--action-strip' +
     '[data-workflow-layout-strategy="material-swimlanes"]' +
@@ -524,6 +537,10 @@ test('SZLab composite material workflow uses one orthogonal visible layout', asy
       horizontal_handles: horizontalTransferEvidence,
       horizontal_copy: horizontalTransferCopyEvidence
     },
+    primary_full_branches: {
+      supporting_sources: primarySupportingSourceEvidence,
+      transfer_spacing: primaryTransferSpacingEvidence
+    },
     material_edges: await materialEdges.count(),
     ready_edges: await readyEdges.count(),
     ready_handles: readyHandleEvidence,
@@ -534,14 +551,14 @@ test('SZLab composite material workflow uses one orthogonal visible layout', asy
     rounded_ready_paths: routedPaths.filter((path) => path.includes('Q')).length,
     clear_workbench: clearWorkbenchEvidence,
     material_swimlanes: {
-      source_order: swimlaneSourceOrder,
+      supporting_sources: verticalSupportingSourceEvidence,
       vertical_edges: materialPathEvidence,
       stretched_actions: stretchedActions,
       node_overlap_pairs: overlappingPairs(swimlaneNodeBoxes),
       horizontal: {
         screenshot_viewport: horizontalViewport,
         grouped_actions: horizontalGroupedActionEvidence,
-        source_order: horizontalSourceOrder,
+        supporting_sources: horizontalSupportingSourceEvidence,
         horizontal_edges: horizontalMaterialPathEvidence,
         directional_handles: horizontalMaterialHandleEvidence,
         stretched_actions: verticallyStretchedActions,
@@ -562,6 +579,142 @@ interface HorizontalMaterialHandleEvidence {
   screenHeight: number
   backgroundColor: string
   nodeEdgeDelta: number
+}
+
+interface SupportingSourcePlacementEvidence {
+  sourceId: string
+  anchorId: string
+  targetSide: string
+  above: boolean
+  before: boolean
+}
+
+/**
+ * 读取辅助 MaterialSource 与其最终主样品接入节点的相对位置。
+ */
+async function supportingSourcePlacementEvidence(
+  panel: Locator,
+  mode: 'serpentine' | 'vertical' | 'horizontal'
+): Promise<SupportingSourcePlacementEvidence[]> {
+  return panel.evaluate((root, layoutMode) => {
+    const nodeById = new Map(
+      [...root.querySelectorAll<HTMLElement>(
+        '.wf-node[data-workflow-node-uuid]'
+      )].map((node) => [node.dataset.workflowNodeUuid ?? '', node])
+    )
+    const edges = [...root.querySelectorAll<SVGGElement>(
+      '.react-flow__edge g[data-workflow-edge-source-node-uuid]'
+    )].map((edge) => ({
+      source: edge.dataset.workflowEdgeSourceNodeUuid ?? '',
+      target: edge.dataset.workflowEdgeTargetNodeUuid ?? '',
+      targetHandle: edge.dataset.workflowEdgeTargetHandleUuid ?? '',
+      role: edge.dataset.workflowMaterialRole ?? ''
+    })).filter((edge) => edge.role)
+    const primaryNodeIds = new Set(edges
+      .filter((edge) => edge.role === 'primary_sample')
+      .flatMap((edge) => [edge.source, edge.target]))
+    const outgoing = new Map<string, typeof edges>()
+    for (const edge of edges) {
+      outgoing.set(edge.source, [...(outgoing.get(edge.source) ?? []), edge])
+    }
+    const sources = [...root.querySelectorAll<HTMLElement>(
+      '.wf-node--material-source[data-workflow-material-role]' +
+      ':not([data-workflow-material-role="primary_sample"])'
+    )]
+
+    return sources.map((source) => {
+      const sourceId = source.dataset.workflowNodeUuid ?? ''
+      const visited = new Set([sourceId])
+      let frontier = [...(outgoing.get(sourceId) ?? [])]
+      let joiningEdge: typeof edges[number] | undefined
+      while (frontier.length > 0 && !joiningEdge) {
+        joiningEdge = frontier.find((edge) => primaryNodeIds.has(edge.target))
+        if (joiningEdge) break
+        const next: typeof edges = []
+        for (const edge of frontier) {
+          if (visited.has(edge.target)) continue
+          visited.add(edge.target)
+          next.push(...(outgoing.get(edge.target) ?? []))
+        }
+        frontier = next
+      }
+      const anchorId = joiningEdge?.target ?? ''
+      const anchor = nodeById.get(anchorId)
+      if (!anchor || !joiningEdge) {
+        return {
+          sourceId,
+          anchorId,
+          targetSide: 'missing',
+          above: false,
+          before: false
+        }
+      }
+      const sourceRect = source.getBoundingClientRect()
+      const anchorRect = anchor.getBoundingClientRect()
+      const targetHandle = anchor.querySelector<HTMLElement>(
+        `[data-workflow-handle-template-uuid="${joiningEdge.targetHandle}"]`
+      )
+      const targetSide = targetHandle?.classList.contains(
+        'react-flow__handle-right'
+      ) ? 'right' : targetHandle?.classList.contains(
+        'react-flow__handle-left'
+      ) ? 'left' : 'top'
+      return {
+        sourceId,
+        anchorId,
+        targetSide,
+        above: sourceRect.bottom <= anchorRect.top,
+        before: layoutMode === 'serpentine' && targetSide === 'right'
+          ? sourceRect.left >= anchorRect.right
+          : sourceRect.right <= anchorRect.left
+      }
+    })
+  }, mode)
+}
+
+/** 统计同一蛇形行内普通节点段与含转运节点段的可见空白。 */
+async function primaryTransferSpacing(panel: Locator): Promise<{
+  transfer: number[]
+  ordinary: number[]
+}> {
+  return panel.evaluate((root) => {
+    const nodeById = new Map(
+      [...root.querySelectorAll<HTMLElement>(
+        '.wf-node[data-workflow-node-uuid]'
+      )].map((node) => [node.dataset.workflowNodeUuid ?? '', node])
+    )
+    const result = { transfer: [] as number[], ordinary: [] as number[] }
+    const edges = [...root.querySelectorAll<SVGGElement>(
+      '[data-workflow-material-role="primary_sample"]'
+    )]
+    for (const edge of edges) {
+      const source = nodeById.get(edge.dataset.workflowEdgeSourceNodeUuid ?? '')
+      const target = nodeById.get(edge.dataset.workflowEdgeTargetNodeUuid ?? '')
+      if (!source || !target) continue
+      const sourceRect = source.getBoundingClientRect()
+      const targetRect = target.getBoundingClientRect()
+      const sameRow = Math.abs(
+        sourceRect.top + sourceRect.height / 2 -
+        (targetRect.top + targetRect.height / 2)
+      ) <= 4
+      if (!sameRow) continue
+      const gap = Math.max(
+        0,
+        Math.max(sourceRect.left, targetRect.left) -
+          Math.min(sourceRect.right, targetRect.right)
+      )
+      const includesTransfer = [source, target].some(
+        (node) => node.dataset.workflowNodeVisualKind === 'robot-transfer'
+      )
+      result[includesTransfer ? 'transfer' : 'ordinary'].push(gap)
+    }
+    return result
+  })
+}
+
+/** 返回数列平均值；测试调用前已确保集合非空。 */
+function average(values: readonly number[]): number {
+  return values.reduce((sum, value) => sum + value, 0) / values.length
 }
 
 /**

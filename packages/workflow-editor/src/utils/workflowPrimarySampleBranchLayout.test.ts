@@ -19,8 +19,12 @@ describe('packWorkflowSupportingBranches', () => {
     const bands = packWorkflowSupportingBranches(branches, 72, 328, 4)
     const firstBandX = bands[0]?.map(({ x }) => x) ?? []
 
-    expect(bands).toHaveLength(2)
-    expect(firstBandX).toEqual([72, 72 + WORKFLOW_SUPPORTING_BRANCH_NODE_GAP])
+    expect(bands).toHaveLength(1)
+    expect(firstBandX).toEqual([
+      72 - WORKFLOW_SUPPORTING_BRANCH_NODE_GAP,
+      72 + 328 - WORKFLOW_SUPPORTING_BRANCH_NODE_GAP,
+      72 + 2 * 328 - WORKFLOW_SUPPORTING_BRANCH_NODE_GAP
+    ])
     expect(bands.flat()).toHaveLength(3)
   })
 })
@@ -37,7 +41,7 @@ function supportingBranch(id: string, order: number): WorkflowSupportingBranch {
   return {
     nodes: [node],
     anchorIndex: 0,
-    anchorColumn: 0,
+    anchorColumn: order,
     order,
     flowDirection: 'into-primary'
   }

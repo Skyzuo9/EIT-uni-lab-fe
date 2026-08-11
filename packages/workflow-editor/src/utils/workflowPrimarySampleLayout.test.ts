@@ -109,7 +109,9 @@ describe('layoutWorkflowPrimarySampleFlow', () => {
     )).toBe(true)
     expect(backbone).not.toContain('reagent-source')
     expect(positions.get('reagent-source')?.y)
-      .toBeGreaterThan(positions.get('step-3')?.y ?? 0)
+      .toBeLessThan(positions.get('step-3')?.y ?? 0)
+    expect(positions.get('reagent-source')?.x)
+      .toBeLessThan(positions.get('step-3')?.x ?? 0)
   })
 
   /** 验证反向蛇形行的辅助物料按实际接入列排列，避免来源连线互相穿越。 */
@@ -214,6 +216,10 @@ describe('layoutWorkflowPrimarySampleFlow', () => {
       .toBeLessThan(positions.get('east-reagent-source')?.x ?? 0)
     expect(positions.get('step-6')?.x)
       .toBeLessThan(positions.get('step-4')?.x ?? 0)
+    expect(positions.get('west-reagent-source')?.x)
+      .toBeGreaterThan(positions.get('step-6')?.x ?? 0)
+    expect(positions.get('east-reagent-source')?.x)
+      .toBeGreaterThan(positions.get('step-4')?.x ?? 0)
     expect(Math.abs(
       (positions.get('west-reagent-source')?.x ?? 0) -
       (positions.get('step-6')?.x ?? 0)
@@ -321,6 +327,50 @@ describe('layoutWorkflowPrimarySampleFlow', () => {
       target: 'left',
       source: 'right'
     })
+    expect(positions.get('reagent-source')?.y)
+      .toBeLessThan(positions.get('step-2')?.y ?? 0)
+  })
+
+  /** 验证主干中转运节点与前后动作的主轴间距均压缩为普通列距的一半。 */
+  it('halves both adjacent gaps around a robot transfer', () => {
+    const primaryOutput = resourceSlotHandle(
+      'primary-output',
+      'sample',
+      'source'
+    )
+    const source = materialSource(
+      'primary-source',
+      '主样品',
+      'primary_sample',
+      primaryOutput
+    )
+    const before = sampleAction('before', true)
+    const transfer = {
+      ...sampleAction('transfer', true),
+      visualKind: 'robot-transfer' as const
+    }
+    const after = sampleAction('after', false)
+    const links = [
+      materialLink('primary-source', primaryOutput.uuid, 'before', 'before-input'),
+      materialLink('before', 'before-output', 'transfer', 'transfer-input'),
+      materialLink('transfer', 'transfer-output', 'after', 'after-input')
+    ]
+
+    const result = layoutWorkflowPrimarySampleFlow(
+      [source, before, transfer, after],
+      links
+    )
+    const positions = new Map(result.nodes.map((node) => [node.id, node.x]))
+
+    expect((positions.get('before') ?? 0) -
+      (positions.get('primary-source') ?? 0))
+      .toBe(WORKFLOW_PRIMARY_SAMPLE_COLUMN_GAP)
+    expect((positions.get('transfer') ?? 0) -
+      (positions.get('before') ?? 0))
+      .toBe((WORKFLOW_PRIMARY_SAMPLE_COLUMN_GAP + 184) / 2)
+    expect((positions.get('after') ?? 0) -
+      (positions.get('transfer') ?? 0))
+      .toBe((WORKFLOW_PRIMARY_SAMPLE_COLUMN_GAP + 120) / 2)
   })
 })
 

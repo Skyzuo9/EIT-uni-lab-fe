@@ -5,6 +5,8 @@ export const WORKFLOW_SUPPORTING_BRANCH_NODE_GAP = 208
 
 const WORKFLOW_SUPPORTING_BRANCH_INTERVAL_GAP = 24
 const WORKFLOW_SUPPORTING_BRANCH_MAX_NODE_WIDTH = 184
+const WORKFLOW_SUPPORTING_BRANCH_MATERIAL_SOURCE_WIDTH = 112
+const WORKFLOW_SUPPORTING_BRANCH_TRANSFER_WIDTH = 120
 
 export interface WorkflowSupportingBranch {
   nodes: readonly WorkflowNode[]
@@ -12,6 +14,10 @@ export interface WorkflowSupportingBranch {
   anchorColumn: number
   order: number
   flowDirection: 'into-primary' | 'out-of-primary'
+  /** 主干接入节点的真实横坐标；省略时按固定列计算。 */
+  anchorX?: number
+  /** 接入节点本身也是转运节点时，同样压缩连接距离。 */
+  anchorVisualKind?: WorkflowNode['visualKind']
 }
 
 export interface WorkflowSupportingBranchPlacement {
@@ -42,13 +48,14 @@ export function workflowBackboneColumnForIndex(
 /**
  * 将同一主样品行的辅助物料支线压缩成可共享垂直带的局部短链。
  *
- * 每条支线的汇入端与主样品（Primary Sample）动作保持同列，前序节点向画布
- * 内侧展开；互不重叠的支线共享同一垂直带，发生水平碰撞时才增加新带。
+ * 每条支线严格沿主干流向从接入节点的前侧进入；互不重叠的支线共享同一
+ * 垂直带，发生水平碰撞时才增加新带。支线允许伸出主干蛇形范围，避免为了
+ * 截断画布宽度而把 MaterialSource 挤到接入点后侧。
  *
  * @param branches 已按接入位置和声明顺序稳定排序的辅助物料支线。
  * @param originX 主样品主干最西侧坐标。
- * @param mainColumnGap 主样品主干列间距。
- * @param mainColumnCount 主样品主干的固定列数。
+ * @param mainColumnGap 主样品主干普通列间距。
+ * @param mainColumnCount 每条蛇形行允许的主干节点数。
  * @returns 按垂直带分组的节点坐标与东西向端口布局。
  */
 export function packWorkflowSupportingBranches(
@@ -63,38 +70,22 @@ export function packWorkflowSupportingBranches(
   }> = []
 
   for (const branch of branches) {
-    const candidates = supportingBranchCandidates(
+    const layout = layoutSupportingBranch(
       branch,
       originX,
-      mainColumnGap
+      mainColumnGap,
+      mainColumnCount
     )
-    const canvasEnd = originX +
-      (mainColumnCount - 1) * mainColumnGap +
-      WORKFLOW_SUPPORTING_BRANCH_MAX_NODE_WIDTH
-    let installed = false
-    for (const band of bands) {
-      const layout = candidates.find((candidate) => {
-        const interval = branchInterval(candidate)
-        return interval.start >= originX && interval.end <= canvasEnd &&
-          band.intervals.every((occupied) =>
-            !intervalsOverlap(interval, occupied)
-          )
-      })
-      if (!layout) continue
-      band.intervals.push(branchInterval(layout))
-      band.placements.push(...layout)
-      installed = true
-      break
+    const interval = branchInterval(layout)
+    const available = bands.find((band) => band.intervals.every((occupied) =>
+      !intervalsOverlap(interval, occupied)
+    ))
+    if (available) {
+      available.intervals.push(interval)
+      available.placements.push(...layout)
+    } else {
+      bands.push({ intervals: [interval], placements: [...layout] })
     }
-    if (installed) continue
-    const layout = candidates.find((candidate) => {
-      const interval = branchInterval(candidate)
-      return interval.start >= originX && interval.end <= canvasEnd
-    }) ?? candidates[0] ?? []
-    bands.push({
-      intervals: [branchInterval(layout)],
-      placements: [...layout]
-    })
   }
 
   return bands.map(({ placements }) => placements.sort(
@@ -103,116 +94,86 @@ export function packWorkflowSupportingBranches(
 }
 
 /**
- * 生成支线贴合接入点、向近侧错开和向远侧错开的三个候选位置。
- *
- * @param branch 当前辅助物料支线。
- * @param originX 主干最西侧坐标。
- * @param mainColumnGap 主干列间距。
- * @returns 由短到长排列的候选坐标；打包器优先复用已有垂直带。
- */
-function supportingBranchCandidates(
-  branch: WorkflowSupportingBranch,
-  originX: number,
-  mainColumnGap: number
-): WorkflowSupportingBranchPlacement[][] {
-  const nearOffset = branch.anchorColumn === 0 || branch.anchorColumn === 2
-    ? WORKFLOW_SUPPORTING_BRANCH_NODE_GAP
-    : -WORKFLOW_SUPPORTING_BRANCH_NODE_GAP
-  const preferredExpansion = branch.anchorColumn < 2
-  return [
-    layoutSupportingBranch(
-      branch,
-      originX,
-      mainColumnGap,
-      0,
-      preferredExpansion
-    ),
-    layoutSupportingBranch(
-      branch,
-      originX,
-      mainColumnGap,
-      0,
-      !preferredExpansion
-    ),
-    ...[nearOffset, -nearOffset].flatMap((attachmentOffset) => [
-      layoutSupportingBranch(
-        branch,
-        originX,
-        mainColumnGap,
-        attachmentOffset,
-        preferredExpansion
-      ),
-      layoutSupportingBranch(
-        branch,
-        originX,
-        mainColumnGap,
-        attachmentOffset,
-        !preferredExpansion
-      )
-    ])
-  ]
-}
-
-/**
- * 让一条辅助物料支线的末端贴近主干，并向可用空间更多的一侧展开。
+ * 让一条辅助物料支线沿主干流向排列，并从接入节点的前侧汇入或离开。
  *
  * @param branch 一条不穿过主样品主干的连通支线。
  * @param originX 主干最西侧坐标。
- * @param mainColumnGap 主干列间距。
- * @param attachmentOffset 支线连接端相对主干接入列的水平偏移。
- * @param expandsEast 支线其余节点是否从连接端向东展开。
+ * @param mainColumnGap 主干普通列间距。
+ * @param mainColumnCount 每条蛇形行允许的主干节点数。
  * @returns 同一垂直带内按局部间距排列的支线节点。
  */
 function layoutSupportingBranch(
   branch: WorkflowSupportingBranch,
   originX: number,
   mainColumnGap: number,
-  attachmentOffset: number,
-  expandsEast: boolean
+  mainColumnCount: number
 ): WorkflowSupportingBranchPlacement[] {
-  const anchorX = originX + branch.anchorColumn * mainColumnGap
-  const flowRunsEast = expandsEast ===
-    (branch.flowDirection === 'out-of-primary')
+  const anchorX = branch.anchorX ??
+    originX + branch.anchorColumn * mainColumnGap
+  const row = Math.floor(branch.anchorIndex / mainColumnCount)
+  const flowRunsEast = row % 2 === 0
+  const flowSign = flowRunsEast ? 1 : -1
   const internalPorts: WorkflowNodePortLayout = flowRunsEast
     ? { target: 'left', source: 'right' }
     : { target: 'right', source: 'left' }
   const terminalIndex = Math.max(0, branch.nodes.length - 1)
-  const attachmentX = anchorX + attachmentOffset
+  const attachmentIndex = branch.flowDirection === 'into-primary'
+    ? terminalIndex
+    : 0
+  const attachmentNode = branch.nodes[attachmentIndex]
+  const attachmentGap = branchNodeGap(
+    attachmentNode,
+    branch.anchorVisualKind
+  )
+  const attachmentSign = branch.flowDirection === 'into-primary'
+    ? -flowSign
+    : flowSign
+  const attachmentX = anchorX + attachmentSign * attachmentGap
+  const distances = branchNodeDistances(branch.nodes)
 
   return branch.nodes.map((node, index) => ({
     node,
-    x: attachmentX +
-      (expandsEast ? 1 : -1) *
-      (branch.flowDirection === 'into-primary'
-        ? terminalIndex - index
-        : index) * WORKFLOW_SUPPORTING_BRANCH_NODE_GAP,
+    x: branch.flowDirection === 'into-primary'
+      ? attachmentX - flowSign *
+        (distances[terminalIndex]! - distances[index]!)
+      : attachmentX + flowSign * distances[index]!,
     anchorIndex: branch.anchorIndex,
-    ports: branchAttachmentPorts(
-      internalPorts,
-      branch.flowDirection,
-      index,
-      terminalIndex,
-      attachmentOffset
-    )
+    ports: internalPorts
   }))
 }
 
-/** 让发生水平错位的支线连接端 Handle 始终朝向主干接入动作。 */
-function branchAttachmentPorts(
-  internalPorts: WorkflowNodePortLayout,
-  flowDirection: WorkflowSupportingBranch['flowDirection'],
-  nodeIndex: number,
-  terminalIndex: number,
-  attachmentOffset: number
-): WorkflowNodePortLayout {
-  const attachmentIndex = flowDirection === 'into-primary' ? terminalIndex : 0
-  if (nodeIndex !== attachmentIndex || attachmentOffset === 0) {
-    return internalPorts
+/** 计算支线各节点相对第一个节点的累计水平距离。 */
+function branchNodeDistances(nodes: readonly WorkflowNode[]): number[] {
+  const distances = [0]
+  for (let index = 1; index < nodes.length; index += 1) {
+    distances.push(
+      distances[index - 1]! + branchNodeGap(nodes[index - 1], nodes[index])
+    )
   }
-  const sideTowardAnchor = attachmentOffset < 0 ? 'right' : 'left'
-  return flowDirection === 'into-primary'
-    ? { ...internalPorts, source: sideTowardAnchor }
-    : { ...internalPorts, target: sideTowardAnchor }
+  return distances
+}
+
+/** 只要相邻一端为转运节点，就把该段主轴间距压缩为普通支线的一半。 */
+function branchNodeGap(
+  left: WorkflowNode | undefined,
+  right: WorkflowNode | WorkflowNode['visualKind'] | undefined
+): number {
+  const rightVisualKind = typeof right === 'string' ? right : right?.visualKind
+  return left?.visualKind === 'robot-transfer' ||
+    rightVisualKind === 'robot-transfer'
+    ? (WORKFLOW_SUPPORTING_BRANCH_NODE_GAP + branchNodeWidth(left)) / 2
+    : WORKFLOW_SUPPORTING_BRANCH_NODE_GAP
+}
+
+/** 返回支线节点在横向完整支线中的紧凑视觉宽度。 */
+function branchNodeWidth(node: WorkflowNode | undefined): number {
+  if (node?.visualKind === 'robot-transfer') {
+    return WORKFLOW_SUPPORTING_BRANCH_TRANSFER_WIDTH
+  }
+  if (node?.type === 'material_source') {
+    return WORKFLOW_SUPPORTING_BRANCH_MATERIAL_SOURCE_WIDTH
+  }
+  return WORKFLOW_SUPPORTING_BRANCH_MAX_NODE_WIDTH
 }
 
 /** 返回一条局部支线在画布上的水平占用区间。 */

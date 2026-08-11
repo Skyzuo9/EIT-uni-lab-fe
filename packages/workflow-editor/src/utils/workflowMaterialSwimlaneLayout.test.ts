@@ -11,9 +11,11 @@ import {
   WORKFLOW_MATERIAL_ACTION_FIRST_HANDLE_Y,
   WORKFLOW_HORIZONTAL_MATERIAL_SOURCE_HANDLE_AXIS,
   WORKFLOW_HORIZONTAL_TRANSFER_NODE_HANDLE_AXIS,
+  WORKFLOW_HORIZONTAL_TRANSFER_LAYER_GAP,
   WORKFLOW_MATERIAL_LANE_GAP,
   WORKFLOW_VERTICAL_MATERIAL_SOURCE_HANDLE_AXIS,
-  WORKFLOW_VERTICAL_TRANSFER_NODE_HANDLE_AXIS
+  WORKFLOW_VERTICAL_TRANSFER_NODE_HANDLE_AXIS,
+  WORKFLOW_VERTICAL_TRANSFER_LAYER_GAP
 } from './workflowMaterialSwimlaneLayout'
 
 describe('layoutWorkflowMaterialSwimlanes', () => {
@@ -182,6 +184,77 @@ describe('layoutWorkflowMaterialSwimlanes', () => {
     expect(handleCenterY(horizontal, 'transfer', transferOutput.uuid)).toBe(
       horizontal.swimlanes.lanes[0]!.axis
     )
+    const verticalById = new Map(vertical.nodes.map((node) => [node.id, node]))
+    const horizontalById = new Map(
+      horizontal.nodes.map((node) => [node.id, node])
+    )
+    expect((verticalById.get('transfer')?.y ?? 0) -
+      (verticalById.get('source')?.y ?? 0) - 72)
+      .toBe(WORKFLOW_VERTICAL_TRANSFER_LAYER_GAP)
+    expect((verticalById.get('sink')?.y ?? 0) -
+      (verticalById.get('transfer')?.y ?? 0) - 72)
+      .toBe(WORKFLOW_VERTICAL_TRANSFER_LAYER_GAP)
+    expect((horizontalById.get('transfer')?.x ?? 0) -
+      (horizontalById.get('source')?.x ?? 0) - 112)
+      .toBe(WORKFLOW_HORIZONTAL_TRANSFER_LAYER_GAP)
+    expect((horizontalById.get('sink')?.x ?? 0) -
+      (horizontalById.get('transfer')?.x ?? 0) - 120)
+      .toBe(WORKFLOW_HORIZONTAL_TRANSFER_LAYER_GAP)
+  })
+
+  /** 验证辅助来源始终位于最终主样品接入节点的上方前侧或左侧前侧。 */
+  it('places supporting sources before their final primary join', () => {
+    const sampleOutput = resourceSlotHandle('sample-output', 'sample', 'source')
+    const reagentOutput = resourceSlotHandle(
+      'reagent-output',
+      'reagent',
+      'source'
+    )
+    const sampleInput = resourceSlotHandle('sample-input', 'sample', 'target')
+    const reagentInput = resourceSlotHandle(
+      'reagent-input',
+      'reagent',
+      'target'
+    )
+    const nodes: WorkflowNode[] = [
+      materialSourceNode(
+        'sample-source',
+        '主样品',
+        'primary_sample',
+        sampleOutput
+      ),
+      materialSourceNode(
+        'reagent-source',
+        '辅助试剂',
+        'reagent',
+        reagentOutput
+      ),
+      workflowNode('join', '混合', 'action', [sampleInput, reagentInput])
+    ]
+    const links = [
+      materialLink('sample-source', sampleOutput, 'join', sampleInput),
+      materialLink('reagent-source', reagentOutput, 'join', reagentInput)
+    ]
+
+    const vertical = layoutWorkflowMaterialSwimlanes(nodes, links, 'vertical')
+    const horizontal = layoutWorkflowMaterialSwimlanes(
+      nodes,
+      links,
+      'horizontal'
+    )
+    const verticalById = new Map(vertical.nodes.map((node) => [node.id, node]))
+    const horizontalById = new Map(
+      horizontal.nodes.map((node) => [node.id, node])
+    )
+    const verticalSource = verticalById.get('reagent-source')!
+    const verticalJoin = verticalById.get('join')!
+    const horizontalSource = horizontalById.get('reagent-source')!
+    const horizontalJoin = horizontalById.get('join')!
+
+    expect(verticalSource.x).toBeLessThan(verticalJoin.x)
+    expect(verticalSource.y).toBeLessThan(verticalJoin.y)
+    expect(horizontalSource.x).toBeLessThan(horizontalJoin.x)
+    expect(horizontalSource.y).toBeLessThan(horizontalJoin.y)
   })
 })
 
@@ -251,6 +324,24 @@ function workflowNode(
   handles: WorkflowHandlePort[]
 ): WorkflowNode {
   return { id, name, type, className: type, labNodeType: type, handles }
+}
+
+/** 创建带物料流角色的 MaterialSource 测试节点。 */
+function materialSourceNode(
+  id: string,
+  name: string,
+  flowRole: string,
+  output: WorkflowHandlePort
+): WorkflowNode {
+  return {
+    ...workflowNode(id, name, 'material_source', [output]),
+    materialSource: {
+      mode: 'existing',
+      flowRole,
+      mountUuid: 'mount-1',
+      resourceTemplateUuid: 'template-1'
+    }
+  }
 }
 
 /** 创建有类型物料占位符（ResourceSlot）句柄。 */

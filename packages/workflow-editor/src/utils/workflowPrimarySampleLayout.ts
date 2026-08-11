@@ -10,7 +10,8 @@ import {
 import {
   packWorkflowSupportingBranches,
   type WorkflowSupportingBranch,
-  workflowBackboneColumnForIndex
+  workflowBackboneColumnForIndex,
+  WORKFLOW_SUPPORTING_BRANCH_NODE_GAP
 } from './workflowPrimarySampleBranchLayout'
 import type {
   WorkflowSupportingMaterialPresentation
@@ -27,6 +28,9 @@ const ROW_CLEARANCE = 112
 const COMPACT_NODE_BASE_HEIGHT = 48
 const COMPACT_MATERIAL_CARD_HEIGHT = 33
 const SPECIAL_NODE_HEIGHT = 126
+const COMPACT_ACTION_NODE_WIDTH = 184
+const HORIZONTAL_MATERIAL_SOURCE_WIDTH = 112
+const HORIZONTAL_TRANSFER_NODE_WIDTH = 120
 
 export interface WorkflowPrimarySampleLayoutOptions {
   supportingMaterialPresentation?: WorkflowSupportingMaterialPresentation
@@ -91,6 +95,12 @@ export function layoutWorkflowPrimarySampleFlow(
   const backboneIndexes = new Map(
     backboneNodeIds.map((nodeId, index) => [nodeId, index])
   )
+  const supportingSourceAnchors = primarySupportingSourceAnchors(
+    nodes,
+    visibleLinks,
+    traces,
+    backboneIndexes
+  )
   const rowByNode = new Map<string, number>()
   const secondaryBranchesByRow = groupSecondaryBranchesByBackboneRow(
     nodes,
@@ -110,6 +120,7 @@ export function layoutWorkflowPrimarySampleFlow(
   const nodePorts = new Map<string, WorkflowNodePortLayout>()
   const nodeById = new Map(nodes.map((node) => [node.id, node]))
   let mainRowY = ORIGIN_Y
+  let previousRowEndX = ORIGIN_X
 
   for (let row = 0; row < rowCount; row += 1) {
     const rowStart = row * WORKFLOW_PRIMARY_SAMPLE_NODES_PER_ROW
@@ -123,30 +134,42 @@ export function layoutWorkflowPrimarySampleFlow(
         estimatedHorizontalNodeHeight(nodeById.get(nodeId))
       )
     )
+    const flowSign = row % 2 === 0 ? 1 : -1
+    let rowX = row === 0 ? ORIGIN_X : previousRowEndX
     for (const [rowIndex, nodeId] of rowNodeIds.entries()) {
-      const column = row % 2 === 0
-        ? rowIndex
-        : WORKFLOW_PRIMARY_SAMPLE_NODES_PER_ROW - 1 - rowIndex
       positionByNode.set(nodeId, {
-        x: ORIGIN_X + column * WORKFLOW_PRIMARY_SAMPLE_COLUMN_GAP,
-        y: mainRowY
+        x: rowX,
+        y: 0
       })
       rowByNode.set(nodeId, row)
       const absoluteIndex = rowStart + rowIndex
       nodePorts.set(nodeId, backboneHorizontalPortLayout(absoluteIndex))
+      const nextNodeId = rowNodeIds[rowIndex + 1]
+      if (nextNodeId) {
+        rowX += flowSign * primarySampleNodeGap(
+          nodeById.get(nodeId),
+          nodeById.get(nextNodeId)
+        )
+      }
     }
+    previousRowEndX = rowX
 
     const secondaryBands = showSupportingBranches
       ? packWorkflowSupportingBranches(
-          secondaryBranchesByRow.get(row) ?? [],
+          (secondaryBranchesByRow.get(row) ?? []).map((branch) => ({
+            ...branch,
+            anchorX: positionByNode.get(
+              backboneNodeIds[branch.anchorIndex] ?? ''
+            )?.x
+          })),
           ORIGIN_X,
           WORKFLOW_PRIMARY_SAMPLE_COLUMN_GAP,
           WORKFLOW_PRIMARY_SAMPLE_NODES_PER_ROW
         )
       : []
-    let occupiedBottom = mainRowY + mainRowHeight
+    let occupiedBottom = mainRowY
     for (const branchNodes of secondaryBands) {
-      const branchY = occupiedBottom + SUPPORTING_BRANCH_VERTICAL_GAP
+      const branchY = occupiedBottom
       const branchHeight = Math.max(
         SPECIAL_NODE_HEIGHT,
         ...branchNodes.map(({ node }) => estimatedHorizontalNodeHeight(node))
@@ -159,13 +182,28 @@ export function layoutWorkflowPrimarySampleFlow(
         rowByNode.set(node.id, row)
         nodePorts.set(node.id, ports)
       }
-      occupiedBottom = branchY + branchHeight
+      occupiedBottom = branchY + branchHeight + SUPPORTING_BRANCH_VERTICAL_GAP
     }
-    mainRowY += Math.max(
+    const resolvedMainRowY = secondaryBands.length > 0
+      ? occupiedBottom
+      : mainRowY
+    for (const nodeId of rowNodeIds) {
+      const current = positionByNode.get(nodeId)
+      if (current) positionByNode.set(nodeId, { ...current, y: resolvedMainRowY })
+    }
+    mainRowY = resolvedMainRowY + Math.max(
       WORKFLOW_PRIMARY_SAMPLE_MIN_ROW_GAP,
-      occupiedBottom - mainRowY + ROW_CLEARANCE
+      mainRowHeight + ROW_CLEARANCE
     )
   }
+
+  placePrimarySupportingSources(
+    positionByNode,
+    nodePorts,
+    nodeById,
+    backboneIndexes,
+    supportingSourceAnchors
+  )
 
   const edgeDirections = new Map<number, 'TB' | 'LR'>()
   visibleLinks.forEach((_link, index) => {
@@ -259,6 +297,10 @@ function groupSecondaryBranchesByBackboneRow(
   )
   const visited = new Set<string>()
   const assigned = new Map<number, WorkflowSupportingBranch[]>()
+  const nodeById = new Map(nodes.map((node) => [node.id, node]))
+  const backboneNodeByIndex = new Map(
+    [...backboneIndexes].map(([nodeId, index]) => [index, nodeById.get(nodeId)])
+  )
 
   for (const startNodeId of secondaryNodeIds) {
     if (visited.has(startNodeId)) continue
@@ -296,7 +338,9 @@ function groupSecondaryBranchesByBackboneRow(
         order: Math.min(...componentNodes.map(
           (node) => nodeOrder.get(node.id) ?? Number.MAX_SAFE_INTEGER
         )),
-        flowDirection: attachment.flowDirection
+        flowDirection: attachment.flowDirection,
+        anchorVisualKind:
+          backboneNodeByIndex.get(attachment.anchorIndex)?.visualKind
       }
     ])
   }
@@ -432,6 +476,102 @@ function nearestBackboneIndex(
 }
 
 /**
+ * 按有向物料边找出每个辅助 MaterialSource 最早抵达的主样品节点。
+ */
+function primarySupportingSourceAnchors(
+  nodes: readonly WorkflowNode[],
+  links: readonly WorkflowLink[],
+  traces: ReturnType<typeof projectMaterialTraces>,
+  backboneIndexes: ReadonlyMap<string, number>
+): Map<string, number> {
+  const outgoing = new Map(nodes.map((node) => [node.id, [] as string[]]))
+  links.forEach((link, index) => {
+    if (!traces.edgeLineages.has(index)) return
+    outgoing.get(link.source)?.push(link.target)
+  })
+  const anchors = new Map<string, number>()
+  for (const source of nodes) {
+    if (source.type !== 'material_source' || backboneIndexes.has(source.id)) {
+      continue
+    }
+    const anchor = nearestPrimaryDescendantIndex(
+      source.id,
+      outgoing,
+      backboneIndexes
+    )
+    if (anchor !== undefined) anchors.set(source.id, anchor)
+  }
+  return anchors
+}
+
+/** 以物料流广度优先查找辅助来源最终接入的最近主样品序号。 */
+function nearestPrimaryDescendantIndex(
+  sourceNodeId: string,
+  outgoing: ReadonlyMap<string, readonly string[]>,
+  backboneIndexes: ReadonlyMap<string, number>
+): number | undefined {
+  const visited = new Set([sourceNodeId])
+  let frontier = [...(outgoing.get(sourceNodeId) ?? [])]
+  while (frontier.length > 0) {
+    const matches = frontier
+      .map((nodeId) => backboneIndexes.get(nodeId))
+      .filter((index): index is number => index !== undefined)
+    if (matches.length > 0) return Math.min(...matches)
+    const next: string[] = []
+    for (const nodeId of frontier) {
+      if (visited.has(nodeId)) continue
+      visited.add(nodeId)
+      next.push(...(outgoing.get(nodeId) ?? []))
+    }
+    frontier = next
+  }
+  return undefined
+}
+
+/**
+ * 对完整支线做最终校正：每个辅助来源都位于自己最终接入主线节点的上方前侧。
+ */
+function placePrimarySupportingSources(
+  positionByNode: Map<string, { x: number; y: number }>,
+  nodePorts: Map<string, WorkflowNodePortLayout>,
+  nodeById: ReadonlyMap<string, WorkflowNode>,
+  backboneIndexes: ReadonlyMap<string, number>,
+  anchors: ReadonlyMap<string, number>
+): void {
+  const backboneIdByIndex = new Map(
+    [...backboneIndexes].map(([nodeId, index]) => [index, nodeId])
+  )
+
+  for (const [sourceId, anchorIndex] of anchors) {
+    const sourcePosition = positionByNode.get(sourceId)
+    const anchorId = backboneIdByIndex.get(anchorIndex)
+    const anchorPosition = anchorId ? positionByNode.get(anchorId) : undefined
+    if (!sourcePosition || !anchorPosition) continue
+    const flowRunsEast = Math.floor(
+      anchorIndex / WORKFLOW_PRIMARY_SAMPLE_NODES_PER_ROW
+    ) % 2 === 0
+    const anchorNode = anchorId ? nodeById.get(anchorId) : undefined
+    const frontGap = anchorNode?.visualKind === 'robot-transfer'
+      ? (WORKFLOW_SUPPORTING_BRANCH_NODE_GAP +
+          HORIZONTAL_MATERIAL_SOURCE_WIDTH) / 2
+      : WORKFLOW_SUPPORTING_BRANCH_NODE_GAP
+    positionByNode.set(sourceId, {
+      x: flowRunsEast
+        ? Math.min(sourcePosition.x, anchorPosition.x - frontGap)
+        : Math.max(sourcePosition.x, anchorPosition.x + frontGap),
+      y: Math.min(
+        sourcePosition.y,
+        anchorPosition.y - SPECIAL_NODE_HEIGHT -
+          SUPPORTING_BRANCH_VERTICAL_GAP
+      )
+    })
+    nodePorts.set(sourceId, flowRunsEast
+      ? { target: 'left', source: 'right' }
+      : { target: 'right', source: 'left' })
+  }
+}
+
+/**
  * 返回横向主样品蛇形路径中一个节点的输入、输出端口方向。
  *
  * @param nodeIndex 节点在主样品主干中的零基序号。
@@ -448,6 +588,29 @@ function backboneHorizontalPortLayout(
     target: leftToRight ? 'left' : 'right',
     source: leftToRight ? 'right' : 'left'
   }
+}
+
+/** 只要相邻一端为机械臂转运节点，就把该段主干间距压缩为普通列距的一半。 */
+function primarySampleNodeGap(
+  left: WorkflowNode | undefined,
+  right: WorkflowNode | undefined
+): number {
+  return left?.visualKind === 'robot-transfer' ||
+    right?.visualKind === 'robot-transfer'
+    ? (WORKFLOW_PRIMARY_SAMPLE_COLUMN_GAP +
+        estimatedHorizontalNodeWidth(left)) / 2
+    : WORKFLOW_PRIMARY_SAMPLE_COLUMN_GAP
+}
+
+/** 返回主样品蛇形节点用于计算相邻可见空白的紧凑宽度。 */
+function estimatedHorizontalNodeWidth(node: WorkflowNode | undefined): number {
+  if (node?.visualKind === 'robot-transfer') {
+    return HORIZONTAL_TRANSFER_NODE_WIDTH
+  }
+  if (node?.type === 'material_source') {
+    return HORIZONTAL_MATERIAL_SOURCE_WIDTH
+  }
+  return COMPACT_ACTION_NODE_WIDTH
 }
 
 /**

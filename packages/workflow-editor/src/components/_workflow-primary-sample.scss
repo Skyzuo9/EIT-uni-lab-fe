@@ -210,15 +210,15 @@
   :global(.wf-node__material-source-visual) {
   color: color-mix(
     in srgb,
-    var(--wf-material-accent) 38%,
+    var(--wf-material-accent) 62%,
     var(--unilab-color-text-muted)
   );
   background: color-mix(
     in srgb,
-    var(--wf-material-accent) 12%,
+    var(--wf-material-accent) 18%,
     var(--unilab-color-border-strong)
   );
-  filter: saturate(.26);
+  filter: saturate(.55);
 }
 
 .workflow
@@ -226,7 +226,7 @@
   :global(.wf-node__material-source-visual)::before {
   background: color-mix(
     in srgb,
-    var(--wf-material-accent) 5%,
+    var(--wf-material-accent) 8%,
     var(--unilab-color-surface)
   );
 }
@@ -262,7 +262,7 @@
 }
 
 .workflow :global(.react-flow__edge.wf-flow-edge--supporting-material) {
-  opacity: .28;
+  opacity: .52;
   transition: opacity var(--unilab-motion-fast) ease;
 }
 

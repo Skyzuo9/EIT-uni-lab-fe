@@ -441,7 +441,7 @@ describe('WorkflowDag canvas controls', () => {
     expect(stylesheet).toMatch(/wf-node__material-port-label/)
     expect(stylesheet).toMatch(/data-workflow-material-emphasis='supporting'/)
     expect(stylesheet).toMatch(/wf-flow-edge--supporting-material/)
-    expect(stylesheet).toMatch(/opacity:\s*\.28/)
+    expect(stylesheet).toMatch(/opacity:\s*\.52/)
 
     const swimlaneStylesheet = readFileSync(
       new URL('./_workflow-swimlanes.scss', import.meta.url),

@@ -30,6 +30,12 @@ const NODE_ROW_GAP = 44
 const NODE_COLUMN_GAP = 44
 const LAYER_GAP = 96
 const HORIZONTAL_LAYER_GAP = 120
+export const WORKFLOW_VERTICAL_TRANSFER_LAYER_GAP = LAYER_GAP / 2
+export const WORKFLOW_HORIZONTAL_TRANSFER_LAYER_GAP =
+  HORIZONTAL_LAYER_GAP / 2
+export const WORKFLOW_SUPPORTING_SOURCE_SIDE_GAP = 56
+export const WORKFLOW_SUPPORTING_SOURCE_FRONT_GAP = 36
+const WORKFLOW_SUPPORTING_SOURCE_STACK_GAP = 24
 const ORIGIN_Y = 40
 const ORIGIN_X = 40
 
@@ -136,9 +142,24 @@ export function layoutWorkflowMaterialSwimlanes(
     nodeLayouts: new Map(),
     handleLaneIndexes
   }
+  const supportingSourceAnchors = workflowSupportingSourceAnchors(
+    nodes,
+    visibleLinks,
+    traces
+  )
   return direction === 'horizontal'
-    ? layoutHorizontalMaterialSwimlanes(nodes, visibleLinks, swimlanes)
-    : layoutVerticalMaterialSwimlanes(nodes, visibleLinks, swimlanes)
+    ? layoutHorizontalMaterialSwimlanes(
+        nodes,
+        visibleLinks,
+        swimlanes,
+        supportingSourceAnchors
+      )
+    : layoutVerticalMaterialSwimlanes(
+        nodes,
+        visibleLinks,
+        swimlanes,
+        supportingSourceAnchors
+      )
 }
 
 /**
@@ -152,7 +173,8 @@ export function layoutWorkflowMaterialSwimlanes(
 function layoutVerticalMaterialSwimlanes(
   nodes: readonly WorkflowNode[],
   visibleLinks: WorkflowLink[],
-  swimlanes: WorkflowMaterialSwimlaneProjection
+  swimlanes: WorkflowMaterialSwimlaneProjection,
+  supportingSourceAnchors: ReadonlyMap<string, string>
 ): WorkflowMaterialSwimlaneLayoutResult {
   const { lanes, nodeLayouts, handleLaneIndexes } = swimlanes
   let auxiliaryColumn = 0
@@ -222,24 +244,36 @@ function layoutVerticalMaterialSwimlanes(
   }
   const yByNode = new Map<string, number>()
   let y = ORIGIN_Y
-  for (const [, layerNodes] of [...nodesByLayer.entries()].sort(
+  const orderedLayers = [...nodesByLayer.entries()].sort(
     ([left], [right]) => left - right
-  )) {
+  )
+  for (const [layerIndex, [, layerNodes]] of orderedLayers.entries()) {
     const rows = packNonOverlappingRows(layerNodes)
     for (const row of rows) {
       const rowHeight = Math.max(...row.map((item) => item.height))
       for (const item of row) yByNode.set(item.node.id, y)
       y += rowHeight + NODE_ROW_GAP
     }
-    y += LAYER_GAP - NODE_ROW_GAP
+    const nextLayer = orderedLayers[layerIndex + 1]?.[1]
+    y += (nextLayer
+      ? transferAwareLayerGap(layerNodes, nextLayer, 'vertical')
+      : LAYER_GAP) - NODE_ROW_GAP
   }
 
+  const positionedNodes = sizedNodes.map(({ node, x }) => ({
+    ...node,
+    x,
+    y: yByNode.get(node.id) ?? ORIGIN_Y
+  }))
+  placeSupportingMaterialSources(
+    positionedNodes,
+    sizedNodes,
+    supportingSourceAnchors,
+    'vertical'
+  )
+
   return {
-    nodes: sizedNodes.map(({ node, x }) => ({
-      ...node,
-      x,
-      y: yByNode.get(node.id) ?? ORIGIN_Y
-    })),
+    nodes: positionedNodes,
     links: visibleLinks,
     direction: 'vertical',
     swimlanes
@@ -260,7 +294,8 @@ function layoutVerticalMaterialSwimlanes(
 function layoutHorizontalMaterialSwimlanes(
   nodes: readonly WorkflowNode[],
   visibleLinks: WorkflowLink[],
-  swimlanes: WorkflowMaterialSwimlaneProjection
+  swimlanes: WorkflowMaterialSwimlaneProjection,
+  supportingSourceAnchors: ReadonlyMap<string, string>
 ): WorkflowMaterialSwimlaneLayoutResult {
   const { lanes, nodeLayouts, handleLaneIndexes } = swimlanes
   let auxiliaryRow = 0
@@ -330,28 +365,180 @@ function layoutHorizontalMaterialSwimlanes(
   }
   const xByNode = new Map<string, number>()
   let x = ORIGIN_X
-  for (const [, layerNodes] of [...nodesByLayer.entries()].sort(
+  const orderedLayers = [...nodesByLayer.entries()].sort(
     ([left], [right]) => left - right
-  )) {
+  )
+  for (const [layerIndex, [, layerNodes]] of orderedLayers.entries()) {
     const columns = packNonOverlappingColumns(layerNodes)
     for (const column of columns) {
       const columnWidth = Math.max(...column.map((item) => item.width))
       for (const item of column) xByNode.set(item.node.id, x)
       x += columnWidth + NODE_COLUMN_GAP
     }
-    x += HORIZONTAL_LAYER_GAP - NODE_COLUMN_GAP
+    const nextLayer = orderedLayers[layerIndex + 1]?.[1]
+    x += (nextLayer
+      ? transferAwareLayerGap(layerNodes, nextLayer, 'horizontal')
+      : HORIZONTAL_LAYER_GAP) - NODE_COLUMN_GAP
   }
 
+  const positionedNodes = sizedNodes.map(({ node, y }) => ({
+    ...node,
+    x: xByNode.get(node.id) ?? ORIGIN_X,
+    y
+  }))
+  placeSupportingMaterialSources(
+    positionedNodes,
+    sizedNodes,
+    supportingSourceAnchors,
+    'horizontal'
+  )
+
   return {
-    nodes: sizedNodes.map(({ node, y }) => ({
-      ...node,
-      x: xByNode.get(node.id) ?? ORIGIN_X,
-      y
-    })),
+    nodes: positionedNodes,
     links: visibleLinks,
     direction: 'horizontal',
     swimlanes
   }
+}
+
+/**
+ * 找出每个辅助 MaterialSource 最先汇入的主样品节点。
+ *
+ * @returns 辅助来源 UUID 到最终主线接入节点 UUID 的映射。
+ */
+function workflowSupportingSourceAnchors(
+  nodes: readonly WorkflowNode[],
+  links: readonly WorkflowLink[],
+  traces: ReturnType<typeof projectMaterialTraces>
+): Map<string, string> {
+  const primaryLineage = traces.lineages.find(
+    (lineage) => lineage.materialRole === 'primary_sample'
+  )
+  if (!primaryLineage) return new Map()
+
+  const primaryNodeIds = new Set([primaryLineage.sourceNodeUuid])
+  for (const [nodeId, lineages] of traces.handleLineagesByNode) {
+    if ([...lineages.values()].includes(primaryLineage.key)) {
+      primaryNodeIds.add(nodeId)
+    }
+  }
+  links.forEach((link, index) => {
+    if (traces.edgeLineages.get(index) !== primaryLineage.key) return
+    primaryNodeIds.add(link.source)
+    primaryNodeIds.add(link.target)
+  })
+
+  const outgoing = new Map(nodes.map((node) => [node.id, [] as string[]]))
+  links.forEach((link, index) => {
+    if (!traces.edgeLineages.has(index)) return
+    outgoing.get(link.source)?.push(link.target)
+  })
+  const anchors = new Map<string, string>()
+  for (const source of nodes) {
+    if (
+      source.type !== 'material_source' ||
+      source.materialSource?.flowRole === 'primary_sample'
+    ) continue
+    const anchor = nearestPrimaryDescendant(
+      source.id,
+      outgoing,
+      primaryNodeIds
+    )
+    if (anchor) anchors.set(source.id, anchor)
+  }
+  return anchors
+}
+
+/** 以物料边广度优先查找一个辅助来源最早抵达的主样品节点。 */
+function nearestPrimaryDescendant(
+  sourceNodeId: string,
+  outgoing: ReadonlyMap<string, readonly string[]>,
+  primaryNodeIds: ReadonlySet<string>
+): string | undefined {
+  const visited = new Set([sourceNodeId])
+  let frontier = [...(outgoing.get(sourceNodeId) ?? [])]
+  while (frontier.length > 0) {
+    const primary = frontier.find((nodeId) => primaryNodeIds.has(nodeId))
+    if (primary) return primary
+    const next: string[] = []
+    for (const nodeId of frontier) {
+      if (visited.has(nodeId)) continue
+      visited.add(nodeId)
+      next.push(...(outgoing.get(nodeId) ?? []))
+    }
+    frontier = next
+  }
+  return undefined
+}
+
+/**
+ * 把辅助来源放到最终主线接入节点的前侧：横向布局位于左上，纵向布局位于
+ * 左侧且略微提前。共享接入点的来源继续向外堆叠，不与主线卡片争夺空间。
+ */
+function placeSupportingMaterialSources(
+  positionedNodes: WorkflowMaterialSwimlaneLayoutNode[],
+  sizedNodes: ReadonlyArray<{
+    node: WorkflowNode
+    width: number
+    height: number
+  }>,
+  anchors: ReadonlyMap<string, string>,
+  direction: WorkflowMaterialSwimlaneDirection
+): void {
+  const positionedById = new Map(
+    positionedNodes.map((node) => [node.id, node])
+  )
+  const sizeById = new Map(
+    sizedNodes.map((item) => [item.node.id, item])
+  )
+  const sourceIdsByAnchor = new Map<string, string[]>()
+  for (const [sourceId, anchorId] of anchors) {
+    sourceIdsByAnchor.set(anchorId, [
+      ...(sourceIdsByAnchor.get(anchorId) ?? []),
+      sourceId
+    ])
+  }
+
+  for (const [anchorId, sourceIds] of sourceIdsByAnchor) {
+    const anchor = positionedById.get(anchorId)
+    const anchorSize = sizeById.get(anchorId)
+    if (!anchor || !anchorSize) continue
+    sourceIds.forEach((sourceId, index) => {
+      const source = positionedById.get(sourceId)
+      const sourceSize = sizeById.get(sourceId)
+      if (!source || !sourceSize) return
+      if (direction === 'horizontal') {
+        source.x = anchor.x - sourceSize.width -
+          WORKFLOW_SUPPORTING_SOURCE_FRONT_GAP
+        source.y = anchor.y - sourceSize.height -
+          WORKFLOW_SUPPORTING_SOURCE_SIDE_GAP -
+          index * (sourceSize.height + WORKFLOW_SUPPORTING_SOURCE_STACK_GAP)
+      } else {
+        source.x = anchor.x - sourceSize.width -
+          WORKFLOW_SUPPORTING_SOURCE_SIDE_GAP -
+          index * (sourceSize.width + WORKFLOW_SUPPORTING_SOURCE_STACK_GAP)
+        source.y = anchor.y - sourceSize.height -
+          WORKFLOW_SUPPORTING_SOURCE_FRONT_GAP
+      }
+    })
+  }
+}
+
+/** 相邻任一拓扑层包含转运节点时，将层间空白压缩为普通间距的一半。 */
+function transferAwareLayerGap(
+  current: ReadonlyArray<{ node: WorkflowNode }>,
+  next: ReadonlyArray<{ node: WorkflowNode }>,
+  direction: WorkflowMaterialSwimlaneDirection
+): number {
+  const containsTransfer = [...current, ...next].some(
+    (item) => item.node.visualKind === 'robot-transfer'
+  )
+  if (!containsTransfer) {
+    return direction === 'horizontal' ? HORIZONTAL_LAYER_GAP : LAYER_GAP
+  }
+  return direction === 'horizontal'
+    ? WORKFLOW_HORIZONTAL_TRANSFER_LAYER_GAP
+    : WORKFLOW_VERTICAL_TRANSFER_LAYER_GAP
 }
 
 /**
