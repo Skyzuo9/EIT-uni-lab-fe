@@ -193,6 +193,17 @@ test('single sample workflow presents supporting materials as reactants', async 
   ))
   expect(fullOverlapPairs, JSON.stringify(fullOverlapPairs, null, 2))
     .toEqual([])
+  const transferHandlePositions = await workflowTransferHandlePositions(panel)
+  const edgeRoutes = await workflowEdgeRoutes(panel)
+  const powderTransferHandles = transferHandlePositions.filter(({ name }) =>
+    name.includes('粗投粉桶') || name.includes('精投粉桶')
+  )
+  const powderMaterialSources = powderTransferHandles.filter(({ kind, io }) =>
+    kind === 'material' && io === 'source'
+  )
+  expect(powderMaterialSources).toHaveLength(2)
+  expect(powderMaterialSources.every(({ position }) => position === 'top'))
+    .toBe(true)
 
   const fullBranchesScreenshotPath = resolve(
     artifactDirectory,
@@ -224,6 +235,8 @@ test('single sample workflow presents supporting materials as reactants', async 
     full_branches_supporting_edge_styles: supportingEdgeStyles,
     full_branches_primary_edge_styles: primaryEdgeStyles,
     full_branches_overlap_pairs: fullOverlapPairs,
+    full_branches_transfer_handle_positions: transferHandlePositions,
+    full_branches_edge_routes: edgeRoutes,
     device_scale_factor: 2,
     browser_errors: browserErrors,
     screenshot: screenshotPath
@@ -250,6 +263,57 @@ async function workflowEdgeStyles(
       opacity: Number.parseFloat(getComputedStyle(element).opacity)
     }
   }))
+}
+
+/** 返回转运节点各类 Handle 的实际方位，供支线路由验收复核。 */
+async function workflowTransferHandlePositions(
+  panel: import('@playwright/test').Locator
+): Promise<Array<{
+  nodeId: string
+  name: string
+  kind: string
+  io: string
+  position: string
+}>> {
+  return panel.locator('.wf-node--robot-transfer').evaluateAll((nodes) =>
+    nodes.flatMap((node) => {
+      const name = node.querySelector('strong')?.textContent?.trim() ?? ''
+      const nodeId = node.getAttribute('data-workflow-node-uuid') ?? ''
+      return [...node.querySelectorAll<HTMLElement>('.react-flow__handle')]
+        .map((handle) => ({
+          nodeId,
+          name,
+          kind: handle.getAttribute('data-workflow-handle-kind') ?? '',
+          io: handle.getAttribute('data-workflow-handle-io') ?? '',
+          position: ['top', 'right', 'bottom', 'left'].find((side) =>
+            handle.classList.contains(`react-flow__handle-${side}`)
+          ) ?? ''
+        }))
+    })
+  )
+}
+
+/** 返回全部画布边的端点身份、语义样式与浏览器最终正交路径。 */
+async function workflowEdgeRoutes(
+  panel: import('@playwright/test').Locator
+): Promise<Array<{
+  sourceNodeId: string
+  targetNodeId: string
+  className: string
+  path: string
+}>> {
+  return panel.locator('.react-flow__edge').evaluateAll((edges) =>
+    edges.map((edge) => ({
+      sourceNodeId: edge.querySelector('g')?.getAttribute(
+        'data-workflow-edge-source-node-uuid'
+      ) ?? '',
+      targetNodeId: edge.querySelector('g')?.getAttribute(
+        'data-workflow-edge-target-node-uuid'
+      ) ?? '',
+      className: edge.getAttribute('class') ?? '',
+      path: edge.querySelector('.react-flow__edge-path')?.getAttribute('d') ?? ''
+    }))
+  )
 }
 
 /** 返回当前可见 ReactFlow 节点之间的矩形重叠对。 */

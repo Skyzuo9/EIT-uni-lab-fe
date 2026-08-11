@@ -106,14 +106,11 @@
   transform: none;
 }
 
-/* 横向蛇形的所有物料与执行顺序 Handle 都由东西两侧进出。 */
+/* 横向蛇形默认由东西两侧进出；局部转运执行顺序可按几何关系使用南北侧。 */
 .workflow
   :global([data-workflow-layout-strategy='primary-sample-serpentine'][data-workflow-layout-direction='horizontal'])
   :global(.wf-node__material-port)
-  > :global(.wf-node__handle),
-.workflow
-  :global([data-workflow-layout-strategy='primary-sample-serpentine'][data-workflow-layout-direction='horizontal'])
-  :global(.wf-node__handle--ready) {
+  > :global(.wf-node__handle) {
   top: 50%;
   right: auto;
   bottom: auto;
@@ -126,12 +123,15 @@
   :global(.wf-node__handle--ready) {
   width: 12px;
   height: 3px;
+  margin: 0;
 }
 
 .workflow
   :global([data-workflow-layout-strategy='primary-sample-serpentine'][data-workflow-layout-direction='horizontal'])
   :global(.react-flow__handle-left) {
+  top: 50%;
   right: auto;
+  bottom: auto;
   left: -7px;
   transform: translate(-50%, -50%);
 }
@@ -139,7 +139,9 @@
 .workflow
   :global([data-workflow-layout-strategy='primary-sample-serpentine'][data-workflow-layout-direction='horizontal'])
   :global(.react-flow__handle-right) {
+  top: 50%;
   right: -7px;
+  bottom: auto;
   left: auto;
   transform: translate(50%, -50%);
 }

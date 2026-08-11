@@ -9,7 +9,9 @@ import {
 } from './workflowMaterialTrace'
 import {
   packWorkflowSupportingBranches,
+  routeWorkflowTransferPorts,
   type WorkflowSupportingBranch,
+  workflowEdgeDirectionForPorts,
   workflowBackboneColumnForIndex
 } from './workflowPrimarySampleBranchLayout'
 import type {
@@ -167,9 +169,19 @@ export function layoutWorkflowPrimarySampleFlow(
     )
   }
 
+  routeWorkflowTransferPorts(
+    nodes,
+    visibleLinks,
+    positionByNode,
+    nodePorts
+  )
+
   const edgeDirections = new Map<number, 'TB' | 'LR'>()
-  visibleLinks.forEach((_link, index) => {
-    edgeDirections.set(index, 'LR')
+  visibleLinks.forEach((link, index) => {
+    edgeDirections.set(
+      index,
+      workflowEdgeDirectionForPorts(link, nodePorts)
+    )
   })
 
   return {

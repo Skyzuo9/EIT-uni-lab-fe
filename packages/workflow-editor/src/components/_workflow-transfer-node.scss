@@ -215,48 +215,34 @@
   background: var(--unilab-color-surface);
 }
 
-.workflow
-  :global(.wf-node--robot-transfer:not([data-workflow-layout-direction='horizontal']))
-  :global(.wf-node__robot-transfer-handle) {
-  right: auto;
-  left: 36px;
-}
-
-.workflow
-  :global(.wf-node--robot-transfer:not([data-workflow-layout-direction='horizontal']))
-  :global(.wf-node__robot-transfer-handle--target) {
+.workflow :global(.wf-node__robot-transfer-handle.react-flow__handle-top) {
   top: 9px;
+  right: auto;
   bottom: auto;
+  left: 36px;
   transform: translate(-50%, -50%);
 }
 
-.workflow
-  :global(.wf-node--robot-transfer:not([data-workflow-layout-direction='horizontal']))
-  :global(.wf-node__robot-transfer-handle--source) {
+.workflow :global(.wf-node__robot-transfer-handle.react-flow__handle-bottom) {
   top: auto;
+  right: auto;
   bottom: 9px;
+  left: 36px;
   transform: translate(-50%, 50%);
 }
 
-.workflow
-  :global(.wf-node--robot-transfer[data-workflow-layout-direction='horizontal'])
-  :global(.wf-node__robot-transfer-handle) {
+.workflow :global(.wf-node__robot-transfer-handle.react-flow__handle-left) {
   top: 36px;
-  bottom: auto;
-}
-
-.workflow
-  :global(.wf-node--robot-transfer[data-workflow-layout-direction='horizontal'])
-  :global(.wf-node__robot-transfer-handle--target) {
   right: auto;
+  bottom: auto;
   left: 9px;
   transform: translate(-50%, -50%);
 }
 
-.workflow
-  :global(.wf-node--robot-transfer[data-workflow-layout-direction='horizontal'])
-  :global(.wf-node__robot-transfer-handle--source) {
+.workflow :global(.wf-node__robot-transfer-handle.react-flow__handle-right) {
+  top: 36px;
   right: 9px;
+  bottom: auto;
   left: auto;
   transform: translate(50%, -50%);
 }

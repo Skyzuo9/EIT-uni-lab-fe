@@ -1,8 +1,14 @@
 import { describe, expect, it } from 'vitest'
 
-import type { WorkflowNode } from './parseWorkflow'
+import type {
+  WorkflowHandlePort,
+  WorkflowLink,
+  WorkflowNode
+} from './parseWorkflow'
 import {
   packWorkflowSupportingBranches,
+  routeWorkflowTransferPorts,
+  workflowEdgeDirectionForPorts,
   WORKFLOW_SUPPORTING_BRANCH_LEADING_LEFT_SHIFT,
   WORKFLOW_SUPPORTING_BRANCH_NODE_GAP,
   type WorkflowSupportingBranch
@@ -54,6 +60,48 @@ describe('packWorkflowSupportingBranches', () => {
     }
     expect(placements.find(({ node }) =>
       node.id === 'reagent-c-join')?.x).toBe(72 + 328)
+  })
+
+  /** 验证跨上下带的转运物料输出改走北侧，同带物料输入仍保持东西向。 */
+  it('faces transfer material handles along their vertical displacement', () => {
+    const materialSource = materialHandle('material-source', 'source')
+    const materialTarget = materialHandle('material-target', 'target')
+    const lower = supportingNode('lower-transfer')
+    lower.visualKind = 'robot-transfer'
+    lower.handles = [materialSource]
+    const upper = supportingNode('upper-transfer')
+    upper.handles = [materialTarget]
+    const links: WorkflowLink[] = [{
+      source: lower.id,
+      sourceHandleUuid: materialSource.uuid,
+      target: upper.id,
+      targetHandleUuid: materialTarget.uuid,
+      type: 'control'
+    }]
+    const ports = new Map([
+      [lower.id, { target: 'left', source: 'right' } as const],
+      [upper.id, { target: 'left', source: 'right' } as const]
+    ])
+
+    routeWorkflowTransferPorts(
+      [lower, upper],
+      links,
+      new Map([
+        [lower.id, { x: 300, y: 200 }],
+        [upper.id, { x: 72, y: 72 }]
+      ]),
+      ports
+    )
+
+    expect(ports.get(lower.id)).toEqual({
+      target: 'left',
+      source: 'top'
+    })
+    expect(ports.get(upper.id)).toEqual({
+      target: 'left',
+      source: 'right'
+    })
+    expect(workflowEdgeDirectionForPorts(links[0]!, ports)).toBe('TB')
   })
 })
 
@@ -111,5 +159,20 @@ function supportingNode(id: string): WorkflowNode {
     type: 'action',
     className: 'Action',
     labNodeType: 'Action'
+  }
+}
+
+/** 创建物料占位符（ResourceSlot）测试句柄。 */
+function materialHandle(
+  uuid: string,
+  ioType: 'source' | 'target'
+): WorkflowHandlePort {
+  return {
+    uuid,
+    handleKey: 'material',
+    displayName: 'material',
+    ioType,
+    valueType: 'ResourceSlot',
+    valueSchema: { $slot: 'ResourceSlot' }
   }
 }
