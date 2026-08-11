@@ -9,5 +9,8 @@ dist/
 *.tsbuildinfo
 test-results/
 playwright-report/
+.codegraph/
+.unilabos/
+apps/workbench/.unilabos/
 apps/workbench/.packaging/
 apps/workbench/desktop/main.cjs
