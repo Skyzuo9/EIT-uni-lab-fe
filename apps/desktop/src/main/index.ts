@@ -4,6 +4,7 @@ import {
   BrowserWindow,
   ipcMain,
   dialog,
+  type IpcMainEvent,
   type IpcMainInvokeEvent
 } from 'electron'
 import { basename, dirname, join } from 'path'
@@ -38,6 +39,10 @@ import {
   createElectronObservability,
   resolveElectronObservabilityOptions
 } from './observability'
+import {
+  resolveUnsavedUnloadAction,
+  validateRendererUnsavedChanges
+} from './unsavedChangesGuard'
 import type {
   LocalRuntimeLaunchConfig,
   LocalRuntimeOpenLogResult,
@@ -146,6 +151,7 @@ let quitCleanupFinished = false
 let deviceCardManager: DeviceCardManager | null = null
 let deviceCardAgentBridge: DeviceCardAgentBridge | null = null
 let deviceCardAgentCli: DeviceCardAgentCliManager | null = null
+let rendererHasUnsavedChanges: boolean | null = null
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -170,6 +176,7 @@ function createWindow(): void {
 
   mainWindow.on('closed', () => {
     mainWindow = null
+    rendererHasUnsavedChanges = null
   })
 
   mainWindow.webContents.on('did-fail-load', (_e, code, desc, url) => {
@@ -209,6 +216,11 @@ function createWindow(): void {
   mainWindow.webContents.on('will-prevent-unload', (event) => {
     const window = mainWindow
     if (!window || window.isDestroyed()) return
+    if (resolveUnsavedUnloadAction(rendererHasUnsavedChanges) === 'allow') {
+      electronObservability.record('electron.renderer.clean_unload_allowed')
+      event.preventDefault()
+      return
+    }
 
     const choice = dialog.showMessageBoxSync(window, {
       type: 'warning',
@@ -322,6 +334,18 @@ app.whenReady().then(async () => {
     app.dock.setIcon(localAppIcon)
   }
   ipcMain.handle('app:getVersion', () => app.getVersion())
+  ipcMain.on('renderer:unsavedChanges', (event, value: unknown) => {
+    try {
+      assertMainWindowSender(event)
+      rendererHasUnsavedChanges = validateRendererUnsavedChanges(value)
+    } catch (error) {
+      logLine(
+        `忽略无效的未保存状态上报：${error instanceof Error
+          ? error.message
+          : String(error)}`
+      )
+    }
+  })
   registerWorkbenchRemoteAccessIpc({ observability: electronObservability, assertSender: assertMainWindowSender })
   deviceCardManager = new DeviceCardManager({
     getMainWindow: () => mainWindow,
@@ -854,7 +878,9 @@ function createMainObservability(): ReturnType<
  * @param event Electron 主进程收到的调用事件。
  * @throws 当窗口、webContents 或 senderFrame 身份不匹配时抛出。
  */
-function assertMainWindowSender(event: IpcMainInvokeEvent): void {
+function assertMainWindowSender(
+  event: IpcMainInvokeEvent | IpcMainEvent
+): void {
   if (
     !mainWindow
     || event.sender !== mainWindow.webContents

@@ -1,9 +1,8 @@
-import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
+import { spawn, type ChildProcess } from 'node:child_process'
 import { once } from 'node:events'
 import {
   cpSync,
   existsSync,
-  mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
@@ -20,8 +19,26 @@ import {
   resolveExpectedF05OsRevision,
   type GitRevisionEvidence
 } from './f05-os-revision'
+import {
+  writeF05Evidence,
+  type NativeLogEvidence
+} from './f05-material-source-public-api'
+import {
+  runReservationRelease,
+  runReservationReserve
+} from './f05-material-source-reservations'
 
 export { readGitRevision } from './f05-os-revision'
+export {
+  joinNativeLogs,
+  postPublicEnvelope,
+  readPublicEnvelope,
+  requestJsonInBrowser,
+  UUID_PATTERN,
+  writeF05Evidence,
+  type BrowserJsonResult,
+  type NativeLogEvidence
+} from './f05-material-source-public-api'
 
 // 以下 UUID 分别固定真实夹具的工作流（Workflow）、物料来源（MaterialSource）
 // 节点、挂载物料和目标库位（Site）身份。
@@ -29,11 +46,6 @@ export const F05_WORKFLOW_UUID = '65000000-0000-4000-8000-0000000002b0'
 export const F05_SOURCE_NODE_UUID = '66000000-0000-4000-8000-0000000002b0'
 export const F05_MOUNT_MATERIAL_UUID = '97539b08-24de-5003-8b2e-9eb6e983c68a'
 export const F05_SITE_UUID = '1962ab7c-b006-5e44-a1bd-9b1fde81d529'
-export interface NativeLogEvidence {
-  name: string
-  content: string
-}
-
 export interface F05MaterialSourceRealOs {
   url: string
   workflowUuid: string
@@ -53,16 +65,6 @@ export interface F05MaterialSourceRealOs {
     workflowTaskUuid: string
   ) => { workflow_id: string; released_nodes: string[] }
   stop: () => Promise<void>
-}
-
-interface PublicEnvelope<Value> {
-  code: number
-  data?: Value
-}
-
-export interface BrowserJsonResult {
-  status: number
-  body: unknown
 }
 
 /**
@@ -279,106 +281,6 @@ export async function startF05MaterialSourceRealOs(): Promise<F05MaterialSourceR
 }
 
 /**
- * 在浏览器进程外调用生产库存服务建立真实短期测试占用。
- *
- * 参数：`input` 固定 Python、夹具、库存库、任务/节点/物料身份和导入路径。
- * 返回：生产 `InventoryService.reserve_workflow` 的领域结果。
- * 异常：子进程失败、JSON 缺失或结果身份漂移时抛出。
- */
-function runReservationReserve(input: {
-  python: string
-  script: string
-  inventoryDatabase: string
-  workflowTaskUuid: string
-  workflowNodeUuid: string
-  materialUuid: string
-  pythonPath: string
-}): { workflow_id: string; reserved_nodes: string[] } {
-  const stdout = execFileSync(input.python, [
-    input.script,
-    'reserve',
-    input.inventoryDatabase,
-    input.workflowTaskUuid,
-    input.workflowNodeUuid,
-    input.materialUuid
-  ], {
-    encoding: 'utf8',
-    env: { ...process.env, PYTHONPATH: input.pythonPath }
-  })
-  const lines = stdout.trim().split('\n')
-  const result = JSON.parse(lines.at(-1) || 'null') as {
-    workflow_id?: unknown
-    reserved_nodes?: unknown
-  } | null
-  if (
-    !result || result.workflow_id !== input.workflowTaskUuid ||
-    !Array.isArray(result.reserved_nodes) ||
-    containsNonString(result.reserved_nodes)
-  ) {
-    throw new Error(`短期预留建立结果无效：${JSON.stringify(result)}`)
-  }
-  return {
-    workflow_id: result.workflow_id,
-    reserved_nodes: result.reserved_nodes as string[]
-  }
-}
-
-/**
- * 在浏览器进程外调用生产库存服务释放一个任务的短期预留。
- *
- * 参数：`input` 固定 Python、夹具、库存库、任务身份和导入路径。
- * 返回：生产 `InventoryService.release_workflow` 的领域结果。
- * 异常：子进程失败、JSON 缺失或结果身份漂移时抛出。
- */
-function runReservationRelease(input: {
-  python: string
-  script: string
-  inventoryDatabase: string
-  workflowTaskUuid: string
-  pythonPath: string
-}): { workflow_id: string; released_nodes: string[] } {
-  const stdout = execFileSync(input.python, [
-    input.script,
-    'release',
-    input.inventoryDatabase,
-    input.workflowTaskUuid
-  ], {
-    encoding: 'utf8',
-    env: { ...process.env, PYTHONPATH: input.pythonPath }
-  })
-  const lines = stdout.trim().split('\n')
-  const result = JSON.parse(lines.at(-1) || 'null') as {
-    workflow_id?: unknown
-    released_nodes?: unknown
-  } | null
-  if (
-    !result || result.workflow_id !== input.workflowTaskUuid ||
-    !Array.isArray(result.released_nodes) ||
-    containsNonString(result.released_nodes)
-  ) {
-    throw new Error(`短期预留释放结果无效：${JSON.stringify(result)}`)
-  }
-  return {
-    workflow_id: result.workflow_id,
-    released_nodes: result.released_nodes as string[]
-  }
-}
-
-/**
- * 判断不可信数组是否包含非字符串成员。
- *
- * @param values 待校验数组。
- * @returns 任一成员不是字符串时返回 `true`。
- * @throws 无。
- */
-function containsNonString(values: unknown[]): boolean {
-  for (const value of values) {
-    if (typeof value !== 'string') return true
-  }
-  return false
-}
-
-/**
  * 捕获一个公共 HTTP 响应作为失败证据。
  *
  * 参数：`url` 是公共接口地址。返回：URL、HTTP 状态和 JSON 响应体；网络失败时
@@ -567,89 +469,3 @@ async function stopChild(child: ChildProcess): Promise<void> {
     await once(child, 'exit')
   }
 }
-
-/**
- * 读取一个公开成功 envelope。
- *
- * 参数：`url` 是公共接口地址。返回：`code=0` 的 data。
- * 异常：HTTP 或业务 code 非成功、data 缺失时抛出。
- */
-export async function readPublicEnvelope<Value>(url: string): Promise<Value> {
-  const response = await fetch(url)
-  const envelope = await response.json() as PublicEnvelope<Value>
-  if (!response.ok || envelope.code !== 0 || envelope.data === undefined) {
-    throw new Error(`公共接口读取失败：${url} ${response.status}`)
-  }
-  return envelope.data
-}
-
-/**
- * 向公开接口提交 JSON 并读取成功 envelope。
- *
- * 参数：`url` 是公共接口，`body` 是 JSON 请求体。
- * 返回：`code=0` 的 data。异常：HTTP/业务失败或 data 缺失时抛出。
- */
-export async function postPublicEnvelope<Value>(
-  url: string,
-  body: unknown
-): Promise<Value> {
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body)
-  })
-  const envelope = await response.json() as PublicEnvelope<Value>
-  if (!response.ok || envelope.code !== 0 || envelope.data === undefined) {
-    throw new Error(`公共接口提交失败：${url} ${response.status}`)
-  }
-  return envelope.data
-}
-
-/**
- * 在浏览器上下文发出 JSON 请求，确保重排操作进入浏览器网络证据。
- *
- * 参数：`request` 包含完整 URL 与 HTTP 方法。
- * 返回：HTTP 状态和解析后的 JSON body。
- * 异常：网络失败或响应不是 JSON 时原样抛出。
- */
-export async function requestJsonInBrowser(
-  request: { url: string; method: string }
-): Promise<BrowserJsonResult> {
-  const response = await fetch(request.url, { method: request.method })
-  return { status: response.status, body: await response.json() }
-}
-
-/**
- * 拼接 native 日志以检查 Python traceback。
- *
- * 参数：`entries` 是 OS 工作目录中的日志集合。
- * 返回：带文件名边界的单一诊断文本。异常：无。
- */
-export function joinNativeLogs(entries: readonly NativeLogEvidence[]): string {
-  let joined = ''
-  for (const entry of entries) {
-    joined += `# ${entry.name}\n${entry.content}\n`
-  }
-  return joined
-}
-
-/**
- * 将本轮公开合同证据写到仓库外的 E2E artifact 目录。
- *
- * 参数：`value` 是修订、命令、身份和网络账本。
- * 返回：无。异常：目录或文件不可写时原样抛出。
- */
-export function writeF05Evidence(value: unknown): void {
-  const artifactDirectory = resolve(
-    process.env.UNILAB_E2E_ARTIFACT_DIR ||
-      resolve(process.cwd(), '../e2e-artifacts/f05-material-source-public')
-  )
-  mkdirSync(artifactDirectory, { recursive: true })
-  writeFileSync(
-    resolve(artifactDirectory, 'evidence.json'),
-    `${JSON.stringify(value, null, 2)}\n`
-  )
-}
-
-export const UUID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i

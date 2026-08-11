@@ -1,5 +1,4 @@
 import {
-  useId,
   useState,
   type ReactNode,
   type SyntheticEvent
@@ -13,17 +12,19 @@ import type {
 } from '../types/electron'
 
 import LocalRuntimeEdgeCommandEditor from './LocalRuntimeEdgeCommandEditor'
+import {
+  PathField,
+  PhoenixDependencyRecoveryNotice,
+  RuntimeStatus
+} from './LocalRuntimeDialogParts'
 import styles from './LocalRuntimeLauncher.module.scss'
-
-type LocalRuntimeValidationField = keyof LocalRuntimeLaunchConfig
-  | 'customEdgeExecutable'
-  | 'customEdgeWorkingDirectory'
-  | 'customEdgeEnvironment'
-
-interface ValidationResult {
-  valid: boolean
-  errors: Partial<Record<LocalRuntimeValidationField, string>>
-}
+import {
+  edgeControlLabel,
+  isEdgeTransitioning,
+  isSimulatorTransitioning,
+  simulatorControlLabel,
+  type LocalRuntimeValidationResult
+} from './localRuntimeLauncherModel'
 
 interface LocalRuntimeDialogProps {
   config: LocalRuntimeLaunchConfig
@@ -33,8 +34,8 @@ interface LocalRuntimeDialogProps {
   simulatorSubmitted: boolean
   edgeSubmitted: boolean
   resolvingGeneratedEdgeCommand: boolean
-  simulatorValidation: ValidationResult
-  edgeValidation: ValidationResult
+  simulatorValidation: LocalRuntimeValidationResult
+  edgeValidation: LocalRuntimeValidationResult
   phoenixDependencyMissing?: boolean
   transitioning: boolean
   onChange: (config: LocalRuntimeLaunchConfig) => void
@@ -423,223 +424,6 @@ export function LocalRuntimeDialog({
   )
 }
 
-function PhoenixDependencyRecoveryNotice({
-  osProjectPath
-}: {
-  osProjectPath: string
-}): React.JSX.Element {
-  const titleId = useId()
-  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle')
-  const commands = phoenixRecoveryCommands(osProjectPath)
-
-  const copyCommands = async (): Promise<void> => {
-    try {
-      await globalThis.navigator.clipboard.writeText(commands)
-      setCopyState('copied')
-    } catch {
-      setCopyState('failed')
-    }
-  }
-
-  return (
-    <section
-      className={styles.observabilityNotice}
-      role="status"
-      aria-labelledby={titleId}
-    >
-      <div className={styles.observabilityNoticeHeader}>
-        <div>
-          <strong id={titleId}>链路追踪（Trace）功能已降级</strong>
-          <p>
-            设备与业务运行不受影响；Phoenix 未安装，OTLP Trace 上报会持续返回 503。
-          </p>
-        </div>
-        <span>不影响业务</span>
-      </div>
-      <p>
-        在本机当前 Edge 使用的 Conda 环境中执行以下命令。若环境名不是
-        <code>unilab</code>，请替换第二行。
-      </p>
-      <div className={styles.recoveryCommand}>
-        <pre aria-label="Phoenix 依赖修复命令"><code>{commands}</code></pre>
-        <button type="button" onClick={() => void copyCommands()}>
-          {copyState === 'copied' ? '已复制' : '复制命令'}
-        </button>
-      </div>
-      <small className={styles.dependencySummary}>
-        将安装 arize-phoenix==17.5.0、arize-phoenix-otel==0.16.1，并提供
-        <code>phoenix</code>命令。
-      </small>
-      <p>
-        安装完成后，在桌面端停止并重新启动 Edge。每台机器都需要在各自实际使用的
-        Conda 环境中安装一次。
-      </p>
-      <span className={styles.copyFeedback} aria-live="polite">
-        {copyState === 'failed' ? '复制失败，请手动选择命令。' : ''}
-      </span>
-    </section>
-  )
-}
-
-function PathField({
-  id,
-  label,
-  value,
-  placeholder,
-  buttonLabel,
-  disabled,
-  invalid,
-  error,
-  autoFocus = false,
-  editable = false,
-  onValueChange,
-  onChoose
-}: {
-  id: string
-  label: string
-  value: string
-  placeholder: string
-  buttonLabel: string
-  disabled: boolean
-  invalid: boolean
-  error?: string
-  autoFocus?: boolean
-  editable?: boolean
-  onValueChange?: (value: string) => void
-  onChoose: () => void
-}): React.JSX.Element {
-  const errorId = `${id}-error`
-  const labelId = `${id}-label`
-  const valueId = `${id}-value`
-  const actionId = `${id}-action`
-  return (
-    <div className={styles.field}>
-      <label className={styles.fieldLabel} id={labelId} htmlFor={id}>
-        {label}
-      </label>
-      {editable ? (
-        <div
-          className={styles.pathEditor}
-          data-disabled={disabled || undefined}
-          data-invalid={invalid || undefined}
-        >
-          <input
-            id={id}
-            type="text"
-            className={styles.pathInput}
-            value={value}
-            placeholder={placeholder}
-            disabled={disabled}
-            aria-invalid={invalid || undefined}
-            aria-describedby={invalid ? errorId : undefined}
-            autoFocus={autoFocus}
-            spellCheck={false}
-            title={value || undefined}
-            onChange={(event) => onValueChange?.(event.target.value)}
-          />
-          <button
-            type="button"
-            className={styles.pathBrowse}
-            disabled={disabled}
-            aria-label={`${label}：${buttonLabel}`}
-            onClick={onChoose}
-          >
-            {buttonLabel}
-          </button>
-        </div>
-      ) : (
-        <button
-          id={id}
-          type="button"
-          className={styles.pathPicker}
-          disabled={disabled}
-          aria-labelledby={`${labelId} ${valueId} ${actionId}`}
-          aria-invalid={invalid || undefined}
-          aria-describedby={invalid ? errorId : undefined}
-          autoFocus={autoFocus}
-          title={value || undefined}
-          onClick={onChoose}
-        >
-          <span
-            id={valueId}
-            className={value ? styles.pathValue : styles.pathPlaceholder}
-          >
-            {value || placeholder}
-          </span>
-          <span className={styles.pathAction} id={actionId}>
-            {buttonLabel}
-          </span>
-        </button>
-      )}
-      {invalid && error ? (
-        <small className={styles.fieldError} id={errorId}>
-          {error}
-        </small>
-      ) : null}
-    </div>
-  )
-}
-
-function RuntimeStatus({
-  snapshot
-}: {
-  snapshot: LocalRuntimeSnapshot
-}): React.JSX.Element {
-  return (
-    <div
-      className={styles.statusPanel}
-      data-phase={snapshot.phase}
-      role="status"
-      aria-live="polite"
-    >
-      <div className={styles.statusHeader}>
-        <span className={styles.statusDot} aria-hidden="true" />
-        <strong>{snapshot.message}</strong>
-      </div>
-      <div className={styles.processGrid}>
-        <ProcessState
-          label="PLC-Sim"
-          port="18765"
-          status={simulatorRuntimeStatus(snapshot)}
-        />
-        <ProcessState
-          label="领域侧 Edge"
-          port="HTTP 18003"
-          status={edgeRuntimeStatus(snapshot)}
-        />
-      </div>
-    </div>
-  )
-}
-
-type ProcessDisplayStatus =
-  | 'idle'
-  | 'starting'
-  | 'running'
-  | 'stopping'
-  | 'failed'
-  | 'disabled'
-
-function ProcessState({
-  label,
-  port,
-  status
-}: {
-  label: string
-  port: string
-  status: ProcessDisplayStatus
-}): React.JSX.Element {
-  return (
-    <div className={styles.processItem} data-status={status}>
-      <span className={styles.processIdentity}>
-        <strong>{label}</strong>
-        <small>{port}</small>
-      </span>
-      <span className={styles.processStatus}>{processStatusLabel(status)}</span>
-    </div>
-  )
-}
-
 /** 把设备包验收状态转为界面可读标签。 */
 function acceptanceStatusLabel(
   status: 'unverified' | 'verified' | 'failed'
@@ -647,114 +431,4 @@ function acceptanceStatusLabel(
   if (status === 'verified') return '已验证'
   if (status === 'failed') return '失败'
   return '未验证'
-}
-
-function isSimulatorTransitioning(snapshot: LocalRuntimeSnapshot): boolean {
-  return [
-    'validating_simulator',
-    'starting_simulator',
-    'waiting_simulator',
-    'stopping_simulator'
-  ].includes(snapshot.phase)
-}
-
-function isEdgeTransitioning(snapshot: LocalRuntimeSnapshot): boolean {
-  return [
-    'validating_edge',
-    'starting_bridge',
-    'waiting_bridge',
-    'starting_edge',
-    'waiting_edge',
-    'stopping_edge'
-  ].includes(snapshot.phase)
-}
-
-function simulatorRuntimeStatus(
-  snapshot: LocalRuntimeSnapshot
-): ProcessDisplayStatus {
-  if (snapshot.failedProcess === 'simulator') return 'failed'
-  if (snapshot.phase === 'stopping_simulator' && snapshot.simulatorRunning) {
-    return 'stopping'
-  }
-  if (
-    snapshot.phase === 'validating_simulator'
-    || snapshot.phase === 'starting_simulator'
-    || snapshot.phase === 'waiting_simulator'
-  ) {
-    return 'starting'
-  }
-  if (snapshot.simulatorRunning) return 'running'
-  return 'idle'
-}
-
-function edgeRuntimeStatus(
-  snapshot: LocalRuntimeSnapshot
-): ProcessDisplayStatus {
-  if (
-    snapshot.failedProcess === 'bridge'
-    || snapshot.failedProcess === 'edge'
-  ) {
-    return 'failed'
-  }
-  if (
-    snapshot.phase === 'stopping_edge'
-    && (snapshot.bridgeRunning || snapshot.edgeRunning)
-  ) {
-    return 'stopping'
-  }
-  if (snapshot.phase === 'ready' && snapshot.edgeRunning) {
-    return 'running'
-  }
-  if (
-    snapshot.phase === 'starting_bridge'
-    || snapshot.phase === 'validating_edge'
-    || snapshot.phase === 'waiting_bridge'
-    || snapshot.phase === 'starting_edge'
-    || snapshot.phase === 'waiting_edge'
-    || snapshot.bridgeRunning
-    || snapshot.edgeRunning
-  ) {
-    return 'starting'
-  }
-  return 'idle'
-}
-
-function simulatorControlLabel(
-  snapshot: LocalRuntimeSnapshot,
-  active: boolean
-): string {
-  if (snapshot.phase === 'stopping_simulator') return '正在停止…'
-  if (isSimulatorTransitioning(snapshot)) return '正在启动…'
-  return active ? '停止 PLC' : '启动 PLC'
-}
-
-function edgeControlLabel(
-  snapshot: LocalRuntimeSnapshot,
-  active: boolean
-): string {
-  if (snapshot.phase === 'stopping_edge') return '正在停止…'
-  if (isEdgeTransitioning(snapshot)) return '正在启动…'
-  return active ? '停止 Edge' : '启动 Edge'
-}
-
-function processStatusLabel(status: ProcessDisplayStatus): string {
-  if (status === 'running') return '运行中'
-  if (status === 'starting') return '启动中'
-  if (status === 'stopping') return '停止中'
-  if (status === 'failed') return '异常'
-  if (status === 'disabled') return '未启用'
-  return '未启动'
-}
-
-function phoenixRecoveryCommands(osProjectPath: string): string {
-  const projectPath = osProjectPath.trim() || '/path/to/Uni-Lab-OS'
-  return [
-    `cd ${shellQuote(projectPath)}`,
-    'conda activate unilab',
-    "pip install -e '.[observability]'"
-  ].join('\n')
-}
-
-function shellQuote(value: string): string {
-  return `'${value.replaceAll("'", "'\\''")}'`
 }

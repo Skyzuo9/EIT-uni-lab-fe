@@ -98,12 +98,12 @@
 
 .unilab-environment-manager {
   position: absolute;
-  z-index: 40;
+  z-index: 1100;
   top: 52px;
   right: 12px;
+  bottom: 12px;
   display: flex;
   width: min(480px, calc(100% - 24px));
-  max-height: calc(100% - 64px);
   flex-direction: column;
   overflow: hidden;
   border: 1px solid var(--unilab-color-border-strong);
@@ -155,6 +155,7 @@
 .unilab-environment-manager__rail {
   position: relative;
   display: grid;
+  min-height: 0;
   flex: 1 1 auto;
   gap: 0;
   padding: 8px 14px 2px;
@@ -273,18 +274,33 @@
 }
 
 .unilab-environment-manager__mode button {
+  display: grid;
+  min-height: 48px;
+  place-content: center;
+  gap: 3px;
   padding: 6px 10px;
-  border: 0;
+  border: 1px solid transparent;
   border-radius: calc(var(--unilab-radius-control) - 2px);
   color: var(--unilab-color-text-muted);
   background: transparent;
+  font-weight: 650;
   cursor: pointer;
+}
+
+.unilab-environment-manager__mode button small {
+  min-height: 12px;
+  color: inherit;
+  font: 700 9px/1.2 var(--unilab-font-sans);
+  letter-spacing: .02em;
 }
 
 .unilab-environment-manager__mode button.is-active {
   color: var(--unilab-color-primary);
+  border-color: var(--unilab-color-primary);
   background: var(--unilab-color-primary-soft);
-  box-shadow: var(--unilab-shadow-control);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--unilab-color-primary) 16%, transparent),
+    var(--unilab-shadow-control);
 }
 
 .unilab-environment-card__actions {

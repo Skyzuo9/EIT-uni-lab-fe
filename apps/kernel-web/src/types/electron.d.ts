@@ -342,6 +342,9 @@ export interface DesktopWorkbenchRemoteApi {
 
 interface DesktopApi {
   getVersion: () => Promise<string>
+  unsavedChanges?: {
+    set: (hasUnsavedChanges: boolean) => void
+  }
   workbenchRemote?: DesktopWorkbenchRemoteApi
   auth: {
     getSession: () => Promise<AuthSession | null>

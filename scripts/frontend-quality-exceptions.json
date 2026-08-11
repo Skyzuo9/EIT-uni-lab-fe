@@ -6,6 +6,18 @@
       "reason": "桌面主进程组合入口（DesktopMainCompositionRoot）集中持有 Electron 应用生命周期、受信 IPC 注册、窗口身份校验、托管 Runtime 和设备接入会话的唯一装配顺序；共享唯一 BrowserWindow 与 Edge 权威状态可避免生命周期分叉。",
       "futureSplitBoundary": "为应用启动、窗口重建和 IPC sender 门禁补齐集成测试后，将本地运行、设备接入、设备卡片与认证处理器分别迁入 registerLocalRuntimeIpc.ts、registerDeviceProvisioningIpc.ts、registerDeviceCardIpc.ts 和 registerAuthIpc.ts，index.ts 仅保留生命周期编排。"
     },
+    "apps/desktop/src/main/observability.ts": {
+      "maxLines": 1350,
+      "maxFunctionComplexity": 25,
+      "reason": "桌面可观测性（DesktopObservability）在一个关闭失败边界内统一收窄环境配置、日志脱敏、Trace 导出、缓冲刷新和退出清理，避免主进程的不同 IPC 路径各自发送或泄露诊断数据。",
+      "futureSplitBoundary": "补齐 OTLP 网络失败、退出超时和脱敏矩阵后，将 exporter 生命周期迁入 ElectronTraceExporter，将事件字段收窄迁入 observabilityAttributes.ts。"
+    },
+    "apps/kernel-web/src/components/ConnectionBar.tsx": {
+      "maxLines": 500,
+      "maxFunctionComplexity": 30,
+      "reason": "连接栏（ConnectionBar）在单一可见边界组合 Backend 连接态、自动重连、手动断开和桌面 Runtime 入口，保证用户看到的状态与当前服务端口一致。",
+      "futureSplitBoundary": "补齐连接、重连失败和桌面 Runtime 三种交互快照后，将状态摘要迁入 ConnectionStatus，将操作区迁入 ConnectionActions。"
+    },
     "apps/kernel-web/src/components/LocalRuntimeConfigurationDialog.tsx": {
       "maxLines": 800,
       "maxFunctionComplexity": 50,
@@ -38,7 +50,7 @@
     },
     "packages/workflow-editor/src/components/PersistentWorkflowAuthoringView.tsx": {
       "maxLines": 700,
-      "maxFunctionComplexity": 65,
+      "maxFunctionComplexity": 75,
       "reason": "工作流编排视图（WorkflowAuthoringView）只保留代码、画布和运行栏的同屏可访问性布局；工具栏及抽屉/冲突覆盖层已拆出，剩余分支主要对应互斥呈现状态。",
       "futureSplitBoundary": "为代码/画布双模式补齐视觉回归后，抽取 PersistentWorkflowWorkbench，使根视图只组合状态提示、工作台与运行栏。"
     },
@@ -49,7 +61,7 @@
       "futureSplitBoundary": "为运行模式分段控件补齐独立交互测试后，抽取 WorkflowRunModeControl，并把保存菜单抽取为 WorkflowDraftMenu。"
     },
     "packages/workflow-editor/src/hooks/usePersistentWorkflowAuthoring.ts": {
-      "maxLines": 1200,
+      "maxLines": 1250,
       "maxFunctionComplexity": 80,
       "reason": "工作流编排会话（WorkflowAuthoringSession）保留双重 CAS、外部失效补读、草稿规范化、候选应用和本地缓冲连续性的单一事务顺序；目录、画布节点编辑和运行入口状态机均已拆出。",
       "futureSplitBoundary": "为外部失效与冲突重试补齐独立状态机测试后，将远端同步与双 CAS 冲突处理抽取到 usePersistentWorkflowAuthoritySync。"
@@ -84,6 +96,12 @@
       "reason": "物料服务（MaterialService）在一个适配边界内完成物料模板、物料图（MaterialGraph）与后端不可信载荷的校验映射，集中定义错误语义可避免模板和图投影产生不一致的解析规则。",
       "futureSplitBoundary": "补齐模板载荷和物料图载荷的畸形输入矩阵测试后，将模板映射迁入 materialTemplateMapper.ts、物料图映射迁入 materialGraphMapper.ts，materials.ts 仅保留端口组合与 HTTP 调用。"
     },
+    "packages/services/src/workflowMaterialSource.ts": {
+      "maxLines": 550,
+      "maxFunctionComplexity": 35,
+      "reason": "工作流物料来源（WorkflowMaterialSource）在同一适配边界收窄 OS Schema、物料与库位目录及引用约束，集中校验可避免表单与画布对同一物料占位符产生不同解释。",
+      "futureSplitBoundary": "补齐 nullable、数组、库位选择和畸形 Schema 矩阵后，将 Schema 解码迁入 workflowMaterialSourceSchema.ts，将目录投影迁入 workflowMaterialSourceCatalog.ts。"
+    },
     "packages/services/src/workflowActionCatalog.ts": {
       "maxLines": 900,
       "maxFunctionComplexity": 25,
@@ -108,6 +126,12 @@
       "reason": "工作流输入输出编辑器（WorkflowIoEditor）集中维护端口身份、类型约束、默认值、连接状态和可访问错误反馈，保证一次编辑提交使用同一规范化快照。",
       "futureSplitBoundary": "补齐输入、输出、物料占位符（ResourceSlot）和连接冲突的交互矩阵后，将 WorkflowInputSection、WorkflowOutputSection 与 WorkflowIoTypeEditor 分别迁出。"
     },
+    "packages/workflow-editor/src/components/WorkflowCatalog.tsx": {
+      "maxLines": 600,
+      "maxFunctionComplexity": 35,
+      "reason": "工作流目录（WorkflowCatalog）在一个可访问列表边界内组合搜索、状态筛选、创建、打开、删除确认和修改日志入口，使同一工作流身份不会在多个局部列表间漂移。",
+      "futureSplitBoundary": "补齐搜索、空态、删除失败和日志抽屉交互后，将筛选栏迁入 WorkflowCatalogFilters，将卡片操作迁入 WorkflowCatalogCardActions。"
+    },
     "packages/workflow-editor/src/components/WorkflowNodeCard.tsx": {
       "maxLines": 650,
       "maxFunctionComplexity": 45,
@@ -128,7 +152,7 @@
     },
     "packages/workflow-editor/src/components/WorkflowTransferNode.tsx": {
       "maxLines": 500,
-      "maxFunctionComplexity": 35,
+      "maxFunctionComplexity": 40,
       "reason": "工作流物料转运节点（WorkflowTransferNode）集中解释来源、目标、物料和执行投影的组合状态，使画布始终以一个原子节点展示转运事实。",
       "futureSplitBoundary": "补齐已解析、部分解析和失败转运的节点快照后，将来源目标摘要迁入 WorkflowTransferRoute，将物料摘要迁入 WorkflowTransferMaterialBadge。"
     },

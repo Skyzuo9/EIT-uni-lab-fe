@@ -20,6 +20,16 @@ import {
   loadBackendDeviceCatalog,
   loadBackendOnlineDevices
 } from './backendDevices'
+import {
+  asRuntimeRecord,
+  getRuntimeDevices,
+  mapRuntimeDeviceAction,
+  mapRuntimeDeviceActionSchema,
+  mapRuntimeDeviceCatalogItem,
+  mapRuntimeResource,
+  runtimeString,
+  runtimeStringArray
+} from './laboratoryRuntimeAdapter'
 
 export interface DeviceActionTarget {
   deviceId: string
@@ -120,31 +130,6 @@ export interface ResourceNode {
   children: ResourceNode[]
 }
 
-interface RuntimeActionTemplate {
-  actionRef: string
-  actionName: string
-  deviceId: string
-  label: string
-  typeName: string
-  isBusy: boolean
-  currentJobId: string | null
-  inputSchema: Record<string, unknown>
-  outputSchema: Record<string, unknown>
-  riskLevel: DeviceCardActionRiskLevel
-}
-
-interface RuntimeDeviceCatalogItem {
-  id: string
-  materialUuid: string
-  deviceTypeId?: string
-  deviceKey: string
-  namespace: string
-  name: string
-  online: boolean
-  stateSchema?: Record<string, unknown>
-  actions: RuntimeActionTemplate[]
-}
-
 export function createLaboratoryService(
   http: HttpClient,
   backend: BackendConfig
@@ -175,7 +160,9 @@ export function createLaboratoryService(
         '/api/v1/devices'
       )
       const items = Array.isArray(raw.items) ? raw.items : []
-      return items.map((value) => mapDeviceCatalogItem(asRecord(value)))
+      return items.map((value) => (
+        mapRuntimeDeviceCatalogItem(asRuntimeRecord(value))
+      ))
     },
 
     async getOnlineDevices(signal?: AbortSignal): Promise<OnlineDevice[]> {
@@ -189,7 +176,7 @@ export function createLaboratoryService(
           namespace: device.namespace,
           machineName: device.name,
           online: device.online,
-          actions: device.actions.map(mapDeviceAction)
+          actions: device.actions.map(mapRuntimeDeviceAction)
         }))
     },
 
@@ -198,7 +185,7 @@ export function createLaboratoryService(
       const device = (await getRuntimeDevices(http)).find(
         (candidate) => candidate.id === deviceId
       )
-      return (device?.actions ?? []).map(mapDeviceAction)
+      return (device?.actions ?? []).map(mapRuntimeDeviceAction)
     },
 
     async getActionSchema(
@@ -218,7 +205,7 @@ export function createLaboratoryService(
           retryable: false
         })
       }
-      return mapDeviceActionSchema(template)
+      return mapRuntimeDeviceActionSchema(template)
     },
 
     async forceUnlockDeviceAction(input: {
@@ -240,7 +227,7 @@ export function createLaboratoryService(
           })
         }
       )
-      const status = str(response.status)
+      const status = runtimeString(response.status)
       if (status !== 'unlocked' && status !== 'already_unlocked') {
         throw new ServiceError({
           code: 'INVALID_DEVICE_UNLOCK_RESPONSE',
@@ -250,10 +237,10 @@ export function createLaboratoryService(
       }
       return {
         status,
-        deviceId: str(response.deviceId) || input.deviceId,
-        actionName: str(response.actionName) || input.actionName,
-        releasedJobIds: stringArray(response.releasedJobIds),
-        cancelRequestedJobIds: stringArray(
+        deviceId: runtimeString(response.deviceId) || input.deviceId,
+        actionName: runtimeString(response.actionName) || input.actionName,
+        releasedJobIds: runtimeStringArray(response.releasedJobIds),
+        cancelRequestedJobIds: runtimeStringArray(
           response.cancelRequestedJobIds
         )
       }
@@ -264,241 +251,9 @@ export function createLaboratoryService(
         http,
         '/api/v1/resources'
       )
-      return raw.map(mapResource)
+      return raw.map(mapRuntimeResource)
     }
   }
 }
 
 export type LaboratoryService = ReturnType<typeof createLaboratoryService>
-
-function mapDeviceCatalogItem(
-  raw: Record<string, unknown>
-): DeviceCatalogItem {
-  const deviceId = str(raw.id)
-  return {
-    deviceId,
-    materialUuid: str(raw.materialUuid),
-    // 新目录提供 Driver 类型；保留旧 Edge 的实例 id 回退。
-    deviceTypeId: str(raw.deviceTypeId ?? raw.typeId ?? raw.className) || deviceId,
-    deviceKey: str(raw.deviceKey),
-    namespace: str(raw.namespace),
-    label: str(raw.name) || deviceId,
-    online: Boolean(raw.online),
-    stateSchema: Object.prototype.hasOwnProperty.call(raw, 'stateSchema')
-      ? normalizeDeviceStateSchema(raw.stateSchema)
-      : undefined,
-    actions: Array.isArray(raw.actions)
-      ? raw.actions.map((value) => {
-          const action = asRecord(value)
-          const actionRef = str(action.actionRef)
-          const separator = actionRef.lastIndexOf('.')
-          return {
-            actionName: str(action.id) ||
-              (separator >= 0 ? actionRef.slice(separator + 1) : actionRef),
-            actionRef,
-            label: str(action.name) || str(action.id),
-            typeName: str(action.typeName),
-            inputSchema: asRecord(action.inputSchema),
-            outputSchema: asRecord(action.outputSchema),
-            riskLevel: actionRiskLevel(action.riskLevel),
-            isBusy: Boolean(action.busy)
-          }
-        })
-      : []
-  }
-}
-
-function mapDeviceAction(template: RuntimeActionTemplate): DeviceAction {
-  const schema = normalizeInputSchema(template.inputSchema)
-  return {
-    actionName: template.actionName,
-    actionRef: template.actionRef,
-    displayName: template.label,
-    label: template.label,
-    typeName: template.typeName,
-    isBusy: template.isBusy,
-    currentJobId: template.currentJobId,
-    schema,
-    inputSchema: mapActionSchema(schema.properties),
-    outputSchema: mapActionSchema(template.outputSchema),
-    riskLevel: template.riskLevel
-  }
-}
-
-function mapDeviceActionSchema(
-  template: RuntimeActionTemplate
-): DeviceActionSchema {
-  const schema = normalizeInputSchema(template.inputSchema)
-  return {
-    schema,
-    goalDefault: defaultsFromInputSchema(schema),
-    actionType: template.typeName || template.actionRef,
-    isBusy: template.isBusy,
-    currentJobId: template.currentJobId
-  }
-}
-
-function mapResource(raw: Record<string, unknown>): ResourceNode {
-  const pos = isRecord(raw.position) ? raw.position : {}
-  return {
-    id: str(raw.id),
-    uuid: str(raw.uuid),
-    name: str(raw.name),
-    type: str(raw.type),
-    className: str(raw.class),
-    parent: raw.parent == null ? null : str(raw.parent),
-    config: isRecord(raw.config) ? raw.config : {},
-    data: isRecord(raw.data) ? raw.data : {},
-    position: { x: num(pos.x), y: num(pos.y), z: num(pos.z) },
-    children: Array.isArray(raw.children)
-      ? raw.children.map((child) => mapResource(asRecord(child)))
-      : []
-  }
-}
-
-async function getRuntimeDevices(
-  http: HttpClient,
-  signal?: AbortSignal
-): Promise<RuntimeDeviceCatalogItem[]> {
-  const raw = await requestData<Record<string, unknown>>(
-    http,
-    '/api/v1/devices',
-    { signal }
-  )
-  const items = Array.isArray(raw.items) ? raw.items : []
-  return items.flatMap((value) => {
-    const item = asRecord(value)
-    const deviceId = str(item.id)
-    if (!deviceId) return []
-    const actions = Array.isArray(item.actions)
-      ? item.actions.flatMap((value) => {
-          const action = asRecord(value)
-          const actionName = str(action.id)
-          const actionRef = str(action.actionRef)
-          if (!actionName || !actionRef) return []
-          return [
-            {
-              actionRef,
-              actionName,
-              deviceId,
-              label: str(action.name) || actionName,
-              typeName: str(action.typeName) || actionRef,
-              isBusy: Boolean(action.busy),
-              currentJobId: optionalString(action.currentJobId),
-              inputSchema: asRecord(action.inputSchema),
-              outputSchema: asRecord(action.outputSchema),
-              riskLevel: actionRiskLevel(action.riskLevel)
-            }
-          ]
-        })
-      : []
-    return [
-      {
-        id: deviceId,
-        materialUuid: str(item.materialUuid),
-        deviceTypeId: optionalString(item.deviceTypeId) ?? undefined,
-        deviceKey: str(item.deviceKey),
-        namespace: str(item.namespace),
-        name: str(item.name) || deviceId,
-        online: Boolean(item.online),
-        stateSchema: Object.prototype.hasOwnProperty.call(item, 'stateSchema')
-          ? normalizeDeviceStateSchema(item.stateSchema)
-          : undefined,
-        actions
-      }
-    ]
-  })
-}
-
-function mapActionSchema(
-  value: unknown
-): Record<string, DeviceActionInputSchema> {
-  const schema = asRecord(value)
-  return Object.fromEntries(
-    Object.entries(schema).map(([name, definition]) => [
-      name,
-      asRecord(definition) as DeviceActionInputSchema
-    ])
-  )
-}
-
-function normalizeInputSchema(
-  inputSchema: Record<string, unknown>
-): Record<string, unknown> {
-  if (inputSchema.type === 'object' && isRecord(inputSchema.properties)) {
-    return inputSchema
-  }
-  return {
-    type: 'object',
-    properties: inputSchema
-  }
-}
-
-function defaultsFromInputSchema(
-  schema: Record<string, unknown>
-): Record<string, unknown> {
-  const properties = asRecord(schema.properties)
-  return Object.fromEntries(
-    Object.entries(properties).flatMap(([name, value]) => {
-      const definition = asRecord(value)
-      return Object.prototype.hasOwnProperty.call(definition, 'default')
-        ? [[name, definition.default]]
-        : []
-    })
-  )
-}
-
-function str(value: unknown): string {
-  return value == null ? '' : String(value)
-}
-
-function num(value: unknown): number {
-  const n = Number(value)
-  return Number.isFinite(n) ? n : 0
-}
-
-function optionalString(value: unknown): string | null {
-  const valueString = str(value).trim()
-  return valueString || null
-}
-
-function actionRiskLevel(value: unknown): DeviceCardActionRiskLevel {
-  if (value === undefined || value === null || value === '' || value === 'normal') {
-    return 'normal'
-  }
-  if (value === 'dangerous' || value === 'emergency') return value
-  throw new ServiceError({
-    code: 'INVALID_ACTION_RISK_LEVEL',
-    message: `Edge 返回了无效的 Action 风险等级：${String(value)}`,
-    retryable: false
-  })
-}
-
-function stringArray(value: unknown): string[] {
-  return Array.isArray(value)
-    ? value.map(str).filter(Boolean)
-    : []
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value != null && typeof value === 'object' && !Array.isArray(value)
-}
-
-function asRecord(value: unknown): Record<string, unknown> {
-  return isRecord(value) ? value : {}
-}
-
-function normalizeDeviceStateSchema(value: unknown): Record<string, unknown> {
-  return Object.fromEntries(
-    Object.entries(asRecord(value)).map(([key, definition]) => {
-      if (!isRecord(definition)) return [key, definition]
-      const source = definition.source
-      return [
-        key,
-        source === 'registry' || source === 'package-catalog'
-          ? { ...definition, source: 'driver' }
-          : { ...definition }
-      ]
-    })
-  )
-}

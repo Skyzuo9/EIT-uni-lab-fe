@@ -59,6 +59,7 @@ import { EnvironmentManager } from './environment-manager'
 import { createTheiaWorkflowIdeAdapter } from './theia-workflow-ide-adapter'
 import { WorkbenchMaterialViewport } from './workbench-material-viewport'
 import { WorkbenchSessionGate } from './workbench-session-gate'
+import { hasWorkbenchUnsavedChanges } from './workbench-unsaved-changes'
 
 type SourceSaveHandler = (pythonSource: string) => Promise<void>
 
@@ -103,6 +104,8 @@ export class TheiaWorkflowPrototypeWidget extends ReactWidget {
   }
   protected sourceSaveHandler: SourceSaveHandler | null = null
   protected lastAutomaticSourceSync: string | null = null
+  protected workflowPanelDirty = false
+  protected lastReportedUnsavedChanges: boolean | null = null
   @postConstruct()
   protected init(): void {
     this.ideAdapter = createTheiaWorkflowIdeAdapter({
@@ -119,6 +122,9 @@ export class TheiaWorkflowPrototypeWidget extends ReactWidget {
     this.toDispose.push(Disposable.create(() => this.editorListeners.dispose()))
     this.toDispose.push(Disposable.create(() => {
       void this.ideAdapter.dispose()
+    }))
+    this.toDispose.push(Disposable.create(() => {
+      publishDesktopUnsavedChanges(false)
     }))
     this.toDispose.push(this.editorManager.onCurrentEditorChanged(() => {
       this.observeCurrentEditor()
@@ -256,6 +262,7 @@ export class TheiaWorkflowPrototypeWidget extends ReactWidget {
         cursor: null
       })
       this.snapshot = this.ideAdapter.snapshot.sync
+      this.reportUnsavedChanges()
       if (render) this.update()
       return
     }
@@ -289,6 +296,7 @@ export class TheiaWorkflowPrototypeWidget extends ReactWidget {
       cursor
     })
     this.snapshot = this.ideAdapter.snapshot.sync
+    this.reportUnsavedChanges()
     if (render) this.update()
     if (
       previous.currentUri === currentUri &&
@@ -310,6 +318,30 @@ export class TheiaWorkflowPrototypeWidget extends ReactWidget {
   ): void => {
     this.sourceSaveHandler = handler
     if (handler) void this.synchronizeUnmappedSource()
+  }
+
+  /**
+   * 接收嵌入式工作流面板的双表示 dirty 状态并上报聚合结果。
+   *
+   * @param hasUnsavedChanges 画布或源码是否还有未保存修改。
+   * @returns 无返回值；相同状态不会重复发送 IPC。
+   */
+  protected readonly setWorkflowPanelDirty = (
+    hasUnsavedChanges: boolean
+  ): void => {
+    this.workflowPanelDirty = hasUnsavedChanges
+    this.reportUnsavedChanges()
+  }
+
+  /** 汇总全部 Theia 编辑器与工作流面板，并仅在状态变化时通知桌面主进程。 */
+  protected reportUnsavedChanges(): void {
+    const hasUnsavedChanges = hasWorkbenchUnsavedChanges(
+      this.workflowPanelDirty,
+      this.editorManager.all.map(widget => widget.editor.document.dirty)
+    )
+    if (this.lastReportedUnsavedChanges === hasUnsavedChanges) return
+    this.lastReportedUnsavedChanges = hasUnsavedChanges
+    publishDesktopUnsavedChanges(hasUnsavedChanges)
   }
 
   protected readonly setSourceProjection = (
@@ -461,6 +493,7 @@ export class TheiaWorkflowPrototypeWidget extends ReactWidget {
         ideBridge={this.ideBridge}
         session={this.sessionSnapshot}
         onSourceSaveHandlerChange={this.registerSourceSaveHandler}
+        onUnsavedChangesChange={this.setWorkflowPanelDirty}
         onRestartSession={this.restartSession}
         onReadEnvironmentLog={this.readEnvironmentLog}
         onConfigureGraph={this.configureGraph}
@@ -484,6 +517,7 @@ function WorkbenchSurface({
   ideBridge,
   session,
   onSourceSaveHandlerChange,
+  onUnsavedChangesChange,
   onRestartSession,
   onReadEnvironmentLog,
   onConfigureGraph,
@@ -497,6 +531,7 @@ function WorkbenchSurface({
   ideBridge: WorkflowIdeBridge
   session: WorkbenchSessionSnapshot
   onSourceSaveHandlerChange: (handler: SourceSaveHandler | null) => void
+  onUnsavedChangesChange: (hasUnsavedChanges: boolean) => void
   onRestartSession: () => Promise<void>
   onReadEnvironmentLog: (kind: WorkbenchEnvironmentLogKind) => Promise<string>
   onConfigureGraph: (graphPath: string) => Promise<void>
@@ -624,6 +659,7 @@ function WorkbenchSurface({
               workflowUuid={workflowUuid}
               hideEmbeddedCodeEditor
               ideBridge={ideBridge}
+              onUnsavedChangesChange={onUnsavedChangesChange}
               onSelectedWorkflowStepChange={setSelectedWorkflowNode}
               onWorkflowRuntimeProjectionChange={setRuntimeProjection}
             />
@@ -666,6 +702,18 @@ function WorkbenchSurface({
       </div>
     </QueryClientProvider>
   )
+}
+
+/**
+ * 通过可选 Electron 预加载桥发布聚合 dirty 状态；浏览器开发态保持无副作用。
+ *
+ * @param hasUnsavedChanges 工作台中任一可写表示是否未保存。
+ */
+function publishDesktopUnsavedChanges(hasUnsavedChanges: boolean): void {
+  const desktopApi = (globalThis as typeof globalThis & {
+    api?: { unsavedChanges?: { set(value: boolean): void } }
+  }).api
+  desktopApi?.unsavedChanges?.set(hasUnsavedChanges)
 }
 
 function createPrototypeServices(backendUrl: string): Services {

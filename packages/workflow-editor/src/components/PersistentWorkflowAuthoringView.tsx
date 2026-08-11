@@ -626,6 +626,7 @@ export function PersistentWorkflowAuthoringView({
 
         <WorkflowOutput
           expanded={outputExpanded}
+          resizable
           activeTab={outputTab}
           completedNodeCount={completedTaskJobCount}
           expectedNodeCount={taskJobs.length}

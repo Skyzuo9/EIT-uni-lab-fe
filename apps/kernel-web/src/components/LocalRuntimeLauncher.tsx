@@ -4,11 +4,12 @@ import { createPortal } from 'react-dom'
 import type {
   DesktopRuntimeApi,
   LocalRuntimeLaunchConfig,
+  LocalRuntimeModeInfo,
   LocalRuntimePathKind,
   LocalRuntimeSnapshot
 } from '../types/electron'
 
-import { LocalRuntimeDialog } from './LocalRuntimeDialog'
+import { LocalRuntimeDialog } from './LocalRuntimeConfigurationDialog'
 import {
   detectPhoenixObservabilityDependencyIssue,
   LocalRuntimeLogDrawer
@@ -16,10 +17,13 @@ import {
 import { LocalRuntimeLogLauncher } from './LocalRuntimeLogLauncher'
 import styles from './LocalRuntimeLauncher.module.scss'
 import {
+  DEVELOPMENT_RUNTIME_INFO,
+  devicePackageTrustPrompt,
   IDLE_LOCAL_RUNTIME_SNAPSHOT,
   isLocalRuntimeTransitioning,
   localRuntimeLauncherLabel,
   localRuntimePathField,
+  mergeDefaultLocalRuntimeLaunchConfig,
   readStoredLocalRuntimeConfig,
   storeLocalRuntimeConfig,
   validateEdgeConfig,
@@ -31,7 +35,7 @@ import {
   useDeviceCardSurfaceOcclusion
 } from './localRuntimeUiSupport'
 
-export { LocalRuntimeDialog } from './LocalRuntimeDialog'
+export { LocalRuntimeDialog } from './LocalRuntimeConfigurationDialog'
 export {
   normalizeStoredLocalRuntimeConfig,
   validateEdgeConfig,
@@ -66,6 +70,9 @@ export default function LocalRuntimeLauncher({
   const [open, setOpen] = useState(false)
   const [config, setConfig] = useState(readStoredLocalRuntimeConfig)
   const [snapshot, setSnapshot] = useState(IDLE_LOCAL_RUNTIME_SNAPSHOT)
+  const [runtimeInfo, setRuntimeInfo] = useState<LocalRuntimeModeInfo>(
+    DEVELOPMENT_RUNTIME_INFO
+  )
   const [localError, setLocalError] = useState<string | null>(null)
   const [simulatorSubmitted, setSimulatorSubmitted] = useState(false)
   const [edgeSubmitted, setEdgeSubmitted] = useState(false)
@@ -81,6 +88,18 @@ export default function LocalRuntimeLauncher({
     let active = true
     void runtimeApi.getSnapshot().then((nextSnapshot) => {
       if (active) setSnapshot(nextSnapshot)
+    }).catch((error: unknown) => {
+      if (active) setLocalError(errorMessage(error))
+    })
+    void runtimeApi.getModeInfo().then((nextInfo) => {
+      if (!active) return
+      setRuntimeInfo(nextInfo)
+      if (nextInfo.defaultLaunchConfig) {
+        setConfig((current) => mergeDefaultLocalRuntimeLaunchConfig(
+          current,
+          nextInfo.defaultLaunchConfig!
+        ))
+      }
     }).catch((error: unknown) => {
       if (active) setLocalError(errorMessage(error))
     })
@@ -149,7 +168,11 @@ export default function LocalRuntimeLauncher({
   }, [phoenixDependencyMissing, runtimeApi, snapshot.edgeRunning, snapshot.phase])
 
   useEffect(() => {
-    if (!runtimeApi || config.environmentPath.trim()) return
+    if (
+      !runtimeApi
+      || runtimeInfo.mode === 'managed'
+      || config.environmentPath.trim()
+    ) return
     let active = true
     void runtimeApi.getDefaultEnvironmentPath().then((environmentPath) => {
       if (!active || !environmentPath) return
@@ -162,7 +185,7 @@ export default function LocalRuntimeLauncher({
     return () => {
       active = false
     }
-  }, [config.environmentPath, runtimeApi])
+  }, [config.environmentPath, runtimeApi, runtimeInfo.mode])
 
   useEffect(() => {
     storeLocalRuntimeConfig(config)
@@ -183,8 +206,8 @@ export default function LocalRuntimeLauncher({
 
   if (!runtimeApi) return null
 
-  const simulatorValidation = validateSimulatorConfig(config)
-  const edgeValidation = validateEdgeConfig(config)
+  const simulatorValidation = validateSimulatorConfig(config, runtimeInfo.mode)
+  const edgeValidation = validateEdgeConfig(config, runtimeInfo.mode)
   const transitioning = isLocalRuntimeTransitioning(snapshot)
 
   /** 关闭日志子层并关闭本地运行配置对话框。 */
@@ -257,7 +280,25 @@ export default function LocalRuntimeLauncher({
     setLocalError(null)
     if (!edgeValidation.valid) return
     try {
+      if (config.szlabProjectPath.trim()) {
+        const trust = await runtimeApi.inspectDevicePackage(config)
+        if (trust.confirmationRequired) {
+          const confirmed = globalThis.confirm(devicePackageTrustPrompt(trust))
+          if (!confirmed) return
+          await runtimeApi.confirmDevicePackage(config, trust.contentHash)
+        }
+      }
       setSnapshot(await runtimeApi.startEdge(config))
+    } catch (error) {
+      setLocalError(errorMessage(error))
+    }
+  }
+
+  /** 运行设备包启动验收，并接收主进程完成清理后的最终状态。 */
+  const runAcceptance = async (): Promise<void> => {
+    setLocalError(null)
+    try {
+      setSnapshot(await runtimeApi.runAcceptance(config))
     } catch (error) {
       setLocalError(errorMessage(error))
     }
@@ -325,6 +366,7 @@ export default function LocalRuntimeLauncher({
         ? createPortal(
             <LocalRuntimeDialog
               config={config}
+              runtimeInfo={runtimeInfo}
               snapshot={snapshot}
               error={localError ?? snapshot.error ?? null}
               simulatorSubmitted={simulatorSubmitted}
@@ -340,6 +382,7 @@ export default function LocalRuntimeLauncher({
               onStopSimulator={() => void stopSimulator()}
               onStartEdge={() => void startEdge()}
               onStopEdge={() => void stopEdge()}
+              onRunAcceptance={() => void runAcceptance()}
               onLoadGeneratedEdgeCommand={loadGeneratedEdgeCommand}
               transitioning={transitioning}
               logControl={(

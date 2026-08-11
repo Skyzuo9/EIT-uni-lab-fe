@@ -12,6 +12,52 @@
   flex-basis: 220px;
 }
 
+.workflow
+  :global(.workflow-runtime__results):global(.is-expanded):global(.is-resizable) {
+  flex-basis: var(--workflow-output-height, 260px);
+}
+
+.workflow :global(.workflow-runtime__results):global(.is-resizing) {
+  transition: none;
+}
+
+.workflow :global(.workflow-runtime__output-resizer) {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  height: 12px;
+  flex: 0 0 12px;
+  place-items: center;
+  margin-top: -6px;
+  cursor: row-resize;
+  touch-action: none;
+}
+
+.workflow :global(.workflow-runtime__output-resizer) > span {
+  width: 44px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--unilab-color-border-strong);
+  box-shadow: 0 0 0 4px var(--unilab-color-surface);
+  transition:
+    width var(--unilab-motion-fast) ease,
+    background var(--unilab-motion-fast) ease;
+}
+
+.workflow :global(.workflow-runtime__output-resizer):hover > span,
+.workflow :global(.workflow-runtime__output-resizer):focus-visible > span,
+.workflow
+  :global(.workflow-runtime__results):global(.is-resizing)
+  :global(.workflow-runtime__output-resizer) > span {
+  width: 68px;
+  background: var(--unilab-color-primary);
+}
+
+.workflow :global(.workflow-runtime__output-resizer):focus-visible {
+  outline: 2px solid var(--unilab-color-focus);
+  outline-offset: -2px;
+}
+
 .workflow :global(.workflow-runtime__results):global(.is-collapsed) {
   flex-basis: 38px;
 }

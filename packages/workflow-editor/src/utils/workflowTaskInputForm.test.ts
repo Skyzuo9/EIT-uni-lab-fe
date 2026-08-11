@@ -214,6 +214,24 @@ describe('WorkflowTaskInputForm pure builder', () => {
       .toBe(true)
   })
 
+  it('confirms task creation without exposing projection implementation jargon', async () => {
+    expect(formModule.submitWorkflowTaskInput).toBeTypeOf('function')
+    const submitted = requiredValues(
+      formModule.createWorkflowTaskInputForm!(aggregate())
+    )
+
+    const result = await formModule.submitWorkflowTaskInput!({
+      form: submitted,
+      readApplied: vi.fn(async () => aggregate()),
+      createTask: vi.fn(async () => workflowTask(7))
+    })
+
+    expect(result).toMatchObject({
+      kind: 'created',
+      message: '任务创建成功（已应用版本 7）；参数默认值与规范化结果以本次任务详情为准'
+    })
+  })
+
   it('rehydrates authority and reprojects after a created Task snapshot race', async () => {
     expect(formModule.submitWorkflowTaskInput).toBeTypeOf('function')
     const submitted = requiredValues(

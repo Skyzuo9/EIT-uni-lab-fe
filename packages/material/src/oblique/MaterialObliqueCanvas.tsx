@@ -1,13 +1,9 @@
 import AimOutlined from '@ant-design/icons/AimOutlined'
 import {
   useCallback,
-  useEffect,
   useId,
   useMemo,
-  useRef,
-  useState,
-  type PointerEvent as ReactPointerEvent,
-  type WheelEvent
+  useState
 } from 'react'
 
 import type {
@@ -29,21 +25,12 @@ import { CanvasLegend } from './CanvasLegend'
 import { MaterialObliqueControls } from './MaterialObliqueControls'
 import { ObliqueMaterial } from './ObliqueMaterialObject'
 import {
-  DEFAULT_VIEWPORT,
-  MAX_CAMERA_ZOOM,
-  MIN_CAMERA_ZOOM,
-  cameraViewBox,
-  fitCamera,
-  fittedViewBox,
   focusCamera,
   formatMm,
   landmarkLabelOffsets,
-  selectLandmarkIds,
-  type ObliqueCamera,
-  type ObliqueViewBox,
-  type ViewportSize
+  selectLandmarkIds
 } from './obliqueCamera'
-import { clamp, normalizeRotation } from './obliqueGeometry'
+import { useMaterialObliqueViewport } from './useMaterialObliqueViewport'
 
 export interface MaterialObliqueCanvasProps {
   aggregates: readonly MaterialAggregate[]
@@ -59,19 +46,7 @@ export interface MaterialObliqueCanvasProps {
   onSelectionChange?: (materialIds: readonly MaterialId[]) => void
 }
 
-interface DragState {
-  pointerId: number
-  mode: 'rotate' | 'pan'
-  clientX: number
-  clientY: number
-  camera: ObliqueCamera
-  rotationDeg: number
-  viewBox: ObliqueViewBox
-  moved: boolean
-}
-
 const LANDMARK_LIMIT = 7
-const DRAG_ROTATION_RANGE_DEG = 180
 
 /**
  * 渲染支持环绕旋转、平移与缩放的物料（Material）2.5D 斜投影视图。
@@ -103,17 +78,29 @@ export function MaterialObliqueCanvas({
   )
   const [hoveredMaterialId, setHoveredMaterialId] =
     useState<MaterialId | null>(null)
-  const [viewport, setViewport] =
-    useState<ViewportSize>(DEFAULT_VIEWPORT)
-  const [camera, setCamera] = useState<ObliqueCamera>(() =>
-    fitCamera(scene.bounds)
+  const {
+    canvasRef,
+    svgRef,
+    suppressCanvasClickRef,
+    viewport,
+    camera,
+    viewBoxValue,
+    semanticZoom,
+    isPanning,
+    isRotating,
+    fitAll,
+    rotateBy,
+    changeZoom,
+    setCamera,
+    handleWheel,
+    handlePointerDown,
+    handlePointerMove,
+    finishInteraction
+  } = useMaterialObliqueViewport(
+    scene.bounds,
+    rotationDeg,
+    setRotationDeg
   )
-  const [isPanning, setIsPanning] = useState(false)
-  const [isRotating, setIsRotating] = useState(false)
-  const canvasRef = useRef<HTMLDivElement>(null)
-  const svgRef = useRef<SVGSVGElement>(null)
-  const dragRef = useRef<DragState | null>(null)
-  const suppressCanvasClickRef = useRef(false)
   const instructionsId = useId()
   const selected = new Set(selectedMaterialIds)
   const highlighted = new Set(highlightedMaterialIds)
@@ -128,50 +115,6 @@ export function MaterialObliqueCanvas({
     () => landmarkLabelOffsets(scene.objects, landmarkIds),
     [landmarkIds, scene.objects]
   )
-  const viewBox = useMemo(
-    () => cameraViewBox(scene.bounds, viewport, camera),
-    [camera, scene.bounds, viewport]
-  )
-  const viewBoxValue = [
-    viewBox.minX,
-    viewBox.minY,
-    viewBox.width,
-    viewBox.height
-  ].join(' ')
-  const semanticZoom =
-    camera.zoom < 1.45
-      ? 'overview'
-      : camera.zoom < 2.8
-        ? 'detail'
-        : 'inspect'
-
-  useEffect(() => {
-    setCamera((current) => ({
-      centerX: scene.bounds.minX + scene.bounds.width / 2,
-      centerY: scene.bounds.minY + scene.bounds.height / 2,
-      zoom: current.zoom
-    }))
-  }, [
-    scene.bounds.height,
-    scene.bounds.minX,
-    scene.bounds.minY,
-    scene.bounds.width
-  ])
-
-  useEffect(() => {
-    const element = canvasRef.current
-    if (!element || typeof ResizeObserver === 'undefined') return
-    const update = (): void => {
-      const rect = element.getBoundingClientRect()
-      if (rect.width <= 0 || rect.height <= 0) return
-      setViewport({ width: rect.width, height: rect.height })
-    }
-    const observer = new ResizeObserver(update)
-    observer.observe(element)
-    update()
-    return () => observer.disconnect()
-  }, [])
-
   const select = (
     materialId: MaterialId,
     additive: boolean
@@ -187,30 +130,6 @@ export function MaterialObliqueCanvas({
     )
   }
 
-  const fitAll = useCallback(() => {
-    setCamera(fitCamera(scene.bounds))
-  }, [scene.bounds])
-
-  /**
-   * 在保留缩放级别的前提下按给定角度旋转 2.5D 视角。
-   * @param deltaDeg 本次视角旋转增量，单位为度。
-   * @returns 无返回值。
-   */
-  const rotateBy = useCallback((deltaDeg: number): void => {
-    setRotationDeg((current) => normalizeRotation(current + deltaDeg))
-  }, [])
-
-  const changeZoom = useCallback((factor: number) => {
-    setCamera((current) => ({
-      ...current,
-      zoom: clamp(
-        current.zoom * factor,
-        MIN_CAMERA_ZOOM,
-        MAX_CAMERA_ZOOM
-      )
-    }))
-  }, [])
-
   const focusObject = useCallback(
     (object: MaterialObliqueObject | undefined) => {
       if (!object) return
@@ -218,117 +137,6 @@ export function MaterialObliqueCanvas({
     },
     [scene.bounds, viewport]
   )
-
-  const handleWheel = (event: WheelEvent<SVGSVGElement>): void => {
-    if (!svgRef.current) return
-    event.preventDefault()
-    const rect = svgRef.current.getBoundingClientRect()
-    if (rect.width <= 0 || rect.height <= 0) return
-    const ratioX = clamp(
-      (event.clientX - rect.left) / rect.width,
-      0,
-      1
-    )
-    const ratioY = clamp(
-      (event.clientY - rect.top) / rect.height,
-      0,
-      1
-    )
-    const worldX = viewBox.minX + viewBox.width * ratioX
-    const worldY = viewBox.minY + viewBox.height * ratioY
-    const nextZoom = clamp(
-      camera.zoom * (event.deltaY < 0 ? 1.18 : 1 / 1.18),
-      MIN_CAMERA_ZOOM,
-      MAX_CAMERA_ZOOM
-    )
-    const nextBase = fittedViewBox(scene.bounds, viewport)
-    const nextWidth = nextBase.width / nextZoom
-    const nextHeight = nextBase.height / nextZoom
-    setCamera({
-      centerX: worldX - (ratioX - 0.5) * nextWidth,
-      centerY: worldY - (ratioY - 0.5) * nextHeight,
-      zoom: nextZoom
-    })
-  }
-
-  /**
-   * 启动 2.5D 指针交互；左键默认旋转，Shift+左键或中键平移。
-   * @param event SVG 指针按下事件。
-   * @returns 无返回值。
-   */
-  const handlePointerDown = (
-    event: ReactPointerEvent<SVGSVGElement>
-  ): void => {
-    if (event.button !== 0 && event.button !== 1) return
-    const mode = event.shiftKey || event.button === 1 ? 'pan' : 'rotate'
-    event.preventDefault()
-    event.currentTarget.setPointerCapture(event.pointerId)
-    dragRef.current = {
-      pointerId: event.pointerId,
-      mode,
-      clientX: event.clientX,
-      clientY: event.clientY,
-      camera,
-      rotationDeg,
-      viewBox,
-      moved: false
-    }
-    setIsPanning(mode === 'pan')
-    setIsRotating(mode === 'rotate')
-  }
-
-  /**
-   * 把指针位移转换为环绕旋转或视图平移。
-   * @param event SVG 指针移动事件。
-   * @returns 无返回值。
-   */
-  const handlePointerMove = (
-    event: ReactPointerEvent<SVGSVGElement>
-  ): void => {
-    const drag = dragRef.current
-    const svg = svgRef.current
-    if (!drag || drag.pointerId !== event.pointerId || !svg) return
-    const rect = svg.getBoundingClientRect()
-    if (rect.width <= 0 || rect.height <= 0) return
-    const deltaX = event.clientX - drag.clientX
-    const deltaY = event.clientY - drag.clientY
-    if (Math.abs(deltaX) + Math.abs(deltaY) > 3) drag.moved = true
-    if (drag.mode === 'rotate') {
-      setRotationDeg(
-        normalizeRotation(
-          drag.rotationDeg +
-            (deltaX / rect.width) * DRAG_ROTATION_RANGE_DEG
-        )
-      )
-      return
-    }
-    setCamera({
-      ...drag.camera,
-      centerX:
-        drag.camera.centerX - (deltaX / rect.width) * drag.viewBox.width,
-      centerY:
-        drag.camera.centerY - (deltaY / rect.height) * drag.viewBox.height
-    })
-  }
-
-  /**
-   * 结束旋转或平移并阻止拖拽后的误选择。
-   * @param event SVG 指针结束事件。
-   * @returns 无返回值。
-   */
-  const finishInteraction = (
-    event: ReactPointerEvent<SVGSVGElement>
-  ): void => {
-    const drag = dragRef.current
-    if (!drag || drag.pointerId !== event.pointerId) return
-    suppressCanvasClickRef.current = drag.moved
-    dragRef.current = null
-    setIsPanning(false)
-    setIsRotating(false)
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId)
-    }
-  }
 
   return (
     <div

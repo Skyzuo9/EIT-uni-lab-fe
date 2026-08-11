@@ -1,0 +1,333 @@
+.commandEditor {
+  display: grid;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  gap: 16px;
+  border: 0;
+
+  > legend {
+    margin-block-end: 2px;
+    padding: 0;
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1.4;
+  }
+}
+
+.commandModeControl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--unilab-color-border);
+  border-radius: var(--unilab-radius-md);
+  background: var(--unilab-color-surface-subtle);
+
+  > label {
+    position: relative;
+    display: grid;
+    min-width: 0;
+    min-height: 42px;
+    place-items: center;
+    padding: 8px 12px;
+    color: var(--unilab-color-text-muted);
+    border: 1px solid transparent;
+    border-radius: var(--unilab-radius-control);
+    background: transparent;
+    cursor: pointer;
+
+    &[data-active='true'] {
+      color: var(--unilab-color-primary);
+      border-color: var(--unilab-color-border-strong);
+      background: var(--unilab-color-surface);
+      box-shadow: 0 2px 8px rgb(15 23 42 / 6%);
+    }
+
+    &:focus-within {
+      outline: 2px solid var(--unilab-color-focus);
+      outline-offset: 1px;
+    }
+
+    input {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    strong {
+      color: inherit;
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+  }
+}
+
+.commandModeLabel {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+
+  small {
+    color: currentColor;
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 1.4;
+  }
+}
+
+.domainProjectField {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+}
+
+.customCommandPanel {
+  display: grid;
+  min-width: 0;
+  gap: 18px;
+  padding: 18px 20px 20px;
+  border: 1px solid var(--unilab-color-border);
+  border-radius: var(--unilab-radius-lg);
+  background: var(--unilab-color-surface-subtle);
+
+  .pathEditor,
+  .commandArguments,
+  .commandEnvironment {
+    background: var(--unilab-color-surface);
+  }
+}
+
+.commandPanelHeader {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+
+  > div:first-child {
+    display: grid;
+    min-width: 0;
+    gap: 3px;
+  }
+
+  strong {
+    font-size: 13px;
+    line-height: 1.45;
+  }
+
+  p {
+    margin: 0;
+    color: var(--unilab-color-text-muted);
+    font-size: 11px;
+    line-height: 1.45;
+  }
+}
+
+.commandPanelActions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.commandPlatformTag {
+  padding: 3px 8px;
+  color: var(--unilab-color-primary);
+  border: 1px solid color-mix(
+    in srgb,
+    var(--unilab-color-primary) 42%,
+    var(--unilab-color-border)
+  );
+  border-radius: 999px;
+  background: var(--unilab-color-surface);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.commandTemplateButton {
+  flex: 0 0 auto;
+  min-height: 32px;
+  padding-inline: 10px;
+  color: var(--unilab-color-primary);
+  border: 1px solid var(--unilab-color-border-strong);
+  border-radius: var(--unilab-radius-control);
+  background: var(--unilab-color-surface);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    border-color: var(--unilab-color-primary);
+    background: var(--unilab-color-primary-soft);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--unilab-color-focus);
+    outline-offset: 2px;
+  }
+
+  &:disabled {
+    color: var(--unilab-color-text-muted);
+    background: var(--unilab-color-surface-subtle);
+    cursor: not-allowed;
+  }
+}
+
+.commandArguments,
+.commandEnvironment {
+  width: 100%;
+  min-width: 0;
+  resize: vertical;
+  padding: 9px 10px;
+  color: var(--unilab-color-text);
+  border: 1px solid var(--unilab-color-border-strong);
+  border-radius: var(--unilab-radius-control);
+  outline: 0;
+  background: var(--unilab-color-surface);
+  font: 12px/1.55 var(--unilab-font-mono);
+  tab-size: 2;
+
+  &::placeholder {
+    color: var(--unilab-color-text-subtle);
+  }
+
+  &:focus {
+    border-color: var(--unilab-color-primary);
+    outline: 2px solid var(--unilab-color-focus);
+    outline-offset: 1px;
+  }
+
+  &:disabled {
+    color: var(--unilab-color-text-muted);
+    background: var(--unilab-color-surface-subtle);
+    cursor: not-allowed;
+  }
+}
+
+.commandEnvironment {
+  min-height: 78px;
+}
+
+.commandAdvanced {
+  padding-top: 10px;
+  border-top: 1px solid var(--unilab-color-border);
+  color: var(--unilab-color-text-muted);
+  font-size: 11px;
+
+  > summary {
+    display: grid;
+    width: fit-content;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: baseline;
+    gap: 8px;
+    color: var(--unilab-color-text);
+    cursor: pointer;
+
+    > span {
+      font-weight: 600;
+    }
+
+    > small {
+      color: var(--unilab-color-text-muted);
+      font-size: 11px;
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--unilab-color-focus);
+      outline-offset: 2px;
+    }
+  }
+}
+
+.commandAdvancedBody {
+  display: grid;
+  min-width: 0;
+  margin-top: 12px;
+  gap: 14px;
+}
+
+.commandTokens {
+  color: var(--unilab-color-text-muted);
+  font-size: 11px;
+
+  > strong {
+    color: var(--unilab-color-text);
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  dl {
+    display: grid;
+    margin: 10px 0 0;
+    gap: 7px;
+  }
+
+  dl > div {
+    display: grid;
+    grid-template-columns: minmax(130px, max-content) minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  dt,
+  dd {
+    min-width: 0;
+    margin: 0;
+  }
+
+  code {
+    color: var(--unilab-color-primary);
+    font-family: var(--unilab-font-mono);
+    overflow-wrap: anywhere;
+  }
+}
+
+.commandPreview {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+
+  > span {
+    color: var(--unilab-color-text-muted);
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  > code {
+    display: block;
+    min-width: 0;
+    max-height: 94px;
+    padding: 9px 10px;
+    overflow: auto;
+    color: var(--unilab-color-text);
+    border: 1px solid var(--unilab-color-border);
+    border-radius: var(--unilab-radius-sm);
+    background: var(--unilab-color-surface);
+    font: 11px/1.55 var(--unilab-font-mono);
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+  }
+
+  > small {
+    color: var(--unilab-color-text-muted);
+    font: 10px/1.5 var(--unilab-font-mono);
+    overflow-wrap: anywhere;
+  }
+}
+
+.commandCompatibilityNotes {
+  display: grid;
+  margin: 0;
+  padding-inline-start: 18px;
+  gap: 4px;
+  color: var(--unilab-color-text-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}

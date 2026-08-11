@@ -346,4 +346,31 @@ describe('WorkflowOutput', () => {
     expect(html).toContain('查看原始数据')
     expect(html).not.toMatch(/workflow-runtime__event-raw" open/)
   })
+
+  it('renders an accessible upward drag handle for the persistent output', () => {
+    const html = renderToStaticMarkup(
+      <WorkflowOutput
+        expanded
+        resizable
+        activeTab="nodes"
+        completedNodeCount={0}
+        expectedNodeCount={0}
+        nodes={[]}
+        nodeNames={{}}
+        events={[]}
+        error={null}
+        selectedNode={undefined}
+        selectedNodeId={null}
+        pausedBeforeNodeId={null}
+        onExpandedChange={() => {}}
+        onTabChange={() => {}}
+        onNodeSelect={() => {}}
+        onClearError={() => {}}
+      />
+    )
+
+    expect(html).toContain('aria-label="调整运行输出高度"')
+    expect(html).toContain('aria-orientation="horizontal"')
+    expect(html).toContain('--workflow-output-height:260px')
+  })
 })

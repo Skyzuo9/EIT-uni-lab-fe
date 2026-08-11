@@ -141,8 +141,8 @@ export async function submitWorkflowTaskInput(options: {
     kind: 'created',
     task,
     message:
-      `任务已按已应用版本 ${beforeCreateForm.appliedRevision} 创建；` +
-      '输入默认值与规范化结果以 OS 任务投影为准'
+      `任务创建成功（已应用版本 ${beforeCreateForm.appliedRevision}）；` +
+      '参数默认值与规范化结果以本次任务详情为准'
   }
 }
 

@@ -406,7 +406,7 @@ function formatRemoteExpiry(expiresAt: number | null): string {
   return new Date(expiresAt).toLocaleString()
 }
 
-function RuntimeModeControl({
+export function RuntimeModeControl({
   mode,
   disabled,
   onSetRuntimeMode
@@ -429,16 +429,24 @@ function RuntimeModeControl({
       <button
         type="button"
         className={mode === 'normal' ? 'is-active' : ''}
+        aria-pressed={mode === 'normal'}
         disabled={disabled}
         onClick={() => select('normal')}
-      >正常运行</button>
+      >
+        <span>正常运行</span>
+        {mode === 'normal' ? <small>✓ 当前模式</small> : null}
+      </button>
       <button
         type="button"
         className={mode === 'dry-run' ? 'is-active' : ''}
+        aria-pressed={mode === 'dry-run'}
         disabled={disabled}
         title="动作返回模拟成功；每次 OS 重启使用新的隔离运行数据库"
         onClick={() => select('dry-run')}
-      >Dry-run</button>
+      >
+        <span>Dry-run</span>
+        {mode === 'dry-run' ? <small>✓ 当前模式</small> : null}
+      </button>
     </div>
   )
 }

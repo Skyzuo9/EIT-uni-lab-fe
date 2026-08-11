@@ -1,0 +1,110 @@
+@media (max-width: 640px) {
+  .backdrop {
+    align-items: end;
+    padding: 0;
+  }
+
+  .dialog {
+    width: 100%;
+    max-height: calc(100vh - 16px);
+    border-radius: var(--unilab-radius-lg) var(--unilab-radius-lg) 0 0;
+  }
+
+  .header,
+  .body,
+  .statusDock {
+    padding-inline: 16px;
+  }
+
+  .header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .headerActions {
+    width: 100%;
+    flex-wrap: wrap;
+
+    .closeButton {
+      margin-inline-start: auto;
+    }
+  }
+
+  .footer {
+    flex-wrap: wrap;
+  }
+
+  .serviceHeader {
+    align-items: stretch;
+    flex-direction: column;
+
+    > button {
+      width: 100%;
+    }
+  }
+
+  .commandModeControl {
+    grid-template-columns: 1fr;
+  }
+
+  .commandPanelHeader {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .commandPanelActions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .commandPlatformTag {
+    align-self: flex-start;
+  }
+
+  .commandTemplateButton {
+    width: 100%;
+  }
+
+  .commandTokens dl > div {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+
+  .secondaryButton,
+  .primaryButton,
+  .stopButton {
+    flex: 1 1 auto;
+  }
+
+  .headerLogButton {
+    flex: 0 0 auto;
+  }
+
+  .observabilityNoticeHeader {
+    align-items: stretch;
+    flex-direction: column;
+
+    > span {
+      align-self: flex-start;
+    }
+  }
+
+  .recoveryCommand {
+    grid-template-columns: minmax(0, 1fr);
+
+    button {
+      min-height: 34px;
+      border-block-start: 1px solid var(--unilab-color-border-strong);
+      border-inline-start: 0;
+    }
+  }
+
+  .processGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .processItem + .processItem {
+    border-block-start: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+    border-inline-start: 0;
+  }
+}

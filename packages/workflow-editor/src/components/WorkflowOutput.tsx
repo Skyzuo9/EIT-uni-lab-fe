@@ -1,3 +1,7 @@
+import type { CSSProperties } from 'react'
+
+import { useResizableWorkflowOutput } from './useResizableWorkflowOutput'
+
 export type WorkflowOutputTab = 'nodes' | 'events' | 'errors'
 
 export interface WorkflowOutputNode {
@@ -38,6 +42,7 @@ interface WorkflowOutputProps {
   nodesTabLabel?: string
   eventsTabLabel?: string
   eventsEmptyLabel?: string
+  resizable?: boolean
 }
 
 export function WorkflowOutput({
@@ -60,8 +65,10 @@ export function WorkflowOutput({
   countLabel = '个节点已有结果',
   nodesTabLabel = '节点结果',
   eventsTabLabel = '事件流',
-  eventsEmptyLabel = '等待 OS 节点反馈……'
+  eventsEmptyLabel = '等待 OS 节点反馈……',
+  resizable = false
 }: WorkflowOutputProps): React.JSX.Element {
+  const outputResize = useResizableWorkflowOutput()
   const eventNodeNames = workflowEventNodeNames(nodes, nodeNames)
   const nodeFailures = workflowNodeFailureLogs(nodes, nodeNames, events)
   const selectedNodeFailure = selectedNode
@@ -86,8 +93,31 @@ export function WorkflowOutput({
     <div
       className={`workflow-runtime__results${
         expanded ? ' is-expanded' : ' is-collapsed'
+      }${resizable ? ' is-resizable' : ''}${
+        outputResize.resizing ? ' is-resizing' : ''
       }`}
+      style={resizable ? {
+        '--workflow-output-height': `${outputResize.height}px`
+      } as CSSProperties : undefined}
     >
+      {expanded && resizable ? (
+        <div
+          className="workflow-runtime__output-resizer"
+          role="separator"
+          aria-label="调整运行输出高度"
+          aria-orientation="horizontal"
+          aria-valuemin={outputResize.minimum}
+          aria-valuemax={outputResize.maximum}
+          aria-valuenow={Math.round(outputResize.height)}
+          tabIndex={0}
+          title="向上拖动扩大运行输出；双击恢复默认高度"
+          onPointerDown={outputResize.onPointerDown}
+          onKeyDown={outputResize.onKeyDown}
+          onDoubleClick={outputResize.reset}
+        >
+          <span aria-hidden="true" />
+        </div>
+      ) : null}
       <header className="workflow-runtime__output-header">
         <div className="workflow-runtime__output-title">
           <strong>{title}</strong>

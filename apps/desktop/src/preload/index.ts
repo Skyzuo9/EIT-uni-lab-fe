@@ -97,6 +97,12 @@ export interface OpenFilePayload {
 
 const api = {
   getVersion: (): Promise<string> => ipcRenderer.invoke('app:getVersion'),
+  unsavedChanges: {
+    /** 向主进程发布工作台聚合后的未保存状态。 */
+    set: (hasUnsavedChanges: boolean): void => {
+      ipcRenderer.send('renderer:unsavedChanges', hasUnsavedChanges)
+    }
+  },
   workbenchRemote: {
     getSnapshot: (): Promise<WorkbenchRemoteAccessSnapshot> =>
       ipcRenderer.invoke('workbench-remote:getSnapshot'),

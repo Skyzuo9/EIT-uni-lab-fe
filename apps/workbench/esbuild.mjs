@@ -6,6 +6,7 @@ import { browserOptions, mode, watch } from './gen-esbuild.browser.mjs';
 import { nodeOptions } from './gen-esbuild.node.mjs';
 
 import esbuild from 'esbuild';
+import { copy } from 'esbuild-plugin-copy';
 import { sassPlugin } from 'esbuild-sass-plugin';
 import { fileURLToPath } from 'node:url';
 
@@ -36,6 +37,20 @@ browserOptions.define = {
 browserOptions.plugins.unshift(
     sassPlugin({ filter: /\.module\.scss$/, type: 'local-css' }),
     sassPlugin({ filter: /\.scss$/, type: 'css' }),
+);
+browserOptions.plugins.push(
+    copy({
+        assets: [
+            {
+                from: fileURLToPath(new URL('../kernel-web/public/icons/*', import.meta.url)),
+                to: fileURLToPath(new URL('./lib/frontend/icons', import.meta.url)),
+            },
+            {
+                from: fileURLToPath(new URL('../kernel-web/public/cursor.svg', import.meta.url)),
+                to: fileURLToPath(new URL('./lib/frontend', import.meta.url)),
+            },
+        ],
+    }),
 );
 
 const browserContext = await esbuild.context(browserOptions);
