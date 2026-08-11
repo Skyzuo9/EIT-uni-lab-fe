@@ -731,3 +731,35 @@
   margin: 0;
   color: var(--theia-descriptionForeground);
 }
+
+@media (max-width: 720px) {
+  .unilab-theia-prototype__bar {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 8px;
+    padding: 8px 10px;
+  }
+
+  .unilab-theia-prototype__bar > div {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .unilab-theia-prototype__bar > div > span {
+    min-width: 0;
+    overflow: hidden;
+    font-size: 11px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .unilab-theia-prototype__bar nav {
+    width: 100%;
+  }
+
+  .unilab-theia-prototype__bar nav button {
+    min-width: 0;
+    flex: 1 1 0;
+    padding-inline: 6px;
+  }
+}
