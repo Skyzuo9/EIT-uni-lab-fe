@@ -255,7 +255,19 @@ function validatePackagedWorkbenchResources(resources, nodeName) {
       'device-card-builder',
       process.platform === 'win32' ? 'esbuild.exe' : 'esbuild'
     ),
-    join(resources, 'device-card-agent', 'cli.mjs')
+    join(resources, 'device-card-agent', 'cli.mjs'),
+    join(resources, 'workspace-skills', 'manifest.json'),
+    join(resources, 'workspace-skills', 'add-device', 'SKILL.md'),
+    join(resources, 'workspace-skills', 'add-resource', 'SKILL.md'),
+    join(resources, 'workspace-skills', 'add-workstation', 'SKILL.md'),
+    join(resources, 'workspace-skills', 'create-device-package', 'SKILL.md'),
+    join(resources, 'workspace-skills', 'create-device-skill', 'SKILL.md'),
+    join(
+      resources,
+      'workspace-skills',
+      'unilab-domain-repo-builder',
+      'SKILL.md'
+    )
   ]
   const missing = required.filter(path => !existsSync(path))
   if (missing.length) {

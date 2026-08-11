@@ -195,6 +195,7 @@ describe('Workbench macOS distribution gate', () => {
     assert.match(builderConfiguration, /to: default-workspace/u)
     assert.match(builderConfiguration, /\.packaging\/device-card-builder/u)
     assert.match(builderConfiguration, /to: agent-runtime/u)
+    assert.match(builderConfiguration, /to: workspace-skills/u)
   })
 
   it('uses the packaged Agent runtime instead of requiring a separate AionUi install', async () => {
