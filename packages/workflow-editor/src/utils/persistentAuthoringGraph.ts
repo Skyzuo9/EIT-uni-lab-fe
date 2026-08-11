@@ -118,7 +118,7 @@ function projectPersistentAuthoringNode(
     disabled: node.disabled === true,
     handles: context.handlesByTemplate.get(templateUuid) ?? [],
     ...projectNodeParent(node, context.nodeByUuid),
-    ...projectNodeReadOnlyState(node),
+    ...projectNodeReadOnlyState(node, context.nodeByUuid),
     ...projectCompositeState(nodeUuid, context),
     ...projectMaterialSourceState(node, type, context.resourceTemplateByUuid),
     ...nodePosition(node.pose)
@@ -167,9 +167,10 @@ function projectNodeParent(
 }
 
 function projectNodeReadOnlyState(
-  node: AuthoringNode
+  node: AuthoringNode,
+  nodeByUuid: Map<string, AuthoringNode>
 ): Pick<WorkflowNode, 'authoringReadOnly' | 'authoringReadOnlyReason'> {
-  const reason = workflowNodeDeletionDisabledReason(node)
+  const reason = workflowNodeDeletionDisabledReason(node, nodeByUuid)
   if (!reason) return {}
   return { authoringReadOnly: true, authoringReadOnlyReason: reason }
 }

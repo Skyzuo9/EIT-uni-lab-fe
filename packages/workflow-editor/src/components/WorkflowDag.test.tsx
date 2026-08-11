@@ -453,7 +453,9 @@ describe('WorkflowDag canvas controls', () => {
     expect(stylesheet).toMatch(/wf-node__material-port-label/)
     expect(stylesheet).toMatch(/data-workflow-material-emphasis='supporting'/)
     expect(stylesheet).toMatch(/wf-flow-edge--supporting-material/)
-    expect(stylesheet).toMatch(/opacity:\s*\.52/)
+    expect(stylesheet).toMatch(
+      /react-flow__edge\.wf-flow-edge--supporting-material[\s\S]*opacity:\s*1/
+    )
 
     const swimlaneStylesheet = readFileSync(
       new URL('./_workflow-swimlanes.scss', import.meta.url),
@@ -462,6 +464,32 @@ describe('WorkflowDag canvas controls', () => {
     expect(swimlaneStylesheet).toMatch(
       /wf-node__handle--material[\s\S]*width:\s*12px;[\s\S]*height:\s*12px;[\s\S]*border-radius:\s*50%/
     )
+  })
+
+  /** 证明执行顺序 Handle 的长轴始终垂直于当前图布局方向。 */
+  it('rotates sequence handle long axes perpendicular to graph flow', () => {
+    const routingStylesheet = readFileSync(
+      new URL('./_workflow-dag-routing.scss', import.meta.url),
+      'utf8'
+    )
+    expect(routingStylesheet).toMatch(
+      /wf-node__handle--ready[\s\S]*width:\s*12px;[\s\S]*height:\s*3px;/
+    )
+    expect(routingStylesheet).toMatch(
+      /react-flow__handle-left[\s\S]*react-flow__handle-right[\s\S]*width:\s*3px;[\s\S]*height:\s*12px;/
+    )
+  })
+
+  /** 证明细连线保留原视觉宽度，同时具有足够稳定的透明点击热区。 */
+  it('gives workflow edges a wide invisible selection target', () => {
+    const edgeSource = readFileSync(
+      new URL('./WorkflowRoundedStepEdge.tsx', import.meta.url),
+      'utf8'
+    )
+    expect(edgeSource).toMatch(
+      /interactionWidth=\{Math\.max\(interactionWidth \?\? 0, 28\)\}/
+    )
+    expect(edgeSource).toMatch(/data-workflow-edge-kind=/)
   })
 })
 

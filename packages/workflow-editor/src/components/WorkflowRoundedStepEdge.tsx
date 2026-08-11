@@ -31,6 +31,7 @@ export interface WorkflowRoundedStepEdgeData {
  * @returns 横平竖直且转角圆润的 SVG 连线。
  */
 export default function WorkflowRoundedStepEdge({
+  id,
   sourceX,
   sourceY,
   sourcePosition,
@@ -45,6 +46,7 @@ export default function WorkflowRoundedStepEdge({
   labelBgStyle,
   labelBgPadding,
   labelBgBorderRadius,
+  interactionWidth,
   data
 }: EdgeProps<WorkflowRoundedStepEdgeData>): React.JSX.Element {
   const aligned = alignPrimaryMaterialEdgeEndpoints({
@@ -79,14 +81,23 @@ export default function WorkflowRoundedStepEdge({
   })
   return (
     <g
+      data-workflow-edge-uuid={id}
       data-workflow-edge-source-node-uuid={data?.sourceNodeUuid}
       data-workflow-edge-target-node-uuid={data?.targetNodeUuid}
       data-workflow-edge-source-handle-uuid={data?.sourceHandleUuid}
       data-workflow-edge-target-handle-uuid={data?.targetHandleUuid}
       data-workflow-material-role={data?.materialRole}
       data-workflow-material-emphasis={data?.materialEmphasis}
+      data-workflow-edge-kind={data?.sequence
+        ? 'sequence'
+        : data?.materialRole ? 'material' : 'structural'}
     >
-      <BaseEdge path={path} markerEnd={markerEnd} style={style} />
+      <BaseEdge
+        path={path}
+        markerEnd={markerEnd}
+        style={style}
+        interactionWidth={Math.max(interactionWidth ?? 0, 28)}
+      />
       {label !== undefined && label !== null && (
         <EdgeText
           x={labelX}

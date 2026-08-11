@@ -125,8 +125,8 @@
 .workflow
   :global([data-workflow-layout-strategy='primary-sample-serpentine'][data-workflow-layout-direction='horizontal'])
   :global(.wf-node__handle--ready) {
-  width: 12px;
-  height: 3px;
+  width: 3px;
+  height: 12px;
 }
 
 .workflow
@@ -262,7 +262,7 @@
 }
 
 .workflow :global(.react-flow__edge.wf-flow-edge--supporting-material) {
-  opacity: .52;
+  opacity: 1;
   transition: opacity var(--unilab-motion-fast) ease;
 }
 
@@ -325,5 +325,5 @@
 .workflow :global(.react-flow__edge.wf-flow-edge--supporting-material:hover),
 .workflow :global(.react-flow__edge.wf-flow-edge--supporting-material.selected),
 .workflow :global(.react-flow__edge.wf-flow-edge--supporting-material:focus-visible) {
-  opacity: .9;
+  opacity: 1;
 }

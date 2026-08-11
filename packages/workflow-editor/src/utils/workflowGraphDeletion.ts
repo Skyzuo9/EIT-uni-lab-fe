@@ -53,7 +53,7 @@ export function workflowGraphDeletionDecision(
   for (const nodeUuid of requestedNodeUuids) {
     const node = nodeByUuid.get(nodeUuid)
     if (!node) return { kind: 'denied', reason: '选择的工作流节点已不存在' }
-    const reason = workflowNodeDeletionDisabledReason(node)
+    const reason = workflowNodeDeletionDisabledReason(node, nodeByUuid)
     if (reason) return { kind: 'denied', reason }
   }
   for (const edgeUuid of requestedEdgeUuids) {
@@ -119,6 +119,12 @@ export function deleteWorkflowGraphElements(
   next.edges = next.edges.filter((edge) =>
     !removedEdgeUuids.has(stringValue(edge.uuid))
   )
+  recordExplicitReadySuppressions(
+    next,
+    graph,
+    new Set(selection.edgeUuids ?? []),
+    removedNodeUuids
+  )
   next.nodes = clearRemovedEdgeProviders(
     next.nodes,
     next.handle_templates,
@@ -142,9 +148,14 @@ export function deleteWorkflowGraphElements(
  * @returns 可删除时返回 null；内部、系统或结构节点返回中文禁用原因。
  */
 export function workflowNodeDeletionDisabledReason(
-  node: Record<string, unknown>
+  node: Record<string, unknown>,
+  nodeByUuid?: ReadonlyMap<string, Record<string, unknown>>
 ): string | null {
-  if (typeof node.parent_uuid === 'string' && node.parent_uuid.length > 0) {
+  if (
+    typeof node.parent_uuid === 'string' &&
+    node.parent_uuid.length > 0 &&
+    !hasOnlyPresentationGroupAncestors(node, nodeByUuid)
+  ) {
     return '复合工作流内部私有节点只读；请删除或编辑调用边界'
   }
   const unilab = nodeUnilab(node)
@@ -155,6 +166,36 @@ export function workflowNodeDeletionDisabledReason(
     unilab.system_generated === true
   ) return '系统生成或结构节点只读，不能直接删除'
   return null
+}
+
+/**
+ * 判断节点的所有父级是否只是作者源码中的展示分组。
+ *
+ * 展示分组不构成组合工作流私有边界；其中的调用节点仍是作者可编辑的调用边界。
+ * 一旦父链进入真实 Composite 或缺失节点，则保持 fail-closed。
+ */
+function hasOnlyPresentationGroupAncestors(
+  node: Record<string, unknown>,
+  nodeByUuid: ReadonlyMap<string, Record<string, unknown>> | undefined
+): boolean {
+  if (!nodeByUuid) return false
+  let parentUuid = stringValue(node.parent_uuid)
+  const visited = new Set<string>()
+  while (parentUuid) {
+    if (visited.has(parentUuid)) return false
+    visited.add(parentUuid)
+    const parent = nodeByUuid.get(parentUuid)
+    if (!parent) return false
+    const parentUnilab = nodeUnilab(parent)
+    if (
+      parent.type !== 'group' ||
+      parentUnilab.presentation_group !== true ||
+      parentUnilab.authoring_read_only === true ||
+      parentUnilab.system_generated === true
+    ) return false
+    parentUuid = stringValue(parent.parent_uuid)
+  }
+  return true
 }
 
 /**
@@ -179,7 +220,7 @@ function workflowEdgeDeletionDisabledReason(
   ]) {
     const node = nodeByUuid.get(nodeUuid)
     if (!node) return '工作流连线引用的节点已不存在'
-    if (workflowNodeDeletionDisabledReason(node)) {
+    if (workflowNodeDeletionDisabledReason(node, nodeByUuid)) {
       return '复合工作流内部或系统节点的连线只读，不能直接删除'
     }
   }
@@ -249,7 +290,8 @@ function clearRemovedEdgeProviders(
     const inputBindings = { ...record(unilab.input_bindings) }
     const resourceRefs = { ...record(unilab.resource_refs) }
     for (const handleUuid of targetHandles) {
-      const dataKey = stringValue(handleByUuid.get(handleUuid)?.data_key)
+      const handle = handleByUuid.get(handleUuid)
+      const dataKey = stringValue(handle?.data_key)
       if (dataKey) delete param[dataKey]
       delete inputBindings[handleUuid]
       delete resourceRefs[handleUuid]
@@ -272,6 +314,70 @@ function clearRemovedEdgeProviders(
       }
     }
   })
+}
+
+/**
+ * 把用户显式删除的 ready 边记录为可由 OS 写回 Python 的并行化控制语义。
+ *
+ * 节点级联删除产生的关联边不记录；只有两端仍存在、且源/目标连接点均为 ready
+ * 的直接连线选择才属于“取消先后关系”。
+ */
+function recordExplicitReadySuppressions(
+  next: WorkflowAuthoringGraph,
+  original: WorkflowAuthoringGraph,
+  explicitlyRemovedEdgeUuids: ReadonlySet<string>,
+  removedNodeUuids: ReadonlySet<string>
+): void {
+  if (explicitlyRemovedEdgeUuids.size === 0) return
+  const handleByUuid = new Map(original.handle_templates.map((handle) => [
+    stringValue(handle.uuid),
+    handle
+  ]))
+  const additions = original.edges
+    .filter((edge) => explicitlyRemovedEdgeUuids.has(stringValue(edge.uuid)))
+    .filter((edge) =>
+      !removedNodeUuids.has(stringValue(edge.source_node_uuid)) &&
+      !removedNodeUuids.has(stringValue(edge.target_node_uuid)) &&
+      isReadyHandle(handleByUuid.get(stringValue(edge.source_handle_uuid))) &&
+      isReadyHandle(handleByUuid.get(stringValue(edge.target_handle_uuid)))
+    )
+    .map((edge) => ({
+      source_node_uuid: stringValue(edge.source_node_uuid),
+      target_node_uuid: stringValue(edge.target_node_uuid)
+    }))
+  if (additions.length === 0) return
+
+  const metaData = { ...record(next.workflow.meta_data) }
+  const unilab = { ...record(metaData.unilab) }
+  const existing = Array.isArray(unilab.order_dependency_suppressions)
+    ? unilab.order_dependency_suppressions
+      .map(record)
+      .map((item) => ({
+        source_node_uuid: stringValue(item.source_node_uuid),
+        target_node_uuid: stringValue(item.target_node_uuid)
+      }))
+      .filter((item) => item.source_node_uuid && item.target_node_uuid)
+    : []
+  const byIdentity = new Map([...existing, ...additions].map((item) => [
+    `${item.source_node_uuid}:${item.target_node_uuid}`,
+    item
+  ]))
+  next.workflow.meta_data = {
+    ...metaData,
+    unilab: {
+      ...unilab,
+      order_dependency_suppressions: [...byIdentity.values()].sort((left, right) =>
+        left.source_node_uuid.localeCompare(right.source_node_uuid) ||
+        left.target_node_uuid.localeCompare(right.target_node_uuid)
+      )
+    }
+  } as WorkflowAuthoringGraph['workflow']['meta_data']
+}
+
+/** 判断连接点是否是只表达执行先后的 ready 结构连接点。 */
+function isReadyHandle(handle: Record<string, unknown> | undefined): boolean {
+  return stringValue(handle?.handle_key) === 'ready' ||
+    stringValue(handle?.data_key) === 'ready'
 }
 
 /**
