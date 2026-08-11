@@ -49,6 +49,7 @@ import type {
 import {
   isDesktopSurfaceNavigationAllowed,
   resolveDesktopSurfaceConfig,
+  shouldPromptForRendererUnload,
   shouldQuitWhenAllDesktopWindowsClose
 } from './desktopSurface'
 import { RendererConsoleLogLimiter } from './rendererConsoleLogLimiter'
@@ -147,6 +148,7 @@ let quitCleanupFinished = false
 let deviceCardManager: DeviceCardManager | null = null
 let deviceCardAgentBridge: DeviceCardAgentBridge | null = null
 let deviceCardAgentCli: DeviceCardAgentCliManager | null = null
+let workflowHasUnsavedChanges = false
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -170,6 +172,7 @@ function createWindow(): void {
   })
 
   mainWindow.on('closed', () => {
+    workflowHasUnsavedChanges = false
     mainWindow = null
   })
 
@@ -208,6 +211,15 @@ function createWindow(): void {
     }
   )
   mainWindow.webContents.on('will-prevent-unload', (event) => {
+    if (!shouldPromptForRendererUnload(
+      desktopSurface.kind,
+      workflowHasUnsavedChanges
+    )) {
+      // Electron's will-prevent-unload contract is inverted: preventing this
+      // event allows the renderer navigation/close to continue.
+      event.preventDefault()
+      return
+    }
     const window = mainWindow
     if (!window || window.isDestroyed()) return
     const prompt = workbenchUnloadPrompt()
@@ -222,10 +234,18 @@ function createWindow(): void {
       detail: prompt.detail
     })
     if (choice === 1) {
+      workflowHasUnsavedChanges = false
       electronObservability.record(prompt.discardedEvent)
       event.preventDefault()
     }
   })
+
+  mainWindow.webContents.on(
+    'did-start-navigation',
+    (_event, _url, isInPlace, isMainFrame) => {
+      if (isMainFrame && !isInPlace) workflowHasUnsavedChanges = false
+    }
+  )
 
   // Pascal 的工具栏图标与平面图光标使用站点根路径。在 Electron 的
   // file:// 页面中这些路径会落到系统根目录；这里只允许已知路径，
@@ -323,6 +343,19 @@ app.whenReady().then(async () => {
     app.dock.setIcon(localAppIcon)
   }
   ipcMain.handle('app:getVersion', () => app.getVersion())
+  ipcMain.on(
+    'workflow-authoring:setUnsavedChanges',
+    (event, value: unknown) => {
+      if (
+        event.sender !== mainWindow?.webContents
+        || event.senderFrame !== mainWindow.webContents.mainFrame
+      ) {
+        return
+      }
+      if (typeof value !== 'boolean') return
+      workflowHasUnsavedChanges = value
+    }
+  )
   registerWorkbenchRemoteAccessIpc({ observability: electronObservability, assertSender: assertMainWindowSender, getMainWindow: () => mainWindow })
   const managedRuntimeInstallation = registerManagedRuntimeInstallationIpc({
     ipcMain,

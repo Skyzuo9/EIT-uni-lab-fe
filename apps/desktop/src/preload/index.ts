@@ -103,6 +103,14 @@ export interface OpenFilePayload {
 
 const api = {
   getVersion: (): Promise<string> => ipcRenderer.invoke('app:getVersion'),
+  workflowAuthoring: {
+    setUnsavedChanges: (hasUnsavedChanges: boolean): void => {
+      ipcRenderer.send(
+        'workflow-authoring:setUnsavedChanges',
+        hasUnsavedChanges
+      )
+    }
+  },
   workbenchRemote: {
     getSnapshot: (): Promise<WorkbenchRemoteAccessSnapshot> =>
       ipcRenderer.invoke('workbench-remote:getSnapshot'),

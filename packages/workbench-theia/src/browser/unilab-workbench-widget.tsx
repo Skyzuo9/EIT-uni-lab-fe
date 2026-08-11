@@ -139,6 +139,7 @@ export class UniLabWorkbenchWidget extends ReactWidget {
     phase: 'idle',
     message: '正在连接 Workbench Backend…',
     configuredGraphPath: 'deployment/graphs/szlab-local-debug.json',
+    configuredRuntimeMode: 'normal',
     identity: null,
     agent: null,
     diagnostic: null,
@@ -188,6 +189,7 @@ export class UniLabWorkbenchWidget extends ReactWidget {
         phase: 'failed',
         message: 'Workbench Backend 连接失败',
         configuredGraphPath: 'deployment/graphs/szlab-local-debug.json',
+        configuredRuntimeMode: 'normal',
         identity: null,
         agent: null,
         diagnostic: {
@@ -624,6 +626,21 @@ function WorkbenchSurface({
     useState<readonly MaterialId[]>([])
   const [sourceSaveStatus, setSourceSaveStatus] = useState('idle')
   const [environmentOpen, setEnvironmentOpen] = useState(false)
+  const reportWorkflowUnsavedChanges = useCallback(
+    (hasUnsavedChanges: boolean): void => {
+      const desktopApi = (
+        globalThis as typeof globalThis & {
+          api?: {
+            workflowAuthoring?: {
+              setUnsavedChanges(value: boolean): void
+            }
+          }
+        }
+      ).api
+      desktopApi?.workflowAuthoring?.setUnsavedChanges(hasUnsavedChanges)
+    },
+    []
+  )
   const mountedDomains = useRef(new Set<'workflow' | 'material' | 'device'>([
     'workflow'
   ]))
@@ -664,6 +681,11 @@ function WorkbenchSurface({
   }), [backendUrl])
 
   useEffect(() => () => materialStore.getState().reset(), [materialStore])
+
+  useEffect(() => {
+    reportWorkflowUnsavedChanges(false)
+    return () => reportWorkflowUnsavedChanges(false)
+  }, [reportWorkflowUnsavedChanges])
 
   useEffect(() => () => {
     queryClient.clear()
@@ -714,6 +736,7 @@ function WorkbenchSurface({
         allowWorkflowSelection
         hideEmbeddedCodeEditor
         ideBridge={ideBridge}
+        onUnsavedChangesChange={reportWorkflowUnsavedChanges}
         onSelectedWorkflowStepChange={setSelectedWorkflowNode}
         onWorkflowRuntimeProjectionChange={setRuntimeProjection}
       />
