@@ -15,11 +15,13 @@ import type {
   OpenDeviceCardWorkspaceRequest
 } from '@unilab/device-card-sdk'
 import type {
+  DevicePackageTrustInfo,
   LocalRuntimeLaunchConfig,
   LocalRuntimeCommandPreview,
   LocalRuntimeLogBatch,
   LocalRuntimeLogQuery,
   LocalRuntimeLogsSnapshot,
+  LocalRuntimeModeInfo,
   LocalRuntimeOpenLogResult,
   LocalRuntimePathKind,
   LocalRuntimeProcessKind,
@@ -230,6 +232,21 @@ const api = {
       ipcRenderer.invoke('runtime:selectPath', kind),
     getDefaultEnvironmentPath: (): Promise<string | null> =>
       ipcRenderer.invoke('runtime:getDefaultEnvironmentPath'),
+    getModeInfo: (): Promise<LocalRuntimeModeInfo> =>
+      ipcRenderer.invoke('runtime:getModeInfo'),
+    inspectDevicePackage: (
+      config: LocalRuntimeLaunchConfig
+    ): Promise<DevicePackageTrustInfo> =>
+      ipcRenderer.invoke('runtime:inspectDevicePackage', config),
+    confirmDevicePackage: (
+      config: LocalRuntimeLaunchConfig,
+      expectedHash: string
+    ): Promise<DevicePackageTrustInfo> =>
+      ipcRenderer.invoke(
+        'runtime:confirmDevicePackage',
+        config,
+        expectedHash
+      ),
     resolveGeneratedEdgeCommand: (
       config: LocalRuntimeLaunchConfig
     ): Promise<LocalRuntimeCommandPreview> =>
@@ -248,6 +265,10 @@ const api = {
       ipcRenderer.invoke('runtime:startEdge', config),
     stopEdge: (): Promise<LocalRuntimeSnapshot> =>
       ipcRenderer.invoke('runtime:stopEdge'),
+    runAcceptance: (
+      config: LocalRuntimeLaunchConfig
+    ): Promise<LocalRuntimeSnapshot> =>
+      ipcRenderer.invoke('runtime:runAcceptance', config),
     readLogs: (): Promise<LocalRuntimeLogsSnapshot> =>
       ipcRenderer.invoke('runtime:readLogs'),
     readLog: (query: LocalRuntimeLogQuery): Promise<LocalRuntimeLogBatch> =>

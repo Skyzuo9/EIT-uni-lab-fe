@@ -1,3 +1,5 @@
+@use './LocalRuntimeLauncher.logs';
+
 .launcherButton {
   display: inline-flex;
   flex: 0 0 auto;
@@ -251,6 +253,41 @@
     );
     font-size: 11px;
     line-height: 1.5;
+  }
+}
+
+.acceptancePanel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  color: var(--unilab-color-text-muted);
+  border: 1px solid var(--unilab-color-border);
+  border-radius: var(--unilab-radius-control);
+  background: var(--unilab-color-surface-subtle);
+
+  > div {
+    display: grid;
+    gap: 3px;
+  }
+
+  strong {
+    color: var(--unilab-color-text);
+    font-size: 12px;
+  }
+
+  span {
+    font-size: 11px;
+    line-height: 1.45;
+  }
+
+  &[data-status='verified'] strong {
+    color: var(--unilab-color-success);
+  }
+
+  &[data-status='failed'] strong {
+    color: var(--unilab-color-danger);
   }
 }
 
@@ -1245,5 +1282,4 @@
     border-block-start: 1px solid color-mix(in srgb, currentColor 18%, transparent);
     border-inline-start: 0;
   }
-
 }

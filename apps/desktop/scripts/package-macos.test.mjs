@@ -17,6 +17,7 @@ import {
   validatePackagedMacosApp
 } from './package-macos.mjs'
 import { MAX_PACKAGED_APP_BYTES } from './package-windows.mjs'
+import { createPackagedRuntimeResources } from './runtime-payload.test-support.mjs'
 
 const DEVICE_CARD_APP_ARCHIVE_BYTES = 50 * 1024 * 1024
 const temporaryDirectories = []
@@ -76,8 +77,13 @@ describe('macOS package publication gates', () => {
       'Resources',
       'app.asar'
     )
-    mkdirSync(join(archivePath, '..'), { recursive: true })
+    const resourcesDirectory = join(archivePath, '..')
+    mkdirSync(resourcesDirectory, { recursive: true })
     createSparseFile(archivePath, DEVICE_CARD_APP_ARCHIVE_BYTES)
+    createPackagedRuntimeResources(
+      resourcesDirectory,
+      process.arch === 'arm64' ? 'osx-arm64' : 'osx-64'
+    )
 
     expect(validatePackagedMacosApp(outputDirectory)).toEqual({
       path: archivePath,

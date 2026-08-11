@@ -4,13 +4,16 @@ import { mkdir } from 'node:fs/promises'
 import { resolveLocalRuntimeLogPath } from './diagnosticLogSession'
 import {
   IDLE_LOCAL_RUNTIME_SNAPSHOT,
+  type LocalRuntimeAcceptanceResult,
   type LocalRuntimeLaunchConfig,
   type LocalRuntimeLogBatch,
   type LocalRuntimeLogQuery,
   type LocalRuntimeLogsSnapshot,
   type LocalRuntimeProcessKind,
+  type LocalRuntimeModeInfo,
   type LocalRuntimeSnapshot
 } from '../shared/localRuntime'
+import { runDevicePackageAcceptance } from './devicePackageAcceptance'
 import { readLocalRuntimeLog, readLocalRuntimeLogs } from './localRuntimeDiagnostics'
 import { LocalDeviceProvisioningRuntimeSession } from './localDeviceProvisioningRuntimeSession'
 import {
@@ -38,6 +41,12 @@ import {
   waitForLocalRuntimeHttp,
   waitForLocalRuntimePort
 } from './localRuntimeReadiness'
+import {
+  ManagedLocalRuntimeController,
+  type ManagedRuntimePort
+} from './managedLocalRuntime'
+
+export type { ManagedRuntimePort } from './managedLocalRuntime'
 
 export {
   readLocalRuntimeLog,
@@ -59,6 +68,16 @@ export type {
 type SnapshotListener = (snapshot: LocalRuntimeSnapshot) => void
 type ActiveOperation = 'simulator' | 'edge' | 'all'
 
+export interface LocalRuntimeManagerOptions {
+  managedRuntime?: ManagedRuntimePort
+  managedWorkingRoot?: string
+  waitForEdgeReadiness?: () => Promise<void>
+  waitForSimulatorReadiness?: () => Promise<void>
+  runAcceptance?: (
+    workspacePath: string
+  ) => Promise<LocalRuntimeAcceptanceResult>
+}
+
 const PROCESS_READY_TIMEOUT_MS = 90_000
 
 export class LocalRuntimeManager {
@@ -70,6 +89,11 @@ export class LocalRuntimeManager {
   private activeOperation: ActiveOperation | null = null
   private readonly ports: LocalRuntimePorts
   private readonly deviceProvisioningRuntime = new LocalDeviceProvisioningRuntimeSession()
+  private readonly options: LocalRuntimeManagerOptions
+  private readonly managedRuntime: ManagedLocalRuntimeController | null
+  private acceptance: LocalRuntimeAcceptanceResult = {
+    ...IDLE_LOCAL_RUNTIME_SNAPSHOT.acceptance!
+  }
 
   /**
    * 创建一个应用生命周期内唯一的本地运行管理器，并冻结启动端口事实。
@@ -77,7 +101,8 @@ export class LocalRuntimeManager {
    * @param logsDirectory Electron 管理的本地运行日志目录。
    * @param onSnapshot 运行状态变化时通知渲染器的回调。
    * @param logSessionId 应用启动时冻结、供全部本地子进程共享的日志会话标识。
-   * @param ports 当前启动环境的端口事实；同时驱动命令、清理和就绪探测。
+   * @param portsOrOptions 当前启动环境的端口事实，或托管运行时选项。
+   * @param options 同时传入端口时使用的托管运行时选项。
    * @returns 新的本地运行管理器实例。
    * @throws 日志会话标识会在首次解析路径时执行严格校验。
    * @safety 日志路径由主进程目录、会话标识和固定进程枚举共同解析。
@@ -86,9 +111,37 @@ export class LocalRuntimeManager {
     private readonly logsDirectory: string,
     private readonly onSnapshot: SnapshotListener,
     private readonly logSessionId: string,
-    ports: LocalRuntimePorts = LOCAL_RUNTIME_PORTS
+    portsOrOptions: LocalRuntimePorts | LocalRuntimeManagerOptions =
+      LOCAL_RUNTIME_PORTS,
+    options: LocalRuntimeManagerOptions = {}
   ) {
-    this.ports = normalizeLocalRuntimePorts(ports)
+    const receivedPorts = 'edgeHttp' in portsOrOptions
+    this.ports = normalizeLocalRuntimePorts(
+      receivedPorts ? portsOrOptions : LOCAL_RUNTIME_PORTS
+    )
+    this.options = receivedPorts ? options : portsOrOptions
+    this.managedRuntime = this.options.managedRuntime
+      ? new ManagedLocalRuntimeController({
+          managedRuntime: this.options.managedRuntime,
+          managedWorkingRoot: this.options.managedWorkingRoot,
+          waitForEdgeReadiness: this.options.waitForEdgeReadiness,
+          waitForSimulatorReadiness: this.options.waitForSimulatorReadiness
+        })
+      : null
+  }
+
+  /** 返回托管安装包或源码开发环境的当前运行模式。 */
+  getModeInfo(): Promise<LocalRuntimeModeInfo> {
+    return this.managedRuntime?.getModeInfo() ?? Promise.resolve({
+      mode: 'development',
+      label: '开发环境 Runtime',
+      runtimeVersion: null
+    })
+  }
+
+  /** 返回应用退出时是否应保留由持久 Supervisor 拥有的实验进程。 */
+  persistsAfterAppQuit(): boolean {
+    return this.managedRuntime !== null
   }
 
   getSnapshot(): LocalRuntimeSnapshot {
@@ -149,21 +202,35 @@ export class LocalRuntimeManager {
     config: LocalRuntimeLaunchConfig
   ): Promise<LocalRuntimeSnapshot> {
     this.beginOperation('simulator')
-    if (this.simulatorProcess) {
+    if (this.simulatorIsRunning()) {
       this.activeOperation = null
       throw new Error('PLC-Sim 已在运行')
     }
-    if (this.edgeProcess) {
-      this.activeOperation = null
-      throw new Error('请先停止领域侧 Edge，再启动 PLC-Sim')
-    }
+
+    this.resetAcceptance()
 
     this.publishState(
       'validating_simulator',
-      '正在检查 PLC-Sim、Conda 环境并清理所需端口…'
+      this.managedRuntime
+        ? '正在检查 PLC-Sim 与内置 Runtime…'
+        : '正在检查 PLC-Sim、Conda 环境并清理所需端口…'
     )
 
     try {
+      if (this.managedRuntime) {
+        await this.managedRuntime.startSimulator(
+          config,
+          this.ports,
+          (phase, message) => this.publishState(phase, message)
+        )
+        this.publishState(
+          this.edgeIsRunning() ? 'ready' : 'simulator_ready',
+          this.edgeIsRunning()
+            ? 'PLC-Sim 与内置 Runtime 已就绪'
+            : 'PLC-Sim 已就绪；请上传 PLC 变量表后再启动领域侧 Edge'
+        )
+        return this.getSnapshot()
+      }
       const plan = await resolveLocalSimulatorLaunchPlan(
         config,
         process.platform,
@@ -184,8 +251,10 @@ export class LocalRuntimeManager {
         PROCESS_READY_TIMEOUT_MS
       )
       this.publishState(
-        'simulator_ready',
-        'PLC-Sim 已就绪；请上传 PLC 变量表后再启动领域侧 Edge'
+        this.edgeIsRunning() ? 'ready' : 'simulator_ready',
+        this.edgeIsRunning()
+          ? 'PLC-Sim 与领域侧 Edge 已就绪'
+          : 'PLC-Sim 已就绪；请上传 PLC 变量表后再启动领域侧 Edge'
       )
       return this.getSnapshot()
     } catch (error) {
@@ -211,17 +280,35 @@ export class LocalRuntimeManager {
     config: LocalRuntimeLaunchConfig
   ): Promise<LocalRuntimeSnapshot> {
     this.beginOperation('edge')
-    if (this.edgeProcess) {
+    if (this.edgeIsRunning()) {
       this.activeOperation = null
       throw new Error('领域侧 Edge 已在运行')
     }
 
+    this.resetAcceptance()
+
     this.publishState(
       'validating_edge',
-      '正在检查 Edge 项目、Conda 环境并清理所需端口…'
+      this.managedRuntime
+        ? '正在检查领域设备包与内置 Runtime…'
+        : '正在检查 Edge 项目、Conda 环境并清理所需端口…'
     )
 
     try {
+      if (this.managedRuntime) {
+        await this.managedRuntime.startEdge(
+          config,
+          this.ports,
+          (phase, message) => this.publishState(phase, message)
+        )
+        this.publishState(
+          'ready',
+          this.simulatorIsRunning()
+            ? 'PLC-Sim 与内置 Runtime 已就绪'
+            : '内置 Runtime 已就绪'
+        )
+        return this.getSnapshot()
+      }
       const plan = await resolveLocalRuntimeLaunchPlan(
         config,
         process.platform,
@@ -283,7 +370,7 @@ export class LocalRuntimeManager {
 
       this.publishState(
         'ready',
-        this.simulatorProcess
+        this.simulatorIsRunning()
           ? 'PLC-Sim 与领域侧 Edge 已就绪'
           : '领域侧 Edge 已就绪'
       )
@@ -302,11 +389,7 @@ export class LocalRuntimeManager {
 
   async stopSimulator(): Promise<LocalRuntimeSnapshot> {
     this.beginOperation('simulator')
-    if (this.edgeProcess) {
-      this.activeOperation = null
-      throw new Error('请先停止领域侧 Edge，再停止 PLC-Sim')
-    }
-    if (!this.simulatorProcess) {
+    if (!this.simulatorIsRunning()) {
       this.activeOperation = null
       return this.getSnapshot()
     }
@@ -316,7 +399,16 @@ export class LocalRuntimeManager {
     try {
       await this.stopSimulatorProcess()
       this.stopping = false
-      this.publish({ ...IDLE_LOCAL_RUNTIME_SNAPSHOT })
+      if (this.edgeIsRunning()) {
+        this.publishState(
+          'ready',
+          this.managedRuntime
+            ? '内置 Runtime 仍在运行'
+            : '领域侧 Edge 仍在运行'
+        )
+      } else {
+        this.publish({ ...IDLE_LOCAL_RUNTIME_SNAPSHOT })
+      }
       return this.getSnapshot()
     } finally {
       this.stopping = false
@@ -326,7 +418,7 @@ export class LocalRuntimeManager {
 
   async stopEdge(): Promise<LocalRuntimeSnapshot> {
     this.beginOperation('edge')
-    if (!this.edgeProcess) {
+    if (!this.edgeIsRunning()) {
       this.activeOperation = null
       return this.getSnapshot()
     }
@@ -336,7 +428,7 @@ export class LocalRuntimeManager {
     try {
       await this.stopEdgeProcesses()
       this.stopping = false
-      if (this.simulatorProcess) {
+      if (this.simulatorIsRunning()) {
         this.publishState(
           'simulator_ready',
           'PLC-Sim 仍在运行；上传变量表后可再次启动领域侧 Edge'
@@ -359,6 +451,58 @@ export class LocalRuntimeManager {
     this.stopping = false
     this.activeOperation = null
     this.publish({ ...IDLE_LOCAL_RUNTIME_SNAPSHOT })
+    return this.getSnapshot()
+  }
+
+  /**
+   * 执行用户明确触发的领域设备包验收，并按既定策略清理本次进程。
+   *
+   * @param config 包含待验收领域设备包目录的启动配置。
+   * @returns 验收结论与清理后进程状态组成的最新快照。
+   * @throws Edge 尚未运行时拒绝；验收脚本错误会转换成失败结论。
+   * @safety 不创建或运行工作流任务；验收实现只检查设备包启动合同。
+   */
+  async runAcceptance(
+    config: LocalRuntimeLaunchConfig
+  ): Promise<LocalRuntimeSnapshot> {
+    this.beginOperation('all')
+    if (!this.edgeIsRunning()) {
+      this.activeOperation = null
+      throw new Error('请先启动领域侧 Edge，再运行设备包验收')
+    }
+    this.publishState('validating_acceptance', '正在验收 PLC-Sim 与设备包启动状态…')
+    let acceptance: LocalRuntimeAcceptanceResult
+    try {
+      const workspacePath = config.szlabProjectPath.trim()
+      if (!workspacePath) throw new Error('请选择领域项目根目录')
+      acceptance = await (
+        this.options.runAcceptance ?? runDevicePackageAcceptance
+      )(workspacePath)
+    } catch (error) {
+      acceptance = {
+        status: 'failed',
+        message: `验收执行失败：${localRuntimeErrorMessage(error)}`,
+        checkedAt: Date.now(),
+        descriptorPath: null,
+        packageName: null,
+        packageVersion: null
+      }
+    }
+
+    this.stopping = true
+    this.publishState('cleaning_acceptance', '验收完成，正在按默认策略清理本地进程…')
+    try {
+      await this.stopProcesses()
+    } finally {
+      this.stopping = false
+      this.activeOperation = null
+    }
+    this.acceptance = acceptance
+    this.publish({
+      ...IDLE_LOCAL_RUNTIME_SNAPSHOT,
+      message: `${acceptance.message} 本次验收进程已清理。`,
+      acceptance
+    })
     return this.getSnapshot()
   }
 
@@ -446,6 +590,7 @@ export class LocalRuntimeManager {
       this.expectedExits.add(child)
       await stopLocalRuntimeProcessTree(child)
     }
+    await this.managedRuntime?.stopSimulator()
   }
 
   private async stopEdgeProcesses(): Promise<void> {
@@ -457,6 +602,7 @@ export class LocalRuntimeManager {
         await stopLocalRuntimeProcessTree(child)
       }
     }
+    await this.managedRuntime?.stopEdge()
   }
 
   private async stopProcesses(): Promise<void> {
@@ -472,11 +618,12 @@ export class LocalRuntimeManager {
     this.publish({
       phase: 'failed',
       message,
-      simulatorRunning: Boolean(this.simulatorProcess),
+      simulatorRunning: this.simulatorIsRunning(),
       bridgeRunning: false,
-      edgeRunning: Boolean(this.edgeProcess),
+      edgeRunning: this.edgeIsRunning(),
       failedProcess,
-      error
+      error,
+      acceptance: this.acceptance
     })
   }
 
@@ -487,14 +634,36 @@ export class LocalRuntimeManager {
     this.publish({
       phase,
       message,
-      simulatorRunning: Boolean(this.simulatorProcess),
+      simulatorRunning: this.simulatorIsRunning(),
       bridgeRunning: false,
-      edgeRunning: Boolean(this.edgeProcess)
+      edgeRunning: this.edgeIsRunning(),
+      acceptance: this.acceptance
     })
   }
 
   private publish(snapshot: LocalRuntimeSnapshot): void {
     this.snapshot = snapshot
     this.onSnapshot(this.getSnapshot())
+  }
+
+  /** 把新一次启停尝试的设备包验收投影恢复为未验证。 */
+  private resetAcceptance(): void {
+    this.acceptance = {
+      ...IDLE_LOCAL_RUNTIME_SNAPSHOT.acceptance!
+    }
+  }
+
+  /** 返回本地子进程或持久 Supervisor 是否拥有 Edge。 */
+  private edgeIsRunning(): boolean {
+    return Boolean(this.edgeProcess) || Boolean(
+      this.managedRuntime?.isEdgeRunning()
+    )
+  }
+
+  /** 返回本地子进程或持久 Supervisor 是否拥有 PLC-Sim。 */
+  private simulatorIsRunning(): boolean {
+    return Boolean(this.simulatorProcess) || Boolean(
+      this.managedRuntime?.isSimulatorRunning()
+    )
   }
 }

@@ -7,7 +7,7 @@ import {
   type IpcMainInvokeEvent
 } from 'electron'
 import { basename, dirname, join } from 'path'
-import { appendFileSync } from 'node:fs'
+import { appendFileSync, existsSync } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -31,6 +31,9 @@ import {
   LocalRuntimeManager,
   resolveLocalRuntimeLaunchPlan
 } from './localRuntimeManager'
+import { ManagedRuntime } from './managedRuntime'
+import { ManagedRuntimeInstallation } from './managedRuntimeInstallation'
+import { DevicePackageTrustStore } from './devicePackageTrust'
 import {
   createElectronObservability,
   resolveElectronObservabilityOptions
@@ -137,6 +140,7 @@ const localAppIcon = join(__dirname, '../../build/icon.png')
 // 主窗口引用,供 OAuth 弹窗作为模态父窗口使用
 let mainWindow: BrowserWindow | null = null
 let localRuntimeManager: LocalRuntimeManager | null = null
+let devicePackageTrustStore: DevicePackageTrustStore | null = null
 let quitCleanupStarted = false
 let quitCleanupFinished = false
 let deviceCardManager: DeviceCardManager | null = null
@@ -383,8 +387,21 @@ app.whenReady().then(async () => {
     }
   )
 
+  const localRuntimeLogsDirectory = join(
+    app.getPath('logs'),
+    'local-runtime'
+  )
+  const managedRuntime = createManagedRuntime(join(
+    app.getPath('userData'),
+    'managed-runtime',
+    'supervisor'
+  ))
+  devicePackageTrustStore = new DevicePackageTrustStore(join(
+    app.getPath('userData'),
+    'device-package-trust'
+  ))
   localRuntimeManager = new LocalRuntimeManager(
-    join(app.getPath('logs'), 'local-runtime'),
+    localRuntimeLogsDirectory,
     (snapshot) => {
       electronObservability.record('electron.runtime.state_changed', {
         'runtime.phase': snapshot.phase,
@@ -400,7 +417,17 @@ app.whenReady().then(async () => {
         window.webContents.send('runtime:snapshot', snapshot)
       }
     },
-    DIAGNOSTIC_LOG_SESSION_ID
+    DIAGNOSTIC_LOG_SESSION_ID,
+    managedRuntime
+      ? {
+          managedRuntime,
+          managedWorkingRoot: join(
+            app.getPath('userData'),
+            'managed-runtime',
+            'workspaces'
+          )
+        }
+      : {}
   )
   const localDeviceProvisioningManager = new LocalDeviceProvisioningManager(
     new LocalDeviceProvisioningStore(
@@ -436,6 +463,37 @@ app.whenReady().then(async () => {
     assertMainWindowSender(event)
     return requireRuntimeManager().getSnapshot()
   })
+  ipcMain.handle('runtime:getModeInfo', (event) => {
+    assertMainWindowSender(event)
+    return requireRuntimeManager().getModeInfo()
+  })
+  ipcMain.handle(
+    'runtime:inspectDevicePackage',
+    async (event, payload: unknown) => {
+      assertMainWindowSender(event)
+      const config = parseRuntimeConfig(payload)
+      return requireDevicePackageTrustStore().inspect(
+        config.szlabProjectPath
+      )
+    }
+  )
+  ipcMain.handle(
+    'runtime:confirmDevicePackage',
+    async (event, payload: unknown, expectedHash: unknown) => {
+      assertMainWindowSender(event)
+      if (
+        typeof expectedHash !== 'string'
+        || !/^[0-9a-f]{64}$/.test(expectedHash)
+      ) {
+        throw new Error('设备包内容哈希无效')
+      }
+      const config = parseRuntimeConfig(payload)
+      return requireDevicePackageTrustStore().confirm(
+        config.szlabProjectPath,
+        expectedHash
+      )
+    }
+  )
   ipcMain.handle('runtime:getDefaultEnvironmentPath', async (event) => {
     assertMainWindowSender(event)
     return electronObservability.run(
@@ -480,7 +538,9 @@ app.whenReady().then(async () => {
         electronObservability.record('electron.runtime.start_requested', {
           'runtime.target': 'edge'
         })
-        await confirmCustomEdgeLaunch(config)
+        if ((await requireRuntimeManager().getModeInfo()).mode === 'development') {
+          await confirmCustomEdgeLaunch(config)
+        }
         return requireRuntimeManager().startEdge(config)
       }
     )
@@ -491,6 +551,16 @@ app.whenReady().then(async () => {
       'electron.runtime.stop',
       { 'runtime.target': 'edge' },
       () => requireRuntimeManager().stopEdge()
+    )
+  })
+  ipcMain.handle('runtime:runAcceptance', async (event, payload: unknown) => {
+    assertMainWindowSender(event)
+    return electronObservability.run(
+      'electron.runtime.acceptance',
+      {},
+      () => requireRuntimeManager().runAcceptance(
+        parseRuntimeConfig(payload)
+      )
     )
   })
   ipcMain.handle('runtime:readLogs', async (event) => {
@@ -688,7 +758,11 @@ async function cleanupBeforeQuit(): Promise<void> {
   }
   const manager = localRuntimeManager
   try {
-    if (manager && manager.getSnapshot().phase !== 'idle') {
+    if (
+      manager
+      && !manager.persistsAfterAppQuit()
+      && manager.getSnapshot().phase !== 'idle'
+    ) {
       await electronObservability.run(
         'electron.runtime.stop_on_quit',
         {},
@@ -712,6 +786,40 @@ async function cleanupBeforeQuit(): Promise<void> {
   })
   electronObservability.record('electron.app.quit')
   await electronObservability.shutdown()
+}
+
+/**
+ * 在安装包或显式测试载荷存在时创建私有运行时（Runtime）控制面。
+ *
+ * @param supervisorStateDirectory 独立 Supervisor 持久状态目录。
+ * @returns 托管 Runtime；开发态没有载荷时返回 undefined。
+ * @throws 安装包缺少 manifest 时阻止启动，避免静默退回源码模式。
+ * @safety 载荷根只来自 Electron resources 或主进程测试环境变量。
+ */
+function createManagedRuntime(
+  supervisorStateDirectory: string
+): ManagedRuntime | undefined {
+  const resourcesDirectory = process.env['UNILAB_MANAGED_RUNTIME_RESOURCES']
+    ?? (app.isPackaged ? process.resourcesPath : undefined)
+  if (!resourcesDirectory) return undefined
+  const manifestPath = join(
+    resourcesDirectory,
+    'runtime-installer',
+    'manifest.json'
+  )
+  if (!existsSync(manifestPath)) {
+    if (app.isPackaged) {
+      throw new Error(`安装包缺少私有 Runtime manifest：${manifestPath}`)
+    }
+    return undefined
+  }
+  return new ManagedRuntime(
+    new ManagedRuntimeInstallation({
+      resourcesDirectory,
+      dataDirectory: app.getPath('userData')
+    }),
+    supervisorStateDirectory
+  )
 }
 
 function createMainObservability(): ReturnType<
@@ -761,6 +869,12 @@ function requireRuntimeManager(): LocalRuntimeManager {
   return localRuntimeManager
 }
 
+/** 返回应用生命周期内唯一的设备包信任存储。 */
+function requireDevicePackageTrustStore(): DevicePackageTrustStore {
+  if (!devicePackageTrustStore) throw new Error('设备包信任存储尚未初始化')
+  return devicePackageTrustStore
+}
+
 /**
  * 构造本地运行时受控路径选择器，确保渲染器只能请求已声明的文件或目录类型。
  *
@@ -803,7 +917,9 @@ function runtimePathDialogOptions(
       LocalRuntimePathKind,
       'graph' | 'edgeExecutable'
     >],
-    properties: ['openDirectory']
+    properties: kind === 'simulator'
+      ? ['openFile', 'openDirectory']
+      : ['openDirectory']
   }
 }
 

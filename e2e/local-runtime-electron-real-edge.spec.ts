@@ -7,6 +7,7 @@ const environmentPath = process.env.UNILAB_E2E_CONDA_ENV ?? ''
 const osProjectPath = process.env.UNILAB_E2E_OS_ROOT ?? ''
 const domainProjectPath = process.env.UNILAB_E2E_DOMAIN_ROOT ?? ''
 const graphPath = process.env.UNILAB_E2E_GRAPH_PATH ?? ''
+const simulatorProjectPath = process.env.UNILAB_E2E_SIMULATOR_ROOT ?? ''
 const artifactDirectory = process.env.UNILAB_E2E_ARTIFACT_DIR
   ?? resolve('e2e-artifacts', 'local-debugger-real-edge')
 
@@ -53,6 +54,9 @@ test('starts a real Edge from a custom desktop command', async () => {
         browserErrors.push(`HTTP ${response.status()} ${response.url()}`)
       }
     })
+    page.on('dialog', async (dialog) => {
+      await dialog.accept()
+    })
     await expect(page.getByRole('group', { name: 'Edge 连接配置' }))
       .toBeVisible()
     await capture(page, '01-frontend-started.png')
@@ -67,7 +71,7 @@ test('starts a real Edge from a custom desktop command', async () => {
       osProjectPath,
       szlabProjectPath: domainProjectPath,
       environmentPath,
-      simulatorProjectPath: '',
+      simulatorProjectPath,
       edgeCommandMode: 'custom',
       customEdgeCommand: {
         executable: '{{unilab}}',
@@ -142,6 +146,23 @@ test('starts a real Edge from a custom desktop command', async () => {
     await expect(runtimeDialog.getByText('运行中', { exact: true }))
       .toHaveCount(1)
     await capture(page, '04-edge-ready.png')
+
+    if (simulatorProjectPath) {
+      await runtimeDialog.getByText('PLC-Sim（可选）').click()
+      await runtimeDialog.getByRole('button', { name: '启动 PLC' }).click()
+      await expect(runtimeDialog.getByRole('status')).toContainText(
+        'PLC-Sim 与领域侧 Edge 已就绪',
+        { timeout: 120_000 }
+      )
+      await expect(runtimeDialog.getByText('运行中', { exact: true }))
+        .toHaveCount(2)
+      await capture(page, '04b-edge-and-plc-ready.png')
+      await runtimeDialog.getByRole('button', { name: '停止 PLC' }).click()
+      await expect(runtimeDialog.getByRole('status')).toContainText(
+        '领域侧 Edge 仍在运行',
+        { timeout: 30_000 }
+      )
+    }
 
     await page.reload()
     await expect(connectionBar).toContainText('Edge 已连接', {

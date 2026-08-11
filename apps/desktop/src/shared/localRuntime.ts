@@ -37,6 +37,38 @@ export interface LocalRuntimeLaunchConfig {
   customEdgeCommand: LocalRuntimeCustomEdgeCommand
 }
 
+export type LocalRuntimeMode = 'managed' | 'development'
+
+export interface LocalRuntimeModeInfo {
+  mode: LocalRuntimeMode
+  label: string
+  runtimeVersion: string | null
+  defaultLaunchConfig?: LocalRuntimeLaunchConfig
+}
+
+export type LocalRuntimeAcceptanceStatus =
+  | 'unverified'
+  | 'verified'
+  | 'failed'
+
+export interface LocalRuntimeAcceptanceResult {
+  status: LocalRuntimeAcceptanceStatus
+  message: string
+  checkedAt: number | null
+  descriptorPath: string | null
+  packageName: string | null
+  packageVersion: string | null
+}
+
+export interface DevicePackageTrustInfo {
+  workspacePath: string
+  contentHash: string
+  signatureStatus: 'valid' | 'invalid' | 'unsigned'
+  signerFingerprint: string | null
+  trusted: boolean
+  confirmationRequired: boolean
+}
+
 export type LocalRuntimeProcessKind = 'simulator' | 'bridge' | 'edge'
 
 export interface LocalRuntimeLogEntry {
@@ -83,6 +115,8 @@ export type LocalRuntimePhase =
   | 'waiting_bridge'
   | 'starting_edge'
   | 'waiting_edge'
+  | 'validating_acceptance'
+  | 'cleaning_acceptance'
   | 'ready'
   | 'stopping_simulator'
   | 'stopping_edge'
@@ -94,6 +128,7 @@ export interface LocalRuntimeSnapshot {
   simulatorRunning: boolean
   bridgeRunning: boolean
   edgeRunning: boolean
+  acceptance?: LocalRuntimeAcceptanceResult
   failedProcess?: LocalRuntimeProcessKind
   error?: string
 }
@@ -103,5 +138,13 @@ export const IDLE_LOCAL_RUNTIME_SNAPSHOT: LocalRuntimeSnapshot = {
   message: 'PLC-Sim 与领域侧 Edge 均未启动',
   simulatorRunning: false,
   bridgeRunning: false,
-  edgeRunning: false
+  edgeRunning: false,
+  acceptance: {
+    status: 'unverified',
+    message: '尚未运行设备包验收。',
+    checkedAt: null,
+    descriptorPath: null,
+    packageName: null,
+    packageVersion: null
+  }
 }

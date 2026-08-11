@@ -14,6 +14,8 @@
     "package:mac": "node scripts/package-macos.mjs",
     "prepackage:win": "pnpm --filter @unilab/device-card-host build && pnpm --filter @unilab/device-card-agent-cli build",
     "package:win": "node scripts/package-windows.mjs",
+    "prepackage:linux": "pnpm --filter @unilab/device-card-host build && pnpm --filter @unilab/device-card-agent-cli build",
+    "package:linux": "node scripts/package-linux.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "pretest": "pnpm --filter @unilab/device-card-host build && pnpm --filter @unilab/device-card-agent-cli build",
     "test": "vitest run && node scripts/verify-icons.mjs && node scripts/verify-installer.mjs"

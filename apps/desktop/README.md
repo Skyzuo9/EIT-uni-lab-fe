@@ -59,8 +59,10 @@ PLC-Sim 时处理领域侧 Edge HTTP、PLC-Sim Web GUI 与 OPC UA（默认分别
 必须至少返回一个非 `host_node` 设备的 Action；仅 OS 模式则只要
 `device-catalog/v1` 目录就绪即可。
 
-停止领域侧 Edge 不会停止 PLC-Sim；为避免变量表与设备目录状态不一致，Edge
-运行期间不能启动或停止 PLC-Sim。退出桌面应用时仍会统一回收两个服务。
+PLC-Sim 与领域侧 Edge 可以分别启动和停止，也可以同时运行；一次只执行一个
+生命周期操作，防止两个按钮形成启停竞态。停止其中一个不会隐式停止另一个。
+退出桌面应用只断开控制面，独立 Supervisor 继续保有实验进程，用户可在再次打开
+桌面端后继续查看和控制。
 
 产品界面仅展示 OPC UA 与领域侧 Edge，不把 CLI 内部 bridge 暴露为独立服务。
 

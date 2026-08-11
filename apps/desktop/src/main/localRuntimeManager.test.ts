@@ -21,12 +21,11 @@ describe('LocalRuntimeManager process lifecycle', () => {
     new Date('2026-08-05T01:02:03.004Z')
   )
 
-  /** 证明 PLC-Sim 启动会先终止占用三个目标端口的上一轮残留监听进程。 */
+  /** 证明 PLC-Sim 启动只回收自己的两个端口，不干扰可并行运行的 Edge。 */
   it('reclaims an occupied PLC-Sim port before spawning the new process', async () => {
     const fixture = await createLocalRuntimeTestFixture('packages')
     await writeFakeSimulatorExecutable(fixture.python)
-    const [edgeHttp, simulatorGui, simulatorOpcUa] = await Promise.all([
-      startTemporaryListener(),
+    const [simulatorGui, simulatorOpcUa] = await Promise.all([
       startTemporaryListener(),
       startTemporaryListener()
     ])
@@ -36,7 +35,7 @@ describe('LocalRuntimeManager process lifecycle', () => {
       () => undefined,
       logSessionId,
       {
-        edgeHttp: edgeHttp.port,
+        edgeHttp: 18_003,
         hostLink: 18_004,
         simulatorGui: simulatorGui.port,
         simulatorOpcUa: simulatorOpcUa.port

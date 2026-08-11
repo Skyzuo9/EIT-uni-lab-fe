@@ -93,7 +93,6 @@ describe('Local runtime launch plan', () => {
     const edgePlan = await resolveLocalRuntimeLaunchPlan(fixture.config)
 
     expect(simulatorPlan.requiredPorts).toEqual([
-      { port: 18_003, label: '领域侧 Edge HTTP' },
       { port: 18_765, label: 'PLC-Sim Web GUI' },
       { port: 4_855, label: 'PLC-Sim OPC UA' }
     ])

@@ -47,6 +47,10 @@ assert.equal(
   packageConfig.scripts?.['package:mac'],
   'node scripts/package-macos.mjs'
 )
+assert.equal(
+  packageConfig.scripts?.['package:linux'],
+  'node scripts/package-linux.mjs'
+)
 assert.match(
   packageConfig.scripts?.['prepackage:win'] ?? '',
   /@unilab\/device-card-agent-cli build/
@@ -55,11 +59,18 @@ assert.match(
   packageConfig.scripts?.['prepackage:mac'] ?? '',
   /@unilab\/device-card-agent-cli build/
 )
+assert.match(
+  packageConfig.scripts?.['prepackage:linux'] ?? '',
+  /@unilab\/device-card-agent-cli build/
+)
 assert.match(builderConfig, /npmRebuild: false/)
+assert.match(builderConfig, /extraResources:[\s\S]*?UNILAB_RUNTIME_PAYLOAD_DIR/)
+assert.match(builderConfig, /to: runtime-installer/)
 assert.match(
   builderConfig,
   /extraResources:[\s\S]*?device-card-agent\/cli\.mjs/
 )
+assert.match(builderConfig, /linux:[\s\S]*?AppImage/)
 assert.match(builderConfig, /electronLanguages:\s*\n\s*- zh-CN\s*\n\s*- en-US/)
 assert.match(builderConfig, /afterPack: scripts\/after-pack\.mjs/)
 assert.match(builderConfig, /nsis:[\s\S]*?oneClick: false/)
