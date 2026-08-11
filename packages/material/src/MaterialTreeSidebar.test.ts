@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { buildMaterialGraphIndex } from './rules'
 import {
   buildMaterialTree,
+  filterMaterialTree,
   initialMaterialTreeOpen
 } from './MaterialTreeSidebar'
 import { materialAggregate } from './testFixtures'
@@ -141,6 +142,44 @@ describe('buildMaterialTree', () => {
     expect(occupiedEntry.aggregate.material.name).toBe('样品瓶')
     expect(occupiedEntry.occupyingSite?.name).toBe('L1B1')
     expect(emptyEntry.site.name).toBe('L1A1')
+  })
+
+  it('按物料字段与库位名称检索，并保留命中项的祖先路径', () => {
+    /** 构造仓库、样品和空库位，验证两类目录命中。 */
+    const sample = materialAggregate('sample-a', {
+      placement: {
+        kind: 'site',
+        parentId: 'warehouse',
+        siteId: 'site-02',
+        offsetPose: {
+          positionMm: [0, 0, 0],
+          rotationDegXYZ: [0, 0, 0]
+        }
+      }
+    })
+    sample.material.name = '甲醇样品'
+    sample.material.code = 'MEOH-01'
+    const warehouse = materialAggregate('warehouse', {
+      sites: [
+        site('site-02', 'L1B1', ['sample-a']),
+        site('site-01', 'L1A1', [])
+      ]
+    })
+    const aggregatesById = { warehouse, 'sample-a': sample }
+    const tree = buildMaterialTree(
+      aggregatesById,
+      buildMaterialGraphIndex(aggregatesById).childrenByParentId
+    )
+
+    const byMaterial = filterMaterialTree(tree, 'meoh')
+    expect(byMaterial).toHaveLength(1)
+    expect(byMaterial[0].children).toHaveLength(1)
+    expect(byMaterial[0].children[0].kind).toBe('material')
+
+    const bySite = filterMaterialTree(tree, 'L1A1')
+    expect(bySite).toHaveLength(1)
+    expect(bySite[0].children).toHaveLength(1)
+    expect(bySite[0].children[0].kind).toBe('empty-site')
   })
 })
 

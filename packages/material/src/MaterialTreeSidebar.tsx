@@ -47,6 +47,7 @@ export function MaterialTreeSidebar({
   const [expandedIds, setExpandedIds] = useState<ReadonlySet<MaterialId>>(
     new Set()
   )
+  const [query, setQuery] = useState('')
   const aggregatesById = useMaterialStore(
     (state) => state.aggregatesById
   )
@@ -55,6 +56,11 @@ export function MaterialTreeSidebar({
     () => buildMaterialTree(aggregatesById, graphIndex.childrenByParentId),
     [aggregatesById, graphIndex.childrenByParentId]
   )
+  const filteredEntries = useMemo(
+    () => filterMaterialTree(entries, query),
+    [entries, query]
+  )
+  const searchActive = query.trim().length > 0
   const selected = new Set(selectedMaterialIds)
 
   useEffect(() => {
@@ -141,16 +147,42 @@ export function MaterialTreeSidebar({
           <PanelCloseIcon />
         </button>
       </header>
+      <label className="material-tree-sidebar__search">
+        <SearchIcon />
+        <span className="material-tree-sidebar__visually-hidden">
+          检索物料、设备或库位
+        </span>
+        <input
+          type="search"
+          value={query}
+          placeholder="检索物料、设备或库位"
+          onChange={(event) => setQuery(event.target.value)}
+        />
+        {query ? (
+          <button
+            type="button"
+            aria-label="清除物料检索"
+            onClick={() => setQuery('')}
+          >
+            ×
+          </button>
+        ) : null}
+      </label>
       <div className="material-tree-sidebar__tree" role="tree">
-        {entries.length === 0 ? (
-          <p>暂无物料</p>
+        {filteredEntries.length === 0 ? (
+          <p role="status">
+            {entries.length === 0
+              ? '暂无物料'
+              : `没有与“${query.trim()}”匹配的物料或库位`}
+          </p>
         ) : (
-          entries.map((entry) => (
+          filteredEntries.map((entry) => (
             <MaterialTreeRow
               key={entry.aggregate.material.id}
               depth={0}
               entry={entry}
               expandedIds={expandedIds}
+              forceExpanded={searchActive}
               selectedIds={selected}
               onSelect={(materialId) =>
                 onSelectionChange?.([materialId])
@@ -190,6 +222,7 @@ function MaterialTreeRow({
   entry,
   depth,
   expandedIds,
+  forceExpanded,
   selectedIds,
   onSelect,
   onToggle
@@ -197,13 +230,16 @@ function MaterialTreeRow({
   entry: MaterialTreeEntry
   depth: number
   expandedIds: ReadonlySet<MaterialId>
+  forceExpanded: boolean
   selectedIds: ReadonlySet<MaterialId>
   onSelect: (materialId: MaterialId) => void
   onToggle: (materialId: MaterialId) => void
 }): React.JSX.Element {
   const materialId = entry.aggregate.material.id
   const hasChildren = entry.children.length > 0
-  const expanded = hasChildren && expandedIds.has(materialId)
+  const expanded = hasChildren && (
+    forceExpanded || expandedIds.has(materialId)
+  )
   const rowStyle = {
     '--material-tree-depth': depth
   } as CSSProperties
@@ -255,6 +291,7 @@ function MaterialTreeRow({
                 depth={depth + 1}
                 entry={child}
                 expandedIds={expandedIds}
+                forceExpanded={forceExpanded}
                 selectedIds={selectedIds}
                 onSelect={onSelect}
                 onToggle={onToggle}
@@ -370,6 +407,58 @@ export function buildMaterialTree(
   return roots.map((aggregate) => build(aggregate))
 }
 
+/**
+ * 按物料、设备与库位的公开标识过滤树，并保留命中节点的祖先路径。
+ *
+ * @param entries 已构建的物料目录树。
+ * @param query 用户输入的检索词；空白查询返回原树。
+ * @returns 可直接渲染的只读过滤树，不修改原节点。
+ */
+export function filterMaterialTree(
+  entries: readonly MaterialTreeEntry[],
+  query: string
+): readonly MaterialTreeEntry[] {
+  const normalizedQuery = query.trim().toLocaleLowerCase()
+  if (!normalizedQuery) return entries
+
+  /** 判断一个公开字符串字段是否包含规范化检索词。 */
+  const matches = (value: string | undefined): boolean =>
+    Boolean(value?.toLocaleLowerCase().includes(normalizedQuery))
+
+  /** 递归保留自身命中、库位命中或包含后代命中的物料节点。 */
+  const filterEntry = (entry: MaterialTreeEntry): MaterialTreeEntry | null => {
+    const material = entry.aggregate.material
+    const ownMatch = [
+      material.id,
+      material.code,
+      material.name,
+      material.description,
+      material.sourceTemplateId,
+      material.component?.key,
+      entry.occupyingSite?.id,
+      entry.occupyingSite?.key,
+      entry.occupyingSite?.name
+    ].some(matches)
+    if (ownMatch) return entry
+
+    const children = entry.children.flatMap((child): MaterialTreeNode[] => {
+      if (child.kind === 'material') {
+        const filtered = filterEntry(child)
+        return filtered ? [filtered] : []
+      }
+      return [child.site.id, child.site.key, child.site.name].some(matches)
+        ? [child]
+        : []
+    })
+    return children.length > 0 ? { ...entry, children } : null
+  }
+
+  return entries.flatMap((entry) => {
+    const filtered = filterEntry(entry)
+    return filtered ? [filtered] : []
+  })
+}
+
 function compareAggregates(
   left: MaterialAggregate,
   right: MaterialAggregate
@@ -409,6 +498,16 @@ function PanelCloseIcon(): React.JSX.Element {
     <svg aria-hidden="true" viewBox="0 0 18 18">
       <path d="M3 4.5h12M3 9h12M3 13.5h12M6 3v12" />
       <path d="m11 7-2 2 2 2" />
+    </svg>
+  )
+}
+
+/** 返回与现有图标体系一致的检索图标。 */
+function SearchIcon(): React.JSX.Element {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 18 18">
+      <circle cx="8" cy="8" r="4.5" />
+      <path d="m11.5 11.5 3 3" />
     </svg>
   )
 }

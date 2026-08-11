@@ -349,3 +349,436 @@
     padding-right: 38px;
   }
 }
+
+.workflow :global(.workflow-runtime__catalog-header-actions) {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.workflow :global(.workflow-runtime__catalog-header-actions) > span {
+  display: grid;
+  min-width: 34px;
+  height: 34px;
+  place-items: center;
+  color: var(--unilab-color-workflow);
+  border-radius: 999px;
+  background: var(--unilab-color-workflow-soft);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.workflow :global(.workflow-runtime__catalog-header-actions) > button {
+  display: inline-flex;
+  min-height: 38px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 13px;
+  color: var(--unilab-color-surface);
+  border: 1px solid var(--unilab-color-workflow);
+  border-radius: var(--unilab-radius-control);
+  background: var(--unilab-color-workflow);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.workflow :global(.workflow-runtime__catalog-header-actions) > button:hover {
+  filter: brightness(.94);
+}
+
+.workflow :global(.workflow-runtime__catalog-tools) {
+  grid-template-columns: minmax(220px, 360px) auto 130px 1fr;
+}
+
+.workflow :global(.workflow-runtime__catalog-status-filter) select {
+  width: 100%;
+  min-height: 38px;
+  padding: 0 28px 0 10px;
+  color: var(--unilab-color-text);
+  border: 1px solid var(--unilab-color-border-strong);
+  border-radius: var(--unilab-radius-control);
+  background: var(--unilab-color-surface);
+  font: 12px/1 var(--unilab-font-sans);
+}
+
+.workflow :global(.workflow-runtime__catalog-status-filter) select:focus-visible,
+.workflow :global(.workflow-runtime__catalog-header-actions) > button:focus-visible {
+  outline: 2px solid var(--unilab-color-focus);
+  outline-offset: 2px;
+}
+
+.workflow :global(.workflow-runtime__catalog-card) {
+  display: flex;
+  min-width: 0;
+  min-height: 148px;
+  flex-direction: column;
+  overflow: hidden;
+  color: var(--unilab-color-text);
+  border: 1px solid var(--unilab-color-border);
+  border-radius: var(--unilab-radius-lg);
+  background: var(--unilab-color-surface);
+  box-shadow: var(--unilab-shadow-control);
+  transition: border-color 120ms ease, transform 120ms ease;
+}
+
+.workflow :global(.workflow-runtime__catalog-card):hover {
+  border-color: color-mix(
+    in srgb,
+    var(--unilab-color-workflow) 64%,
+    var(--unilab-color-border)
+  );
+  transform: translateY(-1px);
+}
+
+.workflow :global(.workflow-runtime__catalog-card-main) {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  flex: 1;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 12px;
+  padding: 15px 16px 12px;
+  color: inherit;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.workflow :global(.workflow-runtime__catalog-card-main):disabled {
+  cursor: not-allowed;
+}
+
+.workflow :global(.workflow-runtime__catalog-card-main):focus-visible,
+.workflow :global(.workflow-runtime__catalog-card) footer button:focus-visible {
+  outline: 2px solid var(--unilab-color-focus);
+  outline-offset: -2px;
+}
+
+.workflow :global(.workflow-runtime__catalog-description) {
+  display: -webkit-box;
+  min-height: 30px;
+  overflow: hidden;
+  color: var(--unilab-color-text-muted);
+  font-size: 11px;
+  line-height: 1.4;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.workflow :global(.workflow-runtime__catalog-card) > footer {
+  display: flex;
+  min-height: 42px;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px 7px 16px;
+  color: var(--unilab-color-text-subtle);
+  border-top: 1px solid var(--unilab-color-border);
+  background: var(--unilab-color-surface-subtle);
+  font-size: 10px;
+}
+
+.workflow :global(.workflow-runtime__catalog-card) > footer > div {
+  display: flex;
+  gap: 2px;
+  margin-left: auto;
+}
+
+.workflow :global(.workflow-runtime__catalog-card) > footer button {
+  min-height: 28px;
+  padding: 0 8px;
+  color: var(--unilab-color-text-muted);
+  border: 0;
+  border-radius: var(--unilab-radius-sm);
+  background: transparent;
+  cursor: pointer;
+  font-size: 10px;
+}
+
+.workflow :global(.workflow-runtime__catalog-card) > footer button:hover {
+  color: var(--unilab-color-text);
+  background: var(--unilab-color-bg-subtle);
+}
+
+.workflow :global(.workflow-runtime__catalog-card) > footer button.is-danger:hover {
+  color: var(--unilab-color-danger);
+}
+
+.workflow :global(.workflow-runtime__catalog-status) {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--unilab-color-text-muted);
+  font-weight: 650;
+}
+
+.workflow :global(.workflow-runtime__catalog-status)::before {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--unilab-color-text-subtle);
+  content: '';
+}
+
+.workflow :global(.workflow-runtime__catalog-status.is-configured)::before {
+  background: var(--unilab-color-success);
+}
+
+.workflow :global(.workflow-runtime__catalog-status.is-empty)::before {
+  background: var(--unilab-color-warning);
+}
+
+:global(.workflow-runtime__catalog-dialog-backdrop) {
+  position: fixed;
+  z-index: 10000;
+  display: grid;
+  padding: 24px;
+  place-items: center;
+  inset: 0;
+  background: rgb(15 23 42 / 52%);
+}
+
+:global(.workflow-runtime__catalog-dialog) {
+  width: min(480px, 100%);
+  max-height: min(720px, calc(100vh - 48px));
+  overflow: auto;
+  color: var(--unilab-color-text);
+  border: 1px solid var(--unilab-color-border-strong);
+  border-radius: var(--unilab-radius-lg);
+  background: var(--unilab-color-surface);
+  box-shadow: 0 18px 54px rgb(15 23 42 / 32%);
+}
+
+:global(.workflow-runtime__catalog-dialog.is-wide) {
+  width: min(680px, 100%);
+}
+
+:global(.workflow-runtime__catalog-dialog) > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 20px 22px 16px;
+  border-bottom: 1px solid var(--unilab-color-border);
+}
+
+:global(.workflow-runtime__catalog-dialog) h3,
+:global(.workflow-runtime__catalog-dialog) p {
+  margin: 0;
+}
+
+:global(.workflow-runtime__catalog-dialog) h3 {
+  font-size: 17px;
+  line-height: 1.4;
+}
+
+:global(.workflow-runtime__catalog-dialog) header p {
+  max-width: 65ch;
+  margin-top: 5px;
+  color: var(--unilab-color-text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+:global(.workflow-runtime__catalog-dialog) > header > button {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  padding: 0;
+  color: var(--unilab-color-text-muted);
+  border: 0;
+  border-radius: var(--unilab-radius-sm);
+  background: transparent;
+  cursor: pointer;
+  font-size: 20px;
+}
+
+:global(.workflow-runtime__catalog-form) {
+  display: grid;
+  gap: 16px;
+  padding: 20px 22px 22px;
+}
+
+:global(.workflow-runtime__catalog-form) label {
+  display: grid;
+  gap: 7px;
+  color: var(--unilab-color-text);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+:global(.workflow-runtime__catalog-form) input,
+:global(.workflow-runtime__catalog-form) textarea {
+  width: 100%;
+  min-height: 40px;
+  padding: 9px 11px;
+  color: var(--unilab-color-text);
+  border: 1px solid var(--unilab-color-border-strong);
+  border-radius: var(--unilab-radius-control);
+  outline: 0;
+  background: var(--unilab-color-surface);
+  font: 12px/1.45 var(--unilab-font-sans);
+}
+
+:global(.workflow-runtime__catalog-form) textarea {
+  min-height: 96px;
+  resize: vertical;
+}
+
+:global(.workflow-runtime__catalog-form) input:focus,
+:global(.workflow-runtime__catalog-form) textarea:focus {
+  border-color: var(--unilab-color-focus);
+  outline: 2px solid color-mix(in srgb, var(--unilab-color-focus) 24%, transparent);
+}
+
+:global(.workflow-runtime__catalog-form) footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+:global(.workflow-runtime__catalog-form) footer button,
+:global(.workflow-runtime__catalog-log-state) button {
+  min-height: 38px;
+  padding: 0 14px;
+  color: var(--unilab-color-text);
+  border: 1px solid var(--unilab-color-border-strong);
+  border-radius: var(--unilab-radius-control);
+  background: var(--unilab-color-surface);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+:global(.workflow-runtime__catalog-form) footer button.is-primary {
+  color: var(--unilab-color-surface);
+  border-color: var(--unilab-color-workflow);
+  background: var(--unilab-color-workflow);
+}
+
+:global(.workflow-runtime__catalog-form) footer button.is-danger {
+  color: var(--unilab-color-surface);
+  border-color: var(--unilab-color-danger);
+  background: var(--unilab-color-danger);
+}
+
+:global(.workflow-runtime__catalog-form) button:disabled {
+  cursor: not-allowed;
+  opacity: .52;
+}
+
+:global(.workflow-runtime__catalog-dialog-error) {
+  color: var(--unilab-color-danger);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+:global(.workflow-runtime__catalog-log) {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 12px 22px 24px;
+  list-style: none;
+}
+
+:global(.workflow-runtime__catalog-log) li {
+  position: relative;
+  display: grid;
+  min-height: 58px;
+  grid-template-columns: 14px minmax(0, 1fr);
+  gap: 10px;
+  padding: 11px 0;
+}
+
+:global(.workflow-runtime__catalog-log) li:not(:last-child)::after {
+  position: absolute;
+  top: 30px;
+  bottom: -9px;
+  left: 5px;
+  width: 1px;
+  background: var(--unilab-color-border-strong);
+  content: '';
+}
+
+:global(.workflow-runtime__catalog-log-mark) {
+  width: 11px;
+  height: 11px;
+  margin-top: 4px;
+  border: 2px solid var(--unilab-color-workflow);
+  border-radius: 50%;
+  background: var(--unilab-color-surface);
+}
+
+:global(.workflow-runtime__catalog-log) li > div {
+  display: grid;
+  gap: 4px;
+}
+
+:global(.workflow-runtime__catalog-log) strong {
+  font-size: 12px;
+}
+
+:global(.workflow-runtime__catalog-log) li span:last-child {
+  color: var(--unilab-color-text-muted);
+  font-size: 11px;
+}
+
+:global(.workflow-runtime__catalog-log-state) {
+  display: flex;
+  min-height: 180px;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 8px;
+  padding: 24px;
+  color: var(--unilab-color-text-muted);
+  text-align: center;
+}
+
+:global(.workflow-runtime__catalog-log-state.is-error) {
+  color: var(--unilab-color-danger);
+}
+
+@media (max-width: 720px) {
+  .workflow :global(.workflow-runtime__catalog-header-actions) > span {
+    display: none;
+  }
+
+  .workflow :global(.workflow-runtime__catalog-tools) {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .workflow :global(.workflow-runtime__catalog-tools) label:first-child {
+    grid-column: 1 / -1;
+  }
+
+  .workflow :global(.workflow-runtime__catalog-tools) > span {
+    align-self: center;
+  }
+
+  .workflow :global(.workflow-runtime__catalog-card) > footer button,
+  .workflow :global(.workflow-runtime__catalog-header-actions) > button,
+  :global(.workflow-runtime__catalog-form) footer button,
+  :global(.workflow-runtime__catalog-dialog) > header > button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  :global(.workflow-runtime__catalog-dialog-backdrop) {
+    align-items: end;
+    padding: 0;
+  }
+
+  :global(.workflow-runtime__catalog-dialog),
+  :global(.workflow-runtime__catalog-dialog.is-wide) {
+    width: 100%;
+    max-height: calc(100vh - 24px);
+    border-right: 0;
+    border-bottom: 0;
+    border-left: 0;
+    border-radius: var(--unilab-radius-lg) var(--unilab-radius-lg) 0 0;
+  }
+}

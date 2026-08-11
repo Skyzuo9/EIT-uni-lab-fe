@@ -14,7 +14,7 @@ describe('WorkflowPanel Runtime entry', () => {
       <WorkflowPanel runtime={{} as WorkflowRuntimePort} />
     )
 
-    expect(markup).toContain('可用工作流')
+    expect(markup).toContain('工作流目录')
     expect(markup).toContain('正在读取工作流')
   })
 
