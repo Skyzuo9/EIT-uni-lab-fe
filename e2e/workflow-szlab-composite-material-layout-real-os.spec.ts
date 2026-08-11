@@ -113,7 +113,7 @@ test('SZLab composite material workflow uses one orthogonal visible layout', asy
   await expect(materialEdges).toHaveCount(28)
   await expect(readyEdges).toHaveCount(7)
   expect(await robotTransferReadyHandles.count()).toBeGreaterThan(0)
-  await expect(robotTransferReadyHandles.first()).toBeHidden()
+  await expect(robotTransferReadyHandles.first()).toBeVisible()
   await expect(visibleReadyHandles.first()).toBeVisible()
   await page.waitForTimeout(800)
 
@@ -124,53 +124,16 @@ test('SZLab composite material workflow uses one orthogonal visible layout', asy
   expect(overlappingPairs(sourceBoxes), JSON.stringify(sourceBoxes, null, 2))
     .toEqual([])
 
-  const readyHandleEvidence = await readyHandles.evaluateAll((handles) =>
-    handles.map((handle) => {
-      const element = handle as HTMLElement
-      const node = element.closest<HTMLElement>('.wf-node')
-      if (!node) throw new Error('ready 句柄没有所属工作流节点')
-      const handleRect = element.getBoundingClientRect()
-      const nodeRect = node.getBoundingClientRect()
-      const io = element.dataset.workflowHandleIo
-      const transferVisual = node.dataset.workflowNodeVisualKind === 'robot-transfer'
-        ? node.querySelector<HTMLElement>('[data-workflow-robot-arm]')
-        : null
-      const anchorRect = transferVisual?.getBoundingClientRect() ?? nodeRect
-      return {
-        io,
-        owner: transferVisual ? 'robot-transfer' : 'node',
-        width: handleRect.width,
-        height: handleRect.height,
-        crossAxisDelta: Math.abs(
-          handleRect.left + handleRect.width / 2
-            - (anchorRect.left + anchorRect.width / 2)
-        ),
-        edgeDelta: io === 'target'
-          ? Math.abs(handleRect.top + handleRect.height / 2 - anchorRect.top)
-          : Math.abs(handleRect.top + handleRect.height / 2 - anchorRect.bottom)
-      }
-    })
-  )
+  const readyHandleEvidence = await sequenceHandleEvidence(readyHandles)
   expect(readyHandleEvidence.every((handle) =>
-    handle.height >= handle.width * 2
-      && handle.crossAxisDelta <= 2
-      && handle.edgeDelta <= 2
+    (handle.horizontal
+      ? handle.width >= handle.height * 2
+      : handle.height >= handle.width * 2)
+      && handle.centerOffset >= 8
+      && !handle.overlapsMaterial
   ), JSON.stringify(readyHandleEvidence, null, 2)).toBe(true)
   expect(new Set(readyHandleEvidence.map((handle) => handle.io)))
     .toEqual(new Set(['target', 'source']))
-  const robotTransferReadyHandleEvidence = await robotTransferReadyHandles
-    .evaluateAll((handles) => handles.map((handle) => {
-      const style = getComputedStyle(handle)
-      return {
-        io: (handle as HTMLElement).dataset.workflowHandleIo,
-        visibility: style.visibility,
-        pointerEvents: style.pointerEvents
-      }
-    }))
-  expect(robotTransferReadyHandleEvidence.every((handle) =>
-    handle.visibility === 'hidden' && handle.pointerEvents === 'none'
-  ), JSON.stringify(robotTransferReadyHandleEvidence, null, 2)).toBe(true)
-
   const reagentNode = panel.locator(
     `.wf-node[data-workflow-node-uuid="${REAGENT_AT_S08_UUID}"]`
   )
@@ -299,6 +262,10 @@ test('SZLab composite material workflow uses one orthogonal visible layout', asy
   expect(verticalSupportingSourceEvidence.every((source) =>
     source.above && source.before
   ), JSON.stringify(verticalSupportingSourceEvidence, null, 2)).toBe(true)
+  const verticalSequenceHandles = await sequenceHandleEvidence(readyHandles)
+  expect(verticalSequenceHandles.every((handle) =>
+    !handle.horizontal && !handle.overlapsMaterial
+  ), JSON.stringify(verticalSequenceHandles, null, 2)).toBe(true)
   const stretchedActions = await panel.locator(
     '.wf-node--action-strip' +
     '[data-workflow-layout-strategy="material-swimlanes"]'
@@ -367,6 +334,10 @@ test('SZLab composite material workflow uses one orthogonal visible layout', asy
     })))
   expect(horizontalMaterialPathEvidence.every((edge) => edge.height <= 0.5),
     JSON.stringify(horizontalMaterialPathEvidence, null, 2)).toBe(true)
+  const horizontalSequenceHandles = await sequenceHandleEvidence(readyHandles)
+  expect(horizontalSequenceHandles.every((handle) =>
+    handle.horizontal && !handle.overlapsMaterial
+  ), JSON.stringify(horizontalSequenceHandles, null, 2)).toBe(true)
   const horizontalMaterialHandles = panel.locator(
     '.wf-node[data-workflow-layout-direction="horizontal"] ' +
     '[data-workflow-handle-kind="material"]'
@@ -606,6 +577,58 @@ interface PrimaryStraightSegmentEvidence {
     targetId: string
     crossRange: number
   }>
+}
+
+interface SequenceHandleEvidence {
+  io?: string
+  owner: 'robot-transfer' | 'node'
+  horizontal: boolean
+  width: number
+  height: number
+  centerOffset: number
+  overlapsMaterial: boolean
+}
+
+/** 读取顺序端口的方向、形状以及与物料圆形端口的避让关系。 */
+async function sequenceHandleEvidence(
+  handles: Locator
+): Promise<SequenceHandleEvidence[]> {
+  return handles.evaluateAll((elements) => elements.map((handle) => {
+    const element = handle as HTMLElement
+    const node = element.closest<HTMLElement>('.wf-node')
+    if (!node) throw new Error('ready 句柄没有所属工作流节点')
+    const handleRect = element.getBoundingClientRect()
+    const nodeRect = node.getBoundingClientRect()
+    const horizontal = element.classList.contains('react-flow__handle-left') ||
+      element.classList.contains('react-flow__handle-right')
+    const materialRects = [...node.querySelectorAll<HTMLElement>(
+      '[data-workflow-handle-kind="material"]'
+    )].map((materialHandle) => materialHandle.getBoundingClientRect())
+    return {
+      io: element.dataset.workflowHandleIo,
+      owner: node.dataset.workflowNodeVisualKind === 'robot-transfer'
+        ? 'robot-transfer' as const
+        : 'node' as const,
+      horizontal,
+      width: handleRect.width,
+      height: handleRect.height,
+      centerOffset: horizontal
+        ? Math.abs(
+            handleRect.top + handleRect.height / 2 -
+            (nodeRect.top + nodeRect.height / 2)
+          )
+        : Math.abs(
+            handleRect.left + handleRect.width / 2 -
+            (nodeRect.left + nodeRect.width / 2)
+          ),
+      overlapsMaterial: materialRects.some((materialRect) => !(
+        handleRect.right <= materialRect.left ||
+        handleRect.left >= materialRect.right ||
+        handleRect.bottom <= materialRect.top ||
+        handleRect.top >= materialRect.bottom
+      ))
+    }
+  }))
 }
 
 /**

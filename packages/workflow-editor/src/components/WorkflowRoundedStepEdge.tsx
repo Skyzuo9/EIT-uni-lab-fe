@@ -8,12 +8,14 @@ import {
 import {
   alignPrimaryMaterialEdgeEndpoints,
   getWorkflowSmoothStepCenter,
+  WORKFLOW_SEQUENCE_SMOOTHSTEP_OFFSET,
   WORKFLOW_SMOOTHSTEP_OFFSET
 } from '../utils/workflowDagEdgeRouting'
 
 export interface WorkflowRoundedStepEdgeData {
   direction: 'TB' | 'LR'
   borderRadius: number
+  sequence?: boolean
   sourceNodeUuid: string
   targetNodeUuid: string
   sourceHandleUuid: string
@@ -71,7 +73,9 @@ export default function WorkflowRoundedStepEdge({
     borderRadius: data?.borderRadius ?? 8,
     centerX,
     centerY,
-    offset: WORKFLOW_SMOOTHSTEP_OFFSET
+    offset: data?.sequence
+      ? WORKFLOW_SEQUENCE_SMOOTHSTEP_OFFSET
+      : WORKFLOW_SMOOTHSTEP_OFFSET
   })
   return (
     <g

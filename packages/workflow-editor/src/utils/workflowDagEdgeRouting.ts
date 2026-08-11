@@ -1,6 +1,7 @@
 import type { Position } from 'reactflow'
 
 export const WORKFLOW_SMOOTHSTEP_OFFSET = 8
+export const WORKFLOW_SEQUENCE_SMOOTHSTEP_OFFSET = 4
 export const WORKFLOW_PRIMARY_MATERIAL_AXIS_TOLERANCE = 40
 
 const TARGET_LOCAL_BEND_GAP = 28

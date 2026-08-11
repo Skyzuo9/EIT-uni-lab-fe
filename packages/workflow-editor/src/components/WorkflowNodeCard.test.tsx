@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
+import { Position } from 'reactflow'
 
 import {
   isReadyHandle,
+  sequenceHandlePosition,
   workflowMaterialPortCards,
   workflowNodeAllowsDebugMarkers,
   workflowNodeHoverText,
@@ -41,6 +43,28 @@ describe('Action node presentation', () => {
       ioType: 'target',
       valueType: 'boolean'
     })).toBe(true)
+  })
+
+  it('recognizes legacy OS default ready ports as execution order', () => {
+    expect(isReadyHandle({
+      uuid: 'ready-source',
+      handleKey: 'ready',
+      displayName: 'ready',
+      ioType: 'source',
+      valueType: 'default'
+    })).toBe(true)
+  })
+
+  it('offsets sequence handles from material handles along each flow axis', () => {
+    expect(sequenceHandlePosition(Position.Right)).toEqual({ top: '16px' })
+    expect(sequenceHandlePosition(Position.Bottom)).toEqual({
+      left: 'calc(100% - 20px)',
+      bottom: '-6px'
+    })
+    expect(sequenceHandlePosition(Position.Top, {
+      left: '36px',
+      edgeInset: '3px'
+    })).toEqual({ left: '36px', top: '3px' })
   })
 
   it('hides the idle pending state but keeps meaningful execution states', () => {

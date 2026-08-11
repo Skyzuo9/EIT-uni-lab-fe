@@ -28,11 +28,15 @@ import WorkflowTransferNode from './WorkflowTransferNode'
 import type { WorkflowNodeVisualKind } from '../utils/workflowNodeVisualKind'
 import styles from './workflow.module.scss'
 
-/** 隐藏的转运 ready 锚点以 72px 端口内 54px 菱形的上、下尖角为中心。 */
+/** 转运 ready 锚点以 72px 端口内 54px 菱形的上、下尖角为中心。 */
 const ROBOT_TRANSFER_READY_ANCHOR = {
   left: '36px',
   edgeInset: '3px'
 } as const
+
+const SEQUENCE_HANDLE_HORIZONTAL_INSET = '16px'
+const SEQUENCE_HANDLE_VERTICAL_INSET = '20px'
+const SEQUENCE_HANDLE_EDGE_INSET = '-6px'
 
 // 自定义节点承载的数据
 export interface WorkflowNodeData {
@@ -105,7 +109,6 @@ export default function WorkflowNodeCard({
       port.sourceHandle?.uuid
     ]).filter((uuid): uuid is string => Boolean(uuid))
   )
-  const serpentineFlow = data.layoutStrategy === 'primary-sample-serpentine'
   if (materialSource) {
     return (
       <WorkflowMaterialSourceNode
@@ -119,16 +122,14 @@ export default function WorkflowNodeCard({
           'target',
           targetPosition,
           projectedMaterialHandleIds,
-          undefined,
-          serpentineFlow
+          undefined
         )}
         structuralSourceHandles={renderStructuralHandles(
           sourceHandles,
           'source',
           sourcePosition,
           projectedMaterialHandleIds,
-          undefined,
-          serpentineFlow
+          undefined
         )}
       />
     )
@@ -147,16 +148,14 @@ export default function WorkflowNodeCard({
           'target',
           targetPosition,
           projectedMaterialHandleIds,
-          ROBOT_TRANSFER_READY_ANCHOR,
-          serpentineFlow
+          ROBOT_TRANSFER_READY_ANCHOR
         )}
         structuralSourceHandles={renderStructuralHandles(
           sourceHandles,
           'source',
           sourcePosition,
           projectedMaterialHandleIds,
-          ROBOT_TRANSFER_READY_ANCHOR,
-          serpentineFlow
+          ROBOT_TRANSFER_READY_ANCHOR
         )}
       />
     )
@@ -183,8 +182,7 @@ export default function WorkflowNodeCard({
         'target',
         targetPosition,
         projectedMaterialHandleIds,
-        undefined,
-        serpentineFlow
+        undefined
       )}
       {data.layoutStrategy === 'material-swimlanes'
         && materialPorts.length > 0
@@ -228,7 +226,7 @@ export default function WorkflowNodeCard({
           data.materialLaneDirection,
           targetPosition,
           sourcePosition,
-          serpentineFlow
+          data.layoutStrategy === 'primary-sample-serpentine'
         )}
         {data.groupKind === 'subworkflow' && (
           <button
@@ -308,8 +306,7 @@ export default function WorkflowNodeCard({
         'source',
         sourcePosition,
         projectedMaterialHandleIds,
-        undefined,
-        serpentineFlow
+        undefined
       )}
     </div>
   )
@@ -330,7 +327,6 @@ export function workflowNodeHoverText(
  * @param position 非 ready 结构句柄沿用的 React Flow 方位。
  * @param projectedMaterialHandleIds 已由物料占位符（ResourceSlot）卡片承载的句柄 UUID。
  * @param readyAnchor 特殊视觉的 ready 横向中心与边缘内缩；省略时使用节点边缘正中。
- * @param followLayoutPosition 是否让执行顺序端口跟随蛇形布局的逐节点方位。
  * @returns 可供 React Flow 测量和连线的结构句柄元素。
  */
 function renderStructuralHandles(
@@ -338,8 +334,7 @@ function renderStructuralHandles(
   ioType: 'source' | 'target',
   position: Position,
   projectedMaterialHandleIds: ReadonlySet<string>,
-  readyAnchor?: Readonly<{ left: string; edgeInset: string }>,
-  followLayoutPosition = false
+  readyAnchor?: Readonly<{ left: string; edgeInset: string }>
 ): React.JSX.Element | React.JSX.Element[] {
   if (handles === undefined) {
     return (
@@ -357,15 +352,12 @@ function renderStructuralHandles(
   )
   return structuralHandles.map((handle, index) => {
     const ready = isReadyHandle(handle)
-    const readyPosition = followLayoutPosition
-      ? position
-      : ioType === 'target' ? Position.Top : Position.Bottom
     return (
       <Handle
         key={handle.uuid}
         id={handle.uuid}
         type={ioType}
-        position={ready ? readyPosition : position}
+        position={position}
         className={ready
           ? `wf-node__handle wf-node__handle--ready wf-node__handle--${ioType}`
           : 'wf-node__handle wf-node__handle--structural'}
@@ -379,11 +371,7 @@ function renderStructuralHandles(
         aria-hidden={ready ? undefined : true}
         title={ready ? '执行顺序' : undefined}
         style={ready
-          ? readyHandlePosition(
-              readyPosition,
-              ioType,
-              followLayoutPosition ? undefined : readyAnchor
-            )
+          ? sequenceHandlePosition(position, readyAnchor)
           : handlePosition(position, index, structuralHandles.length)}
       />
     )
@@ -393,26 +381,23 @@ function renderStructuralHandles(
 /**
  * 计算执行顺序端口在节点边缘的稳定位置。
  *
- * @param position React Flow 为当前蛇形节点或普通布局指定的边缘方位。
- * @param ioType 端口是输入还是输出。
- * @param readyAnchor 特殊视觉在纵向布局中的精确锚点；横向蛇形布局不使用。
+ * @param position 当前布局中物料流进入或离开节点的边缘方位。
+ * @param readyAnchor 特殊视觉在纵向布局中的精确锚点；横向布局不使用。
  * @returns 可直接赋给 Handle 的相对定位样式。
  */
-function readyHandlePosition(
+export function sequenceHandlePosition(
   position: Position,
-  ioType: 'source' | 'target',
   readyAnchor?: Readonly<{ left: string; edgeInset: string }>
 ): CSSProperties {
   if (position === Position.Left || position === Position.Right) {
-    return { top: '50%' }
+    return { top: SEQUENCE_HANDLE_HORIZONTAL_INSET }
   }
   return {
-    left: readyAnchor?.left ?? '50%',
-    ...(readyAnchor
-      ? ioType === 'target'
-        ? { top: readyAnchor.edgeInset }
-        : { bottom: readyAnchor.edgeInset }
-      : {})
+    left: readyAnchor?.left ??
+      `calc(100% - ${SEQUENCE_HANDLE_VERTICAL_INSET})`,
+    ...(position === Position.Top
+      ? { top: readyAnchor?.edgeInset ?? SEQUENCE_HANDLE_EDGE_INSET }
+      : { bottom: readyAnchor?.edgeInset ?? SEQUENCE_HANDLE_EDGE_INSET })
   }
 }
 
@@ -420,13 +405,14 @@ function readyHandlePosition(
  * 判断句柄是否承载动作就绪（ready）执行顺序，而非物料（Material）。
  *
  * @param handle OS 接口投影出的工作流句柄。
- * @returns 句柄是否应以南北方向的短竖线显示。
+ * @returns 句柄是否应以跟随当前布局方向的圆角矩形显示。
  */
 export function isReadyHandle(handle: WorkflowHandlePort): boolean {
   const key = (handle.dataKey?.trim() || handle.handleKey).toLowerCase()
   const valueType = (handle.valueType ?? '').toLowerCase()
   return key === 'ready' && (
     valueType === '' ||
+    valueType === 'default' ||
     valueType === 'boolean' ||
     valueType === 'bool' ||
     valueType === 'builtins.bool'

@@ -455,8 +455,9 @@ function buildWorkflowFlowEdge({
     },
     type: 'workflowRoundedStep',
     data: {
-      direction: workflowEdgeDirection(layout, index, ready),
+      direction: workflowEdgeDirection(layout, index),
       borderRadius: 8,
+      sequence: ready,
       sourceNodeUuid: link.source,
       targetNodeUuid: link.target,
       sourceHandleUuid: link.sourceHandleUuid || '',
@@ -508,12 +509,10 @@ function workflowEdgeIsReady(
 /** 返回布局器为一条工作流边确定的阅读方向。 */
 function workflowEdgeDirection(
   layout: LayoutResult,
-  index: number,
-  ready: boolean
+  index: number
 ): 'TB' | 'LR' {
   const routedDirection = layout.edgeDirections?.get(index)
   if (routedDirection) return routedDirection
-  if (ready) return 'TB'
   return layout.direction === 'horizontal' ? 'LR' : 'TB'
 }
 
