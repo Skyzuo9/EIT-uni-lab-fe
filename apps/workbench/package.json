@@ -32,8 +32,8 @@
     "@theia/scm": "1.74.1",
     "@theia/scm-extra": "1.74.1",
     "@theia/search-in-workspace": "1.74.1",
-    "@theia/terminal": "1.74.1",
     "@theia/task": "1.74.1",
+    "@theia/terminal": "1.74.1",
     "@theia/test": "1.74.1",
     "@theia/timeline": "1.74.1",
     "@theia/typehierarchy": "1.74.1",
@@ -61,6 +61,7 @@
     "trash": "7.2.0"
   },
   "devDependencies": {
+    "@electron/asar": "3.4.1",
     "@theia/bundle-plugin": "1.74.1",
     "@theia/cli": "1.74.1",
     "electron": "33.4.11",

@@ -305,6 +305,9 @@ importers:
         specifier: 0.2.2
         version: 0.2.2
     devDependencies:
+      '@electron/asar':
+        specifier: 3.4.1
+        version: 3.4.1
       '@theia/bundle-plugin':
         specifier: 1.74.1
         version: 1.74.1(esbuild@0.28.2)
