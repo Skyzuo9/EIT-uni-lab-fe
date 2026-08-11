@@ -56,8 +56,8 @@ describe('normalized workflow graph deletion', () => {
     expect(nodeInputBindings(result.graph, 'action')).toEqual({})
   })
 
-  /** 删除 ready 边应持久记录并行化语义，而不是被 Python 往返重新补回。 */
-  it('records an explicitly deleted ready edge as an order suppression', () => {
+  /** 删除 ready 边应携带一次生成意图，供 OS 改写为真实 parallel 结构。 */
+  it('records an explicitly deleted ready edge as transient generation intent', () => {
     const result = deleteWorkflowGraphElements(graphFixture(), {
       edgeUuids: ['control-edge']
     })

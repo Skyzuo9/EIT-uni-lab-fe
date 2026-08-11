@@ -317,10 +317,11 @@ function clearRemovedEdgeProviders(
 }
 
 /**
- * 把用户显式删除的 ready 边记录为可由 OS 写回 Python 的并行化控制语义。
+ * 把用户显式删除的 ready 边记录为交给 OS 的一次性并行化生成意图。
  *
  * 节点级联删除产生的关联边不记录；只有两端仍存在、且源/目标连接点均为 ready
- * 的直接连线选择才属于“取消先后关系”。
+ * 的直接连线选择才属于“取消先后关系”。该字段不是源码或候选图的持久语义；
+ * OS 必须消费后生成真实的结构化 ``parallel/group``，并从返回图中删除该字段。
  */
 function recordExplicitReadySuppressions(
   next: WorkflowAuthoringGraph,
