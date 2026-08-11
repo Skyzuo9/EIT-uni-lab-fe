@@ -237,7 +237,8 @@ describe('Workbench macOS distribution gate', () => {
     assert.match(packagingScript, /verifyPackagedLauncher\(appPath\)/u)
     assert.match(packagingScript, /build-desktop-launcher\.mjs/u)
     assert.match(packagingScript, /verify-agent-runtime\.mjs/u)
-    assert.match(packagingScript, /agentPayload\.sourceExecutable/u)
+    assert.match(packagingScript, /agentPayload\.executable/u)
+    assert.doesNotMatch(packagingScript, /agentPayload\.sourceExecutable/u)
     assert.match(launcherBuild, /external: \['electron', 'original-fs'\]/u)
   })
 

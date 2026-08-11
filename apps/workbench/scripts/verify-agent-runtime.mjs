@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { mkdir, mkdtemp, readFile, readdir, rm } from 'node:fs/promises'
 import net from 'node:net'
 import os from 'node:os'
@@ -75,6 +75,19 @@ export async function verifyAgentRuntime(options) {
     if (!settings.ok) {
       throw new Error(`Agent managed-local API 返回 HTTP ${settings.status}`)
     }
+    await waitForManagedNodeRuntime({
+      child,
+      dataDir,
+      logDir,
+      managedResources: path.join(
+        options.resources,
+        'bundled-aioncore',
+        target.directory,
+        'managed-resources'
+      ),
+      platform: options.platform,
+      readLaunchError: () => launchError
+    })
     console.log(
       `打包前 Agent runtime smoke 通过：${target.directory}，端口 ${port}`
     )
@@ -86,6 +99,53 @@ export async function verifyAgentRuntime(options) {
     await stopProcessTree(child, options.platform)
     await rm(root, { recursive: true, force: true })
   }
+}
+
+async function waitForManagedNodeRuntime(options) {
+  const manifest = JSON.parse(await readFile(
+    path.join(options.managedResources, 'manifest.json'),
+    'utf8'
+  ))
+  const installedRoot = path.join(
+    options.dataDir,
+    'runtime',
+    String(manifest.node?.root || '')
+  )
+  const npm = options.platform === 'win32'
+    ? path.join(installedRoot, 'npm.cmd')
+    : path.join(installedRoot, 'bin', 'npm')
+  const deadline = Date.now() + STARTUP_TIMEOUT_MS
+  let lastFailure = 'managed npm 尚未安装'
+  while (Date.now() < deadline) {
+    const launchError = options.readLaunchError()
+    if (launchError) throw launchError
+    if (options.child.exitCode !== null || options.child.signalCode !== null) {
+      throw new Error(
+        `Agent runtime 提前退出：code=${String(options.child.exitCode)} signal=${String(options.child.signalCode)}`
+      )
+    }
+    try {
+      const result = spawnSync(npm, ['--version'], {
+        encoding: 'utf8',
+        shell: options.platform === 'win32'
+      })
+      if (!result.error && result.status === 0) return
+      lastFailure = result.error?.message || result.stderr || result.stdout
+    } catch (error) {
+      lastFailure = error instanceof Error ? error.message : String(error)
+    }
+    const logs = await readRuntimeLogs(options.logDir)
+    if (
+      logs.includes('managed runtime background preparation failed')
+      || logs.includes('BOOTSTRAP_DEGRADED_MANAGED_RUNTIME_PREPARE')
+    ) {
+      throw new Error(`Agent managed Node 首次安装失败：${lastFailure}\n${logs}`)
+    }
+    await delay(100)
+  }
+  throw new Error(
+    `Agent managed Node 在 ${STARTUP_TIMEOUT_MS / 1000} 秒内未就绪：${lastFailure}`
+  )
 }
 
 async function readRuntimeLogs(logDir) {
