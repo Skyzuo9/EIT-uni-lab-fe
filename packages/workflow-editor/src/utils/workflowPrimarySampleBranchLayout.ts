@@ -2,6 +2,7 @@ import type { WorkflowNode } from './parseWorkflow'
 import type { WorkflowNodePortLayout } from './dagLayout'
 
 export const WORKFLOW_SUPPORTING_BRANCH_NODE_GAP = 208
+export const WORKFLOW_SUPPORTING_BRANCH_MATERIAL_SOURCE_PITCH = 136
 
 const WORKFLOW_SUPPORTING_BRANCH_INTERVAL_GAP = 24
 const WORKFLOW_SUPPORTING_BRANCH_MAX_NODE_WIDTH = 184
@@ -68,29 +69,83 @@ export function packWorkflowSupportingBranches(
     intervals: Array<{ start: number; end: number }>
     placements: WorkflowSupportingBranchPlacement[]
   }> = []
-
-  for (const branch of branches) {
-    const layout = layoutSupportingBranch(
+  const layouts = branches.map((branch) => ({
+    branch,
+    placements: layoutSupportingBranch(
       branch,
       originX,
       mainColumnGap,
       mainColumnCount
     )
-    const interval = branchInterval(layout)
+  }))
+  compactSiblingMaterialSources(layouts, mainColumnCount)
+
+  for (const { placements } of layouts) {
+    const interval = branchInterval(placements)
     const available = bands.find((band) => band.intervals.every((occupied) =>
       !intervalsOverlap(interval, occupied)
     ))
     if (available) {
       available.intervals.push(interval)
-      available.placements.push(...layout)
+      available.placements.push(...placements)
     } else {
-      bands.push({ intervals: [interval], placements: [...layout] })
+      bands.push({ intervals: [interval], placements: [...placements] })
     }
   }
 
   return bands.map(({ placements }) => placements.sort(
     (left, right) => left.x - right.x
   ))
+}
+
+/**
+ * 把接入同一横向主线节点的单节点 MaterialSource 收成紧凑来源簇。
+ *
+ * 来源的物理左右顺序保持稳定，因此不会引入新的边交叉；整簇只向共同主线
+ * 接入点的前侧展开，不会越过依赖节点。多节点预处理支线仍按
+ * 自身局部拓扑排列，不参与这一来源簇压缩。
+ */
+function compactSiblingMaterialSources(
+  layouts: Array<{
+    branch: WorkflowSupportingBranch
+    placements: WorkflowSupportingBranchPlacement[]
+  }>,
+  mainColumnCount: number
+): void {
+  const byAttachment = new Map<number, typeof layouts>()
+  for (const layout of layouts) {
+    if (
+      layout.branch.nodes.length !== 1 ||
+      layout.branch.nodes[0]?.type !== 'material_source' ||
+      !layout.placements[0]
+    ) continue
+    byAttachment.set(layout.branch.anchorIndex, [
+      ...(byAttachment.get(layout.branch.anchorIndex) ?? []),
+      layout
+    ])
+  }
+
+  for (const [anchorIndex, siblingLayouts] of byAttachment) {
+    if (siblingLayouts.length < 2) continue
+    const ordered = [...siblingLayouts].sort((left, right) =>
+      left.placements[0]!.x - right.placements[0]!.x ||
+      left.branch.order - right.branch.order
+    )
+    const original = ordered.map(({ placements }) => placements[0]!.x)
+    const compact = original.map((_x, index) =>
+      original[0]! +
+        index * WORKFLOW_SUPPORTING_BRANCH_MATERIAL_SOURCE_PITCH
+    )
+    const flowRunsEast = Math.floor(anchorIndex / mainColumnCount) % 2 === 0
+    const correction = flowRunsEast
+      ? Math.max(0, ...compact.map((x, index) => x - original[index]!))
+      : Math.max(0, ...original.map((x, index) => x - compact[index]!))
+    ordered.forEach(({ placements }, index) => {
+      placements[0]!.x = compact[index]! + (flowRunsEast
+        ? -correction
+        : correction)
+    })
+  }
 }
 
 /**
@@ -180,10 +235,11 @@ function branchNodeWidth(node: WorkflowNode | undefined): number {
 function branchInterval(
   placements: readonly WorkflowSupportingBranchPlacement[]
 ): { start: number; end: number } {
-  const positions = placements.map(({ x }) => x)
+  const starts = placements.map(({ x }) => x)
+  const ends = placements.map(({ node, x }) => x + branchNodeWidth(node))
   return {
-    start: Math.min(...positions),
-    end: Math.max(...positions) + WORKFLOW_SUPPORTING_BRANCH_MAX_NODE_WIDTH
+    start: Math.min(...starts),
+    end: Math.max(...ends)
   }
 }
 

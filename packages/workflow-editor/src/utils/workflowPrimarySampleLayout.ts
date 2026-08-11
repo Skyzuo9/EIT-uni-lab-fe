@@ -102,7 +102,6 @@ export function layoutWorkflowPrimarySampleFlow(
   const supportingSourceAnchors = primarySupportingSourceAnchors(
     nodes,
     visibleLinks,
-    traces,
     backboneIndexes
   )
   const rowByNode = new Map<string, number>()
@@ -495,17 +494,19 @@ function nearestBackboneIndex(
 }
 
 /**
- * 按有向物料边找出每个辅助 MaterialSource 最早抵达的主样品节点。
+ * 按全部有向依赖找出每个辅助 MaterialSource 最早抵达的主样品节点。
+ *
+ * 完整支线可能先用 ready/control 依赖接入当前主线动作，随后才把物料送入
+ * 下一条蛇形主线。若这里只沿物料边查找，会把 MaterialSource 单独拉到后一个
+ * 主线节点，造成支路在画布上往返交叉。
  */
 function primarySupportingSourceAnchors(
   nodes: readonly WorkflowNode[],
   links: readonly WorkflowLink[],
-  traces: ReturnType<typeof projectMaterialTraces>,
   backboneIndexes: ReadonlyMap<string, number>
 ): Map<string, number> {
   const outgoing = new Map(nodes.map((node) => [node.id, [] as string[]]))
-  links.forEach((link, index) => {
-    if (!traces.edgeLineages.has(index)) return
+  links.forEach((link) => {
     outgoing.get(link.source)?.push(link.target)
   })
   const anchors = new Map<string, number>()
@@ -513,7 +514,7 @@ function primarySupportingSourceAnchors(
     if (source.type !== 'material_source' || backboneIndexes.has(source.id)) {
       continue
     }
-    const anchor = nearestPrimaryDescendantIndex(
+    const anchor = earliestPrimaryDescendantIndex(
       source.id,
       outgoing,
       backboneIndexes
@@ -523,28 +524,26 @@ function primarySupportingSourceAnchors(
   return anchors
 }
 
-/** 以物料流广度优先查找辅助来源最终接入的最近主样品序号。 */
-function nearestPrimaryDescendantIndex(
+/** 遍历有向依赖图，返回辅助来源可达的最早主样品序号。 */
+function earliestPrimaryDescendantIndex(
   sourceNodeId: string,
   outgoing: ReadonlyMap<string, readonly string[]>,
   backboneIndexes: ReadonlyMap<string, number>
 ): number | undefined {
   const visited = new Set([sourceNodeId])
-  let frontier = [...(outgoing.get(sourceNodeId) ?? [])]
-  while (frontier.length > 0) {
-    const matches = frontier
-      .map((nodeId) => backboneIndexes.get(nodeId))
-      .filter((index): index is number => index !== undefined)
-    if (matches.length > 0) return Math.min(...matches)
-    const next: string[] = []
-    for (const nodeId of frontier) {
-      if (visited.has(nodeId)) continue
-      visited.add(nodeId)
-      next.push(...(outgoing.get(nodeId) ?? []))
+  const pending = [...(outgoing.get(sourceNodeId) ?? [])]
+  let earliest: number | undefined
+  while (pending.length > 0) {
+    const nodeId = pending.shift()
+    if (!nodeId || visited.has(nodeId)) continue
+    visited.add(nodeId)
+    const backboneIndex = backboneIndexes.get(nodeId)
+    if (backboneIndex !== undefined) {
+      earliest = Math.min(earliest ?? backboneIndex, backboneIndex)
     }
-    frontier = next
+    pending.push(...(outgoing.get(nodeId) ?? []))
   }
-  return undefined
+  return earliest
 }
 
 /**

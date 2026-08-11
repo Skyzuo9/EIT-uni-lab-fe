@@ -331,6 +331,112 @@ describe('layoutWorkflowPrimarySampleFlow', () => {
       .toBeLessThan(positions.get('step-2')?.y ?? 0)
   })
 
+  /**
+   * 支路可能先以执行依赖接入当前行的 pick，随后才把物料送入下一条蛇形主线。
+   * MaterialSource 必须跟随整条支路留在 pick 前侧，不能被后续物料汇入点单独拉走。
+   */
+  it('keeps a supporting branch before its earlier dependency attachment', () => {
+    const primaryOutput = resourceSlotHandle(
+      'primary-output',
+      'sample',
+      'source'
+    )
+    const vialOutput = resourceSlotHandle(
+      'vial-output',
+      'vial',
+      'source'
+    )
+    const transferredVialOutput = resourceSlotHandle(
+      'transferred-vial-output',
+      'vial',
+      'source'
+    )
+    const openedVialOutput = resourceSlotHandle(
+      'opened-vial-output',
+      'vial',
+      'source'
+    )
+    const step1 = sampleAction('step-1', true)
+    const step2 = sampleAction('step-2', true)
+    const pick = sampleAction('pick', true)
+    const pour = sampleAction('pour', false)
+    pour.handles?.push(resourceSlotHandle(
+      'pour-vial-input',
+      'vial',
+      'target'
+    ))
+    const transfer: WorkflowNode = {
+      id: 'transfer-vial',
+      name: '转运样品瓶',
+      type: 'action',
+      className: 'Action',
+      labNodeType: 'Action',
+      visualKind: 'robot-transfer',
+      handles: [
+        resourceSlotHandle('transfer-vial-input', 'vial', 'target'),
+        transferredVialOutput
+      ]
+    }
+    const openVial: WorkflowNode = {
+      id: 'open-vial',
+      name: '样品瓶开盖',
+      type: 'action',
+      className: 'Action',
+      labNodeType: 'Action',
+      handles: [
+        resourceSlotHandle('open-vial-input', 'vial', 'target'),
+        openedVialOutput
+      ]
+    }
+    const nodes: WorkflowNode[] = [
+      materialSource('vial-source', '样品瓶', 'consumable', vialOutput),
+      materialSource(
+        'primary-source',
+        '主样品',
+        'primary_sample',
+        primaryOutput
+      ),
+      transfer,
+      openVial,
+      step1,
+      step2,
+      pick,
+      pour
+    ]
+    const links: WorkflowLink[] = [
+      materialLink('primary-source', primaryOutput.uuid, 'step-1', 'step-1-input'),
+      materialLink('step-1', 'step-1-output', 'step-2', 'step-2-input'),
+      materialLink('step-2', 'step-2-output', 'pick', 'pick-input'),
+      materialLink('pick', 'pick-output', 'pour', 'pour-input'),
+      materialLink(
+        'vial-source',
+        vialOutput.uuid,
+        'transfer-vial',
+        'transfer-vial-input'
+      ),
+      materialLink(
+        'transfer-vial',
+        transferredVialOutput.uuid,
+        'open-vial',
+        'open-vial-input'
+      ),
+      materialLink(
+        'vial-source',
+        vialOutput.uuid,
+        'pour',
+        'pour-vial-input'
+      ),
+      readyLink('open-vial', 'pick')
+    ]
+
+    const result = layoutWorkflowPrimarySampleFlow(nodes, links)
+    const x = new Map(result.nodes.map((node) => [node.id, node.x ?? 0]))
+
+    expect(x.get('vial-source')).toBeLessThan(x.get('transfer-vial') ?? 0)
+    expect(x.get('transfer-vial')).toBeLessThan(x.get('open-vial') ?? 0)
+    expect(x.get('open-vial')).toBeLessThan(x.get('pick') ?? 0)
+  })
+
   /** 验证主干中转运节点与前后动作的主轴间距均压缩为普通列距的一半。 */
   it('halves both adjacent gaps around a robot transfer', () => {
     const primaryOutput = resourceSlotHandle(
@@ -584,6 +690,15 @@ function materialLink(
     sourceHandleUuid,
     target,
     targetHandleUuid,
+    type: 'control'
+  }
+}
+
+/** 创建不承载物料身份的节点就绪依赖。 */
+function readyLink(source: string, target: string): WorkflowLink {
+  return {
+    source,
+    target,
     type: 'control'
   }
 }
