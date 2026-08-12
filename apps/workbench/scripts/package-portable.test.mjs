@@ -1,11 +1,17 @@
 import assert from 'node:assert/strict'
-import { readFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { describe, it } from 'node:test'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 import {
   PORTABLE_NODE_ARCHIVES,
   PORTABLE_NODE_VERSION
 } from './package-portable.mjs'
+import {
+  MAX_PRODUCTION_LIB_BYTES,
+  prepareProductionOutput
+} from './prune-production-output.mjs'
 
 describe('portable Workbench packaging contract', () => {
   it('pins native Node runtimes for Linux and Windows', () => {
@@ -28,5 +34,68 @@ describe('portable Workbench packaging contract', () => {
 
     assert.match(packagingScript, /'--prefer-offline'/u)
     assert.doesNotMatch(packagingScript, /\n\s*'--offline',?\n/u)
+  })
+
+  it('builds every installer from a bounded production Workbench bundle', async () => {
+    const packageManifest = JSON.parse(await readFile(
+      new URL('../package.json', import.meta.url),
+      'utf8'
+    ))
+    const builderConfiguration = await readFile(
+      new URL('../electron-builder.yml', import.meta.url),
+      'utf8'
+    )
+
+    assert.match(
+      packageManifest.scripts['build:production'],
+      /theia build --mode production/u
+    )
+    assert.match(
+      packageManifest.scripts['build:production'],
+      /prune-production-output\.mjs/u
+    )
+    for (const name of [
+      'package:mac',
+      'package:mac:developer-id',
+      'package:mac:adhoc',
+      'package:mac:unsigned',
+      'package:linux',
+      'package:win'
+    ]) {
+      assert.match(
+        packageManifest.scripts[name],
+        /^pnpm build:desktop:production/u
+      )
+    }
+    assert.match(builderConfiguration, /^compression: maximum$/mu)
+    assert.match(
+      builderConfiguration,
+      /from: plugins[\s\S]*?filter:[\s\S]*?'!\*\*\/\*\.map'/u
+    )
+    assert.match(
+      builderConfiguration,
+      /from: \.packaging\/desktop-runtime\/node_modules[^]*?'!\*\*\/\*\.map'/u
+    )
+  })
+
+  it('removes source maps and rejects an oversized production lib', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'unilab-workbench-lib-'))
+    try {
+      await mkdir(join(root, 'frontend'), { recursive: true })
+      await writeFile(join(root, 'frontend', 'bundle.js'), 'runtime')
+      await writeFile(join(root, 'frontend', 'bundle.js.map'), 'debug-only')
+
+      assert.deepEqual(await prepareProductionOutput(root), {
+        removedBytes: 10,
+        packagedBytes: 7
+      })
+      await assert.rejects(
+        prepareProductionOutput(root, 6),
+        /production lib 超出/u
+      )
+      assert.equal(MAX_PRODUCTION_LIB_BYTES, 90 * 1024 * 1024)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
   })
 })

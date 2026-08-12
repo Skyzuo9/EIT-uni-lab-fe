@@ -1,6 +1,7 @@
 appId: org.unilab.workbench
 productName: UniLab Workbench
 copyright: Copyright © 2026 UniLab
+compression: maximum
 directories:
   output: release-macos
   buildResources: ../desktop/build
@@ -19,6 +20,9 @@ extraResources:
       - '!**/*.map'
   - from: plugins
     to: workbench/plugins
+    filter:
+      - '**/*'
+      - '!**/*.map'
   - from: ../desktop/out/main
     to: desktop/out/main
     filter:
@@ -31,6 +35,9 @@ extraResources:
       - '!**/*.map'
   - from: .packaging/desktop-runtime/node_modules
     to: desktop/node_modules
+    filter:
+      - '**/*'
+      - '!**/*.map'
   - from: .packaging/node-runtime/bin/node
     to: node-runtime/bin/node
   - from: .packaging/device-card-builder
