@@ -38,6 +38,15 @@ extraResources:
     filter:
       - '**/*'
       - '!**/*.map'
+      - '!**/*.d.ts'
+      - '!**/*.d.mts'
+      - '!**/*.d.cts'
+      - '!**/*.flow'
+      - '!**/*.tsbuildinfo'
+      # Device Card Builder uses the version-matched direct binary below.
+      - '!**/.bin/esbuild*'
+      - '!**/@esbuild/**'
+      - '!**/esbuild/bin/**'
   # Stage the directory so the native filename is preserved on every target
   # (`node` on Linux/macOS and `node.exe` on Windows).
   - from: .packaging/node-runtime

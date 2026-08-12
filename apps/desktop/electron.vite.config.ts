@@ -3,12 +3,21 @@ import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
+/**
+ * 根据桌面运行模式生成 Electron 主进程、预加载脚本与可选渲染器配置。
+ * @param mode electron-vite 传入的构建模式。
+ * @returns 可供 electron-vite 使用的桌面构建配置。
+ */
 export default defineConfig(({ mode }) => ({
   main: {
-    // 这些工作区包以 TypeScript ESM 源码导出；必须编入 Main，否则生产
-    // Electron 会尝试用 CommonJS require 直接执行 src/index.ts。
+    // 工作区源码必须编入 Main，Phoenix 也一并编入产物，避免为一个
+    // 可观测性入口部署整棵 OpenTelemetry 依赖树。
     plugins: [externalizeDepsPlugin({
-      exclude: ['@unilab/services', '@unilab/local-environment']
+      exclude: [
+        '@arizeai/phoenix-otel',
+        '@unilab/services',
+        '@unilab/local-environment'
+      ]
     })],
     build: {
       rollupOptions: {

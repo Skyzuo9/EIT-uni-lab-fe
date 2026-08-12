@@ -253,17 +253,23 @@ function prepareNodeRuntime(descriptor, destination, packagingDirectory) {
   }
 }
 
-function resolveEsbuildBinary(descriptor) {
+/**
+ * 解析并校验设备卡构建器使用的目标平台 esbuild 二进制。
+ * @param {{hostPlatform: string, esbuildPackage: string}} descriptor 平台归档描述。
+ * @returns {string} 与设备卡构建器 API 版本一致的可执行文件路径。
+ * @throws {Error} 清单缺少版本、二进制缺失或二进制版本不一致时抛出。
+ */
+export function resolveEsbuildBinary(descriptor) {
   const executable = descriptor.hostPlatform === 'win32'
     ? 'esbuild.exe'
     : 'esbuild'
-  const workbenchManifest = JSON.parse(readFileSync(
-    join(workbenchDirectory, 'package.json'),
+  const deviceCardBuilderManifest = JSON.parse(readFileSync(
+    join(repositoryDirectory, 'packages', 'device-card-builder', 'package.json'),
     'utf8'
   ))
-  const esbuildVersion = workbenchManifest.devDependencies?.esbuild
+  const esbuildVersion = deviceCardBuilderManifest.dependencies?.esbuild
   if (typeof esbuildVersion !== 'string' || esbuildVersion.length === 0) {
-    throw new Error('Workbench 未声明 esbuild 版本')
+    throw new Error('设备卡构建器未声明 esbuild 版本')
   }
   const binary = join(
     repositoryDirectory,
@@ -277,6 +283,12 @@ function resolveEsbuildBinary(descriptor) {
     executable
   )
   if (!existsSync(binary)) throw new Error(`缺少目标平台 esbuild：${binary}`)
+  const version = spawnSync(binary, ['--version'], { encoding: 'utf8' })
+  if (version.status !== 0 || version.stdout.trim() !== esbuildVersion) {
+    throw new Error(
+      `设备卡构建器 esbuild 版本不一致：需要 ${esbuildVersion}，实际 ${version.stdout.trim() || '不可执行'}`
+    )
+  }
   return binary
 }
 

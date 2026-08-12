@@ -15,7 +15,8 @@ import { join } from 'node:path'
 import {
   PORTABLE_NODE_ARCHIVES,
   PORTABLE_NODE_VERSION,
-  removeDesktopDeploymentSelfLink
+  removeDesktopDeploymentSelfLink,
+  resolveEsbuildBinary
 } from './package-portable.mjs'
 import {
   MAX_PRODUCTION_LIB_BYTES,
@@ -59,6 +60,7 @@ describe('portable Workbench packaging contract', () => {
     assert.match(packagingScript, /shell: options\.shell \?\? false/u)
   })
 
+  /** 验证独立 esbuild 二进制与设备卡构建器 API 使用同一声明版本。 */
   it('resolves the platform esbuild binary from the declared version', async () => {
     const packagingScript = await readFile(
       new URL('./package-portable.mjs', import.meta.url),
@@ -67,7 +69,7 @@ describe('portable Workbench packaging contract', () => {
 
     assert.match(
       packagingScript,
-      /const esbuildVersion = workbenchManifest\.devDependencies\?\.esbuild/u
+      /const esbuildVersion = deviceCardBuilderManifest\.dependencies\?\.esbuild/u
     )
     assert.match(
       packagingScript,
@@ -78,6 +80,47 @@ describe('portable Workbench packaging contract', () => {
       /descriptor\.hostPlatform === 'win32' \? \[\] : \['bin'\]/u
     )
     assert.doesNotMatch(packagingScript, /esbuildPackage\}@0\.21\.5/u)
+
+    const descriptor = Object.values(PORTABLE_NODE_ARCHIVES).find(candidate =>
+      candidate.hostPlatform === process.platform
+      && candidate.hostArchitecture === process.arch
+    )
+    if (descriptor) {
+      const binary = resolveEsbuildBinary(descriptor)
+      assert.match(binary, /@esbuild\+[^/]+@0\.21\.5/u)
+    }
+  })
+
+  /** 验证桌面主进程只部署外置运行依赖，并将已编入产物的依赖留在构建期。 */
+  it('keeps bundled desktop dependencies out of the production deployment', async () => {
+    const desktopManifest = JSON.parse(await readFile(
+      new URL('../../desktop/package.json', import.meta.url),
+      'utf8'
+    ))
+    const desktopConfiguration = await readFile(
+      new URL('../../desktop/electron.vite.config.ts', import.meta.url),
+      'utf8'
+    )
+    const builderConfiguration = await readFile(
+      new URL('../electron-builder.yml', import.meta.url),
+      'utf8'
+    )
+
+    assert.deepEqual(Object.keys(desktopManifest.dependencies), [
+      '@unilab/device-card-host'
+    ])
+    for (const bundledDependency of [
+      '@arizeai/phoenix-otel',
+      '@unilab/local-environment'
+    ]) {
+      assert.equal(
+        desktopManifest.devDependencies[bundledDependency],
+        bundledDependency === '@arizeai/phoenix-otel' ? '2.1.0' : 'workspace:*'
+      )
+      assert.match(desktopConfiguration, new RegExp(bundledDependency, 'u'))
+    }
+    assert.match(builderConfiguration, /'!\*\*\/@esbuild\/\*\*'/u)
+    assert.match(builderConfiguration, /'!\*\*\/esbuild\/bin\/\*\*'/u)
   })
 
   it('does not make portable packaging depend on pnpm metadata already being cached', async () => {

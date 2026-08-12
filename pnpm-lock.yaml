@@ -31,34 +31,34 @@ importers:
 
   apps/desktop:
     dependencies:
-      '@arizeai/phoenix-otel':
-        specifier: 2.1.0
-        version: 2.1.0
-      '@unilab/device-card-agent-cli':
-        specifier: workspace:*
-        version: link:../../packages/device-card-agent-cli
       '@unilab/device-card-host':
         specifier: workspace:*
         version: link:../../packages/device-card-host
-      '@unilab/device-card-sdk':
-        specifier: workspace:*
-        version: link:../../packages/device-card-sdk
-      '@unilab/local-environment':
-        specifier: workspace:*
-        version: link:../../packages/local-environment
     devDependencies:
+      '@arizeai/phoenix-otel':
+        specifier: 2.1.0
+        version: 2.1.0
       '@tailwindcss/vite':
         specifier: 4.1.14
         version: 4.1.14(vite@5.4.21(@types/node@22.20.1)(less@3.13.1)(lightningcss@1.30.1)(sass-embedded@1.97.3)(sass@1.102.0)(terser@5.49.2))
       '@types/node':
         specifier: ^22.10.0
         version: 22.20.1
+      '@unilab/device-card-agent-cli':
+        specifier: workspace:*
+        version: link:../../packages/device-card-agent-cli
+      '@unilab/device-card-sdk':
+        specifier: workspace:*
+        version: link:../../packages/device-card-sdk
       '@unilab/device-provisioning':
         specifier: workspace:*
         version: link:../../packages/device-provisioning
       '@unilab/kernel-web':
         specifier: workspace:*
         version: link:../kernel-web
+      '@unilab/local-environment':
+        specifier: workspace:*
+        version: link:../../packages/local-environment
       '@unilab/services':
         specifier: workspace:*
         version: link:../../packages/services
