@@ -68,6 +68,10 @@ describe('portable Workbench packaging contract', () => {
       )
     }
     assert.match(builderConfiguration, /^compression: maximum$/mu)
+    assert.equal(
+      packageManifest.optionalDependencies['@vscode/windows-ca-certs'],
+      '0.3.4'
+    )
     assert.match(
       builderConfiguration,
       /from: plugins[\s\S]*?filter:[\s\S]*?'!\*\*\/\*\.map'/u

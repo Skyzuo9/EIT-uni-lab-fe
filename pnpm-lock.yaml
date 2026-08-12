@@ -384,6 +384,9 @@ importers:
       '@vscode/ripgrep-win32-x64':
         specifier: 1.18.0
         version: 1.18.0
+      '@vscode/windows-ca-certs':
+        specifier: 0.3.4
+        version: 0.3.4
       trash:
         specifier: 7.2.0
         version: 7.2.0

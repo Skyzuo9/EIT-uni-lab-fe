@@ -58,6 +58,7 @@
     "@vscode/ripgrep-linux-x64": "1.18.0",
     "@vscode/ripgrep-win32-arm64": "1.18.0",
     "@vscode/ripgrep-win32-x64": "1.18.0",
+    "@vscode/windows-ca-certs": "0.3.4",
     "trash": "7.2.0"
   },
   "devDependencies": {
