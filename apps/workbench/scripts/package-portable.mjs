@@ -231,11 +231,19 @@ function resolveEsbuildBinary(descriptor) {
   const executable = descriptor.hostPlatform === 'win32'
     ? 'esbuild.exe'
     : 'esbuild'
+  const workbenchManifest = JSON.parse(readFileSync(
+    join(workbenchDirectory, 'package.json'),
+    'utf8'
+  ))
+  const esbuildVersion = workbenchManifest.devDependencies?.esbuild
+  if (typeof esbuildVersion !== 'string' || esbuildVersion.length === 0) {
+    throw new Error('Workbench 未声明 esbuild 版本')
+  }
   const binary = join(
     repositoryDirectory,
     'node_modules',
     '.pnpm',
-    `@esbuild+${descriptor.esbuildPackage}@0.21.5`,
+    `@esbuild+${descriptor.esbuildPackage}@${esbuildVersion}`,
     'node_modules',
     '@esbuild',
     descriptor.esbuildPackage,

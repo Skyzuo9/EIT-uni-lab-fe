@@ -50,6 +50,23 @@ describe('portable Workbench packaging contract', () => {
     assert.match(packagingScript, /shell: options\.shell \?\? false/u)
   })
 
+  it('resolves the platform esbuild binary from the declared version', async () => {
+    const packagingScript = await readFile(
+      new URL('./package-portable.mjs', import.meta.url),
+      'utf8'
+    )
+
+    assert.match(
+      packagingScript,
+      /const esbuildVersion = workbenchManifest\.devDependencies\?\.esbuild/u
+    )
+    assert.match(
+      packagingScript,
+      /`@esbuild\+\$\{descriptor\.esbuildPackage\}@\$\{esbuildVersion\}`/u
+    )
+    assert.doesNotMatch(packagingScript, /esbuildPackage\}@0\.21\.5/u)
+  })
+
   it('does not make portable packaging depend on pnpm metadata already being cached', async () => {
     const packagingScript = await readFile(
       new URL('./package-portable.mjs', import.meta.url),
