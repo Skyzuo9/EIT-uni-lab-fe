@@ -33,6 +33,7 @@ export interface EnvironmentManagerProps {
   onRefreshPlcVariableTables: () => Promise<void>
   onStartPlcSimulator: () => Promise<void>
   onStopPlcSimulator: () => Promise<void>
+  onReleaseEnvironmentPorts: (target: 'os' | 'plc-sim') => Promise<void>
   onStartAgent: () => Promise<void>
   onStopAgent: () => Promise<void>
   onRestartAgent: () => Promise<void>
@@ -51,6 +52,7 @@ export function EnvironmentManager({
   onRefreshPlcVariableTables,
   onStartPlcSimulator,
   onStopPlcSimulator,
+  onReleaseEnvironmentPorts,
   onStartAgent,
   onStopAgent,
   onRestartAgent,
@@ -276,6 +278,14 @@ export function EnvironmentManager({
                 disabled={Boolean(busyAction)}
                 onClick={() => void run('stop-os', onStopSession)}
               >停止 OS</button>
+              <button
+                type="button"
+                disabled={Boolean(busyAction)}
+                onClick={() => {
+                  if (!globalThis.confirm('将停止占用 OS 本地端口的进程，确定继续吗？')) return
+                  void run('release-os-ports', () => onReleaseEnvironmentPorts('os'))
+                }}
+              >释放端口</button>
             </>
           )}
         />
@@ -369,6 +379,14 @@ export function EnvironmentManager({
                 disabled={Boolean(busyAction) || plcSimulator.phase === 'ready'}
                 onClick={() => void run('refresh-plc-tables', onRefreshPlcVariableTables)}
               >刷新 CSV 推荐</button>
+              <button
+                type="button"
+                disabled={Boolean(busyAction)}
+                onClick={() => {
+                  if (!globalThis.confirm('将停止占用 PLC-Sim 18765、4855 端口的进程，确定继续吗？')) return
+                  void run('release-plc-ports', () => onReleaseEnvironmentPorts('plc-sim'))
+                }}
+              >释放端口</button>
             </>
           )}
         />

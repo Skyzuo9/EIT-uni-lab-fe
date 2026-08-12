@@ -84,6 +84,7 @@ export default function WorkflowPanel({
   const [selectedWorkflowUuid, setSelectedWorkflowUuid] = useState<
     string | null
   >(null)
+  const [selectedWorkflowName, setSelectedWorkflowName] = useState('')
   const [showCatalog, setShowCatalog] = useState(false)
   const handledCatalogRequestRevision = useRef(catalogRequestRevision)
   const authoringAvailable = authoringStatus?.available !== false
@@ -118,6 +119,7 @@ export default function WorkflowPanel({
         key={workflowUuid}
         runtime={runtime}
         workflowUuid={workflowUuid}
+        workflowName={selectedWorkflowName}
         traceRuntime={traceRuntime}
         resourceSlotOptionsPort={resourceSlotOptionsPort}
         onUnsavedChangesChange={onUnsavedChangesChange}
@@ -147,9 +149,10 @@ export default function WorkflowPanel({
       authoringStatus={authoringStatus}
       onStateChange={onCatalogStateChange}
       onSelect={authoringAvailable
-        ? (nextWorkflowUuid) => {
+        ? (nextWorkflowUuid, nextWorkflowName) => {
             persistActiveWorkflowId(activeWorkflowStorageKey, nextWorkflowUuid)
             setSelectedWorkflowUuid(nextWorkflowUuid)
+            setSelectedWorkflowName(nextWorkflowName)
             setShowCatalog(false)
           }
         : undefined}

@@ -1,5 +1,29 @@
 .workflow {
 
+  @media (max-height: 650px) {
+    :global(.persistent-authoring__workbench.is-canvas-mode),
+    :global(.persistent-authoring__canvas) {
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    :global(.persistent-authoring__canvas-body),
+    :global(.persistent-authoring__canvas-body.has-inspector),
+    :global(.persistent-authoring__canvas-body.is-palette-closed),
+    :global(.persistent-authoring__canvas-body.is-code-mode),
+    :global(.persistent-authoring__canvas-body.is-palette-closed.has-inspector) {
+      grid-template-rows: minmax(64px, 1fr);
+      min-height: 64px;
+      overflow: hidden;
+    }
+
+    :global(.persistent-authoring__graph-stage) {
+      height: 100%;
+      min-height: 64px;
+      overflow: hidden;
+    }
+  }
+
   @container (max-width: 620px) {
     :global(.persistent-authoring__stage-context) {
       width: 100%;
@@ -51,8 +75,8 @@
       --persistent-inspector-height: min(42vh, 440px);
       grid-template-columns: 1fr;
       grid-template-areas: 'graph';
-      grid-template-rows: minmax(260px, 1fr);
-      min-height: 260px;
+      grid-template-rows: minmax(120px, 1fr);
+      min-height: 120px;
       overflow: hidden;
       padding-bottom: 0;
       box-sizing: border-box;
@@ -79,7 +103,7 @@
     :global(.persistent-authoring__graph-stage) {
       grid-area: graph;
       height: 100%;
-      min-height: 260px;
+      min-height: 120px;
     }
 
     :global(.persistent-authoring__node-editor) {

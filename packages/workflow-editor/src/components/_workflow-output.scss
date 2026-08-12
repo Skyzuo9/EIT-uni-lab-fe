@@ -21,6 +21,18 @@
   transition: none;
 }
 
+.workflow :global(.workflow-runtime__results):global(.is-fullscreen) {
+  position: fixed;
+  z-index: 1000;
+  inset: 0;
+  width: auto;
+  height: auto;
+  min-height: 0;
+  flex-basis: auto;
+  border: 0;
+  box-shadow: 0 0 0 1px var(--unilab-color-border);
+}
+
 .workflow :global(.workflow-runtime__output-resizer) {
   position: relative;
   z-index: 2;
@@ -39,16 +51,22 @@
   border-radius: 999px;
   background: var(--unilab-color-border-strong);
   box-shadow: 0 0 0 4px var(--unilab-color-surface);
+  opacity: 0;
   transition:
     width var(--unilab-motion-fast) ease,
-    background var(--unilab-motion-fast) ease;
+    background var(--unilab-motion-fast) ease,
+    opacity var(--unilab-motion-fast) ease;
 }
 
+.workflow
+  :global(.workflow-runtime__results):hover
+  :global(.workflow-runtime__output-resizer) > span,
 .workflow :global(.workflow-runtime__output-resizer):hover > span,
 .workflow :global(.workflow-runtime__output-resizer):focus-visible > span,
 .workflow
   :global(.workflow-runtime__results):global(.is-resizing)
   :global(.workflow-runtime__output-resizer) > span {
+  opacity: 1;
   width: 68px;
   background: var(--unilab-color-primary);
 }
@@ -161,9 +179,11 @@
   background: var(--unilab-color-danger);
 }
 
-.workflow :global(.workflow-runtime__output-toggle) {
+.workflow :global(.workflow-runtime__output-fullscreen) {
+  display: inline-flex;
   height: 28px;
-  margin-left: auto;
+  align-items: center;
+  gap: 5px;
   padding: 0 9px;
   color: var(--unilab-color-text-muted);
   border: 1px solid var(--unilab-color-border);
@@ -173,7 +193,11 @@
   cursor: pointer;
 }
 
-.workflow :global(.workflow-runtime__output-toggle):hover {
+.workflow :global(.workflow-runtime__output-fullscreen) {
+  margin-left: auto;
+}
+
+.workflow :global(.workflow-runtime__output-fullscreen):hover {
   color: var(--unilab-color-primary);
   border-color: var(--unilab-color-focus);
 }

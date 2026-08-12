@@ -119,6 +119,7 @@ async function startPackagedWorkbench() {
   process.env['UNILAB_DESKTOP_WELCOME_URL'] = welcomeUrl
   process.env['UNILAB_AGENT_ICON'] = resources.brandIcon
   process.env['UNILAB_AIONUI_APP'] = resources.agentRuntime
+  process.env['UNILAB_AGENT_NODE_BINARY'] = resources.nodeBinary
   process.env['UNILAB_WORKBENCH_SKILLS'] = resources.workspaceSkills
   process.env['ESBUILD_BINARY_PATH'] = resources.esbuildBinary
   if (hasExplicitWorkspace) {

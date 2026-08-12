@@ -189,6 +189,10 @@
   right: 0;
   display: grid;
   min-width: 188px;
+  width: min(280px, calc(100vw - 32px));
+  max-width: calc(100vw - 32px);
+  max-height: min(420px, calc(100vh - 120px));
+  overflow: auto;
   gap: 2px;
   padding: 6px;
   border: 1px solid var(--unilab-color-border);
@@ -337,6 +341,7 @@
 }
 
 .workflow :global(.workflow-runtime__layout-strategy) {
+  max-width: min(220px, calc(100vw - 48px));
   height: 32px;
   padding: 0 25px 0 6px;
   color: var(--unilab-color-text);
@@ -452,10 +457,15 @@
 
 @container workflow (max-width: 900px) {
   .workflow :global(.workflow-runtime__layout-tools) {
-    overflow-x: auto;
-    align-items: flex-end;
-    flex-direction: column;
+    width: calc(100% - 16px);
+    max-width: calc(100% - 16px);
+    align-items: center;
+    flex-wrap: wrap;
     scrollbar-width: thin;
+  }
+
+  .workflow :global(.workflow-runtime__layout-control-group) {
+    max-width: 100%;
   }
 }
 

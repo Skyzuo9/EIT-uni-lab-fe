@@ -196,10 +196,15 @@ export function packageMacos({ signed, adhoc = false, developerId = false }) {
       runtimePayloadDirectory,
       targetPlatform
     )
+    preparePinnedNodeRuntime(targetArchitecture)
+    const sharedNodeExecutable = join(nodeRuntimeDirectory, 'bin', 'node')
+    process.env['UNILAB_AGENT_NODE_BINARY'] = sharedNodeExecutable
     const agentPayload = prepareBundledAgentPayload(agentPayloadDirectory, {
       sourcePath: process.env['UNILAB_AGENT_DISTRIBUTION'],
       platform: 'darwin',
-      architecture: targetArchitecture
+      architecture: targetArchitecture,
+      sharedNodeExecutable,
+      sharedNodeVersion: NODE_RUNTIME_VERSION
     })
     runCommand(process.execPath, [
       fileURLToPath(new URL('./verify-agent-runtime.mjs', import.meta.url)),
@@ -215,7 +220,6 @@ export function packageMacos({ signed, adhoc = false, developerId = false }) {
     mkdirSync(deviceCardBuilderDirectory, { recursive: true })
     copyFileSync(esbuildBinary, join(deviceCardBuilderDirectory, 'esbuild'))
     chmodSync(join(deviceCardBuilderDirectory, 'esbuild'), 0o755)
-    preparePinnedNodeRuntime(targetArchitecture)
     runCommand('pnpm', [
       '--filter',
       '@unilab/desktop',

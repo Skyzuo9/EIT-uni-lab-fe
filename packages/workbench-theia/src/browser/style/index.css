@@ -666,6 +666,53 @@ body.unilab-environment-manager-open .material-oblique-stack__label {
   white-space: nowrap;
 }
 
+.unilab-workbench-session-card .unilab-workbench-session-log {
+  display: grid;
+  min-width: 0;
+  grid-column: 1 / -1;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.unilab-workbench-session-card .unilab-workbench-session-log dd {
+  overflow: visible;
+  white-space: normal;
+}
+
+.unilab-workbench-session-log button {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 7px 9px;
+  color: var(--unilab-color-primary);
+  border: 1px solid var(--unilab-color-border);
+  border-radius: var(--unilab-radius-control);
+  background: var(--unilab-color-surface-subtle);
+  font: inherit;
+  line-height: 1.55;
+  text-align: left;
+  cursor: pointer;
+}
+
+.unilab-workbench-session-log button span:last-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.unilab-workbench-session-log button:hover {
+  border-color: var(--unilab-color-focus);
+  background: var(--unilab-color-primary-soft);
+  text-decoration: underline;
+}
+
+.unilab-workbench-session-log button:focus-visible {
+  outline: 2px solid var(--unilab-color-focus);
+  outline-offset: 2px;
+}
+
 .unilab-workbench-session-phase {
   display: inline-flex;
   padding: 4px 9px;
@@ -767,6 +814,71 @@ body.unilab-environment-manager-open .material-oblique-stack__label {
 .unilab-workbench-session-card .unilab-workbench-session-actions button:disabled {
   cursor: wait;
   opacity: .52;
+}
+
+.unilab-workbench-session-loading {
+  position: fixed;
+  z-index: 3000;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: color-mix(in srgb, var(--unilab-color-canvas) 86%, transparent);
+  backdrop-filter: blur(8px);
+}
+
+.unilab-workbench-session-loading__content {
+  display: flex;
+  width: min(420px, 100%);
+  align-items: center;
+  flex-direction: column;
+  padding: 36px 32px 30px;
+  border: 1px solid var(--unilab-color-border);
+  border-radius: 16px;
+  background: var(--unilab-color-surface);
+  box-shadow: 0 24px 64px rgb(15 23 42 / 18%);
+  text-align: center;
+}
+
+.unilab-workbench-session-loading__spinner {
+  width: 38px;
+  height: 38px;
+  margin-bottom: 20px;
+  border: 3px solid var(--unilab-color-primary-soft);
+  border-top-color: var(--unilab-color-primary);
+  border-radius: 50%;
+  animation: unilab-session-loading-spin .8s linear infinite;
+}
+
+.unilab-workbench-session-loading__content strong {
+  color: var(--unilab-color-text);
+  font-size: 18px;
+}
+
+.unilab-workbench-session-loading__content p {
+  min-height: 20px;
+  margin: 10px 0 22px;
+  color: var(--unilab-color-text-muted);
+}
+
+.unilab-workbench-session-loading__content button {
+  min-height: 34px;
+  padding: 7px 16px;
+  color: var(--unilab-color-text-muted);
+  border: 1px solid var(--unilab-color-border-strong);
+  border-radius: var(--unilab-radius-control);
+  background: var(--unilab-color-surface);
+  cursor: pointer;
+}
+
+@keyframes unilab-session-loading-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .unilab-workbench-session-loading__spinner {
+    animation-duration: 1.6s;
+  }
 }
 
 @media (max-width: 560px) {
