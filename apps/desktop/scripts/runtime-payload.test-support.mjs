@@ -30,7 +30,7 @@ export function createPackagedRuntimeResources(
 
   const workspace = join(resourcesDirectory, 'default-workspace')
   for (const [relativePath, content] of [
-    ['package.yaml', 'name: default-workspace\n'],
+    ['package.yaml', 'package:\n  name: bundled-reference\n'],
     ['deployment/local_config.py', 'config = {}\n'],
     ['deployment/graphs/device.json', '{}\n'],
     ['unilab.acceptance.json', '{}\n']

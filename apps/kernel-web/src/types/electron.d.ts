@@ -340,12 +340,65 @@ export interface DesktopWorkbenchRemoteApi {
   stop: () => Promise<WorkbenchRemoteAccessSnapshot>
 }
 
+export interface WorkbenchWorkspaceSnapshot {
+  phase: 'unavailable' | 'welcome' | 'starting' | 'ready' | 'stopping' | 'failed'
+  activeWorkspace: string | null
+  recentWorkspaces: Array<{
+    path: string
+    name: string
+    lastOpenedAt: string
+  }>
+  error: string | null
+}
+
+export interface DesktopWorkbenchWorkspaceApi {
+  getSnapshot: () => Promise<WorkbenchWorkspaceSnapshot>
+  openDirectory: () => Promise<WorkbenchWorkspaceSnapshot>
+  createDirectory: () => Promise<WorkbenchWorkspaceSnapshot>
+  openRecent: (path: string) => Promise<WorkbenchWorkspaceSnapshot>
+  switchToWelcome: () => Promise<{
+    switched: boolean
+    snapshot: WorkbenchWorkspaceSnapshot
+  }>
+  onSnapshot: (
+    listener: (snapshot: WorkbenchWorkspaceSnapshot) => void
+  ) => () => void
+}
+
+export type ManagedRuntimeInstallationPhase =
+  | 'unavailable'
+  | 'external'
+  | 'not-installed'
+  | 'installing'
+  | 'ready'
+  | 'failed'
+
+export interface ManagedRuntimeInstallationSnapshot {
+  phase: ManagedRuntimeInstallationPhase
+  bundled: boolean
+  managed: boolean
+  runtimeVersion: string | null
+  platform: string | null
+  environmentPath: string | null
+  error: string | null
+}
+
+export interface DesktopManagedRuntimeInstallationApi {
+  getSnapshot: () => Promise<ManagedRuntimeInstallationSnapshot>
+  install: () => Promise<ManagedRuntimeInstallationSnapshot>
+  onSnapshot: (
+    listener: (snapshot: ManagedRuntimeInstallationSnapshot) => void
+  ) => () => void
+}
+
 interface DesktopApi {
   getVersion: () => Promise<string>
   unsavedChanges?: {
     set: (hasUnsavedChanges: boolean) => void
   }
   workbenchRemote?: DesktopWorkbenchRemoteApi
+  workbenchWorkspace?: DesktopWorkbenchWorkspaceApi
+  managedRuntime?: DesktopManagedRuntimeInstallationApi
   auth: {
     getSession: () => Promise<AuthSession | null>
     login: () => Promise<AuthSession | null>

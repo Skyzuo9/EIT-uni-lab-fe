@@ -14,6 +14,7 @@ export async function waitForWorkbenchReadiness(
 ): Promise<WorkspacePackageMountProjection> {
   const probes: Array<[string, (payload: unknown) => boolean]> = [
     ['/api/v1/health', isHealthReady],
+    ['/api/v1/devices', isSuccessfulEnvelope],
     ['/api/v1/workflow-node-templates', isSuccessfulEnvelope],
     [
       '/api/v1/workflow-node-templates?limit=100&node_type=material_source',

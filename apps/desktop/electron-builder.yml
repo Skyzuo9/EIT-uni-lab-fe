@@ -17,6 +17,14 @@ extraResources:
       - '**/*'
   - from: ../../packages/device-card-agent-cli/dist/cli.mjs
     to: device-card-agent/cli.mjs
+  - from: ${env.UNILAB_RUNTIME_PAYLOAD_DIR}
+    to: runtime-installer
+    filter:
+      - '**/*'
+  - from: resources/default-workspace
+    to: default-workspace
+    filter:
+      - '**/*'
 npmRebuild: false
 electronLanguages:
   - zh-CN

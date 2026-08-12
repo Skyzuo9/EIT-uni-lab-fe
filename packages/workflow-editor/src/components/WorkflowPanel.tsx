@@ -44,10 +44,13 @@ export interface WorkflowPanelProps {
   ) => void
   onSelectedWorkflowStepChange?: (workflowNodeUuid: string | null) => void
   onCatalogStateChange?: (state: WorkflowCatalogState) => void
-  materialRoleFilter?: string | null
-  onMaterialRoleFilterChange?: (materialRole: string | null) => void
+  visibleMaterialRoles?: readonly string[] | null
+  onVisibleMaterialRolesChange?: (
+    visibleMaterialRoles: readonly string[] | null
+  ) => void
   ideBridge?: WorkflowIdeBridge
   hideEmbeddedCodeEditor?: boolean
+  allowWorkflowSelection?: boolean
 }
 
 /**
@@ -71,10 +74,11 @@ export default function WorkflowPanel({
   onWorkflowRuntimeProjectionChange,
   onSelectedWorkflowStepChange,
   onCatalogStateChange,
-  materialRoleFilter,
-  onMaterialRoleFilterChange,
+  visibleMaterialRoles,
+  onVisibleMaterialRolesChange,
   ideBridge,
-  hideEmbeddedCodeEditor = false
+  hideEmbeddedCodeEditor = false,
+  allowWorkflowSelection = false
 }: WorkflowPanelProps): React.JSX.Element {
   const [selectedWorkflowUuid, setSelectedWorkflowUuid] = useState<
     string | null
@@ -84,7 +88,8 @@ export default function WorkflowPanel({
   const authoringAvailable = authoringStatus?.available !== false
   const workflowUuid = !authoringAvailable || showCatalog
     ? null
-    : explicitWorkflowUuid || selectedWorkflowUuid ||
+    : (allowWorkflowSelection ? selectedWorkflowUuid : null) ||
+      explicitWorkflowUuid || selectedWorkflowUuid ||
       readActiveWorkflowId(activeWorkflowStorageKey)
 
   useEffect(() => {
@@ -121,13 +126,12 @@ export default function WorkflowPanel({
         onSelectedWorkflowStepChange={onSelectedWorkflowStepChange}
         ideBridge={ideBridge}
         hideEmbeddedCodeEditor={hideEmbeddedCodeEditor}
-        materialRoleFilter={materialRoleFilter}
-        onMaterialRoleFilterChange={onMaterialRoleFilterChange}
-        onChooseWorkflow={explicitWorkflowUuid
+        visibleMaterialRoles={visibleMaterialRoles}
+        onVisibleMaterialRolesChange={onVisibleMaterialRolesChange}
+        onChooseWorkflow={explicitWorkflowUuid && !allowWorkflowSelection
           ? undefined
           : () => {
               persistActiveWorkflowId(activeWorkflowStorageKey, '')
-              setSelectedWorkflowUuid(null)
               setShowCatalog(true)
             }}
       />

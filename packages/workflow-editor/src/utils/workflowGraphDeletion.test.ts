@@ -56,6 +56,25 @@ describe('normalized workflow graph deletion', () => {
     expect(nodeInputBindings(result.graph, 'action')).toEqual({})
   })
 
+  /** 删除 ready 边应携带一次生成意图，供 OS 改写为真实 parallel 结构。 */
+  it('records an explicitly deleted ready edge as transient generation intent', () => {
+    const result = deleteWorkflowGraphElements(graphFixture(), {
+      edgeUuids: ['control-edge']
+    })
+
+    expect(result.graph.edges.map((edge) => edge.uuid)).toEqual([
+      'material-edge'
+    ])
+    expect(workflowUnilab(result.graph).order_dependency_suppressions)
+      .toEqual([{
+        source_node_uuid: 'action',
+        target_node_uuid: 'sink'
+      }])
+    expect(result.graph.nodes.find((node) => node.uuid === 'sink')?.param)
+      .toEqual({})
+    expect(nodeInputBindings(result.graph, 'sink')).toEqual({})
+  })
+
   /** 验证删除节点会级联关联边、失效工作流出参及未再引用的模板。 */
   it('deletes an action and every normalized topology reference to it', () => {
     const result = deleteWorkflowGraphElements(graphFixture(), {
@@ -112,6 +131,71 @@ describe('normalized workflow graph deletion', () => {
     })).toEqual({
       kind: 'denied',
       reason: '系统生成或结构节点只读，不能直接删除'
+    })
+  })
+
+  /** 展示分组不应把其中的调用边界误判为 Composite 私有实现。 */
+  it('allows deleting an edge into a call boundary inside a presentation group', () => {
+    const graph = graphFixture()
+    graph.nodes.push({
+      uuid: 'presentation-group',
+      workflow_node_template_uuid: 'group-template',
+      name: '并行支线',
+      type: 'group',
+      param: {},
+      meta_data: { unilab: { presentation_group: true } }
+    })
+    const action = graph.nodes.find((node) => node.uuid === 'action')
+    if (!action) throw new Error('Fixture action is missing')
+    action.parent_uuid = 'presentation-group'
+
+    expect(workflowGraphDeletionDecision(graph, {
+      edgeUuids: ['control-edge']
+    })).toMatchObject({
+      kind: 'allowed',
+      nodeUuids: [],
+      edgeUuids: ['control-edge']
+    })
+    expect(projectPersistentAuthoringGraph(graph).nodes.find(
+      (node) => node.id === 'action'
+    )).not.toHaveProperty('authoringReadOnly')
+  })
+
+  /** 展示分组一旦嵌在 Composite 私有范围内，后代仍保持 fail-closed。 */
+  it('keeps presentation-group descendants read-only inside a composite', () => {
+    const graph = graphFixture()
+    graph.nodes.push(
+      {
+        uuid: 'composite-boundary',
+        workflow_node_template_uuid: 'action-template',
+        name: '组合调用',
+        type: 'workflow',
+        param: {}
+      },
+      {
+        uuid: 'nested-presentation-group',
+        workflow_node_template_uuid: 'group-template',
+        parent_uuid: 'composite-boundary',
+        name: '内部展示分组',
+        type: 'group',
+        param: {},
+        meta_data: { unilab: { presentation_group: true } }
+      },
+      {
+        uuid: 'private-nested-action',
+        workflow_node_template_uuid: 'action-template',
+        parent_uuid: 'nested-presentation-group',
+        name: '内部动作',
+        type: 'action',
+        param: {}
+      }
+    )
+
+    expect(workflowGraphDeletionDecision(graph, {
+      nodeUuids: ['private-nested-action']
+    })).toEqual({
+      kind: 'denied',
+      reason: '复合工作流内部私有节点只读；请删除或编辑调用边界'
     })
   })
 

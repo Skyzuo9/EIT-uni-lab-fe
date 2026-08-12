@@ -57,7 +57,8 @@ export function resolveDesktopSurfaceConfig(
   }
 
   const rendererUrl = trustedWorkbenchRendererUrl(
-    environment['UNILAB_DESKTOP_RENDERER_URL']
+    environment['UNILAB_DESKTOP_RENDERER_URL'],
+    environment['UNILAB_DESKTOP_WELCOME_URL']
   )
   return {
     kind: 'workbench',
@@ -80,7 +81,11 @@ export function isDesktopSurfaceNavigationAllowed(
 ): boolean {
   if (!config.rendererUrl) return true
   try {
-    return new URL(targetUrl).origin === new URL(config.rendererUrl).origin
+    const target = new URL(targetUrl)
+    const configured = new URL(config.rendererUrl)
+    return configured.protocol === 'file:'
+      ? target.toString() === configured.toString()
+      : target.origin === configured.origin
   } catch {
     return false
   }
@@ -98,7 +103,10 @@ export function shouldQuitWhenAllDesktopWindowsClose(
 }
 
 /** Restricts the privileged Workbench renderer to the managed loopback server. */
-function trustedWorkbenchRendererUrl(value: string | undefined): string {
+function trustedWorkbenchRendererUrl(
+  value: string | undefined,
+  welcomeValue: string | undefined
+): string {
   if (!value?.trim()) {
     throw new Error(
       'Workbench desktop 需要 UNILAB_DESKTOP_RENDERER_URL'
@@ -111,14 +119,18 @@ function trustedWorkbenchRendererUrl(value: string | undefined): string {
   } catch {
     throw new Error('Workbench renderer URL 无效')
   }
-  if (
-    url.protocol !== 'http:'
-    || url.hostname !== '127.0.0.1'
-    || url.username
-    || url.password
-  ) {
+  const trustedLoopback = url.protocol === 'http:'
+    && url.hostname === '127.0.0.1'
+    && !url.username
+    && !url.password
+  const trustedWelcome = url.protocol === 'file:'
+    && url.toString() === welcomeValue?.trim()
+    && url.pathname.endsWith('/welcome.html')
+    && !url.search
+    && !url.hash
+  if (!trustedLoopback && !trustedWelcome) {
     throw new Error(
-      'Workbench renderer 必须是无凭据的 http://127.0.0.1 地址'
+      'Workbench renderer 必须是受管欢迎页或无凭据的 http://127.0.0.1 地址'
     )
   }
   return url.toString()

@@ -95,9 +95,9 @@
   backdrop-filter: blur(16px);
 }
 
-.lab-material-role-filter > div button {
+.lab-material-role-filter > div label {
   display: grid;
-  grid-template-columns: 11px 1fr auto;
+  grid-template-columns: 14px 10px 1fr auto;
   min-height: 30px;
   gap: 8px;
   align-items: center;
@@ -111,15 +111,15 @@
   cursor: pointer;
 }
 
-.lab-material-role-filter > div button:hover,
-.lab-material-role-filter > div button.is-active {
+.lab-material-role-filter > div label:hover,
+.lab-material-role-filter > div label.is-active {
   color: var(--unilab-color-text);
   background: var(--unilab-color-bg-muted);
 }
 
-.lab-material-role-filter > div button:focus-visible {
+.lab-material-role-filter > div input:focus-visible {
   outline: 2px solid var(--unilab-color-focus);
-  outline-offset: -2px;
+  outline-offset: 1px;
 }
 
 .lab-material-role-filter > div i {
@@ -129,14 +129,21 @@
   border-radius: 50%;
 }
 
-.lab-material-role-filter > div i.is-all {
-  background: conic-gradient(
-    #7c3aed,
-    #c026d3,
-    #0f766e,
-    #a16207,
-    #7c3aed
-  );
+.lab-material-role-filter > div button {
+  min-height: 28px;
+  margin-top: 3px;
+  color: var(--unilab-color-material);
+  border: 0;
+  border-top: 1px solid var(--unilab-color-border);
+  background: transparent;
+  font: 650 11px/1 var(--unilab-font-sans);
+  cursor: pointer;
+}
+
+.lab-material-role-filter > div button:disabled {
+  color: var(--unilab-color-text-subtle);
+  cursor: default;
+  opacity: .65;
 }
 
 .lab-material-role-filter > div small {

@@ -19,6 +19,7 @@
     "@theia/monaco-editor-core": "1.108.201",
     "@theia/workspace": "1.74.1",
     "@unilab/design-system": "workspace:*",
+    "@unilab/device-management": "workspace:*",
     "@unilab/material": "workspace:*",
     "@unilab/pascal-host": "workspace:*",
     "@unilab/pascal-lab-plugin": "workspace:*",
@@ -45,10 +46,10 @@
   },
   "theiaExtensions": [
     {
-      "frontendPreload": "lib/browser/unilab-text-replacements-frontend-module"
+      "frontendPreload": "lib/browser/unilab-workbench-frontend-preload-module"
     },
     {
-      "frontend": "lib/browser/theia-workflow-prototype-frontend-module"
+      "frontend": "lib/browser/unilab-workbench-frontend-module"
     },
     {
       "backend": "lib/node/workbench-session-backend-module"

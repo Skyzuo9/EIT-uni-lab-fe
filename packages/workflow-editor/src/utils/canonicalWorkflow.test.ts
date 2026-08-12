@@ -7,7 +7,8 @@ import {
   parseCanonicalWorkflow,
   projectNestedWorkflow,
   remapWorkflowBreakpoints,
-  remapWorkflowNodeId
+  remapWorkflowNodeId,
+  visibleNestedWorkflowNodeId
 } from './canonicalWorkflow'
 
 describe('Canonical workflow projection', () => {
@@ -108,6 +109,11 @@ describe('Canonical workflow projection', () => {
       { source: 'outer', target: 'finish' }
     ])
     expect([...collapsed.hiddenNodeIds]).toEqual(['prepare', 'inner', 'dose'])
+    expect(visibleNestedWorkflowNodeId(
+      parsed.nodes,
+      collapsed.collapsedGroupIds,
+      'dose'
+    )).toBe('outer')
 
     const outerExpanded = projectNestedWorkflow(
       parsed.nodes,
@@ -126,6 +132,11 @@ describe('Canonical workflow projection', () => {
         ['prepare', 'inner'],
         ['inner', 'finish']
       ])
+    expect(visibleNestedWorkflowNodeId(
+      parsed.nodes,
+      outerExpanded.collapsedGroupIds,
+      'dose'
+    )).toBe('inner')
 
     const allExpanded = projectNestedWorkflow(
       parsed.nodes,
@@ -134,6 +145,11 @@ describe('Canonical workflow projection', () => {
     )
     expect(allExpanded.nodes).toHaveLength(5)
     expect(allExpanded.links).toHaveLength(4)
+    expect(visibleNestedWorkflowNodeId(
+      parsed.nodes,
+      allExpanded.collapsedGroupIds,
+      'dose'
+    )).toBe('dose')
   })
 
   /**

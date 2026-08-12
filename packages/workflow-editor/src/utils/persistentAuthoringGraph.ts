@@ -16,6 +16,7 @@ import {
   type WorkflowMaterialSwimlaneDirection
 } from './workflowDagLayoutStrategy'
 import { layoutWorkflowMaterialSwimlanes } from './workflowMaterialSwimlaneLayout'
+import { layoutWorkflowPrimarySampleFlow } from './workflowPrimarySampleLayout'
 import {
   workflowNodeVisualKind,
   type WorkflowNodeVisualKind
@@ -114,9 +115,10 @@ function projectPersistentAuthoringNode(
   )
   return {
     ...projectNodeIdentity(node, template, type),
+    disabled: node.disabled === true,
     handles: context.handlesByTemplate.get(templateUuid) ?? [],
     ...projectNodeParent(node, context.nodeByUuid),
-    ...projectNodeReadOnlyState(node),
+    ...projectNodeReadOnlyState(node, context.nodeByUuid),
     ...projectCompositeState(nodeUuid, context),
     ...projectMaterialSourceState(node, type, context.resourceTemplateByUuid),
     ...nodePosition(node.pose)
@@ -165,9 +167,10 @@ function projectNodeParent(
 }
 
 function projectNodeReadOnlyState(
-  node: AuthoringNode
+  node: AuthoringNode,
+  nodeByUuid: Map<string, AuthoringNode>
 ): Pick<WorkflowNode, 'authoringReadOnly' | 'authoringReadOnlyReason'> {
-  const reason = workflowNodeDeletionDisabledReason(node)
+  const reason = workflowNodeDeletionDisabledReason(node, nodeByUuid)
   if (!reason) return {}
   return { authoringReadOnly: true, authoringReadOnlyReason: reason }
 }
@@ -328,9 +331,11 @@ export function beautifyPersistentAuthoringGraph(
         structure.links,
         swimlaneDirection
       )
-    : layoutDag(structure.nodes, structure.links, {
-        preserveExistingPositions: false
-      })
+    : strategy === 'primary-sample-serpentine'
+      ? layoutWorkflowPrimarySampleFlow(structure.nodes, structure.links)
+      : layoutDag(structure.nodes, structure.links, {
+          preserveExistingPositions: false
+        })
   const positionByNodeUuid = new Map(
     layout.nodes.map((node) => [node.id, {
       x: node.x,
@@ -453,6 +458,24 @@ export function updatePersistentAuthoringNodeName(
         name
       }
     })
+  }
+}
+
+export function updatePersistentAuthoringNodeDisabled(
+  graph: WorkflowAuthoringGraph,
+  nodeUuid: string,
+  disabled: boolean
+): WorkflowAuthoringGraph {
+  const node = graph.nodes.find((item) => item.uuid === nodeUuid)
+  if (!node) throw new Error('节点不存在或已被删除')
+  if (node.parent_uuid !== undefined && node.parent_uuid !== null) {
+    throw new Error('复合工作流的内部私有节点只读；请编辑调用边界')
+  }
+  return {
+    ...graph,
+    nodes: graph.nodes.map((item) => item.uuid === nodeUuid
+      ? { ...item, disabled }
+      : item)
   }
 }
 

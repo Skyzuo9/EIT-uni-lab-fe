@@ -12,6 +12,31 @@ const TERMINAL_TASK_STATUSES = new Set<WorkflowTask['status']>([
   'timeout'
 ])
 
+/** 工作流任务是否仍占用当前调试控制入口。 */
+export function workflowTaskIsLive(task: WorkflowTask | null): boolean {
+  return Boolean(task && !TERMINAL_TASK_STATUSES.has(task.status))
+}
+
+/**
+ * 常规调试器只显示当前状态有意义的命令，而不是同时铺开全部按钮。
+ */
+export function workflowTaskToolbarControls(
+  task: WorkflowTask | null,
+  controls: ReadonlyArray<WorkflowRuntimeControl<WorkflowTaskCommandType>>
+): ReadonlyArray<WorkflowRuntimeControl<WorkflowTaskCommandType>> {
+  if (!workflowTaskIsLive(task)) return []
+
+  const commands = task?.status === 'admission_blocked'
+    ? new Set<WorkflowTaskCommandType>(['cancel'])
+    : task?.control_status === 'paused'
+    ? task.run_mode === 'step'
+      ? new Set<WorkflowTaskCommandType>(['resume', 'step', 'cancel'])
+      : new Set<WorkflowTaskCommandType>(['resume', 'cancel'])
+    : new Set<WorkflowTaskCommandType>(['pause', 'cancel'])
+
+  return controls.filter((control) => commands.has(control.command))
+}
+
 /**
  * 将权威工作流任务状态投影为可执行的运行控制按钮。
  *

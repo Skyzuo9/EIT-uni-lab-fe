@@ -18,6 +18,61 @@ afterEach(() => {
 })
 
 describe('WorkflowTask runtime port', () => {
+  it('launches and controls a debugger through the dedicated Hold-scoped API', async () => {
+    const task = { uuid: TASK_UUID, workflow_uuid: WORKFLOW_UUID }
+    const projection = {
+      task,
+      jobs: [],
+      configuration: {
+        start_node_uuids: [JOB_UUID],
+        breakpoint_node_uuids: [JOB_UUID]
+      },
+      holds: [{ uuid: JOB_UUID, status: 'open' }]
+    }
+    const command = { uuid: JOB_UUID, type: 'step', status: 'succeeded' }
+    const request = vi.fn()
+      .mockResolvedValueOnce({ code: 0, data: task })
+      .mockResolvedValueOnce({ code: 0, data: projection })
+      .mockResolvedValueOnce({ code: 0, data: command })
+    const runtime = taskPort(request)
+
+    await runtime.createDebugWorkflowTask({
+      workflow_uuid: WORKFLOW_UUID,
+      start_node_uuids: [JOB_UUID],
+      breakpoint_node_uuids: [JOB_UUID],
+      input: {}
+    })
+    await runtime.getDebugWorkflowTask(TASK_UUID)
+    await runtime.commandDebugWorkflowTask(TASK_UUID, {
+      type: 'step',
+      scope: { type: 'hold', hold_uuid: JOB_UUID },
+      idempotency_key: 'debug-step-1'
+    })
+
+    expect(request).toHaveBeenNthCalledWith(
+      1,
+      '/api/v1/debug/workflow-tasks',
+      expect.objectContaining({ method: 'POST' })
+    )
+    expect(request).toHaveBeenNthCalledWith(
+      2,
+      `/api/v1/debug/workflow-tasks/${TASK_UUID}`,
+      undefined
+    )
+    expect(request).toHaveBeenNthCalledWith(
+      3,
+      `/api/v1/debug/workflow-tasks/${TASK_UUID}/commands`,
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          type: 'step',
+          scope: { type: 'hold', hold_uuid: JOB_UUID },
+          idempotency_key: 'debug-step-1'
+        })
+      })
+    )
+  })
+
   it('creates a Backend-shaped Task without inventing Run identity', async () => {
     const task = {
       uuid: TASK_UUID,

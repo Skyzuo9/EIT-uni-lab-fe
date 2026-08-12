@@ -5,11 +5,12 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const STARTUP_TIMEOUT_MS = 15_000
+const STARTUP_TIMEOUT_MS = 60_000
 
-export async function verifyPackagedBackend(appPath) {
+export async function verifyPackagedBackend(appPath, options = {}) {
   const resources = path.join(appPath, 'Contents', 'Resources')
-  const nodeBinary = path.join(resources, 'node-runtime', 'bin', 'node')
+  const packagedNodeBinary = path.join(resources, 'node-runtime', 'bin', 'node')
+  const nodeBinary = options.nodeBinary ?? packagedNodeBinary
   const backendMain = path.join(resources, 'workbench', 'lib', 'backend', 'main.js')
   const plugins = path.join(resources, 'workbench', 'plugins')
   const workbench = path.join(resources, 'workbench')
@@ -45,7 +46,10 @@ export async function verifyPackagedBackend(appPath) {
 
   try {
     await waitForHttp(port, child, () => launchError)
-    console.log(`打包 backend smoke 通过：Node ${await executableVersion(nodeBinary)}，端口 ${port}`)
+    const runtimeKind = nodeBinary === packagedNodeBinary ? '包内 Node' : '受信任构建 Node'
+    console.log(
+      `打包 backend smoke 通过：${runtimeKind} ${await executableVersion(nodeBinary)}，端口 ${port}`
+    )
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     throw new Error(`${message}\n${output}`)
@@ -132,12 +136,16 @@ function delay(milliseconds) {
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const appIndex = process.argv.indexOf('--app')
   const appPath = appIndex >= 0 ? process.argv[appIndex + 1] : null
+  const nodeIndex = process.argv.indexOf('--node')
+  const nodeBinary = nodeIndex >= 0 ? process.argv[nodeIndex + 1] : undefined
   if (!appPath) {
-    console.error('用法：verify-packaged-backend.mjs --app /path/to/UniLab Workbench.app')
+    console.error(
+      '用法：verify-packaged-backend.mjs --app /path/to/UniLab Workbench.app [--node /trusted/node]'
+    )
     process.exitCode = 1
   } else {
     try {
-      await verifyPackagedBackend(appPath)
+      await verifyPackagedBackend(appPath, { nodeBinary })
     } catch (error) {
       console.error(error instanceof Error ? error.message : error)
       process.exitCode = 1

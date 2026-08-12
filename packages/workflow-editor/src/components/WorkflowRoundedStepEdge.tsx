@@ -6,17 +6,22 @@ import {
 } from 'reactflow'
 
 import {
+  alignPrimaryMaterialEdgeEndpoints,
   getWorkflowSmoothStepCenter,
+  WORKFLOW_SEQUENCE_SMOOTHSTEP_OFFSET,
   WORKFLOW_SMOOTHSTEP_OFFSET
 } from '../utils/workflowDagEdgeRouting'
 
 export interface WorkflowRoundedStepEdgeData {
   direction: 'TB' | 'LR'
   borderRadius: number
+  sequence?: boolean
   sourceNodeUuid: string
   targetNodeUuid: string
   sourceHandleUuid: string
   targetHandleUuid: string
+  materialRole?: string
+  materialEmphasis?: 'primary' | 'supporting'
 }
 
 /**
@@ -26,6 +31,7 @@ export interface WorkflowRoundedStepEdgeData {
  * @returns 横平竖直且转角圆润的 SVG 连线。
  */
 export default function WorkflowRoundedStepEdge({
+  id,
   sourceX,
   sourceY,
   sourcePosition,
@@ -40,35 +46,58 @@ export default function WorkflowRoundedStepEdge({
   labelBgStyle,
   labelBgPadding,
   labelBgBorderRadius,
+  interactionWidth,
   data
 }: EdgeProps<WorkflowRoundedStepEdgeData>): React.JSX.Element {
-  const { centerX, centerY } = getWorkflowSmoothStepCenter({
+  const aligned = alignPrimaryMaterialEdgeEndpoints({
     sourceX,
     sourceY,
     targetX,
     targetY,
+    direction: data?.direction ?? 'TB',
+    materialRole: data?.materialRole
+  })
+  const { centerX, centerY } = getWorkflowSmoothStepCenter({
+    sourceX: aligned.sourceX,
+    sourceY: aligned.sourceY,
+    targetX: aligned.targetX,
+    targetY: aligned.targetY,
+    targetPosition,
     direction: data?.direction
   })
   const [path, labelX, labelY] = getSmoothStepPath({
-    sourceX,
-    sourceY,
+    sourceX: aligned.sourceX,
+    sourceY: aligned.sourceY,
     sourcePosition,
-    targetX,
-    targetY,
+    targetX: aligned.targetX,
+    targetY: aligned.targetY,
     targetPosition,
     borderRadius: data?.borderRadius ?? 8,
     centerX,
     centerY,
-    offset: WORKFLOW_SMOOTHSTEP_OFFSET
+    offset: data?.sequence
+      ? WORKFLOW_SEQUENCE_SMOOTHSTEP_OFFSET
+      : WORKFLOW_SMOOTHSTEP_OFFSET
   })
   return (
     <g
+      data-workflow-edge-uuid={id}
       data-workflow-edge-source-node-uuid={data?.sourceNodeUuid}
       data-workflow-edge-target-node-uuid={data?.targetNodeUuid}
       data-workflow-edge-source-handle-uuid={data?.sourceHandleUuid}
       data-workflow-edge-target-handle-uuid={data?.targetHandleUuid}
+      data-workflow-material-role={data?.materialRole}
+      data-workflow-material-emphasis={data?.materialEmphasis}
+      data-workflow-edge-kind={data?.sequence
+        ? 'sequence'
+        : data?.materialRole ? 'material' : 'structural'}
     >
-      <BaseEdge path={path} markerEnd={markerEnd} style={style} />
+      <BaseEdge
+        path={path}
+        markerEnd={markerEnd}
+        style={style}
+        interactionWidth={Math.max(interactionWidth ?? 0, 28)}
+      />
       {label !== undefined && label !== null && (
         <EdgeText
           x={labelX}

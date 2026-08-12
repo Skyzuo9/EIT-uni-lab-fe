@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
+import { Position } from 'reactflow'
 
 import {
   isReadyHandle,
+  sequenceHandlePosition,
   workflowMaterialPortCards,
   workflowNodeAllowsDebugMarkers,
   workflowNodeHoverText,
@@ -43,12 +45,37 @@ describe('Action node presentation', () => {
     })).toBe(true)
   })
 
+  it('recognizes legacy OS default ready ports as execution order', () => {
+    expect(isReadyHandle({
+      uuid: 'ready-source',
+      handleKey: 'ready',
+      displayName: 'ready',
+      ioType: 'source',
+      valueType: 'default'
+    })).toBe(true)
+  })
+
+  it('offsets sequence handles from material handles along each flow axis', () => {
+    expect(sequenceHandlePosition(Position.Right)).toEqual({ top: '16px' })
+    expect(sequenceHandlePosition(Position.Bottom)).toEqual({
+      left: 'calc(100% - 20px)',
+      bottom: '-6px'
+    })
+    expect(sequenceHandlePosition(Position.Top, {
+      left: '36px',
+      edgeInset: '3px'
+    })).toEqual({ left: '36px', top: '3px' })
+  })
+
   it('hides the idle pending state but keeps meaningful execution states', () => {
     expect(workflowNodeShowsState('action')).toBe(false)
     expect(workflowNodeShowsState('action', 'pending')).toBe(false)
     expect(workflowNodeShowsState('action', 'running')).toBe(true)
     expect(workflowNodeShowsState('action', 'failed')).toBe(true)
+    expect(workflowNodeShowsState('action', 'success')).toBe(false)
+    expect(workflowNodeShowsState('workflow', 'succeeded')).toBe(false)
     expect(workflowNodeShowsState('material_source', 'pending')).toBe(false)
+    expect(workflowNodeShowsState('material_source', 'success')).toBe(true)
     expect(workflowNodeShowsState('material_source', 'material_waiting'))
       .toBe(true)
   })
@@ -72,6 +99,11 @@ describe('Action node presentation', () => {
       'reagent-target': '#8056a8',
       'sample-source': '#6657c7',
       'result-source': '#4f69b8'
+    }, undefined, {
+      'sample-target': 'primary_sample',
+      'sample-source': 'primary_sample',
+      'reagent-target': 'reagent',
+      'result-source': 'derived'
     })
 
     expect(cards).toHaveLength(3)
@@ -84,10 +116,12 @@ describe('Action node presentation', () => {
       variableName: 'sample',
       targetHandle: handles[0],
       sourceHandle: handles[2],
+      materialRole: 'primary_sample',
       description: '进入当前操作的原始样品\n离开当前操作的样品'
     }))
     expect(cards[1]).toEqual(expect.objectContaining({
       variableName: 'reagent',
+      materialRole: 'reagent',
       targetHandle: handles[1]
     }))
   })

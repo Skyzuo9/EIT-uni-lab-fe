@@ -1,4 +1,6 @@
 import type {
+  DebugWorkflowTaskCommand,
+  DebugWorkflowTaskProjection,
   WorkflowEventSubscription,
   WorkflowNodeJob,
   WorkflowNodeJobFeedback,
@@ -17,6 +19,8 @@ export interface WorkflowTaskRuntimeSnapshot {
   events: readonly WorkflowTaskRuntimeEvent[]
   feedback: readonly WorkflowNodeJobFeedback[]
   lastCommand: WorkflowTaskCommand | null
+  debug: DebugWorkflowTaskProjection | null
+  lastDebugCommand: DebugWorkflowTaskCommand | null
   error: string | null
   actionError: string | null
   projectionError: string | null
@@ -39,6 +43,8 @@ export class WorkflowTaskController {
     events: [],
     feedback: [],
     lastCommand: null,
+    debug: null,
+    lastDebugCommand: null,
     error: null,
     actionError: null,
     projectionError: null,
@@ -131,6 +137,53 @@ export class WorkflowTaskController {
     }
   }
 
+  async createDebug(
+    startNodeUuid: string,
+    breakpointNodeUuids: readonly string[],
+    input?: Record<string, unknown>
+  ): Promise<WorkflowTask> {
+    this.install({ actionError: null })
+    try {
+      const created = await this.runtime.createDebugWorkflowTask({
+        workflow_uuid: this.workflowUuid,
+        start_node_uuids: [startNodeUuid],
+        breakpoint_node_uuids: [...breakpointNodeUuids],
+        ...(input === undefined ? {} : { input }),
+        meta_data: { source: 'unilab-workbench-debugger' }
+      })
+      if (this.active) {
+        this.install({ lastCommand: null, lastDebugCommand: null })
+        void this.requestRefresh(created.uuid)
+      }
+      return created
+    } catch (error) {
+      this.install({ actionError: errorMessage(error), loading: false })
+      throw error
+    }
+  }
+
+  async debugCommand(type: 'step' | 'continue'): Promise<void> {
+    const task = this.snapshot.task
+    const openHold = this.snapshot.debug?.holds.find(
+      (hold) => hold.status === 'open'
+    )
+    if (!task || !openHold) throw new Error('当前调试任务没有可放行的暂停点')
+    this.install({ actionError: null })
+    try {
+      const command = await this.runtime.commandDebugWorkflowTask(task.uuid, {
+        type,
+        scope: { type: 'hold', hold_uuid: openHold.uuid },
+        idempotency_key: this.nextIdempotencyKey(task.uuid, `debug-${type}`)
+      })
+      if (!this.active) return
+      this.install({ lastDebugCommand: command })
+      void this.requestRefresh(task.uuid)
+    } catch (error) {
+      this.install({ actionError: errorMessage(error) })
+      throw error
+    }
+  }
+
   async command(type: WorkflowTaskCommandType): Promise<void> {
     const task = this.snapshot.task
     if (!task) throw new Error('当前没有可控制的 Workflow Task')
@@ -207,6 +260,7 @@ export class WorkflowTaskController {
             jobs: [],
             events: [],
             feedback: [],
+            debug: null,
             projectionError: null,
             feedbackError: null,
             projectionStale: false,
@@ -225,11 +279,15 @@ export class WorkflowTaskController {
       const sortedJobs = [...jobs].sort(
         (left, right) => left.topological_index - right.topological_index
       )
+      const debug = task.meta_data.debug === true
+        ? await this.runtime.getDebugWorkflowTask(task.uuid)
+        : null
       const taskChanged = this.snapshot.task?.uuid !== task.uuid
       this.install({
         loading: false,
         task,
         jobs: sortedJobs,
+        debug,
         ...(taskChanged ? { events: [], feedback: [] } : {}),
         projectionError: null,
         projectionStale: false,
@@ -294,7 +352,7 @@ export class WorkflowTaskController {
 
   private nextIdempotencyKey(
     taskUuid: string,
-    type: WorkflowTaskCommandType
+    type: string
   ): string {
     this.commandSequence += 1
     return [

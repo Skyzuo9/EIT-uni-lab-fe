@@ -187,6 +187,13 @@ test('existing Workflow UI drives Task/Jobs/commands through real OS HTTP and SS
   expect(createTaskBody).not.toHaveProperty('breakpoints')
   await expect(panel.locator('[data-run-status="pending"]')).toBeVisible()
   await expect(panel.locator('[data-node-state="pending"]')).toHaveCount(2)
+  const analyzeOutputNode = panel.locator(
+    '.workflow-runtime__node-list button[data-node-state="pending"]'
+  ).nth(1)
+  await analyzeOutputNode.click()
+  await expect(panel.locator(
+    `.react-flow__node[data-id="${ANALYZE_NODE_UUID}"]`
+  )).toHaveClass(/wf-flow-node--runtime-selected/)
   const taskIdentity = panel.locator('.workflow-runtime__debug-summary')
     .locator('.is-meta')
     .filter({ hasText: /^任务/ })

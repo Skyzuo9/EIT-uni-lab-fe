@@ -1,6 +1,8 @@
 import type { WorkbenchSessionSnapshot } from '@unilab/workbench-session'
 import * as React from 'react'
 
+import { DesktopWorkspaceSwitchButton } from './desktop-workspace-switch'
+
 export async function captureWorkbenchUiOperation(
   operation: () => Promise<void>,
   onError: (message: string) => void
@@ -43,12 +45,12 @@ export function WorkbenchSessionGate({
   }, [snapshot.diagnostic?.code, snapshot.phase])
 
   return (
-    <div className="unilab-theia-prototype unilab-workbench-session-gate">
+    <div className="unilab-workbench unilab-workbench-session-gate">
       <section className="unilab-workbench-session-card" aria-live="polite">
         <span className={`unilab-workbench-session-phase is-${snapshot.phase}`}>
           {snapshot.phase}
         </span>
-        <h2>UniLab Authoring Workbench</h2>
+        <h2>UniLab 调试工作台</h2>
         <p>{snapshot.message}</p>
         {snapshot.identity ? (
           <dl>
@@ -88,6 +90,7 @@ export function WorkbenchSessionGate({
           aria-expanded={environmentOpen}
           onClick={() => setEnvironmentOpen(value => !value)}
         >环境管理</button>
+        <DesktopWorkspaceSwitchButton />
       </section>
       {environmentOpen
         ? renderEnvironmentManager(() => setEnvironmentOpen(false))

@@ -6,7 +6,7 @@ settings:
 
 patchedDependencies:
   '@pascal-app/editor@0.9.2':
-    hash: 3264b714fff4f6a8f500cf7b565a8431930639c7e06a1e00890deb275e47f9e6
+    hash: d0f42eb15315e99ecc37f1a9123bed407fa888fa02db58bf26bac17ae50c1e24
     path: patches/@pascal-app__editor@0.9.2.patch
 
 importers:
@@ -98,6 +98,9 @@ importers:
       '@unilab/device-card-sdk':
         specifier: workspace:*
         version: link:../../packages/device-card-sdk
+      '@unilab/device-management':
+        specifier: workspace:*
+        version: link:../../packages/device-management
       '@unilab/device-provisioning':
         specifier: workspace:*
         version: link:../../packages/device-provisioning
@@ -308,6 +311,9 @@ importers:
         specifier: 0.2.2
         version: 0.2.2
     devDependencies:
+      '@electron/asar':
+        specifier: 3.4.1
+        version: 3.4.1
       '@theia/bundle-plugin':
         specifier: 1.74.1
         version: 1.74.1(esbuild@0.28.2)
@@ -644,6 +650,34 @@ importers:
         specifier: ^2.1.9
         version: 2.1.9(@types/node@22.20.1)(less@3.13.1)(lightningcss@1.30.1)(sass-embedded@1.97.3)(sass@1.102.0)(terser@5.49.2)
 
+  packages/device-management:
+    dependencies:
+      '@unilab/design-system':
+        specifier: workspace:*
+        version: link:../design-system
+      '@unilab/services':
+        specifier: workspace:*
+        version: link:../services
+    devDependencies:
+      '@types/react':
+        specifier: ^19.2.7
+        version: 19.2.17
+      '@types/react-dom':
+        specifier: ^19.2.3
+        version: 19.2.3(@types/react@19.2.17)
+      react:
+        specifier: ^19.2.1
+        version: 19.2.8
+      react-dom:
+        specifier: ^19.2.1
+        version: 19.2.8(react@19.2.8)
+      typescript:
+        specifier: ^5.6.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.9
+        version: 2.1.9(@types/node@22.20.1)(less@3.13.1)(lightningcss@1.30.1)(sass-embedded@1.97.3)(sass@1.102.0)(terser@5.49.2)
+
   packages/device-provisioning:
     devDependencies:
       typescript:
@@ -709,7 +743,7 @@ importers:
         version: 0.9.2(@react-three/drei@10.7.7(@react-three/fiber@9.4.0(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(three@0.185.0))(@types/react@19.2.17)(@types/three@0.184.1)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(three@0.185.0))(@react-three/fiber@9.4.0(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(three@0.185.0))(@types/react@19.2.17)(react@19.2.8)(three@0.185.0)(use-sync-external-store@1.6.0(react@19.2.8))
       '@pascal-app/editor':
         specifier: 0.9.2
-        version: 0.9.2(patch_hash=3264b714fff4f6a8f500cf7b565a8431930639c7e06a1e00890deb275e47f9e6)(f5c76975d52fbc77d04d924597e522d7)
+        version: 0.9.2(patch_hash=d0f42eb15315e99ecc37f1a9123bed407fa888fa02db58bf26bac17ae50c1e24)(f5c76975d52fbc77d04d924597e522d7)
       '@pascal-app/viewer':
         specifier: 0.9.2
         version: 0.9.2(@pascal-app/core@0.9.2(@react-three/drei@10.7.7(@react-three/fiber@9.4.0(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(three@0.185.0))(@types/react@19.2.17)(@types/three@0.184.1)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(three@0.185.0))(@react-three/fiber@9.4.0(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(three@0.185.0))(@types/react@19.2.17)(react@19.2.8)(three@0.185.0)(use-sync-external-store@1.6.0(react@19.2.8)))(@react-three/drei@10.7.7(@react-three/fiber@9.4.0(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(three@0.185.0))(@types/react@19.2.17)(@types/three@0.184.1)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(three@0.185.0))(@react-three/fiber@9.4.0(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(three@0.185.0))(@types/react@19.2.17)(react@19.2.8)(three@0.185.0)(use-sync-external-store@1.6.0(react@19.2.8))
@@ -925,6 +959,9 @@ importers:
       '@unilab/design-system':
         specifier: workspace:*
         version: link:../design-system
+      '@unilab/device-management':
+        specifier: workspace:*
+        version: link:../device-management
       '@unilab/material':
         specifier: workspace:*
         version: link:../material
@@ -10753,7 +10790,7 @@ snapshots:
       - immer
       - use-sync-external-store
 
-  '@pascal-app/editor@0.9.2(patch_hash=3264b714fff4f6a8f500cf7b565a8431930639c7e06a1e00890deb275e47f9e6)(f5c76975d52fbc77d04d924597e522d7)':
+  '@pascal-app/editor@0.9.2(patch_hash=d0f42eb15315e99ecc37f1a9123bed407fa888fa02db58bf26bac17ae50c1e24)(f5c76975d52fbc77d04d924597e522d7)':
     dependencies:
       '@dnd-kit/core': 6.3.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@dnd-kit/sortable': 10.0.0(@dnd-kit/core@6.3.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react@19.2.8)

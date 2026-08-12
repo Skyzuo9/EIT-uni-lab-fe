@@ -1,7 +1,11 @@
 import { constants as fsConstants } from 'node:fs'
-import { access, realpath } from 'node:fs/promises'
+import { access, realpath, stat } from 'node:fs/promises'
+import { execFile } from 'node:child_process'
 import os from 'node:os'
 import path from 'node:path'
+import { promisify } from 'node:util'
+
+const execFileAsync = promisify(execFile)
 
 export const WORKBENCH_DESKTOP_FLAG = '--desktop'
 export const WORKBENCH_REMOTE_FLAG = '--remote'
@@ -83,9 +87,22 @@ export async function discoverWorkbenchPythonEnvironment({
   homeDirectory = os.homedir(),
   platform = process.platform
 }) {
+  const standardEnvironments = [
+    path.join(homeDirectory, 'miniforge3', 'envs', 'unilab'),
+    path.join(homeDirectory, 'mambaforge', 'envs', 'unilab'),
+    path.join(homeDirectory, 'miniconda3', 'envs', 'unilab'),
+    path.join(homeDirectory, 'anaconda3', 'envs', 'unilab'),
+    path.join(homeDirectory, '.conda', 'envs', 'unilab'),
+    path.join(homeDirectory, '.micromamba', 'envs', 'unilab')
+  ]
+  const activeEnvironment = environment.CONDA_DEFAULT_ENV !== 'base'
+    ? environment.CONDA_PREFIX
+    : null
   const candidates = selected
     ? [selected]
     : [
+        activeEnvironment,
+        ...standardEnvironments,
         environment.CONDA_PREFIX,
         ...(environment.PATH ?? '')
           .split(path.delimiter)
@@ -93,12 +110,6 @@ export async function discoverWorkbenchPythonEnvironment({
           .map(entry => platform === 'win32'
             ? path.dirname(entry)
             : path.dirname(entry)),
-        path.join(homeDirectory, 'miniforge3', 'envs', 'unilab'),
-        path.join(homeDirectory, 'mambaforge', 'envs', 'unilab'),
-        path.join(homeDirectory, 'miniconda3', 'envs', 'unilab'),
-        path.join(homeDirectory, 'anaconda3', 'envs', 'unilab'),
-        path.join(homeDirectory, '.conda', 'envs', 'unilab'),
-        path.join(homeDirectory, '.micromamba', 'envs', 'unilab')
       ]
   const visited = new Set()
   for (const candidate of candidates) {
@@ -119,6 +130,75 @@ export async function discoverWorkbenchPythonEnvironment({
   )
 }
 
+/**
+ * Finds the source checkout backing the selected Python environment.
+ * Explicit selection remains available for controlled testing. Otherwise the
+ * interpreter resolves `unilabos` exactly as Python would; ordinary wheel
+ * installs intentionally return null, while editable installs resolve to their
+ * real checkout without making assumptions about Workspace layout.
+ */
+export async function discoverWorkbenchOsProject({
+  selected,
+  pythonEnvironment,
+  platform = process.platform
+}) {
+  if (selected) {
+    const resolved = await validWorkbenchOsProject(selected)
+    if (resolved) return resolved
+    throw new Error(
+      `Selected Uni-Lab-OS project is missing project metadata or unilabos/: ${selected}`
+    )
+  }
+  if (!pythonEnvironment) return null
+  try {
+    const python = platform === 'win32'
+      ? path.join(pythonEnvironment, 'python.exe')
+      : path.join(pythonEnvironment, 'bin', 'python')
+    const { stdout } = await execFileAsync(python, [
+      '-c',
+      [
+        'import importlib.util, pathlib',
+        "spec = importlib.util.find_spec('unilabos')",
+        "print(pathlib.Path(spec.origin).resolve().parent.parent if spec and spec.origin else '')"
+      ].join('; ')
+    ], {
+      timeout: 5_000,
+      windowsHide: true
+    })
+    const candidate = stdout.trim()
+    if (!candidate || ['site-packages', 'dist-packages'].includes(
+      path.basename(candidate)
+    )) return null
+    return validWorkbenchOsProject(candidate)
+  } catch {
+    return null
+  }
+}
+
+async function validWorkbenchOsProject(candidate) {
+  try {
+    const resolved = await realpath(candidate)
+    const [projectStat, packageStat] = await Promise.all([
+      stat(resolved),
+      stat(path.join(resolved, 'unilabos'))
+    ])
+    if (!projectStat.isDirectory() || !packageStat.isDirectory()) return null
+    const metadataCandidates = ['pyproject.toml', 'setup.py']
+    const metadataChecks = await Promise.all(metadataCandidates.map(async name => {
+      try {
+        await access(path.join(resolved, name), fsConstants.R_OK)
+        return true
+      } catch {
+        return false
+      }
+    }))
+    if (!metadataChecks.some(Boolean)) return null
+    return resolved
+  } catch {
+    return null
+  }
+}
+
 async function validWorkbenchPythonEnvironment(candidate, platform) {
   try {
     const resolved = await realpath(candidate)
@@ -129,6 +209,13 @@ async function validWorkbenchPythonEnvironment(candidate, platform) {
       executable,
       fsConstants.R_OK | fsConstants.X_OK
     )))
+    await execFileAsync(executables[0], [
+      '-c',
+      'from unilabos.app.main import main'
+    ], {
+      timeout: 5_000,
+      windowsHide: true
+    })
     return resolved
   } catch {
     return null

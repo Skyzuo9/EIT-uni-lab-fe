@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "source": "Uni-Lab-OS/.cursor/skills",
+  "skills": [
+    "add-device",
+    "add-resource",
+    "add-workstation",
+    "create-device-package",
+    "create-device-skill",
+    "unilab-domain-repo-builder"
+  ]
+}

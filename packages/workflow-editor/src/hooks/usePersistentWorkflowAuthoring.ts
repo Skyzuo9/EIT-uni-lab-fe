@@ -1069,6 +1069,20 @@ export function usePersistentWorkflowAuthoring({
     ideBridge,
     sourceProjection
   })
+  const selectedActionHasMaterialPort = Boolean(
+    canvasNodeEditor.selectedActionEditor?.fields.some(
+      (field) => field.editorControl === 'material_port'
+    )
+  )
+  useEffect(() => {
+    if (!actionParametersOpen || !selectedActionHasMaterialPort) return
+    void taskPanel.refreshResourceSlotOptions()
+  }, [
+    actionParametersOpen,
+    selectedActionHasMaterialPort,
+    selectedNodeUuid,
+    taskPanel.refreshResourceSlotOptions
+  ])
 
   const workflowStart = usePersistentWorkflowStartFlow({
     context: {

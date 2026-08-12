@@ -45,6 +45,12 @@ interface WorkflowOutputProps {
   resizable?: boolean
 }
 
+/**
+ * 展示工作流任务（WorkflowTask）的节点结果、事件和异常摘要。
+ *
+ * @param props 运行输出的投影数据、选择状态与交互回调。
+ * @returns 可折叠的运行输出区域。
+ */
 export function WorkflowOutput({
   expanded,
   activeTab,
@@ -87,6 +93,9 @@ export function WorkflowOutput({
   const selectedNodeLog = selectedNode && selectedNode.state !== 'failed'
     ? workflowNodeLogText(selectedNode, events)
     : ''
+  const selectedNodeName = selectedNode
+    ? workflowOutputNodeName(selectedNode, nodeNames)
+    : '未命名节点'
   const errorCount = nodeFailures.length + (error ? 1 : 0)
 
   return (
@@ -181,6 +190,7 @@ export function WorkflowOutput({
           selectedNodeFailure={selectedNodeFailure}
           selectedNodeHasResult={selectedNodeHasResult}
           selectedNodeLog={selectedNodeLog}
+          selectedNodeName={selectedNodeName}
           selectedNodeId={selectedNodeId}
           pausedBeforeNodeId={pausedBeforeNodeId}
           onNodeSelect={onNodeSelect}
@@ -191,7 +201,12 @@ export function WorkflowOutput({
   )
 }
 
-/** 承载展开态的三个输出面板，使外层模块只管理折叠与标签页接口。 */
+/**
+ * 承载展开态的三个输出面板，使外层模块只管理折叠与标签页接口。
+ *
+ * @param props 节点、事件、异常及当前选择状态。
+ * @returns 当前标签对应的运行输出面板。
+ */
 function WorkflowOutputBody({
   activeTab,
   nodes,
@@ -206,6 +221,7 @@ function WorkflowOutputBody({
   selectedNodeFailure,
   selectedNodeHasResult,
   selectedNodeLog,
+  selectedNodeName,
   selectedNodeId,
   pausedBeforeNodeId,
   onNodeSelect,
@@ -224,6 +240,7 @@ function WorkflowOutputBody({
   selectedNodeFailure: WorkflowNodeFailureLog | undefined
   selectedNodeHasResult: boolean
   selectedNodeLog: string
+  selectedNodeName: string
   selectedNodeId: string | null
   pausedBeforeNodeId: string | null
   onNodeSelect: (nodeId: string) => void
@@ -241,6 +258,7 @@ function WorkflowOutputBody({
       >
         <WorkflowOutputNodeList
           nodes={nodes}
+          nodeNames={nodeNames}
           selectedNodeId={selectedNodeId}
           pausedBeforeNodeId={pausedBeforeNodeId}
           onNodeSelect={onNodeSelect}
@@ -255,12 +273,9 @@ function WorkflowOutputBody({
               >
                 <header>
                   <strong>{selectedNodeFailure.nodeName} 执行失败</strong>
-                  <small title={`节点 ID：${selectedNodeFailure.sourceNodeId}`}>
-                    {selectedNodeFailure.sourceNodeId}
-                    {selectedNodeFailure.attempt > 0
-                      ? ` · 第 ${selectedNodeFailure.attempt} 次尝试`
-                      : ''}
-                  </small>
+                  {selectedNodeFailure.attempt > 0 && (
+                    <small>第 {selectedNodeFailure.attempt} 次尝试</small>
+                  )}
                 </header>
                 {selectedNodeFailure.log ? (
                   <pre aria-label={`${selectedNodeFailure.nodeName} 错误日志`}>
@@ -274,16 +289,13 @@ function WorkflowOutputBody({
             {selectedNodeLog && (
               <article className="workflow-runtime__node-log">
                 <header>
-                  <strong>
-                    {nodeNames[selectedNode.sourceNodeId] ||
-                      selectedNode.sourceNodeId} 运行日志
-                  </strong>
+                  <strong>{selectedNodeName} 运行日志</strong>
                   {selectedNode.attempt > 0 && (
                     <small>第 {selectedNode.attempt} 次尝试</small>
                   )}
                 </header>
                 <pre
-                  aria-label={`${nodeNames[selectedNode.sourceNodeId] || selectedNode.sourceNodeId} 运行日志`}
+                  aria-label={`${selectedNodeName} 运行日志`}
                 >
                   {selectedNodeLog}
                 </pre>
@@ -292,7 +304,7 @@ function WorkflowOutputBody({
             {selectedNodeHasResult && (
               <pre
                 className="workflow-runtime__node-result"
-                aria-label={`${nodeNames[selectedNode.sourceNodeId] || selectedNode.sourceNodeId} 节点结果`}
+                aria-label={`${selectedNodeName} 节点结果`}
               >
                 {JSON.stringify(selectedNode.result, null, 2)}
               </pre>
@@ -315,7 +327,7 @@ function WorkflowOutputBody({
           )}
           {[...events].reverse().slice(0, 50).map((event) => {
             const nodeName = event.nodeId
-              ? eventNodeNames.get(event.nodeId) || event.nodeId
+              ? eventNodeNames.get(event.nodeId) || '未命名节点'
               : '整体运行'
             return (
               <div
@@ -336,11 +348,6 @@ function WorkflowOutputBody({
                 </span>
                 <em
                   data-node-id={event.nodeId || undefined}
-                  title={
-                    event.nodeId && nodeName !== event.nodeId
-                      ? `节点 ID：${event.nodeId}`
-                      : undefined
-                  }
                 >
                   {nodeName}
                 </em>
@@ -377,12 +384,9 @@ function WorkflowOutputBody({
               >
                 <header>
                   <strong>{failure.nodeName} 执行失败</strong>
-                  <small title={`节点 ID：${failure.sourceNodeId}`}>
-                    {failure.sourceNodeId}
-                    {failure.attempt > 0
-                      ? ` · 第 ${failure.attempt} 次尝试`
-                      : ''}
-                  </small>
+                  {failure.attempt > 0 && (
+                    <small>第 {failure.attempt} 次尝试</small>
+                  )}
                 </header>
                 {failure.log ? (
                   <pre aria-label={`${failure.nodeName} 错误日志`}>
@@ -404,14 +408,21 @@ function WorkflowOutputBody({
   )
 }
 
-/** 把运行节点状态投影为可选择列表，隔离暂停和选中态的展示分支。 */
+/**
+ * 把运行节点状态投影为可选择列表，隔离暂停和选中态的展示分支。
+ *
+ * @param props 运行节点、名称映射、选择状态与选择回调。
+ * @returns 仅以节点名称为主身份的动态节点列表。
+ */
 function WorkflowOutputNodeList({
   nodes,
+  nodeNames,
   selectedNodeId,
   pausedBeforeNodeId,
   onNodeSelect
 }: {
   nodes: readonly WorkflowOutputNode[]
+  nodeNames: Readonly<Record<string, string>>
   selectedNodeId: string | null
   pausedBeforeNodeId: string | null
   onNodeSelect: (nodeId: string) => void
@@ -420,6 +431,7 @@ function WorkflowOutputNodeList({
     <div className="workflow-runtime__node-list">
       {nodes.map((node) => {
         const pausedBefore = pausedBeforeNodeId === node.sourceNodeId
+        const nodeName = workflowOutputNodeName(node, nodeNames)
         return (
           <button
             key={node.nodeId}
@@ -429,6 +441,9 @@ function WorkflowOutputNodeList({
               selectedNodeId === node.sourceNodeId ? 'is-selected' : '',
               pausedBefore ? 'is-paused-before' : ''
             ].filter(Boolean).join(' ')}
+            aria-label={`${nodeName}，${nodeTypeLabel(node.nodeType)}，${
+              pausedBefore ? '暂停位置' : nodeStateLabel(node.state)
+            }`}
             onClick={() => onNodeSelect(node.sourceNodeId)}
           >
             <i
@@ -436,9 +451,10 @@ function WorkflowOutputNodeList({
                 pausedBefore ? 'is-paused-before' : `is-${node.state}`
               }
             />
-            <span className="is-node-id">{node.sourceNodeId}</span>
-            <span className="is-node-type">
-              {nodeTypeLabel(node.nodeType)}
+            <span className="is-node-name">{nodeName}</span>
+            <span className="is-node-meta">
+              <span>{nodeTypeLabel(node.nodeType)}</span>
+              {node.attempt > 0 && <span>第 {node.attempt} 次</span>}
             </span>
             <em>
               {pausedBefore ? '暂停位置' : nodeStateLabel(node.state)}
@@ -559,6 +575,14 @@ function workflowNodeLogText(
   }).join('\n\n')
 }
 
+/**
+ * 汇总工作流节点作业（WorkflowNodeJob）及异常事件中的失败日志。
+ *
+ * @param nodes 运行节点投影。
+ * @param nodeNames 工作流节点 UUID 到用户名称的只读映射。
+ * @param events 运行事件投影。
+ * @returns 按节点归并的失败日志列表。
+ */
 function workflowNodeFailureLogs(
   nodes: readonly WorkflowOutputNode[],
   nodeNames: Readonly<Record<string, string>>,
@@ -582,10 +606,7 @@ function workflowNodeFailureLogs(
       return {
         nodeId: node.nodeId,
         sourceNodeId,
-        nodeName:
-          nodeNames[sourceNodeId] ||
-          nodeNames[node.nodeId] ||
-          sourceNodeId,
+        nodeName: workflowOutputNodeName(node, nodeNames),
         attempt: node.attempt,
         log: failureLogText(
           node.result,
@@ -603,7 +624,7 @@ function workflowNodeFailureLogs(
     failures.push({
       nodeId: `${sourceNodeId}:event:${event.seq}`,
       sourceNodeId,
-      nodeName: eventNodeNames.get(sourceNodeId) || sourceNodeId,
+      nodeName: eventNodeNames.get(sourceNodeId) || '未命名节点',
       attempt: 0,
       log: failureLogText(event.detail ?? {})
     })
@@ -735,19 +756,55 @@ function eventLabel(type: string): string {
   return EVENT_TYPE_LABELS[type] || '运行事件'
 }
 
+/**
+ * 构建事件节点身份到用户可读节点名称的映射。
+ *
+ * @param runNodes 运行节点投影。
+ * @param nodeNames 工作流节点 UUID 到用户名称的只读映射。
+ * @returns 不包含身份回退值的名称映射。
+ */
 function workflowEventNodeNames(
   runNodes: readonly WorkflowOutputNode[],
   nodeNames: Readonly<Record<string, string>>
 ): ReadonlyMap<string, string> {
-  const result = new Map(Object.entries(nodeNames))
+  const result = new Map<string, string>()
+  for (const [nodeId, nodeName] of Object.entries(nodeNames)) {
+    const displayName = nodeName.trim()
+    if (displayName && displayName !== nodeId) {
+      result.set(nodeId, displayName)
+    }
+  }
   for (const node of runNodes) {
     const sourceNodeId = node.sourceNodeId || node.nodeId
-    const displayName =
-      nodeNames[sourceNodeId] ||
-      nodeNames[node.nodeId] ||
-      sourceNodeId
+    const displayName = workflowOutputNodeName(node, nodeNames)
     result.set(sourceNodeId, displayName)
     result.set(node.nodeId, displayName)
   }
   return result
+}
+
+/**
+ * 解析运行输出节点的可见名称，并阻止节点或作业身份回退到界面。
+ *
+ * @param node 工作流节点作业（WorkflowNodeJob）的运行输出投影。
+ * @param nodeNames 工作流节点 UUID 到用户名称的只读映射。
+ * @returns 可直接展示的节点名称；缺少有效名称时返回“未命名节点”。
+ */
+function workflowOutputNodeName(
+  node: WorkflowOutputNode,
+  nodeNames: Readonly<Record<string, string>>
+): string {
+  const candidates = [
+    nodeNames[node.sourceNodeId],
+    nodeNames[node.nodeId]
+  ]
+  for (const candidate of candidates) {
+    const displayName = candidate?.trim()
+    if (
+      displayName &&
+      displayName !== node.sourceNodeId &&
+      displayName !== node.nodeId
+    ) return displayName
+  }
+  return '未命名节点'
 }

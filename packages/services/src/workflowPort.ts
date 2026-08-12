@@ -22,6 +22,10 @@ import type {
 } from './workflowAuthoringContracts'
 import type { WorkflowMaterialSourceCatalogSnapshot } from './workflowMaterialSource'
 import type {
+  DebugWorkflowTaskCommand,
+  DebugWorkflowTaskCommandRequest,
+  DebugWorkflowTaskCreateRequest,
+  DebugWorkflowTaskProjection,
   WorkflowEventSubscription,
   WorkflowNodeJob,
   WorkflowNodeJobFeedbackPage,
@@ -104,6 +108,16 @@ export interface WorkflowRuntimePort {
   createWorkflowTask: (
     request: WorkflowTaskCreateRequest
   ) => Promise<WorkflowTask>
+  createDebugWorkflowTask: (
+    request: DebugWorkflowTaskCreateRequest
+  ) => Promise<WorkflowTask>
+  getDebugWorkflowTask: (
+    taskUuid: string
+  ) => Promise<DebugWorkflowTaskProjection>
+  commandDebugWorkflowTask: (
+    taskUuid: string,
+    request: DebugWorkflowTaskCommandRequest
+  ) => Promise<DebugWorkflowTaskCommand>
   listWorkflowTasks: (
     query?: WorkflowTaskListQuery
   ) => Promise<WorkflowTaskPage>

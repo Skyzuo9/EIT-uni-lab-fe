@@ -1,11 +1,11 @@
 .workflow:global(.workflow-runtime) :global(.wf-node--material-source) {
   display: flex;
-  width: 136px;
-  min-width: 136px;
-  max-width: 136px;
-  min-height: 126px;
+  width: 184px;
+  min-width: 184px;
+  max-width: 184px;
+  min-height: 72px;
   align-items: center;
-  flex-direction: column;
+  flex-direction: row;
   gap: 8px;
   color: var(--unilab-color-text);
   border: 0;
@@ -27,8 +27,21 @@
 
 .workflow :global(.wf-node__material-source-label) {
   display: grid;
+  box-sizing: border-box;
   width: 104px;
+  padding: 2px 4px;
   gap: 2px;
+  border-radius: var(--unilab-radius-sm);
+  background: color-mix(
+    in srgb,
+    var(--unilab-color-canvas) 94%,
+    transparent
+  );
+  box-shadow: 0 0 0 3px color-mix(
+    in srgb,
+    var(--unilab-color-canvas) 88%,
+    transparent
+  );
 }
 
 .workflow :global(.wf-node__material-source-label) strong,
@@ -36,6 +49,15 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.workflow :global(.wf-node__material-source-port) {
+  position: relative;
+  display: grid;
+  width: 72px;
+  height: 66px;
+  flex: 0 0 auto;
+  place-items: center;
 }
 
 .workflow :global(.wf-node__material-source-label) strong {
@@ -97,16 +119,43 @@
 .workflow :global(.wf-node__material-source-handle):global(.connecting),
 .workflow :global(.wf-node__material-source-handle):global(.connected) {
   z-index: 3;
-  top: auto;
-  bottom: 0;
   width: 12px;
   height: 12px;
   border: 3px solid var(--wf-material-accent);
   background: var(--unilab-color-surface);
+}
+
+.workflow :global(.wf-node__material-source-port)
+  > :global(.wf-node__material-source-handle.react-flow__handle-top) {
+  top: 0;
+  bottom: auto;
+  transform: translate(-50%, -50%);
+}
+
+.workflow :global(.wf-node__material-source-port)
+  > :global(.wf-node__material-source-handle.react-flow__handle-right) {
+  right: 0;
+  left: auto;
+  transform: translate(50%, -50%);
+}
+
+.workflow :global(.wf-node__material-source-port)
+  > :global(.wf-node__material-source-handle.react-flow__handle-bottom) {
+  top: auto;
+  bottom: 0;
   transform: translate(-50%, 50%);
 }
 
+.workflow :global(.wf-node__material-source-port)
+  > :global(.wf-node__material-source-handle.react-flow__handle-left) {
+  right: auto;
+  left: 0;
+  transform: translate(-50%, -50%);
+}
+
 .workflow :global(.wf-node__material-source-state) {
+  width: max-content;
+  max-width: 100%;
   color: var(--unilab-color-text-muted);
   font: 600 10px/14px var(--unilab-font-sans);
 }

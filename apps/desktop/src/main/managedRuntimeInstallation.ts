@@ -11,7 +11,7 @@ import {
   stat,
   writeFile
 } from 'node:fs/promises'
-import { basename, join, resolve } from 'node:path'
+import { basename, delimiter, dirname, join, resolve } from 'node:path'
 
 import type { LocalRuntimeModeInfo } from '../shared/localRuntime'
 
@@ -38,11 +38,20 @@ export interface ManagedRuntimePaths {
   manifestSha256: string
 }
 
+export interface ManagedRuntimeInspection {
+  installed: boolean
+  paths: ManagedRuntimePaths
+}
+
 /** 执行 Constructor 载荷，把 Runtime 安装到 prefix，并把诊断信息写入 logPath。 */
 export type RuntimeInstallerRunner = (
   installerPath: string,
   prefix: string,
   logPath: string
+) => Promise<void>
+
+export type RuntimeInstallationVerifier = (
+  paths: ManagedRuntimePaths
 ) => Promise<void>
 
 interface ManagedRuntimeInstallationOptions {
@@ -51,6 +60,7 @@ interface ManagedRuntimeInstallationOptions {
   platform?: NodeJS.Platform
   architecture?: string
   runInstaller?: RuntimeInstallerRunner
+  verifyInstallation?: RuntimeInstallationVerifier
 }
 
 /**
@@ -63,6 +73,7 @@ export class ManagedRuntimeInstallation {
   private readonly platform: NodeJS.Platform
   private readonly architecture: string
   private readonly runInstaller: RuntimeInstallerRunner
+  private readonly verifyInstallation: RuntimeInstallationVerifier
   private pending: Promise<ManagedRuntimePaths> | null = null
 
   constructor(options: ManagedRuntimeInstallationOptions) {
@@ -73,6 +84,21 @@ export class ManagedRuntimeInstallation {
     this.runInstaller = options.runInstaller ?? runConstructorInstaller(
       this.platform
     )
+    this.verifyInstallation = options.verifyInstallation
+      ?? verifyRuntimeInstallation
+  }
+
+  /** 检查载荷及固定版本前缀，不执行安装或修复。 */
+  async inspect(): Promise<ManagedRuntimeInspection> {
+    const manifest = await this.readManifest()
+    if (basename(manifest.installerFile) !== manifest.installerFile) {
+      throw new Error('Runtime installerFile 必须是文件名，不能包含路径')
+    }
+    const paths = this.pathsFor(manifest)
+    return {
+      installed: await this.isValidInstallation(paths),
+      paths
+    }
   }
 
   ensureInstalled(): Promise<ManagedRuntimePaths> {
@@ -113,7 +139,7 @@ export class ManagedRuntimeInstallation {
         edgeCommandMode: 'generated',
         customEdgeCommand: {
           executable: '',
-          workingDirectory: '',
+          workingDirectory: '{{workspace}}',
           args: [],
           environment: []
         }
@@ -126,41 +152,19 @@ export class ManagedRuntimeInstallation {
    * Constructor 会把绝对前缀写入入口脚本，因此安装过程必须直接使用最终前缀。
    */
   private async install(): Promise<ManagedRuntimePaths> {
-    const payloadDirectory = join(
-      this.resourcesDirectory,
-      'runtime-installer'
-    )
-    const manifest = await this.readManifest()
-    if (basename(manifest.installerFile) !== manifest.installerFile) {
-      throw new Error('Runtime installerFile 必须是文件名，不能包含路径')
-    }
+    const payloadDirectory = join(this.resourcesDirectory, 'runtime-installer')
+    const manifest = await this.readVerifiedManifest()
     const installerPath = join(payloadDirectory, manifest.installerFile)
-    const actualSha256 = await sha256File(installerPath)
-    if (actualSha256 !== manifest.sha256) {
-      throw new Error(
-        `Runtime 安装器校验失败：期望 ${manifest.sha256}，实际 ${actualSha256}`
-      )
-    }
-
-    const versionsDirectory = join(
-      this.dataDirectory,
-      'managed-runtime',
-      'versions'
-    )
-    const versionName = [
-      manifest.runtimeVersion,
-      manifest.platform,
-      manifest.sha256.slice(0, 16)
-    ].join('-')
-    const prefix = join(versionsDirectory, versionName)
-    const result = runtimePaths(prefix, manifest)
+    const result = this.pathsFor(manifest)
+    const versionsDirectory = join(this.dataDirectory, 'managed-runtime', 'versions')
+    const prefix = result.prefix
     const runtimeRoot = join(this.dataDirectory, 'managed-runtime')
     await mkdir(versionsDirectory, { recursive: true })
     const releaseLock = await acquireInstallLock(
       join(runtimeRoot, 'install.lock')
     )
     try {
-      if (await validInstallation(result, this.platform)) {
+      if (await this.isValidInstallation(result)) {
         await this.writeActive(result)
         return result
       }
@@ -176,9 +180,7 @@ export class ManagedRuntimeInstallation {
       )
       try {
         await this.runInstaller(installerPath, prefix, installerLogPath)
-        if (!await validInstallation(result, this.platform)) {
-          throw new Error('Constructor 完成后缺少 python、unilab 或 unilab-supervisor')
-        }
+        await this.requireValidInstallation(result)
         await this.writeActive(result)
         return result
       } catch (error) {
@@ -207,6 +209,60 @@ export class ManagedRuntimeInstallation {
       )
     }
     return manifest
+  }
+
+  private async readVerifiedManifest(): Promise<ManagedRuntimeManifest> {
+    const manifest = await this.readManifest()
+    if (basename(manifest.installerFile) !== manifest.installerFile) {
+      throw new Error('Runtime installerFile 必须是文件名，不能包含路径')
+    }
+    const installerPath = join(
+      this.resourcesDirectory,
+      'runtime-installer',
+      manifest.installerFile
+    )
+    const actualSha256 = await sha256File(installerPath)
+    if (actualSha256 !== manifest.sha256) {
+      throw new Error(
+        `Runtime 安装器校验失败：期望 ${manifest.sha256}，实际 ${actualSha256}`
+      )
+    }
+    return manifest
+  }
+
+  private pathsFor(manifest: ManagedRuntimeManifest): ManagedRuntimePaths {
+    const versionName = [
+      manifest.runtimeVersion,
+      manifest.platform,
+      manifest.sha256.slice(0, 16)
+    ].join('-')
+    return runtimePaths(join(
+      this.dataDirectory,
+      'managed-runtime',
+      'versions',
+      versionName
+    ), manifest)
+  }
+
+  private async isValidInstallation(paths: ManagedRuntimePaths): Promise<boolean> {
+    if (!await validInstallation(paths, this.platform)) return false
+    try {
+      await this.verifyInstallation(paths)
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  private async requireValidInstallation(paths: ManagedRuntimePaths): Promise<void> {
+    if (!await validInstallation(paths, this.platform)) {
+      throw new Error('Constructor 完成后缺少 python、unilab 或 unilab-supervisor')
+    }
+    try {
+      await this.verifyInstallation(paths)
+    } catch (error) {
+      throw new Error('Constructor 完成后 `unilab -h` 验证失败', { cause: error })
+    }
   }
 
   private async writeActive(result: ManagedRuntimePaths): Promise<void> {
@@ -337,6 +393,31 @@ function runConstructorInstaller(
       : [installerPath, '-b', '-p', prefix]
     await run(command, args, logPath)
   }
+}
+
+/** 以干净 PYTHONPATH 执行最终验收命令，成功标准与安装文档保持一致。 */
+function verifyRuntimeInstallation(paths: ManagedRuntimePaths): Promise<void> {
+  const runtimePath = [
+    dirname(paths.unilabExecutable),
+    dirname(paths.pythonExecutable),
+    process.env['PATH']
+  ].filter((value): value is string => Boolean(value)).join(delimiter)
+  return new Promise((resolvePromise, reject) => {
+    execFile(paths.unilabExecutable, ['-h'], {
+      encoding: 'utf8',
+      maxBuffer: 4 * 1024 * 1024,
+      timeout: 60_000,
+      windowsHide: true,
+      env: {
+        ...process.env,
+        PATH: runtimePath,
+        PYTHONPATH: ''
+      }
+    }, (error) => {
+      if (error) reject(error)
+      else resolvePromise()
+    })
+  })
 }
 
 /**
