@@ -95,6 +95,31 @@ describe('device Action D1A preparation', () => {
       duration: 30
     })
   })
+
+  it('submits only fields declared by the frozen Action template', () => {
+    const action = liveAction()
+    action.inputSchema = {
+      unilabos_device_id: { type: 'string', default: '' },
+      sample_id: { type: 'string', default: '' },
+      require_material: { type: 'boolean', default: false }
+    }
+    const template = {
+      ...actionTemplate(),
+      goal: {
+        sample_id: 'sample_id',
+        require_material: 'require_material'
+      }
+    }
+
+    expect(serializeDeviceActionInput(action, {
+      unilabos_device_id: '',
+      sample_id: 'debug-sample',
+      require_material: false
+    }, template)).toEqual({
+      sample_id: 'debug-sample',
+      require_material: false
+    })
+  })
 })
 
 const UUID_1 = '10000000-0000-4000-8000-000000000001'
