@@ -18,6 +18,36 @@ afterEach(() => {
 })
 
 describe('WorkflowTask runtime port', () => {
+  it('preflights debugger launch requirements before creating a task', async () => {
+    const preflight = {
+      workflow_uuid: WORKFLOW_UUID,
+      workflow_revision: 7,
+      status: 'needs_input',
+      preflight_hash: `sha256:${'a'.repeat(64)}`,
+      requirements: [{ id: 'requirement-1', kind: 'value' }],
+      diagnostics: [],
+      launch_overrides: []
+    }
+    const request = vi.fn().mockResolvedValue({ code: 0, data: preflight })
+    const runtime = taskPort(request)
+
+    await expect(runtime.preflightDebugWorkflowTask({
+      workflow_uuid: WORKFLOW_UUID,
+      start_node_uuids: [JOB_UUID],
+      breakpoint_node_uuids: [],
+      input: {},
+      launch_overrides: []
+    })).resolves.toEqual(preflight)
+
+    expect(request).toHaveBeenCalledWith(
+      '/api/v1/debug/workflow-tasks:preflight',
+      expect.objectContaining({
+        method: 'POST',
+        body: expect.stringContaining('"start_node_uuids"')
+      })
+    )
+  })
+
   it('launches and controls a debugger through the dedicated Hold-scoped API', async () => {
     const task = { uuid: TASK_UUID, workflow_uuid: WORKFLOW_UUID }
     const projection = {

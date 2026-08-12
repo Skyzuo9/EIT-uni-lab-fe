@@ -1,4 +1,6 @@
 import type {
+  DebugLaunchOverride,
+  DebugWorkflowTaskPreflight,
   WorkflowRuntimePort,
   WorkflowTask,
   WorkflowTaskCommandType,
@@ -30,8 +32,16 @@ export function useWorkflowTaskRuntime(
   createDebug: (
     startNodeUuid: string,
     breakpointNodeUuids: readonly string[],
-    input?: Record<string, unknown>
+    input?: Record<string, unknown>,
+    launchOverrides?: readonly DebugLaunchOverride[],
+    preflightHash?: string
   ) => Promise<WorkflowTask>
+  preflightDebug: (
+    startNodeUuid: string,
+    breakpointNodeUuids: readonly string[],
+    input?: Record<string, unknown>,
+    launchOverrides?: readonly DebugLaunchOverride[]
+  ) => Promise<DebugWorkflowTaskPreflight>
   debugCommand: (type: 'step' | 'continue') => Promise<void>
   command: (type: WorkflowTaskCommandType) => Promise<void>
   refresh: () => Promise<void>
@@ -71,8 +81,30 @@ export function useWorkflowTaskRuntime(
      */
     create: (runMode, input, targetNodeUuid) =>
       controller.create(runMode, input, targetNodeUuid),
-    createDebug: (startNodeUuid, breakpointNodeUuids, input) =>
-      controller.createDebug(startNodeUuid, breakpointNodeUuids, input),
+    createDebug: (
+      startNodeUuid,
+      breakpointNodeUuids,
+      input,
+      launchOverrides,
+      preflightHash
+    ) => controller.createDebug(
+      startNodeUuid,
+      breakpointNodeUuids,
+      input,
+      launchOverrides,
+      preflightHash
+    ),
+    preflightDebug: (
+      startNodeUuid,
+      breakpointNodeUuids,
+      input,
+      launchOverrides
+    ) => controller.preflightDebug(
+      startNodeUuid,
+      breakpointNodeUuids,
+      input,
+      launchOverrides
+    ),
     debugCommand: (type) => controller.debugCommand(type),
     command: (type) => controller.command(type),
     refresh: () => controller.refresh(),

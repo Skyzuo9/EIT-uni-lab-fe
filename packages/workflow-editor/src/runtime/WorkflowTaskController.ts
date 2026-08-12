@@ -1,5 +1,7 @@
 import type {
+  DebugLaunchOverride,
   DebugWorkflowTaskCommand,
+  DebugWorkflowTaskPreflight,
   DebugWorkflowTaskProjection,
   WorkflowEventSubscription,
   WorkflowNodeJob,
@@ -144,7 +146,9 @@ export class WorkflowTaskController {
   async createDebug(
     startNodeUuid: string,
     breakpointNodeUuids: readonly string[],
-    input?: Record<string, unknown>
+    input?: Record<string, unknown>,
+    launchOverrides: readonly DebugLaunchOverride[] = [],
+    preflightHash?: string
   ): Promise<WorkflowTask> {
     this.install({ actionError: null })
     try {
@@ -153,6 +157,10 @@ export class WorkflowTaskController {
         start_node_uuids: [startNodeUuid],
         breakpoint_node_uuids: [...breakpointNodeUuids],
         ...(input === undefined ? {} : { input }),
+        launch_overrides: [...launchOverrides],
+        ...(preflightHash === undefined
+          ? {}
+          : { preflight_hash: preflightHash }),
         meta_data: { source: 'unilab-workbench-debugger' }
       })
       if (this.active) {
@@ -160,6 +168,27 @@ export class WorkflowTaskController {
         void this.requestRefresh(created.uuid)
       }
       return created
+    } catch (error) {
+      this.install({ actionError: errorMessage(error), loading: false })
+      throw error
+    }
+  }
+
+  async preflightDebug(
+    startNodeUuid: string,
+    breakpointNodeUuids: readonly string[],
+    input?: Record<string, unknown>,
+    launchOverrides: readonly DebugLaunchOverride[] = []
+  ): Promise<DebugWorkflowTaskPreflight> {
+    this.install({ actionError: null })
+    try {
+      return await this.runtime.preflightDebugWorkflowTask({
+        workflow_uuid: this.workflowUuid,
+        start_node_uuids: [startNodeUuid],
+        breakpoint_node_uuids: [...breakpointNodeUuids],
+        ...(input === undefined ? {} : { input }),
+        launch_overrides: [...launchOverrides]
+      })
     } catch (error) {
       this.install({ actionError: errorMessage(error), loading: false })
       throw error
