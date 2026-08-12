@@ -7,7 +7,10 @@ import {
   DeviceLockControl,
   UnlockConfirmationDialog
 } from './DevicePanel'
-import { deviceActionReadiness } from './DeviceActionAvailability'
+import {
+  deviceActionReadiness,
+  projectDeviceActionTask
+} from './DeviceActionAvailability'
 
 describe('device action Runtime availability', () => {
   /** 设备目录缺少实际物料（Material）身份时应在提交前给出通俗提示。 */
@@ -190,6 +193,53 @@ describe('device action Runtime availability', () => {
     expect(markup).toContain('Action 运行日志')
     expect(markup).toContain('&quot;events&quot;')
     expect(markup).toContain('&quot;progress&quot;: 0.5')
+  })
+
+  it('shows the latest device wait reason when the action reports one', () => {
+    const state = projectDeviceActionTask({
+      task_uuid: '10000000-0000-4000-8000-000000000001',
+      job_uuid: '10000000-0000-4000-8000-000000000002',
+      status: 'running',
+      control_status: 'active',
+      cleanup_status: 'none',
+      output: {},
+      error_info: [],
+      job_status: 'running',
+      feedback_cursor: 1
+    }, [{
+      uuid: '10000000-0000-4000-8000-000000000010',
+      create_time: '2026-08-02T00:00:01Z',
+      update_time: '2026-08-02T00:00:01Z',
+      meta_data: {},
+      workflow_node_job_uuid: '10000000-0000-4000-8000-000000000002',
+      sequence: 1,
+      feedback_type: 'progress',
+      data: { message: '等待 S04 搅拌位物料在位' },
+      observed_at: '2026-08-02T00:00:01Z',
+      received_at: '2026-08-02T00:00:01Z',
+      idempotency_key: 'feedback-wait'
+    }])
+
+    expect(state.message).toBe('等待 S04 搅拌位物料在位')
+  })
+
+  it('distinguishes a completed device job from OS task cleanup', () => {
+    const state = projectDeviceActionTask({
+      task_uuid: '10000000-0000-4000-8000-000000000001',
+      job_uuid: '10000000-0000-4000-8000-000000000002',
+      status: 'running',
+      control_status: 'active',
+      cleanup_status: 'running',
+      output: { position: 'safe' },
+      error_info: [],
+      job_status: 'succeeded',
+      feedback_cursor: 0
+    }, [])
+
+    expect(state).toMatchObject({
+      kind: 'finishing',
+      message: '设备动作已完成，OS 正在确认收尾'
+    })
   })
 })
 

@@ -359,7 +359,8 @@ export default function DevicePanel({
 
   const activeTaskUuid = runOperation?.state && (
     runOperation.state.kind === 'accepted' ||
-    runOperation.state.kind === 'running'
+    runOperation.state.kind === 'running' ||
+    runOperation.state.kind === 'finishing'
   ) && 'taskUuid' in runOperation.state
     ? runOperation.state.taskUuid
     : null
@@ -393,7 +394,8 @@ export default function DevicePanel({
             }
           }
         })
-      }
+      },
+      pollIntervalMs: 1_000
     })
     return () => recovery.dispose()
   }, [
@@ -421,7 +423,8 @@ export default function DevicePanel({
       !actionCatalog ||
       runOperation?.state.kind === 'submitting' ||
       runOperation?.state.kind === 'accepted' ||
-      runOperation?.state.kind === 'running'
+      runOperation?.state.kind === 'running' ||
+      runOperation?.state.kind === 'finishing'
     ) return
     if (!device.materialUuid) {
       setRunOperation({
