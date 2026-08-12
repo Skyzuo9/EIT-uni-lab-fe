@@ -136,6 +136,28 @@ describe('portable Workbench packaging contract', () => {
     assert.doesNotMatch(packagingScript, /\n\s*'--offline',?\n/u)
   })
 
+  /** 验证 Agent 仅携带 Workbench 实际读取的渲染器归档。 */
+  it('packages a renderer-only Agent archive', async () => {
+    const agentPackagingScript = await readFile(
+      new URL('./agent-payload.mjs', import.meta.url),
+      'utf8'
+    )
+
+    assert.match(
+      agentPackagingScript,
+      /createRendererOnlyAgentArchive\([\s\S]*?join\(destination, 'app\.asar'\)/u
+    )
+    assert.match(
+      agentPackagingScript,
+      /entry === '\/package\.json' \|\| entry\.startsWith\(AGENT_RENDERER_PREFIX\)/u
+    )
+    assert.match(agentPackagingScript, /archiveScope: 'renderer-only'/u)
+    assert.match(
+      agentPackagingScript,
+      /MAX_AGENT_RENDERER_ARCHIVE_BYTES = 40 \* 1024 \* 1024/u
+    )
+  })
+
   /** 验证打包前切断生产部署目录到源码工作区的递归复制链路。 */
   it('removes the pnpm workspace self-link before electron-builder runs', async () => {
     const root = await mkdtemp(join(tmpdir(), 'unilab-desktop-deploy-'))
