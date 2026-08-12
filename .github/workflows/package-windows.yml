@@ -38,7 +38,9 @@ jobs:
         uses: actions/checkout@v6
         with:
           repository: Uni-Lab-OS/Uni-Lab-OS
-          ref: v0.11.3
+          # v0.11.3 predates the Constructor definition. Pin the later runtime
+          # packaging fix whose source version remains 0.11.3.
+          ref: b09c0c048f6de1e5027deb1733da439598c577cf
           path: .runtime-source
 
       - name: Set up Node.js
@@ -68,6 +70,9 @@ jobs:
       - name: Build Windows Runtime
         working-directory: .runtime-source
         run: |
+          if (-not (Test-Path .conda/constructor/construct.yaml)) {
+            throw 'The pinned Uni-Lab OS source does not contain its Constructor definition'
+          }
           mamba install -n constructor-build --override-channels -c conda-forge constructor=3.16.1 conda-standalone=26.3.2.post1 -y
           if ($LASTEXITCODE -ne 0) { throw 'Unable to install Constructor' }
 
