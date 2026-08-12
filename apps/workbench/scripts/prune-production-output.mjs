@@ -46,6 +46,14 @@ export async function prepareProductionOutput(
   return { removedBytes, packagedBytes }
 }
 
+export async function prepareWorkbenchProductionOutput(workbenchDirectory) {
+  const lib = await prepareProductionOutput(join(workbenchDirectory, 'lib'))
+  const pluginsDirectory = join(workbenchDirectory, 'plugins')
+  const pluginMapsRemovedBytes = await pruneSourceMaps(pluginsDirectory)
+  const pluginBytes = await directorySize(pluginsDirectory)
+  return { lib, pluginMapsRemovedBytes, pluginBytes }
+}
+
 function formatMebibytes(bytes) {
   return (bytes / MEBIBYTE).toFixed(1)
 }
@@ -55,10 +63,12 @@ const isDirectRun = process.argv[1]
 
 if (isDirectRun) {
   const workbenchDirectory = join(dirname(fileURLToPath(import.meta.url)), '..')
-  const result = await prepareProductionOutput(join(workbenchDirectory, 'lib'))
-  const packaged = formatMebibytes(result.packagedBytes)
-  const removed = formatMebibytes(result.removedBytes)
+  const result = await prepareWorkbenchProductionOutput(workbenchDirectory)
+  const packaged = formatMebibytes(result.lib.packagedBytes)
+  const removed = formatMebibytes(result.lib.removedBytes)
+  const plugins = formatMebibytes(result.pluginBytes)
+  const pluginMaps = formatMebibytes(result.pluginMapsRemovedBytes)
   console.log(
-    `Workbench production lib ${packaged} MiB，已移除 source map ${removed} MiB`
+    `Workbench production lib ${packaged} MiB（移除 source map ${removed} MiB），插件 ${plugins} MiB（移除 source map ${pluginMaps} MiB）`
   )
 }

@@ -10,7 +10,8 @@ import {
 } from './package-portable.mjs'
 import {
   MAX_PRODUCTION_LIB_BYTES,
-  prepareProductionOutput
+  prepareProductionOutput,
+  prepareWorkbenchProductionOutput
 } from './prune-production-output.mjs'
 
 describe('portable Workbench packaging contract', () => {
@@ -82,6 +83,76 @@ describe('portable Workbench packaging contract', () => {
     )
   })
 
+  it('uses the optimized production shell for pnpm workbench:desktop', async () => {
+    const rootManifest = JSON.parse(await readFile(
+      new URL('../../../package.json', import.meta.url),
+      'utf8'
+    ))
+    const workbenchManifest = JSON.parse(await readFile(
+      new URL('../package.json', import.meta.url),
+      'utf8'
+    ))
+    const desktopManifest = JSON.parse(await readFile(
+      new URL('../../desktop/package.json', import.meta.url),
+      'utf8'
+    ))
+    const desktopConfiguration = await readFile(
+      new URL('../../desktop/electron.vite.config.ts', import.meta.url),
+      'utf8'
+    )
+    const shellBuild = await readFile(
+      new URL('../../desktop/scripts/build-workbench-shell.mjs', import.meta.url),
+      'utf8'
+    )
+    const desktopWatch = await readFile(
+      new URL('./dev-desktop.mjs', import.meta.url),
+      'utf8'
+    )
+
+    assert.equal(
+      rootManifest.scripts['workbench:desktop'],
+      'pnpm --filter @unilab/workbench desktop'
+    )
+    assert.match(
+      workbenchManifest.scripts['build:desktop'],
+      /@unilab\/desktop build:workbench-shell/u
+    )
+    assert.match(
+      workbenchManifest.scripts['build:desktop'],
+      /pnpm build:production/u
+    )
+    assert.match(
+      workbenchManifest.scripts['build:desktop:development'],
+      /@unilab\/desktop build:workbench-shell && pnpm build/u
+    )
+    assert.match(
+      workbenchManifest.scripts.desktop,
+      /dev-desktop\.mjs --production-build$/u
+    )
+    assert.match(
+      workbenchManifest.scripts['desktop:development'],
+      /dev-desktop\.mjs$/u
+    )
+    assert.equal(
+      desktopManifest.scripts['build:workbench-shell'],
+      'node scripts/build-workbench-shell.mjs'
+    )
+    assert.match(desktopConfiguration, /mode === 'workbench-shell'/u)
+    assert.match(shellBuild, /rm\(join\(outputDirectory, 'renderer'\)/u)
+    assert.match(shellBuild, /ignoreConfigWarning: true/u)
+    assert.match(
+      desktopWatch,
+      /const watchMode = productionBuild \? 'production' : 'development'/u
+    )
+    assert.match(desktopWatch, /'--mode',\s*watchMode/u)
+    assert.match(desktopWatch, /await waitForOutput\(bundleWatcher/u)
+    assert.match(
+      desktopWatch,
+      /\[watch\/browser\] Finished with 0 errors/u
+    )
+    assert.match(desktopWatch, /\[watch\/node\] Finished with 0 errors/u)
+  })
+
   it('removes source maps and rejects an oversized production lib', async () => {
     const root = await mkdtemp(join(tmpdir(), 'unilab-workbench-lib-'))
     try {
@@ -123,5 +194,28 @@ describe('portable Workbench packaging contract', () => {
     assert.match(workflow, /UNILAB_RUNTIME_INSTALLER=/u)
     assert.match(workflow, /UNILAB_AGENT_DISTRIBUTION=/u)
     assert.match(workflow, /actions\/upload-artifact@v6/u)
+  })
+
+  it('removes source maps from local Workbench plugins', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'unilab-workbench-output-'))
+    try {
+      await mkdir(join(root, 'lib'), { recursive: true })
+      await mkdir(join(root, 'plugins', 'python'), { recursive: true })
+      await writeFile(join(root, 'lib', 'bundle.js'), 'runtime')
+      await writeFile(join(root, 'lib', 'bundle.js.map'), 'lib-debug')
+      await writeFile(join(root, 'plugins', 'python', 'server.js'), 'plugin')
+      await writeFile(
+        join(root, 'plugins', 'python', 'server.js.map'),
+        'plugin-debug'
+      )
+
+      assert.deepEqual(await prepareWorkbenchProductionOutput(root), {
+        lib: { removedBytes: 9, packagedBytes: 7 },
+        pluginMapsRemovedBytes: 12,
+        pluginBytes: 6
+      })
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
   })
 })

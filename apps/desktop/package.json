@@ -9,6 +9,8 @@
     "dev": "node scripts/run-electron-vite.mjs dev",
     "prebuild": "pnpm --filter @unilab/device-card-host build && pnpm --filter @unilab/device-card-agent-cli build",
     "build": "electron-vite build",
+    "prebuild:workbench-shell": "pnpm prebuild",
+    "build:workbench-shell": "node scripts/build-workbench-shell.mjs",
     "preview": "node scripts/run-electron-vite.mjs preview",
     "prepackage:mac": "pnpm --filter @unilab/device-card-host build && pnpm --filter @unilab/device-card-agent-cli build",
     "package:mac": "node scripts/package-macos.mjs",

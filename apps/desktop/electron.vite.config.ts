@@ -29,7 +29,7 @@ export default defineConfig(({ mode }) => ({
       }
     }
   },
-  renderer: {
+  renderer: mode === 'workbench-shell' ? undefined : {
     root: resolve(__dirname, '../kernel-web'),
     // @pascal-app/* 以 Next.js 目标的 TS 源码分发，模块顶层直接读 process.env.*
     //（NODE_ENV / NEXT_PUBLIC_* 等），假设由 Next 在构建期替换。Electron renderer

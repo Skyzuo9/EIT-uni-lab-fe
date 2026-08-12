@@ -20,14 +20,21 @@ const workspaceRoot = path.resolve(workbenchDirectory, '../..')
 const workbenchRequire = createRequire(path.join(workbenchDirectory, 'package.json'))
 const theiaCli = workbenchRequire.resolve('@theia/cli/bin/theia.js')
 const startScript = path.join(scriptDirectory, 'start-workbench.mjs')
+const productionBuildFlag = '--production-build'
+const productionBuild = process.argv.includes(productionBuildFlag)
 const forwardedArguments = process.argv.slice(2)
+  .filter(argument => argument !== productionBuildFlag)
+const watchMode = productionBuild ? 'production' : 'development'
 const pnpmExecutable = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm'
 
 /** @type {{ label: string, child: import('node:child_process').ChildProcess }[]} */
 const children = []
 let stopping = false
 
-console.log('[UniLab Workbench] desktop watch mode')
+process.on('SIGINT', () => shutdown('SIGINT'))
+process.on('SIGTERM', () => shutdown('SIGTERM'))
+
+console.log(`[UniLab Workbench] desktop watch mode: ${watchMode}`)
 console.log(
   '[UniLab Workbench] package/UI edits rebuild via Theia watch; refresh Electron after rebuild'
 )
@@ -44,26 +51,40 @@ start('workbench-theia', pnpmExecutable, [
   shell: process.platform === 'win32'
 })
 
-start('theia-bundle', process.execPath, [
+const bundleWatcher = start('theia-bundle', process.execPath, [
   theiaCli,
   'build',
   '--watch',
   '--mode',
-  'development'
+  watchMode
 ], {
-  cwd: workbenchDirectory
+  cwd: workbenchDirectory,
+  stdio: ['inherit', 'pipe', 'pipe']
 })
 
-start('desktop', process.execPath, [
-  startScript,
-  '--desktop',
-  ...forwardedArguments
-], {
-  cwd: workbenchDirectory
-})
-
-process.on('SIGINT', () => shutdown('SIGINT'))
-process.on('SIGTERM', () => shutdown('SIGTERM'))
+try {
+  await waitForOutput(bundleWatcher, [
+    '[watch/browser] Finished with 0 errors',
+    '[watch/node] Finished with 0 errors'
+  ])
+  if (!stopping) {
+    start('desktop', process.execPath, [
+      startScript,
+      '--desktop',
+      ...forwardedArguments
+    ], {
+      cwd: workbenchDirectory
+    })
+  }
+} catch (error) {
+  if (!stopping) {
+    console.error(
+      `[UniLab Workbench] initial bundle watch failed: ${error.message}`
+    )
+    shutdown('SIGTERM')
+    process.exitCode = 1
+  }
+}
 
 /**
  * @param {string} label
@@ -98,6 +119,40 @@ function start(label, command, args, options = {}) {
     )
     shutdown('SIGTERM')
     process.exitCode = 1
+  })
+  return child
+}
+
+/**
+ * Forwards a watch process while waiting for its first complete browser/node
+ * build. Starting Electron sooner races its initial page load against bundle
+ * replacement and can close an otherwise healthy desktop session.
+ *
+ * @param {import('node:child_process').ChildProcess} child
+ * @param {string[]} markers
+ */
+function waitForOutput(child, markers) {
+  const pending = new Set(markers)
+  let recentOutput = ''
+  return new Promise((resolve, reject) => {
+    const onExit = (code, signal) => reject(new Error(
+      `watcher exited before ready code=${String(code)} signal=${String(signal)}`
+    ))
+    const forward = destination => chunk => {
+      destination.write(chunk)
+      recentOutput = `${recentOutput}${chunk.toString()}`.slice(-16_384)
+      for (const marker of pending) {
+        if (recentOutput.includes(marker)) pending.delete(marker)
+      }
+      if (pending.size === 0) {
+        child.off('exit', onExit)
+        resolve()
+      }
+    }
+
+    child.once('exit', onExit)
+    child.stdout?.on('data', forward(process.stdout))
+    child.stderr?.on('data', forward(process.stderr))
   })
 }
 
