@@ -6,7 +6,7 @@ interface WorkflowSupportingMaterialPresentationControlProps {
 }
 
 /**
- * 切换辅助物料（Material）的反应式标注与完整支线投影。
+ * 切换主物料聚焦视图与辅助物料（Material）完整支线投影。
  *
  * @param props 当前展示方式与受控变更入口。
  * @returns 支持键盘操作且不依赖颜色识别状态的双选控制。
@@ -25,10 +25,10 @@ export default function WorkflowSupportingMaterialPresentationControl({
         type="button"
         className={value === 'reaction-formula' ? 'is-active' : undefined}
         aria-pressed={value === 'reaction-formula'}
-        title="辅助物料像有机反应式的反应物一样显示在加入步骤旁"
+        title="聚焦主物料路径，辅助物料在加入步骤旁紧凑标注"
         onClick={() => onChange('reaction-formula')}
       >
-        反应式
+        只看主物料
       </button>
       <button
         type="button"

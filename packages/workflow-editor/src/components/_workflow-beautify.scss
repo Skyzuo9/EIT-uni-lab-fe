@@ -288,13 +288,14 @@
 }
 
 .workflow :global(.workflow-runtime__supporting-material-presentation) button {
-  min-width: 54px;
+  min-width: 70px;
   padding: 0 8px;
   color: var(--unilab-color-text-muted);
   border: 0;
   border-right: 1px solid var(--unilab-color-border);
   background: transparent;
   font: 600 11px/1 var(--unilab-font-sans);
+  white-space: nowrap;
   cursor: pointer;
 }
 

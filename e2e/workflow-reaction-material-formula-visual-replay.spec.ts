@@ -122,7 +122,7 @@ test('single sample workflow presents supporting materials as reactants', async 
     name: '辅助物料展示方式'
   })
   const reactionFormula = presentation.getByRole('button', {
-    name: '反应式',
+    name: '只看主物料',
     exact: true
   })
   const fullBranches = presentation.getByRole('button', {

@@ -22,6 +22,20 @@ describe('PersistentWorkflowToolbar', () => {
     expect(html).not.toContain('导入 JSON')
     expect(html).not.toContain('更多工作流操作')
   })
+
+  /** 证明 OS 工作流编写聚合返回前，两个编辑模式入口均不可误触。 */
+  it('keeps edit mode unavailable until the OS authoring aggregate loads', () => {
+    const html = renderToStaticMarkup(
+      <PersistentWorkflowToolbar model={toolbarModel()} />
+    )
+
+    expect(html).toMatch(
+      /<button[^>]*disabled=""[^>]*data-disabled-reason="工作流尚未加载完成"[^>]*>代码模式<\/button>/
+    )
+    expect(html).toMatch(
+      /<button[^>]*disabled=""[^>]*data-disabled-reason="工作流尚未加载完成"[^>]*>画布模式<\/button>/
+    )
+  })
 })
 
 function toolbarModel(): PersistentWorkflowAuthoringModel {

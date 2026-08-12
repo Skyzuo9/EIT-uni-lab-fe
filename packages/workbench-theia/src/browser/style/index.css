@@ -55,6 +55,33 @@
   cursor: pointer;
 }
 
+.unilab-workbench__bar nav .unilab-workspace-switch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.unilab-workspace-switch__icon {
+  display: inline-grid;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+  place-items: center;
+  color: inherit !important;
+  line-height: 1;
+}
+
+.unilab-workspace-switch__icon::before {
+  line-height: 1;
+}
+
+.unilab-workspace-switch__label {
+  display: block;
+  color: inherit !important;
+  line-height: 1.2;
+}
+
 .unilab-workbench__bar nav button.is-active {
   color: var(--unilab-color-primary);
   border-color: var(--unilab-color-focus);

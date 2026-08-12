@@ -133,6 +133,11 @@
   display: none;
 }
 
+/* 大纲仍可服务编辑器符号能力，但不再占用右侧产品导航入口。 */
+.theia-app-right .lm-TabBar-tab[id='shell-tab-outline-view'] {
+  display: none;
+}
+
 .theia-app-left .lm-TabBar-tab[id='shell-tab-explorer-view-container'] {
   margin-top: 27px;
   overflow: visible;

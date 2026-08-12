@@ -24,6 +24,9 @@ const RUN_MODE_LABELS = {
 
 /**
  * 单行工作流调试工具栏。编辑模式、保存与任务控制共享同一状态入口。
+ *
+ * @param props OS 权威工作流编写模型。
+ * @returns 根据加载、编辑和任务状态统一约束的工具栏。
  */
 export function PersistentWorkflowToolbar({
   model
@@ -58,6 +61,10 @@ export function PersistentWorkflowToolbar({
   } = model
   const runModeMenuRef = useRef<HTMLDetailsElement | null>(null)
   const runningEntryBusy = runtimeBusy || workflowStartBusy
+  const modeSwitchDisabled = busy || !aggregate
+  const modeSwitchDisabledReason = busy
+    ? '正在读取或处理工作流，请稍后切换编辑模式'
+    : '工作流尚未加载完成'
   const liveTask = workflowTaskIsLive(task)
   const compactTaskControls = useMemo(
     () => workflowTaskToolbarControls(task, taskControls),
@@ -132,8 +139,8 @@ export function PersistentWorkflowToolbar({
             type="button"
             className={mode === 'code' ? 'is-active' : ''}
             aria-pressed={mode === 'code'}
-            disabled={busy}
-            disabledReason="正在处理工作流，暂时不能切换编辑模式"
+            disabled={modeSwitchDisabled}
+            disabledReason={modeSwitchDisabledReason}
             onClick={() => requestMode('code')}
           >
             代码模式
@@ -142,8 +149,8 @@ export function PersistentWorkflowToolbar({
             type="button"
             className={mode === 'canvas' ? 'is-active' : ''}
             aria-pressed={mode === 'canvas'}
-            disabled={busy}
-            disabledReason="正在处理工作流，暂时不能切换编辑模式"
+            disabled={modeSwitchDisabled}
+            disabledReason={modeSwitchDisabledReason}
             onClick={() => requestMode('canvas')}
           >
             画布模式
