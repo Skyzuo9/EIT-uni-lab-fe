@@ -107,6 +107,8 @@
   bottom: 12px;
   display: flex;
   width: min(520px, calc(100% - 24px));
+  max-width: calc(100vw - 24px);
+  box-sizing: border-box;
   min-height: 0;
   flex-direction: column;
   overflow: hidden;
@@ -164,7 +166,8 @@
   min-height: 0;
   gap: 0;
   padding: 8px 14px 2px;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
 }
@@ -243,9 +246,8 @@
 .unilab-environment-card dd {
   min-width: 0;
   margin: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .unilab-environment-manager__path {
