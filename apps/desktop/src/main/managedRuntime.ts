@@ -5,6 +5,7 @@ import {
 } from './managedRuntimeInstallation'
 import {
   ManagedRuntimeSupervisorClient,
+  managedRuntimeSupervisorPort,
   type ManagedRuntimeSupervisorSnapshot,
   type ManagedSimulatorLaunch,
   type ManagedWorkerLaunch
@@ -56,7 +57,8 @@ export class ManagedRuntime {
     this.client ??= new ManagedRuntimeSupervisorClient({
       supervisorExecutable: paths.supervisorExecutable,
       runtimePrefix: paths.prefix,
-      stateDirectory: this.supervisorStateDirectory
+      stateDirectory: this.supervisorStateDirectory,
+      port: managedRuntimeSupervisorPort(paths.manifestSha256)
     })
     await this.client.connect()
     return this.client

@@ -52,6 +52,18 @@ interface ManagedRuntimeSupervisorClientOptions {
 }
 
 /**
+ * Give each immutable bundled Runtime its own loopback control port. This
+ * prevents an upgraded Workbench from reconnecting to a detached Supervisor
+ * that still belongs to an older Runtime prefix.
+ */
+export function managedRuntimeSupervisorPort(manifestSha256: string): number {
+  if (!/^[0-9a-f]{64}$/u.test(manifestSha256)) {
+    throw new Error('Runtime manifest SHA-256 无效')
+  }
+  return 20_000 + (Number.parseInt(manifestSha256.slice(0, 8), 16) % 20_000)
+}
+
+/**
  * Electron 与独立 Supervisor 之间的唯一 Interface。
  * 该模块拥有 token、脱离进程启动、连接重试和 HTTP 错误归一化。
  */
