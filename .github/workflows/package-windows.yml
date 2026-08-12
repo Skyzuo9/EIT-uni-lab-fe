@@ -1,18 +1,9 @@
 name: Package Windows Workbench
 
 on:
-  workflow_dispatch:
   push:
     branches:
-      - bug-fix-wt
-    paths:
-      - .github/workflows/package-windows.yml
-      - apps/desktop/**
-      - apps/workbench/**
-      - packages/**
-      - package.json
-      - pnpm-lock.yaml
-      - pnpm-workspace.yaml
+      - deploy-windows
 
 permissions:
   contents: read
@@ -214,7 +205,7 @@ jobs:
           name: UniLab-Workbench-windows-x64-${{ github.sha }}
           path: apps/workbench/release-windows/*-setup.exe
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 3
           # The NSIS EXE is already solid-compressed; recompressing it only
           # consumes runner CPU and produces no meaningful size reduction.
           compression-level: 0
