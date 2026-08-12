@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   isDesktopSurfaceNavigationAllowed,
   resolveDesktopSurfaceConfig,
+  shouldPromptForRendererUnload,
   shouldQuitWhenAllDesktopWindowsClose
 } from './desktopSurface'
 
@@ -135,5 +136,11 @@ describe('shared Electron desktop surface', () => {
       .toBe(false)
     expect(shouldQuitWhenAllDesktopWindowsClose('win32', 'kernel'))
       .toBe(true)
+  })
+
+  it('prompts Workbench unload only for explicitly dirty workflow authoring', () => {
+    expect(shouldPromptForRendererUnload('workbench', false)).toBe(false)
+    expect(shouldPromptForRendererUnload('workbench', true)).toBe(true)
+    expect(shouldPromptForRendererUnload('kernel', false)).toBe(true)
   })
 })

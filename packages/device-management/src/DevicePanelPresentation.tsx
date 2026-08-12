@@ -126,6 +126,9 @@ function ActionField({
           min={schema.minimum}
           max={schema.maximum}
           step={schema.type === 'integer' ? 1 : 'any'}
+          placeholder={schema.default !== undefined
+            ? `默认值：${String(schema.default)}`
+            : undefined}
           disabled={disabled}
           onChange={(event) => onChange(name, event.target.value)}
         />
@@ -201,10 +204,28 @@ export function readArgumentDraft(
           typeof value === 'string' || typeof value === 'boolean'
       )
     ) as ArgumentDraft
-    return { ...fallback, ...persisted }
+    return mergeArgumentDraft(fallback, persisted)
   } catch {
     return fallback
   }
+}
+
+/** Preserve current schema defaults when an older saved draft only cleared them. */
+export function mergeArgumentDraft(
+  fallback: ArgumentDraft,
+  persisted: ArgumentDraft
+): ArgumentDraft {
+  return Object.fromEntries(
+    Object.entries({ ...fallback, ...persisted }).map(([name, value]) => {
+      const fallbackValue = fallback[name]
+      return [
+        name,
+        value === '' && fallbackValue !== '' && fallbackValue !== undefined
+          ? fallbackValue
+          : value
+      ]
+    })
+  )
 }
 
 export function writeArgumentDraft(

@@ -21,6 +21,10 @@ import {
 } from './deviceActionRun'
 import { startDeviceActionTaskRecovery } from './deviceActionTaskRecovery'
 import {
+  startDeviceActionCatalogRecovery,
+  type DeviceActionCatalogRecovery
+} from './deviceActionCatalogRecovery'
+import {
   ConnectionSummary,
   DeviceListItem,
   DeviceWorkspace,
@@ -94,6 +98,9 @@ export default function DevicePanel({
     new Map()
   )
   const refreshByTaskRef = useRef<Map<string, Promise<boolean>>>(new Map())
+  const actionCatalogRecoveryRef = useRef<DeviceActionCatalogRecovery | null>(
+    null
+  )
   const canForceUnlock = services.capabilities.devices.forceUnlock
   const canRunActionTask = services.capabilities.devices.runActionTask
 
@@ -147,20 +154,24 @@ export default function DevicePanel({
     [actionCatalog, selectedAction]
   )
 
-  const loadActionCatalog = useCallback(async (signal?: AbortSignal) => {
-    if (!canRunActionTask || connection !== 'connected') return
+  const loadActionCatalog = useCallback(async (
+    signal?: AbortSignal
+  ): Promise<boolean> => {
+    if (!canRunActionTask || connection !== 'connected') return false
     setActionCatalogLoading(true)
     setActionCatalogError(null)
     try {
       const catalog = await services.workflow.getWorkflowActionCatalog(signal)
-      if (signal?.aborted) return
+      if (signal?.aborted) return false
       setActionCatalog(catalog)
+      return true
     } catch (error) {
-      if (signal?.aborted) return
+      if (signal?.aborted) return false
       setActionCatalog(null)
       setActionCatalogError(
         error instanceof Error ? error.message : '无法读取设备动作信息'
       )
+      return false
     } finally {
       if (!signal?.aborted) setActionCatalogLoading(false)
     }
@@ -174,9 +185,25 @@ export default function DevicePanel({
       return
     }
     const controller = new AbortController()
-    void loadActionCatalog(controller.signal)
-    return () => controller.abort()
+    const recovery = startDeviceActionCatalogRecovery({
+      load: () => loadActionCatalog(controller.signal)
+    })
+    actionCatalogRecoveryRef.current = recovery
+    return () => {
+      controller.abort()
+      recovery.dispose()
+      if (actionCatalogRecoveryRef.current === recovery) {
+        actionCatalogRecoveryRef.current = null
+      }
+    }
   }, [backend.apiUrl, backend.id, canRunActionTask, connection, loadActionCatalog])
+
+  const handleRefresh = useCallback(async (): Promise<void> => {
+    await Promise.allSettled([
+      refresh(),
+      actionCatalogRecoveryRef.current?.refresh() ?? loadActionCatalog()
+    ])
+  }, [loadActionCatalog, refresh])
   useEffect(() => {
     if (!devices.length) {
       setSelectedDeviceId(null)
@@ -332,7 +359,8 @@ export default function DevicePanel({
 
   const activeTaskUuid = runOperation?.state && (
     runOperation.state.kind === 'accepted' ||
-    runOperation.state.kind === 'running'
+    runOperation.state.kind === 'running' ||
+    runOperation.state.kind === 'finishing'
   ) && 'taskUuid' in runOperation.state
     ? runOperation.state.taskUuid
     : null
@@ -366,7 +394,8 @@ export default function DevicePanel({
             }
           }
         })
-      }
+      },
+      pollIntervalMs: 1_000
     })
     return () => recovery.dispose()
   }, [
@@ -394,7 +423,8 @@ export default function DevicePanel({
       !actionCatalog ||
       runOperation?.state.kind === 'submitting' ||
       runOperation?.state.kind === 'accepted' ||
-      runOperation?.state.kind === 'running'
+      runOperation?.state.kind === 'running' ||
+      runOperation?.state.kind === 'finishing'
     ) return
     if (!device.materialUuid) {
       setRunOperation({
@@ -567,7 +597,7 @@ export default function DevicePanel({
             type="button"
             className="edge-device__refresh"
             disabled={loading || connection !== 'connected'}
-            onClick={() => void refresh()}
+            onClick={() => void handleRefresh()}
           >
             {loading ? '同步中' : '刷新'}
           </button>
@@ -586,7 +616,7 @@ export default function DevicePanel({
           <div className="edge-device__load-error" role="alert">
             <strong>设备目录不可用</strong>
             <span>{error}</span>
-            <button type="button" onClick={() => void refresh()}>
+            <button type="button" onClick={() => void handleRefresh()}>
               重新读取
             </button>
           </div>

@@ -38,11 +38,24 @@ export function serializeDeviceActionInput(
       const value = draft[name]
       if (value === '' || value === undefined) {
         if (schema.required) throw new Error(`${fieldLabel(name, schema)} 为必填项`)
+        if (schema.default !== undefined && schema.default !== null) {
+          return [[name, parseField(name, schema, draftDefaultValue(schema))]]
+        }
         return []
       }
       return [[name, parseField(name, schema, value)]]
     })
   )
+}
+
+function draftDefaultValue(
+  schema: DeviceActionInputSchema
+): string | boolean {
+  if (schema.type === 'boolean') return Boolean(schema.default)
+  if (schema.type === 'object' || schema.type === 'array') {
+    return JSON.stringify(schema.default)
+  }
+  return String(schema.default)
 }
 
 function parseField(

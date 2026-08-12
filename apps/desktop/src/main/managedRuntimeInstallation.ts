@@ -64,6 +64,22 @@ interface ManagedRuntimeInstallationOptions {
 }
 
 /**
+ * Constructor on POSIX refuses installation prefixes containing whitespace.
+ * Electron's macOS userData path always contains `Application Support`, so the
+ * managed Runtime lives in the existing per-user UniLab state directory there.
+ * Windows Constructor accepts the regular Electron userData destination.
+ */
+export function resolveManagedRuntimeDataDirectory(options: {
+  platform: NodeJS.Platform
+  homeDirectory: string
+  userDataDirectory: string
+}): string {
+  return options.platform === 'win32'
+    ? options.userDataDirectory
+    : join(options.homeDirectory, '.unilabos', 'workbench')
+}
+
+/**
  * 校验随桌面端分发的 Constructor 载荷，并把私有 Runtime 原子安装到用户目录。
  * 调用方只需要 `ensureInstalled`；平台参数、校验和修复细节全部留在模块内。
  */

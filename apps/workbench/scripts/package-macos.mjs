@@ -206,7 +206,7 @@ export function packageMacos({ signed, adhoc = false, developerId = false }) {
       '--resources',
       agentPayloadDirectory,
       '--executable',
-      agentPayload.sourceExecutable,
+      agentPayload.executable,
       '--platform',
       'darwin',
       '--architecture',

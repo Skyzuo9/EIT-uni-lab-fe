@@ -172,6 +172,7 @@ export interface WorkbenchSessionSnapshot {
   phase: WorkbenchSessionPhase
   message: string
   configuredGraphPath: string
+  configuredRuntimeMode: WorkbenchRuntimeMode
   identity: WorkbenchSessionIdentity | null
   agent: WorkbenchAgentIdentity | null
   diagnostic: WorkbenchSessionDiagnostic | null
@@ -287,6 +288,7 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
       phase: 'idle',
       message: '尚未启动 Uni-Lab OS',
       configuredGraphPath: this.selectedGraphPath,
+      configuredRuntimeMode: this.selectedMode,
       identity: null,
       agent: null,
       diagnostic: null,
@@ -527,7 +529,11 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
     await this.persistConfiguration({ runtimeMode: mode })
     this.selectedMode = mode
     if (this.snapshot.phase === 'ready') return await this.restart()
-    this.publish({ ...this.snapshot, message: 'OS 启动模式已保存' })
+    this.publish({
+      ...this.snapshot,
+      configuredRuntimeMode: mode,
+      message: 'OS 启动模式已保存'
+    })
     return this.getSnapshot()
   }
 
@@ -574,6 +580,7 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
     this.snapshot = {
       ...this.snapshot,
       configuredGraphPath: this.selectedGraphPath,
+      configuredRuntimeMode: this.selectedMode,
       plcSimulator: {
         ...this.snapshot.plcSimulator,
         projectPath,
@@ -1039,9 +1046,10 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
   private publish(
     snapshot: Omit<
       WorkbenchSessionSnapshot,
-      'configuredGraphPath' | 'plcSimulator' | 'agent'
+      'configuredGraphPath' | 'configuredRuntimeMode' | 'plcSimulator' | 'agent'
     > & {
       configuredGraphPath?: string
+      configuredRuntimeMode?: WorkbenchRuntimeMode
       plcSimulator?: WorkbenchPlcSimulatorSnapshot
       agent?: WorkbenchAgentIdentity | null
     }
@@ -1058,6 +1066,8 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
       } : null,
       configuredGraphPath:
         snapshot.configuredGraphPath ?? this.snapshot.configuredGraphPath,
+      configuredRuntimeMode:
+        snapshot.configuredRuntimeMode ?? this.snapshot.configuredRuntimeMode,
       plcSimulator: snapshot.plcSimulator ?? this.snapshot.plcSimulator
     })
     for (const listener of this.listeners) listener(this.getSnapshot())
