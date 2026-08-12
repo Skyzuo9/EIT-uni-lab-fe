@@ -50,7 +50,7 @@ export class UniLabSettingsContribution
 
   /** 设置产品标题，避免浏览器标签继续显示框架默认名。 */
   onStart(_app: FrontendApplication): void {
-    document.title = 'UniLab 调试工作台'
+    document.title = 'Unilab 调试工作台'
   }
 
   /** 精简活动栏与顶层菜单，并挂载独立设置模块。 */

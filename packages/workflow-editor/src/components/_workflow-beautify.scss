@@ -1,6 +1,8 @@
 .workflow :global(.workflow-runtime__layout-tools) {
   display: flex;
-  max-width: calc(100vw - 32px);
+  width: max-content;
+  max-width: calc(100% - 16px);
+  box-sizing: border-box;
   align-items: center;
   justify-content: flex-end;
   gap: 6px;
@@ -450,8 +452,10 @@
 
 @container workflow (max-width: 900px) {
   .workflow :global(.workflow-runtime__layout-tools) {
+    overflow-x: auto;
     align-items: flex-end;
     flex-direction: column;
+    scrollbar-width: thin;
   }
 }
 

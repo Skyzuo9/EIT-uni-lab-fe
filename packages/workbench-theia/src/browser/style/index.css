@@ -545,9 +545,14 @@ body.unilab-environment-manager-open .material-oblique-stack__label {
 }
 
 .unilab-settings__theme button[aria-pressed='true'] {
-  color: var(--theia-button-background);
+  color: var(--theia-list-activeSelectionForeground, #fff);
   border-color: var(--theia-button-background);
   background: var(--theia-list-activeSelectionBackground);
+}
+
+.unilab-settings__theme button[aria-pressed='true'] small {
+  color: inherit;
+  opacity: 0.78;
 }
 
 .unilab-settings__theme button:focus-visible {

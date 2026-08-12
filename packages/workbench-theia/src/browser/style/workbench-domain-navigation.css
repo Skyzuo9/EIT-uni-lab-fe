@@ -121,8 +121,8 @@
   width: 100%;
   color: var(--unilab-color-primary);
   content: 'UNILAB';
-  font: 650 7px/1 var(--unilab-font-mono);
-  letter-spacing: 0.06em;
+  font: 700 10px/1 var(--unilab-font-mono);
+  letter-spacing: 0.08em;
   text-align: center;
   pointer-events: none;
 }

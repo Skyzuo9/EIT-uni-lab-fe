@@ -4,9 +4,11 @@ import { describe, expect, it } from 'vitest'
 import type { WorkflowRuntimePort, WorkflowSummary } from '@unilab/services'
 
 import WorkflowPanel, {
+  WORKFLOW_CATALOG_MANAGEMENT_ACTIONS_VISIBLE,
   groupWorkflowCatalog,
   workflowGroupLabel
 } from './WorkflowPanel'
+import { COMPACT_WORKFLOW_CANVAS_WIDTH } from './PersistentWorkflowAuthoringView'
 
 describe('WorkflowPanel Runtime entry', () => {
   it('loads the current OS workflow catalog when no Workflow is selected', () => {
@@ -48,6 +50,14 @@ describe('WorkflowPanel Runtime entry', () => {
       '用途 · 归档',
       '未分类'
     ])
+  })
+
+  it('temporarily hides workflow catalog change-log and delete actions', () => {
+    expect(WORKFLOW_CATALOG_MANAGEMENT_ACTIONS_VISIBLE).toBe(false)
+  })
+
+  it('reserves the canvas by collapsing auxiliary panels on narrow workspaces', () => {
+    expect(COMPACT_WORKFLOW_CANVAS_WIDTH).toBe(1024)
   })
 })
 

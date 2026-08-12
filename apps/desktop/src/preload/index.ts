@@ -136,6 +136,8 @@ const api = {
       ipcRenderer.invoke('workbench-workspace:createDirectory'),
     openRecent: (path: string): Promise<WorkbenchWorkspaceSnapshot> =>
       ipcRenderer.invoke('workbench-workspace:openRecent', path),
+    selectDirectory: (): Promise<WorkbenchWorkspaceSnapshot> =>
+      ipcRenderer.invoke('workbench-workspace:selectDirectory'),
     switchToWelcome: () => ipcRenderer.invoke(
       'workbench-workspace:switchToWelcome'
     ),

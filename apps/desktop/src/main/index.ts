@@ -2,8 +2,10 @@ import {
   app,
   shell,
   BrowserWindow,
+  Menu,
   ipcMain,
   dialog,
+  type MenuItemConstructorOptions,
   type IpcMainEvent,
   type IpcMainInvokeEvent
 } from 'electron'
@@ -62,6 +64,71 @@ import {
 import { RendererConsoleLogLimiter } from './rendererConsoleLogLimiter'
 import { cleanupPackagedWorkbench, configurePackagedDeviceCardBuilder } from './packagedRuntime'
 import { isWorkbenchWorkspaceNavigationAllowed, registerWorkbenchRemoteAccessIpc, workbenchUnloadPrompt } from './workbenchRemoteIpc'
+
+const UNILAB_APPLICATION_NAME = 'Unilab 调试工作台'
+
+/**
+ * 构造 macOS 原生应用菜单。产品不暴露文件与帮助菜单，其余可见项统一中文化。
+ */
+function createMacApplicationMenu(): MenuItemConstructorOptions[] {
+  return [
+    {
+      label: UNILAB_APPLICATION_NAME,
+      submenu: [
+        { role: 'about', label: `关于 ${UNILAB_APPLICATION_NAME}` },
+        { type: 'separator' },
+        { role: 'services', label: '服务' },
+        { type: 'separator' },
+        { role: 'hide', label: `隐藏 ${UNILAB_APPLICATION_NAME}` },
+        { role: 'hideOthers', label: '隐藏其他应用' },
+        { role: 'unhide', label: '全部显示' },
+        { type: 'separator' },
+        { role: 'quit', label: `退出 ${UNILAB_APPLICATION_NAME}` }
+      ]
+    },
+    {
+      label: '编辑',
+      submenu: [
+        { role: 'undo', label: '撤销' },
+        { role: 'redo', label: '重做' },
+        { type: 'separator' },
+        { role: 'cut', label: '剪切' },
+        { role: 'copy', label: '复制' },
+        { role: 'paste', label: '粘贴' },
+        { role: 'selectAll', label: '全选' }
+      ]
+    },
+    {
+      label: '视图',
+      submenu: [
+        { role: 'reload', label: '重新加载' },
+        { role: 'forceReload', label: '强制重新加载' },
+        { role: 'toggleDevTools', label: '切换开发者工具' },
+        { type: 'separator' },
+        { role: 'resetZoom', label: '实际大小' },
+        { role: 'zoomIn', label: '放大' },
+        { role: 'zoomOut', label: '缩小' },
+        { type: 'separator' },
+        { role: 'togglefullscreen', label: '切换全屏' }
+      ]
+    },
+    {
+      label: '窗口',
+      submenu: [
+        { role: 'minimize', label: '最小化' },
+        { role: 'zoom', label: '缩放' },
+        { role: 'close', label: '关闭窗口' },
+        { type: 'separator' },
+        { role: 'front', label: '前置全部窗口' }
+      ]
+    }
+  ]
+}
+
+// 开发态默认继承 Electron 可执行文件名；必须在 ready 前设置，macOS
+// 才会用产品名称生成应用菜单。
+process.title = UNILAB_APPLICATION_NAME
+app.setName(UNILAB_APPLICATION_NAME)
 
 // 保存文件的入参:path 为 null 时弹出"另存为"对话框
 interface SaveFilePayload {
@@ -358,6 +425,9 @@ function createWindow(): void {
  * @safety IPC 处理器仍校验主渲染器身份；日志路径不接收渲染器输入。
  */
 app.whenReady().then(async () => {
+  if (process.platform === 'darwin') {
+    Menu.setApplicationMenu(Menu.buildFromTemplate(createMacApplicationMenu()))
+  }
   logLine('app ready')
   electronObservability.record('electron.app.ready')
   configurePackagedDeviceCardBuilder({

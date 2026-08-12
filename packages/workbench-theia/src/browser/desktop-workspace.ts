@@ -13,6 +13,7 @@ export interface DesktopWorkspaceSnapshot {
 
 export interface DesktopWorkspaceApi {
   getSnapshot: () => Promise<DesktopWorkspaceSnapshot>
+  selectDirectory: () => Promise<DesktopWorkspaceSnapshot>
   switchToWelcome: () => Promise<{
     switched: boolean
     snapshot: DesktopWorkspaceSnapshot

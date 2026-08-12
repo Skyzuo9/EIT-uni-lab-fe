@@ -2,7 +2,7 @@ import * as React from 'react'
 
 import { desktopWorkspaceApi } from './desktop-workspace'
 
-/** Desktop-only escape hatch shared by ready, starting and failed surfaces. */
+/** Desktop-only workspace selector shared by ready, starting and failed surfaces. */
 export function DesktopWorkspaceSwitchButton(): React.JSX.Element | null {
   const api = React.useMemo(() => desktopWorkspaceApi(), [])
   const [available, setAvailable] = React.useState(false)
@@ -16,12 +16,12 @@ export function DesktopWorkspaceSwitchButton(): React.JSX.Element | null {
     return () => { active = false }
   }, [api])
 
-  const switchWorkspace = React.useCallback(async () => {
+  const selectWorkspace = React.useCallback(async () => {
     if (!api || switching) return
     setSwitching(true)
     try {
-      const result = await api.switchToWelcome()
-      if (!result.switched) setSwitching(false)
+      await api.selectDirectory()
+      setSwitching(false)
     } catch {
       setSwitching(false)
     }
@@ -32,10 +32,11 @@ export function DesktopWorkspaceSwitchButton(): React.JSX.Element | null {
     <button
       type="button"
       disabled={switching}
-      title="返回欢迎页并停止当前工作区服务"
-      onClick={() => { void switchWorkspace() }}
+      title="选择并打开 UniLab 工作区"
+      onClick={() => { void selectWorkspace() }}
     >
-      {switching ? '正在切换…' : '切换工作区'}
+      <span className="codicon codicon-folder-opened" aria-hidden="true" />
+      {switching ? '正在切换…' : '选择工作区'}
     </button>
   )
 }

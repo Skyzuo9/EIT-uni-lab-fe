@@ -14,6 +14,9 @@ import {
 import { WorkflowButton } from './WorkflowButton'
 import styles from './workflow.module.scss'
 
+/** 修改日志与删除能力暂不向工作流目录开放。 */
+export const WORKFLOW_CATALOG_MANAGEMENT_ACTIONS_VISIBLE = false
+
 export interface WorkflowCatalogState {
   status: 'loading' | 'ready' | 'error'
   summary: string
@@ -299,14 +302,14 @@ export function WorkflowCatalog({
           onCreate={handleCreate}
         />
       ) : null}
-      {deleteWorkflow ? (
+      {WORKFLOW_CATALOG_MANAGEMENT_ACTIONS_VISIBLE && deleteWorkflow ? (
         <DeleteWorkflowDialog
           workflow={deleteWorkflow}
           onCancel={() => setDeleteWorkflow(null)}
           onDelete={() => handleDelete(deleteWorkflow)}
         />
       ) : null}
-      {logWorkflow ? (
+      {WORKFLOW_CATALOG_MANAGEMENT_ACTIONS_VISIBLE && logWorkflow ? (
         <WorkflowChangeLogDialog
           workflow={logWorkflow}
           onClose={() => setLogWorkflow(null)}
@@ -373,7 +376,7 @@ function WorkflowCatalogCard({
           {status}
         </span>
         <span>版本 {workflow.revision}</span>
-        {manageable ? (
+        {manageable && WORKFLOW_CATALOG_MANAGEMENT_ACTIONS_VISIBLE ? (
           <div>
             <button type="button" onClick={onShowLog}>修改日志</button>
             <button type="button" className="is-danger" onClick={onDelete}>删除</button>

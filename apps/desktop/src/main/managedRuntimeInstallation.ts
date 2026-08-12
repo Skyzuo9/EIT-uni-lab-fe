@@ -277,7 +277,7 @@ export class ManagedRuntimeInstallation {
     try {
       await this.verifyInstallation(paths)
     } catch (error) {
-      throw new Error('Constructor 完成后 `unilab -h` 验证失败', { cause: error })
+      throw new Error('Constructor 完成后 Runtime 依赖验证失败', { cause: error })
     }
   }
 
@@ -411,24 +411,38 @@ function runConstructorInstaller(
   }
 }
 
-/** 以干净 PYTHONPATH 执行最终验收命令，成功标准与安装文档保持一致。 */
-function verifyRuntimeInstallation(paths: ManagedRuntimePaths): Promise<void> {
+/** 以干净 PYTHONPATH 验收 CLI 与 PLC-Sim 所需的 OPC UA 模块。 */
+async function verifyRuntimeInstallation(paths: ManagedRuntimePaths): Promise<void> {
   const runtimePath = [
     dirname(paths.unilabExecutable),
     dirname(paths.pythonExecutable),
     process.env['PATH']
   ].filter((value): value is string => Boolean(value)).join(delimiter)
+  const environment = {
+    ...process.env,
+    PATH: runtimePath,
+    PYTHONPATH: ''
+  }
+  await execFileChecked(paths.unilabExecutable, ['-h'], environment)
+  await execFileChecked(paths.pythonExecutable, [
+    '-c',
+    'from opcua import Client, ua'
+  ], environment)
+}
+
+/** 无 shell 执行单条 Runtime 验收命令。 */
+function execFileChecked(
+  executable: string,
+  args: string[],
+  environment: NodeJS.ProcessEnv
+): Promise<void> {
   return new Promise((resolvePromise, reject) => {
-    execFile(paths.unilabExecutable, ['-h'], {
+    execFile(executable, args, {
       encoding: 'utf8',
       maxBuffer: 4 * 1024 * 1024,
       timeout: 60_000,
       windowsHide: true,
-      env: {
-        ...process.env,
-        PATH: runtimePath,
-        PYTHONPATH: ''
-      }
+      env: environment
     }, (error) => {
       if (error) reject(error)
       else resolvePromise()

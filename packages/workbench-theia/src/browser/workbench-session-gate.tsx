@@ -50,7 +50,7 @@ export function WorkbenchSessionGate({
         <span className={`unilab-workbench-session-phase is-${snapshot.phase}`}>
           {snapshot.phase}
         </span>
-        <h2>UniLab 调试工作台</h2>
+        <h2>Unilab 调试工作台</h2>
         <p>{snapshot.message}</p>
         {snapshot.identity ? (
           <dl>

@@ -1,5 +1,5 @@
 import { CodeEditor } from '@unilab/code-editor'
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { diagnosticRange } from '../utils/persistentAuthoringSession'
 import {
@@ -15,6 +15,8 @@ import { PersistentWorkflowOverlays } from './PersistentWorkflowOverlays'
 import { PersistentWorkflowToolbar } from './PersistentWorkflowToolbar'
 import { WorkflowNodePalette } from './WorkflowNodePalette'
 import styles from './workflow.module.scss'
+
+export const COMPACT_WORKFLOW_CANVAS_WIDTH = 1024
 
 export function PersistentWorkflowAuthoringView({
   model,
@@ -112,6 +114,20 @@ export function PersistentWorkflowAuthoringView({
     nodeId: string
     nonce: number
   } | null>(null)
+  const authoringViewRef = useRef<HTMLDivElement | null>(null)
+  const [compactCanvas, setCompactCanvas] = useState(false)
+
+  useEffect(() => {
+    const element = authoringViewRef.current
+    if (!element || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(([entry]) => {
+      const compact = entry.contentRect.width < COMPACT_WORKFLOW_CANVAS_WIDTH
+      setCompactCanvas(compact)
+      if (compact) setNodePaletteOpen(false)
+    })
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [setNodePaletteOpen])
   const handleCanvasNodeSelect = useCallback((nodeId: string): void => {
     // React Flow may report the focused node again while its viewport settles.
     // Keep the external highlight for that same node; a deliberate click on a
@@ -148,6 +164,7 @@ export function PersistentWorkflowAuthoringView({
 
   return (
     <div
+      ref={authoringViewRef}
       className={[
         styles.workflow,
         'workflow-runtime persistent-authoring',
@@ -324,7 +341,7 @@ export function PersistentWorkflowAuthoringView({
                     : '已应用版本 · 可编辑'}
               </span>
               <div className="persistent-authoring__stage-tools">
-                {mode === 'canvas' && (
+                {mode === 'canvas' && !compactCanvas && (
                   <button
                     type="button"
                     className="persistent-authoring__panel-toggle"
@@ -357,16 +374,16 @@ export function PersistentWorkflowAuthoringView({
           <div className={[
             'persistent-authoring__canvas-body',
             mode === 'code' ? 'is-code-mode' : '',
-            mode === 'canvas' && !nodePaletteOpen
+            mode === 'canvas' && (!nodePaletteOpen || compactCanvas)
               ? 'is-palette-closed'
               : '',
-            mode === 'canvas' && selectedNodeUuid
+            mode === 'canvas' && selectedNodeUuid && !compactCanvas
               ? 'has-inspector'
               : ''
           ].filter(Boolean).join(' ')}>
             {graph ? (
               <>
-                {mode === 'canvas' && nodePaletteOpen && (
+                {mode === 'canvas' && nodePaletteOpen && !compactCanvas && (
                   <WorkflowNodePalette
                     catalog={actionCatalog}
                     catalogError={actionCatalogError}
@@ -430,7 +447,7 @@ export function PersistentWorkflowAuthoringView({
                     }
                   />
                 </div>
-                {mode === 'canvas' && selectedNodeUuid && (
+                {mode === 'canvas' && selectedNodeUuid && !compactCanvas && (
                   <aside
                     className="persistent-authoring__node-editor"
                     aria-label="画布节点编辑器"

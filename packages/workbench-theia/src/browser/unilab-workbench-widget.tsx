@@ -51,7 +51,6 @@ import {
   createWorkflowIdeSyncState,
   synchronizeSavedWorkflowSource,
   WorkflowIdeHostAdapter,
-  workflowIdeMappingStatus,
   type WorkflowIdeBridge,
   type WorkflowIdeDiagnosticSeverity,
   type WorkflowIdeSyncState,
@@ -105,7 +104,7 @@ export class UniLabWorkbenchWidget extends ReactWidget {
   // This persisted identity predates the formal product name. Keep it stable so
   // existing Theia layouts reopen the same widget after upgrading.
   static readonly ID = 'unilab:authoring-workbench'
-  static readonly LABEL = 'UniLab 调试工作台'
+  static readonly LABEL = 'Unilab 调试工作台'
 
   @inject(EditorManager)
   protected readonly editorManager!: EditorManager
@@ -577,7 +576,6 @@ export class UniLabWorkbenchWidget extends ReactWidget {
         backendUrl={this.sessionSnapshot.identity.backendUrl}
         ideBridge={this.ideBridge}
         session={this.sessionSnapshot}
-        snapshot={this.snapshot}
         viewMode={this.viewState.currentMode}
         onSourceSaveHandlerChange={this.registerSourceSaveHandler}
         onUnsavedChangesChange={this.setWorkflowPanelDirty}
@@ -607,7 +605,6 @@ function WorkbenchSurface({
   backendUrl,
   ideBridge,
   session,
-  snapshot,
   viewMode,
   onSourceSaveHandlerChange,
   onUnsavedChangesChange,
@@ -627,7 +624,6 @@ function WorkbenchSurface({
   backendUrl: string
   ideBridge: WorkflowIdeBridge
   session: WorkbenchSessionSnapshot
-  snapshot: WorkflowIdeSyncState
   viewMode: WorkbenchViewMode
   onSourceSaveHandlerChange: (handler: SourceSaveHandler | null) => void
   onUnsavedChangesChange: (hasUnsavedChanges: boolean) => void
@@ -652,7 +648,6 @@ function WorkbenchSurface({
     useState<WorkflowPanelRuntimeProjection | null>(null)
   const [selectedMaterialIds, setSelectedMaterialIds] =
     useState<readonly MaterialId[]>([])
-  const [sourceSaveStatus, setSourceSaveStatus] = useState('idle')
   const [environmentOpen, setEnvironmentOpen] = useState(false)
   const reportWorkflowUnsavedChanges = useCallback(
     (hasUnsavedChanges: boolean): void => {
@@ -722,16 +717,13 @@ function WorkbenchSurface({
 
   const synchronizeSavedSource = useCallback(async (pythonSource: string) => {
     if (!workflowUuid) return
-    setSourceSaveStatus('syncing')
     try {
-      const outcome = await synchronizeSavedWorkflowSource(
+      await synchronizeSavedWorkflowSource(
         services.workflow,
         workflowUuid,
         pythonSource
       )
-      setSourceSaveStatus(outcome)
     } catch (error) {
-      setSourceSaveStatus(error instanceof Error ? error.message : 'failed')
       throw error
     }
   }, [services, workflowUuid])
@@ -838,7 +830,7 @@ function WorkbenchSurface({
       >
         <header className="unilab-workbench__bar">
           <div>
-            <strong>UniLab 调试工作台</strong>
+            <strong>Unilab 调试工作台</strong>
             <span>
               OS PID {session.identity?.pid} · {session.identity?.mode} · {backendUrl}
             </span>
@@ -887,27 +879,6 @@ function WorkbenchSurface({
             onStopSession={onStopSession}
           />
         ) : null}
-        <details className="unilab-workbench__debug">
-          <summary>同步状态</summary>
-          <dl>
-            <dt>source URI</dt>
-            <dd data-testid="sync-source-uri">{snapshot.sourceProjection?.sourceUri ?? '—'}</dd>
-            <dt>resolved file</dt>
-            <dd data-testid="sync-resolved-file">{snapshot.resolvedSourceUri ?? '—'}</dd>
-            <dt>Monaco</dt>
-            <dd data-testid="sync-monaco-uri">{snapshot.currentUri ?? '—'}</dd>
-            <dt>mapping</dt>
-            <dd data-testid="sync-mapping">{workflowIdeMappingStatus(snapshot)}</dd>
-            <dt>cursor</dt>
-            <dd data-testid="sync-cursor">{snapshot.sourcePosition
-              ? `${snapshot.sourcePosition.line}:${snapshot.sourcePosition.column}`
-              : '—'}</dd>
-            <dt>node</dt>
-            <dd data-testid="sync-node">{selectedWorkflowNode ?? '—'}</dd>
-            <dt>saved source</dt>
-            <dd data-testid="sync-save-status">{sourceSaveStatus}</dd>
-          </dl>
-        </details>
         <WorkbenchDomainLayout
           mode={viewMode}
           workflow={mountedDomains.current.has('workflow')

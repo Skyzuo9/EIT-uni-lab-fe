@@ -25,11 +25,13 @@ describe('desktopWorkspaceApi', () => {
     }
     const api: DesktopWorkspaceApi = {
       getSnapshot: vi.fn(async () => snapshot),
+      selectDirectory: vi.fn(async () => snapshot),
       switchToWelcome: vi.fn(async () => ({ switched: true, snapshot }))
     }
     vi.stubGlobal('window', { api: { workbenchWorkspace: api } })
 
     expect(desktopWorkspaceApi()).toBe(api)
     await expect(desktopWorkspaceApi()?.getSnapshot()).resolves.toEqual(snapshot)
+    await expect(desktopWorkspaceApi()?.selectDirectory()).resolves.toEqual(snapshot)
   })
 })
