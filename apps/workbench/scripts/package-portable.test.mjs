@@ -136,6 +136,14 @@ describe('portable Workbench packaging contract', () => {
       builderConfiguration,
       /from: \.packaging\/desktop-runtime\/node_modules[^]*?'!\*\*\/\*\.map'/u
     )
+    assert.match(
+      builderConfiguration,
+      /from: \.packaging\/node-runtime[\s\S]*?to: node-runtime/u
+    )
+    assert.doesNotMatch(
+      builderConfiguration,
+      /from: \.packaging\/node-runtime\/bin\/node(?:\s|$)/u
+    )
   })
 
   it('uses the optimized production shell for pnpm workbench:desktop', async () => {
