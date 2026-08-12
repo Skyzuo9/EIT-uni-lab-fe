@@ -247,7 +247,7 @@ function resolveEsbuildBinary(descriptor) {
     'node_modules',
     '@esbuild',
     descriptor.esbuildPackage,
-    'bin',
+    ...(descriptor.hostPlatform === 'win32' ? [] : ['bin']),
     executable
   )
   if (!existsSync(binary)) throw new Error(`缺少目标平台 esbuild：${binary}`)

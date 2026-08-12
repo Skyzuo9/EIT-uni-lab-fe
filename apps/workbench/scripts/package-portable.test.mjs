@@ -64,6 +64,10 @@ describe('portable Workbench packaging contract', () => {
       packagingScript,
       /`@esbuild\+\$\{descriptor\.esbuildPackage\}@\$\{esbuildVersion\}`/u
     )
+    assert.match(
+      packagingScript,
+      /descriptor\.hostPlatform === 'win32' \? \[\] : \['bin'\]/u
+    )
     assert.doesNotMatch(packagingScript, /esbuildPackage\}@0\.21\.5/u)
   })
 
