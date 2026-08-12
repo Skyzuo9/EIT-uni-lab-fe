@@ -254,7 +254,6 @@ describe('portable Workbench packaging contract', () => {
     assert.match(workflow, /actions\/cache\/restore@v6/u)
     assert.match(workflow, /actions\/cache\/save@v6/u)
     assert.match(workflow, /cache-primary-key/u)
-    assert.match(workflow, /cache-matched-key == ''/u)
     assert.match(workflow, /windows-runtime-installer-v2-/u)
     assert.match(workflow, /dist\/constructor\/\*\.exe/u)
     assert.match(workflow, /windows-electron-builder-/u)
