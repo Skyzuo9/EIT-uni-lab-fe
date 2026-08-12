@@ -551,19 +551,22 @@ async function selectPythonEnvironment({ explicit, persisted }) {
   if (explicit) {
     return discoverWorkbenchPythonEnvironment({ selected: explicit })
   }
-  if (persisted) {
-    try {
-      return await discoverWorkbenchPythonEnvironment({ selected: persisted })
-    } catch {
-      // The environment may have been replaced since the previous launch.
-    }
-  }
+  // A bundled Runtime is immutable and identified by the current DMG's
+  // manifest digest. Prefer it to a recent Workspace's persisted path so an
+  // application upgrade cannot keep launching PLC-Sim with an older Python.
   const managed = process.env['UNILAB_MANAGED_RUNTIME_PREFIX']?.trim()
   if (managed) {
     try {
       return await discoverWorkbenchPythonEnvironment({ selected: managed })
     } catch {
       // A damaged managed prefix is surfaced by the installer controller.
+    }
+  }
+  if (persisted) {
+    try {
+      return await discoverWorkbenchPythonEnvironment({ selected: persisted })
+    } catch {
+      // The environment may have been replaced since the previous launch.
     }
   }
   return discoverWorkbenchPythonEnvironment({ selected: null })
