@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type {
   LocalRuntimeLaunchConfig,
   LocalRuntimeLogsSnapshot,
+  LocalRuntimeModeInfo,
   LocalRuntimeSnapshot
 } from '../types/electron'
 import {
@@ -236,7 +237,7 @@ describe('LocalRuntimeLauncher', () => {
     })
   })
 
-  it('prevents PLC changes while Edge is running', () => {
+  it('keeps PLC control available while Edge is running', () => {
     const markup = renderDialog(baseConfig, {
       ...idleSnapshot,
       phase: 'ready',
@@ -246,7 +247,10 @@ describe('LocalRuntimeLauncher', () => {
       edgeRunning: true
     })
 
-    expect(markup).toMatch(/<button[^>]*disabled=""[^>]*>停止 PLC<\/button>/)
+    const plcButton = markup.match(
+      /<button[^>]*>停止 PLC<\/button>/
+    )?.[0] ?? ''
+    expect(plcButton).not.toContain('disabled')
     expect(markup).toContain('停止 Edge')
     expect(markup.match(/>运行中<\/span>/g)).toHaveLength(2)
   })
@@ -539,7 +543,12 @@ describe('LocalRuntimeLauncher', () => {
 function renderDialog(
   config: LocalRuntimeLaunchConfig,
   snapshot: LocalRuntimeSnapshot,
-  phoenixDependencyMissing = false
+  phoenixDependencyMissing = false,
+  runtimeInfo: LocalRuntimeModeInfo = {
+    mode: 'development',
+    label: '开发环境 Runtime',
+    runtimeVersion: null
+  }
 ): string {
   const transitioning = ![
     'idle',
@@ -550,13 +559,14 @@ function renderDialog(
   return renderToStaticMarkup(
     <LocalRuntimeDialog
       config={config}
+      runtimeInfo={runtimeInfo}
       snapshot={snapshot}
       error={null}
       simulatorSubmitted={false}
       edgeSubmitted={false}
       resolvingGeneratedEdgeCommand={false}
-      simulatorValidation={validateSimulatorConfig(config)}
-      edgeValidation={validateEdgeConfig(config)}
+      simulatorValidation={validateSimulatorConfig(config, runtimeInfo.mode)}
+      edgeValidation={validateEdgeConfig(config, runtimeInfo.mode)}
       phoenixDependencyMissing={phoenixDependencyMissing}
       transitioning={transitioning}
       onChange={vi.fn()}
@@ -566,6 +576,7 @@ function renderDialog(
       onStopSimulator={vi.fn()}
       onStartEdge={vi.fn()}
       onStopEdge={vi.fn()}
+      onRunAcceptance={vi.fn()}
       onLoadGeneratedEdgeCommand={vi.fn()}
       logControl={<button type="button">查看日志</button>}
     />

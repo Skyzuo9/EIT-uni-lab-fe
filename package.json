@@ -10,6 +10,7 @@
     "dev:desktop": "pnpm --filter @unilab/desktop dev",
     "workbench": "pnpm --filter @unilab/workbench-theia build && pnpm --filter @unilab/workbench build && pnpm --filter @unilab/workbench start",
     "workbench:desktop": "pnpm --filter @unilab/workbench desktop",
+    "workbench:desktop:development": "pnpm --filter @unilab/workbench desktop:development",
     "workbench:desktop-remote": "pnpm --filter @unilab/workbench-theia build && pnpm --filter @unilab/workbench build && pnpm --filter @unilab/workbench start:desktop-remote",
     "workbench:remote": "pnpm --filter @unilab/workbench-theia build && pnpm --filter @unilab/workbench build && pnpm --filter @unilab/workbench start:remote",
     "build": "pnpm -r --if-present build",
@@ -26,7 +27,7 @@
     "test:e2e:workflow-task-input-f07": "node scripts/run-f07-task-input-e2e.mjs",
     "test:e2e:workflow-single-node-f08": "node scripts/run-f08-single-node-e2e.mjs",
     "test:e2e:workflow-sse-reconnect-f09": "node scripts/run-f09-sse-reconnect-e2e.mjs",
-    "test:e2e:workflow-authoring-import": "playwright test e2e/workflow-authoring-import-real-os.spec.ts",
+    "test:e2e:workflow-authoring-import": "playwright test e2e/workflow-authoring-import-real-os.spec.ts e2e/workflow-import-mismatch-real-os.spec.ts",
     "test:e2e:workflow-task-runtime": "playwright test e2e/workflow-task-runtime-real-os.spec.ts",
     "test:e2e:workflow-task-runtime-resilience": "playwright test e2e/workflow-task-runtime-resilience-real-os.spec.ts",
     "test:e2e:workflow-material-source": "playwright test e2e/workflow-material-source-native-cli-real-os.spec.ts",
@@ -52,11 +53,13 @@
     "typescript": "^5.6.3"
   },
   "allowScripts": {
+    "@vscode/windows-ca-certs@0.3.4": true,
     "electron@33.4.11": true,
     "esbuild@0.21.5": true
   },
   "pnpm": {
     "onlyBuiltDependencies": [
+      "@vscode/windows-ca-certs",
       "electron",
       "esbuild",
       "drivelist",

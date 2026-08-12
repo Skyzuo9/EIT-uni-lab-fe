@@ -51,7 +51,6 @@ import {
   createWorkflowIdeSyncState,
   synchronizeSavedWorkflowSource,
   WorkflowIdeHostAdapter,
-  workflowIdeMappingStatus,
   type WorkflowIdeBridge,
   type WorkflowIdeDiagnosticSeverity,
   type WorkflowIdeSyncState,
@@ -96,6 +95,7 @@ import {
   WorkbenchViewState,
   type WorkbenchViewMode
 } from './workbench-view-state'
+import { hasWorkbenchUnsavedChanges } from './workbench-unsaved-changes'
 
 type SourceSaveHandler = (pythonSource: string) => Promise<void>
 
@@ -104,7 +104,7 @@ export class UniLabWorkbenchWidget extends ReactWidget {
   // This persisted identity predates the formal product name. Keep it stable so
   // existing Theia layouts reopen the same widget after upgrading.
   static readonly ID = 'unilab:authoring-workbench'
-  static readonly LABEL = 'UniLab 调试工作台'
+  static readonly LABEL = 'Unilab 调试工作台'
 
   @inject(EditorManager)
   protected readonly editorManager!: EditorManager
@@ -147,6 +147,8 @@ export class UniLabWorkbenchWidget extends ReactWidget {
   }
   protected sourceSaveHandler: SourceSaveHandler | null = null
   protected lastAutomaticSourceSync: string | null = null
+  protected workflowPanelDirty = false
+  protected lastReportedUnsavedChanges: boolean | null = null
   @postConstruct()
   protected init(): void {
     this.ideAdapter = createTheiaWorkflowIdeAdapter({
@@ -163,6 +165,9 @@ export class UniLabWorkbenchWidget extends ReactWidget {
     this.toDispose.push(Disposable.create(() => this.editorListeners.dispose()))
     this.toDispose.push(Disposable.create(() => {
       void this.ideAdapter.dispose()
+    }))
+    this.toDispose.push(Disposable.create(() => {
+      publishDesktopUnsavedChanges(false)
     }))
     this.toDispose.push(this.editorManager.onCurrentEditorChanged(() => {
       this.observeCurrentEditor()
@@ -290,6 +295,16 @@ export class UniLabWorkbenchWidget extends ReactWidget {
     await this.refreshSessionSnapshot()
   }
 
+  protected readonly releaseEnvironmentPorts = async (
+    target: 'os' | 'plc-sim'
+  ): Promise<void> => {
+    try {
+      await this.workbenchSession.releaseEnvironmentPorts(target)
+    } finally {
+      await this.refreshSessionSnapshot()
+    }
+  }
+
   protected readonly startAgent = async (): Promise<void> => {
     try {
       await this.workbenchSession.startAgent()
@@ -344,6 +359,7 @@ export class UniLabWorkbenchWidget extends ReactWidget {
         cursor: null
       })
       this.snapshot = this.ideAdapter.snapshot.sync
+      this.reportUnsavedChanges()
       if (render) this.update()
       return
     }
@@ -377,6 +393,7 @@ export class UniLabWorkbenchWidget extends ReactWidget {
       cursor
     })
     this.snapshot = this.ideAdapter.snapshot.sync
+    this.reportUnsavedChanges()
     if (render) this.update()
     if (
       previous.currentUri === currentUri &&
@@ -398,6 +415,23 @@ export class UniLabWorkbenchWidget extends ReactWidget {
   ): void => {
     this.sourceSaveHandler = handler
     if (handler) void this.synchronizeUnmappedSource()
+  }
+
+  protected readonly setWorkflowPanelDirty = (
+    hasUnsavedChanges: boolean
+  ): void => {
+    this.workflowPanelDirty = hasUnsavedChanges
+    this.reportUnsavedChanges()
+  }
+
+  protected reportUnsavedChanges(): void {
+    const hasUnsavedChanges = hasWorkbenchUnsavedChanges(
+      this.workflowPanelDirty,
+      this.editorManager.all.map(widget => widget.editor.document.dirty)
+    )
+    if (this.lastReportedUnsavedChanges === hasUnsavedChanges) return
+    this.lastReportedUnsavedChanges = hasUnsavedChanges
+    publishDesktopUnsavedChanges(hasUnsavedChanges)
   }
 
   protected readonly setSourceProjection = (
@@ -481,6 +515,23 @@ export class UniLabWorkbenchWidget extends ReactWidget {
     widget.editor.revealRange({ start, end })
   }
 
+  /** 在 Workbench 主编辑区打开当前会话日志。 */
+  protected readonly openSessionLog = async (logPath: string): Promise<void> => {
+    if (!logPath) throw new Error('当前会话尚未生成日志文件')
+    const uri = URI.fromFilePath(logPath)
+    const existing = this.editorManager.all.find(
+      candidate => candidate.editor.uri.toString() === uri.toString()
+    )
+    if (existing) {
+      await this.shell.activateWidget(existing.id)
+      return
+    }
+    await this.editorManager.open(uri, {
+      mode: 'activate',
+      widgetOptions: { area: 'main', mode: 'split-right', ref: this }
+    })
+  }
+
   protected readonly replaceDiagnostics = (
     diagnostics: readonly WorkflowIdeResolvedDiagnostic[]
   ): void => {
@@ -526,6 +577,7 @@ export class UniLabWorkbenchWidget extends ReactWidget {
           snapshot={this.sessionSnapshot}
           onRetry={this.retrySession}
           onStop={this.stopSession}
+          onOpenLog={this.openSessionLog}
           renderEnvironmentManager={onClose => (
             <EnvironmentManager
               session={this.sessionSnapshot}
@@ -537,6 +589,7 @@ export class UniLabWorkbenchWidget extends ReactWidget {
               onRefreshPlcVariableTables={this.refreshPlcVariableTables}
               onStartPlcSimulator={this.startPlcSimulator}
               onStopPlcSimulator={this.stopPlcSimulator}
+              onReleaseEnvironmentPorts={this.releaseEnvironmentPorts}
               onStartAgent={this.startAgent}
               onStopAgent={this.stopAgent}
               onRestartAgent={this.restartAgent}
@@ -552,9 +605,9 @@ export class UniLabWorkbenchWidget extends ReactWidget {
         backendUrl={this.sessionSnapshot.identity.backendUrl}
         ideBridge={this.ideBridge}
         session={this.sessionSnapshot}
-        snapshot={this.snapshot}
         viewMode={this.viewState.currentMode}
         onSourceSaveHandlerChange={this.registerSourceSaveHandler}
+        onUnsavedChangesChange={this.setWorkflowPanelDirty}
         onRestartSession={this.restartSession}
         onReadEnvironmentLog={this.readEnvironmentLog}
         onConfigureGraph={this.configureGraph}
@@ -562,6 +615,7 @@ export class UniLabWorkbenchWidget extends ReactWidget {
         onRefreshPlcVariableTables={this.refreshPlcVariableTables}
         onStartPlcSimulator={this.startPlcSimulator}
         onStopPlcSimulator={this.stopPlcSimulator}
+        onReleaseEnvironmentPorts={this.releaseEnvironmentPorts}
         onStartAgent={this.startAgent}
         onStopAgent={this.stopAgent}
         onRestartAgent={this.restartAgent}
@@ -581,9 +635,9 @@ function WorkbenchSurface({
   backendUrl,
   ideBridge,
   session,
-  snapshot,
   viewMode,
   onSourceSaveHandlerChange,
+  onUnsavedChangesChange,
   onRestartSession,
   onReadEnvironmentLog,
   onConfigureGraph,
@@ -591,6 +645,7 @@ function WorkbenchSurface({
   onRefreshPlcVariableTables,
   onStartPlcSimulator,
   onStopPlcSimulator,
+  onReleaseEnvironmentPorts,
   onStartAgent,
   onStopAgent,
   onRestartAgent,
@@ -600,9 +655,9 @@ function WorkbenchSurface({
   backendUrl: string
   ideBridge: WorkflowIdeBridge
   session: WorkbenchSessionSnapshot
-  snapshot: WorkflowIdeSyncState
   viewMode: WorkbenchViewMode
   onSourceSaveHandlerChange: (handler: SourceSaveHandler | null) => void
+  onUnsavedChangesChange: (hasUnsavedChanges: boolean) => void
   onRestartSession: () => Promise<void>
   onReadEnvironmentLog: (kind: WorkbenchEnvironmentLogKind) => Promise<string>
   onConfigureGraph: (graphPath: string) => Promise<void>
@@ -612,6 +667,7 @@ function WorkbenchSurface({
   onRefreshPlcVariableTables: () => Promise<void>
   onStartPlcSimulator: () => Promise<void>
   onStopPlcSimulator: () => Promise<void>
+  onReleaseEnvironmentPorts: (target: 'os' | 'plc-sim') => Promise<void>
   onStartAgent: () => Promise<void>
   onStopAgent: () => Promise<void>
   onRestartAgent: () => Promise<void>
@@ -624,7 +680,6 @@ function WorkbenchSurface({
     useState<WorkflowPanelRuntimeProjection | null>(null)
   const [selectedMaterialIds, setSelectedMaterialIds] =
     useState<readonly MaterialId[]>([])
-  const [sourceSaveStatus, setSourceSaveStatus] = useState('idle')
   const [environmentOpen, setEnvironmentOpen] = useState(false)
   const reportWorkflowUnsavedChanges = useCallback(
     (hasUnsavedChanges: boolean): void => {
@@ -694,16 +749,13 @@ function WorkbenchSurface({
 
   const synchronizeSavedSource = useCallback(async (pythonSource: string) => {
     if (!workflowUuid) return
-    setSourceSaveStatus('syncing')
     try {
-      const outcome = await synchronizeSavedWorkflowSource(
+      await synchronizeSavedWorkflowSource(
         services.workflow,
         workflowUuid,
         pythonSource
       )
-      setSourceSaveStatus(outcome)
     } catch (error) {
-      setSourceSaveStatus(error instanceof Error ? error.message : 'failed')
       throw error
     }
   }, [services, workflowUuid])
@@ -736,7 +788,10 @@ function WorkbenchSurface({
         allowWorkflowSelection
         hideEmbeddedCodeEditor
         ideBridge={ideBridge}
-        onUnsavedChangesChange={reportWorkflowUnsavedChanges}
+        onUnsavedChangesChange={(hasUnsavedChanges) => {
+          onUnsavedChangesChange(hasUnsavedChanges)
+          reportWorkflowUnsavedChanges(hasUnsavedChanges)
+        }}
         onSelectedWorkflowStepChange={setSelectedWorkflowNode}
         onWorkflowRuntimeProjectionChange={setRuntimeProjection}
       />
@@ -807,7 +862,7 @@ function WorkbenchSurface({
       >
         <header className="unilab-workbench__bar">
           <div>
-            <strong>UniLab 调试工作台</strong>
+            <strong>Unilab 调试工作台</strong>
             <span>
               OS PID {session.identity?.pid} · {session.identity?.mode} · {backendUrl}
             </span>
@@ -849,6 +904,7 @@ function WorkbenchSurface({
             onRefreshPlcVariableTables={onRefreshPlcVariableTables}
             onStartPlcSimulator={onStartPlcSimulator}
             onStopPlcSimulator={onStopPlcSimulator}
+            onReleaseEnvironmentPorts={onReleaseEnvironmentPorts}
             onStartAgent={onStartAgent}
             onStopAgent={onStopAgent}
             onRestartAgent={onRestartAgent}
@@ -856,27 +912,6 @@ function WorkbenchSurface({
             onStopSession={onStopSession}
           />
         ) : null}
-        <details className="unilab-workbench__debug">
-          <summary>同步状态</summary>
-          <dl>
-            <dt>source URI</dt>
-            <dd data-testid="sync-source-uri">{snapshot.sourceProjection?.sourceUri ?? '—'}</dd>
-            <dt>resolved file</dt>
-            <dd data-testid="sync-resolved-file">{snapshot.resolvedSourceUri ?? '—'}</dd>
-            <dt>Monaco</dt>
-            <dd data-testid="sync-monaco-uri">{snapshot.currentUri ?? '—'}</dd>
-            <dt>mapping</dt>
-            <dd data-testid="sync-mapping">{workflowIdeMappingStatus(snapshot)}</dd>
-            <dt>cursor</dt>
-            <dd data-testid="sync-cursor">{snapshot.sourcePosition
-              ? `${snapshot.sourcePosition.line}:${snapshot.sourcePosition.column}`
-              : '—'}</dd>
-            <dt>node</dt>
-            <dd data-testid="sync-node">{selectedWorkflowNode ?? '—'}</dd>
-            <dt>saved source</dt>
-            <dd data-testid="sync-save-status">{sourceSaveStatus}</dd>
-          </dl>
-        </details>
         <WorkbenchDomainLayout
           mode={viewMode}
           workflow={mountedDomains.current.has('workflow')
@@ -1005,6 +1040,13 @@ function createWorkbenchServices(backendUrl: string): Services {
       realtimeUrl: url.replace(/^http/, 'ws')
     }
   })
+}
+
+function publishDesktopUnsavedChanges(hasUnsavedChanges: boolean): void {
+  const desktopApi = (globalThis as typeof globalThis & {
+    api?: { unsavedChanges?: { set(value: boolean): void } }
+  }).api
+  desktopApi?.unsavedChanges?.set(hasUnsavedChanges)
 }
 
 function theiaDiagnosticSeverity(

@@ -6,6 +6,7 @@ import {
 } from '@theia/core/lib/browser'
 import { ContainerModule } from '@theia/core/shared/inversify'
 import { PreferenceContribution } from '@theia/core/lib/common/preferences'
+import { TabBarToolbarContribution } from '@theia/core/lib/browser/shell/tab-bar-toolbar/tab-bar-toolbar-registry'
 import '@unilab/design-system/theme.css'
 
 import {
@@ -35,6 +36,8 @@ import {
 } from './unilab-agent-contribution'
 import { UniLabAgentNavigatorWidget } from './unilab-agent-navigator-widget'
 import { UniLabAgentWidget } from './unilab-agent-widget'
+import { UniLabSettingsContribution } from './unilab-settings-contribution'
+import { UniLabSettingsWidget } from './unilab-settings-widget'
 import '../../src/browser/style/index.css'
 
 export default new ContainerModule((bind) => {
@@ -59,6 +62,15 @@ export default new ContainerModule((bind) => {
   bind(WidgetFactory).toDynamicValue(context => ({
     id: UniLabAgentWidget.ID,
     createWidget: () => context.container.get(UniLabAgentWidget)
+  })).inSingletonScope()
+
+  bindViewContribution(bind, UniLabSettingsContribution)
+  bind(FrontendApplicationContribution).toService(UniLabSettingsContribution)
+  bind(TabBarToolbarContribution).toService(UniLabSettingsContribution)
+  bind(UniLabSettingsWidget).toSelf()
+  bind(WidgetFactory).toDynamicValue(context => ({
+    id: UniLabSettingsWidget.ID,
+    createWidget: () => context.container.get(UniLabSettingsWidget)
   })).inSingletonScope()
 
   bindViewContribution(bind, UniLabAgentNavigationContribution)

@@ -34,7 +34,7 @@ export async function verifyAgentRuntime(options) {
     '--data-dir', dataDir,
     '--log-dir', logDir,
     '--work-dir', workspace,
-    '--app-version', '2.1.52',
+    '--app-version', '2.1.53',
     '--managed-resources-mode', 'bundled',
     '--local',
     '--identity-mode', 'local'

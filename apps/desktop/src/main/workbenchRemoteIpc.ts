@@ -74,6 +74,26 @@ export function registerWorkbenchRemoteAccessIpc(options: {
     return openWorkspaceSelection(options, () => requireWorkspaceController()
       .openRecent(path))
   })
+  ipcMain.handle('workbench-workspace:selectDirectory', async (event) => {
+    options.assertSender(event)
+    const controller = requireWorkspaceController()
+    const window = requireMainWindow(options)
+    workspaceSwitchPending = true
+    try {
+      const transition = await switchWorkbenchWorkspaceToWelcome({
+        window,
+        controller,
+        publishSnapshot: (snapshot) => publishWorkspaceSnapshot(window, snapshot)
+      })
+      if (!transition.switched || window.isDestroyed()) {
+        return transition.snapshot
+      }
+      return await openWorkspaceSelection(options, () => controller
+        .chooseAndOpen('open'))
+    } finally {
+      workspaceSwitchPending = false
+    }
+  })
   ipcMain.handle('workbench-workspace:switchToWelcome', async (event) => {
     options.assertSender(event)
     const controller = requireWorkspaceController()

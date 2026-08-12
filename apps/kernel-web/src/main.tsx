@@ -1,4 +1,3 @@
-import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { ensurePascalRendererDefaults } from '@unilab/pascal-host'
 import App from './App'
@@ -14,8 +13,7 @@ import '@unilab/pascal-host/styles/source.css'
 // pipeline debugging.
 ensurePascalRendererDefaults()
 
-ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-)
+// React Flow 11 emits a false nodeTypes warning when React 19 StrictMode
+// deliberately initializes its external store twice. Use the production-
+// equivalent single mount until the React Flow 12 migration.
+ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(<App />)

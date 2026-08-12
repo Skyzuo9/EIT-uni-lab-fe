@@ -24,7 +24,9 @@ import {
   createWorkflowResourceSlotOptionsPort,
   WorkflowPanel,
   workflowMaterialRoleLabel,
-  type WorkflowPanelRuntimeProjection
+  type WorkflowCatalogState,
+  type WorkflowPanelRuntimeProjection,
+  type WorkflowResourceSlotOptionsPort
 } from '@unilab/workflow-editor'
 import { useStore } from 'zustand'
 import {
@@ -42,6 +44,8 @@ export interface LabPanelScope {
   services: Services
   interaction: LabInteractionStore
   workflowCatalogRequestRevision: number
+  recoveryRevision: number
+  onWorkflowCatalogStateChange?: (state: WorkflowCatalogState) => void
   onWorkflowUnsavedChangesChange?: (
     sessionId: string,
     hasUnsavedChanges: boolean
@@ -288,6 +292,9 @@ function WorkflowRenderer(
   return (
     <WorkflowPanel
       runtime={props.scope.services.workflow}
+      authoringStatus={props.scope.services.getCapabilityStatus(
+        'workflow.authoring'
+      )}
       resourceSlotOptionsPort={resourceSlotOptionsPort}
       workflowUuid={workflowUuidFromPanelConfig(props.config) ?? undefined}
       active={panelVisible}
@@ -300,6 +307,8 @@ function WorkflowRenderer(
         )
       }.v1`}
       catalogRequestRevision={props.scope.workflowCatalogRequestRevision}
+      recoveryRevision={props.scope.recoveryRevision}
+      onCatalogStateChange={props.scope.onWorkflowCatalogStateChange}
       onUnsavedChangesChange={(hasUnsavedChanges) => {
         props.scope.onWorkflowUnsavedChangesChange?.(
           props.panelInstance.id,
@@ -372,7 +381,9 @@ export function useLabPanelAdapter(
     sessionId: string,
     hasUnsavedChanges: boolean
   ) => void,
-  workflowCatalogRequestRevision = 0
+  workflowCatalogRequestRevision = 0,
+  recoveryRevision = 0,
+  onWorkflowCatalogStateChange?: (state: WorkflowCatalogState) => void
 ): PanelAppAdapter<LabPanelScope> {
   const services = useServices()
   const interaction = useLabInteractionStore()
@@ -381,6 +392,8 @@ export function useLabPanelAdapter(
   )
   // 导航命令变化不能重建适配器，否则面板宿主会卸载并丢失本次命令。
   workflowCatalogRequestRevisionRef.current = workflowCatalogRequestRevision
+  const recoveryRevisionRef = useRef(recoveryRevision)
+  recoveryRevisionRef.current = recoveryRevision
 
   return useMemo<PanelAppAdapter<LabPanelScope>>(
     () => ({
@@ -393,6 +406,8 @@ export function useLabPanelAdapter(
           interaction,
           workflowCatalogRequestRevision:
             workflowCatalogRequestRevisionRef.current,
+          recoveryRevision: recoveryRevisionRef.current,
+          onWorkflowCatalogStateChange,
           onWorkflowUnsavedChangesChange
         })
       },
@@ -423,6 +438,7 @@ export function useLabPanelAdapter(
     }),
     [
       interaction,
+      onWorkflowCatalogStateChange,
       onWorkflowUnsavedChangesChange,
       services
     ]

@@ -11,10 +11,13 @@ import type {
   WorkflowAuthoringSubscriptionOptions,
   WorkflowAuthoringTransformResult,
   WorkflowAuthoringValidateRequest,
+  WorkflowDefinitionChangePage,
+  WorkflowDefinitionCreateRequest,
   WorkflowDocument,
   WorkflowListQuery,
   WorkflowPage,
   WorkflowRevision,
+  WorkflowSummary,
   WorkflowValidationResult
 } from './workflowAuthoringContracts'
 import type { WorkflowMaterialSourceCatalogSnapshot } from './workflowMaterialSource'
@@ -36,9 +39,7 @@ import type {
   WorkflowTaskCommandRequest,
   WorkflowTaskCreateRequest,
   WorkflowTaskListQuery,
-  WorkflowTaskPage,
-  WorkflowTaskRuntimeEventPage,
-  WorkflowTaskRuntimeEventQuery
+  WorkflowTaskPage
 } from './workflowTaskContracts'
 
 /**
@@ -53,6 +54,13 @@ export interface WorkflowRuntimePort {
   getWorkflowMaterialSourceCatalog: () =>
     Promise<WorkflowMaterialSourceCatalogSnapshot>
   listWorkflows: (query?: WorkflowListQuery) => Promise<WorkflowPage>
+  createWorkflowDefinition: (
+    request: WorkflowDefinitionCreateRequest
+  ) => Promise<WorkflowSummary>
+  deleteWorkflowDefinition: (workflowUuid: string) => Promise<void>
+  listWorkflowDefinitionChanges: (
+    workflowUuid: string
+  ) => Promise<WorkflowDefinitionChangePage>
   getWorkflowAuthoring: (
     workflowUuid: string
   ) => Promise<WorkflowAuthoringAggregate>
@@ -122,10 +130,6 @@ export interface WorkflowRuntimePort {
   listWorkflowTaskJobs: (
     taskUuid: string
   ) => Promise<WorkflowNodeJob[]>
-  listWorkflowTaskEvents: (
-    taskUuid: string,
-    query?: WorkflowTaskRuntimeEventQuery
-  ) => Promise<WorkflowTaskRuntimeEventPage>
   commandWorkflowTask: (
     taskUuid: string,
     request: WorkflowTaskCommandRequest

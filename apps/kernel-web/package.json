@@ -11,6 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@ant-design/icons": "^6.3.2",
     "@unilab/app-shell": "workspace:*",
     "@unilab/design-system": "workspace:*",
     "@unilab/device-management": "workspace:*",
@@ -26,6 +27,7 @@
     "howler": "2.2.4",
     "react": "^19.2.1",
     "react-dom": "^19.2.1",
+    "three": "0.185.0",
     "use-sync-external-store": "1.6.0",
     "zustand": "^5.0.8"
   },

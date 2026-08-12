@@ -70,6 +70,7 @@ describe('WorkbenchSessionGate', () => {
         }}
         onRetry={vi.fn()}
         onStop={vi.fn()}
+        onOpenLog={vi.fn()}
         renderEnvironmentManager={onClose => (
           <section aria-label="环境管理">
             <button onClick={onClose}>关闭</button>
@@ -81,5 +82,46 @@ describe('WorkbenchSessionGate', () => {
 
     expect(markup).toContain('环境管理')
     expect(markup).toContain('启动 PLC-Sim')
+    expect(markup).toContain('unilab-workbench-session-actions')
+    expect(markup).toContain('class="is-primary"')
+    expect(markup).toContain('codicon-settings-gear')
+    expect(markup).toContain('在编辑器中打开日志文件')
+    expect(markup).toContain('/workspace/.unilabos/logs/workbench/os.log')
+  })
+
+  it('covers the workbench with startup progress while the session starts', () => {
+    const markup = renderToStaticMarkup(
+      <WorkbenchSessionGate
+        snapshot={{
+          phase: 'starting',
+          message: '正在校验工作区并启动 Uni-Lab OS…',
+          configuredGraphPath: 'deployment/graphs/szlab-local-debug.json',
+          configuredRuntimeMode: 'normal',
+          agent: null,
+          identity: null,
+          diagnostic: null,
+          plcSimulator: {
+            phase: 'idle',
+            message: 'PLC-Sim 未启动',
+            diagnostic: null,
+            projectPath: '/workspace/PLC-Sim',
+            variableTablePath: '/workspace/devices/plc/table.csv',
+            variableTableCandidates: [],
+            handshakeProfile: 'szlab',
+            guiUrl: 'http://127.0.0.1:8080',
+            opcUaUrl: 'opc.tcp://127.0.0.1:4840',
+            pid: null,
+            logPath: '/workspace/.unilabos/logs/plc-sim.log'
+          }
+        }}
+        onRetry={vi.fn()}
+        onStop={vi.fn()}
+        renderEnvironmentManager={() => null}
+      />
+    )
+
+    expect(markup).toContain('unilab-workbench-session-loading')
+    expect(markup).toContain('正在启动 Unilab 调试工作台')
+    expect(markup).toContain('取消启动')
   })
 })

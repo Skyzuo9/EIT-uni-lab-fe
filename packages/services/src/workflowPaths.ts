@@ -2,8 +2,7 @@ import type { BackendConfig } from './backends'
 import type { WorkflowListQuery } from './workflowAuthoringContracts'
 import type {
   WorkflowNodeJobFeedbackQuery,
-  WorkflowTaskListQuery,
-  WorkflowTaskRuntimeEventQuery
+  WorkflowTaskListQuery
 } from './workflowTaskContracts'
 
 /** 构造共享工作流事件流地址。 */
@@ -57,20 +56,5 @@ export function workflowNodeJobFeedbackPath(
   const base = `/api/v1/workflow-node-jobs/${
     encodeURIComponent(jobUuid)
   }/feedback`
-  return `${base}${suffix ? `?${suffix}` : ''}`
-}
-
-/** 构造工作流任务运行事件分页地址。 */
-export function workflowTaskRuntimeEventsPath(
-  taskUuid: string,
-  query: WorkflowTaskRuntimeEventQuery
-): string {
-  const search = new URLSearchParams()
-  if (query.after_sequence !== undefined) {
-    search.set('after_sequence', String(query.after_sequence))
-  }
-  if (query.limit !== undefined) search.set('limit', String(query.limit))
-  const suffix = search.toString()
-  const base = `/api/v1/workflow-tasks/${encodeURIComponent(taskUuid)}/events`
   return `${base}${suffix ? `?${suffix}` : ''}`
 }

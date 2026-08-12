@@ -1,0 +1,326 @@
+.statusPanel {
+  overflow: hidden;
+  color: var(--unilab-color-text-muted);
+  border: 1px solid var(--unilab-color-border);
+  border-radius: var(--unilab-radius-control);
+  background: var(--unilab-color-surface-subtle);
+
+  &[data-phase='ready'],
+  &[data-phase='simulator_ready'] {
+    color: var(--unilab-color-success);
+    border-color: color-mix(
+      in srgb,
+      var(--unilab-color-success) 28%,
+      var(--unilab-color-border)
+    );
+    background: var(--unilab-color-success-soft);
+  }
+
+  &[data-phase='failed'] {
+    color: var(--unilab-color-danger);
+    border-color: color-mix(
+      in srgb,
+      var(--unilab-color-danger) 28%,
+      var(--unilab-color-border)
+    );
+    background: var(--unilab-color-danger-soft);
+  }
+
+}
+
+.statusHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 8px 10px;
+
+  strong {
+    color: currentColor;
+    font-size: 12px;
+  }
+}
+
+.processGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border-top: 1px solid var(--unilab-color-border);
+  background: var(--unilab-color-surface);
+}
+
+.processItem {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 10px;
+  color: var(--unilab-color-text-muted);
+  background: var(--unilab-color-surface);
+
+  & + & {
+    border-inline-start: 1px solid var(--unilab-color-border);
+  }
+
+  &[data-status='idle'] {
+    color: var(--unilab-color-text-muted);
+    background: var(--unilab-color-surface);
+  }
+
+  &[data-status='running'] {
+    color: var(--unilab-color-success);
+    background: var(--unilab-color-success-soft);
+  }
+
+  &[data-status='starting'],
+  &[data-status='stopping'] {
+    color: var(--unilab-color-warning);
+    background: var(--unilab-color-warning-soft);
+  }
+
+  &[data-status='failed'] {
+    color: var(--unilab-color-danger);
+    background: var(--unilab-color-danger-soft);
+  }
+
+  &[data-status='disabled'] {
+    color: var(--unilab-color-text-subtle);
+    background: var(--unilab-color-surface-muted);
+  }
+}
+
+.processIdentity {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+
+  strong {
+    overflow: hidden;
+    color: var(--unilab-color-text);
+    font-size: 11px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  small {
+    overflow: hidden;
+    font: 10px/1.35 var(--unilab-font-mono);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.processStatus {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.error {
+  margin: 0;
+  padding: 9px 10px;
+  color: var(--unilab-color-danger);
+  border-radius: var(--unilab-radius-control);
+  background: var(--unilab-color-danger-soft);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.observabilityNotice {
+  display: grid;
+  gap: 9px;
+  padding: 12px;
+  color: color-mix(
+    in srgb,
+    var(--unilab-color-warning) 78%,
+    var(--unilab-color-text)
+  );
+  border: 1px solid color-mix(
+    in srgb,
+    var(--unilab-color-warning) 34%,
+    var(--unilab-color-border)
+  );
+  border-radius: var(--unilab-radius-control);
+  background: color-mix(
+    in srgb,
+    var(--unilab-color-warning) 7%,
+    var(--unilab-color-surface)
+  );
+
+  p {
+    margin: 0;
+    color: var(--unilab-color-text-muted);
+    font-size: 11px;
+    line-height: 1.55;
+  }
+
+  p code {
+    margin-inline: 3px;
+    color: var(--unilab-color-text);
+    font: 11px/1.4 var(--unilab-font-mono);
+  }
+
+  .dependencySummary {
+    color: var(--unilab-color-text-subtle);
+    font-size: 10px;
+    line-height: 1.5;
+
+    code {
+      margin-inline: 3px;
+      color: var(--unilab-color-text-muted);
+      font: inherit;
+    }
+  }
+}
+
+.observabilityNoticeHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+
+  > div {
+    display: grid;
+    min-width: 0;
+    gap: 3px;
+  }
+
+  strong {
+    color: currentColor;
+    font-size: 12px;
+    line-height: 1.45;
+  }
+
+  > span {
+    flex: 0 0 auto;
+    padding: 2px 6px;
+    color: currentColor;
+    border: 1px solid color-mix(in srgb, currentColor 26%, transparent);
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 1.4;
+  }
+}
+
+.recoveryCommand {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  align-items: stretch;
+  overflow: hidden;
+  border: 1px solid var(--unilab-color-border-strong);
+  border-radius: var(--unilab-radius-control);
+  background: var(--unilab-color-surface);
+
+  pre {
+    min-width: 0;
+    margin: 0;
+    padding: 9px 10px;
+    overflow: auto;
+    color: var(--unilab-color-text);
+    font: 10px/1.6 var(--unilab-font-mono);
+    white-space: pre;
+  }
+
+  code {
+    font: inherit;
+  }
+
+  button {
+    min-width: 72px;
+    padding-inline: 10px;
+    color: var(--unilab-color-text);
+    border: 0;
+    border-inline-start: 1px solid var(--unilab-color-border-strong);
+    background: var(--unilab-color-surface-subtle);
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+
+    &:hover {
+      color: var(--unilab-color-primary);
+      background: var(--unilab-color-primary-soft);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--unilab-color-focus);
+      outline-offset: -3px;
+    }
+  }
+}
+
+.copyFeedback {
+  min-height: 0;
+  color: var(--unilab-color-danger);
+  font-size: 10px;
+  line-height: 1.5;
+
+  &:not(:empty) {
+    min-height: 15px;
+  }
+}
+
+.footer {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--unilab-space-2);
+  padding-block-start: 0;
+}
+
+.secondaryButton,
+.primaryButton,
+.stopButton {
+  height: 36px;
+  padding: 0 13px;
+  border-radius: var(--unilab-radius-control);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+
+  &:focus-visible {
+    outline: 2px solid var(--unilab-color-focus);
+    outline-offset: 2px;
+  }
+
+  &:disabled {
+    opacity: .5;
+    cursor: not-allowed;
+  }
+}
+
+.secondaryButton {
+  color: var(--unilab-color-text);
+  border: 1px solid var(--unilab-color-border-strong);
+  background: var(--unilab-color-surface);
+
+  &:hover:not(:disabled) {
+    border-color: var(--unilab-color-primary);
+    background: var(--unilab-color-primary-soft);
+  }
+}
+
+.primaryButton {
+  color: #fff;
+  border: 1px solid var(--unilab-color-primary);
+  background: var(--unilab-color-primary);
+
+  &:hover:not(:disabled) {
+    background: var(--unilab-color-primary-hover);
+  }
+}
+
+.stopButton {
+  color: var(--unilab-color-danger);
+  border: 1px solid color-mix(
+    in srgb,
+    var(--unilab-color-danger) 34%,
+    var(--unilab-color-border)
+  );
+  background: var(--unilab-color-danger-soft);
+
+  &:hover:not(:disabled) {
+    border-color: var(--unilab-color-danger);
+  }
+}

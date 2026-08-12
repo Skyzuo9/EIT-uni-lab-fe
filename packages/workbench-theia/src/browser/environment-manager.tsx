@@ -7,6 +7,7 @@ import type {
 } from '@unilab/workbench-session'
 import * as React from 'react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 
 import { captureWorkbenchUiOperation } from './workbench-session-gate'
 import {
@@ -32,6 +33,7 @@ export interface EnvironmentManagerProps {
   onRefreshPlcVariableTables: () => Promise<void>
   onStartPlcSimulator: () => Promise<void>
   onStopPlcSimulator: () => Promise<void>
+  onReleaseEnvironmentPorts: (target: 'os' | 'plc-sim') => Promise<void>
   onStartAgent: () => Promise<void>
   onStopAgent: () => Promise<void>
   onRestartAgent: () => Promise<void>
@@ -50,6 +52,7 @@ export function EnvironmentManager({
   onRefreshPlcVariableTables,
   onStartPlcSimulator,
   onStopPlcSimulator,
+  onReleaseEnvironmentPorts,
   onStartAgent,
   onStopAgent,
   onRestartAgent,
@@ -87,6 +90,13 @@ export function EnvironmentManager({
   useEffect(() => setGraphPath(session.configuredGraphPath), [
     session.configuredGraphPath
   ])
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined
+    document.body.classList.add('unilab-environment-manager-open')
+    return () => {
+      document.body.classList.remove('unilab-environment-manager-open')
+    }
+  }, [])
   useEffect(() => {
     if (!managedRuntimeApi) return
     let active = true
@@ -157,13 +167,21 @@ export function EnvironmentManager({
     })
   }, [logKind, onReadEnvironmentLog, run])
 
-  return (
-    <section
-      className="unilab-environment-manager"
-      role="dialog"
-      aria-label="环境管理"
-      data-testid="environment-manager"
-    >
+  const overlay = (
+    <div className="unilab-environment-manager__overlay">
+      <button
+        type="button"
+        className="unilab-environment-manager__backdrop"
+        aria-label="关闭环境管理"
+        onClick={onClose}
+      />
+      <section
+        className="unilab-environment-manager"
+        role="dialog"
+        aria-modal="true"
+        aria-label="环境管理"
+        data-testid="environment-manager"
+      >
       <header className="unilab-environment-manager__header">
         <div>
           <span className="unilab-environment-manager__eyebrow">MANAGED LOCAL</span>
@@ -260,6 +278,14 @@ export function EnvironmentManager({
                 disabled={Boolean(busyAction)}
                 onClick={() => void run('stop-os', onStopSession)}
               >停止 OS</button>
+              <button
+                type="button"
+                disabled={Boolean(busyAction)}
+                onClick={() => {
+                  if (!globalThis.confirm('将停止占用 OS 本地端口的进程，确定继续吗？')) return
+                  void run('release-os-ports', () => onReleaseEnvironmentPorts('os'))
+                }}
+              >释放端口</button>
             </>
           )}
         />
@@ -353,6 +379,14 @@ export function EnvironmentManager({
                 disabled={Boolean(busyAction) || plcSimulator.phase === 'ready'}
                 onClick={() => void run('refresh-plc-tables', onRefreshPlcVariableTables)}
               >刷新 CSV 推荐</button>
+              <button
+                type="button"
+                disabled={Boolean(busyAction)}
+                onClick={() => {
+                  if (!globalThis.confirm('将停止占用 PLC-Sim 18765、4855 端口的进程，确定继续吗？')) return
+                  void run('release-plc-ports', () => onReleaseEnvironmentPorts('plc-sim'))
+                }}
+              >释放端口</button>
             </>
           )}
         />
@@ -432,7 +466,12 @@ export function EnvironmentManager({
         )}
       </section>
     </section>
+    </div>
   )
+
+  return typeof document === 'undefined'
+    ? overlay
+    : createPortal(overlay, document.body)
 }
 
 function agentStatusMessage(

@@ -14,15 +14,16 @@ beforeAll(async () => {
 
 describe('environment manager layering and responsive layout', () => {
   it('owns the viewport above every material canvas overlay', () => {
-    const rule = cssRule('.unilab-environment-manager')
-    const zIndex = Number(rule.match(/z-index:\s*(\d+)/u)?.[1])
+    const overlay = cssRule('.unilab-environment-manager__overlay')
+    const panel = cssRule('.unilab-environment-manager')
+    const overlayZIndex = Number(overlay.match(/z-index:\s*(\d+)/u)?.[1])
 
-    expect(rule).toContain('position: fixed')
-    expect(zIndex).toBeGreaterThan(1000)
-    expect(rule).toMatch(/max-width:\s*calc\(100vw - 24px\)/u)
-    expect(rule).toMatch(/box-sizing:\s*border-box/u)
-    expect(rule).toMatch(/bottom:\s*12px/u)
-    expect(rule).not.toMatch(/max-height:/u)
+    expect(overlay).toContain('position: fixed')
+    expect(overlayZIndex).toBeGreaterThan(1000)
+    expect(panel).toContain('position: absolute')
+    expect(panel).toMatch(/box-sizing:\s*border-box/u)
+    expect(panel).toMatch(/bottom:\s*12px/u)
+    expect(panel).not.toMatch(/max-height:/u)
   })
 
   it('keeps the status rail independently scrollable in short windows', () => {

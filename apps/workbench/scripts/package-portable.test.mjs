@@ -1,11 +1,18 @@
 import assert from 'node:assert/strict'
-import { readFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { describe, it } from 'node:test'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 import {
   PORTABLE_NODE_ARCHIVES,
   PORTABLE_NODE_VERSION
 } from './package-portable.mjs'
+import {
+  MAX_PRODUCTION_LIB_BYTES,
+  prepareProductionOutput,
+  prepareWorkbenchProductionOutput
+} from './prune-production-output.mjs'
 
 describe('portable Workbench packaging contract', () => {
   it('pins native Node runtimes for Linux and Windows', () => {
@@ -20,6 +27,50 @@ describe('portable Workbench packaging contract', () => {
     }
   })
 
+  it('extracts the Windows Node runtime without PowerShell argument binding', async () => {
+    const packagingScript = await readFile(
+      new URL('./package-portable.mjs', import.meta.url),
+      'utf8'
+    )
+
+    assert.match(packagingScript, /runCommand\('tar\.exe', \[/u)
+    assert.doesNotMatch(packagingScript, /Expand-Archive/u)
+  })
+
+  it('runs the Windows pnpm command through its command interpreter', async () => {
+    const packagingScript = await readFile(
+      new URL('./package-portable.mjs', import.meta.url),
+      'utf8'
+    )
+
+    assert.match(
+      packagingScript,
+      /'pnpm\.cmd' : 'pnpm',[\s\S]*?\{ shell: process\.platform === 'win32' \}/u
+    )
+    assert.match(packagingScript, /shell: options\.shell \?\? false/u)
+  })
+
+  it('resolves the platform esbuild binary from the declared version', async () => {
+    const packagingScript = await readFile(
+      new URL('./package-portable.mjs', import.meta.url),
+      'utf8'
+    )
+
+    assert.match(
+      packagingScript,
+      /const esbuildVersion = workbenchManifest\.devDependencies\?\.esbuild/u
+    )
+    assert.match(
+      packagingScript,
+      /`@esbuild\+\$\{descriptor\.esbuildPackage\}@\$\{esbuildVersion\}`/u
+    )
+    assert.match(
+      packagingScript,
+      /descriptor\.hostPlatform === 'win32' \? \[\] : \['bin'\]/u
+    )
+    assert.doesNotMatch(packagingScript, /esbuildPackage\}@0\.21\.5/u)
+  })
+
   it('does not make portable packaging depend on pnpm metadata already being cached', async () => {
     const packagingScript = await readFile(
       new URL('./package-portable.mjs', import.meta.url),
@@ -28,5 +79,202 @@ describe('portable Workbench packaging contract', () => {
 
     assert.match(packagingScript, /'--prefer-offline'/u)
     assert.doesNotMatch(packagingScript, /\n\s*'--offline',?\n/u)
+  })
+
+  it('builds every installer from a bounded production Workbench bundle', async () => {
+    const packageManifest = JSON.parse(await readFile(
+      new URL('../package.json', import.meta.url),
+      'utf8'
+    ))
+    const workspaceManifest = JSON.parse(await readFile(
+      new URL('../../../package.json', import.meta.url),
+      'utf8'
+    ))
+    const builderConfiguration = await readFile(
+      new URL('../electron-builder.yml', import.meta.url),
+      'utf8'
+    )
+
+    assert.match(
+      packageManifest.scripts['build:production'],
+      /theia build --mode production/u
+    )
+    assert.match(
+      packageManifest.scripts['build:production'],
+      /prune-production-output\.mjs/u
+    )
+    for (const name of [
+      'package:mac',
+      'package:mac:developer-id',
+      'package:mac:adhoc',
+      'package:mac:unsigned',
+      'package:linux',
+      'package:win'
+    ]) {
+      assert.match(
+        packageManifest.scripts[name],
+        /^pnpm build:desktop:production/u
+      )
+    }
+    assert.match(builderConfiguration, /^compression: maximum$/mu)
+    assert.equal(
+      packageManifest.optionalDependencies['@vscode/windows-ca-certs'],
+      '0.3.4'
+    )
+    assert.equal(
+      workspaceManifest.allowScripts['@vscode/windows-ca-certs@0.3.4'],
+      true
+    )
+    assert.ok(workspaceManifest.pnpm.onlyBuiltDependencies.includes(
+      '@vscode/windows-ca-certs'
+    ))
+    assert.match(
+      builderConfiguration,
+      /from: plugins[\s\S]*?filter:[\s\S]*?'!\*\*\/\*\.map'/u
+    )
+    assert.match(
+      builderConfiguration,
+      /from: \.packaging\/desktop-runtime\/node_modules[^]*?'!\*\*\/\*\.map'/u
+    )
+  })
+
+  it('uses the optimized production shell for pnpm workbench:desktop', async () => {
+    const rootManifest = JSON.parse(await readFile(
+      new URL('../../../package.json', import.meta.url),
+      'utf8'
+    ))
+    const workbenchManifest = JSON.parse(await readFile(
+      new URL('../package.json', import.meta.url),
+      'utf8'
+    ))
+    const desktopManifest = JSON.parse(await readFile(
+      new URL('../../desktop/package.json', import.meta.url),
+      'utf8'
+    ))
+    const desktopConfiguration = await readFile(
+      new URL('../../desktop/electron.vite.config.ts', import.meta.url),
+      'utf8'
+    )
+    const shellBuild = await readFile(
+      new URL('../../desktop/scripts/build-workbench-shell.mjs', import.meta.url),
+      'utf8'
+    )
+    const desktopWatch = await readFile(
+      new URL('./dev-desktop.mjs', import.meta.url),
+      'utf8'
+    )
+
+    assert.equal(
+      rootManifest.scripts['workbench:desktop'],
+      'pnpm --filter @unilab/workbench desktop'
+    )
+    assert.match(
+      workbenchManifest.scripts['build:desktop'],
+      /@unilab\/desktop build:workbench-shell/u
+    )
+    assert.match(
+      workbenchManifest.scripts['build:desktop'],
+      /pnpm build:production/u
+    )
+    assert.match(
+      workbenchManifest.scripts['build:desktop:development'],
+      /@unilab\/desktop build:workbench-shell && pnpm build/u
+    )
+    assert.match(
+      workbenchManifest.scripts.desktop,
+      /dev-desktop\.mjs --production-build$/u
+    )
+    assert.match(
+      workbenchManifest.scripts['desktop:development'],
+      /dev-desktop\.mjs$/u
+    )
+    assert.equal(
+      desktopManifest.scripts['build:workbench-shell'],
+      'node scripts/build-workbench-shell.mjs'
+    )
+    assert.match(desktopConfiguration, /mode === 'workbench-shell'/u)
+    assert.match(shellBuild, /rm\(join\(outputDirectory, 'renderer'\)/u)
+    assert.match(shellBuild, /ignoreConfigWarning: true/u)
+    assert.match(
+      desktopWatch,
+      /const watchMode = productionBuild \? 'production' : 'development'/u
+    )
+    assert.match(desktopWatch, /'--mode',\s*watchMode/u)
+    assert.match(desktopWatch, /await waitForOutput\(bundleWatcher/u)
+    assert.match(
+      desktopWatch,
+      /\[watch\/browser\] Finished with 0 errors/u
+    )
+    assert.match(desktopWatch, /\[watch\/node\] Finished with 0 errors/u)
+  })
+
+  it('removes source maps and rejects an oversized production lib', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'unilab-workbench-lib-'))
+    try {
+      await mkdir(join(root, 'frontend'), { recursive: true })
+      await writeFile(join(root, 'frontend', 'bundle.js'), 'runtime')
+      await writeFile(join(root, 'frontend', 'bundle.js.map'), 'debug-only')
+
+      assert.deepEqual(await prepareProductionOutput(root), {
+        removedBytes: 10,
+        packagedBytes: 7
+      })
+      await assert.rejects(
+        prepareProductionOutput(root, 6),
+        /production lib 超出/u
+      )
+      assert.equal(MAX_PRODUCTION_LIB_BYTES, 90 * 1024 * 1024)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('builds the Windows installer on a native GitHub Actions runner', async () => {
+    const workflow = await readFile(
+      new URL('../../../.github/workflows/package-windows.yml', import.meta.url),
+      'utf8'
+    )
+
+    assert.match(workflow, /runs-on: windows-2022/u)
+    assert.match(workflow, /build\/Release\/crypt32\.node/u)
+    assert.match(
+      workflow,
+      /ref: b09c0c048f6de1e5027deb1733da439598c577cf/u
+    )
+    assert.match(workflow, /Test-Path \.conda\/constructor\/construct\.yaml/u)
+    assert.match(
+      workflow,
+      /conda run -n constructor-build constructor/u
+    )
+    assert.match(workflow, /pnpm --filter @unilab\/workbench package:win/u)
+    assert.match(workflow, /UNILAB_RUNTIME_INSTALLER=/u)
+    assert.match(workflow, /UNILAB_AGENT_DISTRIBUTION=/u)
+    assert.match(workflow, /Filter 'aioncore\.exe'/u)
+    assert.match(workflow, /Test-Path \(Join-Path \$_\.Directory\.FullName 'managed-resources'\)/u)
+    assert.match(workflow, /bundled-aioncore\\windows-x64/u)
+    assert.match(workflow, /actions\/upload-artifact@v6/u)
+  })
+
+  it('removes source maps from local Workbench plugins', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'unilab-workbench-output-'))
+    try {
+      await mkdir(join(root, 'lib'), { recursive: true })
+      await mkdir(join(root, 'plugins', 'python'), { recursive: true })
+      await writeFile(join(root, 'lib', 'bundle.js'), 'runtime')
+      await writeFile(join(root, 'lib', 'bundle.js.map'), 'lib-debug')
+      await writeFile(join(root, 'plugins', 'python', 'server.js'), 'plugin')
+      await writeFile(
+        join(root, 'plugins', 'python', 'server.js.map'),
+        'plugin-debug'
+      )
+
+      assert.deepEqual(await prepareWorkbenchProductionOutput(root), {
+        lib: { removedBytes: 9, packagedBytes: 7 },
+        pluginMapsRemovedBytes: 12,
+        pluginBytes: 6
+      })
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
   })
 })

@@ -172,6 +172,17 @@ body {
   background: var(--unilab-color-bg);
 }
 
+.workbench-page-title {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 /* ============ 分栏画布 ============ */
 .workbench {
   display: flex;

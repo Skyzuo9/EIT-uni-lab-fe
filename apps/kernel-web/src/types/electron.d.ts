@@ -393,6 +393,9 @@ export interface DesktopManagedRuntimeInstallationApi {
 
 interface DesktopApi {
   getVersion: () => Promise<string>
+  unsavedChanges?: {
+    set: (hasUnsavedChanges: boolean) => void
+  }
   workbenchRemote?: DesktopWorkbenchRemoteApi
   workbenchWorkspace?: DesktopWorkbenchWorkspaceApi
   managedRuntime?: DesktopManagedRuntimeInstallationApi

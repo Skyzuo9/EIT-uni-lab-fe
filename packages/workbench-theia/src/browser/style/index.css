@@ -20,11 +20,17 @@
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  min-height: 42px;
-  padding: 7px 12px;
+  min-height: 50px;
+  padding: 8px 14px;
   border-bottom: 1px solid var(--unilab-color-border);
   background: var(--unilab-color-surface);
   box-shadow: var(--unilab-shadow-control);
+}
+
+.unilab-workbench__bar strong {
+  font-size: 18px;
+  font-weight: 760;
+  letter-spacing: -.02em;
 }
 
 .unilab-workbench__bar > div,
@@ -98,26 +104,58 @@
   box-shadow: 0 0 0 3px var(--unilab-color-primary-soft);
 }
 
-.unilab-environment-manager {
-  /* Escape Theia panel clipping: this is an application-level overlay. */
+.unilab-environment-manager__overlay {
   position: fixed;
-  z-index: 1200;
+  z-index: 2147483000;
+  inset: 0;
+  isolation: isolate;
+  pointer-events: none;
+}
+
+.unilab-environment-manager__backdrop {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  padding: 0;
+  border: 0;
+  background: color-mix(in srgb, var(--unilab-color-canvas) 8%, transparent);
+  cursor: default;
+  pointer-events: auto;
+}
+
+.unilab-environment-manager {
+  position: absolute;
+  z-index: 1;
   top: 52px;
-  right: 12px;
+  right: 56px;
   bottom: 12px;
   display: flex;
-  width: min(520px, calc(100% - 24px));
-  max-width: calc(100vw - 24px);
+  width: min(480px, calc(100% - 68px));
+  min-width: 0;
+  max-width: calc(100% - 68px);
   box-sizing: border-box;
   min-height: 0;
   flex-direction: column;
   overflow: hidden;
-  isolation: isolate;
+  pointer-events: auto;
   border: 1px solid var(--unilab-color-border-strong);
   border-radius: 10px;
   color: var(--unilab-color-text);
   background: var(--unilab-color-surface);
   box-shadow: 0 18px 48px color-mix(in srgb, #10151c 24%, transparent);
+}
+
+/* Drei HTML annotations use a separately transformed portal layer. Suppress
+ * them while the application drawer is open so GPU compositing cannot place
+ * scene labels above environment management. */
+body.unilab-environment-manager-open .pascal-model-label,
+body.unilab-environment-manager-open .pascal-transfer-site-label,
+body.unilab-environment-manager-open .pascal-transfer-executor,
+body.unilab-environment-manager-open .material-flow-node__physical-label,
+body.unilab-environment-manager-open .material-oblique-site__label,
+body.unilab-environment-manager-open .material-oblique-stack__label {
+  visibility: hidden !important;
+  pointer-events: none !important;
 }
 
 .unilab-environment-manager__header {
@@ -162,6 +200,7 @@
 .unilab-environment-manager__rail {
   position: relative;
   display: grid;
+  min-height: 0;
   flex: 1 1 auto;
   min-height: 0;
   gap: 0;
@@ -290,11 +329,19 @@
   justify-content: center;
   gap: 5px;
   padding: 6px 10px;
-  border: 0;
+  border: 1px solid transparent;
   border-radius: calc(var(--unilab-radius-control) - 2px);
   color: var(--unilab-color-text-muted);
   background: transparent;
+  font-weight: 650;
   cursor: pointer;
+}
+
+.unilab-environment-manager__mode button small {
+  min-height: 12px;
+  color: inherit;
+  font: 700 9px/1.2 var(--unilab-font-sans);
+  letter-spacing: .02em;
 }
 
 .unilab-environment-manager__mode button.is-active {
@@ -311,10 +358,11 @@
 
 @media (max-width: 720px) {
   .unilab-environment-manager {
-    right: 8px;
+    right: 12px;
     bottom: 8px;
-    left: 8px;
+    left: 12px;
     width: auto;
+    max-width: none;
   }
 }
 
@@ -418,6 +466,115 @@
   background: var(--unilab-color-canvas);
 }
 
+/* 文档明确排除的活动栏入口在布局恢复期间也不得闪现。 */
+#theia-top-panel .lm-MenuBar-content > .lm-MenuBar-item:first-child,
+#theia-top-panel .lm-MenuBar-content > .lm-MenuBar-item:last-child,
+#theia-left-content-panel [data-id='search-view-container'],
+#theia-left-content-panel [data-id='scm-view-container'],
+#theia-left-content-panel [data-id='debug'],
+#theia-left-content-panel [data-id='vsx-extensions-view-container'],
+#theia-left-content-panel [data-id='test-view-container'],
+#theia-left-content-panel [id='search-view-container'],
+#theia-left-content-panel [id='scm-view-container'],
+#theia-left-content-panel [id='debug'],
+#theia-left-content-panel [id='vsx-extensions-view-container'],
+#theia-left-content-panel [id='test-view-container'] {
+  display: none !important;
+}
+
+/* 设置已有独立模块，隐藏 Theia 底部 Manage 菜单。 */
+#theia-left-content-panel > .theia-app-sidebar-container > .theia-sidebar-menu:last-child {
+  display: none !important;
+}
+
+.unilab-settings-widget {
+  min-width: 220px;
+  color: var(--theia-foreground);
+  background: var(--theia-sideBar-background);
+}
+
+.unilab-settings {
+  display: grid;
+  align-content: start;
+  gap: 18px;
+  min-height: 100%;
+  padding: 18px 14px;
+}
+
+.unilab-settings h2,
+.unilab-settings p {
+  margin: 0;
+}
+
+.unilab-settings h2 {
+  font-size: 16px;
+  line-height: 1.4;
+}
+
+.unilab-settings header p,
+.unilab-settings__status {
+  margin-top: 5px;
+  color: var(--theia-descriptionForeground);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.unilab-settings__theme {
+  display: grid;
+  gap: 9px;
+}
+
+.unilab-settings__theme button {
+  display: grid;
+  min-height: 74px;
+  grid-template-columns: 30px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  gap: 3px 10px;
+  align-items: center;
+  padding: 12px;
+  color: var(--theia-foreground);
+  border: 1px solid var(--theia-panel-border);
+  border-radius: 10px;
+  background: var(--theia-sideBar-background);
+  cursor: pointer;
+  text-align: left;
+}
+
+.unilab-settings__theme button:hover {
+  background: var(--theia-list-hoverBackground);
+}
+
+.unilab-settings__theme button[aria-pressed='true'] {
+  color: var(--theia-list-activeSelectionForeground, #fff);
+  border-color: var(--theia-button-background);
+  background: var(--theia-list-activeSelectionBackground);
+}
+
+.unilab-settings__theme button[aria-pressed='true'] small {
+  color: inherit;
+  opacity: 0.78;
+}
+
+.unilab-settings__theme button:focus-visible {
+  outline: 2px solid var(--theia-focusBorder);
+  outline-offset: 2px;
+}
+
+.unilab-settings__theme .codicon {
+  grid-row: 1 / 3;
+  font-size: 21px;
+  text-align: center;
+}
+
+.unilab-settings__theme strong {
+  font-size: 12px;
+}
+
+.unilab-settings__theme small {
+  color: var(--theia-descriptionForeground);
+  font-size: 11px;
+}
+
 .unilab-workbench__surface .material-workbench,
 .unilab-workbench__surface .material-workbench__viewport {
   width: 100%;
@@ -509,6 +666,53 @@
   white-space: nowrap;
 }
 
+.unilab-workbench-session-card .unilab-workbench-session-log {
+  display: grid;
+  min-width: 0;
+  grid-column: 1 / -1;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.unilab-workbench-session-card .unilab-workbench-session-log dd {
+  overflow: visible;
+  white-space: normal;
+}
+
+.unilab-workbench-session-log button {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 7px 9px;
+  color: var(--unilab-color-primary);
+  border: 1px solid var(--unilab-color-border);
+  border-radius: var(--unilab-radius-control);
+  background: var(--unilab-color-surface-subtle);
+  font: inherit;
+  line-height: 1.55;
+  text-align: left;
+  cursor: pointer;
+}
+
+.unilab-workbench-session-log button span:last-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.unilab-workbench-session-log button:hover {
+  border-color: var(--unilab-color-focus);
+  background: var(--unilab-color-primary-soft);
+  text-decoration: underline;
+}
+
+.unilab-workbench-session-log button:focus-visible {
+  outline: 2px solid var(--unilab-color-focus);
+  outline-offset: 2px;
+}
+
 .unilab-workbench-session-phase {
   display: inline-flex;
   padding: 4px 9px;
@@ -538,13 +742,155 @@
   margin: 6px 0 0;
 }
 
-.unilab-workbench-session-card button {
-  padding: 7px 14px;
-  color: #fff;
-  border: 1px solid var(--unilab-color-primary);
+.unilab-workbench-session-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid var(--unilab-color-border);
+}
+
+.unilab-workbench-session-actions__main {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.unilab-workbench-session-card .unilab-workbench-session-actions button {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 8px 15px;
+  color: var(--unilab-color-text);
+  border: 1px solid var(--unilab-color-border-strong);
   border-radius: var(--unilab-radius-control);
-  background: var(--unilab-color-primary);
+  background: var(--unilab-color-surface);
+  box-shadow: none;
+  font: 600 12px/1.2 var(--unilab-font-sans);
   cursor: pointer;
+  transition: border-color 140ms ease, background 140ms ease, box-shadow 140ms ease, transform 140ms ease;
+}
+
+.unilab-workbench-session-card .unilab-workbench-session-actions button.is-primary {
+  color: #fff;
+  border-color: var(--unilab-color-primary);
+  background: var(--unilab-color-primary);
+  box-shadow: 0 5px 14px color-mix(in srgb, var(--unilab-color-primary) 24%, transparent);
+}
+
+.unilab-workbench-session-card .unilab-workbench-session-actions button:hover:not(:disabled) {
+  color: var(--unilab-color-primary);
+  border-color: var(--unilab-color-focus);
+  background: var(--unilab-color-primary-soft);
+  transform: translateY(-1px);
+}
+
+.unilab-workbench-session-card .unilab-workbench-session-actions button.is-primary:hover:not(:disabled) {
+  color: #fff;
+  border-color: var(--unilab-color-primary);
+  background: color-mix(in srgb, var(--unilab-color-primary) 88%, #000);
+}
+
+.unilab-workbench-session-card .unilab-workbench-session-actions button.is-danger {
+  color: var(--unilab-color-danger);
+  border-color: color-mix(in srgb, var(--unilab-color-danger) 42%, var(--unilab-color-border));
+}
+
+.unilab-workbench-session-card .unilab-workbench-session-actions button.is-danger:hover:not(:disabled) {
+  color: var(--unilab-color-danger);
+  border-color: var(--unilab-color-danger);
+  background: color-mix(in srgb, var(--unilab-color-danger) 8%, transparent);
+}
+
+.unilab-workbench-session-card .unilab-workbench-session-actions button:focus-visible {
+  outline: 2px solid var(--unilab-color-focus);
+  outline-offset: 2px;
+}
+
+.unilab-workbench-session-card .unilab-workbench-session-actions button:disabled {
+  cursor: wait;
+  opacity: .52;
+}
+
+.unilab-workbench-session-loading {
+  position: fixed;
+  z-index: 3000;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: color-mix(in srgb, var(--unilab-color-canvas) 86%, transparent);
+  backdrop-filter: blur(8px);
+}
+
+.unilab-workbench-session-loading__content {
+  display: flex;
+  width: min(420px, 100%);
+  align-items: center;
+  flex-direction: column;
+  padding: 36px 32px 30px;
+  border: 1px solid var(--unilab-color-border);
+  border-radius: 16px;
+  background: var(--unilab-color-surface);
+  box-shadow: 0 24px 64px rgb(15 23 42 / 18%);
+  text-align: center;
+}
+
+.unilab-workbench-session-loading__spinner {
+  width: 38px;
+  height: 38px;
+  margin-bottom: 20px;
+  border: 3px solid var(--unilab-color-primary-soft);
+  border-top-color: var(--unilab-color-primary);
+  border-radius: 50%;
+  animation: unilab-session-loading-spin .8s linear infinite;
+}
+
+.unilab-workbench-session-loading__content strong {
+  color: var(--unilab-color-text);
+  font-size: 18px;
+}
+
+.unilab-workbench-session-loading__content p {
+  min-height: 20px;
+  margin: 10px 0 22px;
+  color: var(--unilab-color-text-muted);
+}
+
+.unilab-workbench-session-loading__content button {
+  min-height: 34px;
+  padding: 7px 16px;
+  color: var(--unilab-color-text-muted);
+  border: 1px solid var(--unilab-color-border-strong);
+  border-radius: var(--unilab-radius-control);
+  background: var(--unilab-color-surface);
+  cursor: pointer;
+}
+
+@keyframes unilab-session-loading-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .unilab-workbench-session-loading__spinner {
+    animation-duration: 1.6s;
+  }
+}
+
+@media (max-width: 560px) {
+  .unilab-workbench-session-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .unilab-workbench-session-actions__main,
+  .unilab-workbench-session-actions button {
+    width: 100%;
+  }
 }
 
 /*
@@ -674,4 +1020,36 @@
   max-width: 360px;
   margin: 0;
   color: var(--theia-descriptionForeground);
+}
+
+@media (max-width: 720px) {
+  .unilab-workbench__bar {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 8px;
+    padding: 8px 10px;
+  }
+
+  .unilab-workbench__bar > div {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .unilab-workbench__bar > div > span {
+    min-width: 0;
+    overflow: hidden;
+    font-size: 11px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .unilab-workbench__bar nav {
+    width: 100%;
+  }
+
+  .unilab-workbench__bar nav button {
+    min-width: 0;
+    flex: 1 1 0;
+    padding-inline: 6px;
+  }
 }

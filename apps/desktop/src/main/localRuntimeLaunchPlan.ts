@@ -109,7 +109,7 @@ export async function resolveLocalSimulatorLaunchPlan(
  * 声明启动 PLC-Sim 前必须释放的端口。
  *
  * @param ports 已规范化的本地启动端口事实。
- * @returns 边缘执行（Edge）HTTP、PLC-Sim Web GUI 与 OPC UA 端口要求。
+ * @returns PLC-Sim Web GUI 与 OPC UA 端口要求；Edge 可独立保持运行。
  * @throws 不抛出异常。
  * @safety 只构造端口要求，不终止监听进程。
  */
@@ -117,7 +117,6 @@ function simulatorRequiredPorts(
   ports: LocalRuntimePorts
 ): LocalRuntimePortRequirement[] {
   return [
-    { port: ports.edgeHttp, label: '领域侧 Edge HTTP' },
     { port: ports.simulatorGui, label: 'PLC-Sim Web GUI' },
     { port: ports.simulatorOpcUa, label: 'PLC-Sim OPC UA' }
   ]

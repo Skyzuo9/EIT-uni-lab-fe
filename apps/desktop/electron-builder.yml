@@ -7,6 +7,14 @@ files:
   - out/**
   - '!**/*.map'
 extraResources:
+  - from: ${env.UNILAB_RUNTIME_PAYLOAD_DIR}
+    to: runtime-installer
+    filter:
+      - '**/*'
+  - from: resources/default-workspace
+    to: default-workspace
+    filter:
+      - '**/*'
   - from: ../../packages/device-card-agent-cli/dist/cli.mjs
     to: device-card-agent/cli.mjs
   - from: ${env.UNILAB_RUNTIME_PAYLOAD_DIR}

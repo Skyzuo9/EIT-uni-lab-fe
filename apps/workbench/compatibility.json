@@ -34,7 +34,7 @@
     "electron": "33.4.11",
     "backendNode": "24.14.0",
     "theia": "1.74.1",
-    "agentRuntime": "aioncore@2.1.52",
+    "agentRuntime": "aioncore@2.1.53",
     "vscodeExtensionRelease": "vscode-v0.1.0"
   },
   "acceptedBaselines": {

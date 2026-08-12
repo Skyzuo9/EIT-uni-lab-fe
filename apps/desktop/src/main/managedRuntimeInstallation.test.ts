@@ -242,6 +242,43 @@ describe('ManagedRuntimeInstallation', () => {
   })
 
   /**
+   * 回归 macOS userData 常见的 Application Support 空格路径；安装器参数必须原样传递，
+   * 不能经过 shell 字符串拼接后被拆成多个目录。
+   */
+  it('installs and runs from a user data path containing spaces', async () => {
+    const installer = Buffer.from([
+      '#!/bin/sh',
+      'set -eu',
+      'prefix=""',
+      'while [ "$#" -gt 0 ]; do',
+      '  if [ "$1" = "-p" ]; then prefix="$2"; shift 2; else shift; fi',
+      'done',
+      'mkdir -p "$prefix/bin"',
+      'for name in python unilab unilab-supervisor; do',
+      '  printf \'#!/bin/sh\\nprintf "runtime-space-ready\\n"\\n\' > "$prefix/bin/$name"',
+      '  chmod 755 "$prefix/bin/$name"',
+      'done',
+      ''
+    ].join('\n'))
+    const fixture = await createInstallationFixture(installer)
+    const dataDirectory = join(fixture.dataDirectory, '..', 'Application Support')
+    const installation = new ManagedRuntimeInstallation({
+      resourcesDirectory: fixture.resourcesDirectory,
+      dataDirectory,
+      platform: 'linux',
+      architecture: 'x64'
+    })
+
+    const installed = await installation.ensureInstalled()
+
+    expect(installed.prefix).toContain('Application Support')
+    await expect(execFileAsync(
+      installed.supervisorExecutable,
+      ['--version']
+    )).resolves.toMatchObject({ stdout: 'runtime-space-ready\n' })
+  })
+
+  /**
    * 验收 Constructor 非零退出时，调用者能看到原始 stderr 摘要，并可从用户目录读取日志。
    */
   it('preserves Constructor diagnostics when installation fails', async () => {

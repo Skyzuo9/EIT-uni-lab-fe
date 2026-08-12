@@ -2,8 +2,11 @@ import {
   app,
   shell,
   BrowserWindow,
+  Menu,
   ipcMain,
   dialog,
+  type MenuItemConstructorOptions,
+  type IpcMainEvent,
   type IpcMainInvokeEvent
 } from 'electron'
 import { basename, dirname, join } from 'path'
@@ -36,10 +39,16 @@ import {
   LocalRuntimeManager,
   resolveLocalRuntimeLaunchPlan
 } from './localRuntimeManager'
+import { ManagedRuntime } from './managedRuntime'
+import { DevicePackageTrustStore } from './devicePackageTrust'
 import {
   createElectronObservability,
   resolveElectronObservabilityOptions
 } from './observability'
+import {
+  resolveUnsavedUnloadAction,
+  validateRendererUnsavedChanges
+} from './unsavedChangesGuard'
 import type {
   LocalRuntimeLaunchConfig,
   LocalRuntimeOpenLogResult,
@@ -55,6 +64,71 @@ import {
 import { RendererConsoleLogLimiter } from './rendererConsoleLogLimiter'
 import { cleanupPackagedWorkbench, configurePackagedDeviceCardBuilder } from './packagedRuntime'
 import { isWorkbenchWorkspaceNavigationAllowed, registerWorkbenchRemoteAccessIpc, workbenchUnloadPrompt } from './workbenchRemoteIpc'
+
+const UNILAB_APPLICATION_NAME = 'Unilab 调试工作台'
+
+/**
+ * 构造 macOS 原生应用菜单。产品不暴露文件与帮助菜单，其余可见项统一中文化。
+ */
+function createMacApplicationMenu(): MenuItemConstructorOptions[] {
+  return [
+    {
+      label: UNILAB_APPLICATION_NAME,
+      submenu: [
+        { role: 'about', label: `关于 ${UNILAB_APPLICATION_NAME}` },
+        { type: 'separator' },
+        { role: 'services', label: '服务' },
+        { type: 'separator' },
+        { role: 'hide', label: `隐藏 ${UNILAB_APPLICATION_NAME}` },
+        { role: 'hideOthers', label: '隐藏其他应用' },
+        { role: 'unhide', label: '全部显示' },
+        { type: 'separator' },
+        { role: 'quit', label: `退出 ${UNILAB_APPLICATION_NAME}` }
+      ]
+    },
+    {
+      label: '编辑',
+      submenu: [
+        { role: 'undo', label: '撤销' },
+        { role: 'redo', label: '重做' },
+        { type: 'separator' },
+        { role: 'cut', label: '剪切' },
+        { role: 'copy', label: '复制' },
+        { role: 'paste', label: '粘贴' },
+        { role: 'selectAll', label: '全选' }
+      ]
+    },
+    {
+      label: '视图',
+      submenu: [
+        { role: 'reload', label: '重新加载' },
+        { role: 'forceReload', label: '强制重新加载' },
+        { role: 'toggleDevTools', label: '切换开发者工具' },
+        { type: 'separator' },
+        { role: 'resetZoom', label: '实际大小' },
+        { role: 'zoomIn', label: '放大' },
+        { role: 'zoomOut', label: '缩小' },
+        { type: 'separator' },
+        { role: 'togglefullscreen', label: '切换全屏' }
+      ]
+    },
+    {
+      label: '窗口',
+      submenu: [
+        { role: 'minimize', label: '最小化' },
+        { role: 'zoom', label: '缩放' },
+        { role: 'close', label: '关闭窗口' },
+        { type: 'separator' },
+        { role: 'front', label: '前置全部窗口' }
+      ]
+    }
+  ]
+}
+
+// 开发态默认继承 Electron 可执行文件名；必须在 ready 前设置，macOS
+// 才会用产品名称生成应用菜单。
+process.title = UNILAB_APPLICATION_NAME
+app.setName(UNILAB_APPLICATION_NAME)
 
 // 保存文件的入参:path 为 null 时弹出"另存为"对话框
 interface SaveFilePayload {
@@ -143,11 +217,13 @@ const localAppIcon = join(__dirname, '../../build/icon.png')
 // 主窗口引用,供 OAuth 弹窗作为模态父窗口使用
 let mainWindow: BrowserWindow | null = null
 let localRuntimeManager: LocalRuntimeManager | null = null
+let devicePackageTrustStore: DevicePackageTrustStore | null = null
 let quitCleanupStarted = false
 let quitCleanupFinished = false
 let deviceCardManager: DeviceCardManager | null = null
 let deviceCardAgentBridge: DeviceCardAgentBridge | null = null
 let deviceCardAgentCli: DeviceCardAgentCliManager | null = null
+let rendererHasUnsavedChanges: boolean | null = null
 let workflowHasUnsavedChanges = false
 
 function createWindow(): void {
@@ -174,6 +250,7 @@ function createWindow(): void {
   mainWindow.on('closed', () => {
     workflowHasUnsavedChanges = false
     mainWindow = null
+    rendererHasUnsavedChanges = null
   })
 
   mainWindow.webContents.on('did-fail-load', (_e, code, desc, url) => {
@@ -211,9 +288,11 @@ function createWindow(): void {
     }
   )
   mainWindow.webContents.on('will-prevent-unload', (event) => {
+    const hasUnsavedChanges =
+      rendererHasUnsavedChanges === true || workflowHasUnsavedChanges
     if (!shouldPromptForRendererUnload(
       desktopSurface.kind,
-      workflowHasUnsavedChanges
+      hasUnsavedChanges
     )) {
       // Electron's will-prevent-unload contract is inverted: preventing this
       // event allows the renderer navigation/close to continue.
@@ -222,6 +301,16 @@ function createWindow(): void {
     }
     const window = mainWindow
     if (!window || window.isDestroyed()) return
+    const unloadState =
+      rendererHasUnsavedChanges === null && !workflowHasUnsavedChanges
+        ? null
+        : hasUnsavedChanges
+    if (resolveUnsavedUnloadAction(unloadState) === 'allow') {
+      electronObservability.record('electron.renderer.clean_unload_allowed')
+      event.preventDefault()
+      return
+    }
+
     const prompt = workbenchUnloadPrompt()
     const choice = dialog.showMessageBoxSync(window, {
       type: 'warning',
@@ -235,6 +324,7 @@ function createWindow(): void {
     })
     if (choice === 1) {
       workflowHasUnsavedChanges = false
+      rendererHasUnsavedChanges = false
       electronObservability.record(prompt.discardedEvent)
       event.preventDefault()
     }
@@ -243,7 +333,10 @@ function createWindow(): void {
   mainWindow.webContents.on(
     'did-start-navigation',
     (_event, _url, isInPlace, isMainFrame) => {
-      if (isMainFrame && !isInPlace) workflowHasUnsavedChanges = false
+      if (isMainFrame && !isInPlace) {
+        workflowHasUnsavedChanges = false
+        rendererHasUnsavedChanges = null
+      }
     }
   )
 
@@ -332,6 +425,9 @@ function createWindow(): void {
  * @safety IPC 处理器仍校验主渲染器身份；日志路径不接收渲染器输入。
  */
 app.whenReady().then(async () => {
+  if (process.platform === 'darwin') {
+    Menu.setApplicationMenu(Menu.buildFromTemplate(createMacApplicationMenu()))
+  }
   logLine('app ready')
   electronObservability.record('electron.app.ready')
   configurePackagedDeviceCardBuilder({
@@ -343,6 +439,18 @@ app.whenReady().then(async () => {
     app.dock.setIcon(localAppIcon)
   }
   ipcMain.handle('app:getVersion', () => app.getVersion())
+  ipcMain.on('renderer:unsavedChanges', (event, value: unknown) => {
+    try {
+      assertMainWindowSender(event)
+      rendererHasUnsavedChanges = validateRendererUnsavedChanges(value)
+    } catch (error) {
+      logLine(
+        `忽略无效的未保存状态上报：${error instanceof Error
+          ? error.message
+          : String(error)}`
+      )
+    }
+  })
   ipcMain.on(
     'workflow-authoring:setUnsavedChanges',
     (event, value: unknown) => {
@@ -435,8 +543,21 @@ app.whenReady().then(async () => {
     }
   )
 
+  const localRuntimeLogsDirectory = join(
+    app.getPath('logs'),
+    'local-runtime'
+  )
+  const managedRuntime = createManagedRuntime(join(
+    app.getPath('userData'),
+    'managed-runtime',
+    'supervisor'
+  ))
+  devicePackageTrustStore = new DevicePackageTrustStore(join(
+    app.getPath('userData'),
+    'device-package-trust'
+  ))
   localRuntimeManager = new LocalRuntimeManager(
-    join(app.getPath('logs'), 'local-runtime'),
+    localRuntimeLogsDirectory,
     (snapshot) => {
       electronObservability.record('electron.runtime.state_changed', {
         'runtime.phase': snapshot.phase,
@@ -452,7 +573,17 @@ app.whenReady().then(async () => {
         window.webContents.send('runtime:snapshot', snapshot)
       }
     },
-    DIAGNOSTIC_LOG_SESSION_ID
+    DIAGNOSTIC_LOG_SESSION_ID,
+    managedRuntime
+      ? {
+          managedRuntime,
+          managedWorkingRoot: join(
+            app.getPath('userData'),
+            'managed-runtime',
+            'workspaces'
+          )
+        }
+      : {}
   )
   const localDeviceProvisioningManager = new LocalDeviceProvisioningManager(
     new LocalDeviceProvisioningStore(
@@ -488,6 +619,37 @@ app.whenReady().then(async () => {
     assertMainWindowSender(event)
     return requireRuntimeManager().getSnapshot()
   })
+  ipcMain.handle('runtime:getModeInfo', (event) => {
+    assertMainWindowSender(event)
+    return requireRuntimeManager().getModeInfo()
+  })
+  ipcMain.handle(
+    'runtime:inspectDevicePackage',
+    async (event, payload: unknown) => {
+      assertMainWindowSender(event)
+      const config = parseRuntimeConfig(payload)
+      return requireDevicePackageTrustStore().inspect(
+        config.szlabProjectPath
+      )
+    }
+  )
+  ipcMain.handle(
+    'runtime:confirmDevicePackage',
+    async (event, payload: unknown, expectedHash: unknown) => {
+      assertMainWindowSender(event)
+      if (
+        typeof expectedHash !== 'string'
+        || !/^[0-9a-f]{64}$/.test(expectedHash)
+      ) {
+        throw new Error('设备包内容哈希无效')
+      }
+      const config = parseRuntimeConfig(payload)
+      return requireDevicePackageTrustStore().confirm(
+        config.szlabProjectPath,
+        expectedHash
+      )
+    }
+  )
   ipcMain.handle('runtime:getDefaultEnvironmentPath', async (event) => {
     assertMainWindowSender(event)
     return electronObservability.run(
@@ -532,7 +694,9 @@ app.whenReady().then(async () => {
         electronObservability.record('electron.runtime.start_requested', {
           'runtime.target': 'edge'
         })
-        await confirmCustomEdgeLaunch(config)
+        if ((await requireRuntimeManager().getModeInfo()).mode === 'development') {
+          await confirmCustomEdgeLaunch(config)
+        }
         return requireRuntimeManager().startEdge(config)
       }
     )
@@ -543,6 +707,16 @@ app.whenReady().then(async () => {
       'electron.runtime.stop',
       { 'runtime.target': 'edge' },
       () => requireRuntimeManager().stopEdge()
+    )
+  })
+  ipcMain.handle('runtime:runAcceptance', async (event, payload: unknown) => {
+    assertMainWindowSender(event)
+    return electronObservability.run(
+      'electron.runtime.acceptance',
+      {},
+      () => requireRuntimeManager().runAcceptance(
+        parseRuntimeConfig(payload)
+      )
     )
   })
   ipcMain.handle('runtime:readLogs', async (event) => {
@@ -740,7 +914,11 @@ async function cleanupBeforeQuit(): Promise<void> {
   }
   const manager = localRuntimeManager
   try {
-    if (manager && manager.getSnapshot().phase !== 'idle') {
+    if (
+      manager
+      && !manager.persistsAfterAppQuit()
+      && manager.getSnapshot().phase !== 'idle'
+    ) {
       await electronObservability.run(
         'electron.runtime.stop_on_quit',
         {},
@@ -764,6 +942,40 @@ async function cleanupBeforeQuit(): Promise<void> {
   })
   electronObservability.record('electron.app.quit')
   await electronObservability.shutdown()
+}
+
+/**
+ * 在安装包或显式测试载荷存在时创建私有运行时（Runtime）控制面。
+ *
+ * @param supervisorStateDirectory 独立 Supervisor 持久状态目录。
+ * @returns 托管 Runtime；开发态没有载荷时返回 undefined。
+ * @throws 安装包缺少 manifest 时阻止启动，避免静默退回源码模式。
+ * @safety 载荷根只来自 Electron resources 或主进程测试环境变量。
+ */
+function createManagedRuntime(
+  supervisorStateDirectory: string
+): ManagedRuntime | undefined {
+  const resourcesDirectory = process.env['UNILAB_MANAGED_RUNTIME_RESOURCES']
+    ?? (app.isPackaged ? process.resourcesPath : undefined)
+  if (!resourcesDirectory) return undefined
+  const manifestPath = join(
+    resourcesDirectory,
+    'runtime-installer',
+    'manifest.json'
+  )
+  if (!existsSync(manifestPath)) {
+    if (app.isPackaged) {
+      throw new Error(`安装包缺少私有 Runtime manifest：${manifestPath}`)
+    }
+    return undefined
+  }
+  return new ManagedRuntime(
+    new ManagedRuntimeInstallation({
+      resourcesDirectory,
+      dataDirectory: app.getPath('userData')
+    }),
+    supervisorStateDirectory
+  )
 }
 
 function createMainObservability(): ReturnType<
@@ -798,7 +1010,9 @@ function createMainObservability(): ReturnType<
  * @param event Electron 主进程收到的调用事件。
  * @throws 当窗口、webContents 或 senderFrame 身份不匹配时抛出。
  */
-function assertMainWindowSender(event: IpcMainInvokeEvent): void {
+function assertMainWindowSender(
+  event: IpcMainInvokeEvent | IpcMainEvent
+): void {
   if (
     !mainWindow
     || event.sender !== mainWindow.webContents
@@ -811,6 +1025,12 @@ function assertMainWindowSender(event: IpcMainInvokeEvent): void {
 function requireRuntimeManager(): LocalRuntimeManager {
   if (!localRuntimeManager) throw new Error('本地运行时尚未初始化')
   return localRuntimeManager
+}
+
+/** 返回应用生命周期内唯一的设备包信任存储。 */
+function requireDevicePackageTrustStore(): DevicePackageTrustStore {
+  if (!devicePackageTrustStore) throw new Error('设备包信任存储尚未初始化')
+  return devicePackageTrustStore
 }
 
 /**
@@ -882,7 +1102,9 @@ function runtimePathDialogOptions(
       LocalRuntimePathKind,
       'graph' | 'edgeExecutable'
     >],
-    properties: ['openDirectory']
+    properties: kind === 'simulator'
+      ? ['openFile', 'openDirectory']
+      : ['openDirectory']
   }
 }
 

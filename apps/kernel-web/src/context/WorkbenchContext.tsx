@@ -8,7 +8,6 @@ import {
 } from 'react'
 import {
   DEFAULT_BACKENDS,
-  getDefaultBackend,
   type BackendConfig
 } from '@unilab/services'
 
@@ -17,6 +16,13 @@ import type {
   WorkbenchSection
 } from '../data/lab'
 import { DEFAULT_BACKEND_ENABLED } from './connectionPolicy'
+import {
+  BACKEND_PREFERENCE_STORAGE_KEY,
+  hasExplicitBackendSelection,
+  resolveDefaultBackend,
+  resolveInitialBackend,
+  serializeBackendPreference
+} from './backendSelection'
 
 interface WorkbenchContextValue {
   backend: BackendConfig
@@ -24,6 +30,8 @@ interface WorkbenchContextValue {
   connection: ConnectionStatus
   section: WorkbenchSection
   laboratoryId: string | null
+  capabilityHealth: WorkbenchCapabilityHealth
+  recoveryRevision: number
   availableBackends: readonly BackendConfig[]
   selectBackend: (backendId: string) => void
   updateBackend: (patch: Partial<BackendConfig>) => void
@@ -31,6 +39,34 @@ interface WorkbenchContextValue {
   setConnection: (status: ConnectionStatus) => void
   setSection: (section: WorkbenchSection) => void
   setLaboratoryId: (laboratoryId: string | null) => void
+  reportCapabilityHealth: (
+    capability: WorkbenchCapability,
+    health: CapabilityHealth
+  ) => void
+  requestRecovery: () => void
+}
+
+export type WorkbenchCapability = 'devices' | 'materials' | 'workflows'
+export type CapabilityHealthStatus =
+  | 'idle'
+  | 'loading'
+  | 'ready'
+  | 'error'
+
+export interface CapabilityHealth {
+  status: CapabilityHealthStatus
+  summary: string
+  technicalDetail?: string
+}
+
+export type WorkbenchCapabilityHealth = Readonly<
+  Record<WorkbenchCapability, CapabilityHealth>
+>
+
+const INITIAL_CAPABILITY_HEALTH: WorkbenchCapabilityHealth = {
+  devices: { status: 'idle', summary: '尚未读取' },
+  materials: { status: 'idle', summary: '尚未读取' },
+  workflows: { status: 'idle', summary: '尚未读取' }
 }
 
 const WorkbenchContext = createContext<WorkbenchContextValue | null>(null)
@@ -48,10 +84,16 @@ export function WorkbenchProvider({ children }: { children: ReactNode }): React.
     initialSection()
   )
   const [laboratoryId, setLaboratoryId] = useState<string | null>(null)
+  const [capabilityHealth, setCapabilityHealth] =
+    useState<WorkbenchCapabilityHealth>(INITIAL_CAPABILITY_HEALTH)
+  const [recoveryRevision, setRecoveryRevision] = useState(0)
 
   const selectBackend = useCallback((backendId: string) => {
-    setBackend(getDefaultBackend(backendId))
+    const next = resolveDefaultBackend(backendId, browserOrigin())
+    persistBackendPreference(next)
+    setBackend(next)
     setLaboratoryId(null)
+    setCapabilityHealth(INITIAL_CAPABILITY_HEALTH)
     setConnection('disconnected')
   }, [])
 
@@ -65,14 +107,37 @@ export function WorkbenchProvider({ children }: { children: ReactNode }): React.
       ) {
         next.realtimeUrl = realtimeUrlFor(patch.apiUrl)
       }
+      persistBackendPreference(next)
       return next
     })
+    setCapabilityHealth(INITIAL_CAPABILITY_HEALTH)
     setConnection('disconnected')
   }, [])
 
   const setBackendEnabled = useCallback((enabled: boolean) => {
     setBackendEnabledState(enabled)
     if (!enabled) setConnection('disconnected')
+  }, [])
+
+  const reportCapabilityHealth = useCallback((
+    capability: WorkbenchCapability,
+    health: CapabilityHealth
+  ) => {
+    setCapabilityHealth((current) => {
+      const previous = current[capability]
+      if (
+        previous.status === health.status &&
+        previous.summary === health.summary &&
+        previous.technicalDetail === health.technicalDetail
+      ) {
+        return current
+      }
+      return { ...current, [capability]: health }
+    })
+  }, [])
+
+  const requestRecovery = useCallback(() => {
+    setRecoveryRevision((revision) => revision + 1)
   }, [])
 
   const value = useMemo<WorkbenchContextValue>(
@@ -82,13 +147,17 @@ export function WorkbenchProvider({ children }: { children: ReactNode }): React.
       connection,
       section,
       laboratoryId,
+      capabilityHealth,
+      recoveryRevision,
       availableBackends: DEFAULT_BACKENDS,
       selectBackend,
       updateBackend,
       setBackendEnabled,
       setConnection,
       setSection,
-      setLaboratoryId
+      setLaboratoryId,
+      reportCapabilityHealth,
+      requestRecovery
     }),
     [
       backend,
@@ -96,9 +165,13 @@ export function WorkbenchProvider({ children }: { children: ReactNode }): React.
       connection,
       section,
       laboratoryId,
+      capabilityHealth,
+      recoveryRevision,
       selectBackend,
       updateBackend,
-      setBackendEnabled
+      setBackendEnabled,
+      reportCapabilityHealth,
+      requestRecovery
     ]
   )
 
@@ -118,28 +191,18 @@ export function useWorkbench(): WorkbenchContextValue {
 }
 
 function initialBackend(): BackendConfig {
-  const backend = getDefaultBackend('local-python')
-  if (typeof globalThis.location === 'undefined') return backend
-  const override = new URLSearchParams(globalThis.location.search)
-    .get('localOsUrl')
-  if (!override) return backend
-  try {
-    const url = new URL(override)
-    if (
-      !['http:', 'https:'].includes(url.protocol) ||
-      !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)
-    ) {
-      return backend
-    }
-    const apiUrl = url.toString().replace(/\/$/, '')
-    return {
-      ...backend,
-      apiUrl,
-      realtimeUrl: realtimeUrlFor(apiUrl)
-    }
-  } catch {
-    return backend
-  }
+  const location = typeof globalThis.location === 'undefined'
+    ? undefined
+    : globalThis.location
+  const storage = typeof globalThis.localStorage === 'undefined'
+    ? undefined
+    : globalThis.localStorage
+  return resolveInitialBackend({
+    search: location?.search ?? '',
+    origin: location?.origin,
+    managedRuntime: Boolean(globalThis.window?.api?.runtime),
+    storedPreference: storage?.getItem(BACKEND_PREFERENCE_STORAGE_KEY)
+  })
 }
 
 function initialBackendEnabled(): boolean {
@@ -150,27 +213,11 @@ function initialBackendEnabled(): boolean {
   if (
     typeof globalThis.window !== 'undefined'
     && globalThis.window.api?.runtime
-    && !hasExplicitBackendOverride()
+    && !hasExplicitBackendSelection(globalThis.location?.search ?? '')
   ) {
     return false
   }
   return DEFAULT_BACKEND_ENABLED
-}
-
-function hasExplicitBackendOverride(): boolean {
-  if (typeof globalThis.location === 'undefined') return false
-  const override = new URLSearchParams(globalThis.location.search)
-    .get('localOsUrl')
-  if (!override) return false
-  try {
-    const url = new URL(override)
-    return (
-      ['http:', 'https:'].includes(url.protocol)
-      && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)
-    )
-  } catch {
-    return false
-  }
 }
 
 function initialSection(): WorkbenchSection {
@@ -196,5 +243,29 @@ function realtimeUrlFor(apiUrl: string): string {
     return url.toString().replace(/\/$/, '')
   } catch {
     return apiUrl
+  }
+}
+
+/** 返回浏览器当前 Origin；SSR/测试环境没有 location 时返回 undefined。 */
+function browserOrigin(): string | undefined {
+  return typeof globalThis.location === 'undefined'
+    ? undefined
+    : globalThis.location.origin
+}
+
+/**
+ * 持久化用户确认过的后端权威配置。
+ *
+ * @param backend 不含访问令牌的后端 profile 与地址。
+ * @returns 无；浏览器禁用存储时失败开放，不影响本次连接。
+ */
+function persistBackendPreference(backend: BackendConfig): void {
+  try {
+    globalThis.localStorage?.setItem(
+      BACKEND_PREFERENCE_STORAGE_KEY,
+      serializeBackendPreference(backend)
+    )
+  } catch {
+    // 本地偏好不是领域事实，浏览器禁用存储时继续使用当前会话配置。
   }
 }

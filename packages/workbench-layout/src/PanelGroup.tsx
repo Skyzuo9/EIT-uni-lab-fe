@@ -22,10 +22,13 @@ export interface PanelGroupTab {
 }
 export interface PanelGroupProps {
   activeTabId: string;
+  /** 不受业务工具栏错误边界影响的布局级恢复操作。 */
+  groupAction?: ReactNode;
   groupId: string;
   tabs: PanelGroupTab[];
   toolbar?: ReactNode;
   toolbarKey?: string;
+  visible?: boolean;
   getCloseLabel?: (title: string) => string;
   onTabChange?: (panelInstanceId: string) => void;
   onTabClose?: (panelInstanceId: string) => void;
@@ -69,14 +72,16 @@ function hasMime(event: DragEvent): boolean {
  * 渲染一组可切换面板，并向每个已挂载内容发布其真实可见性。
  *
  * @param props 标签、活动身份与移动/关闭命令。
- * @returns 保持非活动标签挂载、但可被子组件识别为隐藏的面板组。
+ * @returns 保持非活动标签和折叠分组挂载、但向子组件发布真实可见性的面板组。
  */
 export const PanelGroup: React.FC<PanelGroupProps> = ({
   activeTabId,
+  groupAction,
   groupId,
   tabs,
   toolbar,
   toolbarKey,
+  visible = true,
   getCloseLabel,
   onTabChange,
   onTabClose,
@@ -246,11 +251,21 @@ export const PanelGroup: React.FC<PanelGroupProps> = ({
             );
           })}
         </div>
-        {toolbar !== null && toolbar !== undefined ? (
-          <div className="flex items-center px-2">
-            <ToolbarBoundary key={toolbarKey ?? activeTabId}>
-              {toolbar}
-            </ToolbarBoundary>
+        {(toolbar !== null && toolbar !== undefined) ||
+        (groupAction !== null && groupAction !== undefined) ? (
+          <div className="flex items-center gap-1 px-2">
+            {toolbar !== null && toolbar !== undefined ? (
+              <div className="flex items-center" data-panel-toolbar-content>
+                <ToolbarBoundary key={toolbarKey ?? activeTabId}>
+                  {toolbar}
+                </ToolbarBoundary>
+              </div>
+            ) : null}
+            {groupAction !== null && groupAction !== undefined ? (
+              <div className="flex items-center" data-panel-group-action>
+                {groupAction}
+              </div>
+            ) : null}
           </div>
         ) : null}
       </div>
@@ -273,7 +288,9 @@ export const PanelGroup: React.FC<PanelGroupProps> = ({
               hidden={tab.id !== activeTabId}
               tabIndex={0}
             >
-              <PanelVisibilityProvider active={tab.id === activeTabId}>
+              <PanelVisibilityProvider
+                active={visible && tab.id === activeTabId}
+              >
                 {tab.content}
               </PanelVisibilityProvider>
             </div>

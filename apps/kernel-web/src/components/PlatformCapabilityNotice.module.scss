@@ -1,0 +1,111 @@
+.notice {
+  display: grid;
+  width: min(540px, calc(100% - 32px));
+  height: 100%;
+  min-height: 320px;
+  align-content: center;
+  justify-items: center;
+  margin: 0 auto;
+  padding: 32px 24px;
+  color: var(--unilab-color-text-muted);
+  text-align: center;
+
+  h1 {
+    margin: 0;
+    color: var(--unilab-color-text);
+    font-size: 20px;
+    line-height: 1.35;
+  }
+}
+
+.mark {
+  display: grid;
+  width: 52px;
+  height: 52px;
+  place-items: center;
+  margin-bottom: 8px;
+  color: var(--unilab-color-device);
+  border: 1px solid color-mix(in srgb, var(--unilab-color-device) 20%, transparent);
+  border-radius: var(--unilab-radius-lg);
+  background: var(--unilab-color-device-soft);
+
+  svg {
+    width: 24px;
+    height: 24px;
+    fill: none;
+    stroke: currentcolor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 1.4;
+  }
+}
+
+.description {
+  max-width: 56ch;
+  margin: 10px 0 18px;
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.handoff {
+  display: flex;
+  width: min(420px, 100%);
+  gap: 8px;
+  align-items: center;
+  padding: 6px;
+  border: 1px solid var(--unilab-color-border-strong);
+  border-radius: var(--unilab-radius-lg);
+  background: var(--unilab-color-surface);
+  box-shadow: var(--unilab-shadow-control);
+
+  code {
+    min-width: 0;
+    flex: 1;
+    padding-left: 8px;
+    overflow: hidden;
+    color: var(--unilab-color-text);
+    font-size: 11px;
+    text-align: left;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  button {
+    min-height: 36px;
+    padding: 0 12px;
+    color: white;
+    border: 1px solid var(--unilab-color-device);
+    border-radius: var(--unilab-radius-control);
+    background: var(--unilab-color-device);
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  button:hover { background: color-mix(in srgb, var(--unilab-color-device) 88%, black); }
+  button:focus-visible { outline: 2px solid var(--unilab-color-focus); outline-offset: 2px; }
+}
+
+.copyStatus {
+  min-height: 18px;
+  margin-top: 7px;
+  font-size: 10px;
+}
+
+.reason {
+  max-width: 480px;
+  margin-top: 14px;
+  font-size: 11px;
+
+  summary { cursor: pointer; font-weight: 650; }
+  summary:focus-visible { outline: 2px solid var(--unilab-color-focus); outline-offset: 2px; }
+  p { margin: 8px 0 0; line-height: 1.6; }
+}
+
+@media (max-width: 720px) {
+  .notice { width: 100%; min-height: 100%; padding: 24px 18px; }
+  .handoff { align-items: stretch; flex-direction: column; }
+  .handoff code { width: 100%; padding: 8px; text-align: center; }
+  .handoff button { min-height: 44px; }
+  .reason summary { min-height: 44px; display: inline-flex; align-items: center; }
+}

@@ -60,7 +60,8 @@ test('existing Workflow UI drives Task/Jobs/commands through real OS HTTP and SS
 
   await expect(panel.getByText('完整控制流 DAG')).toBeVisible()
   await expect(panel.getByRole('button', {
-    name: /^(应用并运行|开始运行)$/
+    name: '应用此版本',
+    exact: true
   })).toBeVisible()
   await prepareAppliedWorkflow(panel, page)
   await expect(panel.getByRole('button', {

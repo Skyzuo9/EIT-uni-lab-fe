@@ -111,7 +111,9 @@ export function packagePortableWorkbench(targetPlatform) {
         '--prefer-offline',
         desktopRuntimeDirectory
       ],
-      repositoryDirectory
+      repositoryDirectory,
+      process.env,
+      { shell: process.platform === 'win32' }
     )
 
     const esbuildBinary = resolveEsbuildBinary(descriptor)
@@ -199,11 +201,14 @@ function prepareNodeRuntime(descriptor, destination, packagingDirectory) {
     ])
   } else {
     const extractionDirectory = join(packagingDirectory, 'node-extracted')
-    runCommand('powershell.exe', [
-      '-NoProfile',
-      '-Command',
-      'Expand-Archive -LiteralPath $args[0] -DestinationPath $args[1] -Force',
+    mkdirSync(extractionDirectory, { recursive: true })
+    // Windows ships bsdtar as tar.exe. Passing the archive path directly
+    // avoids powershell.exe -Command consuming trailing arguments before the
+    // script can read them from $args.
+    runCommand('tar.exe', [
+      '-xf',
       archivePath,
+      '-C',
       extractionDirectory
     ])
     copyFileSync(
@@ -226,15 +231,23 @@ function resolveEsbuildBinary(descriptor) {
   const executable = descriptor.hostPlatform === 'win32'
     ? 'esbuild.exe'
     : 'esbuild'
+  const workbenchManifest = JSON.parse(readFileSync(
+    join(workbenchDirectory, 'package.json'),
+    'utf8'
+  ))
+  const esbuildVersion = workbenchManifest.devDependencies?.esbuild
+  if (typeof esbuildVersion !== 'string' || esbuildVersion.length === 0) {
+    throw new Error('Workbench 未声明 esbuild 版本')
+  }
   const binary = join(
     repositoryDirectory,
     'node_modules',
     '.pnpm',
-    `@esbuild+${descriptor.esbuildPackage}@0.21.5`,
+    `@esbuild+${descriptor.esbuildPackage}@${esbuildVersion}`,
     'node_modules',
     '@esbuild',
     descriptor.esbuildPackage,
-    'bin',
+    ...(descriptor.hostPlatform === 'win32' ? [] : ['bin']),
     executable
   )
   if (!existsSync(binary)) throw new Error(`缺少目标平台 esbuild：${binary}`)
@@ -316,12 +329,18 @@ function hasExpectedSha256(path, expected) {
   return createHash('sha256').update(readFileSync(path)).digest('hex') === expected
 }
 
-function runCommand(command, args, cwd = workbenchDirectory, environment = process.env) {
+function runCommand(
+  command,
+  args,
+  cwd = workbenchDirectory,
+  environment = process.env,
+  options = {}
+) {
   const result = spawnSync(command, args, {
     cwd,
     env: environment,
     stdio: 'inherit',
-    shell: false
+    shell: options.shell ?? false
   })
   if (result.error) throw result.error
   if (result.status !== 0) {

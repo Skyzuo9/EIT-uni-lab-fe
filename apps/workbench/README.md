@@ -171,6 +171,11 @@ renderer is restricted to the launcher-owned local welcome file and the active
 managed `http://127.0.0.1` origin; remote renderer URLs and cross-origin
 navigation are rejected.
 
+The default desktop command builds Theia in production mode, removes source
+maps, and builds only Electron main/preload code because Workbench renders from
+the local Theia server. Use `pnpm workbench:desktop:development` when source
+maps are needed; it keeps the same renderer-free Electron shell.
+
 The desktop Environment Manager can enable or stop an authenticated remote
 browser entrance while Electron stays open. Both entrances use the same Theia
 backend, `WorkbenchSession`, managed OS, terminals and files; enabling sharing

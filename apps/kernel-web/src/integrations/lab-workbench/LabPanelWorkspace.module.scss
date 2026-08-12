@@ -1,0 +1,81 @@
+.workspace {
+  position: relative;
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.panelToggle {
+  display: inline-flex;
+  min-width: 0;
+  min-height: 30px;
+  align-items: center;
+  justify-content: center;
+  gap: var(--unilab-space-1);
+  padding: 4px var(--unilab-space-2);
+  color: var(--unilab-color-text-muted);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--unilab-radius-control);
+}
+
+.panelToggle:hover {
+  color: var(--unilab-color-workflow);
+  background: var(--unilab-color-workflow-soft);
+  border-color: color-mix(
+    in srgb,
+    var(--unilab-color-workflow) 24%,
+    var(--unilab-color-border)
+  );
+}
+
+.panelToggle:focus-visible {
+  color: var(--unilab-color-text);
+  outline: 2px solid var(--unilab-color-focus);
+  outline-offset: 1px;
+}
+
+.panelToggle :global(.anticon) {
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: 14px;
+}
+
+@media (max-width: 720px) {
+  .workspace
+    :global([data-testid='panel-layout-renderer'])
+    > :global([data-split-direction='horizontal']) {
+    flex-direction: column;
+  }
+
+  .workspace
+    :global([data-testid='panel-layout-renderer'])
+    > :global([data-split-direction='horizontal'])
+    > :global([data-panel-layout-node-id]) {
+    flex-basis: 50% !important;
+  }
+
+  .workspace
+    :global([data-testid='panel-layout-renderer'])
+    > :global([data-split-direction='horizontal'])
+    > :global([role='separator']) {
+    display: none;
+  }
+
+  .panelToggle {
+    min-width: 36px;
+    min-height: 34px;
+  }
+
+  .panelToggle span {
+    display: none;
+  }
+}

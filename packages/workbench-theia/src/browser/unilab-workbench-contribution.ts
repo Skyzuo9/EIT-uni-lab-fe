@@ -18,7 +18,7 @@ import { UniLabAgentNavigationContribution } from './unilab-agent-contribution'
 
 export const OpenUniLabWorkbench: Command = {
   id: 'unilab.authoring-workbench.open',
-  label: '打开 UniLab 调试工作台'
+  label: '打开 Unilab 调试工作台'
 }
 
 export const OpenUniLabWorkflowView: Command = {

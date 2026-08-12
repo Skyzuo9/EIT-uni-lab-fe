@@ -1,6 +1,7 @@
 export {
   default as WorkflowPanel,
-  type WorkflowPanelProps
+  type WorkflowPanelProps,
+  type WorkflowCatalogState
 } from './components/WorkflowPanel'
 export type {
   WorkflowPanelRuntimeProjection

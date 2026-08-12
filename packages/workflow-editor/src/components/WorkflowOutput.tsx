@@ -1,3 +1,7 @@
+import { useEffect, useState, type CSSProperties } from 'react'
+
+import { useResizableWorkflowOutput } from './useResizableWorkflowOutput'
+
 export type WorkflowOutputTab = 'nodes' | 'events' | 'errors'
 
 export interface WorkflowOutputNode {
@@ -38,6 +42,7 @@ interface WorkflowOutputProps {
   nodesTabLabel?: string
   eventsTabLabel?: string
   eventsEmptyLabel?: string
+  resizable?: boolean
 }
 
 /**
@@ -66,8 +71,21 @@ export function WorkflowOutput({
   countLabel = '个节点已有结果',
   nodesTabLabel = '节点结果',
   eventsTabLabel = '事件流',
-  eventsEmptyLabel = '等待 OS 节点反馈……'
+  eventsEmptyLabel = '等待 OS 节点反馈……',
+  resizable = false
 }: WorkflowOutputProps): React.JSX.Element {
+  const outputResize = useResizableWorkflowOutput()
+  const [fullscreen, setFullscreen] = useState(false)
+  const outputVisible = resizable || expanded
+
+  useEffect(() => {
+    if (!fullscreen) return
+    const exitOnEscape = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') setFullscreen(false)
+    }
+    globalThis.addEventListener('keydown', exitOnEscape)
+    return () => globalThis.removeEventListener('keydown', exitOnEscape)
+  }, [fullscreen])
   const eventNodeNames = workflowEventNodeNames(nodes, nodeNames)
   const nodeFailures = workflowNodeFailureLogs(nodes, nodeNames, events)
   const selectedNodeFailure = selectedNode
@@ -94,9 +112,33 @@ export function WorkflowOutput({
   return (
     <div
       className={`workflow-runtime__results${
-        expanded ? ' is-expanded' : ' is-collapsed'
+        outputVisible ? ' is-expanded' : ' is-collapsed'
+      }${resizable ? ' is-resizable' : ''}${
+        outputResize.resizing ? ' is-resizing' : ''
+      }${fullscreen ? ' is-fullscreen' : ''
       }`}
+      style={resizable ? {
+        '--workflow-output-height': `${outputResize.height}px`
+      } as CSSProperties : undefined}
     >
+      {resizable && !fullscreen ? (
+        <div
+          className="workflow-runtime__output-resizer"
+          role="separator"
+          aria-label="调整运行输出高度"
+          aria-orientation="horizontal"
+          aria-valuemin={outputResize.minimum}
+          aria-valuemax={outputResize.maximum}
+          aria-valuenow={Math.round(outputResize.height)}
+          tabIndex={0}
+          title="向上拖动扩大运行输出；双击恢复默认高度"
+          onPointerDown={outputResize.onPointerDown}
+          onKeyDown={outputResize.onKeyDown}
+          onDoubleClick={outputResize.reset}
+        >
+          <span aria-hidden="true" />
+        </div>
+      ) : null}
       <header className="workflow-runtime__output-header">
         <div className="workflow-runtime__output-title">
           <strong>{title}</strong>
@@ -105,7 +147,7 @@ export function WorkflowOutput({
             {' '}{countLabel}
           </span>
         </div>
-        {expanded && (
+        {outputVisible && (
           <div
             className="workflow-runtime__output-tabs"
             role="tablist"
@@ -136,16 +178,24 @@ export function WorkflowOutput({
         )}
         <button
           type="button"
-          className="workflow-runtime__output-toggle"
-          aria-expanded={expanded}
-          aria-label={expanded ? '收起运行输出' : '展开运行输出'}
-          onClick={() => onExpandedChange(!expanded)}
+          className="workflow-runtime__output-fullscreen"
+          aria-pressed={fullscreen}
+          aria-label={fullscreen ? '退出运行输出全屏' : '全屏显示运行输出'}
+          title={fullscreen ? '退出全屏（Esc）' : '全屏显示运行输出'}
+          onClick={() => {
+            if (!outputVisible) onExpandedChange(true)
+            setFullscreen(value => !value)
+          }}
         >
-          {expanded ? '收起' : '展开'}
+          <span
+            className={`codicon codicon-${fullscreen ? 'screen-normal' : 'screen-full'}`}
+            aria-hidden="true"
+          />
+          {fullscreen ? '退出全屏' : '全屏'}
         </button>
       </header>
 
-      {expanded && (
+      {outputVisible && (
         <WorkflowOutputBody
           activeTab={activeTab}
           nodes={nodes}

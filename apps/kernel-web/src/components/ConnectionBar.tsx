@@ -17,13 +17,16 @@ export default function ConnectionBar(): React.JSX.Element {
     backend,
     backendEnabled,
     connection,
+    capabilityHealth,
     availableBackends,
     selectBackend,
     updateBackend,
-    setBackendEnabled
+    setBackendEnabled,
+    requestRecovery
   } = useWorkbench()
   const { disconnect, reconnect } = useBackendConnection()
   const [draftUrl, setDraftUrl] = useState(backend.apiUrl)
+  const [recovering, setRecovering] = useState(false)
 
   useEffect(() => {
     setDraftUrl(backend.apiUrl)
@@ -36,12 +39,18 @@ export default function ConnectionBar(): React.JSX.Element {
   const trimmedDraftUrl = draftUrl.trim()
   const hasDraftChange = trimmedDraftUrl !== backend.apiUrl
   const targetName = backend.serverKind === 'edge' ? 'Edge' : backend.name
+  const capabilityErrors = Object.values(capabilityHealth).filter(
+    (health) => health.status === 'error'
+  ).length
+  const showAttention = showRecovery || capabilityErrors > 0
   const showConnected = backendEnabled && connection === 'connected'
   const showDisconnected = backendEnabled && connection === 'disconnected'
   const statusLabel = showRecovery
     ? `${targetName} 连接失败`
     : showConnected
-      ? `${targetName} 已连接`
+      ? capabilityErrors > 0
+        ? `${targetName} 已连接 · ${capabilityErrors} 项待恢复`
+        : `${targetName} 已连接`
       : showDisconnected
         ? `${targetName} 未连接`
         : !backendEnabled
@@ -58,7 +67,25 @@ export default function ConnectionBar(): React.JSX.Element {
       updateBackend({ apiUrl: trimmed })
       return
     }
-    void reconnect()
+    void reconnect().then(requestRecovery)
+  }
+
+  const handleRecover = async (): Promise<void> => {
+    const trimmed = draftUrl.trim()
+    if (!trimmed || recovering) return
+    setRecovering(true)
+    try {
+      setBackendEnabled(true)
+      if (trimmed !== backend.apiUrl) {
+        updateBackend({ apiUrl: trimmed })
+        requestRecovery()
+        return
+      }
+      await reconnect()
+      requestRecovery()
+    } finally {
+      setRecovering(false)
+    }
   }
 
   const handleRuntimeReady = (): void => {
@@ -71,7 +98,7 @@ export default function ConnectionBar(): React.JSX.Element {
       updateBackend({ apiUrl: LOCAL_RUNTIME_EDGE_API_URL })
       return
     }
-    void reconnect()
+    void reconnect().then(requestRecovery)
   }
 
   const handleRuntimeStopping = async (): Promise<void> => {
@@ -94,7 +121,7 @@ export default function ConnectionBar(): React.JSX.Element {
     <div
       className={[
         styles.root,
-        showRecovery ? styles.error : '',
+        showAttention ? styles.error : '',
         showConnected ? styles.connected : ''
       ].filter(Boolean).join(' ')}
       role="group"
@@ -105,52 +132,85 @@ export default function ConnectionBar(): React.JSX.Element {
       {statusLabel ? (
         <span
           className={styles.status}
-          role={showRecovery ? 'alert' : 'status'}
+          role={showAttention ? 'alert' : 'status'}
         >
           <span className={styles.statusDot} aria-hidden="true" />
           {statusLabel}
         </span>
       ) : null}
-      <select
-        className={styles.field}
-        aria-label="切换后端权威"
-        value={backend.id}
-        onChange={(event) => {
-          setBackendEnabled(true)
-          selectBackend(event.target.value)
-        }}
-      >
-        {availableBackends.map((candidate) => (
-          <option key={candidate.id} value={candidate.id}>
-            {candidate.name}
-          </option>
-        ))}
-      </select>
-      <input
-        className={`${styles.field} ${styles.url}`}
-        aria-label="后端权威 API 地址"
-        value={draftUrl}
-        spellCheck={false}
-        placeholder="后端权威 API 地址"
-        aria-invalid={showRecovery || undefined}
-        onChange={(event) => setDraftUrl(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter') {
-            event.preventDefault()
-            if (hasDraftChange || showRecovery || !backendEnabled) {
-              handleApply()
-            }
-          }
-        }}
-      />
-      {hasDraftChange || showRecovery || !backendEnabled ? (
+      <details className={styles.details}>
+        <summary>运行状态</summary>
+        <div className={styles.popover}>
+          <ul className={styles.healthList} aria-label="连接影响范围">
+            <HealthRow
+              label={targetName}
+              status={connection === 'connected' ? 'ready' : connection}
+              summary={statusLabel ?? `${targetName} 状态未知`}
+            />
+            <HealthRow label="设备目录" {...capabilityHealth.devices} />
+            <HealthRow label="物料图" {...capabilityHealth.materials} />
+            <HealthRow label="工作流目录" {...capabilityHealth.workflows} />
+          </ul>
+          <div className={styles.configuration}>
+            <label>
+              <span>后端权威</span>
+              <select
+                className={styles.field}
+                aria-label="切换后端权威"
+                value={backend.id}
+                onChange={(event) => {
+                  setBackendEnabled(true)
+                  selectBackend(event.target.value)
+                }}
+              >
+                {availableBackends.map((candidate) => (
+                  <option key={candidate.id} value={candidate.id}>
+                    {candidate.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>API 地址</span>
+              <input
+                className={`${styles.field} ${styles.url}`}
+                aria-label="后端权威 API 地址"
+                value={draftUrl}
+                spellCheck={false}
+                placeholder="后端权威 API 地址"
+                aria-invalid={showRecovery || undefined}
+                onChange={(event) => setDraftUrl(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault()
+                    if (hasDraftChange || showRecovery || !backendEnabled) {
+                      handleApply()
+                    }
+                  }
+                }}
+              />
+            </label>
+            {hasDraftChange || showRecovery || !backendEnabled ? (
+              <button
+                type="button"
+                className={styles.action}
+                disabled={!trimmedDraftUrl}
+                onClick={handleApply}
+              >
+                {hasDraftChange ? '应用地址' : backendEnabled ? '重试连接' : '连接'}
+              </button>
+            ) : null}
+          </div>
+        </div>
+      </details>
+      {showAttention || !backendEnabled ? (
         <button
           type="button"
           className={styles.action}
-          disabled={!trimmedDraftUrl}
-          onClick={handleApply}
+          disabled={!trimmedDraftUrl || recovering}
+          onClick={() => void handleRecover()}
         >
-          {hasDraftChange ? '应用' : backendEnabled ? '重试' : '连接'}
+          {recovering ? '恢复中…' : backendEnabled ? '重连并重新读取' : '连接'}
         </button>
       ) : null}
       <LocalRuntimeLauncher
@@ -158,5 +218,31 @@ export default function ConnectionBar(): React.JSX.Element {
         onStopping={handleRuntimeStopping}
       />
     </div>
+  )
+}
+
+function HealthRow({
+  label,
+  status,
+  summary,
+  technicalDetail
+}: {
+  label: string
+  status: string
+  summary: string
+  technicalDetail?: string
+}): React.JSX.Element {
+  return (
+    <li data-status={status}>
+      <span aria-hidden="true" />
+      <strong>{label}</strong>
+      <small>{summary}</small>
+      {technicalDetail ? (
+        <details>
+          <summary>技术信息</summary>
+          <code>{technicalDetail}</code>
+        </details>
+      ) : null}
+    </li>
   )
 }

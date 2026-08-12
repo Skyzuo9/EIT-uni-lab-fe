@@ -19,7 +19,7 @@ export const DEFAULT_BACKENDS: readonly BackendConfig[] = [
     id: 'local-go',
     name: '本地 Go 服务',
     protocol: 'unilab/v1',
-    apiUrl: 'http://127.0.0.1:8000',
+    apiUrl: 'http://127.0.0.1:8080',
     auth: 'none',
     serverKind: 'backend',
     workspaceMode: 'singleton'

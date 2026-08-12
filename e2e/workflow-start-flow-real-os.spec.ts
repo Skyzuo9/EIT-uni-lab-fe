@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { mkdirSync, readFileSync } from 'node:fs'
+import { mkdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
 import {
@@ -72,7 +72,7 @@ async function replacePythonSource(page: Page, source: string): Promise<void> {
 }
 
 /**
- * 证明单一主入口在真实 OS 接缝上严格执行保存、应用、补读和任务创建门禁。
+ * 证明独立应用与运行入口在真实 OS 接缝上共用同一顺序门禁。
  *
  * @param page Playwright 浏览器页面。
  * @returns 全部公开界面、HTTP 顺序、失败关闭和截图断言完成后的 Promise。
@@ -115,15 +115,30 @@ async function provesSingleWorkflowStartEntry({
   const panel = page.locator('[data-panel-instance-id="runtime-workflow"]')
   await expect(panel.getByText('完整控制流 DAG')).toBeVisible()
 
-  const applyAndRun = panel.getByRole('button', {
-    name: '应用并运行',
+  const applyVersion = panel.getByRole('button', {
+    name: '应用此版本',
     exact: true
   })
-  await expect(applyAndRun).toBeEnabled()
+  const startWorkflow = panel.getByRole('button', {
+    name: '开始运行',
+    exact: true
+  })
+  await expect(applyVersion).toBeEnabled()
+  await expect(applyVersion).toHaveAttribute(
+    'aria-description',
+    '保存并校验当前修改，将其设为后续运行使用的版本；不会立即运行设备。'
+  )
+  await expect(startWorkflow).toBeEnabled()
+  await applyVersion.hover()
+  await expect(page.getByRole('tooltip')).toHaveText(
+    '保存并校验当前修改，将其设为后续运行使用的版本；不会立即运行设备。'
+  )
   await page.screenshot({
     path: join(artifactDirectory, '01-candidate-awaiting-materialization.png'),
     fullPage: true
   })
+  await page.mouse.move(20, 200)
+  await expect(page.getByRole('tooltip')).toBeHidden()
 
   const taskPostsBeforeCandidate = requests.filter((request) =>
     request.method === 'POST' && request.path === '/api/v1/workflow-tasks'
@@ -141,7 +156,7 @@ async function provesSingleWorkflowStartEntry({
     name: '接受完整差异并保存',
     exact: true
   }).click()
-  await expect(applyAndRun).toBeEnabled()
+  await expect(applyVersion).toBeEnabled()
   await page.screenshot({
     path: join(artifactDirectory, '03-saved-candidate-apply-and-run.png'),
     fullPage: true
@@ -150,32 +165,19 @@ async function provesSingleWorkflowStartEntry({
   const draftPutCountBeforeApply = requests.filter((request) =>
     request.method === 'PUT' && request.path.endsWith('/authoring/draft')
   ).length
-  await applyAndRun.click()
+  await applyVersion.click()
 
-  const firstTaskInput = page.getByLabel('工作流运行输入表单')
-  await expect(firstTaskInput).toBeVisible()
+  await expect(page.getByLabel('工作流运行输入表单')).toBeHidden()
   expect(requests.filter((request) =>
     request.method === 'PUT' && request.path.endsWith('/authoring/draft')
   )).toHaveLength(draftPutCountBeforeApply)
   expect(requests.filter((request) =>
     request.method === 'POST' && request.path === '/api/v1/workflow-tasks'
   )).toHaveLength(taskPostsBeforeCandidate)
+  await expect(applyVersion).toBeDisabled()
+  await expect(startWorkflow).toBeEnabled()
   await page.screenshot({
-    path: join(artifactDirectory, '04-new-revision-input-form.png'),
-    fullPage: true
-  })
-  await firstTaskInput.getByRole('button', {
-    name: '取消',
-    exact: true
-  }).click()
-  await expect(page.getByRole('dialog', {
-    name: '本次工作流运行参数'
-  })).toBeHidden()
-  await waitForTaskInputDrawerClosed(page)
-  await expect(panel.getByText(/已应用版本 \d+ 保持不变，未创建任务/))
-    .toBeVisible()
-  await page.screenshot({
-    path: join(artifactDirectory, '05-applied-cancel-no-task.png'),
+    path: join(artifactDirectory, '04-applied-without-task-input.png'),
     fullPage: true
   })
 
@@ -185,22 +187,19 @@ async function provesSingleWorkflowStartEntry({
   const nodeName = panel.getByRole('textbox', { name: '节点名称' })
   await expect(nodeName).toBeVisible()
   await nodeName.fill('prepared_start_flow')
-  const saveAndRun = panel.getByRole('button', {
-    name: '保存并运行',
-    exact: true
-  })
-  await expect(saveAndRun).toBeEnabled()
+  await expect(startWorkflow).toBeEnabled()
+  await expect(applyVersion).toBeEnabled()
   await page.screenshot({
-    path: join(artifactDirectory, '06-dirty-save-and-run.png'),
+    path: join(artifactDirectory, '05-dirty-with-stable-run-action.png'),
     fullPage: true
   })
 
   const dirtyRequestOffset = requests.length
-  await saveAndRun.click()
+  await startWorkflow.click()
   const canvasDiff = page.getByRole('dialog', { name: '完整 Python 差异' })
   await expect(canvasDiff).toBeVisible()
   await page.screenshot({
-    path: join(artifactDirectory, '07-canvas-source-review.png'),
+    path: join(artifactDirectory, '06-canvas-source-review.png'),
     fullPage: true
   })
   await canvasDiff.getByRole('button', {
@@ -254,14 +253,16 @@ async function provesSingleWorkflowStartEntry({
   await expect(panel.locator('[data-run-status="pending"]')).toBeVisible()
   await waitForTaskInputDrawerClosed(page)
   await page.screenshot({
-    path: join(artifactDirectory, '08-new-revision-task-created.png'),
+    path: join(artifactDirectory, '07-new-revision-task-created.png'),
     fullPage: true
   })
 
   await panel.getByRole('button', { name: '代码模式', exact: true }).click()
+  const currentRuntimeSource = await page.locator('.cm-content:visible')
+    .innerText()
   await replacePythonSource(
     page,
-    `${readFileSync(os.sourcePath, 'utf8')}\n# local CAS conflict\n`
+    `${currentRuntimeSource}\n# local CAS conflict\n`
   )
   const applyCountBeforeConflict = requests.filter((request) =>
     request.method === 'POST' && request.path.endsWith('/authoring/apply')
@@ -270,22 +271,20 @@ async function provesSingleWorkflowStartEntry({
     request.method === 'POST' && request.path === '/api/v1/workflow-tasks'
   ).length
   expect(browserErrors).toEqual([])
-  os.failNextRequest({
-    method: 'PUT',
-    path: `/api/v1/workflows/${os.runtimeWorkflowUuid}/authoring/draft`,
-    status: 409,
-    code: 'draft_hash_conflict',
-    message: '工作流草稿已被远端修改',
-    retryable: false
-  })
-  await panel.getByRole('button', {
-    name: '保存并运行',
-    exact: true
-  }).click()
-  const conflictDialog = page.getByRole('dialog', {
-    name: '远端修改冲突'
-  })
-  await expect(conflictDialog).toBeVisible()
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    os.failNextRequest({
+      method: 'PUT',
+      path: `/api/v1/workflows/${os.runtimeWorkflowUuid}/authoring/draft`,
+      status: 409,
+      code: 'draft_hash_conflict',
+      message: '工作流草稿已被远端修改',
+      retryable: false
+    })
+  }
+  await startWorkflow.click()
+  await expect(panel.getByRole('alert').filter({
+    hasText: '工作流草稿已被远端修改'
+  })).toBeVisible()
   expect(requests.filter((request) =>
     request.method === 'POST' && request.path.endsWith('/authoring/apply')
   )).toHaveLength(applyCountBeforeConflict)
@@ -293,33 +292,28 @@ async function provesSingleWorkflowStartEntry({
     request.method === 'POST' && request.path === '/api/v1/workflow-tasks'
   )).toHaveLength(taskCountBeforeConflict)
   await page.screenshot({
-    path: join(artifactDirectory, '09-cas-conflict-blocked.png'),
+    path: join(artifactDirectory, '08-cas-conflict-blocked.png'),
     fullPage: true
   })
-  await conflictDialog.getByRole('button', {
-    name: '采用远端并放弃本地',
+  await panel.getByRole('alert').getByRole('button', {
+    name: '关闭',
     exact: true
   }).click()
-  await expect(conflictDialog).toBeHidden()
 
   await replacePythonSource(page, 'def broken(:\n')
-  const invalidSaveAndRun = panel.getByRole('button', {
-    name: '保存并运行',
-    exact: true
-  })
-  await expect(invalidSaveAndRun).toBeEnabled()
+  await expect(startWorkflow).toBeEnabled()
   const applyCountBeforeInvalid = requests.filter((request) =>
     request.method === 'POST' && request.path.endsWith('/authoring/apply')
   ).length
   const taskCountBeforeInvalid = requests.filter((request) =>
     request.method === 'POST' && request.path === '/api/v1/workflow-tasks'
   ).length
-  await invalidSaveAndRun.click()
+  await startWorkflow.click()
   await expect(panel.getByRole('alert').filter({
     hasText: '工作流源码未生成可应用候选'
   })).toBeVisible()
   await expect(panel.getByRole('button', {
-    name: '保存并运行',
+    name: '开始运行',
     exact: true
   })).toBeDisabled()
   expect(requests.filter((request) =>
@@ -329,18 +323,19 @@ async function provesSingleWorkflowStartEntry({
     request.method === 'POST' && request.path === '/api/v1/workflow-tasks'
   )).toHaveLength(taskCountBeforeInvalid)
   await page.screenshot({
-    path: join(artifactDirectory, '10-invalid-draft-blocked.png'),
+    path: join(artifactDirectory, '09-invalid-draft-blocked.png'),
     fullPage: true
   })
 
-  expect(browserErrors).toEqual([
-    expect.stringMatching(
+  expect(browserErrors).toHaveLength(3)
+  for (const browserError of browserErrors) {
+    expect(browserError).toMatch(
       /^Failed to load resource: the server responded with a status of 409/
     )
-  ])
+  }
 }
 
 test(
-  '单一运行入口通过真实 OS 保存、应用并创建工作流任务（WorkflowTask）',
+  '应用此版本与开始运行通过真实 OS 共用严格门禁',
   provesSingleWorkflowStartEntry
 )

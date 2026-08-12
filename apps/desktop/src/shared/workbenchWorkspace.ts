@@ -40,6 +40,7 @@ export interface DesktopWorkbenchWorkspaceApi {
   openDirectory: () => Promise<WorkbenchWorkspaceSnapshot>
   createDirectory: () => Promise<WorkbenchWorkspaceSnapshot>
   openRecent: (path: string) => Promise<WorkbenchWorkspaceSnapshot>
+  selectDirectory: () => Promise<WorkbenchWorkspaceSnapshot>
   switchToWelcome: () => Promise<{
     switched: boolean
     snapshot: WorkbenchWorkspaceSnapshot

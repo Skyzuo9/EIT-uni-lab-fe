@@ -187,7 +187,7 @@ describe('material template adapter', () => {
 
   it('rejects unavailable profiles before making a request', async () => {
     const { http, request } = mockHttp(undefined)
-    const backend = getDefaultBackend('local-go')
+    const backend = getDefaultBackend('cloud')
     const service = createMaterialService(
       http,
       backend,
@@ -224,7 +224,7 @@ describe('material template adapter', () => {
 
   it('gates every target Material Graph operation before transport', async () => {
     const { http, request } = mockHttp(undefined)
-    const backend = getDefaultBackend('local-go')
+    const backend = getDefaultBackend('cloud')
     const service = createMaterialService(
       http,
       backend,

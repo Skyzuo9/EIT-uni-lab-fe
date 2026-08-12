@@ -33,16 +33,19 @@ export async function installWorkflowPanel(
 }
 
 /**
- * 通过“更多”菜单仅保存工作流源码（Workflow Source），不应用候选或创建任务。
+ * 通过键盘入口仅保存工作流源码（Workflow Source），不应用候选或创建任务。
  *
  * @param panel 工作流面板定位器。
- * @returns 保存按钮完成点击后的 Promise；调用方继续处理可能出现的源码差异。
+ * @returns 保存快捷键完成分发后的 Promise；调用方继续处理可能出现的源码差异。
  */
 export async function saveWorkflowDraftOnly(panel: Locator): Promise<void> {
-  await panel.locator('details.persistent-authoring__more > summary').click()
-  await panel.getByRole('menu', { name: '更多工作流操作' })
-    .getByRole('menuitem', { name: /仅保存草稿/ })
-    .click()
+  const workflowPanelButton = panel.locator(
+    '[data-panel-type="workflow-dag"] button:visible:not(:disabled)'
+  )
+  const target = await workflowPanelButton.count() > 0
+    ? workflowPanelButton.first()
+    : panel.locator('button:visible:not(:disabled)').first()
+  await target.press('Control+s')
 }
 
 /**
@@ -61,27 +64,27 @@ export async function waitForTaskInputDrawerClosed(
 }
 
 /**
- * 应用已保存候选并在任务输入出现后取消，不创建工作流任务（WorkflowTask）。
+ * 应用已保存候选，不打开任务输入或创建工作流任务（WorkflowTask）。
  *
  * @param panel 工作流面板定位器。
  * @param page Playwright 浏览器页面。
- * @returns 已应用修订保留且动态主入口恢复“开始运行”后的 Promise。
+ * @returns 已应用修订保留且任务输入未打开的 Promise。
  */
 export async function applyWorkflowCandidateWithoutTask(
   panel: Locator,
   page: Page
 ): Promise<void> {
   await panel.getByRole('button', {
-    name: '应用并运行',
+    name: '应用此版本',
     exact: true
   }).click()
-  const taskInput = page.getByLabel('工作流运行输入表单')
-  await expect(taskInput).toBeVisible()
-  await taskInput.getByRole('button', { name: '取消', exact: true }).click()
   await expect(page.getByRole('dialog', {
     name: '本次工作流运行参数'
   })).toBeHidden()
-  await waitForTaskInputDrawerClosed(page)
+  await expect(panel.getByRole('button', {
+    name: '应用此版本',
+    exact: true
+  })).toBeDisabled()
   await expect(panel.getByRole('button', {
     name: '开始运行',
     exact: true
@@ -89,11 +92,11 @@ export async function applyWorkflowCandidateWithoutTask(
 }
 
 /**
- * 使用动态单入口准备已应用工作流图（Applied Workflow Graph），但不创建任务。
+ * 使用独立应用入口准备已应用工作流图（Applied Workflow Graph），但不创建任务。
  *
  * @param panel 工作流面板定位器。
  * @param page Playwright 浏览器页面。
- * @returns 规范化确认、候选应用和任务输入取消完成后的 Promise。
+ * @returns 规范化确认与候选应用完成后的 Promise。
  */
 export async function prepareAppliedWorkflow(
   panel: Locator,
@@ -105,7 +108,8 @@ export async function prepareAppliedWorkflow(
     exact: true
   }).click()
   await panel.getByRole('button', {
-    name: /^(保存并运行|应用并运行)$/
+    name: '应用此版本',
+    exact: true
   }).click()
   const normalizedDiff = page.getByRole('dialog', {
     name: '完整 Python 差异'
@@ -115,13 +119,13 @@ export async function prepareAppliedWorkflow(
     name: '接受完整差异并保存',
     exact: true
   }).click()
-  const taskInput = page.getByLabel('工作流运行输入表单')
-  await expect(taskInput).toBeVisible()
-  await taskInput.getByRole('button', { name: '取消', exact: true }).click()
   await expect(page.getByRole('dialog', {
     name: '本次工作流运行参数'
   })).toBeHidden()
-  await waitForTaskInputDrawerClosed(page)
+  await expect(panel.getByRole('button', {
+    name: '应用此版本',
+    exact: true
+  })).toBeDisabled()
   await expect(panel.getByRole('button', {
     name: '开始运行',
     exact: true

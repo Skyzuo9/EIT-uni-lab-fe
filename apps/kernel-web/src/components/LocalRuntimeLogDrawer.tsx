@@ -1,7 +1,6 @@
 import {
   useCallback,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -16,11 +15,12 @@ import type {
 import {
   formatLocalRuntimeLog,
   prepareLocalRuntimeLogCopyText,
-  type FormattedLocalRuntimeLogRow,
   type LocalRuntimeLogLevel
 } from './localRuntimeLogFormatting'
 import { LOCAL_RUNTIME_LOG_MAX_LINES } from './localRuntimeLogModel'
-import styles from './LocalRuntimeLauncher.module.scss'
+import styles from './LocalRuntimeLogDrawer.module.scss'
+import launcherStyles from './LocalRuntimeLauncher.module.scss'
+import { useVirtualizedLocalRuntimeLog } from './useVirtualizedLocalRuntimeLog'
 
 export { detectPhoenixObservabilityDependencyIssue } from './localRuntimeLogFormatting'
 
@@ -47,9 +47,6 @@ const LOG_TABS: Array<{
 ]
 
 const LOG_BOTTOM_TOLERANCE_PX = 4
-/** 日志正文允许换行；窗口化列表先估算，再用浏览器实测行高修正坐标。 */
-const LOG_ROW_ESTIMATED_HEIGHT_PX = 28
-const LOG_ROW_OVERSCAN_PX = LOG_ROW_ESTIMATED_HEIGHT_PX * 8
 
 type LocalRuntimeLogFilter = 'all' | LocalRuntimeLogLevel
 
@@ -89,15 +86,10 @@ export function LocalRuntimeLogDrawer({
   onOpenFile,
   onClose
 }: LocalRuntimeLogDrawerProps): React.JSX.Element {
-  const outputRef = useRef<HTMLDivElement>(null)
-  const activeLogKindRef = useRef(activeKind)
   const activeLogContentRef = useRef({
     kind: activeKind,
     content: ''
   })
-  const [scrollTop, setScrollTop] = useState(0)
-  const [viewportHeight, setViewportHeight] = useState(480)
-  const [rowHeights, setRowHeights] = useState<Record<string, number>>({})
   const [levelFilter, setLevelFilter] = useState<LocalRuntimeLogFilter>('all')
   const [hasNewOutput, setHasNewOutput] = useState(false)
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>(
@@ -122,38 +114,19 @@ export function LocalRuntimeLogDrawer({
     [formattedRows, levelFilter]
   )
   const hasRenderedOutput = hasActiveOutput && filteredRows.length > 0
-  const formattedRowEntries = useMemo(
-    () => filteredRows.map((row, index) => ({
-      row,
-      index,
-      measurementKey: localRuntimeLogRowMeasurementKey(row)
-    })),
-    [filteredRows]
+  const {
+    outputRef,
+    totalHeight,
+    visibleRows,
+    setScrollTop
+  } = useVirtualizedLocalRuntimeLog(
+    filteredRows,
+    activeKind,
+    activeEntry?.content ?? '',
+    following,
+    hasRenderedOutput,
+    onFollowChange
   )
-  const rowLayout = useMemo(() => {
-    let top = 0
-    const rows = formattedRowEntries.map((entry) => {
-      const height = rowHeights[entry.measurementKey]
-        ?? LOG_ROW_ESTIMATED_HEIGHT_PX
-      const layoutEntry = { ...entry, height, top }
-      top += height
-      return layoutEntry
-    })
-    return { rows, totalHeight: top }
-  }, [formattedRowEntries, rowHeights])
-  // 自动跟随时直接以最新布局的底部计算可视范围，避免实测行高更新后沿用旧 scrollTop。
-  const visibleScrollTop = following
-    ? Math.max(0, rowLayout.totalHeight - viewportHeight)
-    : scrollTop
-  const visibleRows = useMemo(() => {
-    const visibleTop = Math.max(0, visibleScrollTop - LOG_ROW_OVERSCAN_PX)
-    const visibleBottom = visibleScrollTop
-      + viewportHeight
-      + LOG_ROW_OVERSCAN_PX
-    return rowLayout.rows.filter((entry) => (
-      entry.top + entry.height >= visibleTop && entry.top <= visibleBottom
-    ))
-  }, [rowLayout.rows, viewportHeight, visibleScrollTop])
 
   /**
    * 比较当前来源的日志内容，在暂停自动跟随期间记录新内容提示。
@@ -177,73 +150,6 @@ export function LocalRuntimeLogDrawer({
     }
     if (currentContent !== previous.content) setHasNewOutput(true)
   }, [activeEntry?.content, activeKind, following])
-
-  useEffect(() => {
-    const activeKeys = new Set(
-      formattedRowEntries.map((entry) => entry.measurementKey)
-    )
-    setRowHeights((current) => {
-      const keys = Object.keys(current)
-      if (keys.every((key) => activeKeys.has(key))) return current
-      return Object.fromEntries(
-        keys
-          .filter((key) => activeKeys.has(key))
-          .map((key) => [key, current[key]])
-      )
-    })
-  }, [formattedRowEntries])
-
-  // 日志内容异步出现后重新绑定尺寸观察器，不能只在抽屉首次挂载时检查空 ref。
-  useEffect(() => {
-    const output = outputRef.current
-    if (!output || typeof ResizeObserver === 'undefined') return
-    const observer = new ResizeObserver(([entry]) => {
-      if (!entry) return
-      setViewportHeight(entry.contentRect.height)
-      setRowHeights({})
-    })
-    observer.observe(output)
-    return () => observer.disconnect()
-  }, [hasRenderedOutput])
-
-  useLayoutEffect(() => {
-    const output = outputRef.current
-    if (!output) return
-    const measuredRows = output.querySelectorAll<HTMLElement>(
-      '[data-log-row-index]'
-    )
-    setRowHeights((current) => {
-      let next = current
-      measuredRows.forEach((element) => {
-        const index = Number(element.dataset.logRowIndex)
-        const entry = formattedRowEntries[index]
-        if (!entry) return
-        const height = Math.ceil(element.getBoundingClientRect().height)
-        if (height <= 0 || current[entry.measurementKey] === height) return
-        if (next === current) next = { ...current }
-        next[entry.measurementKey] = height
-      })
-      return next
-    })
-  }, [formattedRowEntries, visibleRows])
-
-  useEffect(() => {
-    const activeKindChanged = activeLogKindRef.current !== activeKind
-    activeLogKindRef.current = activeKind
-    if (activeKindChanged) onFollowChange(true)
-
-    const output = outputRef.current
-    if (output && following) {
-      output.scrollTop = output.scrollHeight
-      setScrollTop(output.scrollTop)
-    }
-  }, [
-    activeEntry?.content,
-    activeKind,
-    following,
-    onFollowChange,
-    rowLayout.totalHeight
-  ])
 
   /**
    * 应用受控选择框提供的日志级别筛选。
@@ -331,7 +237,7 @@ export function LocalRuntimeLogDrawer({
             {onOpenFile ? (
               <button
                 type="button"
-                className={styles.secondaryButton}
+                className={launcherStyles.secondaryButton}
                 title="在系统文件管理器中打开当前日志目录"
                 onClick={onOpenFile}
               >
@@ -340,7 +246,7 @@ export function LocalRuntimeLogDrawer({
             ) : null}
             <button
               type="button"
-              className={styles.secondaryButton}
+              className={launcherStyles.secondaryButton}
               disabled={loading}
               onClick={onRefresh}
             >
@@ -348,7 +254,7 @@ export function LocalRuntimeLogDrawer({
             </button>
             <button
               type="button"
-              className={styles.closeButton}
+              className={launcherStyles.closeButton}
               aria-label="关闭运行日志"
               onClick={onClose}
             >
@@ -418,7 +324,7 @@ export function LocalRuntimeLogDrawer({
                 </label>
                 <button
                   type="button"
-                  className={styles.secondaryButton}
+                  className={launcherStyles.secondaryButton}
                   onClick={() => void copyActiveLog()}
                   aria-live="polite"
                 >
@@ -474,7 +380,7 @@ export function LocalRuntimeLogDrawer({
                 >
                   <div
                     className={styles.logVirtualSpace}
-                    style={{ height: rowLayout.totalHeight }}
+                    style={{ height: totalHeight }}
                   >
                     {visibleRows.map((entry) => {
                       const { row, index: rowIndex } = entry
@@ -510,7 +416,7 @@ export function LocalRuntimeLogDrawer({
                   <span>原始日志仍保留，可清除筛选继续查看。</span>
                   <button
                     type="button"
-                    className={styles.secondaryButton}
+                    className={launcherStyles.secondaryButton}
                     onClick={clearLevelFilter}
                   >
                     清除筛选
@@ -530,12 +436,6 @@ export function LocalRuntimeLogDrawer({
       </aside>
     </div>
   )
-}
-
-function localRuntimeLogRowMeasurementKey(
-  row: FormattedLocalRuntimeLogRow
-): string {
-  return [row.time, row.level, row.source, row.message].join('\u0000')
 }
 
 function logLevelLabel(level: LocalRuntimeLogLevel): string {

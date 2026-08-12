@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 
 import type {
-  WorkflowRuntimePort,
-  WorkflowSummary
+  CapabilityStatus,
+  WorkflowRuntimePort
 } from '@unilab/services'
 
 import type { WorkflowTracePort } from '../traceRuntime'
@@ -15,8 +15,18 @@ import {
   readActiveWorkflowId
 } from '../utils/workflowAuthoringOperations'
 import type { WorkflowIdeBridge } from '../utils/workflowSourceNavigation'
+import {
+  WorkflowCatalog,
+  type WorkflowCatalogState
+} from './WorkflowCatalog'
 import { PersistentWorkflowAuthoringPanel } from './PersistentWorkflowAuthoringPanel'
-import styles from './workflow.module.scss'
+
+export type { WorkflowCatalogState } from './WorkflowCatalog'
+export {
+  WORKFLOW_CATALOG_MANAGEMENT_ACTIONS_VISIBLE,
+  groupWorkflowCatalog,
+  workflowGroupLabel
+} from './WorkflowCatalog'
 
 export interface WorkflowPanelProps {
   runtime: WorkflowRuntimePort
@@ -25,13 +35,16 @@ export interface WorkflowPanelProps {
   resourceSlotOptionsPort?: WorkflowResourceSlotOptionsPort
   activeWorkflowStorageKey?: string
   catalogRequestRevision?: number
+  recoveryRevision?: number
   active?: boolean
+  authoringStatus?: CapabilityStatus
   onUnsavedChangesChange?: (hasUnsavedChanges: boolean) => void
   onActiveWorkflowChange?: (workflowUuid: string | null) => void
   onWorkflowRuntimeProjectionChange?: (
     projection: WorkflowPanelRuntimeProjection | null
   ) => void
   onSelectedWorkflowStepChange?: (workflowNodeUuid: string | null) => void
+  onCatalogStateChange?: (state: WorkflowCatalogState) => void
   visibleMaterialRoles?: readonly string[] | null
   onVisibleMaterialRolesChange?: (
     visibleMaterialRoles: readonly string[] | null
@@ -54,11 +67,14 @@ export default function WorkflowPanel({
   resourceSlotOptionsPort,
   activeWorkflowStorageKey,
   catalogRequestRevision = 0,
+  recoveryRevision = 0,
   active = true,
+  authoringStatus,
   onUnsavedChangesChange,
   onActiveWorkflowChange,
   onWorkflowRuntimeProjectionChange,
   onSelectedWorkflowStepChange,
+  onCatalogStateChange,
   visibleMaterialRoles,
   onVisibleMaterialRolesChange,
   ideBridge,
@@ -68,9 +84,11 @@ export default function WorkflowPanel({
   const [selectedWorkflowUuid, setSelectedWorkflowUuid] = useState<
     string | null
   >(null)
+  const [selectedWorkflowName, setSelectedWorkflowName] = useState('')
   const [showCatalog, setShowCatalog] = useState(false)
   const handledCatalogRequestRevision = useRef(catalogRequestRevision)
-  const workflowUuid = showCatalog
+  const authoringAvailable = authoringStatus?.available !== false
+  const workflowUuid = !authoringAvailable || showCatalog
     ? null
     : (allowWorkflowSelection ? selectedWorkflowUuid : null) ||
       explicitWorkflowUuid || selectedWorkflowUuid ||
@@ -80,18 +98,12 @@ export default function WorkflowPanel({
     if (
       explicitWorkflowUuid ||
       handledCatalogRequestRevision.current === catalogRequestRevision
-    ) {
-      return
-    }
+    ) return
     handledCatalogRequestRevision.current = catalogRequestRevision
     persistActiveWorkflowId(activeWorkflowStorageKey, '')
     setSelectedWorkflowUuid(null)
     setShowCatalog(true)
-  }, [
-    activeWorkflowStorageKey,
-    catalogRequestRevision,
-    explicitWorkflowUuid
-  ])
+  }, [activeWorkflowStorageKey, catalogRequestRevision, explicitWorkflowUuid])
 
   useEffect(() => {
     const activeWorkflowUuid = workflowUuid && isWorkflowUuid(workflowUuid)
@@ -107,6 +119,7 @@ export default function WorkflowPanel({
         key={workflowUuid}
         runtime={runtime}
         workflowUuid={workflowUuid}
+        workflowName={selectedWorkflowName}
         traceRuntime={traceRuntime}
         resourceSlotOptionsPort={resourceSlotOptionsPort}
         onUnsavedChangesChange={onUnsavedChangesChange}
@@ -131,134 +144,23 @@ export default function WorkflowPanel({
   return (
     <WorkflowCatalog
       runtime={runtime}
-      onSelect={(nextWorkflowUuid) => {
-        persistActiveWorkflowId(activeWorkflowStorageKey, nextWorkflowUuid)
-        setSelectedWorkflowUuid(nextWorkflowUuid)
-        setShowCatalog(false)
-      }}
+      activeWorkflowStorageKey={activeWorkflowStorageKey}
+      recoveryRevision={recoveryRevision}
+      authoringStatus={authoringStatus}
+      onStateChange={onCatalogStateChange}
+      onSelect={authoringAvailable
+        ? (nextWorkflowUuid, nextWorkflowName) => {
+            persistActiveWorkflowId(activeWorkflowStorageKey, nextWorkflowUuid)
+            setSelectedWorkflowUuid(nextWorkflowUuid)
+            setSelectedWorkflowName(nextWorkflowName)
+            setShowCatalog(false)
+          }
+        : undefined}
     />
   )
 }
 
-function WorkflowCatalog({
-  runtime,
-  onSelect
-}: {
-  runtime: WorkflowRuntimePort
-  onSelect: (workflowUuid: string) => void
-}): React.JSX.Element {
-  const [workflows, setWorkflows] = useState<WorkflowSummary[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [requestRevision, setRequestRevision] = useState(0)
-
-  useEffect(() => {
-    let disposed = false
-    setLoading(true)
-    setError(null)
-    void runtime.listWorkflows({ page: 1, page_size: 100 })
-      .then((page) => {
-        if (!disposed) setWorkflows(page.items)
-      })
-      .catch((reason: unknown) => {
-        if (!disposed) {
-          setError(
-            reason instanceof Error ? reason.message : String(reason)
-          )
-        }
-      })
-      .finally(() => {
-        if (!disposed) setLoading(false)
-      })
-    return () => {
-      disposed = true
-    }
-  }, [requestRevision, runtime])
-
-  return (
-    <div
-      className={[
-        styles.workflow,
-        'workflow-runtime workflow-runtime__catalog',
-        'relative flex h-full w-full flex-col',
-        'bg-[var(--unilab-color-canvas)] text-[var(--unilab-color-text)]'
-      ].join(' ')}
-    >
-      <header className="workflow-runtime__catalog-header">
-        <div>
-          <h2>可用工作流</h2>
-          <p>从当前 OS 读取并选择要编写或运行的工作流</p>
-        </div>
-        {!loading && !error && (
-          <span aria-label={`共 ${workflows.length} 个工作流`}>
-            {workflows.length}
-          </span>
-        )}
-      </header>
-
-      {loading && (
-        <div className="workflow-runtime__catalog-state" role="status">
-          正在读取工作流…
-        </div>
-      )}
-      {!loading && error && (
-        <div className="workflow-runtime__catalog-state is-error" role="alert">
-          <strong>工作流读取失败</strong>
-          <span>{error}</span>
-          <button
-            type="button"
-            onClick={() => setRequestRevision((value) => value + 1)}
-          >
-            重试
-          </button>
-        </div>
-      )}
-      {!loading && !error && workflows.length === 0 && (
-        <div className="workflow-runtime__catalog-state" role="status">
-          当前 OS 没有可用工作流
-        </div>
-      )}
-      {!loading && !error && workflows.length > 0 && (
-        <div className="workflow-runtime__catalog-list" role="list">
-          {workflows.map((workflow) => {
-            const meta = [
-              `修订 ${workflow.revision}`,
-              ...workflow.tags
-            ].join(' · ')
-            return (
-              <div key={workflow.uuid} role="listitem">
-                <button
-                  type="button"
-                  onClick={() => onSelect(workflow.uuid)}
-                  aria-label={`打开工作流 ${workflow.name}`}
-                  title={`${workflow.name}\n${meta}`}
-                >
-                  <span
-                    className="workflow-runtime__catalog-mark"
-                    aria-hidden="true"
-                  >
-                    ◇
-                  </span>
-                  <span className="workflow-runtime__catalog-copy">
-                    <strong>{workflow.name}</strong>
-                    <small title={meta}>{meta}</small>
-                  </span>
-                  <span
-                    className="workflow-runtime__catalog-open"
-                    aria-hidden="true"
-                  >
-                    →
-                  </span>
-                </button>
-              </div>
-            )
-          })}
-        </div>
-      )}
-    </div>
-  )
-}
-
+/** 验证可进入工作流编写上下文的稳定 UUID。 */
 function isWorkflowUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
     .test(value)

@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import { getDefaultBackend } from './backends'
-import { createHttpClient, type HttpRequestTraceEvent } from './http'
+import {
+  createHttpClient,
+  requestData,
+  type HttpRequestTraceEvent
+} from './http'
 
 describe('createHttpClient tracing', () => {
   it('injects W3C context into every Edge request and reports completion', async () => {
@@ -67,5 +71,39 @@ describe('createHttpClient tracing', () => {
     await client.request('/api/v1/health')
 
     expect(traceRequest).not.toHaveBeenCalled()
+  })
+
+  it('保留 Backend HTTP 200 error.msg 业务错误', async () => {
+    const client = createHttpClient({
+      backend: getDefaultBackend('local-go'),
+      fetcher: vi.fn(async () => Response.json({
+        code: 1007,
+        error: { msg: 'workflow revision conflict', info: { revision: 2 } }
+      })) as typeof fetch
+    })
+
+    await expect(requestData(client, '/api/v1/workflows')).rejects
+      .toMatchObject({
+        code: 'API_1007',
+        message: 'workflow revision conflict'
+      })
+  })
+
+  it('保留 Backend 非 2xx error.msg', async () => {
+    const client = createHttpClient({
+      backend: getDefaultBackend('local-go'),
+      fetcher: vi.fn(async () => Response.json({
+        code: 401,
+        error: { msg: 'Unauthorized' }
+      }, {
+        status: 401,
+        statusText: 'Unauthorized'
+      })) as typeof fetch
+    })
+
+    await expect(client.request('/api/v1/workflows')).rejects.toMatchObject({
+      message: 'Unauthorized',
+      status: 401
+    })
   })
 })
