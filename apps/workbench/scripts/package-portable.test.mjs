@@ -42,6 +42,10 @@ describe('portable Workbench packaging contract', () => {
       new URL('../package.json', import.meta.url),
       'utf8'
     ))
+    const workspaceManifest = JSON.parse(await readFile(
+      new URL('../../../package.json', import.meta.url),
+      'utf8'
+    ))
     const builderConfiguration = await readFile(
       new URL('../electron-builder.yml', import.meta.url),
       'utf8'
@@ -73,6 +77,13 @@ describe('portable Workbench packaging contract', () => {
       packageManifest.optionalDependencies['@vscode/windows-ca-certs'],
       '0.3.4'
     )
+    assert.equal(
+      workspaceManifest.allowScripts['@vscode/windows-ca-certs@0.3.4'],
+      true
+    )
+    assert.ok(workspaceManifest.pnpm.onlyBuiltDependencies.includes(
+      '@vscode/windows-ca-certs'
+    ))
     assert.match(
       builderConfiguration,
       /from: plugins[\s\S]*?filter:[\s\S]*?'!\*\*\/\*\.map'/u
@@ -181,6 +192,7 @@ describe('portable Workbench packaging contract', () => {
     )
 
     assert.match(workflow, /runs-on: windows-2022/u)
+    assert.match(workflow, /build\/Release\/crypt32\.node/u)
     assert.match(
       workflow,
       /ref: b09c0c048f6de1e5027deb1733da439598c577cf/u

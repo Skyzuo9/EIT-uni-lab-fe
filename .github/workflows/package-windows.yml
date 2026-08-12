@@ -61,7 +61,13 @@ jobs:
           run_install: false
 
       - name: Install Workbench dependencies
-        run: pnpm install --frozen-lockfile
+        run: |
+          pnpm install --frozen-lockfile
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to install Workbench dependencies' }
+          $windowsCaNative = 'node_modules/.pnpm/@vscode+windows-ca-certs@0.3.4/node_modules/@vscode/windows-ca-certs/build/Release/crypt32.node'
+          if (-not (Test-Path $windowsCaNative)) {
+            throw "Windows CA native module was not built: $windowsCaNative"
+          }
 
       - name: Set up Constructor
         uses: conda-incubator/setup-miniconda@v4
