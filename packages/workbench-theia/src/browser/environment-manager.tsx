@@ -7,6 +7,7 @@ import type {
 } from '@unilab/workbench-session'
 import * as React from 'react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 
 import { captureWorkbenchUiOperation } from './workbench-session-gate'
 import {
@@ -88,6 +89,13 @@ export function EnvironmentManager({
     session.configuredGraphPath
   ])
   useEffect(() => {
+    if (typeof document === 'undefined') return undefined
+    document.body.classList.add('unilab-environment-manager-open')
+    return () => {
+      document.body.classList.remove('unilab-environment-manager-open')
+    }
+  }, [])
+  useEffect(() => {
     if (!managedRuntimeApi) return
     let active = true
     const unsubscribe = managedRuntimeApi.onSnapshot(snapshot => {
@@ -157,13 +165,21 @@ export function EnvironmentManager({
     })
   }, [logKind, onReadEnvironmentLog, run])
 
-  return (
-    <section
-      className="unilab-environment-manager"
-      role="dialog"
-      aria-label="环境管理"
-      data-testid="environment-manager"
-    >
+  const overlay = (
+    <div className="unilab-environment-manager__overlay">
+      <button
+        type="button"
+        className="unilab-environment-manager__backdrop"
+        aria-label="关闭环境管理"
+        onClick={onClose}
+      />
+      <section
+        className="unilab-environment-manager"
+        role="dialog"
+        aria-modal="true"
+        aria-label="环境管理"
+        data-testid="environment-manager"
+      >
       <header className="unilab-environment-manager__header">
         <div>
           <span className="unilab-environment-manager__eyebrow">MANAGED LOCAL</span>
@@ -432,7 +448,12 @@ export function EnvironmentManager({
         )}
       </section>
     </section>
+    </div>
   )
+
+  return typeof document === 'undefined'
+    ? overlay
+    : createPortal(overlay, document.body)
 }
 
 function agentStatusMessage(

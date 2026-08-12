@@ -81,5 +81,8 @@ describe('WorkbenchSessionGate', () => {
 
     expect(markup).toContain('环境管理')
     expect(markup).toContain('启动 PLC-Sim')
+    expect(markup).toContain('unilab-workbench-session-actions')
+    expect(markup).toContain('class="is-primary"')
+    expect(markup).toContain('codicon-settings-gear')
   })
 })

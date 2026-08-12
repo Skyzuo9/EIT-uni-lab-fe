@@ -79,18 +79,40 @@ export function WorkbenchSessionGate({
             <p>{operationError}</p>
           </div>
         ) : null}
-        {snapshot.phase === 'idle' || snapshot.phase === 'failed' ? (
-          <button onClick={() => void run(onRetry)}>校验并启动</button>
-        ) : null}
-        {snapshot.phase === 'starting' || snapshot.phase === 'waiting' ? (
-          <button onClick={() => void run(onStop)}>停止</button>
-        ) : null}
-        <button
-          type="button"
-          aria-expanded={environmentOpen}
-          onClick={() => setEnvironmentOpen(value => !value)}
-        >环境管理</button>
-        <DesktopWorkspaceSwitchButton />
+        <footer className="unilab-workbench-session-actions">
+          <div className="unilab-workbench-session-actions__main">
+            {snapshot.phase === 'idle' || snapshot.phase === 'failed' ? (
+              <button
+                type="button"
+                className="is-primary"
+                onClick={() => void run(onRetry)}
+              >
+                <span className="codicon codicon-play" aria-hidden="true" />
+                校验并启动
+              </button>
+            ) : null}
+            {snapshot.phase === 'starting' || snapshot.phase === 'waiting' ? (
+              <button
+                type="button"
+                className="is-danger"
+                onClick={() => void run(onStop)}
+              >
+                <span className="codicon codicon-debug-stop" aria-hidden="true" />
+                停止
+              </button>
+            ) : null}
+            <button
+              className="is-secondary"
+              type="button"
+              aria-expanded={environmentOpen}
+              onClick={() => setEnvironmentOpen(value => !value)}
+            >
+              <span className="codicon codicon-settings-gear" aria-hidden="true" />
+              环境管理
+            </button>
+          </div>
+          <DesktopWorkspaceSwitchButton />
+        </footer>
       </section>
       {environmentOpen
         ? renderEnvironmentManager(() => setEnvironmentOpen(false))
