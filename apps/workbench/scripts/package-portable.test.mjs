@@ -106,6 +106,10 @@ describe('portable Workbench packaging contract', () => {
     )
 
     assert.match(workflow, /runs-on: windows-2022/u)
+    assert.match(
+      workflow,
+      /conda run -n constructor-build constructor/u
+    )
     assert.match(workflow, /pnpm --filter @unilab\/workbench package:win/u)
     assert.match(workflow, /UNILAB_RUNTIME_INSTALLER=/u)
     assert.match(workflow, /UNILAB_AGENT_DISTRIBUTION=/u)

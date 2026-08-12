@@ -66,12 +66,18 @@ jobs:
           channel-priority: strict
 
       - name: Build Windows Runtime
-        shell: bash -l {0}
         working-directory: .runtime-source
         run: |
           mamba install -n constructor-build --override-channels -c conda-forge constructor=3.16.1 conda-standalone=26.3.2.post1 -y
-          conda_exe="$(python -c 'import os; from pathlib import Path; print(Path(os.environ["CONDA_PREFIX"], "standalone_conda", "conda.exe"))')"
-          constructor .conda/constructor --platform win-64 --conda-exe "$conda_exe" --output-dir dist/constructor
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to install Constructor' }
+
+          $condaExe = conda run -n constructor-build python -c "import os; from pathlib import Path; print(Path(os.environ['CONDA_PREFIX'], 'standalone_conda', 'conda.exe'))"
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to resolve standalone conda.exe' }
+          $condaExe = $condaExe.Trim()
+          if (-not (Test-Path $condaExe)) { throw "Standalone conda.exe was not found: $condaExe" }
+
+          conda run -n constructor-build constructor .conda/constructor --platform win-64 --conda-exe $condaExe --output-dir dist/constructor
+          if ($LASTEXITCODE -ne 0) { throw 'Constructor failed to build the Windows Runtime' }
 
       - name: Prepare Windows Runtime and Agent
         run: |
