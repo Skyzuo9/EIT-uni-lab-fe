@@ -21,7 +21,10 @@ env:
 
 jobs:
   package-windows-x64:
-    runs-on: windows-latest
+    # Node-gyp 11 does not yet recognize the Visual Studio 18 toolchain that
+    # may be selected by windows-latest. Keep the native drivelist build on the
+    # VS 2022 image until the dependency toolchain is upgraded.
+    runs-on: windows-2022
     timeout-minutes: 120
     defaults:
       run:
