@@ -47,6 +47,7 @@ describe('Workbench macOS distribution gate', () => {
       /vscode-language-pack-zh-hans\/1\.108\.0/u
     )
     assert.match(builderConfiguration, /^productName: UniLab Workbench$/mu)
+    assert.match(builderConfiguration, /^appId: com\.bohrium\.unilab$/mu)
     assert.match(welcomeDocument, /<title>UniLab 调试工作台<\/title>/u)
     assert.match(welcomeDocument, /id="install-runtime"/u)
     assert.match(welcomeScript, /managedRuntime/u)
@@ -210,7 +211,7 @@ describe('Workbench macOS distribution gate', () => {
 
     assert.match(launcher, /resources\.agentRuntime/u)
     assert.doesNotMatch(launcher, /UNILAB_AIONUI_APP.*\/Applications\/AionUi\.app/u)
-    assert.equal(compatibility.components.agentRuntime, 'aioncore@2.1.52')
+    assert.equal(compatibility.components.agentRuntime, 'aioncore@2.1.53')
     assert.equal(
       compatibility.contracts.agent,
       'bundled-managed-local-with-external-agent-clis'

@@ -17,7 +17,7 @@ import { basename, dirname, join, relative, resolve } from 'node:path'
 
 import * as asar from '@electron/asar'
 
-export const PINNED_AGENT_DISTRIBUTION_VERSION = '2.1.52'
+export const PINNED_AGENT_DISTRIBUTION_VERSION = '2.1.53'
 export const EXTERNAL_ONLY_AGENT_CLIS = ['codex', 'claude']
 
 export function resolveAgentTarget(platform, architecture) {
@@ -292,6 +292,6 @@ function readAgentDistributionVersion(archive) {
 function defaultAgentDistribution(platform) {
   if (platform === 'darwin') return '/Applications/AionUi.app'
   throw new Error(
-    '请用 UNILAB_AGENT_DISTRIBUTION 指定目标平台 AionUi 2.1.52 分发目录'
+    '请用 UNILAB_AGENT_DISTRIBUTION 指定目标平台 AionUi 2.1.53 分发目录'
   )
 }
