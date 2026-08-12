@@ -5,6 +5,7 @@ import {
   chmodSync,
   copyFileSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   openSync,
@@ -103,6 +104,7 @@ export function packagePortableWorkbench(targetPlatform) {
     runCommand(
       process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm',
       [
+        '--config.node-linker=hoisted',
         '--filter',
         '@unilab/desktop',
         'deploy',
@@ -115,6 +117,7 @@ export function packagePortableWorkbench(targetPlatform) {
       process.env,
       { shell: process.platform === 'win32' }
     )
+    removeDesktopDeploymentSelfLink(desktopRuntimeDirectory)
 
     const esbuildBinary = resolveEsbuildBinary(descriptor)
     mkdirSync(deviceCardBuilderDirectory, { recursive: true })
@@ -169,6 +172,28 @@ export function packagePortableWorkbench(targetPlatform) {
     rmSync(outputDirectory, { recursive: true, force: true })
     rmSync(packagingDirectory, { recursive: true, force: true })
   }
+}
+
+/**
+ * 删除 pnpm deploy 指回桌面应用源码目录的自链接，避免打包器递归复制开发依赖。
+ * @param {string} deploymentDirectory 桌面端生产依赖的临时部署目录。
+ * @returns {boolean} 是否删除了自链接。
+ */
+export function removeDesktopDeploymentSelfLink(deploymentDirectory) {
+  const selfLink = join(
+    deploymentDirectory,
+    'node_modules',
+    '.pnpm',
+    'node_modules',
+    '@unilab',
+    'desktop'
+  )
+  if (!existsSync(selfLink)) return false
+  if (!lstatSync(selfLink).isSymbolicLink()) {
+    throw new Error(`桌面端生产依赖中的工作区自链接不是符号链接：${selfLink}`)
+  }
+  rmSync(selfLink, { force: true })
+  return true
 }
 
 function prepareNodeRuntime(descriptor, destination, packagingDirectory) {
@@ -286,6 +311,20 @@ function validatePackagedWorkbenchResources(resources, nodeName) {
   const missing = required.filter(path => !existsSync(path))
   if (missing.length) {
     throw new Error(`Workbench 安装包缺少运行资源：${missing.join(', ')}`)
+  }
+  const forbiddenDesktopWorkspace = join(
+    resources,
+    'desktop',
+    'node_modules',
+    '.pnpm',
+    'node_modules',
+    '@unilab',
+    'desktop'
+  )
+  if (existsSync(forbiddenDesktopWorkspace)) {
+    throw new Error(
+      `Workbench 安装包误含桌面端开发工作区：${forbiddenDesktopWorkspace}`
+    )
   }
 }
 

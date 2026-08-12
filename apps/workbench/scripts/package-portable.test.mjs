@@ -1,12 +1,21 @@
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import {
+  lstat,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  symlink,
+  writeFile
+} from 'node:fs/promises'
 import { describe, it } from 'node:test'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import {
   PORTABLE_NODE_ARCHIVES,
-  PORTABLE_NODE_VERSION
+  PORTABLE_NODE_VERSION,
+  removeDesktopDeploymentSelfLink
 } from './package-portable.mjs'
 import {
   MAX_PRODUCTION_LIB_BYTES,
@@ -79,6 +88,50 @@ describe('portable Workbench packaging contract', () => {
 
     assert.match(packagingScript, /'--prefer-offline'/u)
     assert.doesNotMatch(packagingScript, /\n\s*'--offline',?\n/u)
+  })
+
+  /** 验证打包前切断生产部署目录到源码工作区的递归复制链路。 */
+  it('removes the pnpm workspace self-link before electron-builder runs', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'unilab-desktop-deploy-'))
+    const source = join(root, 'desktop-source')
+    const deployment = join(root, 'deployment')
+    const selfLink = join(
+      deployment,
+      'node_modules',
+      '.pnpm',
+      'node_modules',
+      '@unilab',
+      'desktop'
+    )
+    try {
+      await mkdir(source, { recursive: true })
+      await mkdir(join(selfLink, '..'), { recursive: true })
+      await symlink(
+        source,
+        selfLink,
+        process.platform === 'win32' ? 'junction' : 'dir'
+      )
+
+      assert.equal(removeDesktopDeploymentSelfLink(deployment), true)
+      await assert.rejects(lstat(selfLink), error => error?.code === 'ENOENT')
+      assert.equal(removeDesktopDeploymentSelfLink(deployment), false)
+
+      const packagingScript = await readFile(
+        new URL('./package-portable.mjs', import.meta.url),
+        'utf8'
+      )
+      assert.match(packagingScript, /'--config\.node-linker=hoisted'/u)
+      const deployIndex = packagingScript.indexOf("'deploy'")
+      const removalIndex = packagingScript.indexOf(
+        'removeDesktopDeploymentSelfLink(desktopRuntimeDirectory)'
+      )
+      const builderIndex = packagingScript.indexOf("'electron-builder'")
+      assert.ok(deployIndex >= 0)
+      assert.ok(deployIndex < removalIndex)
+      assert.ok(removalIndex < builderIndex)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
   })
 
   it('builds every installer from a bounded production Workbench bundle', async () => {
