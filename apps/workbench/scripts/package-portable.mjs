@@ -199,11 +199,14 @@ function prepareNodeRuntime(descriptor, destination, packagingDirectory) {
     ])
   } else {
     const extractionDirectory = join(packagingDirectory, 'node-extracted')
-    runCommand('powershell.exe', [
-      '-NoProfile',
-      '-Command',
-      'Expand-Archive -LiteralPath $args[0] -DestinationPath $args[1] -Force',
+    mkdirSync(extractionDirectory, { recursive: true })
+    // Windows ships bsdtar as tar.exe. Passing the archive path directly
+    // avoids powershell.exe -Command consuming trailing arguments before the
+    // script can read them from $args.
+    runCommand('tar.exe', [
+      '-xf',
       archivePath,
+      '-C',
       extractionDirectory
     ])
     copyFileSync(

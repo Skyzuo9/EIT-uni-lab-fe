@@ -27,6 +27,16 @@ describe('portable Workbench packaging contract', () => {
     }
   })
 
+  it('extracts the Windows Node runtime without PowerShell argument binding', async () => {
+    const packagingScript = await readFile(
+      new URL('./package-portable.mjs', import.meta.url),
+      'utf8'
+    )
+
+    assert.match(packagingScript, /runCommand\('tar\.exe', \[/u)
+    assert.doesNotMatch(packagingScript, /Expand-Archive/u)
+  })
+
   it('does not make portable packaging depend on pnpm metadata already being cached', async () => {
     const packagingScript = await readFile(
       new URL('./package-portable.mjs', import.meta.url),
