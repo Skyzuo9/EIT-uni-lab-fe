@@ -168,6 +168,10 @@ export async function startManagedWorkbenchAgent(
     await waitForHealth(child, backendPort, options.readinessTimeoutMs ?? 60_000)
     sanitizeLocalIdentityDatabase(dataDir)
     const initialLanguage = await ensureManagedLocalAgentDefaults(backendPort)
+    await waitForManagedAgentApi(
+      backendPort,
+      options.readinessTimeoutMs ?? 60_000
+    )
     const server = await startRendererProxy({
       backendPort,
       publicPort,
@@ -691,6 +695,31 @@ async function waitForHealth(
     await new Promise(resolveDelay => setTimeout(resolveDelay, 200))
   }
   throw new Error('UniLab Agent readiness timed out')
+}
+
+/** Wait for the renderer's first required domain endpoint, not only /health. */
+export async function waitForManagedAgentApi(
+  port: number,
+  timeoutMs: number,
+  retryDelayMs = 100
+): Promise<void> {
+  const endpoint = `http://127.0.0.1:${port}/api/assistants`
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(endpoint, {
+        signal: AbortSignal.timeout(2_000)
+      })
+      if (response.ok) {
+        const payload: unknown = await response.json()
+        if (isRecord(payload) && (
+          Array.isArray(payload['data']) || Array.isArray(payload['assistants'])
+        )) return
+      }
+    } catch { /* aioncore is still completing domain initialization */ }
+    await new Promise(resolveDelay => setTimeout(resolveDelay, retryDelayMs))
+  }
+  throw new Error('UniLab Agent assistants API readiness timed out')
 }
 
 async function availablePort(): Promise<number> {
