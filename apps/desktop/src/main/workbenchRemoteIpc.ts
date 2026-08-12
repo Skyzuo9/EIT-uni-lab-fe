@@ -17,6 +17,7 @@ import {
   type WorkbenchWorkspaceController,
   type WorkbenchWorkspaceSnapshot
 } from '../shared/workbenchWorkspace'
+import { switchWorkbenchWorkspaceToWelcome } from './workbenchWorkspaceTransition'
 
 declare global {
   var __unilabWorkbenchWorkspaceController:
@@ -79,20 +80,14 @@ export function registerWorkbenchRemoteAccessIpc(options: {
     const window = requireMainWindow(options)
     workspaceSwitchPending = true
     try {
-      const target = new URL(controller.welcomeUrl)
-      target.searchParams.set('switching', '1')
-      await window.loadURL(target.toString())
-    } catch (error) {
-      if (isAbortedNavigation(error)) {
-        return { switched: false, snapshot: controller.getSnapshot() }
-      }
-      throw error
+      return await switchWorkbenchWorkspaceToWelcome({
+        window,
+        controller,
+        publishSnapshot: (snapshot) => publishWorkspaceSnapshot(window, snapshot)
+      })
     } finally {
       workspaceSwitchPending = false
     }
-    const snapshot = await controller.deactivate()
-    publishWorkspaceSnapshot(window, snapshot)
-    return { switched: true, snapshot }
   })
 }
 
@@ -172,11 +167,4 @@ function publishWorkspaceSnapshot(
   if (!window.isDestroyed()) {
     window.webContents.send('workbench-workspace:snapshot', snapshot)
   }
-}
-
-function isAbortedNavigation(error: unknown): boolean {
-  return Boolean(
-    error && typeof error === 'object' && 'code' in error
-    && error.code === 'ERR_ABORTED'
-  )
 }
