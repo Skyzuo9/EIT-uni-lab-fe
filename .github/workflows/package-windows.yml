@@ -55,7 +55,7 @@ jobs:
           path: .runtime-source
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 10.13.1
           run_install: false
@@ -80,11 +80,16 @@ jobs:
         id: runtime-cache
         uses: actions/cache/restore@v6
         with:
-          path: .runtime-source/dist/constructor
-          key: windows-runtime-${{ runner.arch }}-${{ env.UNILAB_RUNTIME_VERSION }}-${{ env.UNILAB_RUNTIME_SOURCE_REF }}-miniforge-${{ env.MINIFORGE_VERSION }}-constructor-${{ env.CONSTRUCTOR_VERSION }}-conda-${{ env.CONDA_STANDALONE_VERSION }}
+          # Constructor leaves intermediate output beside the installer. Cache
+          # only the distributable EXE to avoid spending ~622 MB per cache key.
+          path: .runtime-source/dist/constructor/*.exe
+          key: windows-runtime-installer-v2-${{ runner.arch }}-${{ env.UNILAB_RUNTIME_VERSION }}-${{ env.UNILAB_RUNTIME_SOURCE_REF }}-miniforge-${{ env.MINIFORGE_VERSION }}-constructor-${{ env.CONSTRUCTOR_VERSION }}-conda-${{ env.CONDA_STANDALONE_VERSION }}
+          # One-time migration path for the broader cache created by the prior
+          # workflow. The next save rewrites it under the lean v2 key.
+          restore-keys: windows-runtime-${{ runner.arch }}-${{ env.UNILAB_RUNTIME_VERSION }}-${{ env.UNILAB_RUNTIME_SOURCE_REF }}-miniforge-${{ env.MINIFORGE_VERSION }}-constructor-${{ env.CONSTRUCTOR_VERSION }}-conda-${{ env.CONDA_STANDALONE_VERSION }}
 
       - name: Set up Constructor
-        if: steps.runtime-cache.outputs.cache-hit != 'true'
+        if: steps.runtime-cache.outputs.cache-matched-key == ''
         uses: conda-incubator/setup-miniconda@v4
         with:
           miniforge-version: ${{ env.MINIFORGE_VERSION }}
@@ -95,7 +100,7 @@ jobs:
           channel-priority: strict
 
       - name: Build Windows Runtime
-        if: steps.runtime-cache.outputs.cache-hit != 'true'
+        if: steps.runtime-cache.outputs.cache-matched-key == ''
         working-directory: .runtime-source
         run: |
           if (-not (Test-Path .conda/constructor/construct.yaml)) {
@@ -118,8 +123,16 @@ jobs:
         if: steps.runtime-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
-          path: .runtime-source/dist/constructor
+          path: .runtime-source/dist/constructor/*.exe
           key: ${{ steps.runtime-cache.outputs.cache-primary-key }}
+
+      - name: Cache Electron packaging toolchain
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~\AppData\Local\electron\Cache
+            ~\AppData\Local\electron-builder\Cache
+          key: windows-electron-builder-${{ runner.arch }}-${{ hashFiles('pnpm-lock.yaml') }}
 
       - name: Prepare Windows Runtime and Agent
         run: |
