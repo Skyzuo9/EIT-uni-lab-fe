@@ -80,8 +80,8 @@ jobs:
         id: runtime-cache
         uses: actions/cache/restore@v6
         with:
-          # Constructor leaves intermediate output beside the installer. Cache
-          # only the distributable EXE to avoid spending ~622 MB per cache key.
+          # Constructor may leave intermediate output beside the installer.
+          # Cache only the distributable EXE under a content-addressed key.
           path: .runtime-source/dist/constructor/*.exe
           key: windows-runtime-installer-v2-${{ runner.arch }}-${{ env.UNILAB_RUNTIME_VERSION }}-${{ env.UNILAB_RUNTIME_SOURCE_REF }}-miniforge-${{ env.MINIFORGE_VERSION }}-constructor-${{ env.CONSTRUCTOR_VERSION }}-conda-${{ env.CONDA_STANDALONE_VERSION }}
 
