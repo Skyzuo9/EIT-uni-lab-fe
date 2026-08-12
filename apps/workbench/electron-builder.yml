@@ -108,3 +108,11 @@ nsis:
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: always
   createStartMenuShortcut: true
+  # Workbench does not use electron-updater. Avoid differential block metadata
+  # and its elevate helper so the installer stays solid-compressed and smaller.
+  differentialPackage: false
+  packElevateHelper: false
+  multiLanguageInstaller: true
+  installerLanguages:
+    - zh_CN
+    - en_US

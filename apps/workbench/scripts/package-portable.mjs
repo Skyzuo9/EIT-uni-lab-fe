@@ -157,6 +157,7 @@ export function packagePortableWorkbench(targetPlatform) {
       descriptor.hostArchitecture
     )
     const installer = findInstaller(outputDirectory, targetPlatform)
+    rmSync(releaseDirectory, { recursive: true, force: true })
     mkdirSync(releaseDirectory, { recursive: true })
     for (const name of artifactNames(outputDirectory, targetPlatform)) {
       copyFileSync(join(outputDirectory, name), join(releaseDirectory, name))
@@ -320,7 +321,7 @@ function findInstaller(outputDirectory, targetPlatform) {
 function artifactNames(outputDirectory, targetPlatform) {
   const matcher = targetPlatform === 'linux-64'
     ? /(?:\.AppImage(?:\.blockmap)?|latest-linux\.yml)$/iu
-    : /(?:-setup\.exe(?:\.blockmap)?|latest\.yml)$/iu
+    : /-setup\.exe$/iu
   return readdirSync(outputDirectory).filter(name => matcher.test(name))
 }
 

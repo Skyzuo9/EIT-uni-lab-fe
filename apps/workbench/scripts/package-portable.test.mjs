@@ -239,8 +239,15 @@ describe('portable Workbench packaging contract', () => {
     assert.match(workflow, /build\/Release\/crypt32\.node/u)
     assert.match(
       workflow,
-      /ref: b09c0c048f6de1e5027deb1733da439598c577cf/u
+      /UNILAB_RUNTIME_SOURCE_REF: b09c0c048f6de1e5027deb1733da439598c577cf/u
     )
+    assert.match(workflow, /cache: pnpm/u)
+    assert.match(workflow, /actions\/cache\/restore@v6/u)
+    assert.match(workflow, /actions\/cache\/save@v6/u)
+    assert.match(workflow, /cache-primary-key/u)
+    assert.match(workflow, /MINIFORGE_VERSION: 26\.3\.2-3/u)
+    assert.match(workflow, /AIONUI_WINDOWS_SHA512: [a-f0-9]{128}/u)
+    assert.match(workflow, /Get-FileHash \$agentInstaller -Algorithm SHA512/u)
     assert.match(workflow, /Test-Path \.conda\/constructor\/construct\.yaml/u)
     assert.match(
       workflow,
@@ -252,7 +259,17 @@ describe('portable Workbench packaging contract', () => {
     assert.match(workflow, /Filter 'aioncore\.exe'/u)
     assert.match(workflow, /Test-Path \(Join-Path \$_\.Directory\.FullName 'managed-resources'\)/u)
     assert.match(workflow, /bundled-aioncore\\windows-x64/u)
+    assert.match(workflow, /path: apps\/workbench\/release-windows\/\*-setup\.exe/u)
+    assert.doesNotMatch(workflow, /setup\.exe\.blockmap/u)
+    assert.doesNotMatch(workflow, /release-windows\/latest\.yml/u)
     assert.match(workflow, /actions\/upload-artifact@v6/u)
+
+    const builderConfiguration = await readFile(
+      new URL('../electron-builder.yml', import.meta.url),
+      'utf8'
+    )
+    assert.match(builderConfiguration, /differentialPackage: false/u)
+    assert.match(builderConfiguration, /packElevateHelper: false/u)
   })
 
   it('removes source maps from local Workbench plugins', async () => {
