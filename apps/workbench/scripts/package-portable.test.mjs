@@ -13,6 +13,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import {
+  MAX_PORTABLE_INSTALLER_BYTES,
   PORTABLE_NODE_ARCHIVES,
   PORTABLE_NODE_VERSION,
   removeDesktopDeploymentSelfLink,
@@ -25,6 +26,7 @@ import {
 } from './prune-production-output.mjs'
 
 describe('portable Workbench packaging contract', () => {
+  /** 验证 portable 平台、Node 摘要与安装器体积预算保持固定。 */
   it('pins native Node runtimes for Linux and Windows', () => {
     assert.equal(PORTABLE_NODE_VERSION, '24.14.0')
     assert.deepEqual(Object.keys(PORTABLE_NODE_ARCHIVES), [
@@ -35,6 +37,7 @@ describe('portable Workbench packaging contract', () => {
       assert.match(descriptor.sha256, /^[a-f0-9]{64}$/u)
       assert.equal(descriptor.hostArchitecture, 'x64')
     }
+    assert.equal(MAX_PORTABLE_INSTALLER_BYTES, 850 * 1024 * 1024)
   })
 
   it('extracts the Windows Node runtime without PowerShell argument binding', async () => {
@@ -333,6 +336,7 @@ describe('portable Workbench packaging contract', () => {
     }
   })
 
+  /** 验证 Windows 原生流水线复用缓存、固定供应链输入并只上传安装器。 */
   it('builds the Windows installer on a native GitHub Actions runner', async () => {
     const workflow = await readFile(
       new URL('../../../.github/workflows/package-windows.yml', import.meta.url),
@@ -352,6 +356,14 @@ describe('portable Workbench packaging contract', () => {
     assert.match(workflow, /cache-primary-key/u)
     assert.match(workflow, /windows-runtime-installer-v2-/u)
     assert.match(workflow, /dist\/constructor\/\*\.exe/u)
+    const restoreRuntimeIndex = workflow.indexOf('name: Restore Windows Runtime')
+    const checkoutRuntimeIndex = workflow.indexOf('name: Check out Uni-Lab OS')
+    assert.ok(restoreRuntimeIndex >= 0)
+    assert.ok(restoreRuntimeIndex < checkoutRuntimeIndex)
+    assert.match(
+      workflow.slice(checkoutRuntimeIndex, checkoutRuntimeIndex + 180),
+      /if: steps\.runtime-cache\.outputs\.cache-hit != 'true'/u
+    )
     assert.match(workflow, /windows-electron-builder-/u)
     assert.match(workflow, /MINIFORGE_VERSION: 26\.3\.2-3/u)
     assert.match(workflow, /AIONUI_WINDOWS_SHA512: [a-f0-9]{128}/u)
@@ -371,6 +383,7 @@ describe('portable Workbench packaging contract', () => {
     assert.doesNotMatch(workflow, /setup\.exe\.blockmap/u)
     assert.doesNotMatch(workflow, /release-windows\/latest\.yml/u)
     assert.match(workflow, /actions\/upload-artifact@v6/u)
+    assert.match(workflow, /compression-level: 0/u)
 
     const builderConfiguration = await readFile(
       new URL('../electron-builder.yml', import.meta.url),

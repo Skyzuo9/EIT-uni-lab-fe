@@ -11,18 +11,32 @@ const builderConfig = readFileSync(
 const packageConfig = JSON.parse(
   readFileSync(join(desktopDirectory, 'package.json'), 'utf8')
 )
+const viteConfig = readFileSync(
+  join(desktopDirectory, 'electron.vite.config.ts'),
+  'utf8'
+)
 const installerInclude = readFileSync(
   join(desktopDirectory, 'build', 'installer.nsh'),
   'utf8'
 )
 
 assert.deepEqual(packageConfig.dependencies ?? {}, {
-  '@arizeai/phoenix-otel': '2.1.0',
-  '@unilab/device-card-agent-cli': 'workspace:*',
-  '@unilab/device-card-host': 'workspace:*',
-  '@unilab/device-card-sdk': 'workspace:*',
-  '@unilab/local-environment': 'workspace:*'
+  '@unilab/device-card-host': 'workspace:*'
 })
+assert.equal(
+  packageConfig.devDependencies?.['@arizeai/phoenix-otel'],
+  '2.1.0'
+)
+for (const bundledWorkspaceDependency of [
+  '@unilab/device-card-agent-cli',
+  '@unilab/device-card-sdk',
+  '@unilab/local-environment'
+]) {
+  assert.equal(
+    packageConfig.devDependencies?.[bundledWorkspaceDependency],
+    'workspace:*'
+  )
+}
 assert.equal(
   packageConfig.devDependencies?.['@unilab/kernel-web'],
   'workspace:*'
@@ -35,10 +49,13 @@ assert.equal(
   packageConfig.devDependencies?.['@unilab/services'],
   'workspace:*'
 )
-assert.match(
-  readFileSync(join(desktopDirectory, 'electron.vite.config.ts'), 'utf8'),
-  /exclude: \['@unilab\/services', '@unilab\/local-environment'\]/
-)
+for (const bundledDependency of [
+  '@arizeai/phoenix-otel',
+  '@unilab/services',
+  '@unilab/local-environment'
+]) {
+  assert.match(viteConfig, new RegExp(bundledDependency, 'u'))
+}
 assert.equal(
   packageConfig.scripts?.['package:win'],
   'node scripts/package-windows.mjs'

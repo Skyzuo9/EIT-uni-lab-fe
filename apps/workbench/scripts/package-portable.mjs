@@ -30,6 +30,7 @@ import {
 
 const MEBIBYTE = 1024 * 1024
 const MIN_INSTALLER_BYTES = 50 * MEBIBYTE
+export const MAX_PORTABLE_INSTALLER_BYTES = 850 * MEBIBYTE
 export const PORTABLE_NODE_VERSION = '24.14.0'
 export const PORTABLE_NODE_ARCHIVES = Object.freeze({
   'linux-64': {
@@ -340,6 +341,13 @@ function validatePackagedWorkbenchResources(resources, nodeName) {
   }
 }
 
+/**
+ * 查找并校验 portable Workbench 的唯一安装器及体积预算。
+ * @param {string} outputDirectory electron-builder 的输出目录。
+ * @param {string} targetPlatform portable 目标平台标识。
+ * @returns {{path: string, size: number}} 已通过文件头与体积校验的安装器。
+ * @throws {Error} 安装器缺失、重复、不完整、超出预算或文件头无效时抛出。
+ */
 function findInstaller(outputDirectory, targetPlatform) {
   const matcher = targetPlatform === 'linux-64'
     ? /\.AppImage$/iu
@@ -354,6 +362,11 @@ function findInstaller(outputDirectory, targetPlatform) {
   const size = statSync(path).size
   if (size < MIN_INSTALLER_BYTES) {
     throw new Error(`Workbench 安装包不完整：${basename(path)} 仅 ${size} bytes`)
+  }
+  if (size > MAX_PORTABLE_INSTALLER_BYTES) {
+    throw new Error(
+      `Workbench 安装包超出 850 MiB 预算：${basename(path)} 为 ${size} bytes`
+    )
   }
   const expected = targetPlatform === 'linux-64'
     ? Buffer.from([0x7f, 0x45, 0x4c, 0x46])

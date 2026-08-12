@@ -45,7 +45,17 @@ jobs:
       - name: Check out Workbench
         uses: actions/checkout@v6
 
+      - name: Restore Windows Runtime
+        id: runtime-cache
+        uses: actions/cache/restore@v6
+        with:
+          # Constructor may leave intermediate output beside the installer.
+          # Cache only the distributable EXE under a content-addressed key.
+          path: .runtime-source/dist/constructor/*.exe
+          key: windows-runtime-installer-v2-${{ runner.arch }}-${{ env.UNILAB_RUNTIME_VERSION }}-${{ env.UNILAB_RUNTIME_SOURCE_REF }}-miniforge-${{ env.MINIFORGE_VERSION }}-constructor-${{ env.CONSTRUCTOR_VERSION }}-conda-${{ env.CONDA_STANDALONE_VERSION }}
+
       - name: Check out Uni-Lab OS
+        if: steps.runtime-cache.outputs.cache-hit != 'true'
         uses: actions/checkout@v6
         with:
           repository: Uni-Lab-OS/Uni-Lab-OS
@@ -75,15 +85,6 @@ jobs:
           if (-not (Test-Path $windowsCaNative)) {
             throw "Windows CA native module was not built: $windowsCaNative"
           }
-
-      - name: Restore Windows Runtime
-        id: runtime-cache
-        uses: actions/cache/restore@v6
-        with:
-          # Constructor may leave intermediate output beside the installer.
-          # Cache only the distributable EXE under a content-addressed key.
-          path: .runtime-source/dist/constructor/*.exe
-          key: windows-runtime-installer-v2-${{ runner.arch }}-${{ env.UNILAB_RUNTIME_VERSION }}-${{ env.UNILAB_RUNTIME_SOURCE_REF }}-miniforge-${{ env.MINIFORGE_VERSION }}-constructor-${{ env.CONSTRUCTOR_VERSION }}-conda-${{ env.CONDA_STANDALONE_VERSION }}
 
       - name: Set up Constructor
         if: steps.runtime-cache.outputs.cache-hit != 'true'
@@ -214,3 +215,6 @@ jobs:
           path: apps/workbench/release-windows/*-setup.exe
           if-no-files-found: error
           retention-days: 30
+          # The NSIS EXE is already solid-compressed; recompressing it only
+          # consumes runner CPU and produces no meaningful size reduction.
+          compression-level: 0
