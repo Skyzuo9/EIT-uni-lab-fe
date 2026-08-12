@@ -111,7 +111,9 @@ export function packagePortableWorkbench(targetPlatform) {
         '--prefer-offline',
         desktopRuntimeDirectory
       ],
-      repositoryDirectory
+      repositoryDirectory,
+      process.env,
+      { shell: process.platform === 'win32' }
     )
 
     const esbuildBinary = resolveEsbuildBinary(descriptor)
@@ -319,12 +321,18 @@ function hasExpectedSha256(path, expected) {
   return createHash('sha256').update(readFileSync(path)).digest('hex') === expected
 }
 
-function runCommand(command, args, cwd = workbenchDirectory, environment = process.env) {
+function runCommand(
+  command,
+  args,
+  cwd = workbenchDirectory,
+  environment = process.env,
+  options = {}
+) {
   const result = spawnSync(command, args, {
     cwd,
     env: environment,
     stdio: 'inherit',
-    shell: false
+    shell: options.shell ?? false
   })
   if (result.error) throw result.error
   if (result.status !== 0) {

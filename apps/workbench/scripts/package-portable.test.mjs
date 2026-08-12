@@ -37,6 +37,19 @@ describe('portable Workbench packaging contract', () => {
     assert.doesNotMatch(packagingScript, /Expand-Archive/u)
   })
 
+  it('runs the Windows pnpm command through its command interpreter', async () => {
+    const packagingScript = await readFile(
+      new URL('./package-portable.mjs', import.meta.url),
+      'utf8'
+    )
+
+    assert.match(
+      packagingScript,
+      /'pnpm\.cmd' : 'pnpm',[\s\S]*?\{ shell: process\.platform === 'win32' \}/u
+    )
+    assert.match(packagingScript, /shell: options\.shell \?\? false/u)
+  })
+
   it('does not make portable packaging depend on pnpm metadata already being cached', async () => {
     const packagingScript = await readFile(
       new URL('./package-portable.mjs', import.meta.url),
