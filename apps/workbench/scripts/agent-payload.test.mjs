@@ -21,6 +21,7 @@ import {
   MAX_AGENT_RENDERER_ARCHIVE_BYTES,
   PINNED_AGENT_DISTRIBUTION_VERSION,
   SHARED_AGENT_NODE_ENV,
+  normalizeAgentArchiveEntry,
   prepareBundledAgentPayload,
   resolveAgentTarget
 } from './agent-payload.mjs'
@@ -62,6 +63,18 @@ async function createAgentArchiveFixture(sourceDirectory, archivePath) {
 }
 
 describe('bundled Workbench Agent payload', () => {
+  /** 验证 Windows 与 POSIX 的 ASAR 清单路径收敛为同一归档路径。 */
+  it('normalizes ASAR entry separators across packaging hosts', () => {
+    assert.equal(
+      normalizeAgentArchiveEntry('\\out\\renderer\\index.html'),
+      '/out/renderer/index.html'
+    )
+    assert.equal(
+      normalizeAgentArchiveEntry('/out/renderer/index.html'),
+      '/out/renderer/index.html'
+    )
+  })
+
   /** 验证载荷只保留固定版本渲染器，并配对目标平台原生核心。 */
   it('stages the pinned renderer and matching native aioncore', async () => {
     const root = await mkdtemp(join(tmpdir(), 'unilab-agent-payload-'))

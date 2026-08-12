@@ -25,6 +25,15 @@ export const MAX_AGENT_RENDERER_ARCHIVE_BYTES = 40 * 1024 * 1024
 
 const AGENT_RENDERER_PREFIX = '/out/renderer/'
 
+/**
+ * 将 ASAR 工具返回的平台路径统一为归档使用的正斜杠路径。
+ * @param {string} entry ASAR 清单中的原始条目路径。
+ * @returns {string} 可跨 Windows、macOS 与 Linux 比较的归档路径。
+ */
+export function normalizeAgentArchiveEntry(entry) {
+  return entry.replaceAll('\\', '/')
+}
+
 export function resolveAgentTarget(platform, architecture) {
   const key = `${platform}/${architecture}`
   const targets = {
@@ -166,29 +175,37 @@ export function createRendererOnlyAgentArchive(
   rmSync(stagingDirectory, { recursive: true, force: true })
   mkdirSync(stagingDirectory, { recursive: true })
   try {
-    const entries = asar.listPackage(sourceArchive)
-    if (!entries.includes('/out/renderer/index.html')) {
+    // source 是 ASAR 工具返回的原始平台路径；返回原始路径与标准归档路径。
+    const entries = asar.listPackage(sourceArchive).map(source => ({
+      source,
+      normalized: normalizeAgentArchiveEntry(source)
+    }))
+    if (!entries.some(entry =>
+      entry.normalized === '/out/renderer/index.html'
+    )) {
       throw new Error('Agent app.asar 缺少 out/renderer/index.html')
     }
-    // entry 是上游归档条目；返回 true 时该条目属于版本清单或渲染器运行面。
+    // entry 是上游归档路径对；返回 true 时它属于版本清单或渲染器运行面。
     const selectedEntries = entries.filter(entry =>
-      entry === '/package.json' || entry.startsWith(AGENT_RENDERER_PREFIX)
+      entry.normalized === '/package.json'
+      || entry.normalized.startsWith(AGENT_RENDERER_PREFIX)
     )
     for (const entry of selectedEntries) {
-      const relativePath = entry.slice(1)
+      const relativePath = entry.normalized.slice(1)
+      const sourcePath = entry.source.slice(1)
       const destination = resolve(stagingDirectory, relativePath)
       if (
         destination !== stagingDirectory
         && !destination.startsWith(`${stagingDirectory}${sep}`)
       ) {
-        throw new Error(`Agent 渲染器归档路径越界：${entry}`)
+        throw new Error(`Agent 渲染器归档路径越界：${entry.normalized}`)
       }
-      const info = asar.statFile(sourceArchive, relativePath)
+      const info = asar.statFile(sourceArchive, sourcePath)
       if ('files' in info) {
         mkdirSync(destination, { recursive: true })
       } else {
         mkdirSync(dirname(destination), { recursive: true })
-        writeFileSync(destination, asar.extractFile(sourceArchive, relativePath))
+        writeFileSync(destination, asar.extractFile(sourceArchive, sourcePath))
       }
     }
 
@@ -216,7 +233,8 @@ export function createRendererOnlyAgentArchive(
  * @throws {Error} 必需文件缺失、含非渲染器文件或超出体积预算时抛出。
  */
 export function validateAgentRendererArchive(archive) {
-  const entries = asar.listPackage(archive)
+  // entry 是 ASAR 工具返回的原始平台路径；返回标准归档路径。
+  const entries = asar.listPackage(archive).map(normalizeAgentArchiveEntry)
   const required = ['/package.json', '/out/renderer/index.html']
   // entry 是必需路径；返回 true 表示该路径尚未进入精简归档。
   const missing = required.filter(entry => !entries.includes(entry))

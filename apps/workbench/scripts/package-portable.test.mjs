@@ -149,8 +149,9 @@ describe('portable Workbench packaging contract', () => {
     )
     assert.match(
       agentPackagingScript,
-      /entry === '\/package\.json' \|\| entry\.startsWith\(AGENT_RENDERER_PREFIX\)/u
+      /entry\.normalized === '\/package\.json'[\s\S]*?entry\.normalized\.startsWith\(AGENT_RENDERER_PREFIX\)/u
     )
+    assert.match(agentPackagingScript, /entry\.replaceAll\('\\\\', '\/'\)/u)
     assert.match(agentPackagingScript, /archiveScope: 'renderer-only'/u)
     assert.match(
       agentPackagingScript,
