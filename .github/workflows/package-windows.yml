@@ -1,0 +1,120 @@
+name: Package Windows Workbench
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - bug-fix-wt
+    paths:
+      - .github/workflows/package-windows.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: package-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  AIONUI_VERSION: 2.1.53
+  UNILAB_RUNTIME_VERSION: 0.11.3
+
+jobs:
+  package-windows-x64:
+    runs-on: windows-latest
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: pwsh
+
+    steps:
+      - name: Check out Workbench
+        uses: actions/checkout@v6
+
+      - name: Check out Uni-Lab OS
+        uses: actions/checkout@v6
+        with:
+          repository: Uni-Lab-OS/Uni-Lab-OS
+          ref: v0.11.3
+          path: .runtime-source
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22.21.1
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.13.1
+          run_install: false
+
+      - name: Install Workbench dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Set up Constructor
+        uses: conda-incubator/setup-miniconda@v4
+        with:
+          miniforge-version: latest
+          use-mamba: true
+          activate-environment: constructor-build
+          auto-update-conda: false
+          channels: conda-forge
+          channel-priority: strict
+
+      - name: Build Windows Runtime
+        shell: bash -l {0}
+        working-directory: .runtime-source
+        run: |
+          mamba install -n constructor-build --override-channels -c conda-forge constructor=3.16.1 conda-standalone=26.3.2.post1 -y
+          conda_exe="$(python -c 'import os; from pathlib import Path; print(Path(os.environ["CONDA_PREFIX"], "standalone_conda", "conda.exe"))')"
+          constructor .conda/constructor --platform win-64 --conda-exe "$conda_exe" --output-dir dist/constructor
+
+      - name: Prepare Windows Runtime and Agent
+        run: |
+          $runtime = Get-ChildItem .runtime-source/dist/constructor -Filter *.exe | Select-Object -First 1
+          if (-not $runtime) { throw 'Uni-Lab OS Constructor did not produce an EXE' }
+
+          $agentInstaller = Join-Path $env:RUNNER_TEMP 'AionUi-win-x64.exe'
+          $agentInstallerUrl = "https://static.aionui.com/releases/$env:AIONUI_VERSION/AionUi-$env:AIONUI_VERSION-win-x64.exe"
+          Invoke-WebRequest -Uri $agentInstallerUrl -OutFile $agentInstaller
+
+          $installerContents = Join-Path $env:RUNNER_TEMP 'aionui-installer'
+          & 7z x $agentInstaller "-o$installerContents" -y
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to extract AionUi installer' }
+          $applicationArchive = Get-ChildItem $installerContents -Recurse -Filter 'app-64.7z' | Select-Object -First 1
+          if (-not $applicationArchive) { throw 'AionUi installer does not contain app-64.7z' }
+
+          $applicationContents = Join-Path $env:RUNNER_TEMP 'aionui-application'
+          & 7z x $applicationArchive.FullName "-o$applicationContents" -y
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to extract AionUi application' }
+          $agentResources = Get-ChildItem $applicationContents -Recurse -Directory |
+            Where-Object { Test-Path (Join-Path $_.FullName 'app.asar') } |
+            Select-Object -First 1
+          if (-not $agentResources) { throw 'AionUi resources directory was not found' }
+
+          "UNILAB_RUNTIME_INSTALLER=$($runtime.FullName)" >> $env:GITHUB_ENV
+          "UNILAB_AGENT_DISTRIBUTION=$($agentResources.FullName)" >> $env:GITHUB_ENV
+
+      - name: Build Windows x64 installer
+        run: pnpm --filter @unilab/workbench package:win
+
+      - name: Verify installer
+        run: |
+          $installer = Get-ChildItem apps/workbench/release-windows -Filter '*-setup.exe' | Select-Object -First 1
+          if (-not $installer) { throw 'Windows installer was not published' }
+          $stream = [System.IO.File]::OpenRead($installer.FullName)
+          try { $header = @($stream.ReadByte(), $stream.ReadByte()) } finally { $stream.Dispose() }
+          if ($header[0] -ne 0x4d -or $header[1] -ne 0x5a) { throw 'Installer is not a PE executable' }
+          Get-FileHash $installer.FullName -Algorithm SHA256
+
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v6
+        with:
+          name: UniLab-Workbench-windows-x64-${{ github.sha }}
+          path: |
+            apps/workbench/release-windows/*-setup.exe
+            apps/workbench/release-windows/*-setup.exe.blockmap
+            apps/workbench/release-windows/latest.yml
+          if-no-files-found: error
+          retention-days: 30

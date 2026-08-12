@@ -98,4 +98,17 @@ describe('portable Workbench packaging contract', () => {
       await rm(root, { recursive: true, force: true })
     }
   })
+
+  it('builds the Windows installer on a native GitHub Actions runner', async () => {
+    const workflow = await readFile(
+      new URL('../../../.github/workflows/package-windows.yml', import.meta.url),
+      'utf8'
+    )
+
+    assert.match(workflow, /runs-on: windows-latest/u)
+    assert.match(workflow, /pnpm --filter @unilab\/workbench package:win/u)
+    assert.match(workflow, /UNILAB_RUNTIME_INSTALLER=/u)
+    assert.match(workflow, /UNILAB_AGENT_DISTRIBUTION=/u)
+    assert.match(workflow, /actions\/upload-artifact@v6/u)
+  })
 })
