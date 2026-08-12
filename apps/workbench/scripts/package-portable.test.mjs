@@ -205,6 +205,9 @@ describe('portable Workbench packaging contract', () => {
     assert.match(workflow, /pnpm --filter @unilab\/workbench package:win/u)
     assert.match(workflow, /UNILAB_RUNTIME_INSTALLER=/u)
     assert.match(workflow, /UNILAB_AGENT_DISTRIBUTION=/u)
+    assert.match(workflow, /Filter 'aioncore\.exe'/u)
+    assert.match(workflow, /Test-Path \(Join-Path \$_\.Directory\.FullName 'managed-resources'\)/u)
+    assert.match(workflow, /bundled-aioncore\\windows-x64/u)
     assert.match(workflow, /actions\/upload-artifact@v6/u)
   })
 
