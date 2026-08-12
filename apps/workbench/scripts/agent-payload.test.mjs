@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import {
+  chmod,
   lstat,
   mkdir,
   mkdtemp,
@@ -195,5 +196,116 @@ describe('bundled Workbench Agent payload', () => {
       directory: 'windows-x64',
       executable: 'aioncore.exe'
     })
+  })
+
+  it('keeps bundled npm and npx executable after package symlinks are materialized', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'unilab-agent-node-launchers-'))
+    const source = join(root, 'AionUi.app', 'Contents', 'Resources')
+    const destination = join(root, 'payload')
+    const asarSource = join(root, 'asar-source')
+    const nativeRoot = join(
+      source,
+      'bundled-aioncore',
+      'darwin-arm64'
+    )
+    const nodeRoot = join(
+      nativeRoot,
+      'managed-resources',
+      'node',
+      'node-v24.11.0-darwin-arm64'
+    )
+    try {
+      await mkdir(join(nodeRoot, 'bin'), { recursive: true })
+      await mkdir(join(nodeRoot, 'lib', 'node_modules', 'npm', 'bin'), {
+        recursive: true
+      })
+      await mkdir(join(nodeRoot, 'lib', 'node_modules', 'npm', 'lib'), {
+        recursive: true
+      })
+      await mkdir(asarSource, { recursive: true })
+      await writeFile(join(asarSource, 'package.json'), JSON.stringify({
+        version: PINNED_AGENT_DISTRIBUTION_VERSION
+      }))
+      await asar.createPackage(asarSource, join(source, 'app.asar'))
+      await writeFile(join(nativeRoot, 'aioncore'), 'agent-binary')
+      await writeFile(join(
+        nativeRoot,
+        'managed-resources',
+        'manifest.json'
+      ), JSON.stringify({
+        schemaVersion: 2,
+        runtimeKey: 'darwin-arm64',
+        node: {
+          version: '24.11.0',
+          root: 'node/node-v24.11.0-darwin-arm64',
+          executable: 'bin/node'
+        },
+        clis: []
+      }))
+      await writeFile(
+        join(nodeRoot, 'bin', 'node'),
+        `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} "$@"\n`
+      )
+      await chmod(join(nodeRoot, 'bin', 'node'), 0o755)
+      await writeFile(
+        join(nodeRoot, 'lib', 'node_modules', 'npm', 'bin', 'npm-cli.js'),
+        "#!/usr/bin/env node\nrequire('../lib/cli.js')(process)\n"
+      )
+      await writeFile(
+        join(nodeRoot, 'lib', 'node_modules', 'npm', 'bin', 'npx-cli.js'),
+        "#!/usr/bin/env node\nrequire('../lib/cli.js')(process)\n"
+      )
+      await chmod(
+        join(nodeRoot, 'lib', 'node_modules', 'npm', 'bin', 'npm-cli.js'),
+        0o755
+      )
+      await chmod(
+        join(nodeRoot, 'lib', 'node_modules', 'npm', 'bin', 'npx-cli.js'),
+        0o755
+      )
+      await writeFile(
+        join(nodeRoot, 'lib', 'node_modules', 'npm', 'lib', 'cli.js'),
+        "module.exports = process => process.stdout.write('11.6.1\\n')\n"
+      )
+      await symlink(
+        '../lib/node_modules/npm/bin/npm-cli.js',
+        join(nodeRoot, 'bin', 'npm')
+      )
+      await symlink(
+        '../lib/node_modules/npm/bin/npx-cli.js',
+        join(nodeRoot, 'bin', 'npx')
+      )
+
+      prepareBundledAgentPayload(destination, {
+        sourcePath: join(root, 'AionUi.app'),
+        platform: 'darwin',
+        architecture: 'arm64'
+      })
+
+      for (const launcher of ['npm', 'npx']) {
+        const packagedLauncher = join(
+          destination,
+          'bundled-aioncore',
+          'darwin-arm64',
+          'managed-resources',
+          'node',
+          'node-v24.11.0-darwin-arm64',
+          'bin',
+          launcher
+        )
+        assert.equal((await lstat(packagedLauncher)).isSymbolicLink(), false)
+        const result = spawnSync(packagedLauncher, ['--version'], {
+          encoding: 'utf8'
+        })
+        assert.equal(
+          result.status,
+          0,
+          result.error?.message || result.stderr
+        )
+        assert.equal(result.stdout.trim(), '11.6.1')
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
   })
 })

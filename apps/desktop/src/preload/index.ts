@@ -111,6 +111,14 @@ const api = {
       ipcRenderer.send('renderer:unsavedChanges', hasUnsavedChanges)
     }
   },
+  workflowAuthoring: {
+    setUnsavedChanges: (hasUnsavedChanges: boolean): void => {
+      ipcRenderer.send(
+        'workflow-authoring:setUnsavedChanges',
+        hasUnsavedChanges
+      )
+    }
+  },
   workbenchRemote: {
     getSnapshot: (): Promise<WorkbenchRemoteAccessSnapshot> =>
       ipcRenderer.invoke('workbench-remote:getSnapshot'),

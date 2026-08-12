@@ -1,4 +1,5 @@
 import {
+  chmodSync,
   copyFileSync,
   cpSync,
   existsSync,
@@ -12,7 +13,7 @@ import {
   writeFileSync
 } from 'node:fs'
 import { spawnSync } from 'node:child_process'
-import { basename, join, resolve } from 'node:path'
+import { basename, dirname, join, relative, resolve } from 'node:path'
 
 import * as asar from '@electron/asar'
 
@@ -79,7 +80,8 @@ export function prepareBundledAgentPayload(destination, options = {}) {
   )
   materializePackageSymlinks(
     nativeSource,
-    join(destination, 'bundled-aioncore', target.directory)
+    join(destination, 'bundled-aioncore', target.directory),
+    { platform }
   )
   const managedResources = join(
     destination,
@@ -136,22 +138,61 @@ function clearMacosDownloadQuarantine(destination, platform) {
   }
 }
 
-function materializePackageSymlinks(sourceDirectory, destinationDirectory) {
+function materializePackageSymlinks(
+  sourceDirectory,
+  destinationDirectory,
+  options,
+  roots = { source: sourceDirectory, destination: destinationDirectory }
+) {
   for (const name of readdirSync(sourceDirectory)) {
     const source = join(sourceDirectory, name)
     const destination = join(destinationDirectory, name)
     const sourceStat = lstatSync(source)
     if (sourceStat.isSymbolicLink()) {
       unlinkSync(destination)
-      cpSync(realpathSync(source), destination, {
-        recursive: true,
-        preserveTimestamps: true,
-        dereference: true
-      })
+      const resolvedSource = realpathSync(source)
+      if (isManagedNodeJsLauncher(source, resolvedSource, options.platform)) {
+        const resolvedDestination = join(
+          roots.destination,
+          relative(roots.source, resolvedSource)
+        )
+        const targetFromLauncher = relative(
+          dirname(destination),
+          resolvedDestination
+        )
+        writeFileSync(
+          destination,
+          posixManagedNodeLauncher(targetFromLauncher)
+        )
+        chmodSync(destination, 0o755)
+      } else {
+        cpSync(resolvedSource, destination, {
+          recursive: true,
+          preserveTimestamps: true,
+          dereference: true
+        })
+      }
     } else if (sourceStat.isDirectory()) {
-      materializePackageSymlinks(source, destination)
+      materializePackageSymlinks(source, destination, options, roots)
     }
   }
+}
+
+function isManagedNodeJsLauncher(source, resolvedSource, platform) {
+  return platform !== 'win32'
+    && ['npm', 'npx', 'corepack'].includes(basename(source))
+    && basename(dirname(source)) === 'bin'
+    && resolvedSource.endsWith('.js')
+}
+
+function posixManagedNodeLauncher(targetFromLauncher) {
+  if (!/^[A-Za-z0-9._/+\-]+$/u.test(targetFromLauncher)) {
+    throw new Error(`Agent Node launcher 目标路径无效：${targetFromLauncher}`)
+  }
+  return `#!/bin/sh
+launcher_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+exec "$launcher_dir/node" "$launcher_dir/${targetFromLauncher}" "$@"
+`
 }
 
 export function validateBundledAgentPayload(
@@ -190,7 +231,37 @@ export function validateBundledAgentPayload(
       throw new Error(`Workbench 安装包不得内置 ${cli}：${forbiddenPath}`)
     }
   }
+  validateManagedNodeLaunchers(join(
+    root,
+    'bundled-aioncore',
+    target.directory,
+    'managed-resources'
+  ), platform)
   return { root, archive, executable, version }
+}
+
+function validateManagedNodeLaunchers(managedResources, platform) {
+  const manifestPath = join(managedResources, 'manifest.json')
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
+  const nodeRoot = join(managedResources, String(manifest.node?.root || ''))
+  const launchers = platform === 'win32'
+    ? ['npm.cmd', 'npx.cmd'].map(name => join(nodeRoot, name))
+    : ['npm', 'npx'].map(name => join(nodeRoot, 'bin', name))
+  for (const launcher of launchers) {
+    if (!existsSync(launcher)) {
+      throw new Error(`Workbench Agent Node launcher 缺失：${launcher}`)
+    }
+    const result = spawnSync(launcher, ['--version'], {
+      encoding: 'utf8',
+      shell: platform === 'win32'
+    })
+    if (result.error || result.status !== 0) {
+      const detail = result.error?.message || result.stderr || result.stdout
+      throw new Error(
+        `Workbench Agent Node launcher 无法运行：${launcher}\n${detail}`
+      )
+    }
+  }
 }
 
 function rewriteManagedResourcesManifest(managedResources) {

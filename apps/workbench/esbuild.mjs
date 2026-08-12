@@ -8,7 +8,10 @@ import { nodeOptions } from './gen-esbuild.node.mjs';
 import esbuild from 'esbuild';
 import { copy } from 'esbuild-plugin-copy';
 import { sassPlugin } from 'esbuild-sass-plugin';
+import { readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
+
+import { injectWorkbenchPreloadShell } from './scripts/preload-shell.mjs';
 
 const sharedShimPath = name => fileURLToPath(
     new URL(`../../packages/pascal-host/src/shims/${name}.tsx`, import.meta.url)
@@ -52,6 +55,20 @@ browserOptions.plugins.push(
         ],
     }),
 );
+browserOptions.plugins.push({
+    name: 'unilab-workbench-preload-shell',
+    setup(build) {
+        build.onEnd(async result => {
+            if (result.errors.length > 0) return;
+            const indexPath = fileURLToPath(
+                new URL('./lib/frontend/index.html', import.meta.url)
+            );
+            const source = await readFile(indexPath, 'utf8');
+            const injected = injectWorkbenchPreloadShell(source);
+            if (injected !== source) await writeFile(indexPath, injected);
+        });
+    },
+});
 
 const browserContext = await esbuild.context(browserOptions);
 const nodeContext = await esbuild.context(nodeOptions);

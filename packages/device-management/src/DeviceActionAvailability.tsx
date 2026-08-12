@@ -108,12 +108,20 @@ export function projectDeviceActionTask(
   if (view.status === 'canceled') {
     return { kind: 'canceled', message: '动作任务已取消', ...projection }
   }
+  if (view.job_status === 'succeeded') {
+    return {
+      kind: 'finishing',
+      message: '设备动作已完成，OS 正在确认收尾',
+      ...projection
+    }
+  }
   if (view.status === 'running' || view.status === 'canceling') {
+    const feedbackMessage = latestFeedbackMessage(feedback)
     return {
       kind: 'running',
       message: view.status === 'canceling'
         ? '取消正在生效，等待设备终态'
-        : `设备正在执行 · Job ${view.job_status}`,
+        : feedbackMessage ?? `设备正在执行 · Job ${view.job_status}`,
       ...projection
     }
   }
@@ -122,6 +130,20 @@ export function projectDeviceActionTask(
     message: '任务已接受，正在等待设备',
     ...projection
   }
+}
+
+function latestFeedbackMessage(
+  feedback: WorkflowNodeJobFeedback[]
+): string | null {
+  for (let index = feedback.length - 1; index >= 0; index -= 1) {
+    const item = feedback[index]
+    if (!item) continue
+    for (const value of [item.data.message, item.data.description]) {
+      if (typeof value === 'string' && value.trim()) return value.trim()
+    }
+    if (item.description?.trim()) return item.description.trim()
+  }
+  return null
 }
 
 export function isTerminalDeviceActionTask(status: string): boolean {
@@ -144,7 +166,7 @@ export type DeviceActionRunState =
       retryable: boolean
     }
   | {
-      kind: 'accepted' | 'running' | 'succeeded' | 'failed' | 'canceled'
+      kind: 'accepted' | 'running' | 'finishing' | 'succeeded' | 'failed' | 'canceled'
       message: string
       taskUuid: string
       output?: Record<string, unknown>
@@ -359,6 +381,12 @@ function deviceActionExecutionPresentation(kind: DeviceActionRunState['kind']): 
       return {
         label: '执行中',
         description: '动作已进入设备执行队列。',
+        tone: 'is-running'
+      }
+    case 'finishing':
+      return {
+        label: '正在收尾',
+        description: '设备动作已完成，OS 正在确认任务与库存终态。',
         tone: 'is-running'
       }
     default:

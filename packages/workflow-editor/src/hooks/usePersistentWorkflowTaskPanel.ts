@@ -17,6 +17,13 @@ import {
 } from '../utils/persistentAuthoringSession'
 import { projectWorkflowCodeMarkers } from '../utils/workflowCodeMarkers'
 import {
+  buildDebugLaunchOverrides,
+  createDebugLaunchInputForm,
+  setDebugLaunchField,
+  type DebugLaunchInputFieldState,
+  type DebugLaunchInputFormState
+} from '../utils/debugLaunchInputForm'
+import {
   createWorkflowTaskInputForm,
   containsResourceSlotInput,
   setWorkflowTaskInputField,
@@ -96,6 +103,10 @@ export function usePersistentWorkflowTaskPanel({
   const [taskInputForm, setTaskInputForm] =
     useState<WorkflowTaskInputFormState | null>(null)
   const [taskInputProblem, setTaskInputProblem] = useState<string | null>(null)
+  const [debugLaunchForm, setDebugLaunchForm] =
+    useState<DebugLaunchInputFormState | null>(null)
+  const [debugLaunchTaskInput, setDebugLaunchTaskInput] =
+    useState<Record<string, unknown> | null>(null)
   const [resourceSlotOptions, setResourceSlotOptions] =
     useState<WorkflowResourceSlotOptionsState | undefined>(undefined)
   const [traceViewerOpen, setTraceViewerOpen] = useState(false)
@@ -387,6 +398,8 @@ export function usePersistentWorkflowTaskPanel({
     setTaskInputAuthority(null)
     setTaskInputForm(null)
     setTaskInputProblem(null)
+    setDebugLaunchForm(null)
+    setDebugLaunchTaskInput(null)
     setResourceSlotOptions(undefined)
     if (retainedRevision !== undefined) {
       setMessage(
@@ -409,25 +422,50 @@ export function usePersistentWorkflowTaskPanel({
     if (!taskInputAuthority || !taskInputForm) return
     const submittedForm = taskInputForm
     runRuntime(async () => {
+      const requirementsPending = new Error('debug-launch-requirements')
+      const guidedInput: {
+        current: {
+          form: DebugLaunchInputFormState
+          input: Record<string, unknown>
+        } | null
+      } = { current: null }
       try {
         const result = await submitWorkflowTaskInput({
           form: submittedForm,
           readApplied: () => queue.run(
             () => runtime.getWorkflowAuthoring(workflowUuid)
           ),
-          createTask: (input) => taskRunMode === 'debug'
-            ? taskRuntime.createDebug(
+          createTask: async (input) => {
+            if (taskRunMode !== 'debug') {
+              return taskRuntime.create(
+                taskRunMode,
+                input,
+                taskRunMode === 'single_node'
+                  ? debugExecutionScope.startNodeId ?? undefined
+                  : undefined
+              )
+            }
+            const preflight = await taskRuntime.preflightDebug(
               debugExecutionScope.startNodeId as string,
               [...debugBreakpoints],
-              input
-            )
-            : taskRuntime.create(
-              taskRunMode,
               input,
-              taskRunMode === 'single_node'
-                ? debugExecutionScope.startNodeId ?? undefined
-                : undefined
+              []
             )
+            if (preflight.status === 'needs_input') {
+              guidedInput.current = {
+                form: createDebugLaunchInputForm(preflight),
+                input
+              }
+              throw requirementsPending
+            }
+            return taskRuntime.createDebug(
+              debugExecutionScope.startNodeId as string,
+              [...debugBreakpoints],
+              input,
+              [],
+              preflight.preflight_hash
+            )
+          }
         })
         if (result.kind === 'reproject_before_create') {
           setTaskInputAuthority(result.authority)
@@ -445,11 +483,86 @@ export function usePersistentWorkflowTaskPanel({
         setTaskInputAuthority(null)
         setTaskInputForm(null)
         setTaskInputProblem(null)
+        setDebugLaunchForm(null)
+        setDebugLaunchTaskInput(null)
         setMessage(result.message)
       } catch (submitError) {
+        if (submitError === requirementsPending && guidedInput.current) {
+          setDebugLaunchForm(guidedInput.current.form)
+          setDebugLaunchTaskInput(guidedInput.current.input)
+          setTaskInputProblem(null)
+          setMessage(
+            `OS 预检识别到 ${guidedInput.current.form.fields.length} 个调试输入；` +
+            '请确认后再创建任务'
+          )
+          return
+        }
         setTaskInputProblem(
           workflowTaskInputProblem(submitError, submittedForm)
         )
+        throw submitError
+      }
+    })
+  }
+
+  const updateDebugLaunchInput = (
+    requirementId: string,
+    next: Pick<DebugLaunchInputFieldState, 'valueText' | 'confirmed'>
+  ): void => {
+    setDebugLaunchForm((current) => current
+      ? setDebugLaunchField(current, requirementId, next)
+      : current)
+    setTaskInputProblem(null)
+  }
+
+  const backToTaskInput = (): void => {
+    if (runtimeBusy) return
+    setDebugLaunchForm(null)
+    setDebugLaunchTaskInput(null)
+    setTaskInputProblem(null)
+  }
+
+  const submitDebugLaunch = (): void => {
+    if (
+      !debugLaunchForm ||
+      !debugLaunchTaskInput ||
+      !debugExecutionScope.startNodeId
+    ) return
+    const submittedForm = debugLaunchForm
+    runRuntime(async () => {
+      try {
+        const overrides = buildDebugLaunchOverrides(submittedForm)
+        const preflight = await taskRuntime.preflightDebug(
+          debugExecutionScope.startNodeId as string,
+          [...debugBreakpoints],
+          debugLaunchTaskInput,
+          overrides
+        )
+        if (preflight.status !== 'ready') {
+          setDebugLaunchForm(createDebugLaunchInputForm(preflight))
+          setTaskInputProblem(
+            preflight.diagnostics.map(({ message }) => message).join('；') ||
+            '补充输入仍未满足调试启动要求'
+          )
+          return
+        }
+        await taskRuntime.createDebug(
+          debugExecutionScope.startNodeId as string,
+          [...debugBreakpoints],
+          debugLaunchTaskInput,
+          overrides,
+          preflight.preflight_hash
+        )
+        setTaskInputAuthority(null)
+        setTaskInputForm(null)
+        setTaskInputProblem(null)
+        setDebugLaunchForm(null)
+        setDebugLaunchTaskInput(null)
+        setMessage(
+          `调试任务已创建；${overrides.length} 个补充值已冻结到本次任务`
+        )
+      } catch (submitError) {
+        setTaskInputProblem(errorMessage(submitError))
         throw submitError
       }
     })
@@ -473,9 +586,11 @@ export function usePersistentWorkflowTaskPanel({
     appliedWorkflowRunnable,
     codeSourceMap,
     completedTaskJobCount,
+    debugLaunchForm,
     debugBreakpoints,
     debugExecutionScope,
     closeTaskInputForm,
+    backToTaskInput,
     openTaskInputForm,
     openTaskInputFormForAuthority,
     outputExpanded,
@@ -497,6 +612,7 @@ export function usePersistentWorkflowTaskPanel({
     setTaskRunMode,
     setTraceViewerOpen,
     submitTaskInput,
+    submitDebugLaunch,
     task,
     taskControls,
     taskInputAuthority,
@@ -514,6 +630,7 @@ export function usePersistentWorkflowTaskPanel({
     toggleDebugBreakpoint,
     toggleDebugStartNode,
     traceViewerOpen,
+    updateDebugLaunchInput,
     updateTaskInput
   }
 }

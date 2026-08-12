@@ -320,6 +320,7 @@ describe('managed local Workbench session', () => {
       phase: 'idle',
       message: 'Uni-Lab OS 已停止',
       configuredGraphPath: 'deployment/graphs/szlab-local-debug.json',
+      configuredRuntimeMode: 'normal',
       identity: null,
       agent: null,
       diagnostic: null,
@@ -648,6 +649,30 @@ describe('managed local Workbench session', () => {
       join(fixture.workspacePath, '.unilabos', 'environment.local.json'),
       'utf8'
     )).resolves.toContain('"runtimeMode": "normal"')
+  })
+
+  it('projects the configured runtime mode before OS startup', async () => {
+    const fixture = await createFixture()
+    const session = createManagedLocalWorkbenchSession({
+      workspacePath: fixture.workspacePath,
+      osProjectPath: fixture.osProjectPath,
+      environmentPath: fixture.environmentPath
+    })
+    sessions.push(session)
+
+    expect(session.getSnapshot()).toMatchObject({
+      phase: 'idle',
+      configuredRuntimeMode: 'normal',
+      identity: null
+    })
+
+    await session.setRuntimeMode('dry-run')
+
+    expect(session.getSnapshot()).toMatchObject({
+      phase: 'idle',
+      configuredRuntimeMode: 'dry-run',
+      identity: null
+    })
   })
 
   it('allows any Workspace graph and records its immutable launch generation', async () => {

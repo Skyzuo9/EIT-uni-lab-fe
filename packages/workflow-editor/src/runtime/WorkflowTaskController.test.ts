@@ -1,4 +1,6 @@
 import type {
+  DebugLaunchOverride,
+  DebugWorkflowTaskPreflight,
   WorkflowNodeJob,
   WorkflowNodeJobFeedback,
   WorkflowRuntimeChangedEvent,
@@ -614,6 +616,67 @@ function registerWorkflowTaskControllerTests(): void {
     })
     expect(Object.keys(vi.mocked(runtime.createWorkflowTask).mock.calls[0][0]))
       .toEqual(['workflow_uuid', 'run_mode', 'input'])
+  })
+
+  it('preflights and freezes guided launch overrides through the debugger port', async () => {
+    const task = { ...workflowTask(), run_mode: 'step' as const }
+    const preflight: DebugWorkflowTaskPreflight = {
+      workflow_uuid: task.workflow_uuid,
+      workflow_revision: 7,
+      status: 'ready',
+      preflight_hash: `sha256:${'a'.repeat(64)}`,
+      requirements: [],
+      diagnostics: [],
+      launch_overrides: [{
+        requirement_id: 'requirement-1',
+        target_node_uuid: workflowJob().workflow_node_uuid,
+        target_handle_uuid: 'handle-1',
+        value: 7,
+        confirmed: false
+      }]
+    }
+    const overrides: DebugLaunchOverride[] = [{
+      requirement_id: 'requirement-1',
+      value: 7
+    }]
+    const runtime = runtimePort({
+      preflightDebugWorkflowTask: vi.fn(async () => preflight),
+      createDebugWorkflowTask: vi.fn(async () => task),
+      getWorkflowTask: vi.fn(async () => task),
+      listWorkflowTaskJobs: vi.fn(async () => [workflowJob()])
+    })
+    const controller = new WorkflowTaskController(runtime, task.workflow_uuid)
+
+    await expect(controller.preflightDebug(
+      workflowJob().workflow_node_uuid,
+      [],
+      { count: 3 },
+      overrides
+    )).resolves.toEqual(preflight)
+    await controller.createDebug(
+      workflowJob().workflow_node_uuid,
+      [],
+      { count: 3 },
+      overrides,
+      preflight.preflight_hash
+    )
+
+    expect(runtime.preflightDebugWorkflowTask).toHaveBeenCalledWith({
+      workflow_uuid: task.workflow_uuid,
+      start_node_uuids: [workflowJob().workflow_node_uuid],
+      breakpoint_node_uuids: [],
+      input: { count: 3 },
+      launch_overrides: overrides
+    })
+    expect(runtime.createDebugWorkflowTask).toHaveBeenCalledWith({
+      workflow_uuid: task.workflow_uuid,
+      start_node_uuids: [workflowJob().workflow_node_uuid],
+      breakpoint_node_uuids: [],
+      input: { count: 3 },
+      launch_overrides: overrides,
+      preflight_hash: preflight.preflight_hash,
+      meta_data: { source: 'unilab-workbench-debugger' }
+    })
   })
 
   it('disposes the global subscription and ignores late REST completion', async () => {

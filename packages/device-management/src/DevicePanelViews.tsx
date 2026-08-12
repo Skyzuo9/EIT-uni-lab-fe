@@ -284,7 +284,8 @@ export function DeviceWorkspace({
                 disabled={
                   runState?.kind === 'submitting' ||
                   runState?.kind === 'accepted' ||
-                  runState?.kind === 'running'
+                  runState?.kind === 'running' ||
+                  runState?.kind === 'finishing'
                 }
                 onChange={onArgumentChange}
               />

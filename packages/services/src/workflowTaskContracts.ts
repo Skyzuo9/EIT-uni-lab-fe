@@ -4,6 +4,8 @@
  * 类型只复刻服务端事实；前端不得用这些接口建立第二套运行权威。
  */
 
+import type { WorkflowValueSchema } from './workflowIo'
+
 export type WorkflowTaskStatus =
   | 'pending'
   | 'admission_blocked'
@@ -44,6 +46,88 @@ export interface DebugWorkflowTaskCreateRequest {
   input?: Record<string, unknown>
   description?: string | null
   meta_data?: Record<string, unknown>
+  launch_overrides?: DebugLaunchOverride[]
+  preflight_hash?: string
+}
+
+export type DebugLaunchRequirementReason =
+  | 'start_scope'
+  | 'disabled_node'
+  | 'out_of_scope'
+
+export interface DebugLaunchOverride {
+  requirement_id: string
+  value: unknown
+  confirmed?: boolean
+}
+
+export interface DebugLaunchMaterialSuggestion {
+  id: string
+  material_uuid: string
+  material_name: string
+  resource_template_uuid: string
+  recommended: boolean
+  requires_confirmation: true
+  actual: {
+    site: { uuid: string; name: string } | null
+    status: string | null
+  }
+  inferred_target: {
+    kind: 'same_material_passthrough' | 'selected_inventory_candidate'
+    through_node_uuids: string[]
+    site: { uuid: string; name?: string } | null
+    status: string | null
+  }
+}
+
+export interface DebugLaunchRequirement {
+  id: string
+  kind: 'value' | 'material'
+  reason: DebugLaunchRequirementReason
+  required: true
+  target: {
+    node_uuid: string
+    node_name: string
+    handle_uuid: string
+    data_key: string
+    display_name: string
+  }
+  schema: WorkflowValueSchema
+  upstream_nodes: Array<{
+    node_uuid: string
+    node_name: string
+    disabled: boolean
+  }>
+  allowed_resource_template_uuids?: string[]
+  suggestions: DebugLaunchMaterialSuggestion[]
+}
+
+export interface DebugWorkflowTaskPreflightRequest {
+  workflow_uuid: string
+  start_node_uuids: string[]
+  breakpoint_node_uuids: string[]
+  input?: Record<string, unknown>
+  launch_overrides?: DebugLaunchOverride[]
+}
+
+export interface DebugWorkflowTaskPreflight {
+  workflow_uuid: string
+  workflow_revision: number
+  status: 'needs_input' | 'ready'
+  preflight_hash: string
+  requirements: DebugLaunchRequirement[]
+  diagnostics: Array<{
+    code: string
+    message: string
+    requirement_id?: string
+  }>
+  launch_overrides: Array<{
+    requirement_id: string
+    target_node_uuid: string
+    target_handle_uuid: string
+    value: unknown
+    confirmed: boolean
+  }>
 }
 
 export interface WorkflowNodeAdmissionHold {

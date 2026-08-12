@@ -105,15 +105,20 @@
 }
 
 .unilab-environment-manager {
-  position: absolute;
-  z-index: 1100;
+  /* Escape Theia panel clipping: this is an application-level overlay. */
+  position: fixed;
+  z-index: 1200;
   top: 52px;
   right: 12px;
   bottom: 12px;
   display: flex;
-  width: min(480px, calc(100% - 24px));
+  width: min(520px, calc(100% - 24px));
+  max-width: calc(100vw - 24px);
+  box-sizing: border-box;
+  min-height: 0;
   flex-direction: column;
   overflow: hidden;
+  isolation: isolate;
   border: 1px solid var(--unilab-color-border-strong);
   border-radius: 10px;
   color: var(--unilab-color-text);
@@ -165,9 +170,13 @@
   display: grid;
   min-height: 0;
   flex: 1 1 auto;
+  min-height: 0;
   gap: 0;
   padding: 8px 14px 2px;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 .unilab-environment-manager__rail::before {
@@ -244,9 +253,8 @@
 .unilab-environment-card dd {
   min-width: 0;
   margin: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .unilab-environment-manager__path {
@@ -283,10 +291,11 @@
 }
 
 .unilab-environment-manager__mode button {
-  display: grid;
-  min-height: 48px;
-  place-content: center;
-  gap: 3px;
+  display: inline-flex;
+  min-height: 30px;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
   padding: 6px 10px;
   border: 1px solid transparent;
   border-radius: calc(var(--unilab-radius-control) - 2px);
@@ -304,12 +313,24 @@
 }
 
 .unilab-environment-manager__mode button.is-active {
-  color: var(--unilab-color-primary);
-  border-color: var(--unilab-color-primary);
-  background: var(--unilab-color-primary-soft);
+  color: #fff;
+  background: var(--unilab-color-primary);
   box-shadow:
-    inset 0 0 0 1px color-mix(in srgb, var(--unilab-color-primary) 16%, transparent),
+    0 0 0 1px var(--unilab-color-primary),
     var(--unilab-shadow-control);
+}
+
+.unilab-environment-manager__mode button.is-active .codicon {
+  font-size: 12px;
+}
+
+@media (max-width: 720px) {
+  .unilab-environment-manager {
+    right: 8px;
+    bottom: 8px;
+    left: 8px;
+    width: auto;
+  }
 }
 
 .unilab-environment-card__actions {

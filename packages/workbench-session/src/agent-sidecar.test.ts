@@ -7,7 +7,8 @@ import {
   isProtectedAgentRequest,
   managedConversationRequestBody,
   managedLocalAgentAuthStatus,
-  managedLocalBootstrapScript
+  managedLocalBootstrapScript,
+  waitForManagedAgentApi
 } from './agent-sidecar'
 
 describe('Workbench Agent private-state boundary', () => {
@@ -38,6 +39,37 @@ describe('Workbench Agent managed-local identity bridge', () => {
         avatarUrl: null
       }
     })
+  })
+
+  it('does not expose the renderer until the assistants API is ready', async () => {
+    let attempts = 0
+    const server = createServer((request, response) => {
+      attempts += 1
+      response.writeHead(attempts < 3 ? 503 : 200, {
+        'content-type': 'application/json'
+      })
+      response.end(JSON.stringify(request.url === '/api/assistants'
+        ? { success: true, data: [] }
+        : { error: 'unexpected route' }))
+    })
+    await new Promise<void>((resolve, reject) => {
+      server.once('error', reject)
+      server.listen(0, '127.0.0.1', () => resolve())
+    })
+    const address = server.address()
+    if (!address || typeof address === 'string') {
+      throw new Error('test server did not expose a TCP port')
+    }
+
+    try {
+      await expect(waitForManagedAgentApi(address.port, 2_000, 1))
+        .resolves.toBeUndefined()
+    } finally {
+      await new Promise<void>((resolve, reject) => server.close(error => (
+        error ? reject(error) : resolve()
+      )))
+    }
+    expect(attempts).toBe(3)
   })
 
   it('seeds Simplified Chinese once and primes the renderer language', async () => {

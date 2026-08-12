@@ -196,6 +196,60 @@
     resize: vertical;
   }
 
+  :global(.debug-launch-input-form) li {
+    grid-template-columns: minmax(150px, .65fr) minmax(130px, .45fr)
+      minmax(300px, 1.4fr);
+    align-items: start;
+  }
+
+  :global(.debug-launch-input-form)
+    :global(.workflow-task-input-form__control) {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+  }
+
+  :global(.debug-launch-input-form__material-fact) {
+    display: grid;
+    gap: 7px;
+    padding: 9px 10px;
+    color: var(--unilab-color-text);
+    border: 1px solid var(--unilab-color-border);
+    border-radius: var(--unilab-radius-control);
+    background: var(--unilab-color-surface-subtle);
+  }
+
+  :global(.debug-launch-input-form__material-fact) dl {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: 4px 9px;
+    margin: 0;
+    font-size: 10px;
+  }
+
+  :global(.debug-launch-input-form__material-fact) dt {
+    color: var(--unilab-color-text-muted);
+  }
+
+  :global(.debug-launch-input-form__material-fact) dd {
+    min-width: 0;
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+
+  :global(.debug-launch-input-form__confirmation) {
+    display: flex;
+    align-items: flex-start;
+    gap: 7px;
+    padding: 8px 9px;
+    border: 1px solid var(--unilab-color-border);
+    border-radius: var(--unilab-radius-control);
+  }
+
+  :global(.debug-launch-input-form__confirmation) input {
+    flex: 0 0 auto;
+    margin-top: 1px;
+  }
+
   :global(.workflow-task-input-form) > footer {
     position: sticky;
     bottom: -12px;

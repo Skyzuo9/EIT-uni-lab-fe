@@ -28,7 +28,10 @@ import { discoverDefaultCondaEnvironment } from './localRuntimeEnvironment'
 import { registerDeviceProvisioningIpc } from './deviceProvisioningIpc'
 import { LocalDeviceProvisioningManager } from './localDeviceProvisioningManager'
 import { LocalDeviceProvisioningStore } from './localDeviceProvisioningStore'
-import { ManagedRuntimeInstallation } from './managedRuntimeInstallation'
+import {
+  ManagedRuntimeInstallation,
+  resolveManagedRuntimeDataDirectory
+} from './managedRuntimeInstallation'
 import { registerManagedRuntimeInstallationIpc } from './managedRuntimeInstallationIpc'
 import {
   LocalRuntimeManager,
@@ -53,6 +56,7 @@ import type {
 import {
   isDesktopSurfaceNavigationAllowed,
   resolveDesktopSurfaceConfig,
+  shouldPromptForRendererUnload,
   shouldQuitWhenAllDesktopWindowsClose
 } from './desktopSurface'
 import { RendererConsoleLogLimiter } from './rendererConsoleLogLimiter'
@@ -153,6 +157,7 @@ let deviceCardManager: DeviceCardManager | null = null
 let deviceCardAgentBridge: DeviceCardAgentBridge | null = null
 let deviceCardAgentCli: DeviceCardAgentCliManager | null = null
 let rendererHasUnsavedChanges: boolean | null = null
+let workflowHasUnsavedChanges = false
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -176,6 +181,7 @@ function createWindow(): void {
   })
 
   mainWindow.on('closed', () => {
+    workflowHasUnsavedChanges = false
     mainWindow = null
     rendererHasUnsavedChanges = null
   })
@@ -215,9 +221,24 @@ function createWindow(): void {
     }
   )
   mainWindow.webContents.on('will-prevent-unload', (event) => {
+    const hasUnsavedChanges =
+      rendererHasUnsavedChanges === true || workflowHasUnsavedChanges
+    if (!shouldPromptForRendererUnload(
+      desktopSurface.kind,
+      hasUnsavedChanges
+    )) {
+      // Electron's will-prevent-unload contract is inverted: preventing this
+      // event allows the renderer navigation/close to continue.
+      event.preventDefault()
+      return
+    }
     const window = mainWindow
     if (!window || window.isDestroyed()) return
-    if (resolveUnsavedUnloadAction(rendererHasUnsavedChanges) === 'allow') {
+    const unloadState =
+      rendererHasUnsavedChanges === null && !workflowHasUnsavedChanges
+        ? null
+        : hasUnsavedChanges
+    if (resolveUnsavedUnloadAction(unloadState) === 'allow') {
       electronObservability.record('electron.renderer.clean_unload_allowed')
       event.preventDefault()
       return
@@ -235,10 +256,22 @@ function createWindow(): void {
       detail: prompt.detail
     })
     if (choice === 1) {
+      workflowHasUnsavedChanges = false
+      rendererHasUnsavedChanges = false
       electronObservability.record(prompt.discardedEvent)
       event.preventDefault()
     }
   })
+
+  mainWindow.webContents.on(
+    'did-start-navigation',
+    (_event, _url, isInPlace, isMainFrame) => {
+      if (isMainFrame && !isInPlace) {
+        workflowHasUnsavedChanges = false
+        rendererHasUnsavedChanges = null
+      }
+    }
+  )
 
   // Pascal 的工具栏图标与平面图光标使用站点根路径。在 Electron 的
   // file:// 页面中这些路径会落到系统根目录；这里只允许已知路径，
@@ -348,6 +381,19 @@ app.whenReady().then(async () => {
       )
     }
   })
+  ipcMain.on(
+    'workflow-authoring:setUnsavedChanges',
+    (event, value: unknown) => {
+      if (
+        event.sender !== mainWindow?.webContents
+        || event.senderFrame !== mainWindow.webContents.mainFrame
+      ) {
+        return
+      }
+      if (typeof value !== 'boolean') return
+      workflowHasUnsavedChanges = value
+    }
+  )
   registerWorkbenchRemoteAccessIpc({ observability: electronObservability, assertSender: assertMainWindowSender, getMainWindow: () => mainWindow })
   const managedRuntimeInstallation = registerManagedRuntimeInstallationIpc({
     ipcMain,
@@ -936,7 +982,11 @@ function createManagedRuntimeInstallation(): ManagedRuntimeInstallation | undefi
   }
   return new ManagedRuntimeInstallation({
     resourcesDirectory,
-    dataDirectory: app.getPath('userData')
+    dataDirectory: resolveManagedRuntimeDataDirectory({
+      platform: process.platform,
+      homeDirectory: homedir(),
+      userDataDirectory: app.getPath('userData')
+    })
   })
 }
 

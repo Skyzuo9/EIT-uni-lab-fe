@@ -84,6 +84,17 @@ describe('device Action D1A preparation', () => {
       options: '{"safe":true}'
     })).toThrow('labels 必须是数组')
   })
+
+  it('uses a declared schema default instead of silently delegating a cleared field to the backend', () => {
+    const action = liveAction()
+    action.inputSchema = {
+      duration: { type: 'number', required: false, default: 30 }
+    }
+
+    expect(serializeDeviceActionInput(action, { duration: '' })).toEqual({
+      duration: 30
+    })
+  })
 })
 
 const UUID_1 = '10000000-0000-4000-8000-000000000001'

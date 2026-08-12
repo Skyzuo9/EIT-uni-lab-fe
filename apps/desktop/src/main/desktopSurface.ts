@@ -102,6 +102,21 @@ export function shouldQuitWhenAllDesktopWindowsClose(
   return platform !== 'darwin' || surfaceKind === 'workbench'
 }
 
+/**
+ * Decides whether a renderer unload prevention represents user workflow data.
+ *
+ * Theia owns its own lifecycle and may prevent unload even when no document is
+ * dirty. Workbench therefore prompts only after its workflow authoring surface
+ * explicitly reports a local modification. Kernel Web keeps its existing
+ * renderer-owned beforeunload contract.
+ */
+export function shouldPromptForRendererUnload(
+  surfaceKind: DesktopSurfaceKind,
+  workflowHasUnsavedChanges: boolean
+): boolean {
+  return surfaceKind === 'kernel' || workflowHasUnsavedChanges
+}
+
 /** Restricts the privileged Workbench renderer to the managed loopback server. */
 function trustedWorkbenchRendererUrl(
   value: string | undefined,

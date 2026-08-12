@@ -24,9 +24,10 @@ describe('WorkbenchSessionGate', () => {
         snapshot={{
           phase: 'failed',
           message: '等待 Uni-Lab OS 就绪超时',
-        configuredGraphPath: 'deployment/graphs/szlab-local-debug.json',
-        agent: null,
-        identity: {
+          configuredGraphPath: 'deployment/graphs/szlab-local-debug.json',
+          configuredRuntimeMode: 'normal',
+          agent: null,
+          identity: {
             workspacePath: '/workspace',
             osProjectPath: '/os',
             osRuntimeSource: 'checkout',

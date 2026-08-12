@@ -12,6 +12,10 @@ import type {
   LabMaterialTransferRoute,
   LabMaterialTransferStatus
 } from '../schema'
+import {
+  PASCAL_TRANSFER_HTML_Z_INDEX_RANGE,
+  PASCAL_TRANSFER_LABEL_Z_INDEX_RANGE
+} from './htmlLayer'
 
 const ROUTE_COLORS: Readonly<Record<LabMaterialTransferStatus, string>> = {
   planned: '#4f46e5',
@@ -114,7 +118,11 @@ function TransferRoute({
         <meshBasicMaterial color={color} depthTest={false} />
       </mesh>
       <RouteMotion route={route} color={color} />
-      <Html position={labelPosition} center zIndexRange={[70, 0]}>
+      <Html
+        position={labelPosition}
+        center
+        zIndexRange={PASCAL_TRANSFER_LABEL_Z_INDEX_RANGE}
+      >
         <div
           className={`pascal-transfer-executor${showLabel ? ' is-expanded' : ''}`}
           title={`执行器：${route.executorId}；物料角色：${route.materialRole}；${route.sourceAnchorLabel} 到 ${route.targetAnchorLabel}`}
@@ -254,7 +262,11 @@ function SiteMarker({
         />
       </mesh>
       {hovered && (
-        <Html position={[0, 0.12, 0]} center zIndexRange={[80, 0]}>
+        <Html
+          position={[0, 0.12, 0]}
+          center
+          zIndexRange={PASCAL_TRANSFER_HTML_Z_INDEX_RANGE}
+        >
           <div className="pascal-transfer-site-label">库位 {label}</div>
         </Html>
       )}

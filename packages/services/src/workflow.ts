@@ -111,9 +111,15 @@ export type {
 } from './workflowMaterialSource'
 export type { WorkflowRuntimePort } from './workflowPort'
 export type {
+  DebugLaunchMaterialSuggestion,
+  DebugLaunchOverride,
+  DebugLaunchRequirement,
+  DebugLaunchRequirementReason,
   DebugWorkflowTaskCommand,
   DebugWorkflowTaskCommandRequest,
   DebugWorkflowTaskCreateRequest,
+  DebugWorkflowTaskPreflight,
+  DebugWorkflowTaskPreflightRequest,
   DebugWorkflowTaskProjection,
   DeviceActionTaskChangedEvent,
   DeviceCatalogChangedEvent,
@@ -373,6 +379,12 @@ export function createWorkflowRuntime(
       }),
     createDebugWorkflowTask: (body) =>
       runtimeRequest('/api/v1/debug/workflow-tasks', {
+        method: 'POST',
+        headers: jsonHeaders(),
+        body: JSON.stringify(body)
+      }),
+    preflightDebugWorkflowTask: (body) =>
+      runtimeRequest('/api/v1/debug/workflow-tasks:preflight', {
         method: 'POST',
         headers: jsonHeaders(),
         body: JSON.stringify(body)

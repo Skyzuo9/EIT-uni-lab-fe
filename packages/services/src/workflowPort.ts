@@ -25,6 +25,8 @@ import type {
   DebugWorkflowTaskCommand,
   DebugWorkflowTaskCommandRequest,
   DebugWorkflowTaskCreateRequest,
+  DebugWorkflowTaskPreflight,
+  DebugWorkflowTaskPreflightRequest,
   DebugWorkflowTaskProjection,
   WorkflowEventSubscription,
   WorkflowNodeJob,
@@ -111,6 +113,9 @@ export interface WorkflowRuntimePort {
   createDebugWorkflowTask: (
     request: DebugWorkflowTaskCreateRequest
   ) => Promise<WorkflowTask>
+  preflightDebugWorkflowTask: (
+    request: DebugWorkflowTaskPreflightRequest
+  ) => Promise<DebugWorkflowTaskPreflight>
   getDebugWorkflowTask: (
     taskUuid: string
   ) => Promise<DebugWorkflowTaskProjection>

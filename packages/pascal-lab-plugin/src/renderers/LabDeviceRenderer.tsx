@@ -31,6 +31,7 @@ import {
 import { findLinkObject } from '../mounting'
 import type { LabDeviceNode } from '../schema'
 import { SiteBoundsRenderer } from './SiteBoundsRenderer'
+import { PASCAL_SCENE_HTML_Z_INDEX_RANGE } from './htmlLayer'
 
 export const MODEL_READY_EVENT = 'unilab:pascal-model-ready'
 
@@ -107,7 +108,11 @@ function ModelLabel({
   selected: boolean
 }): React.JSX.Element {
   return (
-    <Html position={position} center>
+    <Html
+      position={position}
+      center
+      zIndexRange={PASCAL_SCENE_HTML_Z_INDEX_RANGE}
+    >
       <div
         className={`pascal-model-label${
           selected ? ' is-selected' : ''
@@ -386,7 +391,12 @@ export default function LabDeviceRenderer({
         />
       )}
       {node.renderBody && error && (
-        <Html position={[0, 0.1, 0]} center distanceFactor={6}>
+        <Html
+          position={[0, 0.1, 0]}
+          center
+          distanceFactor={6}
+          zIndexRange={PASCAL_SCENE_HTML_Z_INDEX_RANGE}
+        >
           <div className="pascal-model-label" title={error}>
             模型加载失败，已使用占位体
           </div>

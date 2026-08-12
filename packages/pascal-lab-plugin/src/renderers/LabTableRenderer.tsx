@@ -6,6 +6,7 @@ import type { Group } from 'three'
 
 import type { LabTableNode } from '../schema'
 import { SiteBoundsRenderer } from './SiteBoundsRenderer'
+import { PASCAL_SCENE_HTML_Z_INDEX_RANGE } from './htmlLayer'
 
 const useCustomNodeEvents = useNodeEvents as unknown as (
   node: LabTableNode,
@@ -68,7 +69,11 @@ export default function LabTableRenderer({
         sites={node.floorplanSnapshot?.sites ?? []}
         showSites={node.floorplanSnapshot?.showSites ?? true}
       />
-      <Html position={[0, height + 0.08, 0]} center>
+      <Html
+        position={[0, height + 0.08, 0]}
+        center
+        zIndexRange={PASCAL_SCENE_HTML_Z_INDEX_RANGE}
+      >
         <div
           className={`pascal-model-label${
             isSelected ? ' is-selected' : ''
