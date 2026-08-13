@@ -651,6 +651,16 @@ body.unilab-environment-manager-open .material-oblique-stack__label {
   background: var(--unilab-color-canvas);
 }
 
+/* Theia 底部面板与运行输出共用纵向空间，展开时由宿主隐藏内嵌输出。 */
+#theia-bottom-split-panel:has(
+  > #theia-bottom-content-panel:not(.lm-mod-hidden)
+)
+  > #theia-main-content-panel
+  .unilab-workbench__surface--workflow
+  .workflow-runtime__results:not(.is-fullscreen) {
+  display: none !important;
+}
+
 .unilab-workbench-session-gate {
   align-items: center;
   justify-content: center;

@@ -74,6 +74,13 @@ describe('environment manager layering and responsive layout', () => {
       /\.theia-app-right\s+\.lm-TabBar-tab\[id='shell-tab-outline-view'\]\s*\{[^}]*display:\s*none/u
     )
   })
+
+  /** 证明 Theia 底部面板展开时，运行输出连同表头一起让出空间。 */
+  it('hides embedded workflow output while the bottom panel is open', () => {
+    expect(stylesheet).toMatch(
+      /#theia-bottom-split-panel:has\(\s*> #theia-bottom-content-panel:not\(\.lm-mod-hidden\)\s*\)[\s\S]*?> #theia-main-content-panel[\s\S]*?\.unilab-workbench__surface--workflow[\s\S]*?\.workflow-runtime__results:not\(\.is-fullscreen\)\s*\{\s*display:\s*none !important;/u
+    )
+  })
 })
 
 function cssRule(selector: string): string {
