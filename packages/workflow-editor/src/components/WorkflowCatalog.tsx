@@ -38,7 +38,7 @@ export function WorkflowCatalog({
   authoringStatus?: CapabilityStatus
   runStatus?: CapabilityStatus
   onStateChange?: (state: WorkflowCatalogState) => void
-  onSelect?: (workflowUuid: string) => void
+  onSelect?: (workflowUuid: string, workflowName: string) => void
 }): React.JSX.Element {
   const [workflows, setWorkflows] = useState<WorkflowSummary[]>([])
   const [loading, setLoading] = useState(true)
@@ -119,7 +119,7 @@ export function WorkflowCatalog({
   )
 
   /** 记录最近使用并打开选中的工作流。 */
-  const handleSelect = (workflowUuid: string): void => {
+  const handleSelect = (workflowUuid: string, workflowName = ''): void => {
     if (!onSelect) return
     const nextRecent = recordRecentWorkflowId(
       activeWorkflowStorageKey,
@@ -127,7 +127,10 @@ export function WorkflowCatalog({
       workflowUuid
     )
     setRecentWorkflowIds(nextRecent)
-    onSelect(workflowUuid)
+    onSelect(
+      workflowUuid,
+      workflowName || workflows.find((item) => item.uuid === workflowUuid)?.name || ''
+    )
   }
 
   /** 创建工作流后刷新目录并直接进入新的编排上下文。 */
@@ -137,7 +140,7 @@ export function WorkflowCatalog({
     const created = await runtime.createWorkflowDefinition(request)
     setCreateOpen(false)
     setWorkflows((current) => [created, ...current])
-    handleSelect(created.uuid)
+    handleSelect(created.uuid, created.name)
   }
 
   /** 删除工作流后立即移出目录，再以 OS 结果触发一次完整复原。 */
@@ -286,7 +289,7 @@ export function WorkflowCatalog({
                       managementActionsVisible={WORKFLOW_CATALOG_MANAGEMENT_ACTIONS_VISIBLE}
                       disabledReason={runStatus?.reason ?? authoringStatus?.reason ??
                         '当前 Backend 只提供只读工作流目录'}
-                      onOpen={() => handleSelect(workflow.uuid)}
+                      onOpen={() => handleSelect(workflow.uuid, workflow.name)}
                       onShowLog={() => setLogWorkflow(workflow)}
                       onDelete={() => setDeleteWorkflow(workflow)}
                     />

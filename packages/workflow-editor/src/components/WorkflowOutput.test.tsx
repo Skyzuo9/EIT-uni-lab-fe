@@ -14,6 +14,37 @@ import {
 function noop(): void {}
 
 describe('WorkflowOutput', () => {
+  /** 可调整高度的 dev 输出区始终可见，不再维护另一套展开/收起交互。 */
+  it('uses height dragging instead of expand and collapse controls', () => {
+    const html = renderToStaticMarkup(
+      <WorkflowOutput
+        expanded={false}
+        resizable
+        activeTab="nodes"
+        completedNodeCount={0}
+        expectedNodeCount={0}
+        nodes={[]}
+        nodeNames={{}}
+        events={[]}
+        error={null}
+        selectedNode={undefined}
+        selectedNodeId={null}
+        pausedBeforeNodeId={null}
+        onExpandedChange={noop}
+        onTabChange={noop}
+        onNodeSelect={noop}
+        onClearError={noop}
+      />
+    )
+
+    expect(html).toContain('aria-label="调整运行输出高度"')
+    expect(html).toContain('aria-valuemin="40"')
+    expect(html).toContain('workflow-runtime__output-body')
+    expect(html).not.toContain('workflow-runtime__output-toggle')
+    expect(html).not.toContain('展开运行输出')
+    expect(html).not.toContain('收起运行输出')
+  })
+
   /**
    * 验证动态运行节点只展示节点名称，不展示节点或作业 UUID。
    * 参数：无。返回：无；身份泄露时由 Vitest 报告失败。
@@ -459,6 +490,7 @@ describe('WorkflowOutput', () => {
 
     expect(html).toContain('aria-label="调整运行输出高度"')
     expect(html).toContain('aria-orientation="horizontal"')
-    expect(html).toContain('--workflow-output-height:260px')
+    expect(html).toContain('--workflow-output-height:120px')
+    expect(html).toContain('aria-label="全屏显示运行输出"')
   })
 })

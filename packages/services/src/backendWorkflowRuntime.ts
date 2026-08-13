@@ -4,13 +4,13 @@ import type {
   WorkflowNodeJobFeedback,
   WorkflowNodeJobFeedbackPage,
   WorkflowNodeJobFeedbackQuery,
-  WorkflowRunNodeOption,
   WorkflowRunPreflightCheck,
   WorkflowRunPreflightReport,
-  WorkflowRunPreparation,
   WorkflowTaskCreateRequest,
   WorkflowTaskRunMode
 } from './workflowTaskContracts'
+
+export { loadBackendWorkflowRunPreparation } from './backendWorkflowDefinition'
 
 interface BackendFeedbackPage {
   items: WorkflowNodeJobFeedback[]
@@ -61,48 +61,6 @@ export function backendWorkflowTaskCreateBody(
   return {
     ...shared,
     inventory_bindings: inventoryBindings
-  }
-}
-
-/**
- * 从 Backend 工作流图读取正式运行入口所需的节点选择快照。
- *
- * @param http 已绑定 Backend 权威地址的 HTTP 客户端。
- * @param workflowUuid 待运行的工作流（Workflow）稳定身份。
- * @returns 工作流修订号与包含禁用事实的节点选项。
- * @throws 图响应缺字段、身份不匹配或节点身份重复时关闭失败。
- */
-export async function loadBackendWorkflowRunPreparation(
-  http: HttpClient,
-  workflowUuid: string
-): Promise<WorkflowRunPreparation> {
-  const raw = await requestData<unknown>(
-    http,
-    `/api/v1/workflows/${encodeURIComponent(workflowUuid)}/graph`
-  )
-  const graph = asRecord(raw)
-  const workflow = asRecord(graph.workflow)
-  if (
-    workflow.uuid !== workflowUuid ||
-    !positiveSafeInteger(workflow.revision) ||
-    !Array.isArray(graph.nodes)
-  ) {
-    throw invalidBackendRunPreparation('invalid workflow graph identity')
-  }
-
-  const identities = new Set<string>()
-  const nodes = graph.nodes.map((value, index) => {
-    const node = decodeBackendRunNode(value, index)
-    if (identities.has(node.workflow_node_uuid)) {
-      throw invalidBackendRunPreparation('duplicate workflow node identity')
-    }
-    identities.add(node.workflow_node_uuid)
-    return node
-  })
-  return {
-    workflow_uuid: workflowUuid,
-    workflow_revision: workflow.revision,
-    nodes
   }
 }
 
@@ -221,28 +179,6 @@ function validateBackendFeedbackPage(
     !Number.isSafeInteger(item.sequence) || item.sequence < 1
   ))) {
     throw invalidBackendFeedback('sequence must be a positive safe integer')
-  }
-}
-
-/** 把 Backend 图中的一个节点严格收窄为运行目标选项。 */
-function decodeBackendRunNode(
-  value: unknown,
-  index: number
-): WorkflowRunNodeOption {
-  const node = asRecord(value)
-  if (
-    !nonEmptyString(node.uuid) ||
-    !nonEmptyString(node.name) ||
-    !nonEmptyString(node.type) ||
-    typeof node.disabled !== 'boolean'
-  ) {
-    throw invalidBackendRunPreparation(`invalid workflow node at index ${index}`)
-  }
-  return {
-    workflow_node_uuid: node.uuid,
-    name: node.name,
-    type: node.type,
-    disabled: node.disabled
   }
 }
 
@@ -396,15 +332,6 @@ function invalidBackendFeedback(detail: string): ServiceError {
   return new ServiceError({
     code: 'INVALID_BACKEND_WORKFLOW_FEEDBACK',
     message: `Backend 工作流节点反馈响应无效：${detail}`,
-    retryable: false
-  })
-}
-
-/** 创建不可重试的 Backend 工作流运行准备合同错误。 */
-function invalidBackendRunPreparation(detail: string): ServiceError {
-  return new ServiceError({
-    code: 'INVALID_BACKEND_WORKFLOW_RUN_PREPARATION',
-    message: `Backend 工作流运行准备响应无效：${detail}`,
     retryable: false
   })
 }

@@ -37,7 +37,8 @@ describe('WorkflowPanel Runtime entry', () => {
     expect(markup).not.toContain('workflow-runtime__authoring')
   })
 
-  it('opens the existing Workflow runtime without exposing authoring', () => {
+  /** Backend 运行能力必须进入 dev 风格画布，而不是整页运行表单。 */
+  it('opens the existing Workflow in a read-only canvas without exposing authoring', () => {
     const markup = renderToStaticMarkup(
       <WorkflowPanel
         runtime={{} as WorkflowRuntimePort}
@@ -50,13 +51,24 @@ describe('WorkflowPanel Runtime entry', () => {
       />
     )
 
-    expect(markup).toContain('已有工作流运行')
+    expect(markup).toContain('工作流画布')
+    expect(markup).toContain('persistent-authoring__canvas')
+    expect(markup).toContain('Backend 定义 · 只读')
+    expect(markup).toContain('正在读取 Backend 工作流图')
     expect(markup).toContain('运行已有工作流')
     expect(markup).toContain('完整运行')
     expect(markup).toContain('单步运行')
     expect(markup).toContain('单节点调试')
     expect(markup).toContain('运行预检')
-    expect(markup).toContain('工作流创作未启用')
+    expect(markup).toContain('persistent-authoring__toolbar-navigation')
+    expect(markup).toContain('代码模式')
+    expect(markup).toContain('画布模式')
+    expect(markup).toContain('Backend 当前未提供工作流创作写接口')
+    expect(markup).toContain('>运行输出<')
+    expect(markup).toContain('全屏显示运行输出')
+    expect(markup).toContain('persistent-authoring__runtime')
+    expect(markup).not.toContain('workflow-runtime__existing-run-body')
+    expect(markup).not.toContain('已有工作流运行</span>')
     expect(markup).not.toContain('workflow-runtime__authoring')
   })
 
