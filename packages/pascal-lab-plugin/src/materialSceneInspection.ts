@@ -38,6 +38,7 @@ export interface MaterialSceneInspection {
   schemaVersion: 'unilab-material-scene/v1'
   sourceIdentity: MaterialSceneSourceIdentity
   layoutRevision: string
+  templateRevision: string
   view: {
     mode: MaterialSceneInspectionOptions['viewMode']
     showSites: boolean
@@ -52,6 +53,7 @@ export interface MaterialSceneInspection {
   }
   nodes: Array<{
     materialId: string
+    sourceNodeId: string | null
     sceneObjectId: string
     sourceTemplateId: string
     code: string
@@ -113,6 +115,9 @@ export function inspectMaterialAggregateScene(
     }))
     return {
       materialId: aggregate.material.id,
+      sourceNodeId: typeof aggregate.material.config.sourceIdentity === 'string'
+        ? aggregate.material.config.sourceIdentity
+        : null,
       sceneObjectId: rendering.kind === 'table'
         ? `lab-table-${aggregate.material.id}`
         : `lab-${aggregate.material.id}`,
@@ -136,6 +141,7 @@ export function inspectMaterialAggregateScene(
     schemaVersion: 'unilab-material-scene/v1',
     sourceIdentity: options.sourceIdentity,
     layoutRevision: layoutRevision(aggregates),
+    templateRevision: templateRevision(aggregates),
     view: {
       mode: options.viewMode,
       showSites: options.showSites,
@@ -218,6 +224,21 @@ function finishBounds(
 function layoutRevision(aggregates: readonly MaterialAggregate[]): string {
   const source = aggregates
     .map(aggregate => `${aggregate.material.id}:${aggregate.revision}:${JSON.stringify(aggregate.placement)}`)
+    .sort()
+    .join('|')
+  let hash = 0x811c9dc5
+  for (let index = 0; index < source.length; index += 1) {
+    hash ^= source.charCodeAt(index)
+    hash = Math.imul(hash, 0x01000193)
+  }
+  return `fnv1a32:${(hash >>> 0).toString(16).padStart(8, '0')}`
+}
+
+function templateRevision(aggregates: readonly MaterialAggregate[]): string {
+  const source = aggregates
+    .map(aggregate => `${aggregate.material.sourceTemplateId}:${JSON.stringify(
+      aggregate.material.config.rendering ?? null
+    )}`)
     .sort()
     .join('|')
   let hash = 0x811c9dc5

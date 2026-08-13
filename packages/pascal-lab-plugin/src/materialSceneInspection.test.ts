@@ -42,6 +42,7 @@ describe('Material scene inspection', () => {
 
     expect(scene.schemaVersion).toBe('unilab-material-scene/v1')
     expect(scene.layoutRevision).toMatch(/^fnv1a32:/u)
+    expect(scene.templateRevision).toMatch(/^fnv1a32:/u)
     expect(scene.counts).toEqual({
       materials: 1,
       visibleMaterials: 1,
@@ -52,6 +53,7 @@ describe('Material scene inspection', () => {
     expect(scene.bounds?.sizeMm[1]).toBeCloseTo(200)
     expect(scene.nodes[0]).toMatchObject({
       materialId: 'device',
+      sourceNodeId: 'source-device',
       sceneObjectId: 'lab-device',
       selected: true,
       visible: true,
@@ -100,6 +102,7 @@ function aggregate(
       code: id,
       name: id,
       config: {
+        sourceIdentity: `source-${id}`,
         rendering: {
           kind: 'device',
           dimensionsMm: options.dimensionsMm ?? [100, 100, 100]

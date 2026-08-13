@@ -43,6 +43,8 @@ implements WorkbenchSessionServer, BackendApplicationContribution {
       backendAuthorityUrl: process.env['UNILAB_BACKEND_PROXY_TARGET']
     })
   private readonly clients = new Set<WorkbenchSessionClient>()
+  private readonly rendererManagedByHost =
+    process.env['UNILAB_RENDERER_MANAGED_HEADLESS'] === '1'
   private activeRendererClient: WorkbenchSessionClient | null = null
   private readonly pendingRendererRequests = new Map<
     string,
@@ -51,9 +53,11 @@ implements WorkbenchSessionServer, BackendApplicationContribution {
   private sessionListener: Disposable | undefined
 
   onStart(): void {
-    void this.session.registerRenderer?.().catch(error => {
-      this.logger.warn('Workspace renderer registration failed', error)
-    })
+    if (!this.rendererManagedByHost) {
+      void this.session.registerRenderer?.().catch(error => {
+        this.logger.warn('Workspace renderer registration failed', error)
+      })
+    }
     void this.session.startWorkspaceBackend().catch(error => {
       this.logger.warn('Workspace Backend startup failed', error)
     })
@@ -78,7 +82,9 @@ implements WorkbenchSessionServer, BackendApplicationContribution {
     // Workspace Host owns Backend/OS/PLC lifetimes. Theia reload or renderer
     // shutdown must not stop physical work or lose the recoverable session.
     await Promise.allSettled([
-      this.session.unregisterRenderer?.() ?? Promise.resolve(),
+      this.rendererManagedByHost
+        ? Promise.resolve()
+        : this.session.unregisterRenderer?.() ?? Promise.resolve(),
       this.session.stopAgent()
     ])
   }

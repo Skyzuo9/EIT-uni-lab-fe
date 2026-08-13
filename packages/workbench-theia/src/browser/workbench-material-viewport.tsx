@@ -6,6 +6,7 @@ import {
   useMaterialStore,
   useMaterialStoreApi,
   writeStoredMaterialViewportState,
+  type MaterialAggregate,
   type MaterialViewportState,
   type MaterialWorkbenchViewportProps
 } from '@unilab/material'
@@ -30,6 +31,7 @@ import {
 import {
   MATERIAL_RENDERER_CONTRACT,
   type MaterialRendererOptions,
+  type MaterialRendererLayoutOverride,
   type MaterialRendererRequest,
   type MaterialRendererResponse
 } from '../common/workbench-session-protocol'
@@ -102,11 +104,15 @@ export function WorkbenchMaterialViewport({
       automationOptions?.showMaterialTransfers ?? viewState.showMaterialTransfers
   }), [automationOptions, viewState])
   const displayedAggregates = useMemo(() => {
+    const adjusted = applyLayoutOverrides(
+      aggregates,
+      automationOptions?.layoutOverrides ?? []
+    )
     const hidden = new Set(automationOptions?.hiddenMaterialIds ?? [])
     return hidden.size === 0
-      ? aggregates
-      : aggregates.filter(aggregate => !hidden.has(aggregate.material.id))
-  }, [aggregates, automationOptions?.hiddenMaterialIds])
+      ? adjusted
+      : adjusted.filter(aggregate => !hidden.has(aggregate.material.id))
+  }, [aggregates, automationOptions?.hiddenMaterialIds, automationOptions?.layoutOverrides])
   const displayedSelectedMaterialIds =
     automationOptions?.selectedMaterialIds ?? selectedMaterialIds
   const materialTransferRoutes = useMemo<MaterialTransferSceneRoute[]>(
@@ -135,7 +141,11 @@ export function WorkbenchMaterialViewport({
     options: MaterialRendererOptions
   ) => {
     const module = await import('@unilab/pascal-lab-plugin')
-    return module.inspectMaterialAggregateScene(aggregates, {
+    const adjusted = applyLayoutOverrides(
+      aggregates,
+      options.layoutOverrides ?? []
+    )
+    return module.inspectMaterialAggregateScene(adjusted, {
       viewMode: options.view ?? viewState.mode,
       showSites: options.showSites ?? viewState.showSites,
       showMaterialTransfers:
@@ -180,6 +190,16 @@ export function WorkbenchMaterialViewport({
   const handleRendererRequest = useCallback(async (
     request: MaterialRendererRequest
   ): Promise<MaterialRendererResponse> => {
+    if (request.kind === 'reload') {
+      store.getState().reset()
+      await store.getState().loadGraph()
+      return {
+        schemaVersion: MATERIAL_RENDERER_CONTRACT,
+        requestId: request.requestId,
+        ok: true,
+        result: { status: 'reloaded' }
+      }
+    }
     if (request.kind === 'inspect') {
       return {
         schemaVersion: MATERIAL_RENDERER_CONTRACT,
@@ -229,8 +249,12 @@ export function WorkbenchMaterialViewport({
           ? await capturePascalScene(
               requestedWidth,
               requestedHeight,
-              request.options.timeoutMs ?? 30_000
-            ).then(async blob => ({
+              Math.min(request.options.timeoutMs ?? 30_000, 8_000)
+            ).catch(() => capturePascalCanvas(
+              root,
+              requestedWidth,
+              requestedHeight
+            )).then(async blob => ({
               base64: arrayBufferToBase64(await blob.arrayBuffer()),
               width: requestedWidth,
               height: requestedHeight
@@ -247,6 +271,7 @@ export function WorkbenchMaterialViewport({
           ok: true,
           result: {
             schemaVersion: 'unilab-material-capture/v1',
+            rendererVersion: 'unilab-workbench/0.1.0',
             scene,
             image: {
               mimeType: 'image/png',
@@ -270,7 +295,7 @@ export function WorkbenchMaterialViewport({
       setAutomationOptions(null)
       captureActive.current = false
     }
-  }, [capturePascalScene, inspectScene, viewState.mode])
+  }, [capturePascalScene, inspectScene, store, viewState.mode])
 
   useEffect(() => {
     const registration = sessionClient.setMaterialRendererHandler(
@@ -376,6 +401,58 @@ export function WorkbenchMaterialViewport({
       />
     </div>
   )
+}
+
+function applyLayoutOverrides(
+  aggregates: readonly MaterialAggregate[],
+  overrides: readonly MaterialRendererLayoutOverride[]
+): MaterialAggregate[] {
+  if (overrides.length === 0) return [...aggregates]
+  const bySourceId = new Map(overrides.map(item => [item.sourceNodeId, item]))
+  return aggregates.map(aggregate => {
+    const sourceNodeId = aggregate.material.config.sourceIdentity
+    const override = typeof sourceNodeId === 'string'
+      ? bySourceId.get(sourceNodeId)
+      : undefined
+    if (!override) return aggregate
+    const pose = aggregate.placement.kind === 'world'
+      ? aggregate.placement.pose
+      : aggregate.placement.kind === 'parent'
+        ? aggregate.placement.localPose
+        : null
+    const placement = pose == null
+      ? aggregate.placement
+      : aggregate.placement.kind === 'world'
+        ? {
+            ...aggregate.placement,
+            pose: {
+              positionMm: override.positionMm ?? pose.positionMm,
+              rotationDegXYZ: override.rotationDegXYZ ?? pose.rotationDegXYZ
+            }
+          }
+        : {
+            ...aggregate.placement,
+            localPose: {
+              positionMm: override.positionMm ?? pose.positionMm,
+              rotationDegXYZ: override.rotationDegXYZ ?? pose.rotationDegXYZ
+            }
+          }
+    const rendering = aggregate.material.config.rendering
+    const config = override.assetRef
+      ? {
+          ...aggregate.material.config,
+          rendering: {
+            ...(rendering && typeof rendering === 'object' ? rendering : {}),
+            model: override.assetRef
+          }
+        }
+      : aggregate.material.config
+    return {
+      ...aggregate,
+      material: { ...aggregate.material, config },
+      placement
+    }
+  })
 }
 
 function rendererFailure(
@@ -487,6 +564,28 @@ async function captureMaterialDom(
   } finally {
     restoreSvgPresentation()
   }
+}
+
+async function capturePascalCanvas(
+  root: HTMLElement,
+  width: number,
+  height: number
+): Promise<Blob> {
+  await stableAnimationFrames(5)
+  const source = root.querySelector<HTMLCanvasElement>('canvas')
+  if (!source) throw new Error('Pascal 3D renderer 未提供可截图画布')
+  const output = document.createElement('canvas')
+  output.width = width
+  output.height = height
+  const context = output.getContext('2d')
+  if (!context) throw new Error('浏览器不支持 3D 画布截图')
+  context.drawImage(source, 0, 0, width, height)
+  return new Promise((resolve, reject) => {
+    output.toBlob(blob => {
+      if (blob) resolve(blob)
+      else reject(new Error('Pascal 3D 画布未生成 PNG'))
+    }, 'image/png')
+  })
 }
 
 const SVG_PRESENTATION_PROPERTIES = [

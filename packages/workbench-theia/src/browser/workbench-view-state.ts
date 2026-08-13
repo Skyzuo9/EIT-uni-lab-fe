@@ -33,8 +33,8 @@ export type RobotWorkbenchViewMode = Extract<
  */
 @injectable()
 export class WorkbenchViewState {
-  protected workflowVisible = true
-  protected materialVisible = false
+  protected workflowVisible = !headlessMaterialRendererRequested()
+  protected materialVisible = headlessMaterialRendererRequested()
   protected exclusiveDomain: Exclude<
     WorkbenchDomain,
     'workflow' | 'material'
@@ -78,6 +78,16 @@ export class WorkbenchViewState {
     }
     const nextMode = this.currentMode
     if (nextMode !== previousMode) this.changeEmitter.fire(nextMode)
+  }
+}
+
+function headlessMaterialRendererRequested(): boolean {
+  try {
+    return typeof globalThis.location !== 'undefined' && new URLSearchParams(
+      globalThis.location.search
+    ).get('headlessRenderer') === 'material'
+  } catch {
+    return false
   }
 }
 

@@ -25,7 +25,15 @@ export interface MaterialRendererOptions {
   hiddenMaterialIds?: readonly string[]
   cameraPreset?: 'default' | 'top'
   viewport?: MaterialRendererViewport
+  layoutOverrides?: readonly MaterialRendererLayoutOverride[]
   timeoutMs?: number
+}
+
+export interface MaterialRendererLayoutOverride {
+  sourceNodeId: string
+  positionMm?: readonly [number, number, number]
+  rotationDegXYZ?: readonly [number, number, number]
+  assetRef?: Readonly<Record<string, unknown>>
 }
 
 export type MaterialRendererRequest =
@@ -37,6 +45,11 @@ export type MaterialRendererRequest =
   | {
       requestId: string
       kind: 'capture'
+      options: MaterialRendererOptions
+    }
+  | {
+      requestId: string
+      kind: 'reload'
       options: MaterialRendererOptions
     }
 

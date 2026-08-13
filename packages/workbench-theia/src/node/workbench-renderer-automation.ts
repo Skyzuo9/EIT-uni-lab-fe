@@ -125,6 +125,10 @@ export function rendererRoute(
     method.toUpperCase() === 'POST' &&
     pathname === `${WORKBENCH_RENDERER_AUTOMATION_PREFIX}/material/capture`
   ) return 'capture'
+  if (
+    method.toUpperCase() === 'POST' &&
+    pathname === `${WORKBENCH_RENDERER_AUTOMATION_PREFIX}/material/reload`
+  ) return 'reload'
   return null
 }
 
@@ -157,6 +161,9 @@ export function decodeMaterialRendererOptions(value: unknown): MaterialRendererO
   const timeoutMs = timeoutValue == null
     ? undefined
     : boundedNumber(timeoutValue, 'timeoutMs', 100, 120_000)
+  const layoutOverrides = input.layoutOverrides == null
+    ? undefined
+    : decodeLayoutOverrides(input.layoutOverrides)
   return {
     ...(normalizedView ? { view: normalizedView } : {}),
     ...optionalBoolean(input.showSites, 'showSites'),
@@ -170,8 +177,52 @@ export function decodeMaterialRendererOptions(value: unknown): MaterialRendererO
       ? { cameraPreset: normalizedCameraPreset }
       : {}),
     ...(viewport ? { viewport } : {}),
+    ...(layoutOverrides ? { layoutOverrides } : {}),
     ...(timeoutMs ? { timeoutMs } : {})
   }
+}
+
+function decodeLayoutOverrides(
+  value: unknown
+): NonNullable<MaterialRendererOptions['layoutOverrides']> {
+  if (typeof value === 'string') {
+    try {
+      value = JSON.parse(value) as unknown
+    } catch {
+      throw new Error('layoutOverrides 必须是 JSON 数组')
+    }
+  }
+  if (!Array.isArray(value)) throw new Error('layoutOverrides 必须是数组')
+  const identities = new Set<string>()
+  return value.map((item, index) => {
+    const input = record(item)
+    const sourceNodeId = optionalText(input.sourceNodeId)
+    if (!sourceNodeId || identities.has(sourceNodeId)) {
+      throw new Error(`layoutOverrides[${index}].sourceNodeId 缺失或重复`)
+    }
+    identities.add(sourceNodeId)
+    return {
+      sourceNodeId,
+      ...(input.positionMm == null
+        ? {}
+        : { positionMm: vector3(input.positionMm, `layoutOverrides[${index}].positionMm`) }),
+      ...(input.rotationDegXYZ == null
+        ? {}
+        : { rotationDegXYZ: vector3(input.rotationDegXYZ, `layoutOverrides[${index}].rotationDegXYZ`) }),
+      ...(input.assetRef == null ? {} : { assetRef: record(input.assetRef) })
+    }
+  })
+}
+
+function vector3(value: unknown, field: string): [number, number, number] {
+  if (!Array.isArray(value) || value.length !== 3) {
+    throw new Error(`${field} 必须是三个有限数`)
+  }
+  const values = value.map(Number)
+  if (values.some(item => !Number.isFinite(item))) {
+    throw new Error(`${field} 必须是三个有限数`)
+  }
+  return values as [number, number, number]
 }
 
 async function rendererRequestAuthorized(

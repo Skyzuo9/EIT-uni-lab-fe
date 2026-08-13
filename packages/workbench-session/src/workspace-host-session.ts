@@ -142,7 +142,9 @@ export class WorkspaceHostWorkbenchSession implements WorkbenchSession {
     await this.run('renderer.attach', {
       pid: process.pid,
       address,
-      generation: `${process.pid}`
+      generation: `${process.pid}`,
+      workbenchProjectPath: process.cwd(),
+      nodeExecutable: process.execPath
     })
   }
 
