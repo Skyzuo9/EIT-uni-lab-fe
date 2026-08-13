@@ -386,6 +386,7 @@
     grid-template-columns: minmax(340px, 0.78fr) minmax(460px, 1.22fr);
     flex: 1;
     min-height: 0;
+    overflow: hidden;
     gap: 1px;
     background: var(--unilab-color-border);
   }
@@ -586,6 +587,8 @@
 
   :global(.persistent-authoring__canvas) {
     display: flex;
+    min-height: 0;
+    overflow: hidden;
     flex-direction: column;
   }
 

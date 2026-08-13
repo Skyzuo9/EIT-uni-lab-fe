@@ -341,6 +341,149 @@ test.describe('UniLab Workbench real-system contract', () => {
     await expect(separator).toHaveAttribute('aria-valuenow', '60')
   })
 
+  test('keeps workflow output intact when the terminal opens', async ({
+    page
+  }) => {
+    test.setTimeout(120_000)
+    await page.goto(workbenchUrl!)
+    await page.getByRole('button', {
+      name: '打开工作流 SZLab 单样品原子流程（无 S07 扫码）'
+    }).click()
+
+    const output = page.locator('.workflow-runtime__results')
+    const graph = page.locator('.persistent-authoring__graph-stage')
+    const outputResizer = page.getByRole('separator', {
+      name: '调整运行输出高度'
+    })
+    await expect(output).toBeVisible()
+    await expect(graph).toBeVisible({ timeout: 90_000 })
+    const resizerBox = await outputResizer.boundingBox()
+    expect(resizerBox).not.toBeNull()
+    await page.mouse.move(
+      resizerBox!.x + resizerBox!.width / 2,
+      resizerBox!.y + resizerBox!.height / 2
+    )
+    await page.mouse.down()
+    await page.mouse.move(
+      resizerBox!.x + resizerBox!.width / 2,
+      resizerBox!.y - 500,
+      { steps: 10 }
+    )
+    await page.mouse.up()
+    const preferredHeight = Number(
+      await outputResizer.getAttribute('aria-valuenow')
+    )
+    expect(preferredHeight).toBeGreaterThan(120)
+
+    await page.getByText('终端', { exact: true }).click()
+    await page.getByText('新建终端', { exact: true }).click()
+    const bottomPanel = page.locator('#theia-bottom-content-panel')
+    await expect(bottomPanel).toBeVisible()
+
+    await expect.poll(async () => page.evaluate(() => {
+      const find = (selector: string): HTMLElement | null => (
+        document.querySelector<HTMLElement>(selector)
+      )
+      const workflow = find('.persistent-authoring')
+      const workbench = find('.persistent-authoring__workbench')
+      const results = find('.workflow-runtime__results')
+      const header = find('.workflow-runtime__output-header')
+      const body = find('.workflow-runtime__output-body')
+      if (!workflow || !workbench || !results || !header || !body) {
+        return { ready: false }
+      }
+      const workflowRect = workflow.getBoundingClientRect()
+      const workbenchRect = workbench.getBoundingClientRect()
+      const resultsRect = results.getBoundingClientRect()
+      const headerRect = header.getBoundingClientRect()
+      const bodyRect = body.getBoundingClientRect()
+      const hitTarget = document.elementFromPoint(
+        bodyRect.left + bodyRect.width / 2,
+        bodyRect.top + Math.min(12, bodyRect.height / 2)
+      )
+      return {
+        ready: true,
+        resultsWithinWorkflow:
+          resultsRect.top >= workflowRect.top - 1 &&
+          resultsRect.bottom <= workflowRect.bottom + 1,
+        workbenchBeforeResults: workbenchRect.bottom <= resultsRect.top + 1,
+        canvasClipsOverflow: ['hidden', 'clip'].includes(
+          getComputedStyle(workbench).overflowY
+        ),
+        headerWithinResults:
+          headerRect.top >= resultsRect.top - 1 &&
+          headerRect.bottom <= resultsRect.bottom + 1,
+        bodyWithinResults:
+          bodyRect.top >= resultsRect.top - 1 &&
+          bodyRect.bottom <= resultsRect.bottom + 1,
+        bodyHasHeight: bodyRect.height > 1,
+        outputOwnsVisibleBody: Boolean(
+          hitTarget && body.contains(hitTarget)
+        )
+      }
+    })).toEqual({
+      ready: true,
+      resultsWithinWorkflow: true,
+      workbenchBeforeResults: true,
+      canvasClipsOverflow: true,
+      headerWithinResults: true,
+      bodyWithinResults: true,
+      bodyHasHeight: true,
+      outputOwnsVisibleBody: true
+    })
+    await expect.poll(async () => Number(
+      await outputResizer.getAttribute('aria-valuenow')
+    )).toBeLessThan(preferredHeight)
+
+    await page.keyboard.press(process.platform === 'darwin'
+      ? 'Meta+J'
+      : 'Control+J')
+    await expect(bottomPanel).toBeHidden()
+    await expect.poll(async () => Number(
+      await outputResizer.getAttribute('aria-valuenow')
+    )).toBe(preferredHeight)
+
+    await outputResizer.focus()
+    await page.keyboard.press('Home')
+    await expect(outputResizer).toHaveAttribute('aria-valuenow', '48')
+    await page.keyboard.press(process.platform === 'darwin'
+      ? 'Meta+J'
+      : 'Control+J')
+    await expect(bottomPanel).toBeVisible()
+    await expect.poll(async () => page.evaluate(() => {
+      const results = document.querySelector<HTMLElement>(
+        '.workflow-runtime__results'
+      )
+      const header = document.querySelector<HTMLElement>(
+        '.workflow-runtime__output-header'
+      )
+      const body = document.querySelector<HTMLElement>(
+        '.workflow-runtime__output-body'
+      )
+      if (!results || !header || !body) return { ready: false }
+      const resultsRect = results.getBoundingClientRect()
+      const headerRect = header.getBoundingClientRect()
+      const bodyRect = body.getBoundingClientRect()
+      return {
+        ready: true,
+        headerFits:
+          headerRect.top >= resultsRect.top - 1 &&
+          headerRect.bottom <= resultsRect.bottom + 1,
+        bodyFits:
+          bodyRect.top >= resultsRect.top - 1 &&
+          bodyRect.bottom <= resultsRect.bottom + 1
+      }
+    })).toEqual({
+      ready: true,
+      headerFits: true,
+      bodyFits: true
+    })
+    await page.keyboard.press(process.platform === 'darwin'
+      ? 'Meta+J'
+      : 'Control+J')
+    await expect(bottomPanel).toBeHidden()
+  })
+
   test('preserves the 3D camera and device picking across outer layout resize', async ({
     page
   }) => {
