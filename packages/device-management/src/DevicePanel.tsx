@@ -28,6 +28,7 @@ import {
   startDeviceActionCatalogRecovery,
   type DeviceActionCatalogRecovery
 } from './deviceActionCatalogRecovery'
+import { refreshDevicePanelState } from './devicePanelRefresh'
 import {
   ConnectionSummary,
   DeviceListItem,
@@ -207,12 +208,6 @@ export default function DevicePanel({
     }
   }, [backend.apiUrl, backend.id, canRunActionTask, connection, loadActionCatalog])
 
-  const handleRefresh = useCallback(async (): Promise<void> => {
-    await Promise.allSettled([
-      refresh(),
-      actionCatalogRecoveryRef.current?.refresh() ?? loadActionCatalog()
-    ])
-  }, [loadActionCatalog, refresh])
   useEffect(() => {
     if (!devices.length) {
       setSelectedDeviceId(null)
@@ -415,6 +410,25 @@ export default function DevicePanel({
     runOperation?.actionRef,
     selectedActionRef,
     services.workflow
+  ])
+
+  const handleRefresh = useCallback(async (): Promise<void> => {
+    await refreshDevicePanelState({
+      refreshDevices: refresh,
+      refreshCatalog: () =>
+        actionCatalogRecoveryRef.current?.refresh() ?? loadActionCatalog(),
+      activeTask: activeTaskIsVisible && activeTaskUuid && runOperation
+        ? { taskUuid: activeTaskUuid, actionRef: runOperation.actionRef }
+        : null,
+      refreshTask: queueDeviceActionTaskRefresh
+    })
+  }, [
+    activeTaskIsVisible,
+    activeTaskUuid,
+    loadActionCatalog,
+    queueDeviceActionTaskRefresh,
+    refresh,
+    runOperation
   ])
 
   /**
