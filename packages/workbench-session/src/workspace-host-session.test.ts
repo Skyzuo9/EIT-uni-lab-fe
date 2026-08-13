@@ -133,7 +133,96 @@ describe('Workspace Host Workbench adapter', () => {
     expect(receivedCommands.at(-1)).toBe('renderer.detach')
     expect(snapshot.components.renderer.phase).toBe('idle')
   })
+
+  it('accepts a restarted Workspace Host snapshot with the same revision', async () => {
+    const workspacePath = await mkdtemp(join(tmpdir(), 'unilab-host-restart-'))
+    roots.push(workspacePath)
+    const token = 'fixture-token'
+    const first = hostSnapshot(workspacePath)
+    const second = hostSnapshot(workspacePath)
+    first.revision = 7
+    second.revision = 7
+    first.components.backend = component('backend', {
+      phase: 'ready',
+      pid: 4101,
+      address: 'http://127.0.0.1:42001',
+      generation: 'backend-before-host-restart'
+    })
+    second.components.backend = component('backend', {
+      phase: 'ready',
+      pid: 4201,
+      address: 'http://127.0.0.1:42002',
+      generation: 'backend-after-host-restart'
+    })
+
+    const firstServer = createSnapshotServer(token, first)
+    const secondServer = createSnapshotServer(token, second)
+    servers.push(firstServer, secondServer)
+    await Promise.all([
+      listen(firstServer),
+      listen(secondServer)
+    ])
+    first.host.endpoint = serverEndpoint(firstServer)
+    second.host.endpoint = serverEndpoint(secondServer)
+
+    const runtime = join(workspacePath, '.unilabos', 'runtime', 'workbench')
+    await mkdir(runtime, { recursive: true })
+    await Promise.all([
+      writeFile(join(runtime, 'session.json'), JSON.stringify(first)),
+      writeFile(join(runtime, 'host.token'), token)
+    ])
+
+    const session = createWorkspaceHostWorkbenchSession({ workspacePath })
+    await session.readEnvironmentLog('workspace-backend')
+    expect(session.getSnapshot()).toMatchObject({ identity: { pid: 4101 } })
+
+    await new Promise<void>((resolve, reject) => {
+      firstServer.close(error => error ? reject(error) : resolve())
+    })
+    await writeFile(join(runtime, 'session.json'), JSON.stringify(second))
+
+    await vi.waitFor(() => {
+      expect(session.getSnapshot()).toMatchObject({
+        identity: {
+          pid: 4201,
+          backendUrl: 'http://127.0.0.1:42002'
+        }
+      })
+    }, { timeout: 2_000 })
+  })
 })
+
+function createSnapshotServer(
+  token: string,
+  snapshot: ReturnType<typeof hostSnapshot>
+) {
+  return createServer((request, response) => {
+    if (request.headers.authorization !== `Bearer ${token}`) {
+      sendJson(response, 401, { error: { message: 'unauthorized' } })
+      return
+    }
+    const url = new URL(request.url ?? '/', 'http://127.0.0.1')
+    if (request.method === 'GET' && url.pathname === '/v1/snapshot') {
+      sendJson(response, 200, snapshot)
+      return
+    }
+    if (request.method === 'GET' && url.pathname === '/v1/logs/backend') {
+      sendJson(response, 200, { content: 'backend fixture log' })
+      return
+    }
+    sendJson(response, 404, { error: { message: 'not found' } })
+  })
+}
+
+async function listen(server: ReturnType<typeof createServer>): Promise<void> {
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
+}
+
+function serverEndpoint(server: ReturnType<typeof createServer>): string {
+  const address = server.address()
+  if (!address || typeof address === 'string') throw new Error('missing port')
+  return `http://127.0.0.1:${address.port}`
+}
 
 function hostSnapshot(workspacePath: string) {
   return {

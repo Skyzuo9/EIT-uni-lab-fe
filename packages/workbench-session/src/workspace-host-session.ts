@@ -425,7 +425,11 @@ export class WorkspaceHostWorkbenchSession implements WorkbenchSession {
     if (host.schemaVersion !== HOST_SCHEMA) {
       throw new Error(`Workspace Host schema 不兼容：${host.schemaVersion}`)
     }
-    if (this.host?.revision === host.revision) return
+    if (
+      this.host?.host.endpoint === host.host.endpoint
+      && this.host.host.pid === host.host.pid
+      && this.host.revision === host.revision
+    ) return
     this.host = host
     this.snapshot = projectSnapshot(host, this.snapshot, this.options)
     this.emit()
