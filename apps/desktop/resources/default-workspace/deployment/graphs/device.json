@@ -1,0 +1,17 @@
+{
+  "nodes": [
+    {
+      "id": "plc_reference_device",
+      "uuid": "64000000-0000-4000-8000-000000000002",
+      "name": "Bundled PLC reference device",
+      "children": [],
+      "parent": null,
+      "type": "device",
+      "class": "plc_reference_device",
+      "position": {"x": 0, "y": 0, "z": 0},
+      "config": {},
+      "data": {}
+    }
+  ],
+  "links": []
+}

@@ -1,0 +1,17 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./apps/kernel-web" },
+    { "path": "./apps/desktop" },
+    { "path": "./packages/services" },
+    { "path": "./packages/design-system" },
+    { "path": "./packages/app-shell" },
+    { "path": "./packages/workbench-layout" },
+    { "path": "./packages/material" },
+    { "path": "./packages/workflow-editor" },
+    { "path": "./packages/code-editor" },
+    { "path": "./packages/pascal-host" },
+    { "path": "./packages/pascal-lab-plugin" },
+    { "path": "./packages/testing" }
+  ]
+}

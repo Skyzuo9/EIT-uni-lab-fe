@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"],
+      "next/image": ["../../packages/pascal-host/src/shims/next-image.tsx"],
+      "next/link": ["../../packages/pascal-host/src/shims/next-link.tsx"]
+    }
+  },
+  "include": ["src/**/*"]
+}

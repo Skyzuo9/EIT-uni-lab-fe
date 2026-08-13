@@ -1,0 +1,172 @@
+.workflow:global(.workflow-runtime) :global(.wf-node--material-source) {
+  display: flex;
+  width: 184px;
+  min-width: 184px;
+  max-width: 184px;
+  min-height: 72px;
+  align-items: center;
+  flex-direction: row;
+  gap: 8px;
+  color: var(--unilab-color-text);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  text-align: left;
+}
+
+.workflow:global(.workflow-runtime) :global(.wf-node--material-source)::before {
+  display: none;
+}
+
+.workflow:global(.workflow-runtime) :global(.wf-node--material-source):hover {
+  border-color: transparent;
+  box-shadow: none;
+  transform: none;
+}
+
+.workflow :global(.wf-node__material-source-label) {
+  display: grid;
+  box-sizing: border-box;
+  width: 104px;
+  padding: 2px 4px;
+  gap: 2px;
+  border-radius: var(--unilab-radius-sm);
+  background: color-mix(
+    in srgb,
+    var(--unilab-color-canvas) 94%,
+    transparent
+  );
+  box-shadow: 0 0 0 3px color-mix(
+    in srgb,
+    var(--unilab-color-canvas) 88%,
+    transparent
+  );
+}
+
+.workflow :global(.wf-node__material-source-label) strong,
+.workflow :global(.wf-node__material-source-label) small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workflow :global(.wf-node__material-source-port) {
+  position: relative;
+  display: grid;
+  width: 72px;
+  height: 66px;
+  flex: 0 0 auto;
+  place-items: center;
+}
+
+.workflow :global(.wf-node__material-source-label) strong {
+  color: var(--unilab-color-text);
+  font: 700 13px/17px var(--unilab-font-sans);
+}
+
+.workflow :global(.wf-node__material-source-label) small {
+  color: var(--unilab-color-text-muted);
+  font: 500 10px/14px var(--unilab-font-sans);
+}
+
+.workflow :global(.wf-node__material-source-visual) {
+  position: relative;
+  display: grid;
+  width: 72px;
+  height: 66px;
+  place-items: center;
+  color: var(--wf-material-accent);
+  background: var(--unilab-color-text);
+  clip-path: polygon(25% 3%, 75% 3%, 100% 50%, 75% 97%, 25% 97%, 0 50%);
+  transition: transform var(--unilab-motion-fast) ease;
+}
+
+.workflow :global(.wf-node__material-source-visual)::before {
+  position: absolute;
+  inset: 3px;
+  background: color-mix(
+    in srgb,
+    var(--wf-material-accent) 16%,
+    var(--unilab-color-surface)
+  );
+  clip-path: inherit;
+  content: '';
+}
+
+.workflow :global(.wf-node--material-source):hover
+  :global(.wf-node__material-source-visual) {
+  transform: translateY(-2px);
+}
+
+.workflow :global(.wf-node__material-source-visual) svg {
+  position: relative;
+  z-index: 1;
+  width: 36px;
+  height: 36px;
+  fill: color-mix(
+    in srgb,
+    var(--wf-material-accent) 12%,
+    var(--unilab-color-surface)
+  );
+  stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.6;
+}
+
+.workflow :global(.wf-node__material-source-handle),
+.workflow :global(.wf-node__material-source-handle):global(.connecting),
+.workflow :global(.wf-node__material-source-handle):global(.connected) {
+  z-index: 3;
+  width: 12px;
+  height: 12px;
+  border: 3px solid var(--wf-material-accent);
+  background: var(--unilab-color-surface);
+}
+
+.workflow :global(.wf-node__material-source-port)
+  > :global(.wf-node__material-source-handle.react-flow__handle-top) {
+  top: 0;
+  bottom: auto;
+  transform: translate(-50%, -50%);
+}
+
+.workflow :global(.wf-node__material-source-port)
+  > :global(.wf-node__material-source-handle.react-flow__handle-right) {
+  right: 0;
+  left: auto;
+  transform: translate(50%, -50%);
+}
+
+.workflow :global(.wf-node__material-source-port)
+  > :global(.wf-node__material-source-handle.react-flow__handle-bottom) {
+  top: auto;
+  bottom: 0;
+  transform: translate(-50%, 50%);
+}
+
+.workflow :global(.wf-node__material-source-port)
+  > :global(.wf-node__material-source-handle.react-flow__handle-left) {
+  right: auto;
+  left: 0;
+  transform: translate(-50%, -50%);
+}
+
+.workflow :global(.wf-node__material-source-state) {
+  width: max-content;
+  max-width: 100%;
+  color: var(--unilab-color-text-muted);
+  font: 600 10px/14px var(--unilab-font-sans);
+}
+
+.workflow :global(.react-flow__node-wfNode):global(.selected)
+  :global(.wf-node--material-source) {
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.workflow :global(.react-flow__node-wfNode):global(.selected)
+  :global(.wf-node__material-source-visual) {
+  filter: drop-shadow(0 0 0.5px var(--unilab-color-text));
+}

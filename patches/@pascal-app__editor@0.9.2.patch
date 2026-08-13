@@ -1,0 +1,32 @@
+diff --git a/src/components/editor/grid.tsx b/src/components/editor/grid.tsx
+index 1b07186..52243bf 100644
+--- a/src/components/editor/grid.tsx
++++ b/src/components/editor/grid.tsx
+@@ -280,20 +280,16 @@ export const Grid = ({
+       material.needsUpdate = true
+     }
+
+-    // The grid is a placement aid: a tight cursor patch (no always-on baseline)
+-    // shown whenever the active context is in grid-snap mode — ANY armed
+-    // draft/build tool (wall / slab / fence / ceiling / zone / column / MEP / …),
+-    // a node move, or a reshape — and hidden in select/idle, paint, and non-grid
+-    // (lines/off) modes. `isGridSnapActive()` already derives the snap context
+-    // from the interaction scope OR the armed build tool and is true only when
+-    // that context resolves to grid, so it IS the gate. (Previously this also
+-    // required a ghost in flight, so a merely-armed draft tool showed nothing.)
++    // Keep Pascal's full idle grid visible whenever the project preference is
++    // enabled. Grid-snap contexts still switch to the tighter cursor-local patch.
++    // This makes `showGrid` authoritative in 3D as it already is in floorplan.
+     const snapPatchVisible = isGridSnapActive()
++    const idleGridVisible = useViewer.getState().showGrid
+     revealRadiusUniform.value = PLACEMENT_REVEAL_RADIUS
+-    baseAlphaUniform.value = 0
++    baseAlphaUniform.value = snapPatchVisible ? 0 : 0.4
+     cellSizeUniform.value = useEditor.getState().gridSnapStep
+-    patchAlphaUniform.value = 1.5
+-    gridRef.current.visible = snapPatchVisible
++    patchAlphaUniform.value = snapPatchVisible ? 1.5 : 1
++    gridRef.current.visible = snapPatchVisible || idleGridVisible
+   })
+
+   // Pass the geometry as a prop instead of a JSX child so the mesh

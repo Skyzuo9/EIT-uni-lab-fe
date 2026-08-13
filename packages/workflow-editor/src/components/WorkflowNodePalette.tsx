@@ -1,0 +1,289 @@
+import type { WorkflowActionCatalogSnapshot } from '@unilab/services'
+import { useMemo, useState } from 'react'
+
+import { WorkflowButton } from './WorkflowButton'
+
+export type WorkflowNodePaletteKind =
+  | 'all'
+  | 'material'
+  | 'action'
+  | 'workflow'
+
+interface WorkflowNodePaletteProps {
+  catalog: WorkflowActionCatalogSnapshot | null
+  catalogError?: string | null
+  busy: boolean
+  canvasMutationEnabled: boolean
+  graphAvailable: boolean
+  materialSourceCatalogAvailable: boolean
+  materialSourceAuthorityBlocked: boolean
+  materialSourceCatalogLoading: boolean
+  materialSourceCatalogError: string | null
+  onAddMaterialSource: () => void
+  onAddAction: (templateUuid: string) => void
+  onAddWorkflow: (templateUuid: string) => void
+  onRefreshMaterialSourceCatalog: () => void | Promise<void>
+}
+
+interface WorkflowNodePaletteProjection {
+  actions: WorkflowActionCatalogSnapshot['actionTemplates']
+  workflows: WorkflowActionCatalogSnapshot['workflowTemplates']
+  showMaterial: boolean
+  totalCount: number
+  counts: Readonly<Record<WorkflowNodePaletteKind, number>>
+}
+
+const PALETTE_KINDS: ReadonlyArray<{
+  value: WorkflowNodePaletteKind
+  label: string
+}> = [
+  { value: 'all', label: '全部' },
+  { value: 'material', label: '物料' },
+  { value: 'action', label: '操作' },
+  { value: 'workflow', label: '子工作流' }
+]
+
+/**
+ * 按节点类型和关键词投影工作流（Workflow）节点库。
+ *
+ * @param catalog OS 返回的可执行模板目录。
+ * @param query 用户输入的名称、类型或来源关键词。
+ * @param kind 当前选中的节点分类。
+ * @returns 保留原始模板身份的可见节点与分类数量。
+ */
+export function workflowNodePaletteProjection(
+  catalog: WorkflowActionCatalogSnapshot | null,
+  query: string,
+  kind: WorkflowNodePaletteKind
+): WorkflowNodePaletteProjection {
+  const normalizedQuery = query.trim().toLocaleLowerCase()
+  const matches = (...values: Array<string | null | undefined>): boolean => (
+    !normalizedQuery || values.some((value) =>
+      value?.toLocaleLowerCase().includes(normalizedQuery)
+    )
+  )
+  const allActions = catalog?.actionTemplates ?? []
+  const allWorkflows = catalog?.workflowTemplates ?? []
+  const actions = kind === 'all' || kind === 'action'
+    ? allActions.filter((template) => matches(
+        template.displayName,
+        template.name,
+        template.actionType,
+        template.actionClass
+      ))
+    : []
+  const workflows = kind === 'all' || kind === 'workflow'
+    ? allWorkflows.filter((template) => matches(
+        template.displayName,
+        template.name,
+        template.source.symbol,
+        template.source.module
+      ))
+    : []
+  const showMaterial = (kind === 'all' || kind === 'material') && matches(
+    '物料来源',
+    'OS 准入声明',
+    'material source',
+    'site'
+  )
+  const counts = {
+    all: allActions.length + allWorkflows.length + 1,
+    material: 1,
+    action: allActions.length,
+    workflow: allWorkflows.length
+  }
+  return {
+    actions,
+    workflows,
+    showMaterial,
+    totalCount: actions.length + workflows.length + (showMaterial ? 1 : 0),
+    counts
+  }
+}
+
+/**
+ * 提供可搜索、可分类的工作流（Workflow）节点插入入口。
+ *
+ * @param props 模板目录、编辑权限、物料来源目录状态与插入回调。
+ * @returns 不改变 OS 模板身份的紧凑节点库。
+ */
+export function WorkflowNodePalette({
+  catalog,
+  catalogError = null,
+  busy,
+  canvasMutationEnabled,
+  graphAvailable,
+  materialSourceCatalogAvailable,
+  materialSourceAuthorityBlocked,
+  materialSourceCatalogLoading,
+  materialSourceCatalogError,
+  onAddMaterialSource,
+  onAddAction,
+  onAddWorkflow,
+  onRefreshMaterialSourceCatalog
+}: WorkflowNodePaletteProps): React.JSX.Element {
+  const [query, setQuery] = useState('')
+  const [kind, setKind] = useState<WorkflowNodePaletteKind>('all')
+  const projection = useMemo(
+    () => workflowNodePaletteProjection(catalog, query, kind),
+    [catalog, kind, query]
+  )
+  const templateDisabled = busy || !canvasMutationEnabled || !graphAvailable
+  const templateDisabledReason = busy
+    ? '正在处理工作流，请稍后添加节点'
+    : !canvasMutationEnabled
+      ? '当前模式只允许查看工作流画布'
+      : '工作流图尚未加载完成'
+
+  return (
+    <aside
+      id="persistent-authoring-node-palette"
+      className="persistent-authoring__palette"
+      aria-label="工作流（Workflow）节点库"
+    >
+      <header>
+        <span>
+          <strong>节点库</strong>
+          <small>{projection.counts.all} 个可用模板</small>
+        </span>
+        <label className="persistent-authoring__palette-search">
+          <span className="sr-only">搜索节点模板</span>
+          <input
+            type="search"
+            value={query}
+            placeholder="搜索名称或类型"
+            onChange={(event) => setQuery(event.target.value)}
+          />
+        </label>
+      </header>
+
+      <div
+        className="persistent-authoring__palette-kinds"
+        role="group"
+        aria-label="节点模板分类"
+      >
+        {PALETTE_KINDS.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            className={kind === option.value ? 'is-active' : undefined}
+            aria-pressed={kind === option.value}
+            onClick={() => setKind(option.value)}
+          >
+            {option.label}
+            <small>{projection.counts[option.value]}</small>
+          </button>
+        ))}
+      </div>
+
+      <div className="persistent-authoring__palette-scroll">
+        {catalogError && (
+          <div className="persistent-authoring__palette-problem" role="alert">
+            <p>{catalogError}；正在自动重试</p>
+          </div>
+        )}
+        {projection.showMaterial && (
+          <section aria-label="物料来源（MaterialSource）模板">
+            <h3>物料</h3>
+            <WorkflowButton
+              type="button"
+              className="persistent-authoring__palette-source"
+              disabled={
+                busy ||
+                !canvasMutationEnabled ||
+                !materialSourceCatalogAvailable ||
+                materialSourceAuthorityBlocked
+              }
+              disabledReason={busy
+                ? '正在处理工作流，请稍后添加物料来源'
+                : !canvasMutationEnabled
+                  ? '当前模式只允许查看工作流画布'
+                  : materialSourceAuthorityBlocked
+                    ? '物料来源目录或引用已失效，请先刷新'
+                    : '物料与库位目录尚未加载完成'}
+              onClick={onAddMaterialSource}
+            >
+              <span aria-hidden="true">▱</span>
+              <span>
+                <strong>物料来源</strong>
+                <small>OS 准入声明</small>
+              </span>
+            </WorkflowButton>
+            {materialSourceCatalogLoading && (
+              <p role="status">正在读取物料与库位目录…</p>
+            )}
+            {materialSourceCatalogError && (
+              <div className="persistent-authoring__palette-problem">
+                <p>{materialSourceCatalogError}</p>
+                <button
+                  type="button"
+                  onClick={() => void onRefreshMaterialSourceCatalog()}
+                >
+                  重新读取
+                </button>
+              </div>
+            )}
+          </section>
+        )}
+
+        {projection.actions.length > 0 && (
+          <section aria-label="动作（Action）模板">
+            <h3>操作</h3>
+            <div className="persistent-authoring__palette-actions">
+              {projection.actions.map((template) => (
+                <WorkflowButton
+                  type="button"
+                  key={template.uuid}
+                  disabled={templateDisabled}
+                  disabledReason={templateDisabledReason}
+                  onClick={() => onAddAction(template.uuid)}
+                >
+                  <span aria-hidden="true">⌁</span>
+                  <span>
+                    <strong>{template.displayName}</strong>
+                    <small>{template.name}</small>
+                  </span>
+                </WorkflowButton>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {projection.workflows.length > 0 && (
+          <section aria-label="子工作流（Workflow）模板">
+            <h3>子工作流</h3>
+            <div className="persistent-authoring__palette-actions">
+              {projection.workflows.map((template) => (
+                <WorkflowButton
+                  type="button"
+                  key={template.uuid}
+                  disabled={templateDisabled}
+                  disabledReason={templateDisabledReason}
+                  onClick={() => onAddWorkflow(template.uuid)}
+                >
+                  <span aria-hidden="true">▣</span>
+                  <span>
+                    <strong>{template.displayName}</strong>
+                    <small>{template.source.symbol}</small>
+                  </span>
+                </WorkflowButton>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {projection.totalCount === 0 && (
+          <div className="persistent-authoring__palette-empty" role="status">
+            <strong>没有匹配的节点模板</strong>
+            <span>尝试搜索名称、类型或切换分类。</span>
+            {query && (
+              <button type="button" onClick={() => setQuery('')}>
+                清除搜索
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    </aside>
+  )
+}

@@ -1,0 +1,330 @@
+.lab-viewport-controls {
+  position: absolute;
+  z-index: 80;
+  bottom: 18px;
+  left: 50%;
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  transform: translateX(-50%);
+}
+
+.lab-view-mode-toggle,
+.lab-site-layer-toggle,
+.lab-material-role-filter {
+  display: inline-flex;
+  gap: 2px;
+  align-items: center;
+  padding: 3px;
+  background: color-mix(
+    in srgb,
+    var(--unilab-color-bg) 90%,
+    transparent
+  );
+  border: 1px solid color-mix(
+    in srgb,
+    var(--unilab-color-border-strong) 72%,
+    transparent
+  );
+  border-radius: 12px;
+  box-shadow: 0 8px 30px rgb(15 23 42 / 18%);
+  backdrop-filter: blur(14px);
+}
+
+.lab-material-role-filter {
+  position: relative;
+  padding: 3px;
+}
+
+.lab-material-role-filter > summary {
+  display: inline-flex;
+  min-height: 32px;
+  gap: 6px;
+  align-items: center;
+  padding: 0 10px;
+  color: var(--unilab-color-text-muted);
+  border-radius: 9px;
+  list-style: none;
+  font: 650 12px/1 var(--unilab-font-sans);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.lab-material-role-filter > summary::-webkit-details-marker {
+  display: none;
+}
+
+.lab-material-role-filter > summary:hover,
+.lab-material-role-filter[open] > summary {
+  color: var(--unilab-color-material);
+  background: var(--unilab-color-material-soft);
+}
+
+.lab-material-role-filter > summary:focus-visible {
+  outline: 2px solid var(--unilab-color-focus);
+  outline-offset: 1px;
+}
+
+.lab-material-role-filter svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.35;
+}
+
+.lab-material-role-filter > div {
+  position: absolute;
+  z-index: 90;
+  right: 0;
+  bottom: calc(100% + 8px);
+  display: grid;
+  min-width: 176px;
+  gap: 2px;
+  padding: 6px;
+  border: 1px solid var(--unilab-color-border-strong);
+  border-radius: 11px;
+  background: color-mix(
+    in srgb,
+    var(--unilab-color-bg) 94%,
+    transparent
+  );
+  box-shadow: 0 12px 36px rgb(15 23 42 / 20%);
+  backdrop-filter: blur(16px);
+}
+
+.lab-material-role-filter > div label {
+  display: grid;
+  grid-template-columns: 14px 10px 1fr auto;
+  min-height: 30px;
+  gap: 8px;
+  align-items: center;
+  padding: 0 8px;
+  color: var(--unilab-color-text-muted);
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  font: 600 12px/1 var(--unilab-font-sans);
+  text-align: left;
+  cursor: pointer;
+}
+
+.lab-material-role-filter > div label:hover,
+.lab-material-role-filter > div label.is-active {
+  color: var(--unilab-color-text);
+  background: var(--unilab-color-bg-muted);
+}
+
+.lab-material-role-filter > div input:focus-visible {
+  outline: 2px solid var(--unilab-color-focus);
+  outline-offset: 1px;
+}
+
+.lab-material-role-filter > div i {
+  width: 10px;
+  height: 10px;
+  border: 1px solid color-mix(in srgb, currentcolor 35%, transparent);
+  border-radius: 50%;
+}
+
+.lab-material-role-filter > div button {
+  min-height: 28px;
+  margin-top: 3px;
+  color: var(--unilab-color-material);
+  border: 0;
+  border-top: 1px solid var(--unilab-color-border);
+  background: transparent;
+  font: 650 11px/1 var(--unilab-font-sans);
+  cursor: pointer;
+}
+
+.lab-material-role-filter > div button:disabled {
+  color: var(--unilab-color-text-subtle);
+  cursor: default;
+  opacity: .65;
+}
+
+.lab-material-role-filter > div small {
+  color: var(--unilab-color-text-subtle);
+  font: 600 10px/1 var(--unilab-font-mono);
+}
+
+.lab-view-mode-toggle button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 5px;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 11px;
+  font: 600 12px/1 var(--unilab-font-sans);
+  color: var(--unilab-color-text-muted);
+  background: transparent;
+  border: 0;
+  border-radius: 9px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    color 140ms ease,
+    background 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.lab-view-mode-toggle button:hover {
+  color: var(--unilab-color-text);
+}
+
+.lab-view-mode-toggle button:focus-visible,
+.lab-site-layer-toggle button:focus-visible {
+  outline: 2px solid
+    color-mix(
+      in srgb,
+      var(--unilab-color-primary) 52%,
+      transparent
+    );
+  outline-offset: 1px;
+}
+
+.lab-view-mode-toggle button.is-active {
+  color: var(--unilab-color-primary);
+  background: var(--unilab-color-bg);
+  box-shadow: 0 1px 5px rgb(15 23 42 / 14%);
+}
+
+.lab-view-mode-toggle svg,
+.lab-site-layer-toggle svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.35;
+}
+
+.lab-site-layer-toggle button {
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 10px;
+  font: 600 12px/1 var(--unilab-font-sans);
+  color: var(--unilab-color-text-muted);
+  white-space: nowrap;
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  border-radius: 9px;
+  transition:
+    color 140ms ease,
+    background 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.lab-site-layer-toggle button:hover {
+  color: var(--unilab-color-text);
+}
+
+.lab-site-layer-toggle button.is-active {
+  color: #0369a1;
+  background: color-mix(in srgb, #e0f2fe 82%, var(--unilab-color-bg));
+  box-shadow: 0 1px 5px rgb(15 23 42 / 12%);
+}
+
+.lab-site-layer-toggle button.is-active.is-transfer {
+  color: var(--unilab-color-scene);
+  background: color-mix(
+    in srgb,
+    var(--unilab-color-scene-soft) 82%,
+    var(--unilab-color-bg)
+  );
+}
+
+.lab-site-layer-toggle i {
+  position: relative;
+  width: 18px;
+  height: 10px;
+  flex: 0 0 18px;
+  background: color-mix(
+    in srgb,
+    var(--unilab-color-text-muted) 18%,
+    transparent
+  );
+  border: 1px solid
+    color-mix(
+      in srgb,
+      var(--unilab-color-text-muted) 38%,
+      transparent
+    );
+  border-radius: 999px;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease;
+}
+
+.lab-site-layer-toggle i::after {
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 6px;
+  height: 6px;
+  content: '';
+  background: var(--unilab-color-text-muted);
+  border-radius: 50%;
+  transition:
+    background 140ms ease,
+    transform 140ms ease;
+}
+
+.lab-site-layer-toggle button.is-active i {
+  background: rgb(56 189 248 / 24%);
+  border-color: rgb(14 165 233 / 46%);
+}
+
+.lab-site-layer-toggle button.is-active i::after {
+  background: #0ea5e9;
+  box-shadow: 0 0 0 2px rgb(14 165 233 / 12%);
+  transform: translateX(8px);
+}
+
+@media (max-width: 720px) {
+  .lab-viewport-controls {
+    bottom: 10px;
+    display: grid;
+    width: min(360px, calc(100% - 20px));
+    gap: 6px;
+  }
+
+  .lab-view-mode-toggle,
+  .lab-site-layer-toggle,
+  .lab-material-role-filter {
+    width: 100%;
+    box-sizing: border-box;
+    justify-content: stretch;
+  }
+
+  .lab-view-mode-toggle button,
+  .lab-site-layer-toggle button,
+  .lab-material-role-filter > summary {
+    min-width: 0;
+    min-height: 44px;
+    flex: 1 1 0;
+    justify-content: center;
+    padding-inline: 7px;
+  }
+
+  .lab-site-layer-toggle button span,
+  .lab-material-role-filter > summary span {
+    display: none;
+  }
+
+  .lab-material-role-filter > div {
+    right: 0;
+    left: 0;
+  }
+
+  .lab-material-role-filter > div button {
+    min-height: 44px;
+  }
+}

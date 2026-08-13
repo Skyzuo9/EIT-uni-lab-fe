@@ -1,0 +1,518 @@
+.workflow {
+  container: workflow / inline-size;
+}
+
+/* 工作流内的分栏区填满工具栏下方剩余空间 */
+.workflow :global(.workbench) {
+  flex: 1;
+  min-height: 0;
+  height: auto;
+}
+
+.workflow :global(.workflow__toolbar) {
+  display: flex;
+  min-height: 58px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--unilab-color-border);
+  background:
+    linear-gradient(
+      90deg,
+      color-mix(
+        in srgb,
+        var(--unilab-color-workflow) 7%,
+        var(--unilab-color-surface)
+      ) 0,
+      var(--unilab-color-surface) 28%
+    );
+  box-shadow: 0 1px 0 rgb(37 99 235 / 5%);
+}
+
+.workflow :global(.workflow__context) {
+  display: grid;
+  flex: 0 1 244px;
+  min-width: 190px;
+  gap: 3px;
+  padding-left: 11px;
+  border-left: 3px solid var(--unilab-color-workflow);
+}
+
+.workflow :global(.workflow__title-row) {
+  display: flex;
+  align-items: center;
+  gap: var(--unilab-space-2);
+}
+
+.workflow :global(.workflow__toolbar-label) {
+  color: var(--unilab-color-text);
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -.01em;
+  line-height: 20px;
+}
+
+.workflow :global(.workflow__mode-switch) {
+  display: inline-flex;
+  padding: 2px;
+  border: 1px solid var(--unilab-color-border-strong);
+  border-radius: var(--unilab-radius-md);
+  background: var(--unilab-color-surface-subtle);
+  box-shadow: inset 0 1px 2px rgb(15 23 42 / 4%);
+}
+
+.workflow :global(.workflow__mode-switch) button {
+  min-width: 58px;
+  height: 30px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: var(--unilab-radius-control);
+  color: var(--unilab-color-text-muted);
+  background: transparent;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.workflow :global(.workflow__mode-switch) button:global(.is-active) {
+  color: var(--unilab-color-workflow);
+  background: var(--unilab-color-surface);
+  box-shadow:
+    0 0 0 1px color-mix(
+      in srgb,
+      var(--unilab-color-workflow) 16%,
+      transparent
+    ),
+    0 2px 5px rgb(15 23 42 / 8%);
+}
+
+.workflow :global(.workflow__mode-switch) button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.workflow :global(.workflow__mobile-view) {
+  display: none;
+}
+
+/* 当前编写格式/编译器徽标 */
+.workflow :global(.workflow__format) {
+  padding: 2px 7px;
+  color: var(--unilab-color-workflow);
+  border: 1px solid color-mix(
+    in srgb,
+    var(--unilab-color-workflow) 22%,
+    var(--unilab-color-border)
+  );
+  border-radius: var(--unilab-radius-sm);
+  background: var(--unilab-color-workflow-soft);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* 工具栏右侧操作区:上传文件 */
+.workflow :global(.workflow__toolbar-actions) {
+  display: flex;
+  align-items: center;
+  gap: var(--unilab-space-2);
+  margin-left: auto;
+}
+
+.workflow :global(.workflow__toolbar-actions) > * {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.workflow :global(.workflow__upload) {
+  height: 34px;
+  padding: 0 12px;
+  color: var(--unilab-color-text);
+  border: 1px solid var(--unilab-color-border-strong);
+  border-radius: var(--unilab-radius-control);
+  background: var(--unilab-color-surface);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    border-color var(--unilab-motion-fast),
+    color var(--unilab-motion-fast),
+    background var(--unilab-motion-fast),
+    box-shadow var(--unilab-motion-fast);
+}
+
+.workflow :global(.workflow__upload):hover {
+  color: var(--unilab-color-primary);
+  border-color: var(--unilab-color-focus);
+  background: var(--unilab-color-primary-soft);
+  box-shadow: var(--unilab-shadow-control);
+}
+
+.workflow :global(.workflow__toolbar-divider) {
+  width: 1px;
+  height: 24px;
+  margin: 0 2px;
+  background: var(--unilab-color-border);
+}
+
+.workflow :global(.workflow__run-mode) button {
+  min-width: 72px;
+}
+
+.workflow :global(.workflow__file-input) {
+  display: none;
+}
+
+.workflow :global(.workflow__upload-error) {
+  font-size: 12px;
+  color: #e03131;
+}
+
+.workflow :global(.workflow__save-ok) {
+  font-size: 12px;
+  color: #0ca678;
+}
+
+.workflow :global(.workflow__upload):disabled {
+  color: var(--unilab-color-text-subtle);
+  cursor: not-allowed;
+  opacity: .62;
+}
+
+.workflow button:focus-visible,
+.workflow summary:focus-visible {
+  outline: 2px solid var(--unilab-color-focus);
+  outline-offset: 2px;
+}
+
+.workflow :global(.wf-node) {
+  position: relative;
+  min-width: 150px;
+  max-width: 220px;
+  background: var(--unilab-color-surface);
+  border: 1px solid var(--unilab-color-border-strong);
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+  /* 允许 handle 溢出显示,使其落在节点边缘的连线上 */
+  overflow: visible;
+  cursor: pointer;
+  transition: box-shadow 0.2s, transform 0.05s;
+}
+
+.workflow :global(.wf-node):hover {
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.14);
+}
+
+/* ReactFlow's selection remains quiet; keyboard focus keeps an explicit ring. */
+.workflow :global(.react-flow__node-wfNode):global(.selected),
+.workflow :global(.react-flow__node-wfNode):focus {
+  outline: none;
+  box-shadow: none;
+}
+
+.workflow :global(.react-flow__node-wfNode):focus-visible {
+  outline: 3px solid var(--unilab-color-focus);
+  outline-offset: 4px;
+  border-radius: var(--unilab-radius-md);
+}
+
+.workflow :global(.react-flow__node-wfNode):global(.selected) :global(.wf-node) {
+  border-color: var(--unilab-color-text);
+  box-shadow: 0 0 0 1px var(--unilab-color-text);
+}
+
+/* IDE 光标反查选中使用独立类，不依赖 React Flow 的本地选择 store。 */
+.workflow :global(.react-flow__node-wfNode) :global(.wf-node--source-selected),
+.workflow :global(.react-flow__node-wfNode):global(.selected) :global(.wf-node--source-selected) {
+  border-color: var(--unilab-color-focus);
+  box-shadow:
+    0 0 0 2px var(--unilab-color-focus),
+    0 7px 18px rgba(79, 70, 229, 0.2);
+}
+
+.workflow :global(.wf-node__body) {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px;
+}
+
+.workflow :global(.wf-node__id) {
+  color: var(--unilab-color-text);
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Handle 样式:空心圆,居中落在节点边缘的连线上,描边同连接线色 */
+.workflow :global(.wf-node__handle) {
+  width: 10px;
+  height: 10px;
+  background: var(--unilab-color-surface);
+  border: 2px solid var(--unilab-color-workflow);
+  border-radius: 50%;
+  transition: border-color 0.2s, transform 0.15s;
+}
+
+.workflow :global(.wf-node__handle):hover {
+  border-color: var(--unilab-color-primary-hover);
+  transform: scale(1.2);
+}
+
+/* ReactFlow 连接态样式:仍为空心圆,仅描边变色 */
+.workflow :global(.wf-node__handle):global(.connecting),
+.workflow :global(.wf-node__handle):global(.connected) {
+  border-color: var(--unilab-color-workflow);
+}
+.workflow :global(.workflow-runtime__run-state) {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  color: var(--unilab-color-text-muted);
+  border: 1px solid var(--unilab-color-border);
+  border-radius: 999px;
+  background: var(--unilab-color-surface);
+  font: 600 11px/1 var(--unilab-font-sans);
+  white-space: nowrap;
+}
+
+.workflow :global(.workflow-runtime__run-state--pending) {
+  color: var(--unilab-color-paused);
+  border-color: color-mix(
+    in srgb,
+    var(--unilab-color-paused) 28%,
+    transparent
+  );
+  background: var(--unilab-color-paused-soft);
+}
+
+.workflow :global(.workflow-runtime__run-state--running),
+.workflow :global(.workflow-runtime__run-state--canceling),
+.workflow :global(.workflow-runtime__run-state--reconciling) {
+  color: var(--unilab-color-warning);
+  border-color: color-mix(
+    in srgb,
+    var(--unilab-color-warning) 28%,
+    transparent
+  );
+  background: var(--unilab-color-warning-soft);
+}
+
+.workflow :global(.workflow-runtime__run-state--completed),
+.workflow :global(.workflow-runtime__run-state--succeeded) {
+  color: var(--unilab-color-success);
+  border-color: color-mix(
+    in srgb,
+    var(--unilab-color-success) 28%,
+    transparent
+  );
+  background: var(--unilab-color-success-soft);
+}
+
+.workflow :global(.workflow-runtime__run-state--failed),
+.workflow :global(.workflow-runtime__run-state--timeout),
+.workflow :global(.workflow-runtime__run-state--canceled),
+.workflow :global(.workflow-runtime__run-state--cancelled) {
+  color: var(--unilab-color-danger);
+  border-color: color-mix(
+    in srgb,
+    var(--unilab-color-danger) 28%,
+    transparent
+  );
+  background: var(--unilab-color-danger-soft);
+}
+
+.workflow :global(.workflow-runtime__message) {
+  max-width: 270px;
+  overflow: hidden;
+  color: var(--unilab-color-text-muted);
+  font-size: 12px;
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workflow :global(.workflow-runtime__primary) {
+  height: 36px;
+  padding: 0 14px;
+  color: #fff;
+  border: 1px solid var(--unilab-color-primary);
+  border-radius: var(--unilab-radius-control);
+  background: var(--unilab-color-primary);
+  box-shadow: var(--unilab-shadow-control);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    border-color var(--unilab-motion-fast),
+    background var(--unilab-motion-fast),
+    box-shadow var(--unilab-motion-fast);
+}
+
+.workflow :global(.workflow-runtime__primary):hover:not(:disabled) {
+  border-color: var(--unilab-color-primary-hover);
+  background: var(--unilab-color-primary-hover);
+  box-shadow: 0 2px 6px rgb(37 99 235 / 22%);
+}
+
+.workflow :global(.workflow-runtime__primary):active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.workflow :global(.workflow-runtime__primary):disabled {
+  opacity: .48;
+  cursor: not-allowed;
+}
+
+.workflow :global(.workflow-runtime__problem) {
+  display: flex;
+  align-items: center;
+  gap: var(--unilab-space-3);
+  padding: 8px var(--unilab-space-4);
+  color: var(--unilab-color-danger);
+  border-bottom: 1px solid color-mix(
+    in srgb,
+    var(--unilab-color-danger) 24%,
+    transparent
+  );
+  background: var(--unilab-color-danger-soft);
+  font-size: 12px;
+}
+
+.workflow :global(.workflow-runtime__problem) span {
+  flex: 1;
+  white-space: pre-wrap;
+}
+
+.workflow :global(.workflow-runtime__problem) button {
+  color: inherit;
+  border: 0;
+  background: transparent;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.workflow :global(.workflow-save-prompt) {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: var(--unilab-space-6);
+  background: rgb(15 23 42 / 42%);
+  backdrop-filter: blur(2px);
+}
+
+.workflow :global(.workflow-save-prompt__dialog) {
+  width: min(440px, 100%);
+  overflow: hidden;
+  color: var(--unilab-color-text);
+  border: 1px solid var(--unilab-color-border-strong);
+  border-radius: var(--unilab-radius-lg);
+  background: var(--unilab-color-surface);
+  box-shadow: var(--unilab-shadow-panel);
+}
+
+.workflow :global(.workflow-save-prompt__header) {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 20px 22px 14px;
+  border-bottom: 1px solid var(--unilab-color-border);
+}
+
+.workflow :global(.workflow-save-prompt__eyebrow) {
+  color: var(--unilab-color-workflow);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.workflow :global(.workflow-save-prompt__header) h2 {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.45;
+}
+
+.workflow :global(.workflow-save-prompt__body) {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px 22px;
+  color: var(--unilab-color-text-muted);
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.workflow :global(.workflow-save-prompt__body) p {
+  margin: 0;
+}
+
+.workflow :global(.workflow-save-prompt__body) strong {
+  display: inline-block;
+  max-width: 250px;
+  margin: 0 4px;
+  overflow: hidden;
+  color: var(--unilab-color-text);
+  font-family: var(--unilab-font-mono);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+  white-space: nowrap;
+}
+
+.workflow :global(.workflow-save-prompt__notice) {
+  padding: 9px 10px;
+  color: var(--unilab-color-text-muted);
+  border: 1px solid color-mix(
+    in srgb,
+    var(--unilab-color-workflow) 22%,
+    var(--unilab-color-border)
+  );
+  border-radius: var(--unilab-radius-sm);
+  background: var(--unilab-color-workflow-soft);
+  font-size: 12px;
+}
+
+.workflow :global(.workflow-save-prompt__actions) {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 14px 22px 18px;
+  border-top: 1px solid var(--unilab-color-border);
+}
+
+.workflow :global(.workflow-save-prompt__actions) button {
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: var(--unilab-radius-control);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.workflow :global(.workflow-save-prompt__cancel) {
+  color: var(--unilab-color-text-muted);
+  border: 0;
+  background: transparent;
+}
+
+.workflow :global(.workflow-save-prompt__revision) {
+  color: var(--unilab-color-text);
+  border: 1px solid var(--unilab-color-border-strong);
+  background: var(--unilab-color-surface);
+}
+
+.workflow :global(.workflow-save-prompt__file) {
+  color: #fff;
+  border: 1px solid var(--unilab-color-workflow);
+  background: var(--unilab-color-workflow);
+}
+
+.workflow :global(.workflow-save-prompt__actions) button:hover {
+  filter: brightness(.97);
+}

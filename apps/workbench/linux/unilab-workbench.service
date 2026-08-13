@@ -1,0 +1,24 @@
+[Unit]
+Description=UniLab Workbench remote browser service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=unilab
+Group=unilab
+WorkingDirectory=/opt/unilab-workbench/current/apps/workbench
+EnvironmentFile=/etc/unilab/workbench.env
+RuntimeDirectory=unilab-workbench
+RuntimeDirectoryMode=0700
+UMask=0077
+ExecStart=/opt/unilab-workbench/node-v24.14.0/bin/node scripts/start-workbench.mjs --remote
+Restart=on-failure
+RestartSec=3
+KillMode=control-group
+TimeoutStopSec=20
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

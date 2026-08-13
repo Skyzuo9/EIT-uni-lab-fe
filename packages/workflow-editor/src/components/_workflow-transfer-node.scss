@@ -1,0 +1,280 @@
+.workflow:global(.workflow-runtime) :global(.wf-node--robot-transfer) {
+  position: relative;
+  display: flex;
+  width: 176px;
+  min-width: 176px;
+  max-width: 176px;
+  height: 72px;
+  min-height: 72px;
+  align-items: center;
+  flex-direction: row-reverse;
+  gap: 8px;
+  color: var(--unilab-color-text);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.workflow:global(.workflow-runtime) :global(.wf-node--robot-transfer)::before {
+  display: none;
+}
+
+.workflow :global(.wf-node__robot-transfer-port) {
+  position: relative;
+  display: grid;
+  width: 72px;
+  height: 72px;
+  flex: 0 0 auto;
+  place-items: center;
+}
+
+.workflow:global(.workflow-runtime)
+  :global(.wf-node--robot-transfer[data-workflow-layout-direction='horizontal']) {
+  width: 120px;
+  min-width: 120px;
+  max-width: 120px;
+  height: 126px;
+  min-height: 126px;
+  align-items: center;
+  flex-direction: column-reverse;
+  gap: 6px;
+}
+
+.workflow :global(.wf-node__robot-transfer-visual) {
+  position: relative;
+  display: grid;
+  width: 54px;
+  height: 54px;
+  place-items: center;
+  color: var(--unilab-color-text);
+  background: var(--unilab-color-text);
+  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+  filter: drop-shadow(0 2px 3px color-mix(in srgb, var(--unilab-color-text) 18%, transparent));
+  transition: transform var(--unilab-motion-fast) ease;
+}
+
+.workflow :global(.wf-node__robot-transfer-visual)::before {
+  position: absolute;
+  inset: 2px;
+  background: var(--unilab-color-surface);
+  clip-path: inherit;
+  content: '';
+}
+
+.workflow :global(.wf-node--robot-transfer):hover
+  :global(.wf-node__robot-transfer-visual) {
+  transform: translateY(-2px);
+}
+
+.workflow :global(.wf-node__robot-transfer-visual) svg {
+  position: relative;
+  z-index: 1;
+  width: 32px;
+  height: 32px;
+  fill: none;
+  stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.3;
+}
+
+.workflow :global(.wf-node__robot-transfer-copy) {
+  display: grid;
+  box-sizing: border-box;
+  width: 96px;
+  min-width: 0;
+  padding: 2px 4px;
+  align-self: center;
+  gap: 2px;
+  border-radius: var(--unilab-radius-sm);
+  background: color-mix(
+    in srgb,
+    var(--unilab-color-canvas) 94%,
+    transparent
+  );
+  box-shadow: 0 0 0 3px color-mix(
+    in srgb,
+    var(--unilab-color-canvas) 88%,
+    transparent
+  );
+}
+
+.workflow :global(.wf-node__robot-transfer-copy) strong,
+.workflow :global(.wf-node__robot-transfer-copy) small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workflow
+  :global(.wf-node--robot-transfer[data-workflow-layout-direction='horizontal'])
+  :global(.wf-node__robot-transfer-copy) {
+  width: 120px;
+  align-self: stretch;
+}
+
+.workflow :global(.wf-node__robot-transfer-copy) strong {
+  color: var(--unilab-color-text);
+  font: 700 12px/16px var(--unilab-font-sans);
+}
+
+.workflow :global(.wf-node__robot-transfer-copy) small {
+  color: var(--unilab-color-text-muted);
+  font: 500 9px/13px var(--unilab-font-sans);
+}
+
+.workflow :global(.wf-node__robot-transfer-toggle) {
+  display: inline-flex;
+  min-width: 0;
+  padding: 0;
+  align-items: center;
+  gap: 2px;
+  justify-self: start;
+  color: var(--unilab-color-text-subtle);
+  border: 0;
+  background: transparent;
+  font: 600 9px/14px var(--unilab-font-sans);
+  cursor: pointer;
+}
+
+.workflow :global(.wf-node__robot-transfer-toggle):hover {
+  color: var(--unilab-color-text);
+}
+
+.workflow :global(.wf-node__robot-transfer-state) {
+  width: max-content;
+  max-width: 100%;
+  font: 600 9px/12px var(--unilab-font-sans);
+}
+
+.workflow :global(.wf-node__robot-transfer-flags) {
+  position: absolute;
+  top: -12px;
+  right: 0;
+  display: flex;
+  gap: 4px;
+  color: var(--unilab-color-warning);
+  font: 700 10px/12px var(--unilab-font-sans);
+}
+
+.workflow
+  :global(.wf-node--robot-transfer[data-workflow-layout-direction='horizontal'])
+  :global(.wf-node__robot-transfer-flags) {
+  top: auto;
+  right: 24px;
+  bottom: 66px;
+}
+
+.workflow :global(.wf-node__robot-transfer-actions) {
+  position: absolute;
+  right: 0;
+  bottom: -18px;
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--unilab-motion-fast) ease;
+}
+
+.workflow :global(.wf-node--robot-transfer:hover)
+  :global(.wf-node__robot-transfer-actions),
+.workflow :global(.wf-node__robot-transfer-actions:has(button.is-active)) {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.workflow :global(.wf-node__robot-transfer-actions) button {
+  display: grid;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  place-items: center;
+  color: var(--unilab-color-text-subtle);
+  border: 1px solid var(--unilab-color-border);
+  border-radius: 50%;
+  background: var(--unilab-color-surface);
+  font: 700 9px/1 var(--unilab-font-sans);
+  cursor: pointer;
+}
+
+.workflow :global(.wf-node__robot-transfer-actions) button:hover,
+.workflow :global(.wf-node__robot-transfer-actions) button:global(.is-active) {
+  color: var(--unilab-color-primary);
+  border-color: var(--unilab-color-primary);
+}
+
+.workflow :global(.wf-node__robot-transfer-handle),
+.workflow :global(.wf-node__robot-transfer-handle):global(.connecting),
+.workflow :global(.wf-node__robot-transfer-handle):global(.connected) {
+  z-index: 4;
+  width: 11px;
+  height: 11px;
+  border: 3px solid var(--wf-material-accent);
+  background: var(--unilab-color-surface);
+}
+
+.workflow
+  :global(.wf-node--robot-transfer:not([data-workflow-layout-direction='horizontal']))
+  :global(.wf-node__robot-transfer-port)
+  > :global(.wf-node__robot-transfer-handle) {
+  right: auto;
+  left: 50%;
+}
+
+.workflow
+  :global(.wf-node--robot-transfer:not([data-workflow-layout-direction='horizontal']))
+  :global(.wf-node__robot-transfer-port)
+  > :global(.wf-node__robot-transfer-handle.react-flow__handle-top) {
+  top: 9px;
+  right: auto;
+  bottom: auto;
+  left: 36px;
+  transform: translate(-50%, -50%);
+}
+
+.workflow
+  :global(.wf-node--robot-transfer:not([data-workflow-layout-direction='horizontal']))
+  :global(.wf-node__robot-transfer-port)
+  > :global(.wf-node__robot-transfer-handle.react-flow__handle-bottom) {
+  top: auto;
+  right: auto;
+  bottom: 9px;
+  left: 36px;
+  transform: translate(-50%, 50%);
+}
+
+.workflow
+  :global(.wf-node--robot-transfer[data-workflow-layout-direction='horizontal'])
+  :global(.wf-node__robot-transfer-port)
+  > :global(.wf-node__robot-transfer-handle) {
+  top: 50%;
+  bottom: auto;
+}
+
+.workflow
+  :global(.wf-node--robot-transfer[data-workflow-layout-direction='horizontal'])
+  :global(.wf-node__robot-transfer-port)
+  > :global(.wf-node__robot-transfer-handle.react-flow__handle-left) {
+  right: auto;
+  bottom: auto;
+  left: 9px;
+  transform: translate(-50%, -50%);
+}
+
+.workflow
+  :global(.wf-node--robot-transfer[data-workflow-layout-direction='horizontal'])
+  :global(.wf-node__robot-transfer-port)
+  > :global(.wf-node__robot-transfer-handle.react-flow__handle-right) {
+  right: 9px;
+  bottom: auto;
+  left: auto;
+  transform: translate(50%, -50%);
+}
+
+.workflow :global(.react-flow__node-wfNode.selected)
+  :global(.wf-node__robot-transfer-visual) {
+  filter: drop-shadow(
+    0 3px 5px color-mix(in srgb, var(--unilab-color-device) 32%, transparent)
+  );
+}

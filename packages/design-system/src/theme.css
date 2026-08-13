@@ -1,0 +1,95 @@
+:root {
+  color-scheme: light;
+  /* Application surfaces */
+  --unilab-color-bg: #f4f7fb;
+  --unilab-color-bg-subtle: #f8fafd;
+  --unilab-color-bg-muted: #eef3f8;
+  --unilab-color-canvas: #f1f5fa;
+  --unilab-color-surface: #ffffff;
+  --unilab-color-surface-subtle: #f8fafd;
+  --unilab-color-surface-muted: #edf2f7;
+  --unilab-color-border: #dde5ee;
+  --unilab-color-border-strong: #c9d4e1;
+  --unilab-color-text: #1f2329;
+  --unilab-color-text-muted: #6b7280;
+  --unilab-color-text-subtle: #94a3b8;
+
+  /* Interaction colors */
+  --unilab-color-primary: #2563eb;
+  --unilab-color-primary-hover: #1d4ed8;
+  --unilab-color-primary-soft: #eff6ff;
+  --unilab-color-focus: #93c5fd;
+
+  /* Module identity colors */
+  --unilab-color-device: #0f766e;
+  --unilab-color-device-soft: #ecfdf5;
+  --unilab-color-material: #7c3aed;
+  --unilab-color-material-soft: #f5f3ff;
+  --unilab-color-scene: #4f46e5;
+  --unilab-color-scene-soft: #eef2ff;
+  --unilab-color-workflow: #2563eb;
+  --unilab-color-workflow-soft: #eff6ff;
+
+  /* Workflow and feedback states */
+  --unilab-color-success: #16a34a;
+  --unilab-color-success-soft: #f0fdf4;
+  --unilab-color-warning: #d97706;
+  --unilab-color-warning-soft: #fff7ed;
+  --unilab-color-danger: #dc2626;
+  --unilab-color-danger-soft: #fef2f2;
+  --unilab-color-paused: #2563eb;
+  --unilab-color-paused-soft: #eff6ff;
+  --unilab-color-start: #7c3aed;
+  --unilab-color-start-soft: #f5f3ff;
+  --unilab-color-skipped: #64748b;
+  --unilab-color-skipped-soft: #f1f5f9;
+
+  /* Shape, spacing and motion */
+  --unilab-radius-sm: 4px;
+  --unilab-radius-control: 6px;
+  --unilab-radius-md: 8px;
+  --unilab-radius-lg: 12px;
+  --unilab-space-1: 4px;
+  --unilab-space-2: 8px;
+  --unilab-space-3: 12px;
+  --unilab-space-4: 16px;
+  --unilab-space-6: 24px;
+  --unilab-space-8: 32px;
+  --unilab-motion-fast: 120ms;
+  --unilab-motion-normal: 180ms;
+  --unilab-shadow-panel: 0 12px 32px rgb(15 23 42 / 12%);
+  --unilab-shadow-control: 0 1px 3px rgb(15 23 42 / 10%);
+  --unilab-shadow-selected: 0 0 0 2px #334155;
+  --unilab-font-sans:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --unilab-font-mono:
+    "JetBrains Mono", "SF Mono", "Menlo", "Consolas", monospace;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --unilab-color-bg: #111827;
+  --unilab-color-bg-subtle: #182132;
+  --unilab-color-bg-muted: #243044;
+  --unilab-color-canvas: #0f172a;
+  --unilab-color-surface: #111827;
+  --unilab-color-surface-subtle: #182132;
+  --unilab-color-surface-muted: #243044;
+  --unilab-color-border: #334155;
+  --unilab-color-border-strong: #475569;
+  --unilab-color-text: #f8fafc;
+  --unilab-color-text-muted: #94a3b8;
+  --unilab-color-text-subtle: #64748b;
+  --unilab-color-primary-soft: #172554;
+  --unilab-color-device-soft: #063d38;
+  --unilab-color-material-soft: #2e1065;
+  --unilab-color-scene-soft: #1e1b4b;
+  --unilab-color-workflow-soft: #172554;
+  --unilab-color-success-soft: #052e16;
+  --unilab-color-warning-soft: #431407;
+  --unilab-color-danger-soft: #450a0a;
+  --unilab-color-paused-soft: #172554;
+  --unilab-color-start-soft: #2e1065;
+  --unilab-color-skipped-soft: #1e293b;
+}

@@ -1,0 +1,312 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-07-28T10:02:14Z",
+  "title": "Design System: Uni-Lab",
+  "extensions": {
+    "colorMeta": {
+      "control-blue": {
+        "role": "primary",
+        "displayName": "控制蓝",
+        "canonical": "#2563eb",
+        "tonalRamp": ["#172554", "#1e3a8a", "#1d4ed8", "#2563eb", "#3b82f6", "#60a5fa", "#bfdbfe", "#eff6ff"]
+      },
+      "instrument-teal": {
+        "role": "primary",
+        "displayName": "仪器青",
+        "canonical": "#0f766e",
+        "tonalRamp": ["#042f2e", "#134e4a", "#115e59", "#0f766e", "#0d9488", "#5eead4", "#ccfbf1", "#f0fdfa"]
+      },
+      "material-purple": {
+        "role": "secondary",
+        "displayName": "物料紫",
+        "canonical": "#7c3aed",
+        "tonalRamp": ["#2e1065", "#4c1d95", "#6d28d9", "#7c3aed", "#8b5cf6", "#c4b5fd", "#ede9fe", "#f5f3ff"]
+      },
+      "scene-indigo": {
+        "role": "secondary",
+        "displayName": "场景靛",
+        "canonical": "#4f46e5",
+        "tonalRamp": ["#1e1b4b", "#312e81", "#4338ca", "#4f46e5", "#6366f1", "#a5b4fc", "#e0e7ff", "#eef2ff"]
+      },
+      "success-green": {
+        "role": "tertiary",
+        "displayName": "运行绿",
+        "canonical": "#16a34a",
+        "tonalRamp": ["#052e16", "#14532d", "#166534", "#16a34a", "#22c55e", "#86efac", "#dcfce7", "#f0fdf4"]
+      },
+      "warning-amber": {
+        "role": "tertiary",
+        "displayName": "告警琥珀",
+        "canonical": "#d97706",
+        "tonalRamp": ["#431407", "#7c2d12", "#9a3412", "#d97706", "#f59e0b", "#fcd34d", "#ffedd5", "#fff7ed"]
+      },
+      "danger-red": {
+        "role": "tertiary",
+        "displayName": "故障红",
+        "canonical": "#dc2626",
+        "tonalRamp": ["#450a0a", "#7f1d1d", "#991b1b", "#dc2626", "#ef4444", "#fca5a5", "#fee2e2", "#fef2f2"]
+      },
+      "workspace": {
+        "role": "neutral",
+        "displayName": "工作区冷灰",
+        "canonical": "#f4f7fb",
+        "tonalRamp": ["#0f172a", "#1e293b", "#334155", "#64748b", "#94a3b8", "#cbd5e1", "#e2e8f0", "#f4f7fb"]
+      },
+      "canvas": {
+        "role": "neutral",
+        "displayName": "场景画布",
+        "canonical": "#f1f5fa",
+        "tonalRamp": ["#0f172a", "#1e293b", "#334155", "#64748b", "#94a3b8", "#cbd5e1", "#e2e8f0", "#f1f5fa"]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "仪器白",
+        "canonical": "#ffffff",
+        "tonalRamp": ["#111827", "#1f2937", "#4b5563", "#6b7280", "#9ca3af", "#d1d5db", "#f3f4f6", "#ffffff"]
+      },
+      "surface-muted": {
+        "role": "neutral",
+        "displayName": "静音表面",
+        "canonical": "#edf2f7",
+        "tonalRamp": ["#111827", "#1f2937", "#374151", "#6b7280", "#9ca3af", "#cbd5e1", "#e2e8f0", "#edf2f7"]
+      },
+      "border": {
+        "role": "neutral",
+        "displayName": "结构灰",
+        "canonical": "#dde5ee",
+        "tonalRamp": ["#111827", "#1f2937", "#475569", "#64748b", "#94a3b8", "#c9d4e1", "#dde5ee", "#f8fafc"]
+      },
+      "border-strong": {
+        "role": "neutral",
+        "displayName": "强结构灰",
+        "canonical": "#c9d4e1",
+        "tonalRamp": ["#111827", "#1f2937", "#475569", "#64748b", "#94a3b8", "#c9d4e1", "#e2e8f0", "#f8fafc"]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "主墨色",
+        "canonical": "#1f2329",
+        "tonalRamp": ["#0f172a", "#1f2329", "#374151", "#6b7280", "#9ca3af", "#cbd5e1", "#e5e7eb", "#f8fafc"]
+      },
+      "ink-muted": {
+        "role": "neutral",
+        "displayName": "次墨色",
+        "canonical": "#6b7280",
+        "tonalRamp": ["#111827", "#1f2937", "#374151", "#6b7280", "#9ca3af", "#d1d5db", "#e5e7eb", "#f9fafb"]
+      },
+      "focus-blue": {
+        "role": "primary",
+        "displayName": "焦点蓝",
+        "canonical": "#93c5fd",
+        "tonalRamp": ["#172554", "#1e3a8a", "#1d4ed8", "#3b82f6", "#60a5fa", "#93c5fd", "#dbeafe", "#eff6ff"]
+      }
+    },
+    "typographyMeta": {
+      "title": {
+        "displayName": "对象标题",
+        "purpose": "设备、工作流或主要对象的身份标题。"
+      },
+      "section": {
+        "displayName": "区段标题",
+        "purpose": "控制组、参数区和状态面板标题。"
+      },
+      "body": {
+        "displayName": "正文",
+        "purpose": "说明、诊断和操作上下文。"
+      },
+      "control": {
+        "displayName": "控制标签",
+        "purpose": "按钮、导航和关键交互标签。"
+      },
+      "label": {
+        "displayName": "字段标签",
+        "purpose": "字段名、状态名和辅助元数据。"
+      },
+      "data": {
+        "displayName": "设备数据",
+        "purpose": "坐标、数值、时间、地址、路径和代码。"
+      }
+    },
+    "shadows": [
+      {
+        "name": "panel-lift",
+        "value": "0 12px 32px rgb(15 23 42 / 12%)",
+        "purpose": "抽屉、浮层和需要脱离工作区的临时面板。"
+      },
+      {
+        "name": "control-lift",
+        "value": "0 1px 3px rgb(15 23 42 / 10%)",
+        "purpose": "分段控件的当前选项和轻量交互层。"
+      },
+      {
+        "name": "selected-ring",
+        "value": "0 0 0 2px #334155",
+        "purpose": "需要强结构确认的选中对象。"
+      }
+    ],
+    "motion": [
+      {
+        "name": "fast",
+        "value": "120ms",
+        "purpose": "hover、焦点和直接控制的即时状态变化。"
+      },
+      {
+        "name": "normal",
+        "value": "180ms",
+        "purpose": "面板、模式和常规界面状态变化。"
+      },
+      {
+        "name": "standard-ease",
+        "value": "cubic-bezier(0.4, 0, 0.2, 1)",
+        "purpose": "抽屉与结构性位移；减少动态效果时停用非必要动画。"
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "compact-controls",
+        "value": "600px"
+      },
+      {
+        "name": "mobile-shell",
+        "value": "720px"
+      },
+      {
+        "name": "single-column-console",
+        "value": "1000px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Device Action",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "仪器设备模块的主要确认或采集动作。",
+      "html": "<button class=\"ds-btn-primary\" type=\"button\">采集图像</button>",
+      "css": ".ds-btn-primary { min-height: 40px; padding: 0 12px; border: 1px solid var(--unilab-color-device, #0f766e); border-radius: 8px; color: #fff; background: var(--unilab-color-device, #0f766e); font: 600 .8125rem/1.45 var(--unilab-font-sans, sans-serif); cursor: pointer; transition: background 120ms ease, border-color 120ms ease; } .ds-btn-primary:hover { background: #0b5f59; border-color: #0b5f59; } .ds-btn-primary:focus-visible { outline: 2px solid var(--unilab-color-focus, #93c5fd); outline-offset: 2px; } .ds-btn-primary:active { transform: translateY(1px); }"
+    },
+    {
+      "name": "Secondary Action",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "普通设备动作或不改变主要流程的辅助操作。",
+      "html": "<button class=\"ds-btn-secondary\" type=\"button\">回原点</button>",
+      "css": ".ds-btn-secondary { min-height: 40px; padding: 0 12px; border: 1px solid var(--unilab-color-border-strong, #c9d4e1); border-radius: 8px; color: var(--unilab-color-text, #1f2329); background: var(--unilab-color-surface, #fff); font: 600 .8125rem/1.45 var(--unilab-font-sans, sans-serif); cursor: pointer; transition: background 120ms ease, border-color 120ms ease; } .ds-btn-secondary:hover { background: var(--unilab-color-surface-muted, #edf2f7); } .ds-btn-secondary:focus-visible { outline: 2px solid var(--unilab-color-focus, #93c5fd); outline-offset: 2px; } .ds-btn-secondary:active { transform: translateY(1px); }"
+    },
+    {
+      "name": "Danger Action",
+      "kind": "button",
+      "refersTo": "button-danger",
+      "description": "急停、终止或其他需要明确风险语义的动作。",
+      "html": "<button class=\"ds-btn-danger\" type=\"button\">急停</button>",
+      "css": ".ds-btn-danger { min-height: 40px; padding: 0 12px; border: 1px solid #fca5a5; border-radius: 8px; color: var(--unilab-color-danger, #dc2626); background: var(--unilab-color-danger-soft, #fef2f2); font: 600 .8125rem/1.45 var(--unilab-font-sans, sans-serif); cursor: pointer; transition: background 120ms ease, border-color 120ms ease; } .ds-btn-danger:hover { border-color: var(--unilab-color-danger, #dc2626); background: #fee2e2; } .ds-btn-danger:focus-visible { outline: 2px solid var(--unilab-color-focus, #93c5fd); outline-offset: 2px; } .ds-btn-danger:active { color: #fff; background: var(--unilab-color-danger, #dc2626); }"
+    },
+    {
+      "name": "Device Data Field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "设备参数、路径、数值和标识输入。",
+      "html": "<label class=\"ds-field\"><span class=\"ds-field-label\">曝光时间 (μs)</span><input class=\"ds-field-input\" value=\"500000\" /></label>",
+      "css": ".ds-field { display: flex; width: 260px; flex-direction: column; gap: 5px; color: var(--unilab-color-text-muted, #6b7280); font: 500 .75rem/1.35 var(--unilab-font-sans, sans-serif); } .ds-field-input { height: 38px; min-width: 0; padding: 0 10px; border: 1px solid var(--unilab-color-border-strong, #c9d4e1); border-radius: 8px; color: var(--unilab-color-text, #1f2329); background: var(--unilab-color-surface, #fff); font: 500 .75rem/1.5 var(--unilab-font-mono, monospace); font-variant-numeric: tabular-nums; } .ds-field-input:hover { border-color: #94a3b8; } .ds-field-input:focus-visible { outline: 2px solid var(--unilab-color-focus, #93c5fd); outline-offset: 2px; }"
+    },
+    {
+      "name": "Device Navigation Item",
+      "kind": "nav",
+      "description": "列表中的当前仪器设备，组合身份、连接状态和型号信息。",
+      "html": "<button class=\"ds-device-nav\" type=\"button\"><span class=\"ds-device-icon\"><svg viewBox=\"0 0 20 20\" aria-hidden=\"true\"><path d=\"M5 14h10M7 14v3m6-3v3M8 5h4l2 5H6l2-5Zm2-3v3\" /></svg></span><span class=\"ds-device-copy\"><strong><i></i>机械臂</strong><small>Dobot TCP-IP-V4</small></span><span class=\"ds-device-chevron\">›</span></button>",
+      "css": ".ds-device-nav { display: grid; width: 280px; min-height: 60px; grid-template-columns: 36px minmax(0, 1fr) 12px; align-items: center; gap: 9px; padding: 8px 10px; border: 1px solid #8bd3ca; border-radius: 8px; color: var(--unilab-color-text, #1f2329); background: var(--unilab-color-device-soft, #ecfdf5); text-align: left; cursor: pointer; } .ds-device-nav:hover { border-color: var(--unilab-color-device, #0f766e); } .ds-device-nav:focus-visible { outline: 2px solid var(--unilab-color-focus, #93c5fd); outline-offset: 2px; } .ds-device-icon { display: grid; width: 36px; height: 36px; place-items: center; border-radius: 9px; color: var(--unilab-color-device, #0f766e); background: var(--unilab-color-device-soft, #ecfdf5); } .ds-device-icon svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; } .ds-device-copy { display: flex; min-width: 0; flex-direction: column; gap: 2px; } .ds-device-copy strong { font: 600 .8125rem/1.45 var(--unilab-font-sans, sans-serif); } .ds-device-copy strong i { display: inline-block; width: 7px; height: 7px; margin-right: 7px; border-radius: 50%; background: var(--unilab-color-success, #16a34a); } .ds-device-copy small { padding-left: 14px; overflow: hidden; color: var(--unilab-color-text-muted, #6b7280); font: 500 .75rem/1.5 var(--unilab-font-mono, monospace); text-overflow: ellipsis; white-space: nowrap; } .ds-device-chevron { color: var(--unilab-color-text-subtle, #94a3b8); font-size: 18px; }"
+    },
+    {
+      "name": "Success Status",
+      "kind": "chip",
+      "refersTo": "status-success",
+      "description": "已经确认的在线、健康或成功状态。",
+      "html": "<span class=\"ds-status-success\"><i></i>模拟在线</span>",
+      "css": ".ds-status-success { display: inline-flex; align-items: center; gap: 5px; padding: 5px 8px; border-radius: 999px; color: var(--unilab-color-success, #16a34a); background: var(--unilab-color-success-soft, #f0fdf4); font: 600 .75rem/1.35 var(--unilab-font-sans, sans-serif); } .ds-status-success i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }"
+    },
+    {
+      "name": "Control Card",
+      "kind": "card",
+      "refersTo": "control-card",
+      "description": "将一组紧密相关的仪器控制和反馈保持在同一操作上下文中。",
+      "html": "<section class=\"ds-control-card\"><header><h3>手动点动</h3><span>关节</span></header><p>控制、参数与最近反馈保持在同一平面。</p></section>",
+      "css": ".ds-control-card { width: 360px; padding: 16px; border: 1px solid var(--unilab-color-border, #dde5ee); border-radius: 12px; color: var(--unilab-color-text, #1f2329); background: var(--unilab-color-surface, #fff); } .ds-control-card header { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; } .ds-control-card h3 { margin: 0; font: 600 .875rem/1.45 var(--unilab-font-sans, sans-serif); } .ds-control-card header span { color: var(--unilab-color-device, #0f766e); font: 600 .75rem/1.35 var(--unilab-font-sans, sans-serif); } .ds-control-card p { margin: 0; color: var(--unilab-color-text-muted, #6b7280); font: 400 .8125rem/1.5 var(--unilab-font-sans, sans-serif); } .ds-control-card:hover { border-color: var(--unilab-color-border-strong, #c9d4e1); }"
+    },
+    {
+      "name": "Segmented Control",
+      "kind": "custom",
+      "description": "用于少量互斥设备控制模式的紧凑切换。",
+      "html": "<div class=\"ds-segmented\" role=\"group\" aria-label=\"控制模式\"><button type=\"button\">笛卡尔</button><button class=\"is-active\" type=\"button\">关节</button></div>",
+      "css": ".ds-segmented { display: inline-flex; padding: 2px; border: 1px solid var(--unilab-color-border, #dde5ee); border-radius: 6px; background: var(--unilab-color-surface-muted, #edf2f7); } .ds-segmented button { min-height: 28px; padding: 0 10px; border: 0; border-radius: 4px; color: var(--unilab-color-text-muted, #6b7280); background: transparent; font: 500 .75rem/1.35 var(--unilab-font-sans, sans-serif); cursor: pointer; } .ds-segmented button:hover { color: var(--unilab-color-text, #1f2329); } .ds-segmented button:focus-visible { outline: 2px solid var(--unilab-color-focus, #93c5fd); outline-offset: -1px; } .ds-segmented button.is-active { color: var(--unilab-color-device, #0f766e); background: var(--unilab-color-surface, #fff); box-shadow: 0 1px 3px rgb(15 23 42 / 10%); font-weight: 600; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "精密仪器台（The Precision Instrument Bench）",
+    "overview": "Uni-Lab 的界面应像一张维护良好、校准清楚的精密仪器台：每个控制都有明确边界，每项读数都能快速定位，每种状态都可被验证。视觉表达服务于操作确定性，以紧凑但不拥挤的密度、稳定的空间关系和低噪声表面承载复杂实验信息。\n\n整体气质是冷静、精密、可信。品牌存在于细节的一致性中，而不是装饰性展示中。模块色用于建立方向感，语义色用于表达运行状态；阴影、动效和强调色都必须说明层级或交互，不能仅用于制造视觉刺激。",
+    "keyCharacteristics": [
+      "清晰、可扫描的状态层级",
+      "克制的冷色工作区与白色操作表面",
+      "面向数值、坐标和设备标识的等宽数据语言",
+      "紧凑、明确、可预测的控制反馈",
+      "桌面高密度优先，同时保留可靠的移动降级"
+    ],
+    "rules": [
+      {
+        "name": "The Semantic Color Rule",
+        "body": "绿色只表示已确认成功或在线，蓝色不表示运行中，橙色表示运行或等待注意，紫色表示起始点或物料身份，红色表示断点、异常或危险。",
+        "section": "colors"
+      },
+      {
+        "name": "The Color Is Corroboration Rule",
+        "body": "任何状态都必须同时具有文字、图标、结构或可访问标签；颜色永远不是唯一证据。",
+        "section": "colors"
+      },
+      {
+        "name": "The Data Has a Voice Rule",
+        "body": "只要内容需要逐位比较、复制或诊断，就使用 Data 角色；普通说明文字不得为了“技术感”滥用等宽字体。",
+        "section": "typography"
+      },
+      {
+        "name": "The No Hero Type Rule",
+        "body": "操作型界面不使用超大标题、极端字距或营销式断句占用工作空间。",
+        "section": "typography"
+      },
+      {
+        "name": "The Stable Instrument Position Rule",
+        "body": "高频更新的读数不得改变周围布局；为数值预留稳定宽度，并使用表格数字或等宽字体。",
+        "section": "layout"
+      },
+      {
+        "name": "The One Workspace Rule",
+        "body": "不为不同部署、桌面外壳或移动宽度复制第二套页面结构；同一界面通过组合和响应式规则适配。",
+        "section": "layout"
+      },
+      {
+        "name": "The Flat-at-Rest Rule",
+        "body": "静止的工作区、卡片和控制组默认无阴影；浮起必须对应真实层级或状态变化。",
+        "section": "elevation"
+      },
+      {
+        "name": "The Radius Has Hierarchy Rule",
+        "body": "圆角随容器层级增加，但不能把所有元素都变成胶囊；状态是胶囊，控制是矩形，容器是柔和面板。",
+        "section": "shapes"
+      }
+    ],
+    "dos": [
+      "Do 使用单一、稳定的视觉层级，让身份、状态、控制和反馈在固定位置出现。",
+      "Do 使用现有模块身份色和语义色，不为单个页面创建新的近似色。",
+      "Do 使用文字、图标与结构共同表达运行状态，并维持 WCAG 2.1 AA。",
+      "Do 为设备数值、坐标、时间和路径使用等宽字体、表格数字与稳定宽度。",
+      "Do 在响应式布局中重排控制和状态，保留核心操作的上下文关系。",
+      "Do 尊重 `prefers-reduced-motion`，让动效说明状态而不是制造装饰。"
+    ],
+    "donts": [
+      "Don't 使用玻璃拟态、霓虹赛博风、装饰性渐变或无层级意义的大面积阴影。",
+      "Don't 把每个信息组都包装成悬浮卡片，也不要用卡片网格替代真正的信息架构。",
+      "Don't 用绿色表示选中、蓝色表示运行中，或让同一种颜色在不同模块承担冲突语义。",
+      "Don't 使用超大标题、极端字距、营销式短句或泛化的“现代科技”视觉语言。",
+      "Don't 用仅 hover 可发现的入口承载关键操作，也不要把颜色作为状态的唯一证据。",
+      "Don't 因局部需求复制第二套 token、组件或 renderer。"
+    ]
+  }
+}

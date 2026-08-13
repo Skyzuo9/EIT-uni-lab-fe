@@ -1,0 +1,119 @@
+import type {
+  WorkflowAuthoringAggregate,
+  WorkflowAuthoringDiagnostic
+} from '@unilab/services'
+import type {
+  WorkflowIdeDiagnostic,
+  WorkflowSourceMapEntry,
+  WorkflowSourceProjection
+} from '@unilab/workflow-ide-bridge'
+
+export {
+  workflowNodeAtSourcePosition,
+  workflowSourceLocationForNode,
+  type WorkflowIdeBridge,
+  type WorkflowSourceLocation,
+  type WorkflowSourcePosition,
+  type WorkflowSourceProjection
+} from '@unilab/workflow-ide-bridge'
+
+/** 发布源码文件绑定；只有同代候选/已应用结果才携带可用 source map。 */
+export function projectWorkflowSourceNavigation(
+  aggregate: WorkflowAuthoringAggregate | null,
+  workflowUuid: string,
+  sourceMap: readonly WorkflowSourceMapEntry[]
+): WorkflowSourceProjection | null {
+  const sourceUri = aggregate?.draft?.source_uri
+  if (!sourceUri) return null
+  const candidate = aggregate.candidate
+  const appliedSource = aggregate.applied_source
+  const candidateSourceVersion =
+    sameWorkflowSourceMap(candidate?.source_map, sourceMap)
+      ? candidate?.candidate_hash ?? null
+      : null
+  const appliedSourceVersion =
+    sameWorkflowSourceMap(appliedSource?.source_map, sourceMap)
+      ? appliedSource?.source_hash ?? null
+      : null
+  const sourceVersion = candidateSourceVersion ?? appliedSourceVersion
+  if (sourceVersion) {
+    return {
+      workflowUuid,
+      sourceUri,
+      sourceVersion,
+      mappingAvailable: true,
+      sourceMap
+    }
+  }
+  const draftVersion = aggregate?.draft?.draft_hash
+  return draftVersion
+    ? {
+        workflowUuid,
+        sourceUri,
+        sourceVersion: draftVersion,
+        mappingAvailable: false,
+        sourceMap: []
+      }
+    : null
+}
+
+/** Project OS authoring diagnostics into the same exact IDE source identity. */
+export function projectWorkflowIdeDiagnostics(
+  aggregate: WorkflowAuthoringAggregate | null,
+  projection: WorkflowSourceProjection | null
+): WorkflowIdeDiagnostic[] {
+  const sourceUri = aggregate?.draft?.source_uri ?? projection?.sourceUri
+  if (!sourceUri) return []
+  return (aggregate?.draft?.diagnostics ?? []).map(diagnostic => {
+    const sourceMapEntry = diagnostic.node_id
+      ? projection?.sourceMap.find(entry =>
+          entry.workflow_node_uuid === diagnostic.node_id
+        )
+      : undefined
+    const range = diagnostic.source_range ?? sourceMapEntry
+    return {
+      sourceUri: diagnosticSourceUri(diagnostic, sourceUri),
+      severity: diagnostic.severity,
+      code: diagnostic.code,
+      message: diagnostic.message,
+      source: 'UniLab OS',
+      workflowUuid: aggregate?.workflow_uuid,
+      ...(diagnostic.node_id
+        ? { workflowNodeUuid: diagnostic.node_id }
+        : {}),
+      ...(range ? {
+        line: range.start_line,
+        column: range.start_column,
+        endLine: range.end_line,
+        endColumn: range.end_column
+      } : {})
+    }
+  })
+}
+
+function diagnosticSourceUri(
+  diagnostic: WorkflowAuthoringDiagnostic,
+  fallback: string
+): string {
+  const path = diagnostic.path?.trim()
+  return path && (path.startsWith('package://') || path.startsWith('file://'))
+    ? path
+    : fallback
+}
+
+/** 源码映射跨 RPC/宿主后对象身份会变化，只比较 OS 合同中的稳定标量。 */
+function sameWorkflowSourceMap(
+  authoritative: readonly WorkflowSourceMapEntry[] | undefined,
+  projected: readonly WorkflowSourceMapEntry[]
+): boolean {
+  if (!authoritative || authoritative.length !== projected.length) return false
+  return authoritative.every((entry, index) => {
+    const candidate = projected[index]
+    return candidate !== undefined &&
+      entry.workflow_node_uuid === candidate.workflow_node_uuid &&
+      entry.start_line === candidate.start_line &&
+      entry.start_column === candidate.start_column &&
+      entry.end_line === candidate.end_line &&
+      entry.end_column === candidate.end_column
+  })
+}

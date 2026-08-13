@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "product": {
+    "name": "UniLab Workbench",
+    "version": "0.1.0",
+    "stateSchemaVersion": 1
+  },
+  "platforms": {
+    "darwin-arm64": {
+      "status": "supported",
+      "minimumVersion": "13.0"
+    },
+    "darwin-x64": {
+      "status": "unverified"
+    },
+    "linux-x64": {
+      "status": "unverified",
+      "minimumDistribution": "Ubuntu 22.04",
+      "minimumGlibc": "2.35",
+      "verificationBlocker": "The available Linux x64 host does not yet have the pinned Node or pnpm runtime"
+    },
+    "linux-arm64": {
+      "status": "unverified"
+    },
+    "win32-x64": {
+      "status": "unverified",
+      "minimumVersion": "Windows 10 22H2"
+    },
+    "win32-arm64": {
+      "status": "unverified"
+    }
+  },
+  "components": {
+    "electron": "33.4.11",
+    "backendNode": "24.14.0",
+    "theia": "1.74.1",
+    "agentRuntime": "aioncore@2.1.53",
+    "vscodeExtensionRelease": "vscode-v0.1.0"
+  },
+  "acceptedBaselines": {
+    "uniLabOsCommit": "aee69e0364b8f034daf9edd1a2d5c97df056f702",
+    "szLabCommit": "1016dd30d7dbc044535cc7cc12b727d725aec89f",
+    "frontendCommit": "46d7926c933cfbca0321b40de3f183824d6e5a33"
+  },
+  "contracts": {
+    "workspace": "managed-local",
+    "osRuntime": ["installed-environment", "source-checkout"],
+    "workflowIdeHostAdapter": 1,
+    "agent": "bundled-managed-local-with-external-agent-clis",
+    "remoteAccess": {
+      "protocol": "unilab-workbench-remote-access/v1",
+      "operatingSystems": ["darwin", "linux", "win32"],
+      "serviceAdapters": ["launchd", "systemd", "windows-task-scheduler"]
+    }
+  }
+}

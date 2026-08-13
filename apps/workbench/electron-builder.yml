@@ -1,0 +1,138 @@
+appId: com.bohrium.unilab
+productName: UniLab Workbench
+copyright: Copyright © 2026 UniLab
+compression: maximum
+directories:
+  output: release-macos
+  buildResources: ../desktop/build
+files:
+  - desktop/main.cjs
+  - desktop/welcome.html
+  - desktop/welcome.css
+  - desktop/welcome.js
+  - package.json
+  - '!node_modules/**'
+extraResources:
+  - from: lib
+    to: workbench/lib
+    filter:
+      - '**/*'
+      - '!**/*.map'
+  - from: plugins
+    to: workbench/plugins
+    filter:
+      - '**/*'
+      - '!**/*.map'
+  - from: ../desktop/out/main
+    to: desktop/out/main
+    filter:
+      - '**/*'
+      - '!**/*.map'
+  - from: ../desktop/out/preload
+    to: desktop/out/preload
+    filter:
+      - '**/*'
+      - '!**/*.map'
+  - from: .packaging/desktop-runtime/node_modules
+    to: desktop/node_modules
+    filter:
+      - '**/*'
+      - '!**/*.map'
+      - '!**/*.d.ts'
+      - '!**/*.d.mts'
+      - '!**/*.d.cts'
+      - '!**/*.flow'
+      - '!**/*.tsbuildinfo'
+      # Device Card Builder uses the version-matched direct binary below.
+      - '!**/.bin/esbuild*'
+      - '!**/@esbuild/**'
+      - '!**/esbuild/bin/**'
+  # Stage the directory so the native filename is preserved on every target
+  # (`node` on Linux/macOS and `node.exe` on Windows).
+  - from: .packaging/node-runtime
+    to: node-runtime
+    filter:
+      - '**/*'
+  - from: .packaging/device-card-builder
+    to: device-card-builder
+  - from: ../../packages/device-card-agent-cli/dist/cli.mjs
+    to: device-card-agent/cli.mjs
+  - from: .packaging/runtime-installer
+    to: runtime-installer
+    filter:
+      - '**/*'
+  # Keep these installed path segments deliberately short. The bundled Node/npm
+  # tree contains deep dependency paths and NSIS still uses MAX_PATH-sensitive
+  # file operations on supported Windows hosts.
+  - from: .packaging/agent-runtime/app.asar
+    to: a/app.asar
+  - from: .packaging/agent-runtime/payload.json
+    to: a/payload.json
+  - from: .packaging/agent-runtime/bundled-aioncore
+    to: a/c
+    filter:
+      - '**/*'
+  - from: resources/workspace-skills
+    to: workspace-skills
+    filter:
+      - '**/*'
+  - from: ../desktop/resources/default-workspace
+    to: default-workspace
+    filter:
+      - '**/*'
+  - from: ../desktop/build/icon.png
+    to: branding/icon.png
+  - from: compatibility.json
+    to: compatibility.json
+  - from: .packaging/workbench-package.json
+    to: workbench/package.json
+npmRebuild: false
+electronLanguages:
+  - zh-CN
+  - en-US
+afterPack: ../desktop/scripts/after-pack.mjs
+mac:
+  category: public.app-category.developer-tools
+  icon: icon.icns
+  target:
+    - target: dmg
+      arch:
+        - arm64
+  artifactName: ${productName}-${version}-${arch}.${ext}
+  minimumSystemVersion: '13.0'
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  notarize: true
+dmg:
+  artifactName: ${productName}-${version}-${arch}.${ext}
+linux:
+  category: Development
+  icon: icon.png
+  target:
+    - target: AppImage
+      arch:
+        - x64
+  artifactName: ${productName}-${version}-${arch}.${ext}
+win:
+  icon: icon.ico
+  target:
+    - target: nsis
+      arch:
+        - x64
+  artifactName: ${productName}-${version}-${arch}-setup.${ext}
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+  # Workbench does not use electron-updater. Avoid differential block metadata
+  # and its elevate helper so the installer stays solid-compressed and smaller.
+  differentialPackage: false
+  packElevateHelper: false
+  multiLanguageInstaller: true
+  installerLanguages:
+    - zh_CN
+    - en_US

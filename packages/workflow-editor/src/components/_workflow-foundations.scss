@@ -1,0 +1,159 @@
+/* Workflow-owned styles and explicit vendor interop live in this module. */
+.dag {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  background: var(--unilab-color-canvas);
+
+  :global(.react-flow__node-wfNode.selected),
+  :global(.react-flow__node-wfNode:focus),
+  :global(.react-flow__node-wfNode:focus-visible) {
+    outline: none;
+    box-shadow: none;
+  }
+
+  :global(.react-flow__node-wfNode.selected) .node {
+    box-shadow:
+      var(--unilab-shadow-selected),
+      var(--unilab-shadow-control);
+  }
+}
+
+.node {
+  position: relative;
+}
+
+:global(.workflowDisabledButtonTooltip) {
+  position: fixed;
+  z-index: 1000;
+  width: max-content;
+  max-width: min(280px, 72vw);
+  padding: var(--unilab-space-2) var(--unilab-space-3);
+  color: var(--unilab-color-text);
+  border: 1px solid var(--unilab-color-border-strong);
+  border-radius: var(--unilab-radius-sm);
+  background: var(--unilab-color-surface);
+  box-shadow: var(--unilab-shadow-panel);
+  font: 500 11px/1.5 var(--unilab-font-sans);
+  overflow-wrap: anywhere;
+  pointer-events: none;
+  text-align: left;
+  transform: translate(-50%, calc(-100% - var(--unilab-space-2)));
+  white-space: normal;
+}
+
+.schemaForm {
+  :global(.rjsf) {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  fieldset {
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+
+  legend {
+    padding: 0;
+    color: #364152;
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  :global(.form-group) {
+    margin-bottom: 12px;
+  }
+
+  :global(.field) > label,
+  :global(.control-label) {
+    display: inline-block;
+    margin-bottom: 5px;
+    color: #364152;
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  :global(.field-description) {
+    margin: 2px 0 6px;
+    color: #94a3b8;
+    font-size: 11px;
+  }
+
+  input[type='text'],
+  input[type='number'],
+  select,
+  textarea {
+    width: 100%;
+    padding: 7px 10px;
+    border: 1px solid #d5dae1;
+    border-radius: 6px;
+    outline: none;
+    background: #fff;
+    color: #1f2329;
+    font-size: 13px;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+
+  input:focus,
+  select:focus,
+  textarea:focus {
+    border-color: #6366f1;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.18);
+  }
+
+  input[type='checkbox'] {
+    width: 15px;
+    height: 15px;
+    margin-right: 6px;
+    accent-color: #4f46e5;
+    vertical-align: middle;
+  }
+
+  :global(.checkbox) label {
+    display: flex;
+    align-items: center;
+    color: #1f2329;
+    font-size: 13px;
+  }
+
+  :global(.array-item) {
+    margin-bottom: 8px;
+    padding: 10px;
+    border: 1px solid #e8ebef;
+    border-radius: 8px;
+    background: #fff;
+  }
+
+  :global(.btn) {
+    padding: 5px 12px;
+    border: 1px solid #d5dae1;
+    border-radius: 6px;
+    background: #fff;
+    color: #374151;
+    font-size: 12px;
+    cursor: pointer;
+
+    &:hover {
+      background: #f3f4f6;
+    }
+  }
+
+  :global(.text-danger),
+  :global(.error-detail) {
+    margin: 4px 0 0;
+    padding: 0;
+    list-style: none;
+    color: #dc2626;
+    font-size: 11px;
+  }
+
+  :global(.has-error) input,
+  :global(.has-error) select {
+    border-color: #f87171;
+  }
+}

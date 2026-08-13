@@ -1,0 +1,100 @@
+{
+  "apiUrl": "http://127.0.0.1:18114",
+  "actionRef": "TestAction1.test_hold",
+  "fixtureSurface": "/__e2e/device-actions/*/holders",
+  "setupRequests": [
+    {
+      "method": "GET",
+      "path": "/api/v1/devices",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/__e2e/device-actions/TestAction1/test_hold/holders",
+      "body": {
+        "jobId": "e2e-holder-00000000-0000-0000-0000-000000000001",
+        "taskId": "e2e-task-holder"
+      },
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/devices",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/devices",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/__e2e/device-actions/TestAction1/test_hold/holders",
+      "body": {
+        "jobId": "e2e-reuse-00000000-0000-0000-0000-000000000002",
+        "taskId": "e2e-task-reuse"
+      },
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/devices",
+      "status": 200
+    },
+    {
+      "method": "DELETE",
+      "path": "/__e2e/device-actions/TestAction1/test_hold/holders/e2e-reuse-00000000-0000-0000-0000-000000000002",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/devices",
+      "status": 200
+    }
+  ],
+  "browserRequests": [
+    {
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/devices",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/devices/TestAction1/actions/test_hold/commands",
+      "body": {
+        "command": "force_unlock",
+        "expectedJobId": "e2e-holder-00000000-0000-0000-0000-000000000001",
+        "reason": "operator_confirmed_device_safe"
+      },
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/devices",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/devices",
+      "status": 200
+    }
+  ],
+  "commandBodies": [
+    {
+      "command": "force_unlock",
+      "expectedJobId": "e2e-holder-00000000-0000-0000-0000-000000000001",
+      "reason": "operator_confirmed_device_safe"
+    }
+  ],
+  "forbiddenRoutes": {
+    "runtimeRuns": 0,
+    "workflowNodeTemplates": 0,
+    "frontendDirectEdgeWebSocket": 0
+  },
+  "browserErrors": []
+}

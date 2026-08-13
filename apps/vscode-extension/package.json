@@ -1,0 +1,78 @@
+{
+  "name": "unilab-authoring",
+  "displayName": "UniLab Authoring",
+  "description": "Workflow and Material source navigation for UniLab workspaces.",
+  "version": "0.1.0",
+  "publisher": "unilab",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Uni-Lab-OS/uni-lab-fe.git",
+    "directory": "apps/vscode-extension"
+  },
+  "engines": {
+    "vscode": "^1.95.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Visualization",
+    "Other"
+  ],
+  "extensionKind": [
+    "workspace"
+  ],
+  "main": "./dist/extension.cjs",
+  "activationEvents": [
+    "onStartupFinished",
+    "onCommand:unilab.ide.openWorkflowSource",
+    "onCommand:unilab.ide.openPackageSource",
+    "onCommand:unilab.ide.publishSnapshot",
+    "onCommand:unilab.ide.clearSnapshot",
+    "onCommand:unilab.ide.showCompatibility"
+  ],
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "test:integration": "node scripts/run-integration.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "package:vsix": "pnpm build && vsce package --no-dependencies --out dist/unilab-authoring-0.1.0.vsix"
+  },
+  "dependencies": {
+    "@unilab/workflow-ide-bridge": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/vscode": "^1.95.0",
+    "@vscode/test-electron": "^2.5.2",
+    "@vscode/vsce": "3.9.2",
+    "esbuild": "^0.21.5",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.9"
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "unilab.ide.openWorkflowSource",
+        "title": "UniLab: Open Workflow Source"
+      },
+      {
+        "command": "unilab.ide.openPackageSource",
+        "title": "UniLab: Open Material/Package Source"
+      },
+      {
+        "command": "unilab.ide.clearSnapshot",
+        "title": "UniLab: Clear IDE Bridge Snapshot"
+      },
+      {
+        "command": "unilab.ide.showCompatibility",
+        "title": "UniLab: Show IDE Bridge Compatibility"
+      }
+    ]
+  },
+  "unilabCompatibility": {
+    "protocolVersion": 1,
+    "sourceMapContract": "unilab.workflow-source-map/v1",
+    "packageSourceContract": "unilab.package-source/v1",
+    "minimumOsContract": "authoring-source-map/v1"
+  }
+}

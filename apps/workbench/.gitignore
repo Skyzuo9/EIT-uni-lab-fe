@@ -1,0 +1,9 @@
+lib/
+plugins/
+release-linux/
+release-macos/
+release-windows/
+.packaging/
+src-gen/
+gen-*.mjs
+*.log

@@ -1,0 +1,57 @@
+appId: org.unilab.desktop
+productName: Uni-Lab
+directories:
+  output: release
+  buildResources: build
+files:
+  - out/**
+  - '!**/*.map'
+extraResources:
+  - from: ${env.UNILAB_RUNTIME_PAYLOAD_DIR}
+    to: runtime-installer
+    filter:
+      - '**/*'
+  - from: resources/default-workspace
+    to: default-workspace
+    filter:
+      - '**/*'
+  - from: ../../packages/device-card-agent-cli/dist/cli.mjs
+    to: device-card-agent/cli.mjs
+  - from: ${env.UNILAB_RUNTIME_PAYLOAD_DIR}
+    to: runtime-installer
+    filter:
+      - '**/*'
+  - from: resources/default-workspace
+    to: default-workspace
+    filter:
+      - '**/*'
+npmRebuild: false
+electronLanguages:
+  - zh-CN
+  - en-US
+afterPack: scripts/after-pack.mjs
+mac:
+  category: public.app-category.developer-tools
+  icon: build/icon.icns
+  target:
+    - dmg
+  artifactName: ${productName}-${version}-${arch}.${ext}
+dmg:
+  artifactName: ${productName}-${version}-${arch}.${ext}
+win:
+  icon: build/icon.ico
+  target:
+    - nsis
+  artifactName: ${productName}-${version}-${arch}.${ext}
+linux:
+  icon: build/icon.png
+  category: Development
+  target:
+    - AppImage
+  artifactName: ${productName}-${version}-${arch}.${ext}
+nsis:
+  oneClick: false
+  perMachine: false
+  include: build/installer.nsh
+  allowToChangeInstallationDirectory: true
+  artifactName: ${productName}-${version}-${arch}-setup.${ext}

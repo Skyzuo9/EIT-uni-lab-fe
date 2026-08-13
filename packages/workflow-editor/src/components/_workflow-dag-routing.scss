@@ -1,0 +1,28 @@
+@use './workflow-foundations' as *;
+
+/* ready 仅表达动作就绪（ready）执行顺序，不使用物料（Material）颜色。 */
+.workflow :global(.wf-node__handle--ready),
+.workflow :global(.wf-node__handle--ready):global(.connecting),
+.workflow :global(.wf-node__handle--ready):global(.connected) {
+  width: 12px;
+  height: 3px;
+  border: 0;
+  border-radius: 2px;
+  background: var(--unilab-color-text-muted);
+  box-shadow: 0 0 0 2px var(--unilab-color-surface);
+  cursor: crosshair;
+}
+
+/* 横向流动时顺序端口位于东西两侧，矩形长轴与流动方向垂直。 */
+.workflow
+  :global(.wf-node__handle--ready.react-flow__handle-left),
+.workflow
+  :global(.wf-node__handle--ready.react-flow__handle-right) {
+  width: 3px;
+  height: 12px;
+}
+
+.workflow :global(.react-flow__edge.wf-flow-edge--ready) path {
+  stroke: var(--unilab-color-text-subtle);
+  stroke-dasharray: none;
+}

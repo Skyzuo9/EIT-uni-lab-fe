@@ -1,0 +1,45 @@
+{
+  "name": "@unilab/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Electron wrapper for @unilab/kernel-web",
+  "main": "./out/main/index.js",
+  "scripts": {
+    "predev": "pnpm --filter @unilab/device-card-host build && pnpm --filter @unilab/device-card-agent-cli build",
+    "dev": "node scripts/run-electron-vite.mjs dev",
+    "prebuild": "pnpm --filter @unilab/device-card-host build && pnpm --filter @unilab/device-card-agent-cli build",
+    "build": "electron-vite build",
+    "prebuild:workbench-shell": "pnpm prebuild",
+    "build:workbench-shell": "node scripts/build-workbench-shell.mjs",
+    "preview": "node scripts/run-electron-vite.mjs preview",
+    "prepackage:mac": "pnpm --filter @unilab/device-card-host build && pnpm --filter @unilab/device-card-agent-cli build",
+    "package:mac": "node scripts/package-macos.mjs",
+    "prepackage:win": "pnpm --filter @unilab/device-card-host build && pnpm --filter @unilab/device-card-agent-cli build",
+    "package:win": "node scripts/package-windows.mjs",
+    "prepackage:linux": "pnpm --filter @unilab/device-card-host build && pnpm --filter @unilab/device-card-agent-cli build",
+    "package:linux": "node scripts/package-linux.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "pretest": "pnpm --filter @unilab/device-card-host build && pnpm --filter @unilab/device-card-agent-cli build",
+    "test": "vitest run && node scripts/verify-icons.mjs && node scripts/verify-installer.mjs"
+  },
+  "dependencies": {
+    "@unilab/device-card-host": "workspace:*"
+  },
+  "devDependencies": {
+    "@arizeai/phoenix-otel": "2.1.0",
+    "@tailwindcss/vite": "4.1.14",
+    "@types/node": "^22.10.0",
+    "@unilab/device-card-agent-cli": "workspace:*",
+    "@unilab/device-card-sdk": "workspace:*",
+    "@unilab/local-environment": "workspace:*",
+    "@unilab/device-provisioning": "workspace:*",
+    "@unilab/kernel-web": "workspace:*",
+    "@unilab/services": "workspace:*",
+    "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
+    "electron-vite": "^2.3.0",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.9"
+  }
+}

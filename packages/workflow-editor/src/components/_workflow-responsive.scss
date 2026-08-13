@@ -1,0 +1,276 @@
+@media (max-width: 960px) {
+  .workflow :global(.workflow__mobile-view) {
+    display: inline-flex;
+  }
+
+  .workflow :global(.workflow-runtime__workbench) {
+    display: block;
+  }
+
+  .workflow :global(.workflow-runtime__workbench) > :global(.workbench__divider) {
+    display: none;
+  }
+
+  .workflow :global(.workflow-runtime__workbench) > :global(.workbench__pane) {
+    width: 100%;
+    height: 100%;
+    flex-basis: auto !important;
+  }
+
+  .workflow :global(.workflow-runtime__workbench--dag) > :global(.workbench__pane):first-child,
+  .workflow :global(.workflow-runtime__workbench--code) > :global(.workflow-runtime__stage) {
+    display: none;
+  }
+
+  .workflow:global(.workflow-runtime) :global(.react-flow__minimap) {
+    display: none;
+  }
+}
+
+@media (max-width: 720px) {
+  /* 由面板工作区统一滚动，避免嵌套滚动把底部属性面板移到工具栏下方。 */
+  .workflow :global(.workflow__toolbar) {
+    min-height: 0;
+    gap: var(--unilab-space-2);
+    padding: var(--unilab-space-2);
+    overflow: hidden;
+  }
+
+  .workflow :global(.workflow__context) {
+    min-width: 180px;
+    flex: 1 1 180px;
+  }
+
+  .workflow :global(.workflow__mode-switch) button {
+    min-width: 50px;
+  }
+
+  .workflow :global(.workflow__toolbar-actions) {
+    padding-bottom: 2px;
+    scrollbar-width: thin;
+  }
+
+  .workflow :global(.workflow-runtime__stage-header) {
+    min-height: 68px;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 7px var(--unilab-space-3);
+  }
+
+  .workflow :global(.workflow-runtime__stage) {
+    overflow-y: auto;
+  }
+
+  .workflow :global(.workflow-runtime__stage-tools) {
+    width: 100%;
+  }
+
+  .workflow :global(.workflow-runtime__canvas) {
+    min-height: 300px;
+    flex: 0 0 300px;
+  }
+
+  .workflow :global(.workflow-runtime__debug-dock) {
+    height: auto;
+    min-height: 0;
+    flex-basis: auto;
+  }
+
+  .workflow :global(.workflow-runtime__debug-resizer) {
+    display: none;
+  }
+
+  .workflow :global(.workflow-runtime__debugger) {
+    min-height: 0;
+    flex: 0 0 auto;
+    padding: 8px;
+  }
+
+  .workflow :global(.workflow-runtime__debug-status) {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 7px;
+  }
+
+  .workflow :global(.workflow-runtime__debug-heading) {
+    width: 100%;
+    padding-right: 0;
+    padding-bottom: 7px;
+    border-right: 0;
+    border-bottom: 1px solid var(--unilab-color-border);
+  }
+
+  .workflow :global(.workflow-runtime__debug-mark) {
+    width: 22px;
+    height: 3px;
+    align-self: center;
+  }
+
+  .workflow :global(.workflow-runtime__debug-actions) {
+    padding-bottom: 2px;
+    scrollbar-width: thin;
+  }
+
+  .workflow :global(.workflow-runtime__results):global(.is-expanded) {
+    min-height: 260px;
+    flex-basis: 260px;
+  }
+
+  .workflow :global(.workflow-runtime__output-header) {
+    min-height: 72px;
+    flex: 0 0 auto;
+    flex-wrap: wrap;
+    gap: 4px var(--unilab-space-2);
+    padding: 7px var(--unilab-space-2) 0;
+  }
+
+  .workflow :global(.workflow-runtime__output-title) {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .workflow :global(.workflow-runtime__output-tabs) {
+    width: 100%;
+    height: 34px;
+    order: 3;
+    overflow-x: auto;
+  }
+
+  .workflow :global(.workflow-runtime__output-tabs) button {
+    flex: 1 0 auto;
+    justify-content: center;
+  }
+
+  .workflow :global(.workflow-runtime__node-list) {
+    grid-template-columns: 1fr;
+  }
+}
+
+/*
+ * The workflow can be much narrower than the viewport when it shares a lab
+ * workspace. Respond to the component's own width instead of app-shell state.
+ */
+@container workflow (max-width: 720px) {
+  .workflow :global(.workflow__toolbar) {
+    flex-wrap: wrap;
+    gap: var(--unilab-space-2);
+    padding: var(--unilab-space-2);
+  }
+
+  .workflow :global(.workflow__context) {
+    flex: 1 1 240px;
+  }
+
+  .workflow :global(.workflow__toolbar-actions) {
+    width: 100%;
+    margin-left: 0;
+    padding-top: var(--unilab-space-1);
+    overflow-x: auto;
+  }
+
+  .workflow :global(.workflow__mobile-view) {
+    display: inline-flex;
+  }
+
+  .workflow :global(.workflow-runtime__workbench) {
+    display: block;
+  }
+
+  .workflow :global(.workflow-runtime__workbench) > :global(.workbench__divider) {
+    display: none;
+  }
+
+  .workflow :global(.workflow-runtime__workbench) > :global(.workbench__pane) {
+    width: 100%;
+    height: 100%;
+    flex-basis: auto !important;
+  }
+
+  .workflow :global(.workflow-runtime__workbench--dag) > :global(.workbench__pane):first-child,
+  .workflow :global(.workflow-runtime__workbench--code) > :global(.workflow-runtime__stage) {
+    display: none;
+  }
+
+  .workflow :global(.workflow-runtime__debug-dock) {
+    height: auto;
+    min-height: 0;
+    flex-basis: auto;
+  }
+
+  .workflow :global(.workflow-runtime__debug-resizer) {
+    display: none;
+  }
+}
+
+@container workflow (max-width: 480px) {
+  .workflow :global(.workflow-runtime__stage-header) {
+    min-height: 68px;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 7px var(--unilab-space-3);
+  }
+
+  .workflow :global(.workflow-runtime__stage-tools) {
+    width: 100%;
+  }
+
+  .workflow :global(.workflow-runtime__debugger) {
+    min-height: 0;
+    flex: 0 0 auto;
+    padding: 8px;
+  }
+
+  .workflow :global(.workflow-runtime__debug-status) {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 7px;
+  }
+
+  .workflow :global(.workflow-runtime__debug-heading) {
+    width: 100%;
+    padding-right: 0;
+    padding-bottom: 7px;
+    border-right: 0;
+    border-bottom: 1px solid var(--unilab-color-border);
+  }
+
+  .workflow :global(.workflow-runtime__debug-mark) {
+    width: 22px;
+    height: 3px;
+    align-self: center;
+  }
+
+  .workflow :global(.workflow-runtime__debug-actions) {
+    padding-bottom: 2px;
+    scrollbar-width: thin;
+  }
+
+  .workflow :global(.workflow-runtime__output-header) {
+    min-height: 72px;
+    flex: 0 0 auto;
+    flex-wrap: wrap;
+    gap: 4px var(--unilab-space-2);
+    padding: 7px var(--unilab-space-2) 0;
+  }
+
+  .workflow :global(.workflow-runtime__output-title) {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .workflow :global(.workflow-runtime__output-tabs) {
+    width: 100%;
+    height: 34px;
+    order: 3;
+    overflow-x: auto;
+  }
+
+  .workflow :global(.workflow-runtime__output-tabs) button {
+    flex: 1 0 auto;
+    justify-content: center;
+  }
+
+  .workflow :global(.workflow-runtime__node-list) {
+    grid-template-columns: 1fr;
+  }
+}
