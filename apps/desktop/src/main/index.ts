@@ -26,7 +26,11 @@ import {
   openLocalRuntimeLogDirectory,
   resolveDesktopMainLogPath
 } from './diagnosticLogSession'
-import { discoverDefaultCondaEnvironment } from './localRuntimeEnvironment'
+import {
+  discoverCondaEnvironments,
+  discoverDefaultCondaEnvironment,
+  validateRuntimeEnvironment
+} from './localRuntimeEnvironment'
 import { registerDeviceProvisioningIpc } from './deviceProvisioningIpc'
 import { LocalDeviceProvisioningManager } from './localDeviceProvisioningManager'
 import { LocalDeviceProvisioningStore } from './localDeviceProvisioningStore'
@@ -468,9 +472,23 @@ app.whenReady().then(async () => {
   const managedRuntimeInstallation = registerManagedRuntimeInstallationIpc({
     ipcMain,
     installation: createManagedRuntimeInstallation(),
-    discoverExistingEnvironment: () => discoverDefaultCondaEnvironment({
+    discoverExistingEnvironments: () => discoverCondaEnvironments({
       homeDirectory: homedir()
     }),
+    validateExistingEnvironment: environmentPath => validateRuntimeEnvironment(
+      environmentPath,
+      { platform: process.platform }
+    ),
+    chooseExistingEnvironment: chooseUniLabEnvironmentDirectory,
+    readSelectedEnvironment: () => readManagedRuntimeEnvironmentSelection(
+      managedRuntimeEnvironmentSelectionPath()
+    ),
+    writeSelectedEnvironment: environmentPath => (
+      writeManagedRuntimeEnvironmentSelection(
+        managedRuntimeEnvironmentSelectionPath(),
+        environmentPath
+      )
+    ),
     assertSender: assertMainWindowSender,
     getMainWindow: () => mainWindow,
     onEnvironmentReady: environmentPath => {
@@ -577,6 +595,9 @@ app.whenReady().then(async () => {
     managedRuntime
       ? {
           managedRuntime,
+          useManagedRuntime: () => (
+            managedRuntimeInstallation.usesManagedEnvironment()
+          ),
           managedWorkingRoot: join(
             app.getPath('userData'),
             'managed-runtime',
@@ -655,7 +676,10 @@ app.whenReady().then(async () => {
     return electronObservability.run(
       'electron.runtime.discover_environment',
       {},
-      () => discoverDefaultCondaEnvironment({ homeDirectory: homedir() })
+      () => Promise.resolve(
+        managedRuntimeInstallation.getSnapshot().environmentPath
+      ).then(environmentPath => environmentPath
+        ?? discoverDefaultCondaEnvironment({ homeDirectory: homedir() }))
     )
   })
   ipcMain.handle(
@@ -1058,6 +1082,63 @@ function createManagedRuntimeInstallation(): ManagedRuntimeInstallation | undefi
       userDataDirectory: app.getPath('userData')
     })
   })
+}
+
+function managedRuntimeEnvironmentSelectionPath(): string {
+  return join(
+    app.getPath('userData'),
+    'managed-runtime',
+    'selected-environment.json'
+  )
+}
+
+async function readManagedRuntimeEnvironmentSelection(
+  selectionPath: string
+): Promise<string | null> {
+  try {
+    const parsed = JSON.parse(await readFile(selectionPath, 'utf8')) as {
+      schemaVersion?: unknown
+      environmentPath?: unknown
+    }
+    return parsed.schemaVersion === 1
+      && typeof parsed.environmentPath === 'string'
+      && parsed.environmentPath.trim()
+      ? parsed.environmentPath
+      : null
+  } catch (error) {
+    if (isNodeError(error) && error.code === 'ENOENT') return null
+    throw error
+  }
+}
+
+async function writeManagedRuntimeEnvironmentSelection(
+  selectionPath: string,
+  environmentPath: string
+): Promise<void> {
+  await mkdir(dirname(selectionPath), { recursive: true })
+  await writeFile(selectionPath, `${JSON.stringify({
+    schemaVersion: 1,
+    environmentPath
+  }, null, 2)}\n`, {
+    encoding: 'utf8',
+    mode: 0o600
+  })
+}
+
+async function chooseUniLabEnvironmentDirectory(): Promise<string | null> {
+  const options: Electron.OpenDialogOptions = {
+    title: '选择 UniLab Python 环境',
+    buttonLabel: '使用此环境',
+    properties: ['openDirectory']
+  }
+  const result = mainWindow
+    ? await dialog.showOpenDialog(mainWindow, options)
+    : await dialog.showOpenDialog(options)
+  return result.canceled ? null : result.filePaths[0] ?? null
+}
+
+function isNodeError(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && 'code' in error
 }
 
 /**

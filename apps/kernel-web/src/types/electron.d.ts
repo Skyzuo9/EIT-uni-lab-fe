@@ -392,6 +392,7 @@ export interface DesktopManagedRuntimeInstallationApi {
   getSnapshot: () => Promise<ManagedRuntimeInstallationSnapshot>
   install: () => Promise<ManagedRuntimeInstallationSnapshot>
   selectEnvironment: (path: string) => Promise<ManagedRuntimeInstallationSnapshot>
+  chooseEnvironment: () => Promise<ManagedRuntimeInstallationSnapshot>
   onSnapshot: (
     listener: (snapshot: ManagedRuntimeInstallationSnapshot) => void
   ) => () => void
