@@ -7,6 +7,7 @@ export type PersistedPlcHandshakeProfile = 'szlab' | 'xuse'
 
 export interface LocalEnvironmentConfiguration {
   graphPath: string | null
+  externalDevicesOnly: boolean | null
   plcSimulatorProjectPath: string | null
   plcVariableTablePath: string | null
   plcHandshakeProfile: PersistedPlcHandshakeProfile | null
@@ -15,6 +16,7 @@ export interface LocalEnvironmentConfiguration {
 
 export interface WritableLocalEnvironmentConfiguration {
   graphPath: string
+  externalDevicesOnly: boolean
   plcSimulatorProjectPath: string
   plcVariableTablePath: string
   plcHandshakeProfile: PersistedPlcHandshakeProfile
@@ -32,6 +34,7 @@ export async function readLocalEnvironmentConfiguration(
     if (isRecord(error) && error['code'] === 'ENOENT') {
       return {
         graphPath: null,
+        externalDevicesOnly: null,
         plcSimulatorProjectPath: null,
         plcVariableTablePath: null,
         plcHandshakeProfile: null,
@@ -75,6 +78,11 @@ export async function readLocalEnvironmentConfiguration(
   )
   return {
     graphPath,
+    externalDevicesOnly: optionalBoolean(
+      content['externalDevicesOnly'],
+      configurationPath,
+      'externalDevicesOnly'
+    ),
     plcSimulatorProjectPath,
     plcVariableTablePath,
     plcHandshakeProfile: persistedPlcHandshakeProfile(
@@ -83,6 +91,19 @@ export async function readLocalEnvironmentConfiguration(
     ),
     runtimeMode: persistedRuntimeMode(content['runtimeMode'], configurationPath)
   }
+}
+
+function optionalBoolean(
+  value: unknown,
+  configurationPath: string,
+  field: string
+): boolean | null {
+  if (value === undefined || value === null) return null
+  if (typeof value === 'boolean') return value
+  throw invalidLocalEnvironmentConfiguration(
+    configurationPath,
+    `本地环境配置 ${field} 无效`
+  )
 }
 
 /** Atomically replace the managed-local configuration after validation. */

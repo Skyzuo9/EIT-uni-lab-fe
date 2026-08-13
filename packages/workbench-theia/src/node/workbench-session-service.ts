@@ -90,6 +90,10 @@ implements WorkbenchSessionServer, BackendApplicationContribution {
     return this.session.configureGraph(graphPath)
   }
 
+  setExternalDevicesOnly(enabled: boolean) {
+    return this.session.setExternalDevicesOnly(enabled)
+  }
+
   configurePlcSimulator(
     configuration: Parameters<WorkbenchSession['configurePlcSimulator']>[0]
   ) {

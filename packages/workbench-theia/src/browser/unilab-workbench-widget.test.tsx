@@ -25,6 +25,7 @@ describe('WorkbenchSessionGate', () => {
           phase: 'failed',
           message: 'PLC 连接失败，Uni-Lab OS 未就绪',
           configuredGraphPath: 'deployment/graphs/szlab-local-debug.json',
+          configuredExternalDevicesOnly: true,
           configuredRuntimeMode: 'normal',
           agent: null,
           identity: {
@@ -100,6 +101,7 @@ describe('WorkbenchSessionGate', () => {
           phase: 'starting',
           message: '正在校验工作区并启动 Uni-Lab OS…',
           configuredGraphPath: 'deployment/graphs/szlab-local-debug.json',
+          configuredExternalDevicesOnly: true,
           configuredRuntimeMode: 'normal',
           agent: null,
           identity: null,
