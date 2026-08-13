@@ -77,10 +77,11 @@ export function createWorkbenchConnectionTargets(
     getDefaultBackend('local-python').apiUrl
   )
   const backendUrl = workbenchBackendProxyUrl(environment.browserOrigin)
+  const localApiUrl = environment.browserOrigin ? backendUrl : localUrl
   const localBackend: BackendConfig = {
     ...getDefaultBackend('local-python'),
     name: '本地调试',
-    apiUrl: localUrl,
+    apiUrl: localApiUrl,
     realtimeUrl: toRealtimeUrl(localUrl)
   }
   const backend: BackendConfig = {

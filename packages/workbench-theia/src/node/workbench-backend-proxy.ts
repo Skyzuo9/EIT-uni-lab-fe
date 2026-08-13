@@ -1,5 +1,9 @@
-import type { BackendApplicationContribution } from '@theia/core/lib/node'
+import {
+  EarlyExpressMiddleware,
+  type BackendApplicationContribution
+} from '@theia/core/lib/node'
 import { ILogger } from '@theia/core/lib/common/logger'
+import { Router } from '@theia/core/shared/express'
 import { inject, injectable } from '@theia/core/shared/inversify'
 import type {
   IncomingHttpHeaders,
@@ -7,9 +11,8 @@ import type {
   ServerResponse
 } from 'node:http'
 
-type Application = Parameters<
-  NonNullable<BackendApplicationContribution['configure']>
->[0]
+import { WorkbenchSessionService } from './workbench-session-service'
+
 type Request = IncomingMessage & {
   originalUrl: string
   headers: IncomingHttpHeaders
@@ -42,23 +45,28 @@ implements BackendApplicationContribution {
   @inject(ILogger)
   private readonly logger!: ILogger
 
-  private readonly target = resolveWorkbenchBackendProxyTarget(
+  @inject(WorkbenchSessionService)
+  private readonly sessions!: WorkbenchSessionService
+
+  @inject(EarlyExpressMiddleware)
+  private readonly earlyMiddleware!: EarlyExpressMiddleware
+
+  private readonly configuredTarget = resolveWorkbenchBackendProxyTarget(
     process.env['UNILAB_BACKEND_PROXY_TARGET']
   )
 
   /**
-   * 在 Theia Node 进程挂载本地 Backend 同源代理。
-   * @param app Theia 使用的 Express 应用。
-   * @returns 无；代理目标在进程启动时固定，浏览器不能修改或扩大访问范围。
+   * 在 Theia Node 的最早中间件阶段挂载 Backend 同源代理。
+   * @returns 无；代理目标逐请求取自可信 Workspace Host 快照，浏览器不能修改。
    */
-  configure(app: Application): void {
-    app.use(
+  initialize(): void {
+    const router = Router()
+    router.use(
       WORKBENCH_BACKEND_PROXY_PREFIX,
       (request, response) => {
-        void proxyWorkbenchBackendRequest(
-          request,
-          response,
-          this.target
+        void this.proxyRequest(
+          request as Request,
+          response as Response
         ).catch((error) => {
           const message = error instanceof Error ? error.message : String(error)
           this.logger.warn(`Workbench Backend proxy failed: ${message}`)
@@ -77,7 +85,41 @@ implements BackendApplicationContribution {
         })
       }
     )
+    // Theia 的文件下载贡献会全局安装默认 100 KiB JSON parser。工作流图可达
+    // 8 MiB，因此代理必须在所有 configure() 中间件之前取得原始请求流。
+    this.earlyMiddleware.handlers.push(router)
   }
+
+  private async proxyRequest(request: Request, response: Response): Promise<void> {
+    const snapshot = await this.sessions.getSnapshot()
+    const target = resolveWorkbenchBackendProxyTargetFromSession(
+      snapshot,
+      this.configuredTarget
+    )
+    await proxyWorkbenchBackendRequest(request, response, target)
+  }
+}
+
+interface WorkbenchBackendProxySessionSnapshot {
+  configuredDomainMode: 'local' | 'backend'
+  configuredBackendUrl: string | null
+  identity: { backendUrl: string } | null
+}
+
+/**
+ * 从 Workspace Host 的当前 Authority 快照选择同源代理目标。
+ * @param snapshot 当前 managed session；Local 使用动态 Workspace Backend，Backend 使用配置的 Go Backend。
+ * @param configuredTarget 会话尚未就绪时的可信启动兜底。
+ * @returns 已校验的 HTTP/HTTPS 根地址。
+ */
+export function resolveWorkbenchBackendProxyTargetFromSession(
+  snapshot: WorkbenchBackendProxySessionSnapshot,
+  configuredTarget: string | undefined
+): string {
+  const liveTarget = snapshot.configuredDomainMode === 'backend'
+    ? snapshot.configuredBackendUrl
+    : snapshot.identity?.backendUrl
+  return resolveWorkbenchBackendProxyTarget(liveTarget ?? configuredTarget)
 }
 
 /**

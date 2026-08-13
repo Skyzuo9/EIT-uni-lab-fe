@@ -48,7 +48,7 @@ describe('Workbench connection authority profile', () => {
       authorityProfile: 'local_scheduler',
       backend: {
         id: 'local-python',
-        apiUrl: 'http://127.0.0.1:37029',
+        apiUrl: 'http://127.0.0.1:3100/__unilab_backend',
         realtimeUrl: 'ws://127.0.0.1:37029'
       }
     })

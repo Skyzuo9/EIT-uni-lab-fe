@@ -1,13 +1,37 @@
-import { describe, expect, it } from 'vitest'
-import type { ServerResponse } from 'node:http'
+import { afterEach, describe, expect, it } from 'vitest'
+import {
+  createServer,
+  type IncomingMessage,
+  type Server,
+  type ServerResponse
+} from 'node:http'
+import { json, Router } from '@theia/core/shared/express'
 
 import {
   WORKBENCH_BACKEND_PROXY_PREFIX,
+  WorkbenchBackendProxyContribution,
   resolveWorkbenchBackendProxyTarget,
+  resolveWorkbenchBackendProxyTargetFromSession,
   serializeWorkbenchBackendRequestBody,
   writeWorkbenchBackendResponse,
   workbenchBackendUpstreamUrl
 } from './workbench-backend-proxy'
+
+const servers: Server[] = []
+
+afterEach(async () => {
+  await Promise.all(servers.splice(0).map(server => new Promise<void>(resolve => {
+    server.close(() => resolve())
+  })))
+})
+
+async function listen(server: Server): Promise<number> {
+  servers.push(server)
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
+  const address = server.address()
+  if (!address || typeof address === 'string') throw new Error('missing port')
+  return address.port
+}
 
 describe('Workbench Backend same-origin proxy', () => {
   /** 证明代理只移除 Workbench 私有前缀，并完整保留公开 API 路径和查询串。 */
@@ -24,6 +48,21 @@ describe('Workbench Backend same-origin proxy', () => {
       .toBe('http://127.0.0.1:8080')
     expect(resolveWorkbenchBackendProxyTarget('http://localhost:9000/'))
       .toBe('http://localhost:9000')
+  })
+
+  /** Authority 切换后每个请求都必须跟随 Workspace Host 的当前目标。 */
+  it('resolves Local and Backend targets from the live managed session', () => {
+    expect(resolveWorkbenchBackendProxyTargetFromSession({
+      configuredDomainMode: 'local',
+      configuredBackendUrl: null,
+      identity: { backendUrl: 'http://127.0.0.1:54865' }
+    }, 'http://127.0.0.1:18080')).toBe('http://127.0.0.1:54865')
+
+    expect(resolveWorkbenchBackendProxyTargetFromSession({
+      configuredDomainMode: 'backend',
+      configuredBackendUrl: 'http://127.0.0.1:18080',
+      identity: { backendUrl: 'http://127.0.0.1:62030' }
+    }, 'http://127.0.0.1:8080')).toBe('http://127.0.0.1:18080')
   })
 
   /** 证明危险或含凭证的代理目标会在启动时失败关闭。 */
@@ -135,5 +174,59 @@ describe('Workbench Backend same-origin proxy', () => {
       '{"workflow_uuid":"workflow-1","inventory_bindings":[]}'
     )
     expect(serializeWorkbenchBackendRequestBody(undefined)).toBeUndefined()
+  })
+
+  /** 大型工作流必须在 Theia 默认 100 KiB JSON parser 之前进入代理。 */
+  it('registers before global JSON parsing so large workflow graphs pass', async () => {
+    let upstreamBytes = 0
+    const upstream = createServer((request, response) => {
+      request.on('data', chunk => { upstreamBytes += Buffer.byteLength(chunk) })
+      request.on('end', () => {
+        response.setHeader('content-type', 'application/json')
+        response.end('{"code":0}')
+      })
+    })
+    const upstreamPort = await listen(upstream)
+
+    const contribution = new WorkbenchBackendProxyContribution()
+    const earlyMiddleware = { handlers: [] as ReturnType<typeof Router>[] }
+    Object.assign(contribution, {
+      configuredTarget: `http://127.0.0.1:${upstreamPort}`,
+      earlyMiddleware,
+      logger: { warn() {} },
+      sessions: {
+        async getSnapshot() {
+          return {
+            configuredDomainMode: 'backend',
+            configuredBackendUrl: `http://127.0.0.1:${upstreamPort}`,
+            identity: null
+          }
+        }
+      }
+    })
+    contribution.initialize()
+
+    const app = Router()
+    earlyMiddleware.handlers.forEach(handler => app.use(handler))
+    app.use(json())
+    const proxyListener = app as unknown as (
+      request: IncomingMessage,
+      response: ServerResponse
+    ) => void
+    const proxyPort = await listen(createServer(proxyListener))
+    const body = JSON.stringify({ graph: 'x'.repeat(256 * 1024) })
+
+    const response = await fetch(
+      `http://127.0.0.1:${proxyPort}${WORKBENCH_BACKEND_PROXY_PREFIX}/api/v1/workflows/workflow-1`,
+      {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body
+      }
+    )
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ code: 0 })
+    expect(upstreamBytes).toBe(Buffer.byteLength(body))
   })
 })
