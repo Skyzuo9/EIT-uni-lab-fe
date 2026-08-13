@@ -42,6 +42,12 @@ export function BackendReagentEditorDialog(props: EditorProps): React.JSX.Elemen
   const initial = props.mode === 'edit' ? props.item : undefined
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  const [containerQuery, setContainerQuery] = useState('')
+  const [selectedMaterialId, setSelectedMaterialId] = useState('')
+  const visibleContainers = useMemo(
+    () => filterReagentContainers(availableContainers, containerQuery),
+    [availableContainers, containerQuery]
+  )
 
   /** 校验完整表单并向 Backend 提交一次创建或乐观修订更新。 */
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>): Promise<void> {
@@ -100,14 +106,41 @@ export function BackendReagentEditorDialog(props: EditorProps): React.JSX.Elemen
           {props.mode === 'create' ? (
             <>
               <label className={styles.dialogFieldWide}>
-                <span>容器物料</span>
-                <select name="materialId" data-dialog-initial-focus required disabled={noAvailableContainer}>
-                  {availableContainers.map(container => (
-                    <option key={container.id} value={container.id}>
-                      {container.name} · {container.barcode || container.id}
+                <span>空容器物料</span>
+                <div className={styles.reagentContainerSelector}>
+                  <input
+                    type="search"
+                    value={containerQuery}
+                    data-dialog-initial-focus
+                    placeholder="搜索物料名称、条码或 UUID"
+                    aria-label="搜索空容器物料"
+                    autoComplete="off"
+                    disabled={noAvailableContainer}
+                    onChange={event => {
+                      setContainerQuery(event.target.value)
+                      setSelectedMaterialId('')
+                    }}
+                  />
+                  <select
+                    name="materialId"
+                    value={selectedMaterialId}
+                    required
+                    disabled={noAvailableContainer || visibleContainers.length === 0}
+                    aria-label="选择空容器物料"
+                    onChange={event => setSelectedMaterialId(event.target.value)}
+                  >
+                    <option value="" disabled>
+                      {visibleContainers.length === 0 && containerQuery.trim()
+                        ? '没有匹配的空容器物料'
+                        : '请选择空容器物料'}
                     </option>
-                  ))}
-                </select>
+                    {visibleContainers.map(container => (
+                      <option key={container.id} value={container.id}>
+                        {container.name} · {container.barcode || container.id}
+                      </option>
+                    ))}
+                  </select>
+                </div>
                 <small>Backend 会再次校验资源模板是否带有 container 标签且内容为空。</small>
               </label>
               <label>
@@ -307,7 +340,7 @@ export function validateReagentEditor(
   values: EditorValues,
   mode: 'create' | 'edit'
 ): string | null {
-  if (mode === 'create' && !values.materialId) return '请选择容器物料'
+  if (mode === 'create' && !values.materialId) return '请选择空容器物料'
   if (mode === 'create' && !isValidCAS(values.cas)) return '请输入校验位正确的 CAS 号'
   if (!Number.isFinite(values.quantity) || values.quantity < 0) return '数量必须是大于等于零的有限数'
   if (!values.quantityUnit) return '计量单位不能为空'
@@ -321,6 +354,20 @@ export function validateReagentEditor(
     return '浓度必须是大于等于零的有限数'
   }
   return null
+}
+
+/** 按名称、条码或稳定 UUID 筛选空容器候选。 */
+export function filterReagentContainers(
+  containers: readonly ReagentContainerOption[],
+  query: string
+): readonly ReagentContainerOption[] {
+  const normalized = query.trim().toLocaleLowerCase('zh-CN')
+  if (!normalized) return containers
+  return containers.filter(container => [
+    container.name,
+    container.barcode,
+    container.id
+  ].some(value => value?.toLocaleLowerCase('zh-CN').includes(normalized)))
 }
 
 /** 将可选浓度投影为成对命令字段。 */

@@ -353,6 +353,7 @@ function registerWorkflowTaskControllerTests(): void {
       lastCommand: accepted,
       task: { control_status: 'active' }
     })
+    expect(runtime.getWorkflowTask).toHaveBeenCalledTimes(2)
 
     authoritative = { ...initial, control_status: 'paused' }
     expect(onInvalidate).not.toBeNull()

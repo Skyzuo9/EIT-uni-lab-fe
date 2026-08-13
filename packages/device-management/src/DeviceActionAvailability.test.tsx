@@ -1,5 +1,5 @@
 import { renderToStaticMarkup } from 'react-dom/server'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { DeviceAction } from '@unilab/services'
 
 import {
@@ -9,6 +9,7 @@ import {
 } from './DevicePanel'
 import {
   activeDeviceActionTaskUuid,
+  copyDeviceActionTaskId,
   deviceActionReadiness,
   projectDeviceActionTask
 } from './DeviceActionAvailability'
@@ -180,6 +181,23 @@ describe('device action Runtime availability', () => {
     expect(succeeded).toContain('动作执行完成')
     expect(succeeded).toContain('&quot;position&quot;: &quot;safe&quot;')
     expect(succeeded).not.toContain('disabled')
+  })
+
+  it('复制完整 Task ID，而不是界面中的缩略值', async () => {
+    const writeText = vi.fn(async () => {})
+    const taskUuid = '10000000-0000-4000-8000-000000000001'
+
+    await copyDeviceActionTaskId(taskUuid, { writeText })
+
+    expect(writeText).toHaveBeenCalledWith(taskUuid)
+    const markup = renderToStaticMarkup(
+      <DeviceActionAvailability
+        state={{ kind: 'running', message: '设备正在执行', taskUuid }}
+        onRun={() => {}}
+      />
+    )
+    expect(markup).toContain('aria-label="复制完整 Task ID"')
+    expect(markup).toContain('Task 10000000…000001')
   })
 
   it('reuses the original execution panel to present feedback as an event stream', () => {

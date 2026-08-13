@@ -56,11 +56,21 @@ describe('environment manager layering and responsive layout', () => {
     expect(rule).toMatch(/scrollbar-gutter:\s*stable/u)
   })
 
-  it('uses a high-contrast primary selection for the OS mode control', () => {
+  it('uses a readable accented selection for the OS mode control', () => {
     const rule = cssRule('.unilab-environment-manager__mode button.is-active')
 
-    expect(rule).toMatch(/color:\s*#fff/u)
-    expect(rule).toMatch(/background:\s*var\(--unilab-color-primary\)/u)
+    expect(rule).toMatch(/color:\s*var\(--unilab-color-primary\)/u)
+    expect(rule).toMatch(/background:\s*var\(--unilab-color-primary-soft\)/u)
+    expect(rule).toMatch(/inset 3px 0 0 var\(--unilab-color-primary\)/u)
+  })
+
+  it('separates primary and maintenance actions in the OS toolbar', () => {
+    const primary = cssRule('.unilab-environment-card__actions button.is-primary')
+    const port = cssRule('.unilab-environment-card__actions button.is-port-action')
+
+    expect(primary).toMatch(/background:\s*var\(--unilab-color-primary\)/u)
+    expect(port).toMatch(/margin-left:\s*auto/u)
+    expect(port).toMatch(/border-style:\s*dashed/u)
   })
 
   it('shows complete paths instead of silently truncating runtime facts', () => {

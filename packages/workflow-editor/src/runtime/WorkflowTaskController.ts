@@ -231,6 +231,7 @@ export class WorkflowTaskController {
       })
       if (!this.active) return
       this.install({ lastCommand: command })
+      await this.requestRefresh(task.uuid)
     } catch (error) {
       this.install({ actionError: errorMessage(error) })
       throw error

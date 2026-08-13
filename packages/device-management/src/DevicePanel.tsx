@@ -20,7 +20,10 @@ import {
   projectSelectedDeviceAction,
   serializeDeviceActionInput
 } from './deviceActionRun'
-import { startDeviceActionTaskRecovery } from './deviceActionTaskRecovery'
+import {
+  shouldRecoverActiveDeviceActionTask,
+  startDeviceActionTaskRecovery
+} from './deviceActionTaskRecovery'
 import {
   startDeviceActionCatalogRecovery,
   type DeviceActionCatalogRecovery
@@ -364,8 +367,13 @@ export default function DevicePanel({
   }, [refreshDeviceActionTask])
 
   const activeTaskUuid = activeDeviceActionTaskUuid(runOperation)
+  const activeTaskIsVisible = shouldRecoverActiveDeviceActionTask(
+    selectedActionRef,
+    runOperation?.actionRef ?? null,
+    activeTaskUuid
+  )
   useEffect(() => {
-    if (!activeTaskUuid || !runOperation) return
+    if (!activeTaskIsVisible || !activeTaskUuid || !runOperation) return
     const actionRef = runOperation.actionRef
     const recovery = startDeviceActionTaskRecovery({
       tasks: [{ taskUuid: activeTaskUuid, actionRef }],
@@ -401,9 +409,11 @@ export default function DevicePanel({
     })
     return () => recovery.dispose()
   }, [
+    activeTaskIsVisible,
     activeTaskUuid,
     queueDeviceActionTaskRefresh,
     runOperation?.actionRef,
+    selectedActionRef,
     services.workflow
   ])
 

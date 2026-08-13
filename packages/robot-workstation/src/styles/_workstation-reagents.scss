@@ -124,6 +124,12 @@
   grid-column: 1 / -1;
 }
 
+.reagentContainerSelector {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 1fr);
+  gap: 8px;
+}
+
 .reagentIdentitySummary {
   display: grid;
   grid-column: 1 / -1;

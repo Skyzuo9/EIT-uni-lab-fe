@@ -20,7 +20,7 @@ export function presentEdgeDevices(
     .filter((device) => device.id !== 'host_node')
     .map((device) => ({
       ...device,
-      displayName: device.id,
-      displayDetail: device.machineName
+      displayName: device.machineName,
+      displayDetail: ''
     }))
 }

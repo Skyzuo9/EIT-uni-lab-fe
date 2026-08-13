@@ -250,7 +250,8 @@ export function DeviceActionAvailability({
   onCancel?: (taskUuid: string) => void
   disabledRunLabel?: string
 }): React.JSX.Element {
-  const [copied, setCopied] = useState(false)
+  const [logCopied, setLogCopied] = useState(false)
+  const [taskIdCopied, setTaskIdCopied] = useState(false)
   const ready = state.kind === 'ready' || (
     state.kind === 'error' && state.retryable
   )
@@ -259,9 +260,13 @@ export function DeviceActionAvailability({
     state.kind === 'canceled'
   const runnable = ready || terminal
   const log = deviceActionExecutionLog(state)
+  const taskUuid = 'taskUuid' in state ? state.taskUuid : null
   useEffect(() => {
-    setCopied(false)
+    setLogCopied(false)
   }, [log])
+  useEffect(() => {
+    setTaskIdCopied(false)
+  }, [taskUuid])
   return (
     <>
       <div
@@ -305,21 +310,34 @@ export function DeviceActionAvailability({
               {deviceActionExecutionPresentation(state.kind).label}
             </span>
             <span className={styles.executionTools}>
-              <code title={state.taskUuid}>
-                Task {shortIdentifier(state.taskUuid)}
-              </code>
+              <button
+                type="button"
+                className={styles.taskIdButton}
+                data-copied={taskIdCopied}
+                title={taskIdCopied ? 'Task ID 已复制' : `复制完整 Task ID：${state.taskUuid}`}
+                aria-label={taskIdCopied ? 'Task ID 已复制' : '复制完整 Task ID'}
+                onClick={() => {
+                  void copyDeviceActionTaskId(state.taskUuid).then(() => {
+                    setTaskIdCopied(true)
+                  })
+                }}
+              >
+                <code>
+                  {taskIdCopied ? 'Task ID 已复制' : `Task ${shortIdentifier(state.taskUuid)}`}
+                </code>
+              </button>
               {log ? (
                 <button
                   type="button"
                   className={styles.copyButton}
-                  data-copied={copied}
+                  data-copied={logCopied}
                   onClick={() => {
                     void navigator.clipboard.writeText(log).then(() => {
-                      setCopied(true)
+                      setLogCopied(true)
                     })
                   }}
                 >
-                  {copied ? '已复制' : '复制'}
+                  {logCopied ? '已复制' : '复制'}
                 </button>
               ) : null}
             </span>
@@ -333,6 +351,14 @@ export function DeviceActionAvailability({
       ) : null}
     </>
   )
+}
+
+/** 将完整动作任务 UUID 写入剪贴板，不复制界面上的缩略文本。 */
+export function copyDeviceActionTaskId(
+  taskUuid: string,
+  clipboard: Pick<Clipboard, 'writeText'> = navigator.clipboard
+): Promise<void> {
+  return clipboard.writeText(taskUuid)
 }
 
 /** 把旧版本或上游错误中的内部术语转换为用户可理解的动作信息。 */

@@ -79,6 +79,10 @@ function registerActionCatalogTests(): void {
     acceptsBackendFlatDeviceActionSchema
   )
   it(
+    '接受 Backend 省略 properties 的无参数设备动作 Schema',
+    acceptsBackendParameterlessDeviceActionSchema
+  )
+  it(
     'reads every page and excludes non-Action framework templates',
     verifiesCursorTraversalAndFrameworkExclusion
   )
@@ -383,6 +387,42 @@ async function acceptsBackendFlatDeviceActionSchema(): Promise<void> {
       schema: detail.template.schema,
       goalDefault: detail.template.goal_default,
       handles: []
+    })
+  ])
+}
+
+/**
+ * 证明 Backend 的 EmptyIn 等无参数动作可使用省略 properties 的标准对象 Schema。
+ *
+ * @returns 测试完成后的 Promise。
+ * @throws 省略 properties 被误判为无效目录时使测试失败。
+ */
+async function acceptsBackendParameterlessDeviceActionSchema(): Promise<void> {
+  const responses = catalogResponses()
+  const detail = detailDataFor(responses, nodeUuid)
+  detail.template.schema = JSON.stringify({
+    type: 'object',
+    title: 'EmptyIn_Goal',
+    additionalProperties: true
+  })
+  detail.template.goal = {}
+  detail.template.goal_default = {}
+  const runtime = createWorkflowRuntime(
+    fixtureHttp(responses),
+    getDefaultBackend('local-go')
+  )
+
+  const catalog = await runtime.getWorkflowActionCatalog()
+
+  expect(catalog.actionTemplates).toEqual([
+    expect.objectContaining({
+      uuid: nodeUuid,
+      schema: {
+        type: 'object',
+        title: 'EmptyIn_Goal',
+        additionalProperties: true
+      },
+      goalDefault: {}
     })
   ])
 }

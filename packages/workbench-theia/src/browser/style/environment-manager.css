@@ -155,9 +155,21 @@ body.unilab-environment-manager-open .material-oblique-stack__label {
 }
 
 .unilab-environment-card__body > p {
-  margin: 3px 0 8px;
+  margin: 4px 0 10px;
   color: var(--unilab-color-text-muted);
   font-size: 11px;
+  line-height: 1.45;
+}
+
+.unilab-environment-card__message::before {
+  display: inline-block;
+  width: 4px;
+  height: 4px;
+  margin: 0 6px 2px 1px;
+  border-radius: 50%;
+  background: currentColor;
+  content: '';
+  opacity: .65;
 }
 
 .unilab-environment-card[data-phase='failed'] .unilab-environment-card__body > p {
@@ -208,9 +220,9 @@ body.unilab-environment-manager-open .material-oblique-stack__label {
 .unilab-environment-manager__mode {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 6px;
+  gap: 4px;
   margin-top: 10px;
-  padding: 4px;
+  padding: 3px;
   border: 1px solid var(--unilab-color-border);
   border-radius: var(--unilab-radius-control);
   background: var(--unilab-color-canvas);
@@ -218,31 +230,39 @@ body.unilab-environment-manager-open .material-oblique-stack__label {
 
 .unilab-environment-manager__mode button {
   display: inline-flex;
-  min-height: 30px;
+  min-height: 42px;
   align-items: center;
   justify-content: center;
-  gap: 5px;
-  padding: 6px 10px;
+  gap: 7px;
+  padding: 6px 12px;
   border: 1px solid transparent;
   border-radius: calc(var(--unilab-radius-control) - 2px);
   color: var(--unilab-color-text-muted);
   background: transparent;
-  font-weight: 650;
+  text-align: left;
   cursor: pointer;
 }
 
-.unilab-environment-manager__mode button small {
-  min-height: 12px;
-  color: inherit;
-  font: 700 9px/1.2 var(--unilab-font-sans);
-  letter-spacing: .02em;
+.unilab-environment-manager__mode-copy {
+  display: grid;
+  gap: 2px;
+}
+
+.unilab-environment-manager__mode-copy strong {
+  font: 650 11px/1.15 var(--unilab-font-sans);
+}
+
+.unilab-environment-manager__mode-copy small {
+  color: var(--unilab-color-text-muted);
+  font: 500 9px/1.2 var(--unilab-font-sans);
 }
 
 .unilab-environment-manager__mode button.is-active {
-  color: #fff;
-  background: var(--unilab-color-primary);
+  color: var(--unilab-color-primary);
+  border-color: color-mix(in srgb, var(--unilab-color-primary) 42%, transparent);
+  background: var(--unilab-color-primary-soft);
   box-shadow:
-    0 0 0 1px var(--unilab-color-primary),
+    inset 3px 0 0 var(--unilab-color-primary),
     var(--unilab-shadow-control);
 }
 
@@ -263,13 +283,14 @@ body.unilab-environment-manager-open .material-oblique-stack__label {
 .unilab-environment-card__actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 7px;
+  margin-top: 2px;
 }
 
 .unilab-environment-card__actions button,
 .unilab-environment-manager__logs button {
-  min-height: 25px;
-  padding: 4px 9px;
+  min-height: 28px;
+  padding: 5px 10px;
   color: var(--unilab-color-text);
   border: 1px solid var(--unilab-color-border-strong);
   border-radius: var(--unilab-radius-control);
@@ -278,12 +299,29 @@ body.unilab-environment-manager-open .material-oblique-stack__label {
   cursor: pointer;
 }
 
+.unilab-environment-card__actions button.is-primary {
+  color: #fff;
+  border-color: var(--unilab-color-primary);
+  background: var(--unilab-color-primary);
+}
+
+.unilab-environment-card__actions button.is-port-action {
+  margin-left: auto;
+  border-style: dashed;
+}
+
 .unilab-environment-card__actions button:hover,
 .unilab-environment-manager__logs button:hover,
 .unilab-environment-manager__logs button.is-active {
   color: var(--unilab-color-primary);
   border-color: var(--unilab-color-focus);
   background: var(--unilab-color-primary-soft);
+}
+
+.unilab-environment-card__actions button.is-primary:hover {
+  color: #fff;
+  border-color: var(--unilab-color-primary);
+  background: var(--unilab-color-primary);
 }
 
 .unilab-environment-card__actions button.is-danger:hover {

@@ -96,6 +96,7 @@ export function PersistentWorkflowAuthoringView({
     setSelectedNodeName,
     setSelectedNodeNameDirty,
     setSelectedNodeUuid,
+    setTraceViewerOpen,
     setWorkflowIoOpen,
     sourceSelectedNodeUuid,
     sourceProjection,
@@ -107,6 +108,7 @@ export function PersistentWorkflowAuthoringView({
     taskOutputNodes,
     taskRuntime,
     taskRuntimeEvents,
+    traceRuntime,
     toggleDebugBreakpoint,
     toggleDebugStartNode,
     toggleNodeDisabled,
@@ -651,6 +653,9 @@ export function PersistentWorkflowAuthoringView({
           onTabChange={setOutputTab}
           onNodeSelect={handleRuntimeNodeSelect}
           onClearError={taskRuntime.clearError}
+          onTraceOpen={traceRuntime
+            ? () => setTraceViewerOpen(true)
+            : undefined}
         />
       </section>
 

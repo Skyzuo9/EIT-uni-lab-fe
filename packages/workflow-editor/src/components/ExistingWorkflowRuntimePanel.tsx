@@ -9,6 +9,7 @@ import type {
 } from '@unilab/services'
 
 import { useWorkflowTaskRuntime } from '../hooks/useWorkflowTaskRuntime'
+import type { WorkflowTracePort } from '../traceRuntime'
 import { projectExistingWorkflowCanvas } from '../utils/existingWorkflowCanvasProjection'
 import {
   TERMINAL_JOB_STATUSES,
@@ -31,6 +32,7 @@ import {
 import { ExistingWorkflowCanvas } from './ExistingWorkflowCanvas'
 import { ExistingWorkflowRuntimeActions } from './ExistingWorkflowRuntimeActions'
 import { WorkflowOutput, type WorkflowOutputTab } from './WorkflowOutput'
+import { WorkflowTraceViewer } from './WorkflowTraceViewer'
 import { WorkflowWorkspaceToolbar } from './WorkflowWorkspaceToolbar'
 import styles from './workflow.module.scss'
 
@@ -38,6 +40,7 @@ interface ExistingWorkflowRuntimePanelProps {
   runtime: WorkflowRuntimePort
   workflowUuid: string
   workflowName?: string
+  traceRuntime?: WorkflowTracePort
   onChooseWorkflow?: () => void
 }
 
@@ -49,6 +52,7 @@ export function ExistingWorkflowRuntimePanel({
   runtime,
   workflowUuid,
   workflowName,
+  traceRuntime,
   onChooseWorkflow
 }: ExistingWorkflowRuntimePanelProps): React.JSX.Element {
   const taskRuntime = useWorkflowTaskRuntime(runtime, workflowUuid)
@@ -68,6 +72,7 @@ export function ExistingWorkflowRuntimePanel({
   const [outputExpanded, setOutputExpanded] = useState(true)
   const [outputTab, setOutputTab] = useState<WorkflowOutputTab>('nodes')
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
+  const [traceViewerOpen, setTraceViewerOpen] = useState(false)
   const task = snapshot.task
   const liveTask = workflowTaskIsLive(task)
   const structure = useMemo(
@@ -391,8 +396,19 @@ export function ExistingWorkflowRuntimePanel({
           onTabChange={setOutputTab}
           onNodeSelect={setSelectedNodeId}
           onClearError={taskRuntime.clearError}
+          onTraceOpen={traceRuntime
+            ? () => setTraceViewerOpen(true)
+            : undefined}
         />
       </section>
+      {traceRuntime && (
+        <WorkflowTraceViewer
+          open={traceViewerOpen}
+          currentRunId={task?.uuid ?? null}
+          runtime={traceRuntime}
+          onClose={() => setTraceViewerOpen(false)}
+        />
+      )}
     </div>
   )
 }

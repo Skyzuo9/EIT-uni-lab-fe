@@ -4,6 +4,7 @@ import type { WorkflowTask } from '@unilab/services'
 
 import {
   workflowTaskControlStatusLabel,
+  workflowTaskIsLive,
   workflowTaskStatusLabel,
   workflowTaskVisualStatus
 } from '../utils/workflowTaskPresentation'
@@ -53,7 +54,8 @@ export function WorkflowWorkspaceToolbar({
   save,
   children
 }: WorkflowWorkspaceToolbarProps): React.JSX.Element {
-  const visualStatus = workflowTaskVisualStatus(task)
+  const liveTask = workflowTaskIsLive(task)
+  const visualStatus = liveTask ? workflowTaskVisualStatus(task) : 'disabled'
 
   return (
     <header className="workflow__toolbar persistent-authoring__toolbar">
@@ -113,7 +115,7 @@ export function WorkflowWorkspaceToolbar({
         className="workflow__toolbar-actions persistent-authoring__debug-toolbar"
         aria-label="工作流调试工具栏"
       >
-        {task ? (
+        {liveTask && task ? (
           <span
             className={`persistent-authoring__task-status is-${visualStatus}`}
             title={`${workflowTaskControlStatusLabel(task)}；任务：${workflowTaskStatusLabel(task.status)}`}
@@ -122,7 +124,16 @@ export function WorkflowWorkspaceToolbar({
             <i aria-hidden="true" />
             {workflowTaskStatusLabel(task.status)}
           </span>
-        ) : null}
+        ) : (
+          <span
+            className="persistent-authoring__task-status is-disabled"
+            title="当前没有正在运行的任务"
+            data-task-status="idle"
+          >
+            <i aria-hidden="true" />
+            待启动
+          </span>
+        )}
 
         <WorkflowButton
           type="button"

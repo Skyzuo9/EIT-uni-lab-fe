@@ -14,6 +14,34 @@ import {
 function noop(): void {}
 
 describe('WorkflowOutput', () => {
+  it('renders the Trace action beside runtime output controls when available', () => {
+    const html = renderToStaticMarkup(
+      <WorkflowOutput
+        expanded
+        resizable
+        activeTab="nodes"
+        completedNodeCount={0}
+        expectedNodeCount={0}
+        nodes={[]}
+        nodeNames={{}}
+        events={[]}
+        error={null}
+        selectedNode={undefined}
+        selectedNodeId={null}
+        pausedBeforeNodeId={null}
+        onExpandedChange={noop}
+        onTabChange={noop}
+        onNodeSelect={noop}
+        onClearError={noop}
+        onTraceOpen={noop}
+      />
+    )
+
+    expect(html).toContain('aria-label="查看工作流 Trace"')
+    expect(html.indexOf('workflow-runtime__output-trace'))
+      .toBeLessThan(html.indexOf('workflow-runtime__output-fullscreen'))
+  })
+
   /** 可调整高度的 dev 输出区始终可见，不再维护另一套展开/收起交互。 */
   it('uses height dragging instead of expand and collapse controls', () => {
     const html = renderToStaticMarkup(

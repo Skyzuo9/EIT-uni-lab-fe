@@ -413,7 +413,11 @@ function backendDeviceActionParameterSchema(
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
   const schema = raw as Record<string, unknown>
   if (schema.type !== 'object') invalidCatalog()
-  const properties = recordValue(schema.properties)
+  // JSON Schema 允许省略 `properties` 来表达没有显式参数的对象动作。
+  // Backend 的 EmptyIn 动作（例如 get_version）会使用这种标准形态。
+  const properties = schema.properties === undefined
+    ? {}
+    : recordValue(schema.properties)
   for (const [name, property] of Object.entries(properties)) {
     if (!name) invalidCatalog()
     recordValue(property)

@@ -264,11 +264,13 @@ export function EnvironmentManager({
             <>
               <button
                 type="button"
+                className="is-primary"
                 disabled={Boolean(busyAction) || !graphPath.trim()}
                 onClick={() => void applyGraphPath()}
               >{session.phase === 'ready' ? '应用设备图并重启' : '保存设备图'}</button>
               <button
                 type="button"
+                className="is-port-action"
                 disabled={Boolean(busyAction)}
                 onClick={() => void run('restart-os', onRestartSession)}
               >{session.phase === 'ready' ? '重启 OS' : '启动 OS'}</button>
@@ -652,6 +654,7 @@ export function RuntimeModeControl({
   const button = (
     value: WorkbenchRuntimeMode,
     label: string,
+    description: string,
     title?: string
   ): React.JSX.Element => {
     const selected = mode === value
@@ -668,16 +671,20 @@ export function RuntimeModeControl({
         {selected ? (
           <span className="codicon codicon-check" aria-hidden="true" />
         ) : null}
-        <span>{label}</span>
+        <span className="unilab-environment-manager__mode-copy">
+          <strong>{label}</strong>
+          <small>{description}</small>
+        </span>
       </button>
     )
   }
   return (
     <div className="unilab-environment-manager__mode" role="group" aria-label="OS 运行模式">
-      {button('normal', '正常运行')}
+      {button('normal', '正常运行', '真实执行设备动作')}
       {button(
         'dry-run',
         'Dry-run',
+        '仅模拟，不下发设备',
         '动作返回模拟成功；每次 OS 重启使用新的隔离运行数据库'
       )}
     </div>
@@ -713,7 +720,7 @@ function EnvironmentStatusCard({
           <strong>{name}</strong>
           <span>{phase}</span>
         </header>
-        <p>{message}</p>
+        <p className="unilab-environment-card__message">{message}</p>
         <dl>
           {facts.map(([label, value]) => (
             <React.Fragment key={label}>

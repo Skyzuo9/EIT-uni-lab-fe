@@ -74,7 +74,8 @@ export function useDevices({
     }
   }, [backendEnabled, canListActions, client, services])
 
-  // Edge 连通后立即刷新，并低频同步设备上线与动作忙闲变化。
+  // Edge 连通后只读取一次完整设备目录。动作运行状态由当前 active 动作节点的
+  // Task recovery 单独补读，避免定时请求 /devices 时轮询所有设备的动作节点。
   useEffect(() => {
     if (!isOnline) {
       if (connection === 'error' || connection === 'disconnected') {
@@ -85,12 +86,8 @@ export function useDevices({
     }
     const controller = new AbortController()
     void refresh(controller.signal)
-    const timer = globalThis.setInterval(() => {
-      void refresh(controller.signal)
-    }, 5_000)
     return () => {
       controller.abort()
-      globalThis.clearInterval(timer)
     }
   }, [connection, isOnline, refresh])
 

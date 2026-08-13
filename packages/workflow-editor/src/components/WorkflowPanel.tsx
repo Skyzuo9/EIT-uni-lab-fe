@@ -124,6 +124,7 @@ export default function WorkflowPanel({
         <ExistingWorkflowRuntimePanel
           key={workflowUuid}
           runtime={runtime}
+          traceRuntime={traceRuntime}
           workflowUuid={workflowUuid}
           workflowName={selectedWorkflowName}
           onChooseWorkflow={explicitWorkflowUuid && !allowWorkflowSelection

@@ -95,7 +95,7 @@ export function DeviceListItem({
             ) : null}
           </span>
           <span className={deviceClass('device-list__key')}>
-            {device.displayDetail} · {device.actions.length} 个动作
+            {device.actions.length} 个动作
             {lockedActionCount ? ` · ${lockedActionCount} 个占用` : ''}
           </span>
         </span>

@@ -37,6 +37,7 @@ interface WorkflowOutputProps {
   onTabChange: (tab: WorkflowOutputTab) => void
   onNodeSelect: (nodeId: string) => void
   onClearError: () => void
+  onTraceOpen?: () => void
   title?: string
   countLabel?: string
   nodesTabLabel?: string
@@ -67,6 +68,7 @@ export function WorkflowOutput({
   onTabChange,
   onNodeSelect,
   onClearError,
+  onTraceOpen,
   title = '运行输出',
   countLabel = '个节点已有结果',
   nodesTabLabel = '节点结果',
@@ -182,6 +184,17 @@ export function WorkflowOutput({
               onSelect={onTabChange}
             />
           </div>
+        )}
+        {onTraceOpen && (
+          <button
+            type="button"
+            className="workflow-runtime__output-trace"
+            aria-label="查看工作流 Trace"
+            title="查看 Electron 与 Uni-Lab-OS 上报的运行 Trace"
+            onClick={onTraceOpen}
+          >
+            Trace
+          </button>
         )}
         <button
           type="button"

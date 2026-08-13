@@ -69,6 +69,7 @@ import {
   WorkbenchSessionServer
 } from '../common/workbench-session-protocol'
 import { WorkbenchSessionClientImpl } from './workbench-session-client'
+import { desktopWorkflowTraceRuntime } from './desktop-workflow-trace-runtime'
 import { DesktopWorkspaceSwitchButton } from './desktop-workspace-switch'
 import { EnvironmentManager } from './environment-manager'
 import { createTheiaWorkflowIdeAdapter } from './theia-workflow-ide-adapter'
@@ -852,6 +853,9 @@ function WorkbenchSurface({
     >
       <WorkflowPanel
         runtime={services.workflow}
+        traceRuntime={desktopWorkflowTraceRuntime(
+          typeof window === 'undefined' ? undefined : window
+        )}
         authoringStatus={services.getCapabilityStatus('workflow.authoring')}
         runStatus={services.getCapabilityStatus('workflow.runTasks')}
         resourceSlotOptionsPort={resourceSlotOptionsPort}

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { WorkflowRuntimeInvalidationEvent } from '@unilab/services'
 
 import {
+  shouldRecoverActiveDeviceActionTask,
   startDeviceActionTaskRecovery,
   type DeviceActionTaskRecoveryEnvironment
 } from './deviceActionTaskRecovery'
@@ -9,6 +10,7 @@ import {
 interface FakeSubscription {
   listener: (event: WorkflowRuntimeInvalidationEvent) => void
   onOpen: () => void
+  onError: (error: Error) => void
 }
 
 function createEnvironment(): DeviceActionTaskRecoveryEnvironment & {
@@ -47,7 +49,8 @@ function createSubscriptionPort(): {
 } {
   const emit: FakeSubscription = {
     listener: () => undefined,
-    onOpen: () => undefined
+    onOpen: () => undefined,
+    onError: () => undefined
   }
   return {
     emit,
@@ -57,6 +60,7 @@ function createSubscriptionPort(): {
         lastEventId: '',
         reconnected: true
       })
+      emit.onError = (error) => options.onError?.(error)
       return { dispose: vi.fn() }
     }
   }
@@ -95,6 +99,37 @@ describe('device Action Task REST rehydrate recovery', () => {
     await flushMicrotasks()
 
     expect(read).toHaveBeenCalledTimes(2)
+    await vi.advanceTimersByTimeAsync(20_000)
+    expect(read).toHaveBeenCalledTimes(2)
+    recovery.dispose()
+  })
+
+  it('only enables fallback polling while the runtime event stream is unavailable', async () => {
+    const environment = createEnvironment()
+    const subscription = createSubscriptionPort()
+    const read = vi.fn(async () => false)
+    const recovery = startDeviceActionTaskRecovery({
+      tasks: [{ taskUuid: 'task-1', actionRef: 'action-1' }],
+      environment,
+      subscribe: subscription.subscribe,
+      read,
+      pollIntervalMs: 1_000
+    })
+    await flushMicrotasks()
+    expect(read).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(5_000)
+    expect(read).toHaveBeenCalledTimes(1)
+
+    subscription.emit.onError(new Error('SSE disconnected'))
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(read).toHaveBeenCalledTimes(2)
+
+    subscription.emit.onOpen()
+    await flushMicrotasks()
+    expect(read).toHaveBeenCalledTimes(3)
+    await vi.advanceTimersByTimeAsync(5_000)
+    expect(read).toHaveBeenCalledTimes(3)
     recovery.dispose()
   })
 
@@ -149,7 +184,7 @@ describe('device Action Task REST rehydrate recovery', () => {
     expect(read).toHaveBeenCalledTimes(1)
 
     resolveRead?.(true)
-    await vi.runAllTimersAsync()
+    await flushMicrotasks()
     expect(read).toHaveBeenCalledTimes(1)
     recovery.dispose()
   })
@@ -206,7 +241,6 @@ describe('device Action Task REST rehydrate recovery', () => {
 
   it('backs off failed REST reads and stops polling terminal tasks', async () => {
     const environment = createEnvironment()
-    const subscription = createSubscriptionPort()
     const read = vi.fn()
       .mockRejectedValueOnce(new Error('offline'))
       .mockResolvedValueOnce(false)
@@ -215,7 +249,6 @@ describe('device Action Task REST rehydrate recovery', () => {
     const recovery = startDeviceActionTaskRecovery({
       tasks: [{ taskUuid: 'task-1', actionRef: 'action-1' }],
       environment,
-      subscribe: subscription.subscribe,
       read,
       onError,
       pollIntervalMs: 1_000,
@@ -234,5 +267,30 @@ describe('device Action Task REST rehydrate recovery', () => {
     await vi.advanceTimersByTimeAsync(10_000)
     expect(read).toHaveBeenCalledTimes(3)
     recovery.dispose()
+  })
+})
+
+describe('active device action polling selection', () => {
+  it('only enables recovery for the action node active in the frontend', () => {
+    expect(shouldRecoverActiveDeviceActionTask(
+      'device.move',
+      'device.move',
+      'task-1'
+    )).toBe(true)
+    expect(shouldRecoverActiveDeviceActionTask(
+      'device.stop',
+      'device.move',
+      'task-1'
+    )).toBe(false)
+    expect(shouldRecoverActiveDeviceActionTask(
+      null,
+      'device.move',
+      'task-1'
+    )).toBe(false)
+    expect(shouldRecoverActiveDeviceActionTask(
+      'device.move',
+      'device.move',
+      null
+    )).toBe(false)
   })
 })

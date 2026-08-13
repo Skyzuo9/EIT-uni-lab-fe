@@ -75,6 +75,7 @@ export function ExistingWorkflowRuntimeActions({
         type="button"
         className="persistent-authoring__debug-icon"
         aria-label="刷新状态"
+        data-tooltip="刷新运行状态"
         disabled={busy}
         disabledReason="正在读取 Backend 运行状态"
         title="从 Backend 补读任务、节点作业和反馈"
@@ -88,6 +89,7 @@ export function ExistingWorkflowRuntimeActions({
           <summary
             role="button"
             aria-label="配置运行方式"
+            data-tooltip="配置运行方式"
             title="配置运行方式、单节点目标与 Backend 预检"
           >
             <WorkflowToolbarIcon name="settings" />
@@ -119,6 +121,7 @@ export function ExistingWorkflowRuntimeActions({
           type="button"
           className="persistent-authoring__debug-icon is-start"
           aria-label={existingWorkflowRunButtonLabel(runMode)}
+          data-tooltip={existingWorkflowRunButtonLabel(runMode)}
           disabled={startDisabled}
           disabledReason={startDisabledReason}
           title={existingWorkflowRunButtonLabel(runMode)}
