@@ -560,8 +560,12 @@ export function ExistingWorkflowRuntimePanel({
           onRetry={() => editingEnabled
             ? setDefinitionGeneration(generation => generation + 1)
             : setPreparationGeneration(generation => generation + 1)}
+          editingAvailable={editingEnabled}
           editable={editingEnabled && !liveTask}
           dirty={definitionDirty}
+          readOnlyReason={liveTask
+            ? '活动任务期间不能修改其工作流定义'
+            : editingStatus?.reason}
           onNodePositionChange={moveDefinitionNode}
           onConnectHandles={connectDefinitionHandles}
           onDeleteRequest={deleteDefinitionSelection}

@@ -12,8 +12,10 @@ interface ExistingWorkflowCanvasProps {
   nodeStates: Readonly<Record<string, string>>
   onNodeSelect: (nodeUuid: string) => void
   onRetry: () => void
+  editingAvailable?: boolean
   editable?: boolean
   dirty?: boolean
+  readOnlyReason?: string
   onNodePositionChange?: (
     nodeUuid: string,
     position: { x: number; y: number }
@@ -32,10 +34,10 @@ interface ExistingWorkflowCanvasProps {
 }
 
 /**
- * 以 dev 工作流画布结构展示 Backend 已有工作流的只读定义与任务状态。
+ * 以 dev 工作流画布结构展示并编辑 Backend 权威工作流定义与任务状态。
  *
- * @param props 工作流名称、只读 DAG、加载状态和节点选择回调。
- * @returns 不提供创作写操作的统一 WorkflowDag 工作区。
+ * @param props 工作流名称、Backend DAG、编辑能力、加载状态和节点选择回调。
+ * @returns 通过能力状态区分可编辑、任务期锁定与无写能力的统一 WorkflowDag 工作区。
  */
 export function ExistingWorkflowCanvas({
   workflowName,
@@ -47,12 +49,26 @@ export function ExistingWorkflowCanvas({
   onNodeSelect,
   onRetry,
   editable = false,
+  editingAvailable = editable,
   dirty = false,
+  readOnlyReason,
   onNodePositionChange,
   onConnectHandles,
   onDeleteRequest,
   onToggleDisabled
 }: ExistingWorkflowCanvasProps): React.JSX.Element {
+  const temporarilyLocked = editingAvailable && !editable
+  const projectionLabel = editable
+    ? `Backend 定义 · ${dirty ? '待保存' : '已同步'}`
+    : temporarilyLocked
+      ? 'Backend 定义 · 运行中锁定'
+      : 'Backend 定义 · 只读'
+  const projectionTitle = editable
+    ? '画布修改通过 revision CAS 直接保存到 Backend；不改写工作区代码'
+    : temporarilyLocked
+      ? readOnlyReason || '当前有活动任务；任务结束后可继续编辑和保存 Backend 工作流定义'
+      : readOnlyReason || 'Backend 当前未提供工作流定义写能力'
+
   return (
     <section
       className="persistent-authoring__pane persistent-authoring__canvas workflow-runtime__existing-canvas"
@@ -62,17 +78,15 @@ export function ExistingWorkflowCanvas({
         title={workflowName || '完整控制流 DAG'}
         nodeCount={structure.nodes.length}
         linkCount={structure.links.length}
-        projectionLabel={editable
-          ? `Backend 定义 · ${dirty ? '待保存' : '已同步'}`
-          : 'Backend 定义 · 只读'}
-        projectionTitle={editable
-          ? '画布修改通过 revision CAS 直接保存到 Backend；不改写工作区代码'
-          : '画布来自 Backend 当前工作流定义；创作写操作尚未启用'}
+        projectionLabel={projectionLabel}
+        projectionTitle={projectionTitle}
         description={(
           <p>
             {editable
               ? '画布直接编辑 Backend 工作流；本地 Python 代码不会作用于本图。'
-              : '选择节点查看运行结果；单节点调试模式下，点击画布节点即可设为目标。'}
+              : temporarilyLocked
+                ? '活动任务期间画布暂时锁定；任务结束后可继续编辑和保存，本地 Python 代码仍不会作用于本图。'
+                : '选择节点查看运行结果；当前 Backend 未开放画布保存。'}
           </p>
         )}
       />
@@ -98,7 +112,9 @@ export function ExistingWorkflowCanvas({
               canBeautify={false}
               beautifyDisabledReason={editable
                 ? 'Backend 画布暂不自动改写布局；可拖动节点后保存'
-                : 'Backend 工作流画布当前只读，布局不会写回定义'}
+                : temporarilyLocked
+                  ? '活动任务期间不能修改工作流定义'
+                  : readOnlyReason || 'Backend 工作流画布当前只读，布局不会写回定义'}
               canvasMutationEnabled={editable}
               nodePositionMutationEnabled={editable}
               onNodePositionChange={onNodePositionChange}
