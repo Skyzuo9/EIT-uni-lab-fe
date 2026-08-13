@@ -1,15 +1,16 @@
 import { useEffect, useMemo, useRef } from 'react'
 
 import {
-  workflowTaskControlStatusLabel,
   workflowTaskIsLive,
-  workflowTaskStatusLabel,
-  workflowTaskToolbarControls,
-  workflowTaskVisualStatus
+  workflowTaskToolbarControls
 } from '../utils/workflowTaskPresentation'
 import type { PersistentWorkflowAuthoringModel } from './persistentWorkflowAuthoringModel'
 import { WorkflowButton } from './WorkflowButton'
 import { WorkflowDebugControls } from './WorkflowDebugger'
+import {
+  WorkflowToolbarIcon,
+  WorkflowWorkspaceToolbar
+} from './WorkflowWorkspaceToolbar'
 
 interface PersistentWorkflowToolbarProps {
   model: PersistentWorkflowAuthoringModel
@@ -109,100 +110,41 @@ export function PersistentWorkflowToolbar({
     : taskRunMode === 'debug'
       ? '调试启动'
     : workflowStartPresentation.label
-  const visualStatus = workflowTaskVisualStatus(task)
-
   return (
-    <header className="workflow__toolbar persistent-authoring__toolbar">
-      <div className="persistent-authoring__toolbar-navigation">
-        {onChooseWorkflow && (
-          <WorkflowButton
-            type="button"
-            className="persistent-authoring__workflow-list"
-            disabled={busy || dirty}
-            disabledReason={busy
-              ? '正在处理工作流，请稍后返回列表'
-              : '请先保存当前可写内容'}
-            title="返回工作流列表"
-            onClick={onChooseWorkflow}
-          >
-            <ToolbarIcon name="list" />
-            <span>工作流列表</span>
-          </WorkflowButton>
-        )}
-
-        <div
-          className="workflow__mode-switch"
-          role="group"
-          aria-label="工作流单编辑权模式"
-        >
-          <WorkflowButton
-            type="button"
-            className={mode === 'code' ? 'is-active' : ''}
-            aria-pressed={mode === 'code'}
-            disabled={modeSwitchDisabled}
-            disabledReason={modeSwitchDisabledReason}
-            onClick={() => requestMode('code')}
-          >
-            代码模式
-          </WorkflowButton>
-          <WorkflowButton
-            type="button"
-            className={mode === 'canvas' ? 'is-active' : ''}
-            aria-pressed={mode === 'canvas'}
-            disabled={modeSwitchDisabled}
-            disabledReason={modeSwitchDisabledReason}
-            onClick={() => requestMode('canvas')}
-          >
-            画布模式
-          </WorkflowButton>
-        </div>
-      </div>
-
-      <span
-        className="workflow-runtime__message persistent-authoring__toolbar-message"
-        role="status"
-        aria-live="polite"
-        title={message}
-      >
-        {message}
-      </span>
-
-      <div
-        className="workflow__toolbar-actions persistent-authoring__debug-toolbar"
-        aria-label="工作流调试工具栏"
-      >
-        {task && (
-          <span
-            className={`persistent-authoring__task-status is-${visualStatus}`}
-            title={`${workflowTaskControlStatusLabel(task)}；任务：${workflowTaskStatusLabel(task.status)}`}
-            data-task-status={task.status}
-          >
-            <i aria-hidden="true" />
-            {workflowTaskStatusLabel(task.status)}
-          </span>
-        )}
-
-        <WorkflowButton
-          type="button"
-          className={[
-            'persistent-authoring__debug-icon',
-            dirty ? 'is-dirty' : ''
-          ].filter(Boolean).join(' ')}
-          aria-label="保存工作流"
-          disabled={saveDisabled}
-          disabledReason={busy || runningEntryBusy
-            ? '正在处理工作流，请稍后保存'
-            : !aggregate
-              ? '工作流尚未加载完成'
-              : fullSourceDiff || pendingMode || remoteConflict || taskInputForm
-                ? '请先完成当前工作流确认操作'
-                : '当前工作流不能保存'}
-          title="保存工作流（Ctrl+S）"
-          onClick={saveDraft}
-        >
-          <ToolbarIcon name="save" />
-        </WorkflowButton>
-
+    <WorkflowWorkspaceToolbar
+      task={task}
+      message={message}
+      onChooseWorkflow={onChooseWorkflow}
+      navigationDisabled={busy || dirty}
+      navigationDisabledReason={busy
+        ? '正在处理工作流，请稍后返回列表'
+        : '请先保存当前可写内容'}
+      codeMode={{
+        active: mode === 'code',
+        disabled: modeSwitchDisabled,
+        disabledReason: modeSwitchDisabledReason,
+        onSelect: () => requestMode('code')
+      }}
+      canvasMode={{
+        active: mode === 'canvas',
+        disabled: modeSwitchDisabled,
+        disabledReason: modeSwitchDisabledReason,
+        onSelect: () => requestMode('canvas')
+      }}
+      save={{
+        dirty,
+        disabled: saveDisabled,
+        disabledReason: busy || runningEntryBusy
+          ? '正在处理工作流，请稍后保存'
+          : !aggregate
+            ? '工作流尚未加载完成'
+            : fullSourceDiff || pendingMode || remoteConflict || taskInputForm
+              ? '请先完成当前工作流确认操作'
+              : '当前工作流不能保存',
+        title: '保存工作流（Ctrl+S）',
+        onSave: saveDraft
+      }}
+    >
         {!liveTask && (
           <details
             ref={runModeMenuRef}
@@ -216,7 +158,9 @@ export function PersistentWorkflowToolbar({
                 if (runningEntryBusy) event.preventDefault()
               }}
             >
-              <ToolbarIcon name={taskRunMode === 'step' ? 'step' : 'debug'} />
+              <WorkflowToolbarIcon
+                name={taskRunMode === 'step' ? 'step' : 'debug'}
+              />
               <span aria-hidden="true">⌄</span>
             </summary>
             <div role="menu" aria-label="任务运行模式">
@@ -231,7 +175,7 @@ export function PersistentWorkflowToolbar({
                   disabledReason="正在处理工作流任务，暂时不能切换运行模式"
                   onClick={() => chooseRunMode(runMode)}
                 >
-                  <ToolbarIcon
+                  <WorkflowToolbarIcon
                     name={runMode === 'normal'
                       ? 'play'
                       : runMode === 'debug'
@@ -270,7 +214,7 @@ export function PersistentWorkflowToolbar({
             title={`${startLabel} · ${RUN_MODE_LABELS[taskRunMode]}`}
             onClick={startWorkflow}
           >
-            <ToolbarIcon name="play" />
+            <WorkflowToolbarIcon name="play" />
           </WorkflowButton>
         )}
 
@@ -295,41 +239,9 @@ export function PersistentWorkflowToolbar({
             title="查看 Electron 与 Uni-Lab-OS 上报的运行 Trace"
             onClick={() => setTraceViewerOpen(true)}
           >
-            <ToolbarIcon name="trace" />
+            <WorkflowToolbarIcon name="trace" />
           </button>
         )}
-      </div>
-    </header>
-  )
-}
-
-function ToolbarIcon({
-  name
-}: {
-  name: 'debug' | 'list' | 'node' | 'play' | 'save' | 'step' | 'trace'
-}): React.JSX.Element {
-  const paths = {
-    debug: <><circle cx="9" cy="10" r="4" /><path d="M9 3v3m0 8v3M3 10h2m8 0h2M4.8 5.8l1.4 1.4m5.6 5.6 1.4 1.4M13.2 5.8l-1.4 1.4M6.2 12.8l-1.4 1.4" /></>,
-    list: <><path d="M6 5h9M6 9h9M6 13h9" /><circle cx="3" cy="5" r=".6" /><circle cx="3" cy="9" r=".6" /><circle cx="3" cy="13" r=".6" /></>,
-    node: <><rect x="3" y="3" width="5" height="5" rx="1" /><rect x="10" y="10" width="5" height="5" rx="1" /><path d="M8 5.5h3a2 2 0 0 1 2 2V10" /></>,
-    play: <path d="m6 4 8 5-8 5Z" />,
-    save: <><path d="M3 3h10l2 2v10H3Z" /><path d="M6 3v4h6V3M6 15v-5h6v5" /></>,
-    step: <><path d="m4 4 7 5-7 5Z" /><path d="M13 4v10" /></>,
-    trace: <><circle cx="4" cy="5" r="1.5" /><circle cx="14" cy="9" r="1.5" /><circle cx="7" cy="14" r="1.5" /><path d="m5.4 5.6 7.1 2.8m.2 1.7-4.4 3M5 6.3l1.4 6.2" /></>
-  } satisfies Record<typeof name, React.JSX.Element>
-
-  return (
-    <svg
-      className="persistent-authoring__toolbar-icon"
-      viewBox="0 0 18 18"
-      fill="none"
-      stroke="currentColor"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth="1.6"
-      aria-hidden="true"
-    >
-      {paths[name]}
-    </svg>
+    </WorkflowWorkspaceToolbar>
   )
 }

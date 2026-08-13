@@ -46,7 +46,10 @@ test('runs an existing PLC simulation Workflow through the real Edge', async ({
     name: '运行工作流 PLC 仿真连接检查工作流',
     exact: true
   }).click()
-  await expect(panel.getByText('已有工作流运行', { exact: true })).toBeVisible()
+  const workflowCanvas = panel.getByRole('region', { name: '工作流画布' })
+  await expect(workflowCanvas.getByText('Backend 定义 · 只读', { exact: true }))
+    .toBeVisible()
+  await expect(workflowCanvas.locator('[data-workflow-node-uuid]')).toHaveCount(1)
   await expect(panel.getByText(PLC_WORKFLOW_UUID, { exact: true })).toBeVisible()
   await expect(panel.getByText('已通过 · 1 个执行节点', { exact: true }))
     .toBeVisible()
@@ -78,8 +81,10 @@ test('runs an existing PLC simulation Workflow through the real Edge', async ({
     { timeout: 30_000, intervals: [200, 500, 1_000] }
   ).toBe('succeeded')
   await panel.getByRole('button', { name: '刷新状态', exact: true }).click()
-  await expect(panel.locator('.workflow-runtime__existing-run-summary'))
+  await expect(panel.locator('.persistent-authoring__task-status'))
     .toContainText('执行成功')
+  await expect(workflowCanvas.locator('.react-flow__node.wf-flow-node--success'))
+    .toHaveCount(1)
   await expect(panel.locator('.workflow-runtime__output-title'))
     .toContainText('1/1')
 

@@ -5,10 +5,15 @@ import { join, resolve } from 'node:path'
 const DEMO_WORKFLOW_UUID = '50000000-0000-4000-8000-000000000001'
 const DEMO_HEAT_NODE_UUID = '60000000-0000-4000-8000-000000000001'
 const enabled = process.env.UNILAB_E2E_BACKEND_RUNTIME === '1'
+const workbenchUrl = process.env.UNILAB_WORKBENCH_URL ??
+  'http://127.0.0.1:3110/#/home/wangtao/Uni-Lab-SZLab'
 
-test.skip(!enabled, '需要显式启动 PostgreSQL、Backend、Scheduler 与 mock Edge')
+test.skip(
+  !enabled,
+  '需要显式启动 Workbench、PostgreSQL、Backend、Scheduler 与 mock Edge'
+)
 
-/** 验证 Backend 已有工作流的三种正式运行模式及真实 Scheduler 结果。 */
+/** 验证 Backend 已有工作流的只读画布、三种正式运行模式及真实 Scheduler 结果。 */
 test('runs all existing Backend Workflow modes through the real Scheduler and mock Edge', async ({
   page
 }) => {
@@ -42,8 +47,26 @@ test('runs all existing Backend Workflow modes through the real Scheduler and mo
   })
   await installCatalogPanel(page)
 
-  await page.goto('/?section=workflow&backend=local-go')
-  const panel = page.locator('[data-panel-instance-id="runtime-workflow"]')
+  await page.goto(workbenchUrl)
+  const edgeConnection = page.getByLabel(/^运行连接：Edge \/ OS /)
+  const backendOption = page.getByRole('button', {
+    name: /Backend \+ Scheduler/
+  })
+  await expect(edgeConnection).toBeVisible()
+  if (!await backendOption.isVisible()) await edgeConnection.click()
+  await expect(backendOption).toBeVisible()
+  await backendOption.click()
+
+  const workbench = page.locator(
+    '.unilab-workbench[data-connection-mode="backend"]'
+  )
+  await expect(workbench).toHaveAttribute(
+    'data-authority-profile',
+    'backend_controlled'
+  )
+  await expect(workbench).toHaveAttribute('data-backend-id', 'local-go')
+
+  const panel = page.getByRole('region', { name: '工作流窗口' })
   await expect(panel.getByText('工作流目录', { exact: true })).toBeVisible()
   await expect(panel.getByText('样品加热与定量输送', { exact: true })).toBeVisible()
   await page.screenshot({
@@ -55,11 +78,16 @@ test('runs all existing Backend Workflow modes through the real Scheduler and mo
     name: '运行工作流 样品加热与定量输送',
     exact: true
   }).click()
-  await expect(panel.getByText('已有工作流运行', { exact: true })).toBeVisible()
-  await expect(panel.getByText(DEMO_WORKFLOW_UUID, { exact: true })).toBeVisible()
-  await expect(panel.getByText('工作流创作未启用。', { exact: false })).toBeVisible()
-  await expect(panel.getByText('已通过 · 2 个执行节点', { exact: true }))
+  const canvas = panel.getByRole('region', { name: '工作流画布' })
+  await expect(canvas.getByText('Backend 定义 · 只读', { exact: true }))
     .toBeVisible()
+  await expect(canvas.locator('[data-workflow-node-uuid]')).toHaveCount(2)
+  await expect(canvas.locator('.react-flow__edge')).toHaveCount(1)
+  await expect(canvas.getByText('加热至 60°C', { exact: true })).toBeVisible()
+  await expect(canvas.getByText('输送 5 mL', { exact: true })).toBeVisible()
+  await expect(panel.getByRole('button', { name: '保存工作流' })).toBeDisabled()
+  await expect(panel.getByRole('button', { name: '画布模式' }))
+    .toHaveAttribute('aria-pressed', 'true')
   await page.screenshot({
     path: join(artifactDirectory, '02-existing-workflow-ready.png'),
     fullPage: true
@@ -92,10 +120,12 @@ test('runs all existing Backend Workflow modes through the real Scheduler and mo
   }, { timeout: 30_000 }).toBe('succeeded')
 
   await panel.getByRole('button', { name: '刷新状态', exact: true }).click()
-  await expect(panel.locator('.workflow-runtime__existing-run-summary'))
+  await expect(panel.locator('.persistent-authoring__task-status'))
     .toContainText('执行成功')
   await expect(panel.locator('.workflow-runtime__output-title'))
     .toContainText('2/2')
+  await expect(canvas.locator('.react-flow__node.wf-flow-node--success'))
+    .toHaveCount(2)
   await expect(panel.locator('.workflow-runtime__node-list button'))
     .toHaveCount(2)
   await page.screenshot({
@@ -103,6 +133,7 @@ test('runs all existing Backend Workflow modes through the real Scheduler and mo
     fullPage: true
   })
 
+  await panel.getByRole('button', { name: '配置运行方式' }).click()
   await panel.getByText('单节点调试', { exact: true }).click()
   await panel.getByLabel('目标节点').selectOption(DEMO_HEAT_NODE_UUID)
   await expect(panel.getByText('已通过 · 1 个执行节点', { exact: true }))
@@ -131,13 +162,17 @@ test('runs all existing Backend Workflow modes through the real Scheduler and mo
     { timeout: 30_000 }
   ).toBe('succeeded')
   await panel.getByRole('button', { name: '刷新状态', exact: true }).click()
-  await expect(panel.locator('.workflow-runtime__existing-run-summary'))
+  await expect(panel.locator('.workflow-runtime__output-title'))
     .toContainText('1/1')
+  await expect(canvas.locator(
+    `[data-workflow-node-uuid="${DEMO_HEAT_NODE_UUID}"]`
+  ).locator('xpath=..')).toHaveClass(/wf-flow-node--success/)
   await page.screenshot({
     path: join(artifactDirectory, '04-existing-workflow-single-node-succeeded.png'),
     fullPage: true
   })
 
+  await panel.getByRole('button', { name: '配置运行方式' }).click()
   await panel.getByText('单步运行', { exact: true }).click()
   await expect(panel.getByText('已通过 · 2 个执行节点', { exact: true }))
     .toBeVisible()
@@ -179,8 +214,10 @@ test('runs all existing Backend Workflow modes through the real Scheduler and mo
     { timeout: 30_000 }
   ).toBe('succeeded')
   await panel.getByRole('button', { name: '刷新状态', exact: true }).click()
-  await expect(panel.locator('.workflow-runtime__existing-run-summary'))
+  await expect(panel.locator('.workflow-runtime__output-title'))
     .toContainText('2/2')
+  await expect(canvas.locator('.react-flow__node.wf-flow-node--success'))
+    .toHaveCount(2)
   await page.screenshot({
     path: join(artifactDirectory, '05-existing-workflow-step-succeeded.png'),
     fullPage: true

@@ -9,13 +9,15 @@ import type {
 } from '@unilab/services'
 
 import { useWorkflowTaskRuntime } from '../hooks/useWorkflowTaskRuntime'
-import { TERMINAL_JOB_STATUSES, workflowTaskMetadata } from '../utils/workflowTaskPanelProjection'
+import { projectExistingWorkflowCanvas } from '../utils/existingWorkflowCanvasProjection'
+import {
+  TERMINAL_JOB_STATUSES,
+  workflowTaskDagState
+} from '../utils/workflowTaskPanelProjection'
 import {
   workflowTaskControls,
   workflowTaskIsLive,
-  workflowTaskStatusLabel,
-  workflowTaskToolbarControls,
-  workflowTaskVisualStatus
+  workflowTaskToolbarControls
 } from '../utils/workflowTaskPresentation'
 import {
   projectWorkflowTaskEvents,
@@ -23,19 +25,19 @@ import {
 } from '../utils/workflowTaskOutputProjection'
 import {
   existingWorkflowPreflightFailureMessage,
-  existingWorkflowRunButtonLabel,
   existingWorkflowRunModeLabel,
   existingWorkflowStartDisabledReason
 } from '../utils/existingWorkflowRunProjection'
-import { WorkflowButton } from './WorkflowButton'
-import { WorkflowDebugger } from './WorkflowDebugger'
-import { ExistingWorkflowRunSetup } from './ExistingWorkflowRunSetup'
+import { ExistingWorkflowCanvas } from './ExistingWorkflowCanvas'
+import { ExistingWorkflowRuntimeActions } from './ExistingWorkflowRuntimeActions'
 import { WorkflowOutput, type WorkflowOutputTab } from './WorkflowOutput'
+import { WorkflowWorkspaceToolbar } from './WorkflowWorkspaceToolbar'
 import styles from './workflow.module.scss'
 
 interface ExistingWorkflowRuntimePanelProps {
   runtime: WorkflowRuntimePort
   workflowUuid: string
+  workflowName?: string
   onChooseWorkflow?: () => void
 }
 
@@ -46,6 +48,7 @@ interface ExistingWorkflowRuntimePanelProps {
 export function ExistingWorkflowRuntimePanel({
   runtime,
   workflowUuid,
+  workflowName,
   onChooseWorkflow
 }: ExistingWorkflowRuntimePanelProps): React.JSX.Element {
   const taskRuntime = useWorkflowTaskRuntime(runtime, workflowUuid)
@@ -67,6 +70,10 @@ export function ExistingWorkflowRuntimePanel({
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const task = snapshot.task
   const liveTask = workflowTaskIsLive(task)
+  const structure = useMemo(
+    () => projectExistingWorkflowCanvas(preparation),
+    [preparation]
+  )
   const outputNodes = useMemo(
     () => snapshot.jobs.map(projectWorkflowTaskJob),
     [snapshot.jobs]
@@ -75,7 +82,10 @@ export function ExistingWorkflowRuntimePanel({
     () => projectWorkflowTaskEvents(snapshot.events, snapshot.feedback, snapshot.jobs),
     [snapshot.events, snapshot.feedback, snapshot.jobs]
   )
-  const nodeNames = useMemo(() => snapshotNodeNames(task?.workflow_snapshot), [task])
+  const nodeNames = useMemo(() => ({
+    ...Object.fromEntries(structure.nodes.map((node) => [node.id, node.name])),
+    ...snapshotNodeNames(task?.workflow_snapshot)
+  }), [structure.nodes, task])
   const selectedNode = outputNodes.find((node) => (
     node.sourceNodeId === selectedNodeId || node.nodeId === selectedNodeId
   ))
@@ -96,7 +106,7 @@ export function ExistingWorkflowRuntimePanel({
     [controls, task]
   )
   const runtimeError = snapshot.actionError ?? snapshot.projectionError ??
-    snapshot.feedbackError
+    snapshot.feedbackError ?? snapshot.realtimeError
   const enabledNodes = useMemo(
     () => preparation?.nodes.filter((node) => !node.disabled) ?? [],
     [preparation]
@@ -105,18 +115,23 @@ export function ExistingWorkflowRuntimePanel({
     (node) => node.workflow_node_uuid === targetNodeUuid
   )
   const preflightReady = preflight?.status === 'ready' && preflight.can_run
+  const canvasNodeStates = useMemo(() => ({
+    ...Object.fromEntries(structure.nodes
+      .filter((node) => node.disabled)
+      .map((node) => [node.id, 'disabled'])),
+    ...Object.fromEntries(snapshot.jobs.map((job) => [
+      job.workflow_node_uuid,
+      workflowTaskDagState(
+        job.status,
+        structure.nodes.find((node) => node.id === job.workflow_node_uuid)
+          ?.type === 'material_source',
+        task?.status
+      )
+    ]))
+  }), [snapshot.jobs, structure.nodes, task?.status])
   const targetRequired = runMode === 'single_node' && !selectedTarget
   const startDisabled = busy || snapshot.loading || liveTask ||
     preflightLoading || !preflightReady || targetRequired
-  const taskMetadata = useMemo(
-    () => workflowTaskMetadata(task, snapshot.lastCommand, snapshot).map((item) => ({
-      ...item,
-      value: item.label === '状态同步'
-        ? '手动刷新'
-        : backendRuntimeCopy(String(item.value))
-    })),
-    [snapshot, task]
-  )
 
   useEffect(() => {
     let current = true
@@ -204,6 +219,33 @@ export function ExistingWorkflowRuntimePanel({
     if (nextRunMode !== 'single_node') setTargetNodeUuid('')
   }
 
+  /**
+   * 在只读画布中选择节点；单节点调试模式下同步选择正式运行目标。
+   *
+   * @param nodeUuid 用户在工作流画布上选择的计划节点身份。
+   * @returns 无；仅更新前端选择，不修改 Backend 工作流定义。
+   */
+  const chooseCanvasNode = (nodeUuid: string): void => {
+    setSelectedNodeId(nodeUuid)
+    if (
+      runMode === 'single_node' &&
+      !busy &&
+      !liveTask &&
+      enabledNodes.some((node) => node.workflow_node_uuid === nodeUuid)
+    ) setTargetNodeUuid(nodeUuid)
+  }
+
+  /**
+   * 从目标节点选择框更新单节点运行目标，并在画布中定位同一节点。
+   *
+   * @param nodeUuid Backend 运行准备快照中的节点身份；空值表示清除目标。
+   * @returns 无；任务创建前仍会执行最新 Backend 预检。
+   */
+  const chooseTargetNode = (nodeUuid: string): void => {
+    setTargetNodeUuid(nodeUuid)
+    setSelectedNodeId(nodeUuid || null)
+  }
+
   /** 在最新 Backend 预检通过后创建正式工作流任务。 */
   const createSelectedRun = async (): Promise<void> => {
     const selectedNodeUuid = runMode === 'single_node'
@@ -233,116 +275,103 @@ export function ExistingWorkflowRuntimePanel({
   }
 
   return (
-    <div className={`${styles.workflow} workflow-runtime workflow-runtime__existing-run`}>
-      <header className="workflow-runtime__existing-run-header">
-        <div className="workflow-runtime__existing-run-navigation">
-          {onChooseWorkflow ? (
-            <WorkflowButton
-              type="button"
-              disabledReason="正在切换工作流"
-              onClick={onChooseWorkflow}
-            >
-              ← 工作流目录
-            </WorkflowButton>
-          ) : null}
-          <div>
-            <span>已有工作流运行</span>
-            <code title={workflowUuid}>{workflowUuid}</code>
-          </div>
-        </div>
-        <div className="workflow-runtime__existing-run-actions">
-          <WorkflowButton
-            type="button"
-            disabled={startDisabled}
-            disabledReason={existingWorkflowStartDisabledReason({
-              busy,
-              loadingTask: snapshot.loading,
-              liveTask,
-              preflightLoading,
-              preflight,
-              preflightError,
-              targetRequired
-            })}
-            onClick={() => void runAction(
-              createSelectedRun,
-              `Backend 已创建${existingWorkflowRunModeLabel(runMode)}任务；请刷新查看 Scheduler 执行结果`
-            )}
-          >
-            <span aria-hidden="true">▶</span>
-            {existingWorkflowRunButtonLabel(runMode)}
-          </WorkflowButton>
-          <WorkflowButton
-            type="button"
-            disabled={busy || snapshot.loading}
-            disabledReason="正在读取 Backend 运行状态"
-            onClick={() => void runAction(
-              taskRuntime.refresh,
-              '已请求 Backend 补读；以任务状态卡显示为准'
-            )}
-          >
-            <span aria-hidden="true">↻</span>
-            刷新状态
-          </WorkflowButton>
-        </div>
-      </header>
-
-      <ExistingWorkflowRunSetup
-        runMode={runMode}
-        targetNodeUuid={targetNodeUuid}
-        enabledNodes={enabledNodes}
-        disabled={busy || liveTask}
-        preparationLoading={preparationLoading}
-        preparationError={preparationError}
-        preflightLoading={preflightLoading}
-        preflight={preflight}
-        preflightError={preflightError}
-        preflightReady={preflightReady}
-        targetRequired={targetRequired}
-        onRunModeChange={chooseRunMode}
-        onTargetNodeChange={setTargetNodeUuid}
-        onPreparationRetry={() => setPreparationGeneration(
-          (generation) => generation + 1
-        )}
-        onPreflightRetry={() => setPreflightGeneration(
-          (generation) => generation + 1
-        )}
-      />
-
-      <div className="workflow-runtime__existing-run-notice" role="status" aria-live="polite">
-        <strong>{snapshot.loading ? '正在读取 Backend…' : message}</strong>
-        <span>
-          工作流创作未启用。Backend 当前未提供完整工作流运行事件流，页面不会猜测终态；
-          请使用“刷新状态”读取权威结果。
-        </span>
-        {snapshot.realtimeError ? <small>{snapshot.realtimeError}</small> : null}
-      </div>
-
-      <main className="workflow-runtime__existing-run-body">
-        <WorkflowDebugger
-          debugStatus={workflowTaskVisualStatus(task)}
-          runStatus={task?.status ?? 'draft'}
-          heading="工作流任务"
-          subtitle="Backend HTTP + Scheduler 权威状态"
-          statusText={task ? workflowTaskStatusLabel(task.status) : '尚未创建任务'}
-          runStatusText={task ? workflowTaskStatusLabel(task.status) : '未开始'}
-          runStatusPrefix="任务"
-          metadata={taskMetadata}
-          actionGroupLabel="工作流任务运行控制"
-          dangerGroupLabel="工作流任务停止控制"
-          commandDataAttribute="runtime"
+    <div className={[
+      styles.workflow,
+      'workflow-runtime persistent-authoring persistent-authoring--canvas',
+      'relative flex h-full w-full flex-col',
+      'bg-[var(--unilab-color-canvas)] text-[var(--unilab-color-text)]'
+    ].join(' ')}>
+      <WorkflowWorkspaceToolbar
+        task={task}
+        message={snapshot.loading ? '正在读取 Backend 任务状态' : message}
+        onChooseWorkflow={onChooseWorkflow}
+        navigationDisabled={busy}
+        navigationDisabledReason="正在处理工作流任务，请稍后返回列表"
+        codeMode={{
+          active: false,
+          disabled: true,
+          disabledReason: 'Backend 当前未提供工作流代码创作接口'
+        }}
+        canvasMode={{
+          active: true,
+          disabled: false,
+          disabledReason: '当前显示 Backend 工作流定义的只读画布'
+        }}
+        save={{
+          disabled: true,
+          disabledReason: 'Backend 当前未提供工作流创作写接口',
+          title: 'Backend 工作流定义只读'
+        }}
+      >
+        <ExistingWorkflowRuntimeActions
+          runMode={runMode}
+          targetNodeUuid={targetNodeUuid}
+          enabledNodes={enabledNodes}
+          busy={busy || snapshot.loading}
+          liveTask={liveTask}
+          preparationLoading={preparationLoading}
+          preparationError={preparationError}
+          preflightLoading={preflightLoading}
+          preflight={preflight}
+          preflightError={preflightError}
+          preflightReady={preflightReady}
+          targetRequired={targetRequired}
+          startDisabled={startDisabled}
+          startDisabledReason={existingWorkflowStartDisabledReason({
+            busy,
+            loadingTask: snapshot.loading,
+            liveTask,
+            preflightLoading,
+            preflight,
+            preflightError,
+            targetRequired
+          })}
           controls={toolbarControls}
+          onRunModeChange={chooseRunMode}
+          onTargetNodeChange={chooseTargetNode}
+          onPreparationRetry={() => setPreparationGeneration(
+            (generation) => generation + 1
+          )}
+          onPreflightRetry={() => setPreflightGeneration(
+            (generation) => generation + 1
+          )}
+          onStart={() => void runAction(
+            createSelectedRun,
+            `Backend 已创建${existingWorkflowRunModeLabel(runMode)}任务；请刷新查看 Scheduler 执行结果`
+          )}
+          onRefresh={() => void runAction(
+            taskRuntime.refresh,
+            '已从 Backend 补读任务、节点作业和反馈'
+          )}
           onCommand={(type, acceptedMessage) => command(type, acceptedMessage)}
         />
+      </WorkflowWorkspaceToolbar>
 
-        <section className="workflow-runtime__existing-run-summary" aria-label="任务状态摘要">
-          <div><span>任务状态</span><strong>{workflowTaskStatusLabel(task?.status)}</strong></div>
-          <div><span>节点作业</span><strong>{completedJobCount}/{snapshot.jobs.length}</strong></div>
-          <div><span>清理状态</span><strong>{cleanupStatusLabel(task?.cleanup_status)}</strong></div>
-          <div><span>最近更新</span><strong>{formatTime(task?.update_time)}</strong></div>
-        </section>
+      <section
+        className="persistent-authoring__workbench is-canvas-mode has-external-code-editor"
+        aria-label="工作流编写区"
+      >
+        <ExistingWorkflowCanvas
+          workflowName={workflowName}
+          structure={structure}
+          loading={preparationLoading}
+          error={preparationError}
+          selectedNodeId={selectedNodeId}
+          nodeStates={canvasNodeStates}
+          onNodeSelect={chooseCanvasNode}
+          onRetry={() => setPreparationGeneration(
+            (generation) => generation + 1
+          )}
+        />
+      </section>
 
+      <section
+        className="persistent-authoring__runtime"
+        aria-label="工作流任务运行控制"
+      >
         <WorkflowOutput
           expanded={outputExpanded}
+          resizable
           activeTab={outputTab}
           completedNodeCount={completedJobCount}
           expectedNodeCount={snapshot.jobs.length}
@@ -353,7 +382,7 @@ export function ExistingWorkflowRuntimePanel({
           selectedNode={selectedNode}
           selectedNodeId={selectedNodeId}
           pausedBeforeNodeId={null}
-          title="Backend 运行输出"
+          title="运行输出"
           countLabel="个节点任务已结束"
           nodesTabLabel="节点任务状态"
           eventsTabLabel="节点反馈"
@@ -363,7 +392,7 @@ export function ExistingWorkflowRuntimePanel({
           onNodeSelect={setSelectedNodeId}
           onClearError={taskRuntime.clearError}
         />
-      </main>
+      </section>
     </div>
   )
 }
@@ -384,28 +413,6 @@ function asRecord(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>
     : {}
-}
-
-function cleanupStatusLabel(status: string | undefined): string {
-  return {
-    none: '无需清理',
-    pending: '等待清理',
-    canceling: '正在清理',
-    settled: '清理完成',
-    requires_attention: '需要人工处理'
-  }[status ?? ''] ?? '尚未创建'
-}
-
-function formatTime(value: string | undefined): string {
-  if (!value) return '—'
-  const timestamp = Date.parse(value)
-  return Number.isFinite(timestamp)
-    ? new Intl.DateTimeFormat('zh-CN', {
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit'
-      }).format(timestamp)
-    : value
 }
 
 /** 把共享运行控件中的 OS 泛称收敛为当前面板实际连接的 Backend。 */

@@ -21,9 +21,37 @@ export type WorkflowTaskRunMode = 'normal' | 'step' | 'single_node'
 /** 工作流正式运行前可供操作者选择的已应用节点。 */
 export interface WorkflowRunNodeOption {
   workflow_node_uuid: string
+  workflow_node_template_uuid?: string
   name: string
   type: string
   disabled: boolean
+  description?: string
+  action_name?: string
+  action_type?: string
+  position?: {
+    x: number
+    y: number
+  }
+  handles: WorkflowRunHandleOption[]
+}
+
+/** 已有工作流只读画布中的一个稳定端口。 */
+export interface WorkflowRunHandleOption {
+  uuid: string
+  handle_key: string
+  display_name: string
+  io_type: 'source' | 'target'
+  value_type: string
+  data_key?: string
+}
+
+/** 已有工作流只读画布中的一条稳定有向连线。 */
+export interface WorkflowRunEdgeOption {
+  uuid: string
+  source_node_uuid: string
+  target_node_uuid: string
+  source_handle_uuid: string
+  target_handle_uuid: string
 }
 
 /** 工作流正式运行入口所需的只读定义快照。 */
@@ -31,6 +59,7 @@ export interface WorkflowRunPreparation {
   workflow_uuid: string
   workflow_revision: number
   nodes: WorkflowRunNodeOption[]
+  edges: WorkflowRunEdgeOption[]
 }
 
 export type WorkflowRunPreflightStatus =

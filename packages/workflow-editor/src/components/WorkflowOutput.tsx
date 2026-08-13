@@ -80,12 +80,19 @@ export function WorkflowOutput({
 
   useEffect(() => {
     if (!fullscreen) return
+    /** 允许操作者用 Escape 退出运行输出全屏，而不改变底部面板高度。 */
     const exitOnEscape = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') setFullscreen(false)
     }
     globalThis.addEventListener('keydown', exitOnEscape)
     return () => globalThis.removeEventListener('keydown', exitOnEscape)
   }, [fullscreen])
+
+  /** 切换运行输出全屏；折叠面板会先恢复为可见状态。 */
+  const toggleFullscreen = (): void => {
+    if (!outputVisible) onExpandedChange(true)
+    setFullscreen(current => !current)
+  }
   const eventNodeNames = workflowEventNodeNames(nodes, nodeNames)
   const nodeFailures = workflowNodeFailureLogs(nodes, nodeNames, events)
   const selectedNodeFailure = selectedNode
@@ -182,10 +189,7 @@ export function WorkflowOutput({
           aria-pressed={fullscreen}
           aria-label={fullscreen ? '退出运行输出全屏' : '全屏显示运行输出'}
           title={fullscreen ? '退出全屏（Esc）' : '全屏显示运行输出'}
-          onClick={() => {
-            if (!outputVisible) onExpandedChange(true)
-            setFullscreen(value => !value)
-          }}
+          onClick={toggleFullscreen}
         >
           <span
             className={`codicon codicon-${fullscreen ? 'screen-normal' : 'screen-full'}`}

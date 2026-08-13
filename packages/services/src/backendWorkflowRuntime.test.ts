@@ -4,14 +4,19 @@ import type { HttpClient } from './http'
 import {
   backendWorkflowTaskCreateBody,
   loadBackendWorkflowNodeJobFeedback,
-  loadBackendWorkflowRunPreflight,
-  loadBackendWorkflowRunPreparation
+  loadBackendWorkflowRunPreflight
 } from './backendWorkflowRuntime'
+import { loadBackendWorkflowRunPreparation } from './backendWorkflowDefinition'
 import type { WorkflowNodeJobFeedback } from './workflowTaskContracts'
 
 const JOB_UUID = '30000000-0000-4000-8000-000000000001'
 const WORKFLOW_UUID = '50000000-0000-4000-8000-000000000001'
 const NODE_UUID = '60000000-0000-4000-8000-000000000001'
+const TARGET_NODE_UUID = '60000000-0000-4000-8000-000000000002'
+const TEMPLATE_UUID = '30000000-0000-4000-8000-000000000001'
+const SOURCE_HANDLE_UUID = '40000000-0000-4000-8000-000000000001'
+const TARGET_HANDLE_UUID = '40000000-0000-4000-8000-000000000002'
+const EDGE_UUID = '70000000-0000-4000-8000-000000000001'
 
 describe('Backend 工作流运行 adapter', () => {
   /** 空任务输入可安全省略，并为 Backend 补齐库存绑定数组。 */
@@ -51,19 +56,11 @@ describe('Backend 工作流运行 adapter', () => {
     })).toThrowError('只有单节点运行可以指定目标工作流节点')
   })
 
-  /** 工作流图只投影运行选择需要的节点事实，并保留禁用状态。 */
-  it('从 Backend 工作流图生成正式运行准备快照', async () => {
+  /** 工作流图投影运行选择与 dev 风格只读画布需要的节点、端口和连线事实。 */
+  it('从 Backend 工作流图生成正式运行与只读画布快照', async () => {
     const request = vi.fn().mockResolvedValue({
       code: 0,
-      data: {
-        workflow: { uuid: WORKFLOW_UUID, revision: 3 },
-        nodes: [{
-          uuid: NODE_UUID,
-          name: '加热至 60°C',
-          type: 'device_action',
-          disabled: false
-        }]
-      }
+      data: backendGraph()
     })
 
     await expect(loadBackendWorkflowRunPreparation(
@@ -74,9 +71,55 @@ describe('Backend 工作流运行 adapter', () => {
       workflow_revision: 3,
       nodes: [{
         workflow_node_uuid: NODE_UUID,
+        workflow_node_template_uuid: TEMPLATE_UUID,
         name: '加热至 60°C',
         type: 'device_action',
-        disabled: false
+        disabled: false,
+        description: '加热演示节点',
+        action_name: 'auto-heat_chill',
+        action_type: 'UniLabJsonCommandAsync',
+        position: { x: 90, y: 150 },
+        handles: [{
+          uuid: SOURCE_HANDLE_UUID,
+          handle_key: 'output',
+          display_name: '输出',
+          io_type: 'source',
+          value_type: 'material',
+          data_key: 'sample'
+        }, {
+          uuid: TARGET_HANDLE_UUID,
+          handle_key: 'input',
+          display_name: '输入',
+          io_type: 'target',
+          value_type: 'material'
+        }]
+      }, {
+        workflow_node_uuid: TARGET_NODE_UUID,
+        workflow_node_template_uuid: TEMPLATE_UUID,
+        name: '输送 5 mL',
+        type: 'device_action',
+        disabled: false,
+        handles: [{
+          uuid: SOURCE_HANDLE_UUID,
+          handle_key: 'output',
+          display_name: '输出',
+          io_type: 'source',
+          value_type: 'material',
+          data_key: 'sample'
+        }, {
+          uuid: TARGET_HANDLE_UUID,
+          handle_key: 'input',
+          display_name: '输入',
+          io_type: 'target',
+          value_type: 'material'
+        }]
+      }],
+      edges: [{
+        uuid: EDGE_UUID,
+        source_node_uuid: NODE_UUID,
+        target_node_uuid: TARGET_NODE_UUID,
+        source_handle_uuid: SOURCE_HANDLE_UUID,
+        target_handle_uuid: TARGET_HANDLE_UUID
       }]
     })
     expect(request).toHaveBeenCalledWith(
@@ -97,7 +140,9 @@ describe('Backend 工作流运行 adapter', () => {
       code: 0,
       data: {
         workflow: { uuid: WORKFLOW_UUID, revision: 3 },
-        nodes: [node, node]
+        nodes: [node, node],
+        edges: [],
+        handle_templates: []
       }
     })
 
@@ -248,6 +293,54 @@ function runPreflightReport(): Record<string, unknown> {
       node_uuid: NODE_UUID,
       node_name: '加热至 60°C',
       details: { action_name: 'auto-heat_chill' }
+    }]
+  }
+}
+
+/** 构造包含画布节点、端口和有向边的 Backend 工作流定义响应。 */
+function backendGraph(): Record<string, unknown> {
+  return {
+    workflow: { uuid: WORKFLOW_UUID, revision: 3 },
+    nodes: [{
+      uuid: NODE_UUID,
+      workflow_node_template_uuid: TEMPLATE_UUID,
+      name: '加热至 60°C',
+      type: 'device_action',
+      disabled: false,
+      description: '加热演示节点',
+      action_name: 'auto-heat_chill',
+      action_type: 'UniLabJsonCommandAsync',
+      pose: { x: 90, y: 150 }
+    }, {
+      uuid: TARGET_NODE_UUID,
+      workflow_node_template_uuid: TEMPLATE_UUID,
+      name: '输送 5 mL',
+      type: 'device_action',
+      disabled: false,
+      pose: {}
+    }],
+    edges: [{
+      uuid: EDGE_UUID,
+      source_node_uuid: NODE_UUID,
+      target_node_uuid: TARGET_NODE_UUID,
+      source_handle_uuid: SOURCE_HANDLE_UUID,
+      target_handle_uuid: TARGET_HANDLE_UUID
+    }],
+    handle_templates: [{
+      uuid: SOURCE_HANDLE_UUID,
+      workflow_node_template_uuid: TEMPLATE_UUID,
+      handle_key: 'output',
+      display_name: '输出',
+      io_type: 'source',
+      type: 'material',
+      data_key: 'sample'
+    }, {
+      uuid: TARGET_HANDLE_UUID,
+      workflow_node_template_uuid: TEMPLATE_UUID,
+      handle_key: 'input',
+      display_name: '输入',
+      io_type: 'target',
+      type: 'material'
     }]
   }
 }

@@ -14,6 +14,7 @@ import {
 function noop(): void {}
 
 describe('WorkflowOutput', () => {
+  /** 可调整高度的 dev 输出区始终可见，不再维护另一套展开/收起交互。 */
   it('uses height dragging instead of expand and collapse controls', () => {
     const html = renderToStaticMarkup(
       <WorkflowOutput

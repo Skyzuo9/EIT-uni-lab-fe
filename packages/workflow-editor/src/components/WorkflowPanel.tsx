@@ -125,6 +125,7 @@ export default function WorkflowPanel({
           key={workflowUuid}
           runtime={runtime}
           workflowUuid={workflowUuid}
+          workflowName={selectedWorkflowName}
           onChooseWorkflow={explicitWorkflowUuid && !allowWorkflowSelection
             ? undefined
             : () => {

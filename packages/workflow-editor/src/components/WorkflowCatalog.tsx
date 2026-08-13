@@ -129,7 +129,7 @@ export function WorkflowCatalog({
     setRecentWorkflowIds(nextRecent)
     onSelect(
       workflowUuid,
-      workflowName || workflows.find(item => item.uuid === workflowUuid)?.name || ''
+      workflowName || workflows.find((item) => item.uuid === workflowUuid)?.name || ''
     )
   }
 
