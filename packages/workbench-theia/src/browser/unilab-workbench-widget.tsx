@@ -980,6 +980,9 @@ function WorkbenchSurface({
         }
         data-session-generation={session.identity?.generation ?? ''}
         data-session-mode={session.identity?.mode ?? ''}
+        data-workspace-backend-phase={session.phase}
+        data-edge-runtime-phase={session.edgeRuntime.phase}
+        data-plc-simulator-phase={session.plcSimulator.phase}
         data-workspace-graph-fingerprint={session.identity?.graphFingerprint ?? ''}
         data-package-catalog-revision={
           session.identity?.packageMounts?.catalogRevision ?? ''
