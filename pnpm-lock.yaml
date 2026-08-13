@@ -956,6 +956,9 @@ importers:
       '@theia/monaco-editor-core':
         specifier: 1.108.201
         version: 1.108.201
+      '@theia/terminal':
+        specifier: 1.74.1
+        version: 1.74.1(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@5.9.3)
       '@theia/workspace':
         specifier: 1.74.1
         version: 1.74.1(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@5.9.3)

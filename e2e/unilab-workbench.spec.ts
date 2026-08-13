@@ -402,6 +402,50 @@ test.describe('UniLab Workbench real-system contract', () => {
     )).toBe(Math.round(preferredRenderedHeight))
   })
 
+  test('reopens an empty bottom panel with a terminal', async ({ page }) => {
+    test.setTimeout(120_000)
+    await page.goto(workbenchUrl!)
+
+    const bottomPanel = page.locator('#theia-bottom-content-panel')
+    const bottomPanelToggle = page.locator('#status-bar-bottom-panel-toggle')
+    const bottomTabs = bottomPanel.locator('.lm-TabBar-tab')
+
+    await page.getByText('终端', { exact: true }).click()
+    await page.getByText('新建终端', { exact: true }).click()
+    await expect(bottomPanel).toBeVisible()
+    await expect(
+      bottomPanel.locator('.terminal-container:visible')
+    ).toBeVisible()
+
+    for (let remaining = await bottomTabs.count(); remaining > 0;) {
+      const closeButtons = bottomPanel.locator(
+        '.lm-TabBar-tabCloseIcon:visible'
+      )
+      expect(await closeButtons.count()).toBeGreaterThan(0)
+      await closeButtons.last().click()
+      await expect(bottomTabs).toHaveCount(remaining - 1)
+      remaining -= 1
+    }
+
+    await expect(bottomPanel).toBeHidden()
+    await bottomPanelToggle.click()
+
+    await expect(bottomPanel).toBeVisible()
+    await expect(bottomTabs).toHaveCount(1)
+    await expect(
+      bottomPanel.locator('.terminal-container:visible')
+    ).toBeVisible()
+
+    await bottomPanelToggle.click()
+    await expect(bottomPanel).toBeHidden()
+    await bottomPanelToggle.click()
+    await expect(bottomPanel).toBeVisible()
+    await expect(bottomTabs).toHaveCount(1)
+    await expect(
+      bottomPanel.locator('.terminal-container:visible')
+    ).toBeVisible()
+  })
+
   test('preserves the 3D camera and device picking across outer layout resize', async ({
     page
   }) => {

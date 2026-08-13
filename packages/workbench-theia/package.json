@@ -17,6 +17,7 @@
     "@theia/filesystem": "1.74.1",
     "@theia/markers": "1.74.1",
     "@theia/monaco-editor-core": "1.108.201",
+    "@theia/terminal": "1.74.1",
     "@theia/workspace": "1.74.1",
     "@unilab/design-system": "workspace:*",
     "@unilab/device-management": "workspace:*",
@@ -24,9 +25,9 @@
     "@unilab/pascal-host": "workspace:*",
     "@unilab/pascal-lab-plugin": "workspace:*",
     "@unilab/services": "workspace:*",
+    "@unilab/workbench-session": "workspace:*",
     "@unilab/workflow-editor": "workspace:*",
     "@unilab/workflow-ide-bridge": "workspace:*",
-    "@unilab/workbench-session": "workspace:*",
     "react": "^19.2.1",
     "react-dom": "^19.2.1"
   },
