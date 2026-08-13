@@ -3,7 +3,7 @@ import { ILogger } from '@theia/core/lib/common/logger'
 import type { Disposable } from '@theia/core/lib/common/disposable'
 import { inject, injectable } from '@theia/core/shared/inversify'
 import {
-  createManagedLocalWorkbenchSession,
+  createWorkspaceHostWorkbenchSession,
   type WorkbenchSession
 } from '@unilab/workbench-session'
 
@@ -12,14 +12,19 @@ import type {
   WorkbenchSessionServer
 } from '../common/workbench-session-protocol'
 
+type WorkbenchNodeSession = WorkbenchSession & {
+  registerRenderer?(): Promise<void>
+  unregisterRenderer?(): Promise<void>
+}
+
 @injectable()
 export class WorkbenchSessionService
 implements WorkbenchSessionServer, BackendApplicationContribution {
   @inject(ILogger)
   private readonly logger!: ILogger
 
-  private readonly session: WorkbenchSession =
-    createManagedLocalWorkbenchSession({
+  private readonly session: WorkbenchNodeSession =
+    createWorkspaceHostWorkbenchSession({
       workspacePath: process.env['THEIA_WORKSPACE'] ?? '',
       osProjectPath: process.env['UNILAB_OS_PROJECT'],
       environmentPath: process.env['UNILAB_PYTHON_ENV'],
@@ -32,6 +37,9 @@ implements WorkbenchSessionServer, BackendApplicationContribution {
   private sessionListener: Disposable | undefined
 
   onStart(): void {
+    void this.session.registerRenderer?.().catch(error => {
+      this.logger.warn('Workspace renderer registration failed', error)
+    })
     void this.session.startWorkspaceBackend().catch(error => {
       this.logger.warn('Workspace Backend startup failed', error)
     })
@@ -47,7 +55,12 @@ implements WorkbenchSessionServer, BackendApplicationContribution {
     this.sessionListener?.dispose()
     this.sessionListener = undefined
     this.clients.clear()
-    await this.session.stopAll()
+    // Workspace Host owns Backend/OS/PLC lifetimes. Theia reload or renderer
+    // shutdown must not stop physical work or lose the recoverable session.
+    await Promise.allSettled([
+      this.session.unregisterRenderer?.() ?? Promise.resolve(),
+      this.session.stopAgent()
+    ])
   }
 
   getSnapshot() {

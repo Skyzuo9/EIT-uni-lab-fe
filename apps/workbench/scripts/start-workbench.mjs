@@ -144,6 +144,7 @@ const theia = spawn(process.execPath, [
   env: {
     ...activatedEnvironment,
     THEIA_WORKSPACE: workspace,
+    UNILAB_WORKBENCH_RENDERER_URL: `http://127.0.0.1:${port}`,
     UNILAB_WORKBENCH_LAUNCHER_PID: String(process.pid),
     ...(osProject ? { UNILAB_OS_PROJECT: path.resolve(osProject) } : {}),
     UNILAB_PYTHON_ENV: pythonEnvironment

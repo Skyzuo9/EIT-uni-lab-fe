@@ -54,6 +54,7 @@ import {
 } from './plc-variable-tables'
 import { waitForWorkbenchReadiness } from './readiness'
 import { prepareWorkbenchState } from './workbench-state'
+import { WorkspaceHostWorkbenchSession } from './workspace-host-session'
 export {
   MANAGED_WORKSPACE_SKILL_NAMES,
   resolveManagedWorkspaceSkillSource,
@@ -290,6 +291,13 @@ export function createManagedLocalWorkbenchSession(
   options: ManagedLocalWorkbenchSessionOptions
 ): WorkbenchSession {
   return new ManagedLocalWorkbenchSession(options)
+}
+
+/** Create the AIW-02 adapter backed by the OS-owned Workspace Host. */
+export function createWorkspaceHostWorkbenchSession(
+  options: ManagedLocalWorkbenchSessionOptions
+): WorkspaceHostWorkbenchSession {
+  return new WorkspaceHostWorkbenchSession(options)
 }
 
 class ManagedLocalWorkbenchSession implements WorkbenchSession {

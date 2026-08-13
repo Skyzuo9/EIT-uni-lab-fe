@@ -30,4 +30,25 @@ describe('managed Workbench session cleanup', () => {
       launcherPid: 25
     }), [])
   })
+
+  it('never treats Workspace Host components as launcher-owned children', async () => {
+    const workspacePath = await mkdtemp(path.join(os.tmpdir(), 'unilab-host-cleanup-'))
+    const runtimePath = path.join(workspacePath, '.unilabos', 'runtime', 'workbench')
+    await mkdir(runtimePath, { recursive: true })
+    await writeFile(path.join(runtimePath, 'session.json'), JSON.stringify({
+      schemaVersion: 'unilab-workspace-host/v1',
+      workspacePath,
+      host: { pid: 501 },
+      components: {
+        backend: { pid: 502 },
+        edge: { pid: 503 },
+        plc: { pid: 504 }
+      }
+    }))
+
+    assert.deepEqual(await resolveManagedSessionProcessIds({
+      workspacePath,
+      launcherPid: 24
+    }), [])
+  })
 })
