@@ -9,10 +9,12 @@ import {
   createWorkbenchRendererUrl,
   discoverWorkbenchOsProject,
   discoverWorkbenchPythonEnvironment,
+  isolateWorkbenchBackendProcessGroup,
   resolveWorkbenchLaunchConfiguration,
   workbenchEnvironmentPathEntries
 } from './workbench-launch.mjs'
 import { createRemoteWorkbenchController } from './remote-controller.mjs'
+import { stopManagedSessionProcesses } from './managed-session-cleanup.mjs'
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url))
 const workspaceRoot = path.resolve(scriptDirectory, '../../..')
@@ -138,9 +140,11 @@ const theia = spawn(process.execPath, [
   '--plugins=local-dir:plugins'
 ], {
   stdio: 'inherit',
+  detached: isolateWorkbenchBackendProcessGroup(),
   env: {
     ...activatedEnvironment,
     THEIA_WORKSPACE: workspace,
+    UNILAB_WORKBENCH_LAUNCHER_PID: String(process.pid),
     ...(osProject ? { UNILAB_OS_PROJECT: path.resolve(osProject) } : {}),
     UNILAB_PYTHON_ENV: pythonEnvironment
   }
@@ -152,6 +156,7 @@ const rendererUrl = createWorkbenchRendererUrl({
   workflowUuid: launch.workflowUuid
 })
 let stopping = false
+let shutdownPromise = null
 let desktopShell = null
 let remoteController = remoteConfiguration
   ? createRemoteWorkbenchController({
@@ -163,21 +168,35 @@ let remoteController = remoteConfiguration
     })
   : null
 const stop = signal => {
-  if (stopping) return
+  if (shutdownPromise) return shutdownPromise
   stopping = true
-  void closeRemoteAccess().finally(() => {
+  shutdownPromise = (async () => {
+    await closeRemoteAccess()
+    await stopManagedSessionProcesses({
+      workspacePath: workspace,
+      launcherPid: process.pid
+    })
     if (desktopShell && !desktopShell.killed) desktopShell.kill(signal)
     if (!theia.killed) theia.kill(signal)
-  })
+  })()
+  return shutdownPromise
 }
-process.on('SIGINT', () => stop('SIGINT'))
-process.on('SIGTERM', () => stop('SIGTERM'))
+process.on('SIGINT', () => void stop('SIGINT'))
+process.on('SIGTERM', () => void stop('SIGTERM'))
 theia.once('exit', (code, signal) => {
-  if (!stopping) {
-    stopping = true
-    void closeRemoteAccess().finally(() => {
-      if (desktopShell && !desktopShell.killed) desktopShell.kill('SIGTERM')
+  const finalize = async () => {
+    await closeRemoteAccess()
+    await stopManagedSessionProcesses({
+      workspacePath: workspace,
+      launcherPid: process.pid
     })
+    if (!stopping) {
+      stopping = true
+      if (desktopShell && !desktopShell.killed) desktopShell.kill('SIGTERM')
+    }
+  }
+  if (!shutdownPromise) {
+    shutdownPromise = finalize()
   }
   if (process.exitCode === undefined) {
     process.exitCode = signal ? 1 : code ?? 0
@@ -242,8 +261,7 @@ async function launchDesktop(rendererUrl) {
   })
   desktopShell.once('exit', (code, signal) => {
     if (!stopping) {
-      stopping = true
-      if (!theia.killed) theia.kill('SIGTERM')
+      void stop('SIGTERM')
     }
     if (process.exitCode === undefined) {
       process.exitCode = signal ? 1 : code ?? 0

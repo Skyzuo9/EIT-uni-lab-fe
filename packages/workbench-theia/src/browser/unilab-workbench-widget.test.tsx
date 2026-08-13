@@ -54,6 +54,16 @@ describe('WorkbenchSessionGate', () => {
             message: 'http://127.0.0.1:18103/api/v1/devices 尚未就绪',
             recovery: '启动 PLC-Sim 后重启 OS'
           },
+          edgeRuntime: {
+            phase: 'failed',
+            message: 'Edge Runtime 未就绪',
+            pid: null,
+            generation: null,
+            graphPath: '/workspace/deployment/graphs/szlab-local-debug.json',
+            mode: 'normal',
+            logPath: '/workspace/.unilabos/logs/workbench/edge.log',
+            diagnostic: '设备运行时未连接'
+          },
           plcSimulator: {
             phase: 'idle',
             message: 'PLC-Sim 未启动',
@@ -104,6 +114,16 @@ describe('WorkbenchSessionGate', () => {
           agent: null,
           identity: null,
           diagnostic: null,
+          edgeRuntime: {
+            phase: 'idle',
+            message: 'Edge Runtime 尚未启动',
+            pid: null,
+            generation: null,
+            graphPath: 'deployment/graphs/szlab-local-debug.json',
+            mode: 'normal',
+            logPath: '',
+            diagnostic: null
+          },
           plcSimulator: {
             phase: 'idle',
             message: 'PLC-Sim 未启动',

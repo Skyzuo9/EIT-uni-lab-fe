@@ -15,7 +15,7 @@ import type { WorkbenchConnectionState } from './workbench-connection-selector'
  * @param mode 当前用户确认的运行连接模式。
  * @param services 已按该模式重建的统一服务组合根。
  * @param retryRevision 用户每次明确重试都会增加的探测世代。
- * @returns 当前 Backend 连接状态；直连 Edge/OS 状态由托管会话另行提供。
+ * @returns 当前 Backend 连接状态；Local Authority 状态由 Workspace Backend 会话提供。
  */
 export function useBackendConnectionState(
   mode: WorkbenchConnectionMode,
@@ -50,8 +50,8 @@ export function useBackendConnectionState(
 }
 
 /**
- * 将 Workbench 托管 OS 会话阶段投影为设备面板共用的连接状态。
- * @param phase 托管 OS 会话的当前生命周期阶段。
+ * 将 Workbench 托管 Workspace Backend 阶段投影为领域面板共用的连接状态。
+ * @param phase Workspace Backend 的当前生命周期阶段。
  * @returns 只表达传输可用性的连接状态，不表达调度或任务结果。
  */
 export function sessionConnectionState(

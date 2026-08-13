@@ -8,10 +8,14 @@ import type { WorkbenchSessionClient } from '../common/workbench-session-protoco
 import { WorkbenchSessionService } from './workbench-session-service'
 
 describe('WorkbenchSessionService', () => {
-  it('starts the Workspace Agent when the backend opens, before OS startup', async () => {
+  it('starts Workspace Backend and Agent when the Theia backend opens', async () => {
     const startAgent = vi.fn().mockResolvedValue(snapshot('idle', null))
+    const startWorkspaceBackend = vi.fn().mockResolvedValue(
+      snapshot('ready', 41)
+    )
     const session = {
       startAgent,
+      startWorkspaceBackend,
       refreshPlcVariableTables: vi.fn().mockResolvedValue(snapshot('idle', null))
     } as unknown as WorkbenchSession
     const service = new WorkbenchSessionService()
@@ -19,6 +23,7 @@ describe('WorkbenchSessionService', () => {
 
     service.onStart()
     await vi.waitFor(() => expect(startAgent).toHaveBeenCalledOnce())
+    expect(startWorkspaceBackend).toHaveBeenCalledOnce()
   })
 
   it('publishes one managed session snapshot to every connected renderer', () => {
@@ -101,6 +106,16 @@ function snapshot(
       agent: null
     },
     diagnostic: null,
+    edgeRuntime: {
+      phase: pid === null ? 'idle' : 'ready',
+      message: pid === null ? 'idle' : 'ready',
+      pid,
+      generation: pid === null ? null : 'edge-generation',
+      graphPath: '/workspace/deployment/graphs/szlab-plc-sim-local.json',
+      mode: 'normal',
+      logPath: pid === null ? '' : '/edge-log',
+      diagnostic: null
+    },
     plcSimulator: {
       phase: 'idle',
       message: 'idle',

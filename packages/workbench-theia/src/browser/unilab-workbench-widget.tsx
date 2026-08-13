@@ -147,6 +147,7 @@ export class UniLabWorkbenchWidget extends ReactWidget {
     identity: null,
     agent: null,
     diagnostic: null,
+    edgeRuntime: emptyEdgeRuntimeSnapshot(),
     plcSimulator: emptyPlcSimulatorSnapshot()
   }
   protected sourceSaveHandler: SourceSaveHandler | null = null
@@ -208,6 +209,7 @@ export class UniLabWorkbenchWidget extends ReactWidget {
           message,
           recovery: '确认 Workbench Backend 正在运行后重新加载窗口'
         },
+        edgeRuntime: emptyEdgeRuntimeSnapshot(),
         plcSimulator: emptyPlcSimulatorSnapshot()
       }
     }
@@ -219,7 +221,7 @@ export class UniLabWorkbenchWidget extends ReactWidget {
 
   protected readonly retrySession = async (): Promise<void> => {
     try {
-      await this.workbenchSession.start()
+      await this.workbenchSession.startWorkspaceBackend()
     } catch {
       // The backend publishes the actionable failed snapshot before rejecting.
     }
@@ -231,11 +233,25 @@ export class UniLabWorkbenchWidget extends ReactWidget {
     await this.refreshSessionSnapshot()
   }
 
+  protected readonly stopWorkspaceBackend = async (): Promise<void> => {
+    await this.workbenchSession.stopWorkspaceBackend()
+    await this.refreshSessionSnapshot()
+  }
+
   protected readonly restartSession = async (): Promise<void> => {
     try {
       await this.workbenchSession.restart()
     } catch {
       // The backend publishes the actionable failed snapshot before rejecting.
+    }
+    await this.refreshSessionSnapshot()
+  }
+
+  protected readonly rebuildLocalData = async (): Promise<void> => {
+    try {
+      await this.workbenchSession.rebuildLocalData()
+    } catch {
+      // Session publishes the actionable backend or Edge diagnostic.
     }
     await this.refreshSessionSnapshot()
   }
@@ -432,7 +448,7 @@ export class UniLabWorkbenchWidget extends ReactWidget {
 
   /**
    * 切换后续请求使用的调度权威，并保持既有任务身份与权威不变。
-   * @param mode 用户明确选择的直连 Edge/OS 或 Backend 模式。
+   * @param mode 用户明确选择的 Local 或 Backend Authority 模式。
    * @returns 无；存在未保存工作流内容时失败关闭并保留当前连接。
    */
   protected readonly setConnectionMode = (
@@ -593,11 +609,11 @@ export class UniLabWorkbenchWidget extends ReactWidget {
 
   protected override render(): React.ReactElement {
     const connectionTargets = createWorkbenchConnectionTargets({
-      managedEdgeUrl: this.sessionSnapshot.identity?.backendUrl,
+      managedLocalUrl: this.sessionSnapshot.identity?.backendUrl,
       browserOrigin: currentBrowserOrigin()
     })
     if (
-      this.connectionMode === 'edge'
+      this.connectionMode === 'local'
       && (
         this.sessionSnapshot.phase !== 'ready'
         || !this.sessionSnapshot.identity
@@ -607,7 +623,7 @@ export class UniLabWorkbenchWidget extends ReactWidget {
         <WorkbenchSessionGate
           snapshot={this.sessionSnapshot}
           onRetry={this.retrySession}
-          onStop={this.stopSession}
+          onStop={this.stopWorkspaceBackend}
           connectionSelector={(
             <WorkbenchConnectionSelector
               targets={connectionTargets}
@@ -626,6 +642,7 @@ export class UniLabWorkbenchWidget extends ReactWidget {
               session={this.sessionSnapshot}
               onClose={onClose}
               onRestartSession={this.restartSession}
+              onRebuildLocalData={this.rebuildLocalData}
               onReadEnvironmentLog={this.readEnvironmentLog}
               onConfigureGraph={this.configureGraph}
               onConfigurePlcSimulator={this.configurePlcSimulator}
@@ -657,6 +674,7 @@ export class UniLabWorkbenchWidget extends ReactWidget {
         onSourceSaveHandlerChange={this.registerSourceSaveHandler}
         onUnsavedChangesChange={this.setWorkflowPanelDirty}
         onRestartSession={this.restartSession}
+        onRebuildLocalData={this.rebuildLocalData}
         onReadEnvironmentLog={this.readEnvironmentLog}
         onConfigureGraph={this.configureGraph}
         onConfigurePlcSimulator={this.configurePlcSimulator}
@@ -695,6 +713,7 @@ function WorkbenchSurface({
   onSourceSaveHandlerChange,
   onUnsavedChangesChange,
   onRestartSession,
+  onRebuildLocalData,
   onReadEnvironmentLog,
   onConfigureGraph,
   onConfigurePlcSimulator,
@@ -718,6 +737,7 @@ function WorkbenchSurface({
   onSourceSaveHandlerChange: (handler: SourceSaveHandler | null) => void
   onUnsavedChangesChange: (hasUnsavedChanges: boolean) => void
   onRestartSession: () => Promise<void>
+  onRebuildLocalData: () => Promise<void>
   onReadEnvironmentLog: (kind: WorkbenchEnvironmentLogKind) => Promise<string>
   onConfigureGraph: (graphPath: string) => Promise<void>
   onConfigurePlcSimulator: (
@@ -974,8 +994,8 @@ function WorkbenchSurface({
             <strong>Unilab 调试工作台</strong>
             <span>
               {session.identity
-                ? `本地 OS PID ${session.identity.pid} · ${session.identity.mode} · ${session.identity.backendUrl}`
-                : '本地 OS 尚未启动'}
+                ? `Workspace Backend PID ${session.identity.pid} · ${session.identity.mode} · ${session.identity.backendUrl}`
+                : 'Workspace Backend 尚未启动'}
             </span>
             <span className="unilab-workbench__view-mode">
               {workbenchViewLabel(viewMode)}
@@ -1011,6 +1031,7 @@ function WorkbenchSurface({
             session={session}
             onClose={() => setEnvironmentOpen(false)}
             onRestartSession={onRestartSession}
+            onRebuildLocalData={onRebuildLocalData}
             onReadEnvironmentLog={onReadEnvironmentLog}
             onConfigureGraph={onConfigureGraph}
             onConfigurePlcSimulator={onConfigurePlcSimulator}
@@ -1082,7 +1103,7 @@ function workbenchConnectionState(
   sessionPhase: WorkbenchSessionSnapshot['phase'],
   backendConnection: WorkbenchConnectionState
 ): WorkbenchConnectionState {
-  return mode === 'edge'
+  return mode === 'local'
     ? sessionConnectionState(sessionPhase)
     : backendConnection
 }
@@ -1159,6 +1180,19 @@ function emptyPlcSimulatorSnapshot(): WorkbenchSessionSnapshot['plcSimulator'] {
     pid: null,
     guiUrl: '',
     opcUaUrl: '',
+    logPath: '',
+    diagnostic: null
+  }
+}
+
+function emptyEdgeRuntimeSnapshot(): WorkbenchSessionSnapshot['edgeRuntime'] {
+  return {
+    phase: 'idle',
+    message: 'Edge Runtime 尚未启动',
+    pid: null,
+    generation: null,
+    graphPath: 'deployment/graphs/szlab-local-debug.json',
+    mode: 'normal',
     logPath: '',
     diagnostic: null
   }

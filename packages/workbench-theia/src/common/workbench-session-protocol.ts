@@ -14,8 +14,11 @@ export interface WorkbenchSessionClient {
 type WorkbenchSessionRemoteOperations = Pick<
   WorkbenchSession,
   | 'start'
+  | 'startWorkspaceBackend'
+  | 'stopWorkspaceBackend'
   | 'stop'
   | 'restart'
+  | 'rebuildLocalData'
   | 'startAgent'
   | 'stopAgent'
   | 'restartAgent'

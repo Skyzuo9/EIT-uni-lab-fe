@@ -8,7 +8,7 @@ import {
 } from './workbench-connection-selector'
 
 const targets = createWorkbenchConnectionTargets({
-  managedEdgeUrl: 'http://127.0.0.1:37029',
+  managedLocalUrl: 'http://127.0.0.1:37029',
   browserOrigin: 'http://127.0.0.1:3100'
 })
 
@@ -18,13 +18,14 @@ describe('WorkbenchConnectionSelector', () => {
     const markup = renderToStaticMarkup(
       <WorkbenchConnectionSelector
         targets={targets}
-        selectedMode="edge"
+        selectedMode="local"
         connection="connected"
         onSelect={vi.fn()}
       />
     )
 
-    expect(markup).toContain('直连 Edge / OS')
+    expect(markup).toContain('本地调试')
+    expect(markup).toContain('Workspace Backend 已连接')
     expect(markup).toContain('Backend + Scheduler')
     expect(markup).toContain('本地调度')
     expect(markup).toContain('后端控制')
@@ -38,7 +39,7 @@ describe('WorkbenchConnectionSelector', () => {
     const markup = renderToStaticMarkup(
       <WorkbenchConnectionSelector
         targets={targets}
-        selectedMode="edge"
+        selectedMode="local"
         connection="connected"
         switchBlockedReason="请先保存当前工作流修改"
         onSelect={vi.fn()}

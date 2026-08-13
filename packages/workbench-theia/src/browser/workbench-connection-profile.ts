@@ -9,7 +9,7 @@ export const WORKBENCH_CONNECTION_STORAGE_KEY =
   'unilab.workbench.connection-mode.v1'
 export const WORKBENCH_BACKEND_PROXY_PREFIX = '/__unilab_backend'
 
-export type WorkbenchConnectionMode = 'edge' | 'backend'
+export type WorkbenchConnectionMode = 'local' | 'backend'
 export type WorkbenchAuthorityProfile =
   | 'local_scheduler'
   | 'backend_controlled'
@@ -25,7 +25,7 @@ export interface WorkbenchConnectionTarget {
 }
 
 export interface WorkbenchConnectionTargets {
-  edge: WorkbenchConnectionTarget
+  local: WorkbenchConnectionTarget
   backend: WorkbenchConnectionTarget
 }
 
@@ -35,6 +35,8 @@ interface InitialWorkbenchConnectionEnvironment {
 }
 
 interface WorkbenchConnectionTargetEnvironment {
+  managedLocalUrl?: string | null
+  /** @deprecated 兼容旧调用方；该地址现在属于 Workspace Backend。 */
   managedEdgeUrl?: string | null
   browserOrigin?: string
 }
@@ -42,7 +44,7 @@ interface WorkbenchConnectionTargetEnvironment {
 /**
  * 解析 Workbench 首次使用的调度权威选择。
  * @param environment 当前查询串与用户上次确认的公开模式身份。
- * @returns 显式查询优先、其次持久偏好、最终保持直连 Edge/OS 的模式。
+ * @returns 显式查询优先、其次持久偏好、最终保持本地 Workspace Backend 的模式。
  */
 export function resolveInitialWorkbenchConnectionMode(
   environment: InitialWorkbenchConnectionEnvironment
@@ -54,28 +56,28 @@ export function resolveInitialWorkbenchConnectionMode(
   if (explicitMode) return explicitMode
   const backendId = search.get('backend')
   if (backendId === 'local-go') return 'backend'
-  if (backendId === 'local-python') return 'edge'
-  return parseWorkbenchConnectionMode(environment.storedMode) ?? 'edge'
+  if (backendId === 'local-python') return 'local'
+  return parseWorkbenchConnectionMode(environment.storedMode) ?? 'local'
 }
 
 /**
  * 构造 Workbench 可选的两套统一服务目标。
- * @param environment Workbench 托管 Edge/OS 地址与当前浏览器同源地址。
+ * @param environment Workbench 托管 Workspace Backend 地址与当前浏览器同源地址。
  * @returns 互相隔离、分别声明本地调度和后端控制权威的目标集合。
  */
 export function createWorkbenchConnectionTargets(
   environment: WorkbenchConnectionTargetEnvironment
 ): WorkbenchConnectionTargets {
-  const edgeUrl = normalizeEndpoint(
-    environment.managedEdgeUrl,
+  const localUrl = normalizeEndpoint(
+    environment.managedLocalUrl ?? environment.managedEdgeUrl,
     getDefaultBackend('local-python').apiUrl
   )
   const backendUrl = workbenchBackendProxyUrl(environment.browserOrigin)
-  const edgeBackend: BackendConfig = {
+  const localBackend: BackendConfig = {
     ...getDefaultBackend('local-python'),
-    name: '直连 Edge / OS',
-    apiUrl: edgeUrl,
-    realtimeUrl: toRealtimeUrl(edgeUrl)
+    name: '本地调试',
+    apiUrl: localUrl,
+    realtimeUrl: toRealtimeUrl(localUrl)
   }
   const backend: BackendConfig = {
     ...getDefaultBackend('local-go'),
@@ -83,14 +85,14 @@ export function createWorkbenchConnectionTargets(
     apiUrl: backendUrl
   }
   return {
-    edge: {
-      mode: 'edge',
+    local: {
+      mode: 'local',
       authorityProfile: 'local_scheduler',
-      title: '直连 Edge / OS',
-      description: '由当前 Workbench 托管 OS 创建并推进本地任务。',
-      endpointLabel: edgeUrl,
-      cacheKey: `local_scheduler:${edgeUrl}`,
-      backend: edgeBackend
+      title: '本地调试',
+      description: '常驻 Workspace Backend 持有本地物料、工作流与任务事实。',
+      endpointLabel: localUrl,
+      cacheKey: `local_scheduler:${localUrl}`,
+      backend: localBackend
     },
     backend: {
       mode: 'backend',
@@ -117,7 +119,7 @@ export function createWorkbenchServices(
 
 /**
  * 序列化用户确认的 Workbench 连接模式。
- * @param mode 公开的 Edge 或 Backend 选择，不含地址与凭证。
+ * @param mode 公开的 Local 或 Backend Authority 选择，不含地址与凭证。
  * @returns 可直接写入浏览器存储的稳定字符串。
  */
 export function serializeWorkbenchConnectionMode(
@@ -134,7 +136,8 @@ export function serializeWorkbenchConnectionMode(
 function parseWorkbenchConnectionMode(
   value: string | null | undefined
 ): WorkbenchConnectionMode | null {
-  return value === 'edge' || value === 'backend' ? value : null
+  if (value === 'edge') return 'local'
+  return value === 'local' || value === 'backend' ? value : null
 }
 
 /**
@@ -167,8 +170,8 @@ function normalizeEndpoint(
 }
 
 /**
- * 从 Edge HTTP 根地址派生同主机实时地址。
- * @param apiUrl 已规范化的 Edge HTTP 地址。
+ * 从 Workspace Backend HTTP 根地址派生同主机实时地址。
+ * @param apiUrl 已规范化的 Workspace Backend HTTP 地址。
  * @returns ws 或 wss 根地址；非法地址保持原值以便后续探测明确失败。
  */
 function toRealtimeUrl(apiUrl: string): string {

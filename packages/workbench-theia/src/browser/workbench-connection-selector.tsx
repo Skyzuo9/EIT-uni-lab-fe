@@ -40,9 +40,9 @@ export function WorkbenchConnectionSelector({
   const selected = targets[selectedMode]
   const statusLabel = connectionStatusLabel(selectedMode, connection)
 
-  /** 用户明确选择由本地 OS 持有后续任务权威。 */
-  const selectEdge = useCallback((): void => {
-    onSelect('edge')
+  /** 用户明确选择由常驻 Workspace Backend 持有后续任务权威。 */
+  const selectLocal = useCallback((): void => {
+    onSelect('local')
     closeConnectionSelector(selectorRef.current)
   }, [onSelect])
 
@@ -79,10 +79,10 @@ export function WorkbenchConnectionSelector({
           aria-label="选择调度权威"
         >
           <ConnectionOption
-            target={targets.edge}
-            selected={selectedMode === 'edge'}
-            disabled={selectedMode !== 'edge' && Boolean(switchBlockedReason)}
-            onSelect={selectEdge}
+            target={targets.local}
+            selected={selectedMode === 'local'}
+            disabled={selectedMode !== 'local' && Boolean(switchBlockedReason)}
+            onSelect={selectLocal}
           />
           <ConnectionOption
             target={targets.backend}
@@ -160,7 +160,7 @@ function ConnectionOption({
 
 /**
  * 将传输健康状态转换为面向操作员的中文事实说明。
- * @param mode 当前直连 Edge/OS 或 Backend 模式。
+ * @param mode 当前本地 Workspace Backend 或远程 Backend 模式。
  * @param state 当前一次健康探测或托管会话状态。
  * @returns 不把连接成功误称为任务成功的短状态文本。
  */
@@ -168,7 +168,7 @@ function connectionStatusLabel(
   mode: WorkbenchConnectionMode,
   state: WorkbenchConnectionState
 ): string {
-  const target = mode === 'backend' ? 'Backend' : 'Edge / OS'
+  const target = mode === 'backend' ? 'Backend' : 'Workspace Backend'
   if (state === 'connected') return `${target} 已连接`
   if (state === 'connecting') return `正在连接 ${target}`
   if (state === 'error') return `${target} 连接失败`

@@ -81,8 +81,8 @@ describe('managed local Workbench session', () => {
     await session.stop()
     expect(agentStopCalls).toBe(0)
     expect(session.getSnapshot()).toMatchObject({
-      phase: 'idle',
-      identity: null,
+      phase: 'ready',
+      edgeRuntime: { phase: 'idle', pid: null },
       agent: { phase: 'ready', pid: 99 }
     })
 
@@ -106,7 +106,7 @@ describe('managed local Workbench session', () => {
 
     const ready = await session.start()
 
-    expect(phases).toEqual([
+    expect(phases.slice(0, 4)).toEqual([
       'validating',
       'starting',
       'waiting',
@@ -126,7 +126,8 @@ describe('managed local Workbench session', () => {
           'szlab-local-debug.json'
         ),
         mode: 'normal'
-      }
+      },
+      edgeRuntime: { phase: 'ready', mode: 'normal' }
     })
     expect(ready.identity?.pid).toBeGreaterThan(0)
     expect(ready.identity?.generation).toMatch(/^[0-9a-f-]{36}$/)
@@ -146,8 +147,9 @@ describe('managed local Workbench session', () => {
       '.unilabos',
       'logs',
       'workbench',
-      `${ready.identity?.generation}.log`
+      `${ready.identity?.generation}-workspace-backend.log`
     ))
+    expect(ready.edgeRuntime.logPath).toContain('-edge.log')
     await expect(readFile(
       join(fixture.workspacePath, '.unilabos', '.gitignore'),
       'utf8'
@@ -313,24 +315,25 @@ describe('managed local Workbench session', () => {
 
     const [first, duplicate] = await Promise.all([session.start(), session.start()])
     expect(duplicate.identity?.generation).toBe(first.identity?.generation)
-    const firstPid = first.identity?.pid ?? 0
+    const firstEdgePid = first.edgeRuntime.pid ?? 0
+    const firstEdgeGeneration = first.edgeRuntime.generation
     const restarted = await session.restart()
 
     expect(restarted.phase).toBe('ready')
-    expect(restarted.identity?.generation).not.toBe(first.identity?.generation)
-    expect(restarted.identity?.pid).not.toBe(firstPid)
+    expect(restarted.identity?.generation).toBe(first.identity?.generation)
+    expect(restarted.edgeRuntime.generation).not.toBe(firstEdgeGeneration)
+    expect(restarted.edgeRuntime.pid).not.toBe(firstEdgePid)
     expect(await session.readLogTail()).toContain(
-      `generation=${restarted.identity?.generation}`
+      `edge-generation=${restarted.edgeRuntime.generation}`
     )
     await session.stop()
-    expect(session.getSnapshot()).toEqual({
-      phase: 'idle',
-      message: 'Uni-Lab OS 已停止',
-      configuredGraphPath: 'deployment/graphs/szlab-local-debug.json',
-      configuredRuntimeMode: 'normal',
-      identity: null,
-      agent: null,
-      diagnostic: null,
+    expect(session.getSnapshot()).toMatchObject({
+      phase: 'ready',
+      edgeRuntime: {
+        phase: 'idle',
+        message: 'Edge Runtime 已停止',
+        pid: null
+      },
       plcSimulator: {
         phase: 'idle',
         message: 'PLC-Sim 尚未启动',
@@ -363,13 +366,23 @@ describe('managed local Workbench session', () => {
     const startingAgain = session.start()
     const [stopped, restarted] = await Promise.all([stopping, startingAgain])
 
-    expect(stopped.phase).toBe('idle')
-    expect(restarted).toMatchObject({ phase: 'ready' })
-    expect(restarted.identity?.generation).not.toBe(first.identity?.generation)
+    expect(stopped).toMatchObject({
+      phase: 'ready',
+      edgeRuntime: { phase: 'idle' }
+    })
+    expect(restarted).toMatchObject({
+      phase: 'ready',
+      edgeRuntime: { phase: 'ready' }
+    })
+    expect(restarted.identity?.generation).toBe(first.identity?.generation)
+    expect(restarted.edgeRuntime.generation).not.toBe(
+      first.edgeRuntime.generation
+    )
     await new Promise(resolve => setTimeout(resolve, 100))
     expect(session.getSnapshot()).toMatchObject({
       phase: 'ready',
-      identity: { generation: restarted.identity?.generation }
+      identity: { generation: restarted.identity?.generation },
+      edgeRuntime: { generation: restarted.edgeRuntime.generation }
     })
   })
 
@@ -396,13 +409,22 @@ describe('managed local Workbench session', () => {
       opcUaUrl: `opc.tcp://127.0.0.1:${fixture.plcSimulatorOpcUaPort}`
     })
     expect(plcReady.plcSimulator.pid).toBeGreaterThan(0)
+    const liveManifest = JSON.parse(await readFile(join(
+      fixture.workspacePath,
+      '.unilabos',
+      'runtime',
+      'workbench',
+      'session.json'
+    ), 'utf8')) as { plcSimulator: { pid: number | null } }
+    expect(liveManifest.plcSimulator.pid).toBe(plcReady.plcSimulator.pid)
     await expect(session.readEnvironmentLog('plc-sim')).resolves.toContain(
       'starting PLC-Sim'
     )
 
     await session.stop()
     expect(session.getSnapshot()).toMatchObject({
-      phase: 'idle',
+      phase: 'ready',
+      edgeRuntime: { phase: 'idle', pid: null },
       plcSimulator: { phase: 'ready' }
     })
     await session.stopAll()
@@ -555,6 +577,33 @@ describe('managed local Workbench session', () => {
     })
   })
 
+  it('does not report Edge ready when its device runtime exits before initialization', async () => {
+    const fixture = await createFixture()
+    const session = createManagedLocalWorkbenchSession({
+      workspacePath: fixture.workspacePath,
+      osProjectPath: fixture.osProjectPath,
+      environmentPath: fixture.environmentPath,
+      plcSimulatorGuiPort: fixture.plcSimulatorGuiPort,
+      plcSimulatorOpcUaPort: fixture.plcSimulatorOpcUaPort,
+      readinessTimeoutMs: 2_000,
+      environment: {
+        ...process.env,
+        UNILAB_FIXTURE_NO_ONLINE_DEVICES: '1',
+        UNILAB_FIXTURE_EDGE_EXIT_BEFORE_READY: '1'
+      }
+    })
+    sessions.push(session)
+    await session.configureGraph('deployment/graphs/szlab-plc-sim-local.json')
+
+    await expect(session.start()).rejects.toThrow(
+      'Edge Runtime 在设备初始化完成前退出'
+    )
+    expect(session.getSnapshot()).toMatchObject({
+      phase: 'ready',
+      edgeRuntime: { phase: 'failed', pid: null }
+    })
+  })
+
   it('does not publish ready while the HostNode device catalog is unavailable', async () => {
     const fixture = await createFixture()
     const session = createManagedLocalWorkbenchSession({
@@ -596,8 +645,9 @@ describe('managed local Workbench session', () => {
     sessions.push(session)
     await session.configureGraph('deployment/graphs/szlab-plc-sim-local.json')
     await session.configurePlcSimulator(fixture.plcSimulatorPath)
-    const initial = await session.start()
+    const initial = await session.startWorkspaceBackend()
     const withPlc = await session.startPlcSimulator()
+    const withEdge = await session.start()
 
     expect(initial.phase).toBe('ready')
     expect(withPlc).toMatchObject({
@@ -611,6 +661,10 @@ describe('managed local Workbench session', () => {
         )
       },
       plcSimulator: { phase: 'ready' }
+    })
+    expect(withEdge.edgeRuntime).toMatchObject({
+      phase: 'ready',
+      pid: expect.any(Number)
     })
   })
 
@@ -638,6 +692,10 @@ describe('managed local Workbench session', () => {
         'graphs',
         'szlab-local-debug.json'
       )
+    })
+    expect(dryRun.edgeRuntime).toMatchObject({
+      phase: 'ready',
+      mode: 'dry-run'
     })
     await session.configurePlcSimulator(fixture.plcSimulatorPath)
     await session.startPlcSimulator()
@@ -695,6 +753,7 @@ describe('managed local Workbench session', () => {
       `${JSON.stringify({
         nodes: [{
           id: 'fixture_plc',
+          type: 'device',
           class: 'community.fixture_lab.szlab_poly_plc',
           config: {
             url: 'opc.tcp://192.168.1.10:4840',
@@ -722,7 +781,7 @@ describe('managed local Workbench session', () => {
         mode: 'normal'
       }
     })
-    const manifest = await readFile(
+    const manifestSource = await readFile(
       join(
         fixture.workspacePath,
         '.unilabos',
@@ -732,15 +791,26 @@ describe('managed local Workbench session', () => {
       ),
       'utf8'
     )
-    expect(manifest).toContain(selectedGraphPath)
-    expect(manifest).toContain(ready.identity?.graphFingerprint)
+    const manifest = JSON.parse(manifestSource) as {
+      ownerPid: number
+      identity: { graphFingerprint: string }
+      edgeRuntime: { pid: number | null; graphPath: string }
+    }
+    expect(manifest.ownerPid).toBe(process.pid)
+    expect(manifest.identity.graphFingerprint).toBe(
+      ready.identity?.graphFingerprint
+    )
+    expect(manifest.edgeRuntime).toMatchObject({
+      pid: ready.edgeRuntime.pid,
+      graphPath: selectedGraphPath
+    })
     await expect(readFile(
       join(
         fixture.workspacePath,
         '.unilabos',
         'runtime',
         'workbench',
-        'os',
+        'workspace-backend',
         ready.identity?.generation ?? '',
         'selected-graph.json'
       ),
@@ -766,7 +836,7 @@ describe('managed local Workbench session', () => {
 
     await expect(starting).resolves.toMatchObject({
       phase: 'ready',
-      message: 'Workspace 与 Uni-Lab OS 已就绪',
+      message: 'Workspace Backend 与 Authoring API 已就绪',
       plcSimulator: { phase: 'idle', pid: null }
     })
   })
@@ -791,7 +861,7 @@ describe('managed local Workbench session', () => {
 
     const starting = session.start()
     await waiting
-    await session.stop()
+    await session.stopWorkspaceBackend()
 
     await expect(starting).resolves.toMatchObject({ phase: 'idle' })
     expect(session.getSnapshot()).toMatchObject({
@@ -874,7 +944,9 @@ describe('managed local Workbench session', () => {
       phase: 'failed',
       diagnostic: { code: 'os_exited' }
     })
-    await expect(session.stop()).resolves.toMatchObject({ phase: 'idle' })
+    await expect(session.stopWorkspaceBackend()).resolves.toMatchObject({
+      phase: 'idle'
+    })
   })
 })
 
@@ -924,6 +996,7 @@ async function createFixture(): Promise<{
       `${JSON.stringify({
         nodes: [{
           id: 'fixture_plc',
+          type: 'device',
           class: 'community.fixture_lab.szlab_poly_plc',
           config: {
             url: `opc.tcp://127.0.0.1:${plcSimulatorOpcUaPort}/fixture_sim/`,
@@ -1004,10 +1077,23 @@ function fakeUnilabExecutable(): string {
   return `#!/usr/bin/env node
 const http = require('node:http')
 const fs = require('node:fs')
+const path = require('node:path')
 const args = process.argv.slice(2)
 const port = Number(args[args.indexOf('--port') + 1])
 const graphPath = args[args.indexOf('--graph') + 1]
 if (process.env.UNILAB_FIXTURE_EXIT_BEFORE_READY === '1') process.exit(17)
+if (
+  args[args.indexOf('--process_role') + 1] === 'edge_runtime'
+  && process.env.UNILAB_FIXTURE_EDGE_EXIT_BEFORE_READY === '1'
+) setTimeout(() => process.exit(29), 150)
+if (
+  args[args.indexOf('--process_role') + 1] === 'edge_runtime'
+  && process.env.UNILABOS_EDGE_READY_FILE
+  && process.env.UNILAB_FIXTURE_EDGE_EXIT_BEFORE_READY !== '1'
+) {
+  fs.mkdirSync(path.dirname(process.env.UNILABOS_EDGE_READY_FILE), { recursive: true })
+  fs.writeFileSync(process.env.UNILABOS_EDGE_READY_FILE, '{"schemaVersion":1}\\n')
+}
 let exitScheduled = false
 const json = (response, body) => {
   response.writeHead(200, { 'content-type': 'application/json' })
@@ -1059,6 +1145,21 @@ const server = http.createServer((request, response) => {
         items: process.env.UNILAB_FIXTURE_NO_ONLINE_DEVICES === '1' || !plcIsOnline
           ? []
           : [{ id: 'fixture_device', actions: ['ping'] }]
+      }
+    })
+  }
+  if (request.url === '/api/v1/online-devices') {
+    const plcIsOnline = !process.env.UNILAB_FIXTURE_PLC_READY_FILE
+      || fs.existsSync(process.env.UNILAB_FIXTURE_PLC_READY_FILE)
+    const onlineDevices = process.env.UNILAB_FIXTURE_NO_ONLINE_DEVICES === '1'
+      || !plcIsOnline
+      ? {}
+      : { fixture_device: {}, fixture_plc: {} }
+    return json(response, {
+      code: 0,
+      data: {
+        online_devices: onlineDevices,
+        total_count: Object.keys(onlineDevices).length
       }
     })
   }

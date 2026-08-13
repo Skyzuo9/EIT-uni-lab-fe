@@ -32,6 +32,9 @@ implements WorkbenchSessionServer, BackendApplicationContribution {
   private sessionListener: Disposable | undefined
 
   onStart(): void {
+    void this.session.startWorkspaceBackend().catch(error => {
+      this.logger.warn('Workspace Backend startup failed', error)
+    })
     void this.session.startAgent().catch(error => {
       this.logger.warn('Workspace Agent startup failed', error)
     })
@@ -55,12 +58,24 @@ implements WorkbenchSessionServer, BackendApplicationContribution {
     return this.session.start()
   }
 
+  startWorkspaceBackend() {
+    return this.session.startWorkspaceBackend()
+  }
+
+  stopWorkspaceBackend() {
+    return this.session.stopWorkspaceBackend()
+  }
+
   stop() {
     return this.session.stop()
   }
 
   restart() {
     return this.session.restart()
+  }
+
+  rebuildLocalData() {
+    return this.session.rebuildLocalData()
   }
 
   startAgent() {

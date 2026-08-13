@@ -114,7 +114,11 @@ export interface WorkbenchSessionIdentity {
   agent: WorkbenchAgentIdentity | null
 }
 
-export type WorkbenchEnvironmentLogKind = 'os' | 'plc-sim' | 'agent'
+export type WorkbenchEnvironmentLogKind =
+  | 'workspace-backend'
+  | 'os'
+  | 'plc-sim'
+  | 'agent'
 export type WorkbenchPlcHandshakeProfile = 'szlab' | 'xuse'
 
 export interface WorkbenchPlcSimulatorConfiguration {
@@ -142,6 +146,17 @@ export interface WorkbenchPlcSimulatorSnapshot {
   pid: number | null
   guiUrl: string
   opcUaUrl: string
+  logPath: string
+  diagnostic: string | null
+}
+
+export interface WorkbenchEdgeRuntimeSnapshot {
+  phase: WorkbenchSessionPhase
+  message: string
+  pid: number | null
+  generation: string | null
+  graphPath: string
+  mode: WorkbenchRuntimeMode
   logPath: string
   diagnostic: string | null
 }
@@ -177,6 +192,7 @@ export interface WorkbenchSessionSnapshot {
   identity: WorkbenchSessionIdentity | null
   agent: WorkbenchAgentIdentity | null
   diagnostic: WorkbenchSessionDiagnostic | null
+  edgeRuntime: WorkbenchEdgeRuntimeSnapshot
   plcSimulator: WorkbenchPlcSimulatorSnapshot
 }
 
@@ -211,9 +227,12 @@ export interface WorkbenchSession {
     dispose(): void
   }
   start(): Promise<WorkbenchSessionSnapshot>
+  startWorkspaceBackend(): Promise<WorkbenchSessionSnapshot>
+  stopWorkspaceBackend(): Promise<WorkbenchSessionSnapshot>
   stop(): Promise<WorkbenchSessionSnapshot>
   stopAll(): Promise<WorkbenchSessionSnapshot>
   restart(): Promise<WorkbenchSessionSnapshot>
+  rebuildLocalData(): Promise<WorkbenchSessionSnapshot>
   startAgent(): Promise<WorkbenchSessionSnapshot>
   stopAgent(): Promise<WorkbenchSessionSnapshot>
   restartAgent(): Promise<WorkbenchSessionSnapshot>
@@ -243,13 +262,30 @@ interface ResolvedWorkbenchLaunch {
   environment: NodeJS.ProcessEnv
   runtimeDirectory: string
   sessionManifestPath: string
+  hostLinkPort: number
+  validatedGraphPath: string
+  localConfigPath: string
+  workbenchRoot: string
+}
+
+interface ResolvedEdgeRuntimeLaunch {
+  command: string
+  args: string[]
+  cwd: string
+  environment: NodeJS.ProcessEnv
+  runtimeDirectory: string
+  generation: string
+  graphPath: string
+  logPath: string
+  mode: WorkbenchRuntimeMode
+  readyFilePath: string
 }
 
 const LOOPBACK_HOST = '127.0.0.1'
 const DEFAULT_READINESS_TIMEOUT_MS = 90_000
 const LOCAL_ENVIRONMENT_CONFIG = 'environment.local.json'
 
-/** Create the single managed OS lifecycle owned by one Workbench window. */
+/** Create the managed Workspace Backend plus independently restartable Edge. */
 export function createManagedLocalWorkbenchSession(
   options: ManagedLocalWorkbenchSessionOptions
 ): WorkbenchSession {
@@ -262,25 +298,32 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
     snapshot: WorkbenchSessionSnapshot
   ) => void>()
   private child: ChildProcessWithoutNullStreams | null = null
+  private edgeChild: ChildProcessWithoutNullStreams | null = null
   private plcSimulatorChild: ChildProcessWithoutNullStreams | null = null
   private agent: ManagedWorkbenchAgent | null = null
   private agentStarting: Promise<WorkbenchSessionSnapshot> | null = null
   private agentStopping: Promise<WorkbenchSessionSnapshot> | null = null
   private starting: Promise<WorkbenchSessionSnapshot> | null = null
   private stopping: Promise<WorkbenchSessionSnapshot> | null = null
+  private edgeStarting: Promise<WorkbenchSessionSnapshot> | null = null
+  private edgeStopping: Promise<WorkbenchSessionSnapshot> | null = null
   private plcSimulatorStarting: Promise<WorkbenchSessionSnapshot> | null = null
   private plcSimulatorStopping: Promise<WorkbenchSessionSnapshot> | null = null
   private readonly expectedExits = new WeakSet<ChildProcessWithoutNullStreams>()
+  private readonly expectedEdgeExits = new WeakSet<ChildProcessWithoutNullStreams>()
   private readonly expectedPlcSimulatorExits = new WeakSet<
     ChildProcessWithoutNullStreams
   >()
   private stopRequested = false
+  private edgeStopRequested = false
   private agentStopRequested = false
   private plcSimulatorStopRequested = false
   private selectedMode: WorkbenchRuntimeMode
   private selectedGraphPath: string
   private selectedPlcVariableTablePath: string
   private selectedPlcHandshakeProfile: WorkbenchPlcHandshakeProfile
+  private activeLaunch: ResolvedWorkbenchLaunch | null = null
+  private manifestWrite: Promise<void> = Promise.resolve()
 
   constructor(private readonly options: ManagedLocalWorkbenchSessionOptions) {
     this.selectedMode = options.runtimeMode ?? 'normal'
@@ -296,6 +339,10 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
       identity: null,
       agent: null,
       diagnostic: null,
+      edgeRuntime: idleEdgeRuntimeSnapshot(
+        this.selectedGraphPath,
+        this.selectedMode
+      ),
       plcSimulator: idlePlcSimulatorSnapshot({
         projectPath: options.plcSimulatorProjectPath
           ?? options.environment?.['UNILAB_PLC_SIM_PROJECT']
@@ -318,8 +365,18 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
     return { dispose: () => this.listeners.delete(listener) }
   }
 
-  start(): Promise<WorkbenchSessionSnapshot> {
-    if (this.stopping) return this.stopping.then(() => this.start())
+  async start(): Promise<WorkbenchSessionSnapshot> {
+    this.edgeStopRequested = false
+    const backend = await this.startWorkspaceBackend()
+    if (backend.phase !== 'ready') return backend
+    if (this.edgeStopRequested) return this.getSnapshot()
+    return await this.startEdgeRuntime()
+  }
+
+  startWorkspaceBackend(): Promise<WorkbenchSessionSnapshot> {
+    if (this.stopping) {
+      return this.stopping.then(() => this.startWorkspaceBackend())
+    }
     if (this.snapshot.phase === 'ready') return Promise.resolve(this.getSnapshot())
     if (this.starting) return this.starting
     this.stopRequested = false
@@ -331,6 +388,10 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
   }
 
   stop(): Promise<WorkbenchSessionSnapshot> {
+    return this.stopEdgeRuntime()
+  }
+
+  stopWorkspaceBackend(): Promise<WorkbenchSessionSnapshot> {
     this.stopRequested = true
     if (this.stopping) return this.stopping
     let trackedStop: Promise<WorkbenchSessionSnapshot>
@@ -360,9 +421,11 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
       }
     }
     await this.stopCurrentOsChild()
+    await this.manifestWrite.catch(() => undefined)
+    this.activeLaunch = null
     this.publish({
       phase: 'idle',
-      message: 'Uni-Lab OS 已停止',
+      message: 'Workspace Backend 已停止',
       identity: null,
       diagnostic: null
     })
@@ -371,10 +434,13 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
 
   async stopAll(): Promise<WorkbenchSessionSnapshot> {
     const results = await Promise.allSettled([
-      this.stop(),
+      this.stopEdgeRuntime(),
       this.stopPlcSimulator(),
       this.stopAgent()
     ])
+    results.push(...await Promise.allSettled([
+      this.stopWorkspaceBackend()
+    ]))
     const failures = results.filter(
       (result): result is PromiseRejectedResult => result.status === 'rejected'
     )
@@ -388,8 +454,72 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
   }
 
   async restart(): Promise<WorkbenchSessionSnapshot> {
-    await this.stop()
+    await this.startWorkspaceBackend()
+    await this.stopEdgeRuntime()
+    return await this.startEdgeRuntime()
+  }
+
+  async rebuildLocalData(): Promise<WorkbenchSessionSnapshot> {
+    await this.stopEdgeRuntime()
+    await this.stopWorkspaceBackend()
     return await this.start()
+  }
+
+  private startEdgeRuntime(): Promise<WorkbenchSessionSnapshot> {
+    if (this.edgeStopping) {
+      return this.edgeStopping.then(() => this.startEdgeRuntime())
+    }
+    if (this.edgeChild && this.snapshot.edgeRuntime.phase === 'ready') {
+      return Promise.resolve(this.getSnapshot())
+    }
+    if (this.edgeStarting) return this.edgeStarting
+    this.edgeStopRequested = false
+    const starting = this.startEdgeRuntimeManaged()
+    this.edgeStarting = starting
+    return starting.finally(() => {
+      if (this.edgeStarting === starting) this.edgeStarting = null
+    })
+  }
+
+  private stopEdgeRuntime(): Promise<WorkbenchSessionSnapshot> {
+    this.edgeStopRequested = true
+    if (this.edgeStopping) return this.edgeStopping
+    let trackedStop: Promise<WorkbenchSessionSnapshot>
+    trackedStop = this.stopEdgeRuntimeManaged().finally(() => {
+      if (this.edgeStopping === trackedStop) this.edgeStopping = null
+    })
+    this.edgeStopping = trackedStop
+    return trackedStop
+  }
+
+  private async stopEdgeRuntimeManaged(): Promise<WorkbenchSessionSnapshot> {
+    const starting = this.edgeStarting
+    if (this.edgeChild || starting) {
+      this.publishEdgeRuntime({
+        ...this.snapshot.edgeRuntime,
+        phase: 'stopping',
+        message: '正在安全停止 Edge Runtime…',
+        diagnostic: null
+      })
+    }
+    await this.stopCurrentEdgeChild()
+    if (starting) {
+      try {
+        await starting
+      } catch {
+        // 停止请求优先于并发启动结果。
+      }
+    }
+    await this.stopCurrentEdgeChild()
+    this.publishEdgeRuntime({
+      ...idleEdgeRuntimeSnapshot(
+        this.selectedGraphPath,
+        this.selectedMode
+      ),
+      message: 'Edge Runtime 已停止'
+    })
+    await this.persistActiveSessionManifest()
+    return this.getSnapshot()
   }
 
   startAgent(): Promise<WorkbenchSessionSnapshot> {
@@ -426,18 +556,20 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
   }
 
   async readLogTail(maxBytes = 64 * 1024): Promise<string> {
-    return await readLogTailFromPath(this.snapshot.identity?.logPath, maxBytes)
+    return await readLogTailFromPath(this.snapshot.edgeRuntime.logPath, maxBytes)
   }
 
   async readEnvironmentLog(
     kind: WorkbenchEnvironmentLogKind,
     maxBytes = 64 * 1024
   ): Promise<string> {
-    const logPath = kind === 'os'
+    const logPath = kind === 'workspace-backend'
       ? this.snapshot.identity?.logPath
-      : kind === 'plc-sim'
-        ? this.snapshot.plcSimulator.logPath
-        : this.snapshot.agent?.logPath
+      : kind === 'os'
+        ? this.snapshot.edgeRuntime.logPath
+        : kind === 'plc-sim'
+          ? this.snapshot.plcSimulator.logPath
+          : this.snapshot.agent?.logPath
     return await readLogTailFromPath(logPath, maxBytes)
   }
 
@@ -452,7 +584,9 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
       ...this.snapshot,
       configuredGraphPath: normalizedGraphPath
     })
-    return await this.refreshPlcVariableTables()
+    await this.refreshPlcVariableTables()
+    if (this.snapshot.phase === 'ready') return await this.rebuildLocalData()
+    return this.getSnapshot()
   }
 
   async configurePlcSimulator(
@@ -529,13 +663,17 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
     if (mode !== 'normal' && mode !== 'dry-run') {
       throw new Error(`不支持的 OS 运行模式：${String(mode)}`)
     }
-    if (this.snapshot.identity?.mode === mode) return this.getSnapshot()
+    if (this.selectedMode === mode) return this.getSnapshot()
     await this.persistConfiguration({ runtimeMode: mode })
     this.selectedMode = mode
-    if (this.snapshot.phase === 'ready') return await this.restart()
+    if (this.snapshot.phase === 'ready') return await this.rebuildLocalData()
     this.publish({
       ...this.snapshot,
       configuredRuntimeMode: mode,
+      edgeRuntime: {
+        ...this.snapshot.edgeRuntime,
+        mode
+      },
       message: 'OS 启动模式已保存'
     })
     return this.getSnapshot()
@@ -585,6 +723,11 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
       ...this.snapshot,
       configuredGraphPath: this.selectedGraphPath,
       configuredRuntimeMode: this.selectedMode,
+      edgeRuntime: {
+        ...this.snapshot.edgeRuntime,
+        graphPath: this.selectedGraphPath,
+        mode: this.selectedMode
+      },
       plcSimulator: {
         ...this.snapshot.plcSimulator,
         projectPath,
@@ -688,6 +831,7 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
       }),
       message: 'PLC-Sim 已停止'
     })
+    await this.persistActiveSessionManifest()
     return this.getSnapshot()
   }
 
@@ -806,6 +950,7 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
             pid: null,
             diagnostic: `进程退出（code=${String(code)}, signal=${String(signal)}）`
           })
+          void this.persistActiveSessionManifest()
         }
       })
       this.publishPlcSimulator({
@@ -814,6 +959,7 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
         message: 'PLC-Sim 进程已启动，正在等待 Web GUI…',
         pid
       })
+      await this.persistActiveSessionManifest()
       await waitForLoopbackPort(
         plan.guiPort,
         child,
@@ -836,6 +982,7 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
         pid,
         diagnostic: null
       })
+      await this.persistActiveSessionManifest()
       return this.getSnapshot()
     } catch (error) {
       const child = this.plcSimulatorChild
@@ -862,6 +1009,7 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
         pid: null,
         diagnostic: message
       })
+      await this.persistActiveSessionManifest()
       throw new Error(message)
     }
   }
@@ -881,6 +1029,134 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
     this.expectedExits.add(child)
     await stopProcessTree(child)
     if (this.child === child) this.child = null
+  }
+
+  private async stopCurrentEdgeChild(): Promise<void> {
+    const child = this.edgeChild
+    if (!child) return
+    this.expectedEdgeExits.add(child)
+    await stopProcessTree(child)
+    if (this.edgeChild === child) this.edgeChild = null
+  }
+
+  private async startEdgeRuntimeManaged(): Promise<WorkbenchSessionSnapshot> {
+    const workspaceLaunch = this.activeLaunch
+    if (!workspaceLaunch || this.snapshot.phase !== 'ready') {
+      throw new Error('Workspace Backend 尚未就绪，不能启动 Edge Runtime')
+    }
+    let launch: ResolvedEdgeRuntimeLaunch
+    try {
+      launch = await resolveEdgeRuntimeLaunch(
+        workspaceLaunch,
+        this.selectedMode
+      )
+      await mkdir(launch.runtimeDirectory, { recursive: true })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      this.publishEdgeRuntime({
+        ...idleEdgeRuntimeSnapshot(
+          this.selectedGraphPath,
+          this.selectedMode
+        ),
+        phase: 'failed',
+        message: 'Edge Runtime 启动计划无效',
+        diagnostic: message
+      })
+      throw new Error(message)
+    }
+    if (this.edgeStopRequested) return this.getSnapshot()
+
+    const log = createWriteStream(launch.logPath, { flags: 'a' })
+    log.write(
+      `[workbench] ${new Date().toISOString()} edge-generation=${launch.generation}\n`
+    )
+    this.publishEdgeRuntime({
+      phase: 'starting',
+      message: '正在启动独立 Edge Runtime…',
+      pid: null,
+      generation: launch.generation,
+      graphPath: launch.graphPath,
+      mode: launch.mode,
+      logPath: launch.logPath,
+      diagnostic: null
+    })
+    try {
+      const child = spawn(launch.command, launch.args, {
+        cwd: launch.cwd,
+        env: launch.environment,
+        detached: process.platform !== 'win32',
+        shell: false,
+        windowsHide: true
+      })
+      this.edgeChild = child
+      const pid = requireProcessId(child.pid)
+      child.stdout.pipe(log, { end: false })
+      child.stderr.pipe(log, { end: false })
+      child.once('error', error => {
+        log.write(`[workbench] Edge Runtime spawn error: ${error.message}\n`)
+      })
+      child.once('close', (code, signal) => {
+        log.end(
+          `[workbench] Edge Runtime exited code=${String(code)} signal=${String(signal)}\n`
+        )
+        if (this.edgeChild === child) this.edgeChild = null
+        const expectedExit = this.expectedEdgeExits.delete(child)
+        if (!expectedExit) {
+          this.publishEdgeRuntime({
+            ...this.snapshot.edgeRuntime,
+            phase: 'failed',
+            message: 'Edge Runtime 已意外退出',
+            pid: null,
+            diagnostic: `进程退出（code=${String(code)}, signal=${String(signal)}）`
+          })
+          void this.persistActiveSessionManifest()
+        }
+      })
+      this.publishEdgeRuntime({
+        ...this.snapshot.edgeRuntime,
+        phase: 'waiting',
+        message: 'Edge Runtime 已启动，正在连接 Workspace Backend…',
+        pid
+      })
+      await this.persistActiveSessionManifest()
+      await waitForEdgeRuntimeReadiness({
+        child,
+        readyFilePath: launch.readyFilePath,
+        timeoutMs: this.options.readinessTimeoutMs
+          ?? DEFAULT_READINESS_TIMEOUT_MS
+      })
+      if (this.edgeStopRequested) return this.getSnapshot()
+      if (child.exitCode !== null || child.signalCode !== null) {
+        throw new Error('Edge Runtime 在连接 Workspace Backend 前退出')
+      }
+      this.publishEdgeRuntime({
+        ...this.snapshot.edgeRuntime,
+        phase: 'ready',
+        message: 'Edge Runtime 已连接受管 Local Domain',
+        pid,
+        diagnostic: null
+      })
+      await this.persistActiveSessionManifest()
+      return this.getSnapshot()
+    } catch (error) {
+      const child = this.edgeChild
+      if (child) {
+        this.expectedEdgeExits.add(child)
+        await stopProcessTree(child)
+        if (this.edgeChild === child) this.edgeChild = null
+      }
+      if (this.edgeStopRequested) return this.getSnapshot()
+      const message = error instanceof Error ? error.message : String(error)
+      this.publishEdgeRuntime({
+        ...this.snapshot.edgeRuntime,
+        phase: 'failed',
+        message: 'Edge Runtime 启动失败；Authoring 仍可使用',
+        pid: null,
+        diagnostic: message
+      })
+      await this.persistActiveSessionManifest()
+      throw new Error(message)
+    }
   }
 
   private async startAgentManaged(): Promise<WorkbenchSessionSnapshot> {
@@ -944,6 +1220,36 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
 
   private publishAgent(agent: WorkbenchAgentIdentity | null): void {
     this.publish({ ...this.snapshot, agent })
+    void this.persistActiveSessionManifest()
+  }
+
+  private publishEdgeRuntime(edgeRuntime: WorkbenchEdgeRuntimeSnapshot): void {
+    this.publish({ ...this.snapshot, edgeRuntime })
+  }
+
+  private persistActiveSessionManifest(): Promise<void> {
+    const launch = this.activeLaunch
+    if (!launch) return Promise.resolve()
+    const edgeRuntime = this.snapshot.edgeRuntime.pid
+      ? { ...this.snapshot.edgeRuntime }
+      : null
+    const plcSimulator = this.snapshot.plcSimulator.pid
+      ? { ...this.snapshot.plcSimulator }
+      : null
+    const agentRuntime = this.snapshot.agent?.pid
+      ? { ...this.snapshot.agent }
+      : null
+    const write = this.manifestWrite
+      .catch(() => undefined)
+      .then(() => writeSessionManifest(
+        launch,
+        'ready',
+        edgeRuntime,
+        plcSimulator,
+        agentRuntime
+      ))
+    this.manifestWrite = write
+    return write
   }
 
   private async startManaged(): Promise<WorkbenchSessionSnapshot> {
@@ -977,7 +1283,7 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
 
     this.publish({
       phase: 'starting',
-      message: '正在启动 managed-local Uni-Lab OS…',
+      message: '正在启动常驻 Workspace Backend…',
       identity: null,
       diagnostic: null
     })
@@ -1010,11 +1316,11 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
         if (!expectedExit && this.snapshot.phase !== 'failed') {
           this.publish({
             phase: 'failed',
-            message: 'Uni-Lab OS 已意外退出',
+            message: 'Workspace Backend 已意外退出',
             identity: { ...launch.identity },
             diagnostic: {
               code: 'os_exited',
-              message: `Uni-Lab OS 已退出（code=${String(code)}, signal=${String(signal)}）`,
+              message: `Workspace Backend 已退出（code=${String(code)}, signal=${String(signal)}）`,
               recovery: `检查日志 ${launch.identity.logPath}，修复后重新启动 Workbench`
             }
           })
@@ -1023,7 +1329,7 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
       await writeSessionManifest(launch)
       this.publish({
         phase: 'waiting',
-        message: 'OS 进程已启动，正在等待健康状态与目录投影…',
+        message: 'Workspace Backend 已启动，正在等待 Authoring API 与目录投影…',
         identity: { ...launch.identity },
         diagnostic: null
       })
@@ -1035,11 +1341,12 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
       if (this.stopRequested) return this.getSnapshot()
       launch.identity.agent = this.snapshot.agent
       if (child.exitCode !== null || child.signalCode !== null) {
-        throw new Error('Uni-Lab OS 在 Workbench 完成就绪前退出')
+        throw new Error('Workspace Backend 在 Workbench 完成就绪前退出')
       }
+      this.activeLaunch = launch
       this.publish({
         phase: 'ready',
-        message: 'Workspace 与 Uni-Lab OS 已就绪',
+        message: 'Workspace Backend 与 Authoring API 已就绪',
         identity: { ...launch.identity },
         diagnostic: null
       })
@@ -1058,7 +1365,7 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
       if (this.stopRequested) {
         this.publish({
           phase: 'idle',
-          message: 'Uni-Lab OS 已停止',
+          message: 'Workspace Backend 已停止',
           identity: null,
           diagnostic: null
         })
@@ -1074,7 +1381,7 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
       }
       this.publish({
         phase: 'failed',
-        message: 'Uni-Lab OS 启动失败',
+        message: 'Workspace Backend 启动失败',
         identity: { ...launch.identity },
         diagnostic
       })
@@ -1085,10 +1392,15 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
   private publish(
     snapshot: Omit<
       WorkbenchSessionSnapshot,
-      'configuredGraphPath' | 'configuredRuntimeMode' | 'plcSimulator' | 'agent'
+      | 'configuredGraphPath'
+      | 'configuredRuntimeMode'
+      | 'edgeRuntime'
+      | 'plcSimulator'
+      | 'agent'
     > & {
       configuredGraphPath?: string
       configuredRuntimeMode?: WorkbenchRuntimeMode
+      edgeRuntime?: WorkbenchEdgeRuntimeSnapshot
       plcSimulator?: WorkbenchPlcSimulatorSnapshot
       agent?: WorkbenchAgentIdentity | null
     }
@@ -1107,6 +1419,7 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
         snapshot.configuredGraphPath ?? this.snapshot.configuredGraphPath,
       configuredRuntimeMode:
         snapshot.configuredRuntimeMode ?? this.snapshot.configuredRuntimeMode,
+      edgeRuntime: snapshot.edgeRuntime ?? this.snapshot.edgeRuntime,
       plcSimulator: snapshot.plcSimulator ?? this.snapshot.plcSimulator
     })
     for (const listener of this.listeners) listener(this.getSnapshot())
@@ -1262,14 +1575,14 @@ async function resolveWorkbenchLaunch(
     workbenchRoot,
     'runtime',
     'workbench',
-    'os',
+    'workspace-backend',
     generation
   )
   const logPath = join(
     workbenchRoot,
     'logs',
     'workbench',
-    `${generation}.log`
+    `${generation}-workspace-backend.log`
   )
   const graphBytes = await readFile(graphPath)
   const graphFingerprint = createHash('sha256')
@@ -1311,6 +1624,8 @@ async function resolveWorkbenchLaunch(
       localConfigPath,
       '--working_dir',
       runtimeDirectory,
+      '--process_role',
+      'workspace_backend',
       '--backend',
       'ros',
       '--app_bridges',
@@ -1347,7 +1662,79 @@ async function resolveWorkbenchLaunch(
       'runtime',
       'workbench',
       'session.json'
-    )
+    ),
+    hostLinkPort,
+    validatedGraphPath,
+    localConfigPath,
+    workbenchRoot
+  }
+}
+
+async function resolveEdgeRuntimeLaunch(
+  workspaceLaunch: ResolvedWorkbenchLaunch,
+  mode: WorkbenchRuntimeMode
+): Promise<ResolvedEdgeRuntimeLaunch> {
+  const generation = randomUUID()
+  const runtimeDirectory = join(
+    workspaceLaunch.workbenchRoot,
+    'runtime',
+    'workbench',
+    'edge',
+    generation
+  )
+  const logPath = join(
+    workspaceLaunch.workbenchRoot,
+    'logs',
+    'workbench',
+    `${generation}-edge.log`
+  )
+  const readyFilePath = join(runtimeDirectory, 'ready.json')
+  await mkdir(runtimeDirectory, { recursive: true })
+  return {
+    command: workspaceLaunch.command,
+    args: [
+      '--workspace',
+      workspaceLaunch.identity.workspacePath,
+      '--graph',
+      workspaceLaunch.validatedGraphPath,
+      '--config',
+      workspaceLaunch.localConfigPath,
+      '--working_dir',
+      runtimeDirectory,
+      '--process_role',
+      'edge_runtime',
+      '--control_plane',
+      'local',
+      '--is_slave',
+      '--hostlink_addr',
+      `${LOOPBACK_HOST}:${workspaceLaunch.hostLinkPort}`,
+      '--backend',
+      'ros',
+      '--app_bridges',
+      'fastapi',
+      '--port',
+      '0',
+      '--disable_browser',
+      '--action_mode',
+      mode === 'normal' ? 'real' : 'simulate',
+      '--external_devices_only',
+      '--ros_discovery_server',
+      'off'
+    ],
+    cwd: workspaceLaunch.cwd,
+    environment: {
+      ...workspaceLaunch.environment,
+      UNILABOS_WORKBENCH_RUNTIME_MODE: mode,
+      UNILABOS_WORKBENCH_GENERATION: generation,
+      UNILABOS_WORKBENCH_PROCESS_ROLE: 'edge_runtime',
+      UNILABOS_EDGE_READY_FILE: readyFilePath
+    },
+    runtimeDirectory,
+    generation,
+    graphPath: workspaceLaunch.identity.graphPath,
+    logPath,
+    mode,
+    readyFilePath
   }
 }
 
@@ -1503,14 +1890,41 @@ async function requireAvailableLoopbackPort(port: number, label: string): Promis
 
 async function writeSessionManifest(
   launch: ResolvedWorkbenchLaunch,
-  phase: 'starting' | 'ready' = 'starting'
+  phase: 'starting' | 'ready' = 'starting',
+  edgeRuntime: WorkbenchEdgeRuntimeSnapshot | null = null,
+  plcSimulator: WorkbenchPlcSimulatorSnapshot | null = null,
+  agentRuntime: WorkbenchAgentIdentity | null = null
 ): Promise<void> {
   await mkdir(dirname(launch.sessionManifestPath), { recursive: true })
   const temporaryPath = `${launch.sessionManifestPath}.${process.pid}.tmp`
   await writeFile(temporaryPath, `${JSON.stringify({
     schemaVersion: 1,
+    ownerPid: process.pid,
+    launcherPid: positiveInteger(
+      process.env['UNILAB_WORKBENCH_LAUNCHER_PID']
+    ),
     phase,
-    identity: launch.identity
+    identity: launch.identity,
+    edgeRuntime: edgeRuntime ? {
+      pid: edgeRuntime.pid,
+      generation: edgeRuntime.generation,
+      graphPath: edgeRuntime.graphPath,
+      mode: edgeRuntime.mode,
+      logPath: edgeRuntime.logPath
+    } : null,
+    plcSimulator: plcSimulator ? {
+      pid: plcSimulator.pid,
+      projectPath: plcSimulator.projectPath,
+      variableTablePath: plcSimulator.variableTablePath,
+      logPath: plcSimulator.logPath
+    } : null,
+    agentRuntime: agentRuntime ? {
+      pid: agentRuntime.pid,
+      implementation: agentRuntime.implementation,
+      workDir: agentRuntime.workDir,
+      dataDir: agentRuntime.dataDir,
+      logPath: agentRuntime.logPath
+    } : null
   }, null, 2)}\n`, { mode: 0o600 })
   await rename(temporaryPath, launch.sessionManifestPath)
 }
@@ -1545,6 +1959,22 @@ async function stopProcessTree(child: ChildProcessWithoutNullStreams): Promise<v
     } catch {
       child.kill('SIGKILL')
     }
+  }
+}
+
+function idleEdgeRuntimeSnapshot(
+  graphPath: string,
+  mode: WorkbenchRuntimeMode
+): WorkbenchEdgeRuntimeSnapshot {
+  return {
+    phase: 'idle',
+    message: 'Edge Runtime 尚未启动',
+    pid: null,
+    generation: null,
+    graphPath,
+    mode,
+    logPath: '',
+    diagnostic: null
   }
 }
 
@@ -1740,6 +2170,32 @@ function canConnectToLoopbackPort(port: number): Promise<boolean> {
   })
 }
 
+async function waitForEdgeRuntimeReadiness(options: {
+  child: ChildProcessWithoutNullStreams
+  readyFilePath: string
+  timeoutMs: number
+}): Promise<void> {
+  const deadline = Date.now() + options.timeoutMs
+  while (Date.now() < deadline) {
+    if (
+      options.child.exitCode !== null
+      || options.child.signalCode !== null
+    ) {
+      throw new Error(
+        'Edge Runtime 在设备初始化完成前退出'
+      )
+    }
+    try {
+      await access(options.readyFilePath, fsConstants.R_OK)
+      return
+    } catch {
+      // The Edge process writes this only after its device initialization pass.
+    }
+    await delay(100)
+  }
+  throw new Error('Edge Runtime 设备初始化就绪超时')
+}
+
 async function writeLocalEnvironmentConfiguration(
   workspacePath: string,
   configuration: {
@@ -1772,6 +2228,11 @@ function requireProcessId(pid: number | undefined): number {
   return pid
 }
 
+function positiveInteger(value: string | undefined): number | null {
+  const parsed = Number(value)
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null
+}
+
 function mergePathList(
   values: Array<string | undefined>,
   pathDelimiter = delimiter
@@ -1783,6 +2244,7 @@ function cloneSnapshot(snapshot: WorkbenchSessionSnapshot): WorkbenchSessionSnap
   return {
     ...snapshot,
     agent: snapshot.agent ? { ...snapshot.agent } : null,
+    edgeRuntime: { ...snapshot.edgeRuntime },
     plcSimulator: {
       ...snapshot.plcSimulator,
       variableTableCandidates: snapshot.plcSimulator.variableTableCandidates.map(
