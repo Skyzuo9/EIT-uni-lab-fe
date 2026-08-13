@@ -11,7 +11,7 @@ import {
   CreateWorkflowDialog,
   WorkflowChangeLogDialog
 } from './WorkflowCatalogDialogs'
-import { WorkflowButton } from './WorkflowButton'
+import { WorkflowCatalogCard } from './WorkflowCatalogCard'
 import styles from './workflow.module.scss'
 
 /** 修改日志与删除能力暂不向工作流目录开放。 */
@@ -28,6 +28,7 @@ export function WorkflowCatalog({
   activeWorkflowStorageKey,
   recoveryRevision,
   authoringStatus,
+  runStatus,
   onStateChange,
   onSelect
 }: {
@@ -35,6 +36,7 @@ export function WorkflowCatalog({
   activeWorkflowStorageKey?: string
   recoveryRevision: number
   authoringStatus?: CapabilityStatus
+  runStatus?: CapabilityStatus
   onStateChange?: (state: WorkflowCatalogState) => void
   onSelect?: (workflowUuid: string) => void
 }): React.JSX.Element {
@@ -53,7 +55,8 @@ export function WorkflowCatalog({
   const [createOpen, setCreateOpen] = useState(false)
   const [deleteWorkflow, setDeleteWorkflow] = useState<WorkflowSummary | null>(null)
   const [logWorkflow, setLogWorkflow] = useState<WorkflowSummary | null>(null)
-  const authoringAvailable = authoringStatus?.available !== false
+  const selectionMode = workflowCatalogSelectionMode(authoringStatus, runStatus)
+  const authoringAvailable = selectionMode === 'authoring'
 
   useEffect(() => {
     let disposed = false
@@ -159,12 +162,12 @@ export function WorkflowCatalog({
         <div>
           <h2>工作流目录</h2>
           <p>
-            {authoringAvailable
-              ? '查找、创建并管理当前 OS 中的工作流定义'
-              : '当前 Backend 提供只读目录；工作流创作与运行尚未启用'}
+            {workflowCatalogIntroduction(selectionMode)}
           </p>
-          {!authoringAvailable && authoringStatus?.reason ? (
-            <small title={authoringStatus.reason}>{authoringStatus.reason}</small>
+          {!selectionMode && (runStatus?.reason ?? authoringStatus?.reason) ? (
+            <small title={runStatus?.reason ?? authoringStatus?.reason}>
+              {runStatus?.reason ?? authoringStatus?.reason}
+            </small>
           ) : null}
         </div>
         <div className="workflow-runtime__catalog-header-actions">
@@ -248,9 +251,7 @@ export function WorkflowCatalog({
       {!loading && !error && workflows.length === 0 ? (
         <div className="workflow-runtime__catalog-state" role="status">
           <strong>当前后端还没有工作流</strong>
-          <span>{authoringAvailable
-            ? '新建工作流后即可开始编排。'
-            : '请在支持工作流创作的 OS 中创建定义。'}</span>
+          <span>{workflowCatalogEmptyMessage(selectionMode)}</span>
           {authoringAvailable ? (
             <button type="button" onClick={() => setCreateOpen(true)}>
               新建工作流
@@ -280,10 +281,11 @@ export function WorkflowCatalog({
                     <WorkflowCatalogCard
                       key={workflow.uuid}
                       workflow={workflow}
-                      selectable={Boolean(onSelect)}
+                      selectionMode={onSelect ? selectionMode : null}
                       manageable={authoringAvailable}
-                      disabledReason={authoringStatus?.reason ??
-                        '当前后端只提供只读工作流目录'}
+                      managementActionsVisible={WORKFLOW_CATALOG_MANAGEMENT_ACTIONS_VISIBLE}
+                      disabledReason={runStatus?.reason ?? authoringStatus?.reason ??
+                        '当前 Backend 只提供只读工作流目录'}
                       onOpen={() => handleSelect(workflow.uuid)}
                       onShowLog={() => setLogWorkflow(workflow)}
                       onDelete={() => setDeleteWorkflow(workflow)}
@@ -319,71 +321,6 @@ export function WorkflowCatalog({
         />
       ) : null}
     </div>
-  )
-}
-
-function WorkflowCatalogCard({
-  workflow,
-  selectable,
-  manageable,
-  disabledReason,
-  onOpen,
-  onShowLog,
-  onDelete
-}: {
-  workflow: WorkflowSummary
-  selectable: boolean
-  manageable: boolean
-  disabledReason: string
-  onOpen: () => void
-  onShowLog: () => void
-  onDelete: () => void
-}): React.JSX.Element {
-  const status = workflow.definition_status === 'configured'
-    ? '已配置'
-    : workflow.definition_status === 'empty'
-      ? '待编排'
-      : '状态未知'
-  return (
-    <article role="listitem" className="workflow-runtime__catalog-card">
-      <WorkflowButton
-        type="button"
-        className="workflow-runtime__catalog-card-main"
-        disabled={!selectable}
-        disabledReason={disabledReason}
-        onClick={onOpen}
-        aria-label={selectable
-          ? `打开工作流 ${workflow.name}`
-          : `工作流 ${workflow.name}（当前后端只读）`}
-        title={`${workflow.name}\n版本 ${workflow.revision}`}
-      >
-        <span className="workflow-runtime__catalog-mark" aria-hidden="true">◇</span>
-        <span className="workflow-runtime__catalog-copy">
-          <strong>{workflow.name}</strong>
-          <span className="workflow-runtime__catalog-description">
-            {workflow.description?.trim() || '暂无描述'}
-          </span>
-          <small>{workflow.tags.length > 0
-            ? workflow.tags.slice(0, 3).join(' · ')
-            : formatUpdatedAt(workflow.update_time)}</small>
-        </span>
-        <span className="workflow-runtime__catalog-open" aria-hidden="true">
-          {selectable ? '→' : '只读'}
-        </span>
-      </WorkflowButton>
-      <footer>
-        <span className={`workflow-runtime__catalog-status is-${workflow.definition_status ?? 'unknown'}`}>
-          {status}
-        </span>
-        <span>版本 {workflow.revision}</span>
-        {manageable && WORKFLOW_CATALOG_MANAGEMENT_ACTIONS_VISIBLE ? (
-          <div>
-            <button type="button" onClick={onShowLog}>修改日志</button>
-            <button type="button" className="is-danger" onClick={onDelete}>删除</button>
-          </div>
-        ) : null}
-      </footer>
-    </article>
   )
 }
 
@@ -470,14 +407,27 @@ function recentStorageKey(activeWorkflowStorageKey?: string): string {
   return `${activeWorkflowStorageKey ?? 'unilab.workflow.active'}.recent.v1`
 }
 
-/** 返回紧凑的中文更新时间。 */
-function formatUpdatedAt(value: string): string {
-  const timestamp = Date.parse(value)
-  if (!Number.isFinite(timestamp)) return '更新时间未知'
-  return `更新于 ${new Intl.DateTimeFormat('zh-CN', {
-    month: '2-digit',
-    day: '2-digit'
-  }).format(timestamp)}`
+type WorkflowCatalogSelectionMode = 'authoring' | 'run' | null
+
+/** 按 capability 决定目录卡片进入创作、已有工作流运行或只读模式。 */
+function workflowCatalogSelectionMode(
+  authoringStatus: CapabilityStatus | undefined,
+  runStatus: CapabilityStatus | undefined
+): WorkflowCatalogSelectionMode {
+  if (authoringStatus?.available !== false) return 'authoring'
+  return runStatus?.available === true ? 'run' : null
+}
+
+function workflowCatalogIntroduction(mode: WorkflowCatalogSelectionMode): string {
+  if (mode === 'authoring') return '查找、创建并管理当前 OS 中的工作流定义'
+  if (mode === 'run') return '选择 Backend 中已有的工作流并启动任务；工作流创作未启用'
+  return '当前 Backend 提供只读目录；工作流创作与运行尚未启用'
+}
+
+function workflowCatalogEmptyMessage(mode: WorkflowCatalogSelectionMode): string {
+  if (mode === 'authoring') return '新建工作流后即可开始编排。'
+  if (mode === 'run') return '请先在 Backend 中导入或写入演示工作流数据。'
+  return '请在支持工作流创作的 OS 中创建定义。'
 }
 
 /** 生成用于 aria 标题关联的稳定 DOM 片段。 */

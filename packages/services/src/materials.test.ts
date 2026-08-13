@@ -257,6 +257,7 @@ describe('material template adapter', () => {
     expect(request).not.toHaveBeenCalled()
   })
 
+  /** 验证 Backend 物料图使用权威修订号并保留资源模板展示摘要。 */
   it('maps the frozen Backend MaterialGraph into shared aggregates', async () => {
     const { http, request } = mockHttp({
       data: {
@@ -265,6 +266,7 @@ describe('material template adapter', () => {
             material: {
               uuid: 'material-root',
               resource_template_uuid: 'template-device',
+              revision: 11,
               class: 'liquid_handler',
               barcode: 'LH-001',
               name: 'Liquid Handler',
@@ -275,6 +277,13 @@ describe('material template adapter', () => {
                 rendering: { kind: 'table' }
               },
               data: {}
+            },
+            resource_template: {
+              uuid: 'template-device',
+              name: 'community.devices.liquid_handler',
+              display_name: '移液工作站',
+              resource_type: 'device',
+              icon: 'robot'
             },
             relative_position: rawBackendPosition(
               'position-root',
@@ -308,6 +317,7 @@ describe('material template adapter', () => {
             material: {
               uuid: 'material-vessel',
               resource_template_uuid: 'template-vessel',
+              revision: 12,
               parent_uuid: 'material-root',
               class: 'sample_vial',
               barcode: '',
@@ -317,6 +327,12 @@ describe('material template adapter', () => {
               meta_data: {},
               config: { rendering: { kind: 'vial' } },
               data: {}
+            },
+            resource_template: {
+              uuid: 'template-vessel',
+              name: 'community.resources.sample_vial',
+              display_name: '样品瓶',
+              resource_type: 'resource'
             },
             relative_position: rawBackendPosition(
               'position-vessel',
@@ -331,7 +347,7 @@ describe('material template adapter', () => {
         ]
       }
     })
-    const backend = getDefaultBackend('local-python')
+    const backend = getDefaultBackend('local-go')
     const service = createMaterialService(
       http,
       backend,
@@ -350,6 +366,13 @@ describe('material template adapter', () => {
           description: undefined,
           config: expect.objectContaining({
             sourceIdentity: 'liquid-handler',
+            resourceTemplate: {
+              uuid: 'template-device',
+              name: 'community.devices.liquid_handler',
+              displayName: '移液工作站',
+              resourceType: 'device',
+              icon: 'robot'
+            },
             rendering: {
               kind: 'table',
               dimensionsMm: [1400, 180, 720]
@@ -379,7 +402,7 @@ describe('material template adapter', () => {
             }
           })
         ],
-        revision: Date.parse('2026-07-26T00:00:00Z')
+        revision: 11
       },
       {
         material: expect.objectContaining({
@@ -387,6 +410,12 @@ describe('material template adapter', () => {
           sourceTemplateId: 'template-vessel',
           code: '',
           config: expect.objectContaining({
+            resourceTemplate: {
+              uuid: 'template-vessel',
+              name: 'community.resources.sample_vial',
+              displayName: '样品瓶',
+              resourceType: 'resource'
+            },
             rendering: {
               kind: 'vial',
               dimensionsMm: [80, 140, 80]
@@ -403,7 +432,7 @@ describe('material template adapter', () => {
           }
         },
         sites: [],
-        revision: Date.parse('2026-07-26T00:00:01Z')
+        revision: 12
       }
     ])
     expect(request).toHaveBeenCalledWith(

@@ -9,6 +9,12 @@ import {
 import { assertCapability, ServiceError } from './errors'
 import type { HttpClient } from './http'
 import type { HttpRequestTraceReporter } from './http'
+import {
+  backendWorkflowTaskCreateBody,
+  loadBackendWorkflowNodeJobFeedback,
+  loadBackendWorkflowRunPreflight,
+  loadBackendWorkflowRunPreparation
+} from './backendWorkflowRuntime'
 import { loadBackendWorkflowPage } from './backendWorkflowCatalog'
 import {
   loadWorkflowActionCatalog
@@ -124,6 +130,7 @@ export type {
   DeviceActionTaskChangedEvent,
   DeviceCatalogChangedEvent,
   WorkflowEventSubscription,
+  WorkflowInventoryBinding,
   WorkflowNodeJob,
   WorkflowNodeJobFeedback,
   WorkflowNodeJobFeedbackPage,
@@ -131,6 +138,12 @@ export type {
   WorkflowNodeJobStatus,
   WorkflowRuntimeChangedEvent,
   WorkflowRuntimeInvalidationEvent,
+  WorkflowRunNodeOption,
+  WorkflowRunPreflightCheck,
+  WorkflowRunPreflightCheckStatus,
+  WorkflowRunPreflightReport,
+  WorkflowRunPreflightStatus,
+  WorkflowRunPreparation,
   WorkflowRuntimeSubscriptionOptions,
   WorkflowTask,
   WorkflowTaskCleanupStatus,
@@ -371,11 +384,28 @@ export function createWorkflowRuntime(
           candidate
         })
       }),
+    getWorkflowRunPreparation: (workflowUuid) => {
+      requireWorkflowCapability('workflow.readDefinitions')
+      return loadBackendWorkflowRunPreparation(http, workflowUuid)
+    },
+    getWorkflowRunPreflight: (workflowUuid, runMode, targetNodeUuid) => {
+      requireWorkflowCapability('workflow.runTasks')
+      return loadBackendWorkflowRunPreflight(
+        http,
+        workflowUuid,
+        runMode,
+        targetNodeUuid
+      )
+    },
     createWorkflowTask: (body) =>
       runtimeRequest('/api/v1/workflow-tasks', {
         method: 'POST',
         headers: jsonHeaders(),
-        body: JSON.stringify(body)
+        body: JSON.stringify(
+          backend.serverKind === 'backend'
+            ? backendWorkflowTaskCreateBody(body)
+            : body
+        )
       }),
     createDebugWorkflowTask: (body) =>
       runtimeRequest('/api/v1/debug/workflow-tasks', {
@@ -425,8 +455,12 @@ export function createWorkflowRuntime(
       runtimeRequest(
         `/api/v1/workflow-node-jobs/${encodeURIComponent(jobUuid)}`
       ),
-    listWorkflowNodeJobFeedback: (jobUuid, query = {}) =>
-      runtimeRequest(workflowNodeJobFeedbackPath(jobUuid, query)),
+    listWorkflowNodeJobFeedback: (jobUuid, query = {}) => {
+      requireWorkflowCapability('workflow.runTasks')
+      return backend.serverKind === 'backend'
+        ? loadBackendWorkflowNodeJobFeedback(http, jobUuid, query)
+        : runtimeRequest(workflowNodeJobFeedbackPath(jobUuid, query))
+    },
     subscribeWorkflowRuntime: (onInvalidate, options = {}) => {
       requireWorkflowCapability('workflow.subscribeEvents')
       return subscribeWorkflowRuntime(

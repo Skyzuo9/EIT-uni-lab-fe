@@ -39,6 +39,8 @@ export interface DeviceActionTarget {
 export interface OnlineDevice {
   id: string
   materialUuid: string
+  /** Backend 设备物料所属的资源模板（ResourceTemplate）UUID；旧 Edge 目录可省略。 */
+  resourceTemplateUuid?: string
   deviceKey: string
   namespace: string
   machineName: string
@@ -107,6 +109,8 @@ export interface DeviceCatalogAction {
 export interface DeviceCatalogItem {
   deviceId: string
   materialUuid: string
+  /** Backend 设备物料所属的资源模板（ResourceTemplate）UUID；旧 Edge 目录可省略。 */
+  resourceTemplateUuid?: string
   deviceTypeId: string
   deviceKey: string
   namespace: string
@@ -135,10 +139,10 @@ export function createLaboratoryService(
   backend: BackendConfig
 ) {
   return {
+    /** 使用统一 v1 健康端点探测 Backend 或 Edge，并透传调用方取消信号。 */
     async ping(signal?: AbortSignal): Promise<boolean> {
       try {
-        const path = backend.serverKind === 'backend' ? '/health' : '/api/v1/health'
-        await http.request<unknown>(path, { signal })
+        await http.request<unknown>('/api/v1/health', { signal })
         return true
       } catch {
         return false

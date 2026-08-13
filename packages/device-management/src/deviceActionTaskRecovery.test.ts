@@ -38,9 +38,12 @@ function createEnvironment(): DeviceActionTaskRecoveryEnvironment & {
   }
 }
 
+/** 构造可控的全局 SSE 订阅端口；返回事件注入器和订阅函数。 */
 function createSubscriptionPort(): {
   emit: FakeSubscription
-  subscribe: Parameters<typeof startDeviceActionTaskRecovery>[0]['subscribe']
+  subscribe: NonNullable<
+    Parameters<typeof startDeviceActionTaskRecovery>[0]['subscribe']
+  >
 } {
   const emit: FakeSubscription = {
     listener: () => undefined,
@@ -91,6 +94,29 @@ describe('device Action Task REST rehydrate recovery', () => {
     })
     await flushMicrotasks()
 
+    expect(read).toHaveBeenCalledTimes(2)
+    recovery.dispose()
+  })
+
+  /** 证明 Backend 未声明运行事件能力时，恢复器仍能通过有界 REST 补读确认终态。 */
+  it('rehydrates without a runtime event subscription', async () => {
+    const environment = createEnvironment()
+    const read = vi.fn()
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(true)
+    const recovery = startDeviceActionTaskRecovery({
+      tasks: [{ taskUuid: 'task-1', actionRef: 'action-1' }],
+      environment,
+      read,
+      pollIntervalMs: 1_000
+    })
+    await flushMicrotasks()
+    expect(read).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(read).toHaveBeenCalledTimes(2)
+
+    await vi.advanceTimersByTimeAsync(10_000)
     expect(read).toHaveBeenCalledTimes(2)
     recovery.dispose()
   })

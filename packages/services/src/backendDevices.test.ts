@@ -8,6 +8,7 @@ import {
 } from './backendDevices'
 
 describe('Backend 设备目录 adapter', () => {
+  /** 证明设备物料 UUID 是实例身份，资源模板（ResourceTemplate）UUID 单独保留用于动作模板匹配。 */
   it('以设备物料 UUID 为设备身份并保留 Edge 绑定身份', async () => {
     const request = vi.fn().mockResolvedValue({
       code: 0,
@@ -19,6 +20,7 @@ describe('Backend 设备目录 adapter', () => {
     ).resolves.toEqual([{
       deviceId: 'material-pump',
       materialUuid: 'material-pump',
+      resourceTemplateUuid: 'template-pump',
       deviceTypeId: 'template-pump',
       deviceKey: 'pump-01',
       namespace: 'edge-01',
@@ -40,6 +42,7 @@ describe('Backend 设备目录 adapter', () => {
     })
   })
 
+  /** 证明 Backend 的 dispatchable 是设备当前可调度在线状态的唯一投影来源。 */
   it('用 dispatchable 表达 Backend 可调度在线状态', async () => {
     const request = vi.fn().mockResolvedValue({
       code: 0,
@@ -51,6 +54,7 @@ describe('Backend 设备目录 adapter', () => {
     ).resolves.toMatchObject([{
       id: 'material-pump',
       materialUuid: 'material-pump',
+      resourceTemplateUuid: 'template-pump',
       online: false,
       actions: [{
         actionName: 'dispense',

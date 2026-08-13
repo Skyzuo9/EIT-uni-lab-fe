@@ -17,6 +17,10 @@ import {
 import {
   DeviceDomainEntryContribution,
   MaterialDomainEntryContribution,
+  RobotBenchDomainEntryContribution,
+  RobotDebugDomainEntryContribution,
+  RobotPointsDomainEntryContribution,
+  RobotReagentsDomainEntryContribution,
   UniLabDomainNavigationInitializer,
   UniLabWorkbenchContribution,
   WorkflowDomainEntryContribution
@@ -24,6 +28,10 @@ import {
 import {
   DeviceDomainEntryWidget,
   MaterialDomainEntryWidget,
+  RobotBenchDomainEntryWidget,
+  RobotDebugDomainEntryWidget,
+  RobotPointsDomainEntryWidget,
+  RobotReagentsDomainEntryWidget,
   WorkflowDomainEntryWidget
 } from './unilab-workbench-navigator-widget'
 import { UniLabWorkbenchWidget } from './unilab-workbench-widget'
@@ -108,6 +116,34 @@ export default new ContainerModule((bind) => {
   bind(WidgetFactory).toDynamicValue((context) => ({
     id: DeviceDomainEntryWidget.ID,
     createWidget: () => context.container.get(DeviceDomainEntryWidget)
+  })).inSingletonScope()
+
+  bindViewContribution(bind, RobotDebugDomainEntryContribution)
+  bind(RobotDebugDomainEntryWidget).toSelf()
+  bind(WidgetFactory).toDynamicValue(context => ({
+    id: RobotDebugDomainEntryWidget.ID,
+    createWidget: () => context.container.get(RobotDebugDomainEntryWidget)
+  })).inSingletonScope()
+
+  bindViewContribution(bind, RobotPointsDomainEntryContribution)
+  bind(RobotPointsDomainEntryWidget).toSelf()
+  bind(WidgetFactory).toDynamicValue(context => ({
+    id: RobotPointsDomainEntryWidget.ID,
+    createWidget: () => context.container.get(RobotPointsDomainEntryWidget)
+  })).inSingletonScope()
+
+  bindViewContribution(bind, RobotBenchDomainEntryContribution)
+  bind(RobotBenchDomainEntryWidget).toSelf()
+  bind(WidgetFactory).toDynamicValue(context => ({
+    id: RobotBenchDomainEntryWidget.ID,
+    createWidget: () => context.container.get(RobotBenchDomainEntryWidget)
+  })).inSingletonScope()
+
+  bindViewContribution(bind, RobotReagentsDomainEntryContribution)
+  bind(RobotReagentsDomainEntryWidget).toSelf()
+  bind(WidgetFactory).toDynamicValue(context => ({
+    id: RobotReagentsDomainEntryWidget.ID,
+    createWidget: () => context.container.get(RobotReagentsDomainEntryWidget)
   })).inSingletonScope()
 
   bind(UniLabDomainNavigationInitializer).toSelf().inSingletonScope()

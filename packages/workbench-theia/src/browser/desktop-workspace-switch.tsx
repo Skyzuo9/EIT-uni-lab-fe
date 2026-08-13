@@ -2,7 +2,11 @@ import * as React from 'react'
 
 import { desktopWorkspaceApi } from './desktop-workspace'
 
-/** Desktop-only workspace selector shared by ready, starting and failed surfaces. */
+/**
+ * 渲染桌面端各会话状态共用的工作区选择入口。
+ *
+ * @returns 桌面工作区能力可用时返回选择按钮，否则不渲染入口。
+ */
 export function DesktopWorkspaceSwitchButton(): React.JSX.Element | null {
   const api = React.useMemo(() => desktopWorkspaceApi(), [])
   const [available, setAvailable] = React.useState(false)
@@ -16,7 +20,12 @@ export function DesktopWorkspaceSwitchButton(): React.JSX.Element | null {
     return () => { active = false }
   }, [api])
 
-  const selectWorkspace = React.useCallback(async () => {
+  /**
+   * 打开系统目录选择器并串行完成工作区切换。
+   *
+   * @returns 工作区选择结束后的 Promise；取消或失败时恢复按钮可用状态。
+   */
+  const selectWorkspace = React.useCallback(async (): Promise<void> => {
     if (!api || switching) return
     setSwitching(true)
     try {
@@ -31,12 +40,18 @@ export function DesktopWorkspaceSwitchButton(): React.JSX.Element | null {
   return (
     <button
       type="button"
+      className="unilab-workspace-switch"
       disabled={switching}
       title="选择并打开 UniLab 工作区"
       onClick={() => { void selectWorkspace() }}
     >
-      <span className="codicon codicon-folder-opened" aria-hidden="true" />
-      {switching ? '正在切换…' : '选择工作区'}
+      <span
+        className="unilab-workspace-switch__icon codicon codicon-folder-opened"
+        aria-hidden="true"
+      />
+      <span className="unilab-workspace-switch__label">
+        {switching ? '正在切换…' : '选择工作区'}
+      </span>
     </button>
   )
 }

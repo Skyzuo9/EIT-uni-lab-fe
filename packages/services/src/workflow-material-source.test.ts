@@ -271,7 +271,7 @@ async function loadsMaterialSourceCatalogInPublicGraphOrder(): Promise<void> {
       `/api/v1/workflow-node-templates/${frameworkTemplateUuid}`,
       '/api/v1/resource-templates?limit=100',
       '/api/v1/material-shapes',
-      `/api/v1/resource-templates?limit=100&cursor_uuid=${mountTemplateUuid}`
+      '/api/v1/resource-templates?page=2&page_size=1'
     ])
 }
 
@@ -382,10 +382,11 @@ function responses(): Record<string, unknown> {
           tags: []
         }],
         has_more: true,
-        next_cursor_uuid: mountTemplateUuid
+        page: 1,
+        page_size: 1
       }
     },
-    [`/api/v1/resource-templates?limit=100&cursor_uuid=${mountTemplateUuid}`]: {
+    '/api/v1/resource-templates?page=2&page_size=1': {
       code: 0,
       data: {
         items: [{
@@ -397,7 +398,8 @@ function responses(): Record<string, unknown> {
           tags: []
         }],
         has_more: false,
-        next_cursor_uuid: null
+        page: 2,
+        page_size: 1
       }
     },
     '/api/v1/material-shapes': {

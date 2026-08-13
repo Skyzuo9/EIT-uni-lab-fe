@@ -33,13 +33,16 @@ import type {
   WorkflowNodeJobFeedbackPage,
   WorkflowNodeJobFeedbackQuery,
   WorkflowRuntimeInvalidationEvent,
+  WorkflowRunPreflightReport,
+  WorkflowRunPreparation,
   WorkflowRuntimeSubscriptionOptions,
   WorkflowTask,
   WorkflowTaskCommand,
   WorkflowTaskCommandRequest,
   WorkflowTaskCreateRequest,
   WorkflowTaskListQuery,
-  WorkflowTaskPage
+  WorkflowTaskPage,
+  WorkflowTaskRunMode
 } from './workflowTaskContracts'
 
 /**
@@ -107,6 +110,14 @@ export interface WorkflowRuntimePort {
     baseRevisionId: string,
     candidate: WorkflowAuthoringCandidate
   ) => Promise<WorkflowAuthoringResult>
+  getWorkflowRunPreparation: (
+    workflowUuid: string
+  ) => Promise<WorkflowRunPreparation>
+  getWorkflowRunPreflight: (
+    workflowUuid: string,
+    runMode: WorkflowTaskRunMode,
+    targetNodeUuid?: string
+  ) => Promise<WorkflowRunPreflightReport>
   createWorkflowTask: (
     request: WorkflowTaskCreateRequest
   ) => Promise<WorkflowTask>

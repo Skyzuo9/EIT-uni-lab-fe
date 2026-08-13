@@ -48,6 +48,10 @@ function registerWorkflowNodeTemplateCursorTests(): void {
     acceptsOsPageMetadata
   )
   it(
+    '接受 Backend page/page_size/has_more 合同且不要求 total',
+    acceptsBackendNumberedMetadataWithoutTotal
+  )
+  it(
     'fails closed when cursor and page metadata are mixed',
     rejectsMixedPaginationMetadata
   )
@@ -240,6 +244,32 @@ async function acceptsOsPageMetadata(): Promise<void> {
 }
 
 /**
+ * 验证最新后端（Backend）节点模板目录只用 has_more 表示是否还有下一页。
+ *
+ * @returns Promise 完成时表示无 total 的两页目录已完整读取。
+ * @throws 若 has_more 被误判为游标字段或 total 仍为必填则由断言报告。
+ */
+async function acceptsBackendNumberedMetadataWithoutTotal(): Promise<void> {
+  const requests: string[] = []
+  const http = fixtureHttp({
+    '/api/v1/workflow-node-templates?limit=100': numberedPage(
+      [summary(firstUuid, 'mix')], 1, 1, undefined, true
+    ),
+    '/api/v1/workflow-node-templates?page=2&page_size=1': numberedPage(
+      [summary(secondUuid, 'heat')], 2, 1, undefined, false
+    )
+  }, requests)
+
+  const catalog = await loadWorkflowNodeTemplateCatalog(http)
+
+  expect(catalog.items.map(readTemplateUuid)).toEqual([firstUuid, secondUuid])
+  expect(requests).toEqual([
+    '/api/v1/workflow-node-templates?limit=100',
+    '/api/v1/workflow-node-templates?page=2&page_size=1'
+  ])
+}
+
+/**
  * 验证一个响应不能同时宣称 UUID 游标与页码分页，避免代际歧义。
  *
  * @returns Promise 完成时表示混合合同被关闭失败。
@@ -251,6 +281,7 @@ async function rejectsMixedPaginationMetadata(): Promise<void> {
   const data = response.data as Record<string, unknown>
   data.page = 1
   data.page_size = 100
+  data.next_cursor_uuid = null
   const http = fixtureHttp({
     '/api/v1/workflow-node-templates?limit=100': response
   })
@@ -425,14 +456,30 @@ function page(
   })
 }
 
-/** 构造当前 OS 使用的页码目录响应。 */
+/**
+ * 构造 OS 或 Backend 使用的页码目录响应。
+ *
+ * @param items 当前页节点模板摘要。
+ * @param pageNumber 当前页码。
+ * @param pageSize 服务端确认的页大小。
+ * @param total OS 可选总数。
+ * @param hasMore Backend 可选后续页标记。
+ * @returns 带统一外壳的页码响应 fixture。
+ */
 function numberedPage(
   items: Record<string, unknown>[],
   pageNumber: number,
   pageSize: number,
-  total: number
+  total: number | undefined,
+  hasMore?: boolean
 ): Record<string, unknown> {
-  return envelope({ items, page: pageNumber, page_size: pageSize, total })
+  return envelope({
+    items,
+    page: pageNumber,
+    page_size: pageSize,
+    ...(hasMore === undefined ? {} : { has_more: hasMore }),
+    ...(total === undefined ? {} : { total })
+  })
 }
 
 /**

@@ -79,24 +79,31 @@ export class WorkflowTaskController {
   async start(): Promise<void> {
     if (this.started || !this.active) return
     this.started = true
-    this.subscription = this.runtime.subscribeWorkflowRuntime(
-      (event) => {
-        if (event.event !== 'workflow.runtime.changed') return
-        void this.requestRefresh(event.data.workflow_task_uuid)
-      },
-      {
-        onOpen: () => {
-          this.install({ realtimeStatus: 'live', realtimeError: null })
-          void this.requestRefresh(this.snapshot.task?.uuid ?? null)
+    try {
+      this.subscription = this.runtime.subscribeWorkflowRuntime(
+        (event) => {
+          if (event.event !== 'workflow.runtime.changed') return
+          void this.requestRefresh(event.data.workflow_task_uuid)
         },
-        onError: (error) => {
-          this.install({
-            realtimeStatus: 'reconnecting',
-            realtimeError: `Runtime 实时同步中断：${error.message}`
-          })
+        {
+          onOpen: () => {
+            this.install({ realtimeStatus: 'live', realtimeError: null })
+            void this.requestRefresh(this.snapshot.task?.uuid ?? null)
+          },
+          onError: (error) => {
+            this.install({
+              realtimeStatus: 'reconnecting',
+              realtimeError: `Runtime 实时同步中断：${error.message}`
+            })
+          }
         }
-      }
-    )
+      )
+    } catch (error) {
+      this.install({
+        realtimeStatus: 'reconnecting',
+        realtimeError: `自动更新未启用，请手动刷新：${errorMessage(error)}`
+      })
+    }
     await this.requestRefresh(null)
   }
 

@@ -1,4 +1,5 @@
 import {
+  inspectMaterialSceneReadiness,
   MaterialCapabilityNotice,
   UnifiedMaterialViewport,
   useMaterialStore,
@@ -13,6 +14,11 @@ import { ensurePascalRendererDefaults } from '@unilab/pascal-host'
 import type { WorkflowPanelRuntimeProjection } from '@unilab/workflow-editor'
 import * as React from 'react'
 import { Suspense, useCallback, useEffect, useMemo } from 'react'
+
+import {
+  WorkbenchMaterialSceneState,
+  WorkbenchMaterialShapeFallbackNotice
+} from './workbench-material-scene-state'
 
 ensurePascalRendererDefaults()
 
@@ -39,7 +45,11 @@ export function WorkbenchMaterialViewport({
   const store = useMaterialStoreApi()
   const aggregatesById = useMaterialStore((state) => state.aggregatesById)
   const shapeLibrary = useMaterialStore((state) => state.shapeLibrary)
+  const shapeLibraryState = useMaterialStore(
+    (state) => state.shapeLibraryState
+  )
   const loadState = useMaterialStore((state) => state.loadState)
+  const graphError = useMaterialStore((state) => state.error)
   const aggregates = useMemo(
     () => Object.values(aggregatesById),
     [aggregatesById]
@@ -50,6 +60,10 @@ export function WorkbenchMaterialViewport({
       selected: route.workflowNodeUuid === selectedWorkflowNode
     })),
     [runtimeProjection, selectedWorkflowNode]
+  )
+  const sceneReadiness = useMemo(
+    () => inspectMaterialSceneReadiness(aggregates),
+    [aggregates]
   )
   const modelRuntime = useMemo(() => ({
     /** 把包内相对模型路径解析到当前 OS 地址。 */
@@ -76,43 +90,74 @@ export function WorkbenchMaterialViewport({
     }
   }, [store])
 
+  /** 清理失败状态并重新读取当前调度权威的物料图。 */
+  const retryGraph = useCallback((): void => {
+    store.getState().reset()
+    void store.getState().loadGraph()
+  }, [store])
+
   if (!readStatus.available) {
     return <MaterialCapabilityNotice title="物料场景不可用" status={readStatus} />
   }
   if (loadState === 'idle' || loadState === 'loading') {
     return <div className="unilab-workbench-material-loading">正在加载物料场景…</div>
   }
+  if (loadState === 'error') {
+    return (
+      <WorkbenchMaterialSceneState
+        kind="error"
+        error={graphError}
+        onRetry={retryGraph}
+      />
+    )
+  }
+  if (sceneReadiness.state === 'empty') {
+    return <WorkbenchMaterialSceneState kind="empty" readiness={sceneReadiness} />
+  }
+  if (sceneReadiness.state === 'list-only') {
+    return (
+      <WorkbenchMaterialSceneState
+        kind="list-only"
+        readiness={sceneReadiness}
+      />
+    )
+  }
 
   return (
-    <UnifiedMaterialViewport
-      renderView={(viewMode, { showSites, showMaterialTransfers }) => (
-        <Suspense
-          fallback={(
-            <div className="unilab-workbench-material-loading">
-              正在加载 {viewMode === '3d' || viewMode === 'split'
-                ? '3D'
-                : viewMode} 物料视图…
-            </div>
-          )}
-        >
-          <PascalLabWorkbench
-            aggregates={aggregates}
-            shapes={shapeLibrary}
-            showSites={showSites}
-            showMaterialTransfers={showMaterialTransfers}
-            materialTransferRoutes={materialTransferRoutes}
-            materialTransferProjectionError={null}
-            viewMode={viewMode}
-            projectId={`unilab-workbench-${new URL(backendUrl).port}`}
-            editable={moveStatus.available}
-            selectedMaterialIds={selectedMaterialIds}
-            highlightedMaterialIds={highlightedMaterialIds}
-            modelRuntime={modelRuntime}
-            onMaterialMoves={(moves) => void applyMoves(moves)}
-            onSelectionChange={(materialIds) => onSelectionChange?.(materialIds)}
-          />
-        </Suspense>
-      )}
-    />
+    <div className="unilab-workbench-material-scene">
+      {shapeLibraryState === 'unavailable' ? (
+        <WorkbenchMaterialShapeFallbackNotice />
+      ) : null}
+      <UnifiedMaterialViewport
+        renderView={(viewMode, { showSites, showMaterialTransfers }) => (
+          <Suspense
+            fallback={(
+              <div className="unilab-workbench-material-loading">
+                正在加载 {viewMode === '3d' || viewMode === 'split'
+                  ? '3D'
+                  : viewMode} 物料视图…
+              </div>
+            )}
+          >
+            <PascalLabWorkbench
+              aggregates={aggregates}
+              shapes={shapeLibrary}
+              showSites={showSites}
+              showMaterialTransfers={showMaterialTransfers}
+              materialTransferRoutes={materialTransferRoutes}
+              materialTransferProjectionError={null}
+              viewMode={viewMode}
+              projectId={`unilab-workbench-${new URL(backendUrl).port}`}
+              editable={moveStatus.available}
+              selectedMaterialIds={selectedMaterialIds}
+              highlightedMaterialIds={highlightedMaterialIds}
+              modelRuntime={modelRuntime}
+              onMaterialMoves={(moves) => void applyMoves(moves)}
+              onSelectionChange={(materialIds) => onSelectionChange?.(materialIds)}
+            />
+          </Suspense>
+        )}
+      />
+    </div>
   )
 }

@@ -6,14 +6,16 @@ import { getDefaultBackend } from './backends'
 import { createWorkflowRuntime } from './workflow'
 
 describe('Backend 工作流目录 adapter', () => {
-  it('遍历 UUID 游标后投影为前端编号分页', async () => {
+  /** 验证 Backend 页码目录会完整遍历后投影为前端编号分页。 */
+  it('遍历 Backend 页码后投影为前端编号分页', async () => {
     const request = vi.fn()
       .mockResolvedValueOnce({
         code: 0,
         data: {
           items: [rawWorkflow('workflow-1', '配液')],
           has_more: true,
-          next_cursor_uuid: 'workflow-1'
+          page: 1,
+          page_size: 100
         }
       })
       .mockResolvedValueOnce({
@@ -21,7 +23,8 @@ describe('Backend 工作流目录 adapter', () => {
         data: {
           items: [rawWorkflow('workflow-2', '清洗')],
           has_more: false,
-          next_cursor_uuid: null
+          page: 2,
+          page_size: 100
         }
       })
 
@@ -43,19 +46,26 @@ describe('Backend 工作流目录 adapter', () => {
       page_size: 1
     })
     expect(request).toHaveBeenNthCalledWith(
+      1,
+      '/api/v1/workflows?page=1&page_size=100',
+      undefined
+    )
+    expect(request).toHaveBeenNthCalledWith(
       2,
-      '/api/v1/workflows?limit=100&cursor_uuid=workflow-1',
+      '/api/v1/workflows?page=2&page_size=100',
       undefined
     )
   })
 
-  it('拒绝未推进的 Backend 工作流游标', async () => {
+  /** 验证 Backend 工作流目录页码漂移时关闭失败。 */
+  it('拒绝未推进的 Backend 工作流页码', async () => {
     const request = vi.fn().mockResolvedValue({
       code: 0,
       data: {
         items: [],
         has_more: true,
-        next_cursor_uuid: null
+        page: 2,
+        page_size: 100
       }
     })
 
@@ -66,8 +76,16 @@ describe('Backend 工作流目录 adapter', () => {
     })
   })
 
-  it('在 Backend 目录可读时仍阻止未对齐的创作与任务运行接口', async () => {
-    const request = vi.fn()
+  /** Backend 只开放已对齐的只读目录和空输入正式运行能力。 */
+  it('在 Backend 目录可读时关闭创作，但开放已对齐的任务运行接口', async () => {
+    const request = vi.fn().mockResolvedValue({
+      code: 0,
+      data: {
+        uuid: '20000000-0000-4000-8000-000000000001',
+        workflow_uuid: '10000000-0000-4000-8000-000000000001',
+        status: 'pending'
+      }
+    })
     const runtime = createWorkflowRuntime(
       mockHttp(request),
       getDefaultBackend('local-go')
@@ -80,12 +98,24 @@ describe('Backend 工作流目录 adapter', () => {
       capability: 'workflow.authoring'
     })
     await expect(runtime.createWorkflowTask({
-      workflow_uuid: '10000000-0000-4000-8000-000000000001'
-    })).rejects.toMatchObject({
-      code: 'UNSUPPORTED_CAPABILITY',
-      capability: 'workflow.runTasks'
-    })
-    expect(request).not.toHaveBeenCalled()
+      workflow_uuid: '10000000-0000-4000-8000-000000000001',
+      input: {}
+    })).resolves.toMatchObject({ status: 'pending' })
+    expect(request).toHaveBeenCalledWith(
+      '/api/v1/workflow-tasks',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          workflow_uuid: '10000000-0000-4000-8000-000000000001',
+          inventory_bindings: []
+        })
+      })
+    )
+    expect(() => runtime.subscribeWorkflowRuntime(() => undefined))
+      .toThrow(expect.objectContaining({
+        code: 'UNSUPPORTED_CAPABILITY',
+        capability: 'workflow.subscribeEvents'
+      }))
     runtime.dispose()
   })
 })

@@ -70,6 +70,9 @@ describe('WorkbenchSessionGate', () => {
         }}
         onRetry={vi.fn()}
         onStop={vi.fn()}
+        connectionSelector={(
+          <section aria-label="运行连接选择">连接 Backend</section>
+        )}
         renderEnvironmentManager={onClose => (
           <section aria-label="环境管理">
             <button onClick={onClose}>关闭</button>
@@ -84,5 +87,6 @@ describe('WorkbenchSessionGate', () => {
     expect(markup).toContain('unilab-workbench-session-actions')
     expect(markup).toContain('class="is-primary"')
     expect(markup).toContain('codicon-settings-gear')
+    expect(markup).toContain('运行连接选择')
   })
 })

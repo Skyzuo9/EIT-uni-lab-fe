@@ -32,6 +32,13 @@ export interface ServerCapabilities {
     read: boolean
     create: boolean
   }
+  inventory: {
+    readReagents: boolean
+    createReagent: boolean
+    updateReagent: boolean
+    deleteReagent: boolean
+    readReagentHistory: boolean
+  }
   realtime: {
     pushJointState: boolean
     setJointState: boolean
@@ -67,6 +74,11 @@ export const SERVER_CAPABILITY_KEYS = [
   'workflow.subscribeEvents',
   'reagentInfo.read',
   'reagentInfo.create',
+  'inventory.readReagents',
+  'inventory.createReagent',
+  'inventory.updateReagent',
+  'inventory.deleteReagent',
+  'inventory.readReagentHistory',
   'realtime.pushJointState',
   'realtime.setJointState',
   'realtime.jointControlLease',
@@ -167,6 +179,13 @@ function unavailableCapabilities(): ServerCapabilities {
       read: false,
       create: false
     },
+    inventory: {
+      readReagents: false,
+      createReagent: false,
+      updateReagent: false,
+      deleteReagent: false,
+      readReagentHistory: false
+    },
     realtime: {
       pushJointState: false,
       setJointState: false,
@@ -179,13 +198,21 @@ function unavailableCapabilities(): ServerCapabilities {
   }
 }
 
+/** 返回已完成真实 Backend 联调的本地 Go 能力集合；未验证写能力继续关闭失败。 */
 function localGoCapabilities(): ServerCapabilities {
   const capabilities = unavailableCapabilities()
   capabilities.devices.listOnline = true
   capabilities.devices.listActions = true
+  capabilities.devices.runActionTask = true
   capabilities.material.readTemplates = true
   capabilities.material.readGraph = true
   capabilities.workflow.readDefinitions = true
+  capabilities.workflow.runTasks = true
+  capabilities.inventory.readReagents = true
+  capabilities.inventory.createReagent = true
+  capabilities.inventory.updateReagent = true
+  capabilities.inventory.deleteReagent = true
+  capabilities.inventory.readReagentHistory = true
   return capabilities
 }
 
@@ -202,6 +229,7 @@ function localPythonCapabilities(): ServerCapabilities {
   capabilities.workflow.authoring = true
   capabilities.workflow.runTasks = true
   capabilities.workflow.subscribeEvents = true
+  capabilities.inventory.readReagents = true
   return capabilities
 }
 
@@ -213,6 +241,7 @@ function cloneCapabilities(
     material: { ...capabilities.material },
     workflow: { ...capabilities.workflow },
     reagentInfo: { ...capabilities.reagentInfo },
+    inventory: { ...capabilities.inventory },
     realtime: { ...capabilities.realtime },
     edge: { ...capabilities.edge }
   }
@@ -235,6 +264,9 @@ function unavailableReason(
     if (capability.startsWith('reagentInfo.')) {
       return '当前 Go 后端试剂信息接口尚未接入统一前端 Service Port'
     }
+    if (capability.startsWith('inventory.')) {
+      return '当前 Go 后端尚未提供该库存只读能力'
+    }
     if (capability.startsWith('realtime.')) {
       return '当前 Go 后端尚未提供 unilab/realtime-v1 实时接口'
     }
@@ -253,6 +285,9 @@ function unavailableReason(
     }
     if (capability.startsWith('reagentInfo.')) {
       return '当前 Uni-Lab-OS 尚未提供统一试剂信息查询与创建契约'
+    }
+    if (capability.startsWith('inventory.')) {
+      return '当前 Uni-Lab-OS 尚未提供该库存只读能力'
     }
     if (capability === 'realtime.pushJointState') {
       return '当前 Uni-Lab-OS 仅提供 1 Hz device_status，尚未提供 push_joint_state'

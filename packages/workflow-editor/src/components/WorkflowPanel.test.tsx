@@ -37,6 +37,29 @@ describe('WorkflowPanel Runtime entry', () => {
     expect(markup).not.toContain('workflow-runtime__authoring')
   })
 
+  it('opens the existing Workflow runtime without exposing authoring', () => {
+    const markup = renderToStaticMarkup(
+      <WorkflowPanel
+        runtime={{} as WorkflowRuntimePort}
+        workflowUuid="10000000-0000-4000-8000-000000000001"
+        authoringStatus={{
+          available: false,
+          reason: 'Backend 未实现工作流创作'
+        }}
+        runStatus={{ available: true }}
+      />
+    )
+
+    expect(markup).toContain('已有工作流运行')
+    expect(markup).toContain('运行已有工作流')
+    expect(markup).toContain('完整运行')
+    expect(markup).toContain('单步运行')
+    expect(markup).toContain('单节点调试')
+    expect(markup).toContain('运行预检')
+    expect(markup).toContain('工作流创作未启用')
+    expect(markup).not.toContain('workflow-runtime__authoring')
+  })
+
   it('groups catalog entries by station first and declared purpose second', () => {
     const workflows = [
       workflowSummary('S02_离心流程', []),

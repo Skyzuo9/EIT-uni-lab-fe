@@ -18,9 +18,67 @@ export type WorkflowTaskStatus =
 
 export type WorkflowTaskRunMode = 'normal' | 'step' | 'single_node'
 
+/** 工作流正式运行前可供操作者选择的已应用节点。 */
+export interface WorkflowRunNodeOption {
+  workflow_node_uuid: string
+  name: string
+  type: string
+  disabled: boolean
+}
+
+/** 工作流正式运行入口所需的只读定义快照。 */
+export interface WorkflowRunPreparation {
+  workflow_uuid: string
+  workflow_revision: number
+  nodes: WorkflowRunNodeOption[]
+}
+
+export type WorkflowRunPreflightStatus =
+  | 'ready'
+  | 'requires_confirmation'
+  | 'blocked'
+
+export type WorkflowRunPreflightCheckStatus =
+  | 'passed'
+  | 'blocked'
+  | 'deferred'
+  | 'confirmation_required'
+
+/** Backend 对候选工作流运行范围执行的一项只读检查。 */
+export interface WorkflowRunPreflightCheck {
+  type: string
+  status: WorkflowRunPreflightCheckStatus
+  code: string
+  message: string
+  blocking: boolean
+  node_uuid?: string
+  node_name?: string
+  details: Record<string, unknown>
+}
+
+/** Backend 在创建任务前返回的只读可运行性报告。 */
+export interface WorkflowRunPreflightReport {
+  workflow_uuid: string
+  workflow_revision: number
+  run_mode: WorkflowTaskRunMode
+  target_node_uuid?: string
+  status: WorkflowRunPreflightStatus
+  can_run: boolean
+  checked_at: string
+  summary: {
+    execution_node_count: number
+    passed_check_count: number
+    blocking_check_count: number
+    deferred_check_count: number
+    confirmation_required_count: number
+  }
+  checks: WorkflowRunPreflightCheck[]
+}
+
 export type WorkflowTaskControlStatus =
   | 'active'
   | 'paused'
+  | 'waiting_intervention'
   | 'waiting_reconciliation'
 
 export type WorkflowTaskCleanupStatus =
@@ -34,9 +92,19 @@ export interface WorkflowTaskCreateRequest {
   workflow_uuid: string
   run_mode?: WorkflowTaskRunMode
   target_node_uuid?: string | null
+  inventory_bindings?: WorkflowInventoryBinding[]
   input?: Record<string, unknown>
   description?: string | null
   meta_data?: Record<string, unknown>
+}
+
+/** Backend 在一次工作流任务（WorkflowTask）中冻结的库存实例绑定。 */
+export interface WorkflowInventoryBinding {
+  requirement_key: string
+  inventory_type: 'reagent' | 'current_substance'
+  inventory_uuid: string
+  reserved_quantity: number
+  quantity_unit: string
 }
 
 export interface DebugWorkflowTaskCreateRequest {
@@ -200,8 +268,8 @@ export interface WorkflowTask {
   control_status: WorkflowTaskControlStatus
   cleanup_status: WorkflowTaskCleanupStatus
   trace_context: Record<string, unknown>
-  input: Record<string, unknown>
-  output: Record<string, unknown>
+  input?: Record<string, unknown>
+  output?: Record<string, unknown>
   error_info: unknown[]
   timeout_at?: string
   attention_reason?: string

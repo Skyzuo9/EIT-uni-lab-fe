@@ -16,7 +16,8 @@ import {
 import type { ManagedDevice } from './deviceCatalog'
 import { useDevices } from './useDevices'
 import {
-  matchDeviceActionTemplate,
+  deviceActionDraftStorageKey,
+  projectSelectedDeviceAction,
   serializeDeviceActionInput
 } from './deviceActionRun'
 import { startDeviceActionTaskRecovery } from './deviceActionTaskRecovery'
@@ -29,6 +30,7 @@ import {
   DeviceListItem,
   DeviceWorkspace,
   UnlockConfirmationDialog,
+  activeDeviceActionTaskUuid,
   createArgumentDraft,
   isTerminalDeviceActionTask,
   projectDeviceActionTask,
@@ -39,6 +41,7 @@ import {
   type UnlockIntent,
   type UnlockOperation
 } from './DevicePanelSupport'
+import { deviceClass } from './deviceStyles'
 import type { DeviceManagementPanelProps } from './types'
 export {
   DeviceActionAvailability,
@@ -64,6 +67,7 @@ interface DeviceActionFeedbackState {
 /**
  * 渲染设备目录、实时状态、动作参数与单动作任务控制面板。
  *
+ * @param props 服务组合、当前 Backend、连接状态和总开关。
  * @returns 设备列表、空设备引导和当前设备动作工作区。
  * @throws 服务上下文或数据服务异常由对应 Hook 与 React 错误边界传播。
  * @safety 设备动作与人工解锁仍必须经过既有能力检查和确认流程。
@@ -118,7 +122,7 @@ export default function DevicePanel({
       ?? null,
     [devices, selectedDeviceId]
   )
-  const selectedAction = useMemo(
+  const selectedCatalogAction = useMemo(
     () =>
       selectedDevice?.actions.find(
         (action) => action.actionRef === selectedActionRef
@@ -127,33 +131,35 @@ export default function DevicePanel({
       ?? null,
     [selectedActionRef, selectedDevice]
   )
+  // 投影必须同时绑定资源模板（ResourceTemplate）身份，防止同名动作跨设备误派发。
+  const selectedActionProjection = useMemo(
+    () => projectSelectedDeviceAction(
+      actionCatalog,
+      selectedCatalogAction,
+      selectedDevice?.resourceTemplateUuid
+    ),
+    [actionCatalog, selectedCatalogAction, selectedDevice?.resourceTemplateUuid]
+  )
+  const selectedActionTemplate = selectedActionProjection.template
+  const selectedAction = selectedActionProjection.action
   const argumentDraftKey = useMemo(
-    () =>
-      selectedDevice && selectedAction
-        ? [
-            'unilab',
-            'device-action-draft',
-            backend.id,
-            backend.apiUrl,
-            selectedDevice.id,
-            selectedAction.actionRef
-          ].join(':')
-        : null,
+    () => deviceActionDraftStorageKey(
+      backend.id,
+      backend.apiUrl,
+      selectedDevice,
+      selectedAction,
+      selectedActionTemplate,
+      actionCatalog?.fingerprint
+    ),
     [
       backend.apiUrl,
       backend.id,
+      actionCatalog?.fingerprint,
       selectedAction,
+      selectedActionTemplate?.uuid,
       selectedDevice
     ]
   )
-  const selectedActionTemplate = useMemo(
-    () =>
-      actionCatalog && selectedAction
-        ? matchDeviceActionTemplate(actionCatalog, selectedAction)
-        : null,
-    [actionCatalog, selectedAction]
-  )
-
   const loadActionCatalog = useCallback(async (
     signal?: AbortSignal
   ): Promise<boolean> => {
@@ -357,20 +363,16 @@ export default function DevicePanel({
     return next
   }, [refreshDeviceActionTask])
 
-  const activeTaskUuid = runOperation?.state && (
-    runOperation.state.kind === 'accepted' ||
-    runOperation.state.kind === 'running' ||
-    runOperation.state.kind === 'finishing'
-  ) && 'taskUuid' in runOperation.state
-    ? runOperation.state.taskUuid
-    : null
+  const activeTaskUuid = activeDeviceActionTaskUuid(runOperation)
   useEffect(() => {
     if (!activeTaskUuid || !runOperation) return
     const actionRef = runOperation.actionRef
     const recovery = startDeviceActionTaskRecovery({
       tasks: [{ taskUuid: activeTaskUuid, actionRef }],
-      subscribe: (listener, options) =>
-        services.workflow.subscribeWorkflowRuntime(listener, options),
+      subscribe: services.capabilities.workflow.subscribeEvents
+        ? (listener, options) =>
+            services.workflow.subscribeWorkflowRuntime(listener, options)
+        : undefined,
       read: (task) => queueDeviceActionTaskRefresh(
         task.taskUuid,
         task.actionRef
@@ -581,21 +583,20 @@ export default function DevicePanel({
   return (
     <>
       <section
-        className={`section section--split device-page edge-device${
-          devices.length ? '' : ' is-empty'
-        }`}
+        className={deviceClass('edge-device', devices.length === 0 && 'is-empty')}
+        data-device-management="panel"
       >
-      <aside className="section__list" aria-label="Edge 设备列表">
-        <header className="section__list-head edge-device__list-head">
+      <aside className={deviceClass('section__list')} aria-label="Edge 设备列表">
+        <header className={deviceClass('edge-device__list-head')}>
           <div>
-            <h1 className="section__list-title">仪器设备</h1>
-            <span className="section__list-meta">
+            <h1 className={deviceClass('section__list-title')}>仪器设备</h1>
+            <span className={deviceClass('section__list-meta')}>
               {devices.length} 台设备 · Edge 实时上报
             </span>
           </div>
           <button
             type="button"
-            className="edge-device__refresh"
+            className={deviceClass('edge-device__refresh')}
             disabled={loading || connection !== 'connected'}
             onClick={() => void handleRefresh()}
           >
@@ -608,12 +609,12 @@ export default function DevicePanel({
           lastUpdated={lastUpdated}
         />
         {loading && devices.length === 0 ? (
-          <div className="device-loading" role="status">
+          <div className={deviceClass('device-loading')} role="status">
             正在读取 Edge 设备与动作目录…
           </div>
         ) : null}
         {error ? (
-          <div className="edge-device__load-error" role="alert">
+          <div className={deviceClass('edge-device__load-error')} role="alert">
             <strong>设备目录不可用</strong>
             <span>{error}</span>
             <button type="button" onClick={() => void handleRefresh()}>
@@ -622,7 +623,7 @@ export default function DevicePanel({
           </div>
         ) : null}
         {error ? null : devices.length === 0 ? (
-          <div className="device-empty device-empty--compact">
+          <div className={deviceClass('device-empty device-empty--compact')}>
             <strong>
               {connection === 'connected'
                 ? '当前未配置仪器设备'
@@ -639,7 +640,7 @@ export default function DevicePanel({
             )}
           </div>
         ) : (
-          <ul className="device-list">
+          <ul className={deviceClass('device-list')}>
             {devices.map((device) => (
               <DeviceListItem
                 key={device.id}
@@ -650,15 +651,15 @@ export default function DevicePanel({
             ))}
           </ul>
         )}
-        <div className="edge-device__source-note">
+        <div className={deviceClass('edge-device__source-note')}>
           <span>数据来源</span>
           设备、在线状态、动作与结果均来自 Edge 实时上报。
         </div>
       </aside>
 
-      <main className="section__detail edge-device__detail">
+      <main className={deviceClass('section__detail edge-device__detail')}>
         {error ? (
-          <div className="device-empty device-empty--detail">
+          <div className={deviceClass('device-empty device-empty--detail')}>
             <strong>设备目录暂未就绪</strong>
             <p>请根据左侧诊断检查 OS 设备启动日志，然后重新读取。</p>
           </div>
@@ -701,7 +702,7 @@ export default function DevicePanel({
             onRequestUnlock={handleRequestUnlock}
           />
         ) : (
-          <div className="device-empty device-empty--detail">
+          <div className={deviceClass('device-empty device-empty--detail')}>
             <strong>暂无可调试设备</strong>
             <p>
               {connection === 'connected'

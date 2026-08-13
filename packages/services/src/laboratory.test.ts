@@ -5,16 +5,17 @@ import { createLaboratoryService } from './laboratory'
 import { getDefaultBackend } from './backends'
 
 describe('laboratory service', () => {
-  it('uses the Backend root health route', async () => {
+  /** 验证后端（Backend）与 Edge 统一通过 v1 健康检查路径探测连接。 */
+  it('uses the Backend v1 health route', async () => {
     const requests: Array<{ path: string; method?: string; body?: string }> = []
     const service = createLaboratoryService(
-      fixtureHttp({ '/health': { status: 'ok' } }, requests),
+      fixtureHttp({ '/api/v1/health': { status: 'ok' } }, requests),
       getDefaultBackend('local-go')
     )
 
     await expect(service.ping()).resolves.toBe(true)
     expect(requests).toEqual([{
-      path: '/health',
+      path: '/api/v1/health',
       method: undefined,
       body: undefined
     }])

@@ -10,6 +10,7 @@ describe('WorkflowDag viewport authority', () => {
     const source = readFileSync(dagPath, 'utf8')
 
     expect(source).toContain('fitViewOptions={WORKFLOW_FIT_VIEW_OPTIONS}')
+    expect(source).toContain('showFitView={false}')
     expect(source).toContain('onClick={fitWorkflowView}')
     expect(source).toContain('适应视图')
     expect(source).not.toContain('ResizeObserver')

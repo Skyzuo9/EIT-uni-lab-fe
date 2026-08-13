@@ -1,0 +1,71 @@
+import { describe, expect, it } from 'vitest'
+
+import {
+  WORKBENCH_CONNECTION_STORAGE_KEY,
+  createWorkbenchConnectionTargets,
+  resolveInitialWorkbenchConnectionMode,
+  serializeWorkbenchConnectionMode
+} from './workbench-connection-profile'
+
+describe('Workbench connection authority profile', () => {
+  /** 证明 Workbench 默认保留当前直连 Edge/OS 行为，避免升级后静默改变调度权威。 */
+  it('defaults to the managed Edge authority', () => {
+    expect(resolveInitialWorkbenchConnectionMode({
+      search: '',
+      storedMode: null
+    })).toBe('edge')
+  })
+
+  /** 证明用户显式选择优先于持久偏好，并兼容现有 backend 查询参数。 */
+  it('gives an explicit Backend selection precedence over storage', () => {
+    expect(resolveInitialWorkbenchConnectionMode({
+      search: '?backend=local-go',
+      storedMode: 'edge'
+    })).toBe('backend')
+    expect(resolveInitialWorkbenchConnectionMode({
+      search: '?workbenchConnection=edge&backend=local-go',
+      storedMode: 'backend'
+    })).toBe('edge')
+  })
+
+  /** 证明损坏的持久偏好失败关闭到直连 Edge/OS，而不是猜测 Backend 权威。 */
+  it('rejects an unknown stored authority value', () => {
+    expect(resolveInitialWorkbenchConnectionMode({
+      search: '',
+      storedMode: 'automatic'
+    })).toBe('edge')
+  })
+
+  /** 证明两种选择装配不同服务 profile，并显式携带规范调度权威。 */
+  it('creates isolated Edge and Backend targets', () => {
+    const targets = createWorkbenchConnectionTargets({
+      managedEdgeUrl: 'http://127.0.0.1:37029/',
+      browserOrigin: 'http://127.0.0.1:3100'
+    })
+
+    expect(targets.edge).toMatchObject({
+      mode: 'edge',
+      authorityProfile: 'local_scheduler',
+      backend: {
+        id: 'local-python',
+        apiUrl: 'http://127.0.0.1:37029',
+        realtimeUrl: 'ws://127.0.0.1:37029'
+      }
+    })
+    expect(targets.backend).toMatchObject({
+      mode: 'backend',
+      authorityProfile: 'backend_controlled',
+      backend: {
+        id: 'local-go',
+        apiUrl: 'http://127.0.0.1:3100/__unilab_backend'
+      }
+    })
+    expect(targets.edge.cacheKey).not.toBe(targets.backend.cacheKey)
+  })
+
+  /** 证明持久化格式只保存公开模式身份，不保存地址、令牌或任务身份。 */
+  it('serializes only the selected mode', () => {
+    expect(WORKBENCH_CONNECTION_STORAGE_KEY).toContain('connection-mode')
+    expect(serializeWorkbenchConnectionMode('backend')).toBe('backend')
+  })
+})

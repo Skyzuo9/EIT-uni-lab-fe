@@ -4,12 +4,32 @@ import { fileURLToPath } from 'node:url'
 import { beforeAll, describe, expect, it } from 'vitest'
 
 let stylesheet = ''
+let domainNavigationStylesheet = ''
 
 beforeAll(async () => {
-  stylesheet = await readFile(
-    fileURLToPath(new URL('./index.css', import.meta.url)),
-    'utf8'
-  )
+  const [
+    shell,
+    connection,
+    environment,
+    surfaces,
+    aionui,
+    navigation
+  ] = await Promise.all([
+    readFile(fileURLToPath(new URL('./workbench-shell.css', import.meta.url)), 'utf8'),
+    readFile(
+      fileURLToPath(new URL('./workbench-connection-selector.css', import.meta.url)),
+      'utf8'
+    ),
+    readFile(fileURLToPath(new URL('./environment-manager.css', import.meta.url)), 'utf8'),
+    readFile(fileURLToPath(new URL('./workbench-surfaces.css', import.meta.url)), 'utf8'),
+    readFile(fileURLToPath(new URL('./aionui.css', import.meta.url)), 'utf8'),
+    readFile(
+      fileURLToPath(new URL('./workbench-domain-navigation.css', import.meta.url)),
+      'utf8'
+    )
+  ])
+  stylesheet = [shell, connection, environment, surfaces, aionui].join('\n')
+  domainNavigationStylesheet = navigation
 })
 
 describe('environment manager layering and responsive layout', () => {
@@ -48,6 +68,37 @@ describe('environment manager layering and responsive layout', () => {
     expect(rule).toMatch(/overflow-wrap:\s*anywhere/u)
     expect(rule).toMatch(/white-space:\s*normal/u)
     expect(rule).not.toMatch(/text-overflow:\s*ellipsis/u)
+  })
+
+  it('vertically aligns the workspace icon and label as one control', () => {
+    const button = cssRule(
+      '.unilab-workbench__bar nav .unilab-workspace-switch'
+    )
+    const icon = cssRule('.unilab-workspace-switch__icon')
+
+    expect(button).toMatch(/display:\s*inline-flex/u)
+    expect(button).toMatch(/align-items:\s*center/u)
+    expect(icon).toMatch(/place-items:\s*center/u)
+    expect(icon).toMatch(/flex:\s*0 0 14px/u)
+  })
+
+  it('removes the outline entry from the right product navigation', () => {
+    expect(domainNavigationStylesheet).toMatch(
+      /\.theia-app-right\s+\.lm-TabBar-tab\[id='shell-tab-outline-view'\]\s*\{[^}]*display:\s*none/u
+    )
+  })
+
+  /** 证明运行连接选择采用扁平分段控件，并在窄屏重排而不是横向压缩。 */
+  it('keeps the authority choices readable and responsive', () => {
+    const options = cssRule('.unilab-workbench-connection__options')
+    const popover = cssRule('.unilab-workbench-connection__popover')
+
+    expect(options).toMatch(/grid-template-columns:\s*1fr 1fr/u)
+    expect(popover).toMatch(/width:\s*min\(460px/u)
+    expect(stylesheet).toContain('@media (max-width: 520px)')
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 520px\)[\s\S]*\.unilab-workbench-connection__options\s*\{[\s\S]*grid-template-columns:\s*1fr/u
+    )
   })
 })
 

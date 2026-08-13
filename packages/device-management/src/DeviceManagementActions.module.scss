@@ -1,3 +1,4 @@
+// 动作调试、执行反馈与手动解锁的状态选择器只在设备管理模块内生效。
 .edge-device__content {
   display: grid;
   grid-template-columns: minmax(280px, 0.82fr) minmax(380px, 1.18fr);
@@ -338,6 +339,12 @@
   background: var(--unilab-color-warning-soft);
 }
 
+.edge-device__unlock-dialog-error {
+  margin: 0;
+  color: var(--unilab-color-danger);
+  font-size: 11px;
+}
+
 .edge-device__unlock-dialog dl > div {
   display: grid;
   grid-template-columns: 100px minmax(0, 1fr);
@@ -382,6 +389,15 @@
     flex: 0 0 42%;
     border-right: 0;
     border-bottom: 1px solid var(--unilab-color-border);
+  }
+
+  .edge-device.is-empty .section__list {
+    flex: 1;
+    border-bottom: 0;
+  }
+
+  .edge-device.is-empty .section__detail {
+    display: none;
   }
 
   .edge-device__identity {

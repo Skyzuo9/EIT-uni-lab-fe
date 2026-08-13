@@ -8,11 +8,29 @@ import {
   UnlockConfirmationDialog
 } from './DevicePanel'
 import {
+  activeDeviceActionTaskUuid,
   deviceActionReadiness,
   projectDeviceActionTask
 } from './DeviceActionAvailability'
 
 describe('device action Runtime availability', () => {
+  /** 证明只有非终态的正式任务会进入前端恢复循环。 */
+  it('selects only an active WorkflowTask for recovery', () => {
+    expect(activeDeviceActionTaskUuid(null)).toBeNull()
+    expect(activeDeviceActionTaskUuid({
+      actionRef: 'pump-1.dose',
+      state: { kind: 'ready', message: '参数已就绪' }
+    })).toBeNull()
+    expect(activeDeviceActionTaskUuid({
+      actionRef: 'pump-1.dose',
+      state: {
+        kind: 'running',
+        message: '设备正在执行',
+        taskUuid: '10000000-0000-4000-8000-000000000001'
+      }
+    })).toBe('10000000-0000-4000-8000-000000000001')
+  })
+
   /** 设备目录缺少实际物料（Material）身份时应在提交前给出通俗提示。 */
   it('disables the run control when the device material identity is missing', () => {
     const state = deviceActionReadiness({

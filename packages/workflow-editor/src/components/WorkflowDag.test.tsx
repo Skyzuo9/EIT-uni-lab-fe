@@ -413,7 +413,7 @@ describe('WorkflowDag canvas controls', () => {
       'data-workflow-layout-direction="horizontal"'
     )
     expect(markup).toContain('aria-label="辅助物料展示方式"')
-    expect(markup).toMatch(/aria-pressed="true"[^>]*>反应式</)
+    expect(markup).toMatch(/aria-pressed="true"[^>]*>只看主物料</)
     expect(markup).toMatch(/aria-pressed="false"[^>]*>完整支线</)
   })
 
@@ -431,6 +431,9 @@ describe('WorkflowDag canvas controls', () => {
       /delete-selection\):hover:not\(:disabled\)[\s\S]*unilab-color-danger/
     )
     expect(stylesheet).toMatch(/canvas-button\):focus-visible/)
+    expect(stylesheet).toMatch(
+      /supporting-material-presentation\)[\s\S]*min-width:\s*70px[\s\S]*white-space:\s*nowrap/
+    )
     expect(stylesheet).toMatch(/@container workflow \(max-width: 900px\)/)
   })
 

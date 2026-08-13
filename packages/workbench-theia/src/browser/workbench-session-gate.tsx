@@ -18,11 +18,13 @@ export function WorkbenchSessionGate({
   snapshot,
   onRetry,
   onStop,
+  connectionSelector,
   renderEnvironmentManager
 }: {
   snapshot: WorkbenchSessionSnapshot
   onRetry: () => Promise<void>
   onStop: () => Promise<void>
+  connectionSelector?: React.ReactNode
   renderEnvironmentManager: (onClose: () => void) => React.ReactNode
 }): React.JSX.Element {
   const [environmentOpen, setEnvironmentOpen] = React.useState(
@@ -52,6 +54,7 @@ export function WorkbenchSessionGate({
         </span>
         <h2>Unilab 调试工作台</h2>
         <p>{snapshot.message}</p>
+        {connectionSelector}
         {snapshot.identity ? (
           <dl>
             <dt>Workspace</dt>

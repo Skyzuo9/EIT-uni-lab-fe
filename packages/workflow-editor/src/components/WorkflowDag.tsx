@@ -711,7 +711,7 @@ export default function WorkflowDag({
           size={0.75}
           color="var(--unilab-color-border-strong)"
         />
-        <Controls showInteractive={false} />
+        <Controls showInteractive={false} showFitView={false} />
         <Panel position="top-right">
           <div
             className="workflow-runtime__layout-tools"

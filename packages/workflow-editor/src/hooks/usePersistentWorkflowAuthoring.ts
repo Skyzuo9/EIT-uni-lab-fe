@@ -76,6 +76,12 @@ import { useWorkflowPanelRuntimeProjection } from './useWorkflowPanelRuntimeProj
 
 export type { PersistentWorkflowAuthoringOptions } from './persistentWorkflowAuthoringTypes'
 
+/**
+ * 建立由 OS 权威聚合驱动的工作流（Workflow）编写会话。
+ *
+ * @param options 运行时端口、工作流标识及跨面板协作回调。
+ * @returns 工作流编写视图、工具栏和运行控制共用的受控模型。
+ */
 export function usePersistentWorkflowAuthoring({
   runtime,
   workflowUuid,
@@ -159,7 +165,8 @@ export function usePersistentWorkflowAuthoring({
     ideBridge?.activeSourceUri,
     selectedNodeUuid
   ])
-  const [busy, setBusy] = useState(false)
+  // 首次 OS 聚合返回前保持忙碌，避免新建工作流首帧误触编辑命令。
+  const [busy, setBusy] = useState(true)
   const [pendingMode, setPendingMode] = useState<WorkflowEditMode | null>(null)
   const [fullSourceDiff, setFullSourceDiff] =
     useState<FullSourceDiff | null>(null)
@@ -686,7 +693,14 @@ export function usePersistentWorkflowAuthoring({
     setMessage(authoringStateMessage(aggregate))
   }, [aggregate, editor.replaceContent, generateCanvasPython])
 
+  /**
+   * 请求切换工作流单编辑权模式。
+   *
+   * @param nextMode 用户请求进入的代码或画布模式。
+   * @returns 无返回值；OS 聚合未就绪或正在处理时保持当前模式。
+   */
   const requestMode = (nextMode: WorkflowEditMode): void => {
+    if (busy || !aggregate) return
     const decision = workflowAuthoringModeSwitchDecision({
       currentMode: mode,
       requestedMode: nextMode,
