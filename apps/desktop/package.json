@@ -23,15 +23,15 @@
     "test": "vitest run && node scripts/verify-icons.mjs && node scripts/verify-installer.mjs"
   },
   "dependencies": {
-    "@arizeai/phoenix-otel": "2.1.0",
-    "@unilab/device-card-agent-cli": "workspace:*",
-    "@unilab/device-card-host": "workspace:*",
-    "@unilab/device-card-sdk": "workspace:*",
-    "@unilab/local-environment": "workspace:*"
+    "@unilab/device-card-host": "workspace:*"
   },
   "devDependencies": {
+    "@arizeai/phoenix-otel": "2.1.0",
     "@tailwindcss/vite": "4.1.14",
     "@types/node": "^22.10.0",
+    "@unilab/device-card-agent-cli": "workspace:*",
+    "@unilab/device-card-sdk": "workspace:*",
+    "@unilab/local-environment": "workspace:*",
     "@unilab/device-provisioning": "workspace:*",
     "@unilab/kernel-web": "workspace:*",
     "@unilab/services": "workspace:*",

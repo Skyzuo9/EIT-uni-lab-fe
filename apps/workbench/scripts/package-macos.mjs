@@ -104,6 +104,13 @@ export function validateMacosInstaller(installerPath) {
   return { path: installerPath, size }
 }
 
+/**
+ * 校验 macOS Workbench 成品包含所有外置运行资源。
+ * @param {string} outputDirectory electron-builder 的输出目录。
+ * @param {string} targetArchitecture 目标 CPU 架构。
+ * @returns {string} 校验通过的应用程序路径。
+ * @throws {Error} 任一必需运行资源缺失时抛出。
+ */
 export function validatePackagedWorkbench(
   outputDirectory,
   targetArchitecture = process.arch
@@ -129,7 +136,6 @@ export function validatePackagedWorkbench(
     join(resources, 'desktop', 'out', 'main', 'index.js'),
     join(resources, 'desktop', 'out', 'preload', 'index.js'),
     join(resources, 'desktop', 'node_modules', '@unilab', 'device-card-host'),
-    join(resources, 'desktop', 'node_modules', '@arizeai', 'phoenix-otel'),
     join(resources, 'device-card-builder', 'esbuild'),
     join(resources, 'device-card-agent', 'cli.mjs'),
     join(resources, 'workspace-skills', 'manifest.json'),

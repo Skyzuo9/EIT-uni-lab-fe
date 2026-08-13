@@ -28,6 +28,7 @@ export class ManagedRuntimeInstallationController {
   private snapshot: ManagedRuntimeInstallationSnapshot =
     UNAVAILABLE_MANAGED_RUNTIME_INSTALLATION
   private pending: Promise<ManagedRuntimeInstallationSnapshot> | null = null
+  private externalEnvironmentPath: string | null = null
 
   constructor(private readonly options: ManagedRuntimeInstallationIpcOptions) {}
 
@@ -35,6 +36,7 @@ export class ManagedRuntimeInstallationController {
     if (!this.options.installation) return this.snapshot
     try {
       const inspection = await this.options.installation.inspect()
+      this.externalEnvironmentPath = await this.options.discoverExistingEnvironment()
       if (inspection.installed) {
         this.options.onEnvironmentReady(inspection.paths.prefix)
         return this.publish({
@@ -44,11 +46,16 @@ export class ManagedRuntimeInstallationController {
           runtimeVersion: inspection.paths.runtimeVersion,
           platform: inspection.paths.platform,
           environmentPath: inspection.paths.prefix,
+          availableEnvironments: this.environmentChoices(
+            inspection.paths.prefix,
+            inspection.paths.runtimeVersion
+          ),
           error: null
         })
       }
-      const existing = await this.options.discoverExistingEnvironment()
+      const existing = this.externalEnvironmentPath
       if (existing) {
+        this.options.onEnvironmentReady(existing)
         return this.publish({
           phase: 'external',
           bundled: true,
@@ -56,6 +63,7 @@ export class ManagedRuntimeInstallationController {
           runtimeVersion: inspection.paths.runtimeVersion,
           platform: inspection.paths.platform,
           environmentPath: existing,
+          availableEnvironments: this.environmentChoices(null, null),
           error: null
         })
       }
@@ -66,6 +74,7 @@ export class ManagedRuntimeInstallationController {
         runtimeVersion: inspection.paths.runtimeVersion,
         platform: inspection.paths.platform,
         environmentPath: null,
+        availableEnvironments: [],
         error: null
       })
     } catch (error) {
@@ -73,7 +82,9 @@ export class ManagedRuntimeInstallationController {
       this.options.log(`检查内置 Runtime 失败: ${message}`)
       const existing = await this.options.discoverExistingEnvironment()
         .catch(() => null)
+      this.externalEnvironmentPath = existing
       if (existing) {
+        this.options.onEnvironmentReady(existing)
         return this.publish({
           phase: 'external',
           bundled: true,
@@ -81,6 +92,7 @@ export class ManagedRuntimeInstallationController {
           runtimeVersion: null,
           platform: null,
           environmentPath: existing,
+          availableEnvironments: this.environmentChoices(null, null),
           error: message
         })
       }
@@ -91,6 +103,7 @@ export class ManagedRuntimeInstallationController {
         runtimeVersion: null,
         platform: null,
         environmentPath: null,
+        availableEnvironments: [],
         error: message
       })
     }
@@ -108,6 +121,21 @@ export class ManagedRuntimeInstallationController {
       this.pending = null
     })
     return this.pending
+  }
+
+  selectEnvironment(path: string): ManagedRuntimeInstallationSnapshot {
+    const selected = this.snapshot.availableEnvironments.find(
+      environment => environment.path === path
+    )
+    if (!selected) throw new Error('所选 UniLabOS 环境不可用，请刷新后重试')
+    this.options.onEnvironmentReady(selected.path)
+    return this.publish({
+      ...this.snapshot,
+      phase: selected.kind === 'managed' ? 'ready' : 'external',
+      managed: selected.kind === 'managed',
+      environmentPath: selected.path,
+      error: null
+    })
   }
 
   private async performInstall(): Promise<ManagedRuntimeInstallationSnapshot> {
@@ -130,6 +158,10 @@ export class ManagedRuntimeInstallationController {
         runtimeVersion: paths.runtimeVersion,
         platform: paths.platform,
         environmentPath: paths.prefix,
+        availableEnvironments: this.environmentChoices(
+          paths.prefix,
+          paths.runtimeVersion
+        ),
         error: null
       })
     } catch (error) {
@@ -145,6 +177,26 @@ export class ManagedRuntimeInstallationController {
       })
       throw error
     }
+  }
+
+  private environmentChoices(
+    managedPath: string | null,
+    runtimeVersion: string | null
+  ): ManagedRuntimeInstallationSnapshot['availableEnvironments'] {
+    return [
+      ...(managedPath ? [{
+        kind: 'managed' as const,
+        label: `内置 Runtime${runtimeVersion ? ` ${runtimeVersion}` : ''}`,
+        path: managedPath
+      }] : []),
+      ...(this.externalEnvironmentPath && this.externalEnvironmentPath !== managedPath
+        ? [{
+            kind: 'external' as const,
+            label: '本机 UniLab 环境',
+            path: this.externalEnvironmentPath
+          }]
+        : [])
+    ]
   }
 
   private publish(
@@ -170,6 +222,11 @@ export function registerManagedRuntimeInstallationIpc(
   options.ipcMain.handle('managed-runtime:install', event => {
     options.assertSender(event)
     return controller.install()
+  })
+  options.ipcMain.handle('managed-runtime:selectEnvironment', (event, path: unknown) => {
+    options.assertSender(event)
+    if (typeof path !== 'string') throw new Error('UniLabOS 环境路径无效')
+    return controller.selectEnvironment(path)
   })
   return controller
 }

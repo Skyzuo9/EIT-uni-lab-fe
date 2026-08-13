@@ -15,6 +15,8 @@ const runtimeIndicator = document.querySelector('#runtime-indicator')
 const runtimeTitle = document.querySelector('#runtime-title')
 const runtimeDetail = document.querySelector('#runtime-detail')
 const installRuntimeButton = document.querySelector('#install-runtime')
+const runtimeSelector = document.querySelector('#runtime-selector')
+const runtimeSelectorLabel = document.querySelector('#runtime-selector-label')
 
 let snapshot = {
   phase: 'welcome',
@@ -32,8 +34,21 @@ let runtimeSnapshot = {
   runtimeVersion: null,
   platform: null,
   environmentPath: null,
+  availableEnvironments: [],
   error: null
 }
+
+runtimeSelector.addEventListener('change', () => {
+  if (!runtimeApi || !runtimeSelector.value) return
+  runtimeSelector.disabled = true
+  void runtimeApi.selectEnvironment(runtimeSelector.value).then(next => {
+    runtimeSnapshot = next
+    render()
+  }).catch(error => {
+    runtimeSnapshot = { ...runtimeSnapshot, error: messageOf(error) }
+    render()
+  })
+})
 
 installRuntimeButton.addEventListener('click', () => {
   if (!runtimeApi || runtimeSnapshot.phase === 'installing') return
@@ -166,6 +181,16 @@ function renderRuntime() {
     runtimeSnapshot.phase
   )
   installRuntimeButton.disabled = runtimeSnapshot.phase === 'installing'
+  const environments = runtimeSnapshot.availableEnvironments ?? []
+  runtimeSelector.replaceChildren(...environments.map(environment => {
+    const option = document.createElement('option')
+    option.value = environment.path
+    option.textContent = `${environment.label} — ${environment.path}`
+    return option
+  }))
+  runtimeSelector.value = runtimeSnapshot.environmentPath ?? ''
+  runtimeSelector.disabled = runtimeSnapshot.phase === 'installing'
+  runtimeSelectorLabel.hidden = environments.length === 0
   if (runtimeSnapshot.phase === 'ready') {
     runtimeTitle.textContent = `内置 Runtime ${runtimeSnapshot.runtimeVersion ?? ''} 已就绪`
     runtimeDetail.textContent = runtimeSnapshot.environmentPath ?? '应用私有环境'

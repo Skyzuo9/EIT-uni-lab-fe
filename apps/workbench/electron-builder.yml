@@ -38,8 +38,21 @@ extraResources:
     filter:
       - '**/*'
       - '!**/*.map'
-  - from: .packaging/node-runtime/bin/node
-    to: node-runtime/bin/node
+      - '!**/*.d.ts'
+      - '!**/*.d.mts'
+      - '!**/*.d.cts'
+      - '!**/*.flow'
+      - '!**/*.tsbuildinfo'
+      # Device Card Builder uses the version-matched direct binary below.
+      - '!**/.bin/esbuild*'
+      - '!**/@esbuild/**'
+      - '!**/esbuild/bin/**'
+  # Stage the directory so the native filename is preserved on every target
+  # (`node` on Linux/macOS and `node.exe` on Windows).
+  - from: .packaging/node-runtime
+    to: node-runtime
+    filter:
+      - '**/*'
   - from: .packaging/device-card-builder
     to: device-card-builder
   - from: ../../packages/device-card-agent-cli/dist/cli.mjs
@@ -48,8 +61,15 @@ extraResources:
     to: runtime-installer
     filter:
       - '**/*'
-  - from: .packaging/agent-runtime
-    to: agent-runtime
+  # Keep these installed path segments deliberately short. The bundled Node/npm
+  # tree contains deep dependency paths and NSIS still uses MAX_PATH-sensitive
+  # file operations on supported Windows hosts.
+  - from: .packaging/agent-runtime/app.asar
+    to: a/app.asar
+  - from: .packaging/agent-runtime/payload.json
+    to: a/payload.json
+  - from: .packaging/agent-runtime/bundled-aioncore
+    to: a/c
     filter:
       - '**/*'
   - from: resources/workspace-skills
@@ -108,3 +128,11 @@ nsis:
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: always
   createStartMenuShortcut: true
+  # Workbench does not use electron-updater. Avoid differential block metadata
+  # and its elevate helper so the installer stays solid-compressed and smaller.
+  differentialPackage: false
+  packElevateHelper: false
+  multiLanguageInstaller: true
+  installerLanguages:
+    - zh_CN
+    - en_US

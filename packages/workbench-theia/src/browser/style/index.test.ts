@@ -6,6 +6,7 @@ import { beforeAll, describe, expect, it } from 'vitest'
 let stylesheet = ''
 let domainNavigationStylesheet = ''
 
+/** 读取 Workbench 主样式与领域导航样式，供结构性回归断言复用。 */
 beforeAll(async () => {
   const [
     shell,
@@ -70,6 +71,7 @@ describe('environment manager layering and responsive layout', () => {
     expect(rule).not.toMatch(/text-overflow:\s*ellipsis/u)
   })
 
+  /** 证明选择工作区入口以同一弹性轴对齐图标和文案。 */
   it('vertically aligns the workspace icon and label as one control', () => {
     const button = cssRule(
       '.unilab-workbench__bar nav .unilab-workspace-switch'
@@ -82,12 +84,12 @@ describe('environment manager layering and responsive layout', () => {
     expect(icon).toMatch(/flex:\s*0 0 14px/u)
   })
 
+  /** 证明大纲不再占用 Workbench 右侧产品导航入口。 */
   it('removes the outline entry from the right product navigation', () => {
     expect(domainNavigationStylesheet).toMatch(
       /\.theia-app-right\s+\.lm-TabBar-tab\[id='shell-tab-outline-view'\]\s*\{[^}]*display:\s*none/u
     )
   })
-
   /** 证明运行连接选择采用扁平分段控件，并在窄屏重排而不是横向压缩。 */
   it('keeps the authority choices readable and responsive', () => {
     const options = cssRule('.unilab-workbench-connection__options')

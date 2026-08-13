@@ -5,6 +5,7 @@ import {
   chmodSync,
   copyFileSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   openSync,
@@ -29,6 +30,7 @@ import {
 
 const MEBIBYTE = 1024 * 1024
 const MIN_INSTALLER_BYTES = 50 * MEBIBYTE
+export const MAX_PORTABLE_INSTALLER_BYTES = 850 * MEBIBYTE
 export const PORTABLE_NODE_VERSION = '24.14.0'
 export const PORTABLE_NODE_ARCHIVES = Object.freeze({
   'linux-64': {
@@ -103,6 +105,7 @@ export function packagePortableWorkbench(targetPlatform) {
     runCommand(
       process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm',
       [
+        '--config.node-linker=hoisted',
         '--filter',
         '@unilab/desktop',
         'deploy',
@@ -115,6 +118,7 @@ export function packagePortableWorkbench(targetPlatform) {
       process.env,
       { shell: process.platform === 'win32' }
     )
+    removeDesktopDeploymentSelfLink(desktopRuntimeDirectory)
 
     const esbuildBinary = resolveEsbuildBinary(descriptor)
     mkdirSync(deviceCardBuilderDirectory, { recursive: true })
@@ -157,6 +161,7 @@ export function packagePortableWorkbench(targetPlatform) {
       descriptor.hostArchitecture
     )
     const installer = findInstaller(outputDirectory, targetPlatform)
+    rmSync(releaseDirectory, { recursive: true, force: true })
     mkdirSync(releaseDirectory, { recursive: true })
     for (const name of artifactNames(outputDirectory, targetPlatform)) {
       copyFileSync(join(outputDirectory, name), join(releaseDirectory, name))
@@ -168,6 +173,28 @@ export function packagePortableWorkbench(targetPlatform) {
     rmSync(outputDirectory, { recursive: true, force: true })
     rmSync(packagingDirectory, { recursive: true, force: true })
   }
+}
+
+/**
+ * 删除 pnpm deploy 指回桌面应用源码目录的自链接，避免打包器递归复制开发依赖。
+ * @param {string} deploymentDirectory 桌面端生产依赖的临时部署目录。
+ * @returns {boolean} 是否删除了自链接。
+ */
+export function removeDesktopDeploymentSelfLink(deploymentDirectory) {
+  const selfLink = join(
+    deploymentDirectory,
+    'node_modules',
+    '.pnpm',
+    'node_modules',
+    '@unilab',
+    'desktop'
+  )
+  if (!existsSync(selfLink)) return false
+  if (!lstatSync(selfLink).isSymbolicLink()) {
+    throw new Error(`桌面端生产依赖中的工作区自链接不是符号链接：${selfLink}`)
+  }
+  rmSync(selfLink, { recursive: true, force: true })
+  return true
 }
 
 function prepareNodeRuntime(descriptor, destination, packagingDirectory) {
@@ -227,17 +254,23 @@ function prepareNodeRuntime(descriptor, destination, packagingDirectory) {
   }
 }
 
-function resolveEsbuildBinary(descriptor) {
+/**
+ * 解析并校验设备卡构建器使用的目标平台 esbuild 二进制。
+ * @param {{hostPlatform: string, esbuildPackage: string}} descriptor 平台归档描述。
+ * @returns {string} 与设备卡构建器 API 版本一致的可执行文件路径。
+ * @throws {Error} 清单缺少版本、二进制缺失或二进制版本不一致时抛出。
+ */
+export function resolveEsbuildBinary(descriptor) {
   const executable = descriptor.hostPlatform === 'win32'
     ? 'esbuild.exe'
     : 'esbuild'
-  const workbenchManifest = JSON.parse(readFileSync(
-    join(workbenchDirectory, 'package.json'),
+  const deviceCardBuilderManifest = JSON.parse(readFileSync(
+    join(repositoryDirectory, 'packages', 'device-card-builder', 'package.json'),
     'utf8'
   ))
-  const esbuildVersion = workbenchManifest.devDependencies?.esbuild
+  const esbuildVersion = deviceCardBuilderManifest.dependencies?.esbuild
   if (typeof esbuildVersion !== 'string' || esbuildVersion.length === 0) {
-    throw new Error('Workbench 未声明 esbuild 版本')
+    throw new Error('设备卡构建器未声明 esbuild 版本')
   }
   const binary = join(
     repositoryDirectory,
@@ -251,6 +284,12 @@ function resolveEsbuildBinary(descriptor) {
     executable
   )
   if (!existsSync(binary)) throw new Error(`缺少目标平台 esbuild：${binary}`)
+  const version = spawnSync(binary, ['--version'], { encoding: 'utf8' })
+  if (version.status !== 0 || version.stdout.trim() !== esbuildVersion) {
+    throw new Error(
+      `设备卡构建器 esbuild 版本不一致：需要 ${esbuildVersion}，实际 ${version.stdout.trim() || '不可执行'}`
+    )
+  }
   return binary
 }
 
@@ -286,8 +325,29 @@ function validatePackagedWorkbenchResources(resources, nodeName) {
   if (missing.length) {
     throw new Error(`Workbench 安装包缺少运行资源：${missing.join(', ')}`)
   }
+  const forbiddenDesktopWorkspace = join(
+    resources,
+    'desktop',
+    'node_modules',
+    '.pnpm',
+    'node_modules',
+    '@unilab',
+    'desktop'
+  )
+  if (existsSync(forbiddenDesktopWorkspace)) {
+    throw new Error(
+      `Workbench 安装包误含桌面端开发工作区：${forbiddenDesktopWorkspace}`
+    )
+  }
 }
 
+/**
+ * 查找并校验 portable Workbench 的唯一安装器及体积预算。
+ * @param {string} outputDirectory electron-builder 的输出目录。
+ * @param {string} targetPlatform portable 目标平台标识。
+ * @returns {{path: string, size: number}} 已通过文件头与体积校验的安装器。
+ * @throws {Error} 安装器缺失、重复、不完整、超出预算或文件头无效时抛出。
+ */
 function findInstaller(outputDirectory, targetPlatform) {
   const matcher = targetPlatform === 'linux-64'
     ? /\.AppImage$/iu
@@ -302,6 +362,11 @@ function findInstaller(outputDirectory, targetPlatform) {
   const size = statSync(path).size
   if (size < MIN_INSTALLER_BYTES) {
     throw new Error(`Workbench 安装包不完整：${basename(path)} 仅 ${size} bytes`)
+  }
+  if (size > MAX_PORTABLE_INSTALLER_BYTES) {
+    throw new Error(
+      `Workbench 安装包超出 850 MiB 预算：${basename(path)} 为 ${size} bytes`
+    )
   }
   const expected = targetPlatform === 'linux-64'
     ? Buffer.from([0x7f, 0x45, 0x4c, 0x46])
@@ -320,7 +385,7 @@ function findInstaller(outputDirectory, targetPlatform) {
 function artifactNames(outputDirectory, targetPlatform) {
   const matcher = targetPlatform === 'linux-64'
     ? /(?:\.AppImage(?:\.blockmap)?|latest-linux\.yml)$/iu
-    : /(?:-setup\.exe(?:\.blockmap)?|latest\.yml)$/iu
+    : /-setup\.exe$/iu
   return readdirSync(outputDirectory).filter(name => matcher.test(name))
 }
 
