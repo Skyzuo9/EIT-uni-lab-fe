@@ -1,5 +1,4 @@
 import {
-  execFile,
   spawn,
   type ChildProcessWithoutNullStreams
 } from 'node:child_process'
@@ -52,7 +51,9 @@ import {
   discoverWorkbenchPlcVariableTables,
   type WorkbenchPlcVariableTableCandidate
 } from './plc-variable-tables'
+import { releaseLoopbackPorts } from './port-release'
 import { waitForWorkbenchReadiness } from './readiness'
+import { isRetryableWindowsReadinessExit } from './startup-retry'
 import { prepareWorkbenchState } from './workbench-state'
 export {
   MANAGED_WORKSPACE_SKILL_NAMES,
@@ -106,6 +107,7 @@ export interface WorkbenchSessionIdentity {
   graphPath: string
   graphFingerprint: string
   backendUrl: string
+  hostLinkPort?: number
   pid: number
   generation: string
   logPath: string
@@ -247,6 +249,7 @@ interface ResolvedWorkbenchLaunch {
 
 const LOOPBACK_HOST = '127.0.0.1'
 const DEFAULT_READINESS_TIMEOUT_MS = 90_000
+const WINDOWS_READINESS_RETRY_DELAY_MS = 1_500
 const LOCAL_ENVIRONMENT_CONFIG = 'environment.local.json'
 
 /** Create the single managed OS lifecycle owned by one Workbench window. */
@@ -645,9 +648,14 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
       return this.getSnapshot()
     }
 
-    await this.stop()
-    const ports = [this.options.backendPort, this.options.hostLinkPort]
+    const activeIdentity = this.snapshot.identity
+    const ports = [
+      this.options.backendPort
+        ?? loopbackPortFromUrl(activeIdentity?.backendUrl),
+      this.options.hostLinkPort ?? activeIdentity?.hostLinkPort
+    ]
       .filter((port): port is number => Number.isInteger(port))
+    await this.stop()
     await releaseLoopbackPorts(ports)
     this.publish({
       ...this.snapshot,
@@ -946,7 +954,11 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
     this.publish({ ...this.snapshot, agent })
   }
 
-  private async startManaged(): Promise<WorkbenchSessionSnapshot> {
+  private async startManaged(
+    readinessRetries = (
+      (this.options.platform ?? process.platform) === 'win32' ? 1 : 0
+    )
+  ): Promise<WorkbenchSessionSnapshot> {
     this.publish({
       phase: 'validating',
       message: '正在校验 Workspace、OS 与 Python 环境…',
@@ -981,6 +993,7 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
       identity: null,
       diagnostic: null
     })
+    let launchedChild: ChildProcessWithoutNullStreams | null = null
     try {
       await Promise.all([
         mkdir(dirname(launch.identity.logPath), { recursive: true }),
@@ -996,6 +1009,7 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
         shell: false,
         windowsHide: true
       })
+      launchedChild = child
       this.child = child
       launch.identity.pid = requireProcessId(child.pid)
       child.stdout.pipe(log, { end: false })
@@ -1046,7 +1060,16 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
       await writeSessionManifest(launch, 'ready')
       return this.getSnapshot()
     } catch (error) {
-      const child = this.child
+      const child = this.child ?? launchedChild
+      const source = diagnosticFromError(error)
+      const retryWindowsReadiness = isRetryableWindowsReadinessExit({
+        platform: this.options.platform ?? process.platform,
+        retriesRemaining: readinessRetries,
+        diagnosticCode: source.code,
+        exitCode: child?.exitCode,
+        signalCode: child?.signalCode,
+        stopRequested: this.stopRequested
+      })
       const cleanup: Promise<unknown>[] = []
       if (child) {
         this.expectedExits.add(child)
@@ -1064,7 +1087,16 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
         })
         return this.getSnapshot()
       }
-      const source = diagnosticFromError(error)
+      if (retryWindowsReadiness) {
+        this.publish({
+          phase: 'starting',
+          message: 'Windows 冷启动在就绪前退出，正在重新分配会话并自动重试一次…',
+          identity: null,
+          diagnostic: null
+        })
+        await delay(WINDOWS_READINESS_RETRY_DELAY_MS)
+        return await this.startManaged(readinessRetries - 1)
+      }
       const diagnostic: WorkbenchSessionDiagnostic = {
         code: source.code === 'os_start_failed'
           ? 'os_start_failed'
@@ -1183,7 +1215,7 @@ async function resolveWorkbenchLaunch(
   await requireReadableFile(
     localConfigPath,
     'invalid_workspace',
-    '所选 Workspace 缺少 deployment/local_config.py'
+    '所选 Workspace 缺少 deployment/local_config.py；设备图路径不会改变 Workspace，请重新选择领域项目根目录'
   )
   const configuredGraphPath = options.graphPath
     ?? join('deployment', 'graphs', 'szlab-local-debug.json')
@@ -1292,6 +1324,7 @@ async function resolveWorkbenchLaunch(
     graphPath,
     graphFingerprint,
     backendUrl: `http://${LOOPBACK_HOST}:${backendPort}`,
+    hostLinkPort,
     pid: 0,
     generation,
     logPath,
@@ -1480,6 +1513,16 @@ function availableLoopbackPort(): Promise<number> {
   })
 }
 
+function loopbackPortFromUrl(value: string | undefined): number | undefined {
+  if (!value) return undefined
+  try {
+    const port = Number(new URL(value).port)
+    return Number.isSafeInteger(port) && port > 0 ? port : undefined
+  } catch {
+    return undefined
+  }
+}
+
 async function requireAvailableLoopbackPort(port: number, label: string): Promise<void> {
   if (!Number.isInteger(port) || port < 1024 || port > 65_535) {
     throw new WorkbenchLaunchError(
@@ -1575,39 +1618,6 @@ function idlePlcSimulatorSnapshot(options: {
 export function defaultPlcSimulatorProjectPath(workspacePath: string): string {
   const candidate = resolve(dirname(resolve(workspacePath)), 'PLC-Sim')
   return existsSync(candidate) ? candidate : ''
-}
-
-async function releaseLoopbackPorts(ports: readonly number[]): Promise<void> {
-  if (process.platform === 'win32') {
-    throw new Error('Windows 暂不支持自动释放端口，请在任务管理器中结束占用进程')
-  }
-  const pids = new Set<number>()
-  for (const port of ports) {
-    const output = await execFileOutput('lsof', [
-      '-nP', `-iTCP:${port}`, '-sTCP:LISTEN', '-t'
-    ])
-    for (const value of output.split(/\s+/u)) {
-      const pid = Number(value)
-      if (Number.isInteger(pid) && pid > 1 && pid !== process.pid) pids.add(pid)
-    }
-  }
-  for (const pid of pids) {
-    try { process.kill(pid, 'SIGTERM') } catch { /* process already exited */ }
-  }
-  if (pids.size > 0) await delay(500)
-  for (const pid of pids) {
-    try { process.kill(pid, 0); process.kill(pid, 'SIGKILL') } catch {
-      // Process exited after SIGTERM.
-    }
-  }
-}
-
-function execFileOutput(command: string, args: readonly string[]): Promise<string> {
-  return new Promise(resolveOutput => {
-    execFile(command, [...args], { encoding: 'utf8' }, (error, stdout) => {
-      resolveOutput(error && !stdout ? '' : stdout)
-    })
-  })
 }
 
 async function requireRealCsvFile(candidate: string): Promise<string> {

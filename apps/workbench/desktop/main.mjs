@@ -28,6 +28,7 @@ import { createRemoteWorkbenchController } from '../scripts/remote-controller.mj
 import {
   normalizeWorkbenchLaunchConfig,
   recentWorkspaceForPath,
+  requireWorkbenchWorkspace,
   recordRecentWorkspace
 } from '../scripts/workspace-recents.mjs'
 
@@ -308,6 +309,7 @@ function createPackagedWorkspaceController(options) {
     try {
       const workspace = await validDirectory(workspaceCandidate)
       if (!workspace) throw new Error('所选工作区不存在或不可访问。')
+      await requireWorkbenchWorkspace(workspace)
       const recent = recentWorkspaceForPath(config, workspace)
       const pythonEnvironment = await selectPythonEnvironment({
         explicit: explicit.pythonEnvironment ?? options.explicitEnvironment ?? null,

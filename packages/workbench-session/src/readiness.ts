@@ -22,8 +22,8 @@ export async function waitForWorkbenchReadiness(
     ],
     ['/api/v1/resource-templates?limit=1', isResourceTemplateCatalogReady]
   ]
+  const deadline = Date.now() + timeoutMs
   for (const [path, accepts] of probes) {
-    const deadline = Date.now() + timeoutMs
     let ready = false
     while (Date.now() < deadline) {
       if (child.exitCode !== null || child.signalCode !== null) {
@@ -58,7 +58,7 @@ export async function waitForWorkbenchReadiness(
     backendUrl,
     child,
     '/api/v1/workspace/package-mounts',
-    timeoutMs
+    deadline
   )
   return parseWorkspacePackageMountProjection(mountPayload)
 }
@@ -67,9 +67,8 @@ async function fetchWorkbenchReadinessPayload(
   backendUrl: string,
   child: ChildProcessWithoutNullStreams,
   path: string,
-  timeoutMs: number
+  deadline: number
 ): Promise<unknown> {
-  const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
     if (child.exitCode !== null || child.signalCode !== null) {
       throw new WorkbenchLaunchError(
