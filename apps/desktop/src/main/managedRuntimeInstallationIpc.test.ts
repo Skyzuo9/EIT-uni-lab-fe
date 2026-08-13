@@ -75,6 +75,30 @@ describe('ManagedRuntimeInstallationController', () => {
       error: 'manifest damaged'
     })
   })
+
+  it('lists and switches between bundled and local UniLabOS environments', async () => {
+    const onEnvironmentReady = vi.fn()
+    const controller = createController({
+      inspect: vi.fn(async () => ({ installed: true, paths })),
+      ensureInstalled: vi.fn()
+    }, {
+      discoverExistingEnvironment: async () => '/opt/conda/envs/unilab',
+      onEnvironmentReady
+    })
+
+    const initial = await controller.initialize()
+    expect(initial.availableEnvironments).toEqual([
+      expect.objectContaining({ kind: 'managed', path: paths.prefix }),
+      expect.objectContaining({ kind: 'external', path: '/opt/conda/envs/unilab' })
+    ])
+
+    expect(controller.selectEnvironment('/opt/conda/envs/unilab')).toMatchObject({
+      phase: 'external',
+      managed: false,
+      environmentPath: '/opt/conda/envs/unilab'
+    })
+    expect(onEnvironmentReady).toHaveBeenLastCalledWith('/opt/conda/envs/unilab')
+  })
 })
 
 function createController(
