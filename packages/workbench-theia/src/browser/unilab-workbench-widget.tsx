@@ -79,6 +79,7 @@ import {
   type WorkbenchConnectionMode,
   type WorkbenchConnectionTargets
 } from './workbench-connection-profile'
+import { preflightWorkbenchRuntimeAuthority } from './workbench-domain-authority'
 import {
   WorkbenchConnectionSelector,
   type WorkbenchConnectionState
@@ -144,6 +145,8 @@ export class UniLabWorkbenchWidget extends ReactWidget {
     message: '正在连接 Workbench Backend…',
     configuredGraphPath: 'deployment/graphs/szlab-local-debug.json',
     configuredRuntimeMode: 'normal',
+    configuredDomainMode: 'local',
+    configuredBackendUrl: null,
     identity: null,
     agent: null,
     diagnostic: null,
@@ -156,6 +159,8 @@ export class UniLabWorkbenchWidget extends ReactWidget {
   protected lastReportedUnsavedChanges: boolean | null = null
   protected connectionMode: WorkbenchConnectionMode =
     initialWorkbenchConnectionMode()
+  protected connectionSwitchingTo: WorkbenchConnectionMode | null = null
+  protected connectionSwitchRevision = 0
   @postConstruct()
   protected init(): void {
     this.ideAdapter = createTheiaWorkflowIdeAdapter({
@@ -181,6 +186,12 @@ export class UniLabWorkbenchWidget extends ReactWidget {
     }))
     this.toDispose.push(this.workbenchSessionClient.onSessionChanged(snapshot => {
       this.sessionSnapshot = snapshot
+      // Workspace Host is the cross-window authority.  Do not keep the
+      // optimistic selector value while a switch is in flight: every emitted
+      // snapshot already carries either the committed target or the rolled
+      // back source, and must therefore reconcile every renderer immediately.
+      this.connectionMode = snapshot.configuredDomainMode
+      persistWorkbenchConnectionMode(snapshot.configuredDomainMode)
       this.ideAdapter.setPackageMounts(
         snapshot.identity?.packageMounts?.items ?? []
       )
@@ -195,6 +206,8 @@ export class UniLabWorkbenchWidget extends ReactWidget {
   protected async refreshSessionSnapshot(): Promise<void> {
     try {
       this.sessionSnapshot = await this.workbenchSession.getSnapshot()
+      this.connectionMode = this.sessionSnapshot.configuredDomainMode
+      persistWorkbenchConnectionMode(this.connectionMode)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       this.sessionSnapshot = {
@@ -202,6 +215,8 @@ export class UniLabWorkbenchWidget extends ReactWidget {
         message: 'Workbench Backend 连接失败',
         configuredGraphPath: 'deployment/graphs/szlab-local-debug.json',
         configuredRuntimeMode: 'normal',
+        configuredDomainMode: 'local',
+        configuredBackendUrl: null,
         identity: null,
         agent: null,
         diagnostic: {
@@ -451,17 +466,49 @@ export class UniLabWorkbenchWidget extends ReactWidget {
    * @param mode 用户明确选择的 Local 或 Backend Authority 模式。
    * @returns 无；存在未保存工作流内容时失败关闭并保留当前连接。
    */
-  protected readonly setConnectionMode = (
+  protected readonly setConnectionMode = async (
     mode: WorkbenchConnectionMode
-  ): void => {
+  ): Promise<void> => {
     if (mode === this.connectionMode) return
+    if (this.connectionSwitchingTo) return
     if (this.lastReportedUnsavedChanges) {
       void this.messages.warn('请先保存当前工作流修改，再切换运行连接')
       return
     }
-    this.connectionMode = mode
-    persistWorkbenchConnectionMode(mode)
+    const revision = ++this.connectionSwitchRevision
+    this.connectionSwitchingTo = mode
     this.update()
+    const targets = createWorkbenchConnectionTargets({
+      managedLocalUrl: this.sessionSnapshot.identity?.backendUrl,
+      browserOrigin: currentBrowserOrigin()
+    })
+    try {
+      await preflightWorkbenchRuntimeAuthority(targets[mode])
+      if (revision !== this.connectionSwitchRevision) return
+      const session = await this.workbenchSession.setDomainAuthority(mode)
+      if (revision !== this.connectionSwitchRevision) return
+      this.sessionSnapshot = session
+      this.connectionMode = mode
+      persistWorkbenchConnectionMode(mode)
+      void this.messages.info(
+        mode === 'backend'
+          ? '已切换到 Backend：画布直接保存远端工作流，本地代码不再联动画布'
+          : '已切换到本地：工作区代码与画布恢复双向联动'
+      )
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      void this.messages.error(`运行连接未切换：${message}`)
+    } finally {
+      if (revision === this.connectionSwitchRevision) {
+        this.connectionSwitchingTo = null
+        // An RPC can reject after Workspace Host has already committed and
+        // published a switch.  End the optimistic phase from the last Host
+        // snapshot rather than leaving this window on a stale selector value.
+        this.connectionMode = this.sessionSnapshot.configuredDomainMode
+        persistWorkbenchConnectionMode(this.connectionMode)
+        this.update()
+      }
+    }
   }
 
   protected reportUnsavedChanges(): void {
@@ -613,11 +660,8 @@ export class UniLabWorkbenchWidget extends ReactWidget {
       browserOrigin: currentBrowserOrigin()
     })
     if (
-      this.connectionMode === 'local'
-      && (
-        this.sessionSnapshot.phase !== 'ready'
-        || !this.sessionSnapshot.identity
-      )
+      this.sessionSnapshot.phase !== 'ready'
+      || !this.sessionSnapshot.identity
     ) {
       return (
         <WorkbenchSessionGate
@@ -631,6 +675,8 @@ export class UniLabWorkbenchWidget extends ReactWidget {
               connection={sessionConnectionState(this.sessionSnapshot.phase)}
               switchBlockedReason={this.lastReportedUnsavedChanges
                 ? '请先保存当前工作流修改'
+                : this.connectionSwitchingTo
+                  ? '正在验证目标 Authority'
                 : null}
               defaultOpen
               onSelect={this.setConnectionMode}
@@ -669,6 +715,8 @@ export class UniLabWorkbenchWidget extends ReactWidget {
         viewMode={this.viewState.currentMode}
         switchBlockedReason={this.lastReportedUnsavedChanges
           ? '请先保存当前工作流修改'
+          : this.connectionSwitchingTo
+            ? '正在验证目标 Authority'
           : null}
         onConnectionModeChange={this.setConnectionMode}
         onSourceSaveHandlerChange={this.registerSourceSaveHandler}
@@ -852,9 +900,11 @@ function WorkbenchSurface({
   }, [services, workflowUuid])
 
   useEffect(() => {
-    onSourceSaveHandlerChange(synchronizeSavedSource)
+    onSourceSaveHandlerChange(
+      connectionMode === 'local' ? synchronizeSavedSource : null
+    )
     return () => onSourceSaveHandlerChange(null)
-  }, [onSourceSaveHandlerChange, synchronizeSavedSource])
+  }, [connectionMode, onSourceSaveHandlerChange, synchronizeSavedSource])
 
   const highlightedMaterialIds = useMemo(() => {
     const route = runtimeProjection?.materialTransferRoutes.find(
@@ -876,15 +926,20 @@ function WorkbenchSurface({
         traceRuntime={desktopWorkflowTraceRuntime(
           typeof window === 'undefined' ? undefined : window
         )}
-        authoringStatus={services.getCapabilityStatus('workflow.authoring')}
+        authoringStatus={services.getCapabilityStatus(
+          connectionMode === 'backend'
+            ? 'workflow.editDefinitions'
+            : 'workflow.authoring'
+        )}
+        definitionEditingMode={connectionMode === 'backend'
+          ? 'backend'
+          : 'workspace'}
         runStatus={services.getCapabilityStatus('workflow.runTasks')}
         resourceSlotOptionsPort={resourceSlotOptionsPort}
         active={isWorkflowWorkbenchView(viewMode)}
         workflowUuid={workflowUuid}
         activeWorkflowStorageKey={`unilab.workflow.active.${
-          encodeURIComponent(
-            `${services.backend.id}:${services.backend.apiUrl}`
-          )
+          encodeURIComponent(selectedTarget.sourceId)
         }.v1`}
         allowWorkflowSelection
         hideEmbeddedCodeEditor
@@ -989,6 +1044,8 @@ function WorkbenchSurface({
         }
         data-connection-mode={connectionMode}
         data-authority-profile={selectedTarget.authorityProfile}
+        data-authority-source-id={selectedTarget.sourceId}
+        data-workspace-authoring-source-id={selectedTarget.authoringSourceId}
         data-backend-id={selectedTarget.backend.id}
         data-backend-api-url={selectedTarget.backend.apiUrl}
       >

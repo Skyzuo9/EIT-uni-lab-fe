@@ -25,6 +25,7 @@ export interface ServerCapabilities {
   workflow: {
     readDefinitions: boolean
     authoring: boolean
+    editDefinitions: boolean
     runTasks: boolean
     subscribeEvents: boolean
   }
@@ -70,6 +71,7 @@ export const SERVER_CAPABILITY_KEYS = [
   'material.persistentUndo',
   'workflow.readDefinitions',
   'workflow.authoring',
+  'workflow.editDefinitions',
   'workflow.runTasks',
   'workflow.subscribeEvents',
   'reagentInfo.read',
@@ -172,6 +174,7 @@ function unavailableCapabilities(): ServerCapabilities {
     workflow: {
       readDefinitions: false,
       authoring: false,
+      editDefinitions: false,
       runTasks: false,
       subscribeEvents: false
     },
@@ -207,7 +210,9 @@ function localGoCapabilities(): ServerCapabilities {
   capabilities.material.readTemplates = true
   capabilities.material.readGraph = true
   capabilities.workflow.readDefinitions = true
+  capabilities.workflow.editDefinitions = true
   capabilities.workflow.runTasks = true
+  capabilities.workflow.subscribeEvents = true
   capabilities.inventory.readReagents = true
   capabilities.inventory.createReagent = true
   capabilities.inventory.updateReagent = true

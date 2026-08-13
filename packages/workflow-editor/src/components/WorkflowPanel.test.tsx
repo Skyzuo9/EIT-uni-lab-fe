@@ -63,13 +63,31 @@ describe('WorkflowPanel Runtime entry', () => {
     expect(markup).toContain('persistent-authoring__toolbar-navigation')
     expect(markup).toContain('代码模式')
     expect(markup).toContain('画布模式')
-    expect(markup).toContain('Backend 当前未提供工作流创作写接口')
+    expect(markup).toContain('Backend 未提供工作流图写接口')
     expect(markup).toContain('>运行输出<')
     expect(markup).toContain('全屏显示运行输出')
     expect(markup).toContain('persistent-authoring__runtime')
     expect(markup).not.toContain('workflow-runtime__existing-run-body')
     expect(markup).not.toContain('已有工作流运行</span>')
     expect(markup).not.toContain('workflow-runtime__authoring')
+  })
+
+  /** Backend 模式启用直接画布保存，但不暴露工作区代码投影。 */
+  it('opens an editable Backend canvas without enabling code mode', () => {
+    const markup = renderToStaticMarkup(
+      <WorkflowPanel
+        runtime={{} as WorkflowRuntimePort}
+        workflowUuid="10000000-0000-4000-8000-000000000001"
+        definitionEditingMode="backend"
+        authoringStatus={{ available: true }}
+        runStatus={{ available: true }}
+      />
+    )
+
+    expect(markup).toContain('Backend 定义 · 已同步')
+    expect(markup).toContain('画布直接编辑 Backend 工作流')
+    expect(markup).toContain('Backend 画布没有待保存修改')
+    expect(markup).toContain('工作区代码不会作用于本图')
   })
 
   it('groups catalog entries by station first and declared purpose second', () => {

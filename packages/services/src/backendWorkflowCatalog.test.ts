@@ -76,8 +76,8 @@ describe('Backend 工作流目录 adapter', () => {
     })
   })
 
-  /** Backend 只开放已对齐的只读目录和空输入正式运行能力。 */
-  it('在 Backend 目录可读时关闭创作，但开放已对齐的任务运行接口', async () => {
+  /** Backend 隔离源码创作，同时开放画布、任务与可恢复事件流。 */
+  it('在 Backend 模式关闭源码创作，但开放任务运行与事件订阅', async () => {
     const request = vi.fn().mockResolvedValue({
       code: 0,
       data: {
@@ -111,12 +111,14 @@ describe('Backend 工作流目录 adapter', () => {
         })
       })
     )
-    expect(() => runtime.subscribeWorkflowRuntime(() => undefined))
-      .toThrow(expect.objectContaining({
-        code: 'UNSUPPORTED_CAPABILITY',
-        capability: 'workflow.subscribeEvents'
-      }))
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(
+      new ReadableStream(),
+      { status: 200, headers: { 'Content-Type': 'text/event-stream' } }
+    )))
+    const subscription = runtime.subscribeWorkflowRuntime(() => undefined)
+    subscription.dispose()
     runtime.dispose()
+    vi.unstubAllGlobals()
   })
 })
 

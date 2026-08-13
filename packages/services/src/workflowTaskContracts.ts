@@ -443,10 +443,20 @@ export interface DeviceCatalogChangedEvent {
   }
 }
 
+export interface WorkflowDefinitionChangedEvent {
+  id: string
+  event: 'workflow.definition.changed'
+  data: {
+    workflow_uuid: string
+    workflow_revision: number
+  }
+}
+
 export type WorkflowRuntimeInvalidationEvent =
   | WorkflowRuntimeChangedEvent
   | DeviceActionTaskChangedEvent
   | DeviceCatalogChangedEvent
+  | WorkflowDefinitionChangedEvent
 
 export interface WorkflowRuntimeSubscriptionOptions {
   lastEventId?: string

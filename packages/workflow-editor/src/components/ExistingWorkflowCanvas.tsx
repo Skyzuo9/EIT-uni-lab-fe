@@ -12,6 +12,23 @@ interface ExistingWorkflowCanvasProps {
   nodeStates: Readonly<Record<string, string>>
   onNodeSelect: (nodeUuid: string) => void
   onRetry: () => void
+  editable?: boolean
+  dirty?: boolean
+  onNodePositionChange?: (
+    nodeUuid: string,
+    position: { x: number; y: number }
+  ) => void
+  onConnectHandles?: (connection: {
+    sourceNodeUuid: string
+    sourceHandleUuid: string
+    targetNodeUuid: string
+    targetHandleUuid: string
+  }) => void
+  onDeleteRequest?: (selection: {
+    nodeUuids: string[]
+    edgeUuids: string[]
+  }) => void
+  onToggleDisabled?: (nodeUuid: string) => void
 }
 
 /**
@@ -28,7 +45,13 @@ export function ExistingWorkflowCanvas({
   selectedNodeId,
   nodeStates,
   onNodeSelect,
-  onRetry
+  onRetry,
+  editable = false,
+  dirty = false,
+  onNodePositionChange,
+  onConnectHandles,
+  onDeleteRequest,
+  onToggleDisabled
 }: ExistingWorkflowCanvasProps): React.JSX.Element {
   return (
     <section
@@ -39,11 +62,17 @@ export function ExistingWorkflowCanvas({
         title={workflowName || '完整控制流 DAG'}
         nodeCount={structure.nodes.length}
         linkCount={structure.links.length}
-        projectionLabel="Backend 定义 · 只读"
-        projectionTitle="画布来自 Backend 当前工作流定义；创作写操作尚未启用"
+        projectionLabel={editable
+          ? `Backend 定义 · ${dirty ? '待保存' : '已同步'}`
+          : 'Backend 定义 · 只读'}
+        projectionTitle={editable
+          ? '画布修改通过 revision CAS 直接保存到 Backend；不改写工作区代码'
+          : '画布来自 Backend 当前工作流定义；创作写操作尚未启用'}
         description={(
           <p>
-            选择节点查看运行结果；单节点调试模式下，点击画布节点即可设为目标。
+            {editable
+              ? '画布直接编辑 Backend 工作流；本地 Python 代码不会作用于本图。'
+              : '选择节点查看运行结果；单节点调试模式下，点击画布节点即可设为目标。'}
           </p>
         )}
       />
@@ -67,8 +96,15 @@ export function ExistingWorkflowCanvas({
               selectedNodeId={selectedNodeId}
               nodeStates={nodeStates}
               canBeautify={false}
-              beautifyDisabledReason="Backend 工作流画布当前只读，布局不会写回定义"
-              canvasMutationEnabled={false}
+              beautifyDisabledReason={editable
+                ? 'Backend 画布暂不自动改写布局；可拖动节点后保存'
+                : 'Backend 工作流画布当前只读，布局不会写回定义'}
+              canvasMutationEnabled={editable}
+              nodePositionMutationEnabled={editable}
+              onNodePositionChange={onNodePositionChange}
+              onConnectHandles={onConnectHandles}
+              onDeleteRequest={onDeleteRequest}
+              onToggleDisabled={onToggleDisabled}
             />
           )}
         </div>

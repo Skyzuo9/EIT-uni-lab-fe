@@ -17,6 +17,10 @@ import {
 } from './backendWorkflowRuntime'
 import { loadBackendWorkflowPage } from './backendWorkflowCatalog'
 import {
+  loadBackendEditableWorkflowGraph,
+  saveBackendEditableWorkflowGraph
+} from './backendWorkflowGraph'
+import {
   loadWorkflowActionCatalog
 } from './workflowActionCatalog'
 import {
@@ -31,6 +35,7 @@ import {
   parseAuthoringChangedData,
   parseDeviceActionTaskChangedData,
   parseDeviceCatalogChangedData,
+  parseWorkflowDefinitionChangedData,
   parseRuntimeChangedData
 } from './workflowEventCodec'
 import {
@@ -98,6 +103,7 @@ export type {
   WorkflowValidationIssue,
   WorkflowValidationResult
 } from './workflowAuthoringContracts'
+export type { BackendWorkflowGraph } from './backendWorkflowGraph'
 export type {
   WorkflowInputContract,
   WorkflowInputDescriptor,
@@ -384,6 +390,14 @@ export function createWorkflowRuntime(
           candidate
         })
       }),
+    getBackendWorkflowGraph: (workflowUuid) => {
+      requireWorkflowCapability('workflow.editDefinitions')
+      return loadBackendEditableWorkflowGraph(http, workflowUuid)
+    },
+    saveBackendWorkflowGraph: (workflowUuid, graph) => {
+      requireWorkflowCapability('workflow.editDefinitions')
+      return saveBackendEditableWorkflowGraph(http, workflowUuid, graph)
+    },
     getWorkflowRunPreparation: (workflowUuid) => {
       requireWorkflowCapability('workflow.readDefinitions')
       return loadBackendWorkflowRunPreparation(http, workflowUuid)
@@ -522,13 +536,16 @@ function parseRuntimeFrame(
   if (
     frame.event !== 'workflow.runtime.changed' &&
     frame.event !== 'device_action_task.changed' &&
-    frame.event !== 'device.catalog.changed'
+    frame.event !== 'device.catalog.changed' &&
+    frame.event !== 'workflow.definition.changed'
   ) return null
   const data = frame.event === 'workflow.runtime.changed'
     ? parseRuntimeChangedData(frame.data)
     : frame.event === 'device_action_task.changed'
       ? parseDeviceActionTaskChangedData(frame.data)
-      : parseDeviceCatalogChangedData(frame.data)
+      : frame.event === 'device.catalog.changed'
+        ? parseDeviceCatalogChangedData(frame.data)
+        : parseWorkflowDefinitionChangedData(frame.data)
   if (!data) {
     options.onError?.(new Error('Workflow Runtime SSE 返回了无效事件'))
     return null
@@ -544,7 +561,8 @@ function parseRuntimeFrame(
 function isRuntimeFrame(frame: WorkflowSseFrame): boolean {
   return frame.event === 'workflow.runtime.changed' ||
     frame.event === 'device_action_task.changed' ||
-    frame.event === 'device.catalog.changed'
+    frame.event === 'device.catalog.changed' ||
+    frame.event === 'workflow.definition.changed'
 }
 
 /** 解包兼容接口中可选的 data envelope。 */

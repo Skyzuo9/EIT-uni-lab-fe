@@ -17,6 +17,10 @@ export type WorkbenchAuthorityProfile =
 export interface WorkbenchConnectionTarget {
   mode: WorkbenchConnectionMode
   authorityProfile: WorkbenchAuthorityProfile
+  /** Runtime 实体、缓存、SSE cursor 与 pending mutation 的隔离身份。 */
+  sourceId: string
+  /** 固定 Local Authoring Projection 的隔离身份。 */
+  authoringSourceId: string
   title: string
   description: string
   endpointLabel: string
@@ -84,23 +88,28 @@ export function createWorkbenchConnectionTargets(
     name: 'Backend + Scheduler',
     apiUrl: backendUrl
   }
+  const authoringSourceId = `authoring:${localUrl}`
   return {
     local: {
       mode: 'local',
       authorityProfile: 'local_scheduler',
+      sourceId: `runtime:local:${localUrl}`,
+      authoringSourceId,
       title: '本地调试',
       description: '常驻 Workspace Backend 持有本地物料、工作流与任务事实。',
       endpointLabel: localUrl,
-      cacheKey: `local_scheduler:${localUrl}`,
+      cacheKey: `runtime:local:${localUrl}`,
       backend: localBackend
     },
     backend: {
       mode: 'backend',
       authorityProfile: 'backend_controlled',
+      sourceId: `runtime:backend:${backendUrl}`,
+      authoringSourceId,
       title: 'Backend + Scheduler',
       description: 'Backend 持有任务与作业权威，已注册 Edge 只负责执行。',
       endpointLabel: WORKBENCH_BACKEND_PROXY_PREFIX,
-      cacheKey: `backend_controlled:${backendUrl}`,
+      cacheKey: `runtime:backend:${backendUrl}`,
       backend
     }
   }

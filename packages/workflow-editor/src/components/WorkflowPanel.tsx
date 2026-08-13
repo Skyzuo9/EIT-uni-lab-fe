@@ -39,6 +39,7 @@ export interface WorkflowPanelProps {
   recoveryRevision?: number
   active?: boolean
   authoringStatus?: CapabilityStatus
+  definitionEditingMode?: 'workspace' | 'backend'
   runStatus?: CapabilityStatus
   onUnsavedChangesChange?: (hasUnsavedChanges: boolean) => void
   onActiveWorkflowChange?: (workflowUuid: string | null) => void
@@ -72,6 +73,7 @@ export default function WorkflowPanel({
   recoveryRevision = 0,
   active = true,
   authoringStatus,
+  definitionEditingMode = 'workspace',
   runStatus,
   onUnsavedChangesChange,
   onActiveWorkflowChange,
@@ -119,7 +121,10 @@ export default function WorkflowPanel({
   }, [active, onActiveWorkflowChange, workflowUuid])
 
   if (workflowUuid && isWorkflowUuid(workflowUuid)) {
-    if (!authoringAvailable && runAvailable) {
+    if (
+      definitionEditingMode === 'backend' ||
+      (!authoringAvailable && runAvailable)
+    ) {
       return (
         <ExistingWorkflowRuntimePanel
           key={workflowUuid}
@@ -127,6 +132,10 @@ export default function WorkflowPanel({
           traceRuntime={traceRuntime}
           workflowUuid={workflowUuid}
           workflowName={selectedWorkflowName}
+          editingStatus={definitionEditingMode === 'backend'
+            ? authoringStatus
+            : undefined}
+          onUnsavedChangesChange={onUnsavedChangesChange}
           onChooseWorkflow={explicitWorkflowUuid && !allowWorkflowSelection
             ? undefined
             : () => {

@@ -51,11 +51,21 @@ describe('Workbench Backend same-origin proxy', () => {
         statusCode = value
         return this
       },
+      write(value: string | Buffer) {
+        body += Buffer.isBuffer(value) ? value.toString() : value
+        return true
+      },
+      once() {
+        return this
+      },
       end(value?: string | Buffer) {
-        body = Buffer.isBuffer(value) ? value.toString() : String(value ?? '')
+        body += Buffer.isBuffer(value) ? value.toString() : String(value ?? '')
         return this
       }
-    } as unknown as Pick<ServerResponse, 'setHeader' | 'writeHead' | 'end'>
+    } as unknown as Pick<
+      ServerResponse,
+      'setHeader' | 'writeHead' | 'write' | 'end' | 'once'
+    >
 
     await writeWorkbenchBackendResponse(
       response,
@@ -68,6 +78,50 @@ describe('Workbench Backend same-origin proxy', () => {
     expect(statusCode).toBe(201)
     expect(headers.get('content-type')).toBe('application/json')
     expect(body).toBe('{"code":0}')
+  })
+
+  /** SSE 首帧必须在上游结束前写出，避免 Authority 切换后游标无法实时推进。 */
+  it('streams SSE frames without buffering the response body', async () => {
+    const writes: string[] = []
+    let closeStream: (() => void) | undefined
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('id: 41\n'))
+        closeStream = () => controller.close()
+      }
+    })
+    let ended = false
+    const response = {
+      setHeader() { return this },
+      writeHead() { return this },
+      write(value: Buffer) {
+        writes.push(value.toString())
+        return true
+      },
+      once() { return this },
+      end() {
+        ended = true
+        return this
+      }
+    } as unknown as Pick<
+      ServerResponse,
+      'setHeader' | 'writeHead' | 'write' | 'end' | 'once'
+    >
+
+    const forwarding = writeWorkbenchBackendResponse(
+      response,
+      new Response(stream, {
+        headers: { 'content-type': 'text/event-stream' }
+      })
+    )
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(writes).toEqual(['id: 41\n'])
+    expect(ended).toBe(false)
+    closeStream?.()
+    await forwarding
+    expect(ended).toBe(true)
   })
 
   /** 证明 Theia 已解析的 JSON 会被重新编码，而不是作为空请求转发。 */

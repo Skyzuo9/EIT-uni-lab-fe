@@ -21,6 +21,7 @@ import type {
   WorkflowValidationResult
 } from './workflowAuthoringContracts'
 import type { WorkflowMaterialSourceCatalogSnapshot } from './workflowMaterialSource'
+import type { BackendWorkflowGraph } from './backendWorkflowGraph'
 import type {
   DebugWorkflowTaskCommand,
   DebugWorkflowTaskCommandRequest,
@@ -110,6 +111,13 @@ export interface WorkflowRuntimePort {
     baseRevisionId: string,
     candidate: WorkflowAuthoringCandidate
   ) => Promise<WorkflowAuthoringResult>
+  getBackendWorkflowGraph: (
+    workflowUuid: string
+  ) => Promise<BackendWorkflowGraph>
+  saveBackendWorkflowGraph: (
+    workflowUuid: string,
+    graph: BackendWorkflowGraph
+  ) => Promise<BackendWorkflowGraph>
   getWorkflowRunPreparation: (
     workflowUuid: string
   ) => Promise<WorkflowRunPreparation>

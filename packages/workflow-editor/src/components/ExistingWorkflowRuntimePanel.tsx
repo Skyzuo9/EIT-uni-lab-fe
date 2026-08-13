@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import type {
+  BackendWorkflowGraph,
+  CapabilityStatus,
   WorkflowRuntimePort,
   WorkflowRunPreflightReport,
   WorkflowRunPreparation,
@@ -10,7 +12,10 @@ import type {
 
 import { useWorkflowTaskRuntime } from '../hooks/useWorkflowTaskRuntime'
 import type { WorkflowTracePort } from '../traceRuntime'
-import { projectExistingWorkflowCanvas } from '../utils/existingWorkflowCanvasProjection'
+import {
+  projectEditableBackendWorkflowCanvas,
+  projectExistingWorkflowCanvas
+} from '../utils/existingWorkflowCanvasProjection'
 import {
   TERMINAL_JOB_STATUSES,
   workflowTaskDagState
@@ -41,18 +46,22 @@ interface ExistingWorkflowRuntimePanelProps {
   workflowUuid: string
   workflowName?: string
   traceRuntime?: WorkflowTracePort
+  editingStatus?: CapabilityStatus
+  onUnsavedChangesChange?: (hasUnsavedChanges: boolean) => void
   onChooseWorkflow?: () => void
 }
 
 /**
- * 运行 Backend 中已有的工作流定义，不开放任何工作流创作入口。
- * 任务、节点作业和反馈始终通过 Backend 权威接口创建或补读。
+ * 在 Backend 权威中编辑画布并运行已有工作流定义。
+ * 工作区源码保持隔离；任务、节点作业和反馈始终通过 Backend 接口创建或补读。
  */
 export function ExistingWorkflowRuntimePanel({
   runtime,
   workflowUuid,
   workflowName,
   traceRuntime,
+  editingStatus,
+  onUnsavedChangesChange,
   onChooseWorkflow
 }: ExistingWorkflowRuntimePanelProps): React.JSX.Element {
   const taskRuntime = useWorkflowTaskRuntime(runtime, workflowUuid)
@@ -65,6 +74,12 @@ export function ExistingWorkflowRuntimePanel({
   const [preparationError, setPreparationError] = useState<string | null>(null)
   const [preparationLoading, setPreparationLoading] = useState(true)
   const [preparationGeneration, setPreparationGeneration] = useState(0)
+  const [editableGraph, setEditableGraph] = useState<BackendWorkflowGraph | null>(null)
+  const [definitionDirty, setDefinitionDirty] = useState(false)
+  const [definitionLoading, setDefinitionLoading] = useState(false)
+  const [definitionError, setDefinitionError] = useState<string | null>(null)
+  const [definitionGeneration, setDefinitionGeneration] = useState(0)
+  const definitionDirtyRef = useRef(false)
   const [preflight, setPreflight] = useState<WorkflowRunPreflightReport | null>(null)
   const [preflightError, setPreflightError] = useState<string | null>(null)
   const [preflightLoading, setPreflightLoading] = useState(true)
@@ -75,9 +90,12 @@ export function ExistingWorkflowRuntimePanel({
   const [traceViewerOpen, setTraceViewerOpen] = useState(false)
   const task = snapshot.task
   const liveTask = workflowTaskIsLive(task)
+  const editingEnabled = editingStatus?.available === true
   const structure = useMemo(
-    () => projectExistingWorkflowCanvas(preparation),
-    [preparation]
+    () => editingEnabled
+      ? projectEditableBackendWorkflowCanvas(editableGraph)
+      : projectExistingWorkflowCanvas(preparation),
+    [editableGraph, editingEnabled, preparation]
   )
   const outputNodes = useMemo(
     () => snapshot.jobs.map(projectWorkflowTaskJob),
@@ -162,6 +180,59 @@ export function ExistingWorkflowRuntimePanel({
       current = false
     }
   }, [preparationGeneration, runtime, workflowUuid])
+
+  useEffect(() => {
+    onUnsavedChangesChange?.(definitionDirty)
+    return () => onUnsavedChangesChange?.(false)
+  }, [definitionDirty, onUnsavedChangesChange])
+
+  useEffect(() => {
+    if (!editingEnabled) {
+      setEditableGraph(null)
+      setDefinitionDirty(false)
+      definitionDirtyRef.current = false
+      setDefinitionError(null)
+      return
+    }
+    let current = true
+    setDefinitionLoading(true)
+    setDefinitionError(null)
+    void runtime.getBackendWorkflowGraph(workflowUuid).then(
+      graph => {
+        if (!current) return
+        setEditableGraph(graph)
+        setDefinitionDirty(false)
+        definitionDirtyRef.current = false
+        setDefinitionLoading(false)
+        setMessage(`已读取 Backend 工作流修订 ${graph.workflow.revision}`)
+      },
+      error => {
+        if (!current) return
+        setDefinitionError(errorMessage(error))
+        setDefinitionLoading(false)
+      }
+    )
+    return () => {
+      current = false
+    }
+  }, [definitionGeneration, editingEnabled, runtime, workflowUuid])
+
+  useEffect(() => {
+    if (!editingEnabled) return
+    return runtime.subscribeWorkflowRuntime((event) => {
+      if (
+        event.event !== 'workflow.definition.changed' ||
+        event.data.workflow_uuid !== workflowUuid
+      ) return
+      if (definitionDirtyRef.current) {
+        setDefinitionError(
+          `Backend 已更新到修订 ${event.data.workflow_revision}；当前画布草稿仍保留，请保存以执行 CAS 校验或重新加载`
+        )
+        return
+      }
+      setDefinitionGeneration(generation => generation + 1)
+    }).dispose
+  }, [editingEnabled, runtime, workflowUuid])
 
   useEffect(() => {
     let current = true
@@ -251,6 +322,110 @@ export function ExistingWorkflowRuntimePanel({
     setSelectedNodeId(nodeUuid || null)
   }
 
+  /** 在本地画布缓冲中应用一项 Backend 图变更，不触碰工作区源码。 */
+  const mutateDefinition = (
+    mutation: (graph: BackendWorkflowGraph) => BackendWorkflowGraph
+  ): void => {
+    if (!editingEnabled || busy || liveTask || !editableGraph) return
+    const nextGraph = mutation(editableGraph)
+    if (nextGraph === editableGraph) return
+    setEditableGraph(nextGraph)
+    setDefinitionDirty(true)
+    definitionDirtyRef.current = true
+    setMessage('Backend 画布已修改；保存后将创建新的工作流修订')
+  }
+
+  const moveDefinitionNode = (
+    nodeUuid: string,
+    position: { x: number; y: number }
+  ): void => mutateDefinition(graph => {
+    const node = graph.nodes.find(candidate => candidate.uuid === nodeUuid)
+    const pose = asRecord(node?.pose)
+    if (
+      !node ||
+      (pose.x === position.x && pose.y === position.y)
+    ) return graph
+    return {
+      ...graph,
+      nodes: graph.nodes.map(candidate => candidate.uuid === nodeUuid
+        ? { ...candidate, pose: { ...pose, ...position } }
+        : candidate)
+    }
+  })
+
+  const toggleDefinitionNode = (nodeUuid: string): void =>
+    mutateDefinition(graph => ({
+      ...graph,
+      nodes: graph.nodes.map(node => node.uuid === nodeUuid
+        ? { ...node, disabled: !node.disabled }
+        : node)
+    }))
+
+  const connectDefinitionHandles = (connection: {
+    sourceNodeUuid: string
+    sourceHandleUuid: string
+    targetNodeUuid: string
+    targetHandleUuid: string
+  }): void => mutateDefinition(graph => {
+    const duplicate = graph.edges.some(edge =>
+      edge.source_node_uuid === connection.sourceNodeUuid &&
+      edge.source_handle_uuid === connection.sourceHandleUuid &&
+      edge.target_node_uuid === connection.targetNodeUuid &&
+      edge.target_handle_uuid === connection.targetHandleUuid
+    )
+    if (duplicate) return graph
+    return {
+      ...graph,
+      edges: [...graph.edges, {
+        uuid: globalThis.crypto.randomUUID(),
+        source_node_uuid: connection.sourceNodeUuid,
+        source_handle_uuid: connection.sourceHandleUuid,
+        target_node_uuid: connection.targetNodeUuid,
+        target_handle_uuid: connection.targetHandleUuid,
+        description: null,
+        meta_data: {}
+      }]
+    }
+  })
+
+  const deleteDefinitionSelection = (selection: {
+    nodeUuids: string[]
+    edgeUuids: string[]
+  }): void => mutateDefinition(graph => {
+    const nodeUuids = new Set(selection.nodeUuids)
+    const edgeUuids = new Set(selection.edgeUuids)
+    return {
+      ...graph,
+      nodes: graph.nodes.filter(node => !nodeUuids.has(node.uuid)),
+      edges: graph.edges.filter(edge =>
+        !edgeUuids.has(edge.uuid) &&
+        !nodeUuids.has(edge.source_node_uuid) &&
+        !nodeUuids.has(edge.target_node_uuid)
+      ),
+      inventory_requirements: graph.inventory_requirements.filter(requirement => {
+        const consumeNodeUuid = requirement.consume_node_uuid
+        return typeof consumeNodeUuid !== 'string' || !nodeUuids.has(consumeNodeUuid)
+      })
+    }
+  })
+
+  /** 以当前 graph revision 为 CAS 基线保存 Backend 画布。 */
+  const saveDefinition = async (): Promise<void> => {
+    if (!editableGraph || !definitionDirty || liveTask) return
+    await runAction(async () => {
+      const saved = await runtime.saveBackendWorkflowGraph(
+        workflowUuid,
+        editableGraph
+      )
+      setEditableGraph(saved)
+      setDefinitionDirty(false)
+      definitionDirtyRef.current = false
+      setDefinitionError(null)
+      setPreparationGeneration(generation => generation + 1)
+      setPreflightGeneration(generation => generation + 1)
+    }, `Backend 工作流图已保存`)
+  }
+
   /** 在最新 Backend 预检通过后创建正式工作流任务。 */
   const createSelectedRun = async (): Promise<void> => {
     const selectedNodeUuid = runMode === 'single_node'
@@ -295,17 +470,27 @@ export function ExistingWorkflowRuntimePanel({
         codeMode={{
           active: false,
           disabled: true,
-          disabledReason: 'Backend 当前未提供工作流代码创作接口'
+          disabledReason: 'Backend 模式只编辑远端画布；工作区代码不会作用于本图'
         }}
         canvasMode={{
           active: true,
           disabled: false,
-          disabledReason: '当前显示 Backend 工作流定义的只读画布'
+          disabledReason: editingEnabled
+            ? '当前直接编辑 Backend 工作流定义'
+            : '当前显示 Backend 工作流定义的只读画布'
         }}
         save={{
-          disabled: true,
-          disabledReason: 'Backend 当前未提供工作流创作写接口',
-          title: 'Backend 工作流定义只读'
+          dirty: definitionDirty,
+          disabled: !editingEnabled || !definitionDirty || busy || liveTask,
+          disabledReason: !editingEnabled
+            ? editingStatus?.reason || 'Backend 未提供工作流图写接口'
+            : liveTask
+              ? '活动任务期间不能修改其工作流定义'
+              : !definitionDirty
+                ? 'Backend 画布没有待保存修改'
+                : '正在处理工作流，请稍后保存',
+          title: '保存 Backend 工作流图',
+          onSave: () => void saveDefinition()
         }}
       >
         <ExistingWorkflowRuntimeActions
@@ -359,14 +544,20 @@ export function ExistingWorkflowRuntimePanel({
         <ExistingWorkflowCanvas
           workflowName={workflowName}
           structure={structure}
-          loading={preparationLoading}
-          error={preparationError}
+          loading={editingEnabled ? definitionLoading : preparationLoading}
+          error={editingEnabled ? definitionError : preparationError}
           selectedNodeId={selectedNodeId}
           nodeStates={canvasNodeStates}
           onNodeSelect={chooseCanvasNode}
-          onRetry={() => setPreparationGeneration(
-            (generation) => generation + 1
-          )}
+          onRetry={() => editingEnabled
+            ? setDefinitionGeneration(generation => generation + 1)
+            : setPreparationGeneration(generation => generation + 1)}
+          editable={editingEnabled && !liveTask}
+          dirty={definitionDirty}
+          onNodePositionChange={moveDefinitionNode}
+          onConnectHandles={connectDefinitionHandles}
+          onDeleteRequest={deleteDefinitionSelection}
+          onToggleDisabled={toggleDefinitionNode}
         />
       </section>
 

@@ -25,6 +25,7 @@ import {
 } from './plc-variable-tables'
 import type {
   ManagedLocalWorkbenchSessionOptions,
+  WorkbenchDomainMode,
   WorkbenchEnvironmentLogKind,
   WorkbenchPlcHandshakeProfile,
   WorkbenchPlcSimulatorConfiguration,
@@ -300,6 +301,21 @@ export class WorkspaceHostWorkbenchSession implements WorkbenchSession {
     return this.getSnapshot()
   }
 
+  async setDomainAuthority(
+    mode: WorkbenchDomainMode
+  ): Promise<WorkbenchSessionSnapshot> {
+    if (mode !== 'local' && mode !== 'backend') {
+      throw new Error(`不支持的 Domain Authority：${String(mode)}`)
+    }
+    const backendUrl = mode === 'backend'
+      ? this.options.backendAuthorityUrl
+      : undefined
+    if (mode === 'backend' && !backendUrl) {
+      throw new Error('未配置 Backend Authority 地址')
+    }
+    return await this.run('authority.switch', { mode, backendUrl })
+  }
+
   private async run(
     command: string,
     parameters: Record<string, unknown> = {}
@@ -438,9 +454,17 @@ export class WorkspaceHostWorkbenchSession implements WorkbenchSession {
     const mode = this.options.runtimeMode
       ?? configuration.runtimeMode
       ?? this.snapshot.configuredRuntimeMode
+    const domainMode = this.options.domainMode
+      ?? configuration.domainMode
+      ?? this.snapshot.configuredDomainMode
+    const backendUrl = this.options.backendAuthorityUrl
+      ?? configuration.backendUrl
+      ?? this.snapshot.configuredBackendUrl
     this.publish({
       configuredGraphPath: graphPath,
       configuredRuntimeMode: mode,
+      configuredDomainMode: domainMode,
+      configuredBackendUrl: backendUrl,
       edgeRuntime: {
         ...this.snapshot.edgeRuntime,
         graphPath,
@@ -630,6 +654,10 @@ function projectSnapshot(
     ?? previous.configuredGraphPath
   const mode = runtimeMode(configuration['runtimeMode'])
     ?? previous.configuredRuntimeMode
+  const domainMode = domainModeValue(configuration['domainMode'])
+    ?? previous.configuredDomainMode
+  const backendUrl = stringValue(configuration['backendUrl'])
+    ?? previous.configuredBackendUrl
   const backendPhase = workbenchPhase(backend.phase)
   const identity = backend.pid && backend.generation && backend.address
     ? {
@@ -656,6 +684,8 @@ function projectSnapshot(
     message: componentMessage('Workspace Backend', backend),
     configuredGraphPath: graphPath,
     configuredRuntimeMode: mode,
+    configuredDomainMode: domainMode,
+    configuredBackendUrl: backendUrl,
     identity,
     agent: previous.agent,
     diagnostic: componentDiagnostic(backend),
@@ -703,6 +733,8 @@ function initialSnapshot(
     message: 'Workspace Host 尚未连接',
     configuredGraphPath: graphPath,
     configuredRuntimeMode: mode,
+    configuredDomainMode: options.domainMode ?? 'local',
+    configuredBackendUrl: options.backendAuthorityUrl ?? null,
     identity: null,
     agent: null,
     diagnostic: null,
@@ -772,6 +804,10 @@ function packageMounts(value: unknown): WorkspacePackageMountProjection | null {
 
 function runtimeMode(value: unknown): WorkbenchRuntimeMode | null {
   return value === 'normal' || value === 'dry-run' ? value : null
+}
+
+function domainModeValue(value: unknown): WorkbenchDomainMode | null {
+  return value === 'local' || value === 'backend' ? value : null
 }
 
 function handshakeProfile(value: unknown): WorkbenchPlcHandshakeProfile {

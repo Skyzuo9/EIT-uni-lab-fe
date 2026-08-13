@@ -156,7 +156,10 @@ async function proxyWorkbenchBackendRequest(
  * @returns 上游响应体写完后结束；不再交给 Express send 重新解释状态。
  */
 export async function writeWorkbenchBackendResponse(
-  response: Pick<ServerResponse, 'setHeader' | 'writeHead' | 'end'>,
+  response: Pick<
+    ServerResponse,
+    'setHeader' | 'writeHead' | 'write' | 'end' | 'once'
+  >,
   upstream: globalThis.Response
 ): Promise<void> {
   upstream.headers.forEach((value, name) => {
@@ -165,7 +168,23 @@ export async function writeWorkbenchBackendResponse(
     }
   })
   response.writeHead(upstream.status)
-  response.end(Buffer.from(await upstream.arrayBuffer()))
+  if (!upstream.body) {
+    response.end()
+    return
+  }
+  const reader = upstream.body.getReader()
+  try {
+    while (true) {
+      const chunk = await reader.read()
+      if (chunk.done) break
+      if (!response.write(Buffer.from(chunk.value))) {
+        await new Promise<void>(resolve => response.once('drain', resolve))
+      }
+    }
+    response.end()
+  } finally {
+    reader.releaseLock()
+  }
 }
 
 /**

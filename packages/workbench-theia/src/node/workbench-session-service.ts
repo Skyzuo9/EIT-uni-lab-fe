@@ -31,7 +31,8 @@ implements WorkbenchSessionServer, BackendApplicationContribution {
       enableAgent: process.env['UNILAB_AGENT_ENABLED'] !== '0',
       agentAppPath: process.env['UNILAB_AIONUI_APP'],
       agentBrandIconPath: process.env['UNILAB_AGENT_ICON'],
-      plcSimulatorProjectPath: process.env['UNILAB_PLC_SIM_PROJECT']
+      plcSimulatorProjectPath: process.env['UNILAB_PLC_SIM_PROJECT'],
+      backendAuthorityUrl: process.env['UNILAB_BACKEND_PROXY_TARGET']
     })
   private readonly clients = new Set<WorkbenchSessionClient>()
   private sessionListener: Disposable | undefined
@@ -144,6 +145,12 @@ implements WorkbenchSessionServer, BackendApplicationContribution {
 
   setRuntimeMode(mode: Parameters<WorkbenchSession['setRuntimeMode']>[0]) {
     return this.session.setRuntimeMode(mode)
+  }
+
+  setDomainAuthority(
+    mode: Parameters<WorkbenchSession['setDomainAuthority']>[0]
+  ) {
+    return this.session.setDomainAuthority(mode)
   }
 
   setClient(client: WorkbenchSessionClient): void {

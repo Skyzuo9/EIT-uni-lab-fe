@@ -1,4 +1,5 @@
 export * from './backends'
+export * from './backendWorkflowGraph'
 export * from './capabilities'
 export * from './createServices'
 export * from './deviceActionTasks'

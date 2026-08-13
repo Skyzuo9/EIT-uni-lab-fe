@@ -31,6 +31,7 @@ type WorkbenchSessionRemoteOperations = Pick<
   | 'stopPlcSimulator'
   | 'releaseEnvironmentPorts'
   | 'setRuntimeMode'
+  | 'setDomainAuthority'
 >
 
 export interface WorkbenchSessionServer

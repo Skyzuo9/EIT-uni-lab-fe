@@ -98,6 +98,7 @@ export interface WorkbenchSessionDiagnostic {
 }
 
 export type WorkbenchRuntimeMode = 'normal' | 'dry-run'
+export type WorkbenchDomainMode = 'local' | 'backend'
 
 export interface WorkbenchSessionIdentity {
   workspacePath: string
@@ -190,6 +191,8 @@ export interface WorkbenchSessionSnapshot {
   message: string
   configuredGraphPath: string
   configuredRuntimeMode: WorkbenchRuntimeMode
+  configuredDomainMode: WorkbenchDomainMode
+  configuredBackendUrl: string | null
   identity: WorkbenchSessionIdentity | null
   agent: WorkbenchAgentIdentity | null
   diagnostic: WorkbenchSessionDiagnostic | null
@@ -220,6 +223,8 @@ export interface ManagedLocalWorkbenchSessionOptions {
   plcSimulatorGuiPort?: number
   plcSimulatorOpcUaPort?: number
   runtimeMode?: WorkbenchRuntimeMode
+  domainMode?: WorkbenchDomainMode
+  backendAuthorityUrl?: string
 }
 
 export interface WorkbenchSession {
@@ -253,6 +258,7 @@ export interface WorkbenchSession {
     target: 'os' | 'plc-sim'
   ): Promise<WorkbenchSessionSnapshot>
   setRuntimeMode(mode: WorkbenchRuntimeMode): Promise<WorkbenchSessionSnapshot>
+  setDomainAuthority(mode: WorkbenchDomainMode): Promise<WorkbenchSessionSnapshot>
 }
 
 interface ResolvedWorkbenchLaunch {
@@ -327,6 +333,8 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
   private agentStopRequested = false
   private plcSimulatorStopRequested = false
   private selectedMode: WorkbenchRuntimeMode
+  private selectedDomainMode: WorkbenchDomainMode
+  private selectedBackendUrl: string | null
   private selectedGraphPath: string
   private selectedPlcVariableTablePath: string
   private selectedPlcHandshakeProfile: WorkbenchPlcHandshakeProfile
@@ -335,6 +343,8 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
 
   constructor(private readonly options: ManagedLocalWorkbenchSessionOptions) {
     this.selectedMode = options.runtimeMode ?? 'normal'
+    this.selectedDomainMode = options.domainMode ?? 'local'
+    this.selectedBackendUrl = options.backendAuthorityUrl ?? null
     this.selectedGraphPath = options.graphPath
       ?? join('deployment', 'graphs', 'szlab-local-debug.json')
     this.selectedPlcVariableTablePath = options.plcVariableTablePath ?? ''
@@ -344,6 +354,8 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
       message: '尚未启动 Uni-Lab OS',
       configuredGraphPath: this.selectedGraphPath,
       configuredRuntimeMode: this.selectedMode,
+      configuredDomainMode: this.selectedDomainMode,
+      configuredBackendUrl: this.selectedBackendUrl,
       identity: null,
       agent: null,
       diagnostic: null,
@@ -687,12 +699,23 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
     return this.getSnapshot()
   }
 
+  async setDomainAuthority(
+    mode: WorkbenchDomainMode
+  ): Promise<WorkbenchSessionSnapshot> {
+    if (mode !== 'local' && mode !== 'backend') {
+      throw new Error(`不支持的 Domain Authority：${String(mode)}`)
+    }
+    throw new Error('Domain Authority 切换需要由 Workspace Host 执行')
+  }
+
   private async persistConfiguration(overrides: Partial<{
     graphPath: string
     plcSimulatorProjectPath: string
     plcVariableTablePath: string
     plcHandshakeProfile: WorkbenchPlcHandshakeProfile
     runtimeMode: WorkbenchRuntimeMode
+    domainMode: WorkbenchDomainMode
+    backendUrl: string | null
   }> = {}): Promise<void> {
     await writeLocalEnvironmentConfiguration(this.options.workspacePath, {
       graphPath: overrides.graphPath ?? this.selectedGraphPath,
@@ -702,7 +725,9 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
         ?? this.selectedPlcVariableTablePath,
       plcHandshakeProfile: overrides.plcHandshakeProfile
         ?? this.selectedPlcHandshakeProfile,
-      runtimeMode: overrides.runtimeMode ?? this.selectedMode
+      runtimeMode: overrides.runtimeMode ?? this.selectedMode,
+      domainMode: overrides.domainMode ?? this.selectedDomainMode,
+      backendUrl: overrides.backendUrl ?? this.selectedBackendUrl
     })
   }
 
@@ -715,6 +740,12 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
     this.selectedMode = this.options.runtimeMode
       ?? localConfiguration.runtimeMode
       ?? this.selectedMode
+    this.selectedDomainMode = this.options.domainMode
+      ?? localConfiguration.domainMode
+      ?? this.selectedDomainMode
+    this.selectedBackendUrl = this.options.backendAuthorityUrl
+      ?? localConfiguration.backendUrl
+      ?? this.selectedBackendUrl
     this.selectedGraphPath = this.options.graphPath
       ?? localConfiguration.graphPath
       ?? this.selectedGraphPath
@@ -731,6 +762,8 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
       ...this.snapshot,
       configuredGraphPath: this.selectedGraphPath,
       configuredRuntimeMode: this.selectedMode,
+      configuredDomainMode: this.selectedDomainMode,
+      configuredBackendUrl: this.selectedBackendUrl,
       edgeRuntime: {
         ...this.snapshot.edgeRuntime,
         graphPath: this.selectedGraphPath,
@@ -1402,12 +1435,16 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
       WorkbenchSessionSnapshot,
       | 'configuredGraphPath'
       | 'configuredRuntimeMode'
+      | 'configuredDomainMode'
+      | 'configuredBackendUrl'
       | 'edgeRuntime'
       | 'plcSimulator'
       | 'agent'
     > & {
       configuredGraphPath?: string
       configuredRuntimeMode?: WorkbenchRuntimeMode
+      configuredDomainMode?: WorkbenchDomainMode
+      configuredBackendUrl?: string | null
       edgeRuntime?: WorkbenchEdgeRuntimeSnapshot
       plcSimulator?: WorkbenchPlcSimulatorSnapshot
       agent?: WorkbenchAgentIdentity | null
@@ -1427,6 +1464,11 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
         snapshot.configuredGraphPath ?? this.snapshot.configuredGraphPath,
       configuredRuntimeMode:
         snapshot.configuredRuntimeMode ?? this.snapshot.configuredRuntimeMode,
+      configuredDomainMode:
+        snapshot.configuredDomainMode ?? this.snapshot.configuredDomainMode,
+      configuredBackendUrl: snapshot.configuredBackendUrl === undefined
+        ? this.snapshot.configuredBackendUrl
+        : snapshot.configuredBackendUrl,
       edgeRuntime: snapshot.edgeRuntime ?? this.snapshot.edgeRuntime,
       plcSimulator: snapshot.plcSimulator ?? this.snapshot.plcSimulator
     })
@@ -2212,6 +2254,8 @@ async function writeLocalEnvironmentConfiguration(
     plcVariableTablePath: string
     plcHandshakeProfile: WorkbenchPlcHandshakeProfile
     runtimeMode: WorkbenchRuntimeMode
+    domainMode: WorkbenchDomainMode
+    backendUrl: string | null
   }
 ): Promise<void> {
   const resolvedWorkspacePath = await realpath(resolve(workspacePath))

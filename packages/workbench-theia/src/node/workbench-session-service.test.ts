@@ -89,6 +89,8 @@ function snapshot(
     message: phase,
     configuredGraphPath: 'deployment/graphs/szlab-plc-sim-local.json',
     configuredRuntimeMode: 'normal',
+    configuredDomainMode: 'local',
+    configuredBackendUrl: null,
     agent: null,
     identity: pid === null ? null : {
       workspacePath: '/workspace',

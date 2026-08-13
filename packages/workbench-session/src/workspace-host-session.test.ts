@@ -85,6 +85,7 @@ describe('Workspace Host Workbench adapter', () => {
 
     const session = createWorkspaceHostWorkbenchSession({
       workspacePath,
+      backendAuthorityUrl: 'http://127.0.0.1:8080',
       environment: {
         UNILAB_WORKBENCH_RENDERER_URL: 'http://127.0.0.1:3100'
       }
@@ -103,6 +104,13 @@ describe('Workspace Host Workbench adapter', () => {
     })
     expect(await session.readEnvironmentLog('workspace-backend'))
       .toBe('backend fixture log')
+
+    const switched = await session.setDomainAuthority('backend')
+    expect(receivedCommands.at(-1)).toBe('authority.switch')
+    expect(switched).toMatchObject({
+      configuredDomainMode: 'backend',
+      configuredBackendUrl: 'http://127.0.0.1:8080'
+    })
 
     snapshot.components.edge = component('edge', {
       phase: 'ready',
@@ -143,7 +151,9 @@ function hostSnapshot(workspacePath: string) {
     },
     configuration: {
       graphPath: 'deployment/graphs/fixture.json',
-      runtimeMode: 'normal'
+      runtimeMode: 'normal',
+      domainMode: 'local',
+      backendUrl: null as string | null
     },
     components: {
       backend: component('backend'),
@@ -203,6 +213,11 @@ function applyCommand(
     })
   } else if (command === 'renderer.detach') {
     snapshot.components.renderer = component('renderer')
+  } else if (command === 'authority.switch') {
+    snapshot.configuration.domainMode = String(parameters['mode'])
+    snapshot.configuration.backendUrl = parameters['backendUrl'] == null
+      ? null
+      : String(parameters['backendUrl'])
   }
   snapshot.revision += 1
   snapshot.eventCursor += 1

@@ -61,6 +61,15 @@ describe('Workbench connection authority profile', () => {
       }
     })
     expect(targets.local.cacheKey).not.toBe(targets.backend.cacheKey)
+    expect(targets.local.sourceId).toBe(
+      'runtime:local:http://127.0.0.1:37029'
+    )
+    expect(targets.backend.sourceId).toBe(
+      'runtime:backend:http://127.0.0.1:3100/__unilab_backend'
+    )
+    expect(targets.local.authoringSourceId).toBe(
+      targets.backend.authoringSourceId
+    )
   })
 
   /** 证明持久化格式只保存公开模式身份，不保存地址、令牌或任务身份。 */
