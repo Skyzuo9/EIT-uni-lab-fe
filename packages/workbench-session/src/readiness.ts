@@ -17,10 +17,13 @@ export async function waitForWorkbenchReadiness(
     ['/api/v1/devices', isSuccessfulEnvelope],
     ['/api/v1/workflow-node-templates', isSuccessfulEnvelope],
     [
-      '/api/v1/workflow-node-templates?limit=100&node_type=material_source',
+      '/api/v1/workflow-node-templates?page=1&page_size=100&node_type=material_source',
       isMaterialSourceCatalogReady
     ],
-    ['/api/v1/resource-templates?limit=1', isResourceTemplateCatalogReady]
+    [
+      '/api/v1/resource-templates?page=1&page_size=1',
+      isResourceTemplateCatalogReady
+    ]
   ]
   for (const [path, accepts] of probes) {
     const deadline = Date.now() + timeoutMs

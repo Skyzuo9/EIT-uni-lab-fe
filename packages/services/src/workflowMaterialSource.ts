@@ -386,7 +386,7 @@ async function loadRegisteredMaterialSourceTemplates(
 }
 
 /**
- * 遍历已注册资源模板目录，并兼容 OS UUID 游标与 Backend 页码合同。
+ * 遍历已注册资源模板目录，优先使用 Backend 页码合同并兼容旧 UUID 游标响应。
  *
  * @param http 正式资源模板接口的 HTTP 客户端。
  * @returns 保持服务端顺序且 UUID 无重复的资源模板记录。
@@ -406,7 +406,7 @@ async function loadRegisteredResourceTemplatePages(
     pageCount < REGISTERED_TEMPLATE_PAGE_BUDGET;
     pageCount += 1
   ) {
-    const query: URLSearchParams = paginationMode === 'numbered'
+    const query: URLSearchParams = paginationMode !== 'cursor'
       ? new URLSearchParams({
           page: String(numberedPage),
           page_size: String(
@@ -416,7 +416,7 @@ async function loadRegisteredResourceTemplatePages(
       : new URLSearchParams({
           limit: String(REGISTERED_TEMPLATE_PAGE_SIZE)
         })
-    if (paginationMode !== 'numbered' && cursorUuid) {
+    if (paginationMode === 'cursor' && cursorUuid) {
       query.set('cursor_uuid', cursorUuid)
     }
     const response: Record<string, unknown> = await requestData<

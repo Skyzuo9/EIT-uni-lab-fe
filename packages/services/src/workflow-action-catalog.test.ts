@@ -457,7 +457,7 @@ async function verifiesCursorTraversalAndFrameworkExclusion(): Promise<void> {
   ;(first.data as Record<string, unknown>).next_cursor_uuid = frameworkNodeUuid
   /** 下一游标使用上一页最后一个节点模板 UUID，符合 Backend 合同。 */
   const secondCatalogPath =
-    `${defaultCatalogPath}&cursor_uuid=${frameworkNodeUuid}`
+    `/api/v1/workflow-node-templates?limit=100&cursor_uuid=${frameworkNodeUuid}`
   responses[secondCatalogPath] = {
     code: 0,
     data: {

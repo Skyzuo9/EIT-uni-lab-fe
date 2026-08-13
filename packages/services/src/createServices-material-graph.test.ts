@@ -17,7 +17,7 @@ const materialTemplateUuid = '62000000-0000-4000-8000-000000000001'
 const fingerprint = `sha256:${'c'.repeat(64)}`
 // 节点模板路径证明物料来源（MaterialSource）始终使用显式 node_type 筛选。
 const materialSourceCatalogPath =
-  '/api/v1/workflow-node-templates?limit=100&node_type=material_source'
+  '/api/v1/workflow-node-templates?page=1&page_size=100&node_type=material_source'
 
 /**
  * 注册服务组合根（Composition Root）对公共物料服务（Material Service）的装配测试。
@@ -63,7 +63,7 @@ async function composesWorkflowWithPublicMaterialService(): Promise<void> {
       materialSourceCatalogPath,
       `/api/v1/workflow-node-templates/${frameworkTemplateUuid}`,
       '/api/v1/materials/graph',
-      '/api/v1/resource-templates?limit=100',
+      '/api/v1/resource-templates?page=1&page_size=100',
       '/api/v1/material-shapes'
     ])
     expect(countMatchingPath(requests, '/api/v1/materials/graph')).toBe(1)

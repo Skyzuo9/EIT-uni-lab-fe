@@ -908,7 +908,7 @@ describe('managed local Workbench session', () => {
     sessions.push(session)
 
     await expect(session.start()).rejects.toThrow(
-      'workflow-node-templates?limit=100&node_type=material_source'
+      'workflow-node-templates?page=1&page_size=100&node_type=material_source'
     )
     expect(session.getSnapshot()).toMatchObject({
       phase: 'failed',
@@ -1104,7 +1104,7 @@ const server = http.createServer((request, response) => {
   if (request.url === '/api/v1/workflow-node-templates') {
     return json(response, { code: 0, data: { items: [] } })
   }
-  if (request.url === '/api/v1/workflow-node-templates?limit=100&node_type=material_source') {
+  if (request.url === '/api/v1/workflow-node-templates?page=1&page_size=100&node_type=material_source') {
     return json(response, {
       code: 0,
       data: {
@@ -1121,7 +1121,7 @@ const server = http.createServer((request, response) => {
       }
     })
   }
-  if (request.url === '/api/v1/resource-templates?limit=1') {
+  if (request.url === '/api/v1/resource-templates?page=1&page_size=1') {
     return json(response, {
       code: 0,
       data: {

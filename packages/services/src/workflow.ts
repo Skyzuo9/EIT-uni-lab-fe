@@ -43,7 +43,6 @@ import {
 } from './workflowMaterialSource'
 import {
   workflowEventsUrl,
-  workflowListPath,
   workflowNodeJobFeedbackPath,
   workflowTaskListPath
 } from './workflowPaths'
@@ -262,9 +261,7 @@ export function createWorkflowRuntime(
     getWorkflowMaterialSourceCatalog,
     listWorkflows: async (query = {}) => {
       requireWorkflowCapability('workflow.readDefinitions')
-      return backend.serverKind === 'backend'
-        ? loadBackendWorkflowPage(http, query)
-        : strictRuntimeData(await http.request(workflowListPath(query)))
+      return loadBackendWorkflowPage(http, query)
     },
     createWorkflowDefinition: (body) => authoringRequest(
       '/api/v1/workflows',

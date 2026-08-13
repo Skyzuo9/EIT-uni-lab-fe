@@ -62,7 +62,7 @@ export interface WorkflowNodeTemplateDetailEntry {
 }
 
 /**
- * 通过后端（Backend）UUID 游标或当前 OS 页码合同读取完整节点模板目录。
+ * 通过 Backend 页码合同读取完整节点模板目录，并兼容旧 UUID 游标响应。
  *
  * @param http 节点模板 API 使用的 HTTP 客户端。
  * @param query 可选 node_type 筛选和取消信号；分页选择由响应合同决定。
@@ -89,7 +89,7 @@ export async function loadWorkflowNodeTemplateCatalog(
   }
 
   for (let pageCount = 0; pageCount < PAGE_BUDGET; pageCount += 1) {
-    const path = paginationMode === 'numbered'
+    const path = paginationMode !== 'cursor'
       ? workflowNodeTemplateNumberedListPath(
         query.nodeType,
         numberedState.page,
@@ -342,15 +342,18 @@ export function parseWorkflowNodeTemplateDetail(
  *
  * @param nodeType 可选的显式节点类型筛选。
  * @param cursorUuid 上一页给出的 UUID 游标。
- * @returns 只含 limit、node_type 和 cursor_uuid 的稳定相对路径。
+ * @returns 首次请求使用 Backend page/page_size；旧游标响应的后续页使用 cursor_uuid。
  * @throws nodeType 为空白时关闭失败；cursorUuid 已由调用方校验。
  */
 function workflowNodeTemplateListPath(
   nodeType: string | undefined,
   cursorUuid: string | null
 ): string {
+  if (cursorUuid === null) {
+    return workflowNodeTemplateNumberedListPath(nodeType, 1, PAGE_LIMIT)
+  }
   const query = new URLSearchParams({ limit: String(PAGE_LIMIT) })
-  if (cursorUuid) query.set('cursor_uuid', cursorUuid)
+  query.set('cursor_uuid', cursorUuid)
   if (nodeType !== undefined) {
     const normalizedNodeType = nodeType.trim()
     if (!normalizedNodeType) invalidCatalog(
