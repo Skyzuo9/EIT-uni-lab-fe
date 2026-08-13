@@ -41,6 +41,7 @@ export interface WorkflowPanelProps {
   authoringStatus?: CapabilityStatus
   definitionEditingMode?: 'workspace' | 'backend'
   runStatus?: CapabilityStatus
+  executionStatus?: CapabilityStatus
   onUnsavedChangesChange?: (hasUnsavedChanges: boolean) => void
   onActiveWorkflowChange?: (workflowUuid: string | null) => void
   onWorkflowRuntimeProjectionChange?: (
@@ -75,6 +76,7 @@ export default function WorkflowPanel({
   authoringStatus,
   definitionEditingMode = 'workspace',
   runStatus,
+  executionStatus,
   onUnsavedChangesChange,
   onActiveWorkflowChange,
   onWorkflowRuntimeProjectionChange,
@@ -135,6 +137,7 @@ export default function WorkflowPanel({
           editingStatus={definitionEditingMode === 'backend'
             ? authoringStatus
             : undefined}
+          executionStatus={executionStatus}
           onUnsavedChangesChange={onUnsavedChangesChange}
           onChooseWorkflow={explicitWorkflowUuid && !allowWorkflowSelection
             ? undefined
@@ -153,6 +156,7 @@ export default function WorkflowPanel({
         workflowName={selectedWorkflowName}
         traceRuntime={traceRuntime}
         resourceSlotOptionsPort={resourceSlotOptionsPort}
+        executionStatus={executionStatus}
         onUnsavedChangesChange={onUnsavedChangesChange}
         onWorkflowRuntimeProjectionChange={active
           ? onWorkflowRuntimeProjectionChange

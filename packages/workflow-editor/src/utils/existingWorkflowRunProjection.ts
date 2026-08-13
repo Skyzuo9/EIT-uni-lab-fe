@@ -84,12 +84,14 @@ export function existingWorkflowStartDisabledReason(options: {
   busy: boolean
   loadingTask: boolean
   liveTask: boolean
+  executionBlockedReason?: string | null
   preflightLoading: boolean
   preflight: WorkflowRunPreflightReport | null
   preflightError: string | null
   targetRequired: boolean
 }): string {
   if (options.busy) return '正在提交运行操作'
+  if (options.executionBlockedReason) return options.executionBlockedReason
   if (options.loadingTask) return '正在确认是否已有未结束的工作流任务'
   if (options.liveTask) return '当前工作流仍有未结束的任务，请先等待或取消'
   if (options.targetRequired) return '单节点调试必须先选择一个可运行节点'

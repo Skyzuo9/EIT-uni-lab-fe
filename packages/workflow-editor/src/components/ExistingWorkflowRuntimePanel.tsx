@@ -47,6 +47,7 @@ interface ExistingWorkflowRuntimePanelProps {
   workflowName?: string
   traceRuntime?: WorkflowTracePort
   editingStatus?: CapabilityStatus
+  executionStatus?: CapabilityStatus
   onUnsavedChangesChange?: (hasUnsavedChanges: boolean) => void
   onChooseWorkflow?: () => void
 }
@@ -61,6 +62,7 @@ export function ExistingWorkflowRuntimePanel({
   workflowName,
   traceRuntime,
   editingStatus,
+  executionStatus,
   onUnsavedChangesChange,
   onChooseWorkflow
 }: ExistingWorkflowRuntimePanelProps): React.JSX.Element {
@@ -153,8 +155,12 @@ export function ExistingWorkflowRuntimePanel({
     ]))
   }), [snapshot.jobs, structure.nodes, task?.status])
   const targetRequired = runMode === 'single_node' && !selectedTarget
+  const executionBlockedReason = executionStatus?.available === false
+    ? executionStatus.reason || 'OS 未就绪；请先在环境管理中启动 OS'
+    : null
   const startDisabled = busy || snapshot.loading || liveTask ||
-    preflightLoading || !preflightReady || targetRequired
+    Boolean(executionBlockedReason) || preflightLoading ||
+    !preflightReady || targetRequired
 
   useEffect(() => {
     let current = true
@@ -428,6 +434,7 @@ export function ExistingWorkflowRuntimePanel({
 
   /** 在最新 Backend 预检通过后创建正式工作流任务。 */
   const createSelectedRun = async (): Promise<void> => {
+    if (executionBlockedReason) throw new Error(executionBlockedReason)
     const selectedNodeUuid = runMode === 'single_node'
       ? selectedTarget?.workflow_node_uuid
       : undefined
@@ -511,6 +518,7 @@ export function ExistingWorkflowRuntimePanel({
             busy,
             loadingTask: snapshot.loading,
             liveTask,
+            executionBlockedReason,
             preflightLoading,
             preflight,
             preflightError,

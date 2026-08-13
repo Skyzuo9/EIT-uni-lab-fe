@@ -94,6 +94,7 @@ import {
 import { useRobotWorkstationData } from './robot-workstation-data'
 import { WorkbenchDomainLayout } from './workbench-domain-layout'
 import { WorkbenchMaterialViewport } from './workbench-material-viewport'
+import { workflowExecutionStatusForEdge } from './workbench-execution-readiness'
 import { WorkbenchSessionGate } from './workbench-session-gate'
 import {
   WorkbenchViewState,
@@ -938,6 +939,7 @@ function WorkbenchSurface({
           ? 'backend'
           : 'workspace'}
         runStatus={services.getCapabilityStatus('workflow.runTasks')}
+        executionStatus={workflowExecutionStatusForEdge(session.edgeRuntime)}
         resourceSlotOptionsPort={resourceSlotOptionsPort}
         active={isWorkflowWorkbenchView(viewMode)}
         workflowUuid={workflowUuid}

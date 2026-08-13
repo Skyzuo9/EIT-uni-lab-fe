@@ -90,6 +90,27 @@ describe('WorkflowPanel Runtime entry', () => {
     expect(markup).toContain('工作区代码不会作用于本图')
   })
 
+  /** Backend 画布的编辑权与 Edge 运行就绪状态必须解耦。 */
+  it('keeps Backend canvas authoring visible while OS execution is unavailable', () => {
+    const markup = renderToStaticMarkup(
+      <WorkflowPanel
+        runtime={{} as WorkflowRuntimePort}
+        workflowUuid="10000000-0000-4000-8000-000000000001"
+        definitionEditingMode="backend"
+        authoringStatus={{ available: true }}
+        runStatus={{ available: true }}
+        executionStatus={{
+          available: false,
+          reason: 'OS 尚未启动；请先在环境管理中启动 OS'
+        }}
+      />
+    )
+
+    expect(markup).toContain('Backend 定义 · 已同步')
+    expect(markup).toContain('aria-label="保存工作流"')
+    expect(markup).toContain('OS 尚未启动；请先在环境管理中启动 OS')
+  })
+
   it('groups catalog entries by station first and declared purpose second', () => {
     const workflows = [
       workflowSummary('S02_离心流程', []),

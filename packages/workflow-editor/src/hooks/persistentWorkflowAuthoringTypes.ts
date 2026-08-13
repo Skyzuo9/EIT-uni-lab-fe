@@ -1,4 +1,5 @@
 import type {
+  CapabilityStatus,
   WorkflowAuthoringAggregate,
   WorkflowAuthoringGraph,
   WorkflowRuntimePort
@@ -15,6 +16,7 @@ export interface PersistentWorkflowAuthoringOptions {
   workflowUuid: string
   traceRuntime?: WorkflowTracePort
   resourceSlotOptionsPort?: WorkflowResourceSlotOptionsPort
+  executionStatus?: CapabilityStatus
   onUnsavedChangesChange?: (hasUnsavedChanges: boolean) => void
   onWorkflowRuntimeProjectionChange?: (
     projection: WorkflowPanelRuntimeProjection | null

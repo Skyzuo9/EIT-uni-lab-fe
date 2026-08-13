@@ -39,6 +39,20 @@ describe('Backend 已有工作流运行投影', () => {
     })).toContain('必须先选择')
   })
 
+  /** OS 未就绪时只禁止运行，并优先给出环境恢复动作。 */
+  it('优先展示 OS 未就绪的运行门禁', () => {
+    expect(existingWorkflowStartDisabledReason({
+      busy: false,
+      loadingTask: false,
+      liveTask: false,
+      executionBlockedReason: 'OS 尚未启动；请先在环境管理中启动 OS',
+      preflightLoading: false,
+      preflight: preflightReport('ready'),
+      preflightError: null,
+      targetRequired: false
+    })).toBe('OS 尚未启动；请先在环境管理中启动 OS')
+  })
+
   /** 通过的预检显示执行范围，并允许主操作进入创建阶段。 */
   it('投影已通过的 Backend 预检', () => {
     const report = preflightReport('ready')
