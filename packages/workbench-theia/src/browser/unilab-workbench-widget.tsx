@@ -712,6 +712,7 @@ export class UniLabWorkbenchWidget extends ReactWidget {
         connectionTargets={connectionTargets}
         ideBridge={this.ideBridge}
         session={this.sessionSnapshot}
+        sessionClient={this.workbenchSessionClient}
         viewMode={this.viewState.currentMode}
         switchBlockedReason={this.lastReportedUnsavedChanges
           ? '请先保存当前工作流修改'
@@ -755,6 +756,7 @@ function WorkbenchSurface({
   connectionTargets,
   ideBridge,
   session,
+  sessionClient,
   viewMode,
   switchBlockedReason,
   onConnectionModeChange,
@@ -779,6 +781,7 @@ function WorkbenchSurface({
   connectionTargets: WorkbenchConnectionTargets
   ideBridge: WorkflowIdeBridge
   session: WorkbenchSessionSnapshot
+  sessionClient: WorkbenchSessionClientImpl
   viewMode: WorkbenchViewMode
   switchBlockedReason: string | null
   onConnectionModeChange: (mode: WorkbenchConnectionMode) => void
@@ -979,6 +982,16 @@ function WorkbenchSurface({
             <WorkbenchMaterialViewport
               {...viewportProps}
               backendUrl={selectedTarget.backend.apiUrl}
+              sourceIdentity={{
+                sourceId: selectedTarget.sourceId,
+                authority: connectionMode,
+                workspacePath: session.identity?.workspacePath ?? '',
+                backendUrl: selectedTarget.backend.apiUrl,
+                rendererGeneration: `${globalThis.location.origin}:${
+                  session.identity?.generation ?? 'unknown'
+                }`
+              }}
+              sessionClient={sessionClient}
               runtimeProjection={runtimeProjection}
               selectedWorkflowNode={selectedWorkflowNode}
             />

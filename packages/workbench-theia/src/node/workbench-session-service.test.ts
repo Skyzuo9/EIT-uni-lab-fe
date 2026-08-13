@@ -65,7 +65,8 @@ describe('WorkbenchSessionService', () => {
     const service = new WorkbenchSessionService()
     Object.assign(service, { session })
     const renderer = {
-      onDidChange: vi.fn().mockRejectedValue(new Error('acknowledgement failed'))
+      onDidChange: vi.fn().mockRejectedValue(new Error('acknowledgement failed')),
+      onMaterialRendererRequest: vi.fn()
     }
 
     service.setClient(renderer)
@@ -74,10 +75,44 @@ describe('WorkbenchSessionService', () => {
 
     expect(renderer.onDidChange).toHaveBeenLastCalledWith(restarted)
   })
+
+  it('routes automation only to the latest connected renderer', async () => {
+    const session = {
+      getSnapshot: () => snapshot('ready', 59682),
+      onDidChange: () => ({ dispose: vi.fn() })
+    } as unknown as WorkbenchSession
+    const service = new WorkbenchSessionService()
+    Object.assign(service, { session })
+    const first = client()
+    const second = client()
+    vi.mocked(second.onMaterialRendererRequest).mockImplementation(request => {
+      void service.completeMaterialRendererRequest({
+        schemaVersion: 'unilab-material-renderer/v1',
+        requestId: request.requestId,
+        ok: true,
+        result: { nodes: [] }
+      })
+    })
+
+    service.setClient(first)
+    service.setClient(second)
+    const response = await service.requestMaterialRenderer({
+      requestId: 'request-1',
+      kind: 'inspect',
+      options: {}
+    })
+
+    expect(first.onMaterialRendererRequest).not.toHaveBeenCalled()
+    expect(second.onMaterialRendererRequest).toHaveBeenCalledOnce()
+    expect(response.ok).toBe(true)
+  })
 })
 
 function client(): WorkbenchSessionClient {
-  return { onDidChange: vi.fn() }
+  return {
+    onDidChange: vi.fn(),
+    onMaterialRendererRequest: vi.fn()
+  }
 }
 
 function snapshot(

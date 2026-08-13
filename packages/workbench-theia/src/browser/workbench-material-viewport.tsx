@@ -1,20 +1,39 @@
 import {
   inspectMaterialSceneReadiness,
   MaterialCapabilityNotice,
+  readStoredMaterialViewportState,
   UnifiedMaterialViewport,
   useMaterialStore,
   useMaterialStoreApi,
+  writeStoredMaterialViewportState,
+  type MaterialViewportState,
   type MaterialWorkbenchViewportProps
 } from '@unilab/material'
 import type {
+  MaterialSceneSourceIdentity,
   MaterialSceneMove,
   MaterialTransferSceneRoute
 } from '@unilab/pascal-lab-plugin'
 import { ensurePascalRendererDefaults } from '@unilab/pascal-host'
 import type { WorkflowPanelRuntimeProjection } from '@unilab/workflow-editor'
+import { toCanvas } from 'html-to-image'
 import * as React from 'react'
-import { Suspense, useCallback, useEffect, useMemo } from 'react'
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState
+} from 'react'
 
+import {
+  MATERIAL_RENDERER_CONTRACT,
+  type MaterialRendererOptions,
+  type MaterialRendererRequest,
+  type MaterialRendererResponse
+} from '../common/workbench-session-protocol'
+import type { WorkbenchSessionClientImpl } from './workbench-session-client'
 import {
   WorkbenchMaterialSceneState,
   WorkbenchMaterialShapeFallbackNotice
@@ -30,6 +49,8 @@ const PascalLabWorkbench = React.lazy(async () => {
 /** 在 Workbench 中组合物料图存储与 Pascal 视口。 */
 export function WorkbenchMaterialViewport({
   backendUrl,
+  sourceIdentity,
+  sessionClient,
   runtimeProjection,
   selectedWorkflowNode,
   readStatus,
@@ -39,9 +60,29 @@ export function WorkbenchMaterialViewport({
   onSelectionChange
 }: MaterialWorkbenchViewportProps & {
   backendUrl: string
+  sourceIdentity: MaterialSceneSourceIdentity
+  sessionClient: WorkbenchSessionClientImpl
   runtimeProjection: WorkflowPanelRuntimeProjection | null
   selectedWorkflowNode: string | null
 }): React.JSX.Element {
+  const rootRef = useRef<HTMLDivElement>(null)
+  const captureActive = useRef(false)
+  const pendingPascalCapture = useRef<{
+    resolve(blob: Blob): void
+    reject(error: Error): void
+    timeout: ReturnType<typeof setTimeout>
+  } | null>(null)
+  const [viewState, setViewState] = useState<MaterialViewportState>(
+    readStoredMaterialViewportState
+  )
+  const [automationOptions, setAutomationOptions] =
+    useState<MaterialRendererOptions | null>(null)
+  const [automationRevision, setAutomationRevision] = useState(0)
+  const [pascalCaptureRequest, setPascalCaptureRequest] = useState<{
+    revision: number
+    width: number
+    height: number
+  } | null>(null)
   const store = useMaterialStoreApi()
   const aggregatesById = useMaterialStore((state) => state.aggregatesById)
   const shapeLibrary = useMaterialStore((state) => state.shapeLibrary)
@@ -54,6 +95,20 @@ export function WorkbenchMaterialViewport({
     () => Object.values(aggregatesById),
     [aggregatesById]
   )
+  const displayedViewState = useMemo<MaterialViewportState>(() => ({
+    mode: automationOptions?.view ?? viewState.mode,
+    showSites: automationOptions?.showSites ?? viewState.showSites,
+    showMaterialTransfers:
+      automationOptions?.showMaterialTransfers ?? viewState.showMaterialTransfers
+  }), [automationOptions, viewState])
+  const displayedAggregates = useMemo(() => {
+    const hidden = new Set(automationOptions?.hiddenMaterialIds ?? [])
+    return hidden.size === 0
+      ? aggregates
+      : aggregates.filter(aggregate => !hidden.has(aggregate.material.id))
+  }, [aggregates, automationOptions?.hiddenMaterialIds])
+  const displayedSelectedMaterialIds =
+    automationOptions?.selectedMaterialIds ?? selectedMaterialIds
   const materialTransferRoutes = useMemo<MaterialTransferSceneRoute[]>(
     () => (runtimeProjection?.materialTransferRoutes ?? []).map((route) => ({
       ...route,
@@ -75,6 +130,154 @@ export function WorkbenchMaterialViewport({
       ).toString()
     }
   }), [backendUrl])
+
+  const inspectScene = useCallback(async (
+    options: MaterialRendererOptions
+  ) => {
+    const module = await import('@unilab/pascal-lab-plugin')
+    return module.inspectMaterialAggregateScene(aggregates, {
+      viewMode: options.view ?? viewState.mode,
+      showSites: options.showSites ?? viewState.showSites,
+      showMaterialTransfers:
+        options.showMaterialTransfers ?? viewState.showMaterialTransfers,
+      selectedMaterialIds: options.selectedMaterialIds ?? selectedMaterialIds,
+      hiddenMaterialIds: options.hiddenMaterialIds ?? [],
+      sourceIdentity
+    })
+  }, [aggregates, selectedMaterialIds, sourceIdentity, viewState])
+
+  const capturePascalScene = useCallback((
+    width: number,
+    height: number,
+    timeoutMs: number
+  ): Promise<Blob> => new Promise((resolve, reject) => {
+    pendingPascalCapture.current?.reject(
+      new Error('新的 3D 截图请求替代了尚未完成的请求')
+    )
+    if (pendingPascalCapture.current) {
+      clearTimeout(pendingPascalCapture.current.timeout)
+    }
+    const timeout = setTimeout(() => {
+      pendingPascalCapture.current = null
+      reject(new Error(`Pascal 3D 截图在 ${timeoutMs}ms 内未完成`))
+    }, timeoutMs)
+    pendingPascalCapture.current = { resolve, reject, timeout }
+    setPascalCaptureRequest(current => ({
+      revision: (current?.revision ?? 0) + 1,
+      width,
+      height
+    }))
+  }), [])
+
+  const handlePascalCaptureReady = useCallback((blob: Blob): void => {
+    const pending = pendingPascalCapture.current
+    if (!pending) return
+    pendingPascalCapture.current = null
+    clearTimeout(pending.timeout)
+    pending.resolve(blob)
+  }, [])
+
+  const handleRendererRequest = useCallback(async (
+    request: MaterialRendererRequest
+  ): Promise<MaterialRendererResponse> => {
+    if (request.kind === 'inspect') {
+      return {
+        schemaVersion: MATERIAL_RENDERER_CONTRACT,
+        requestId: request.requestId,
+        ok: true,
+        result: await inspectScene(request.options)
+      }
+    }
+    if (captureActive.current) {
+      return rendererFailure(
+        request.requestId,
+        'material_renderer_busy',
+        '物料画布正在完成另一个截图请求'
+      )
+    }
+    captureActive.current = true
+    setAutomationOptions(request.options)
+    setAutomationRevision(revision => revision + 1)
+    try {
+      const root = rootRef.current
+      if (!root) throw new Error('物料画布尚未挂载')
+      await waitForMaterialScene(
+        root,
+        request.options.view ?? viewState.mode,
+        request.options.timeoutMs ?? 30_000
+      )
+      const viewport = request.options.viewport
+      const previousStyle = root.getAttribute('style')
+      if (viewport) {
+        // 并排 Workbench 中物料列可能只有百余像素。截图期间把同一 renderer
+        // 提升为固定尺寸表面，使 Pascal 真正按请求分辨率重排，而不是放大小图。
+        root.style.position = 'fixed'
+        root.style.inset = '0 auto auto 0'
+        root.style.zIndex = '2147483000'
+        root.style.flex = 'none'
+        root.style.background = '#ffffff'
+        root.style.width = `${viewport.width}px`
+        root.style.height = `${viewport.height}px`
+        root.style.maxWidth = 'none'
+        await stableAnimationFrames(5)
+      }
+      try {
+        const view = request.options.view ?? viewState.mode
+        const requestedWidth = viewport?.width ?? Math.round(root.clientWidth)
+        const requestedHeight = viewport?.height ?? Math.round(root.clientHeight)
+        const image = view === '3d'
+          ? await capturePascalScene(
+              requestedWidth,
+              requestedHeight,
+              request.options.timeoutMs ?? 30_000
+            ).then(async blob => ({
+              base64: arrayBufferToBase64(await blob.arrayBuffer()),
+              width: requestedWidth,
+              height: requestedHeight
+            }))
+          : await captureMaterialDom(root, view, request.options).then(canvas => ({
+              base64: canvas.toDataURL('image/png').split(',', 2)[1] ?? '',
+              width: canvas.width,
+              height: canvas.height
+            }))
+        const scene = await inspectScene(request.options)
+        return {
+          schemaVersion: MATERIAL_RENDERER_CONTRACT,
+          requestId: request.requestId,
+          ok: true,
+          result: {
+            schemaVersion: 'unilab-material-capture/v1',
+            scene,
+            image: {
+              mimeType: 'image/png',
+              width: image.width,
+              height: image.height,
+              base64: image.base64
+            }
+          }
+        }
+      } finally {
+        if (previousStyle == null) root.removeAttribute('style')
+        else root.setAttribute('style', previousStyle)
+      }
+    } catch (cause) {
+      return rendererFailure(
+        request.requestId,
+        'material_capture_failed',
+        cause instanceof Error ? cause.message : String(cause)
+      )
+    } finally {
+      setAutomationOptions(null)
+      captureActive.current = false
+    }
+  }, [capturePascalScene, inspectScene, viewState.mode])
+
+  useEffect(() => {
+    const registration = sessionClient.setMaterialRendererHandler(
+      handleRendererRequest
+    )
+    return () => registration.dispose()
+  }, [handleRendererRequest, sessionClient])
 
   useEffect(() => {
     if (!readStatus.available || loadState !== 'idle') return
@@ -124,11 +327,20 @@ export function WorkbenchMaterialViewport({
   }
 
   return (
-    <div className="unilab-workbench-material-scene">
+    <div
+      ref={rootRef}
+      className="unilab-workbench-material-scene"
+      data-material-renderer-ready="true"
+    >
       {shapeLibraryState === 'unavailable' ? (
         <WorkbenchMaterialShapeFallbackNotice />
       ) : null}
       <UnifiedMaterialViewport
+        viewState={displayedViewState}
+        onViewStateChange={(next) => {
+          setViewState(next)
+          writeStoredMaterialViewportState(next)
+        }}
         renderView={(viewMode, { showSites, showMaterialTransfers }) => (
           <Suspense
             fallback={(
@@ -140,16 +352,20 @@ export function WorkbenchMaterialViewport({
             )}
           >
             <PascalLabWorkbench
-              aggregates={aggregates}
+              aggregates={displayedAggregates}
               shapes={shapeLibrary}
               showSites={showSites}
               showMaterialTransfers={showMaterialTransfers}
               materialTransferRoutes={materialTransferRoutes}
               materialTransferProjectionError={null}
               viewMode={viewMode}
+              cameraPreset={automationOptions?.cameraPreset}
+              cameraRequestRevision={automationRevision}
+              captureRequest={pascalCaptureRequest}
+              onCaptureReady={handlePascalCaptureReady}
               projectId={`unilab-workbench-${new URL(backendUrl).port}`}
               editable={moveStatus.available}
-              selectedMaterialIds={selectedMaterialIds}
+              selectedMaterialIds={displayedSelectedMaterialIds}
               highlightedMaterialIds={highlightedMaterialIds}
               modelRuntime={modelRuntime}
               onMaterialMoves={(moves) => void applyMoves(moves)}
@@ -160,4 +376,186 @@ export function WorkbenchMaterialViewport({
       />
     </div>
   )
+}
+
+function rendererFailure(
+  requestId: string,
+  code: string,
+  message: string
+): MaterialRendererResponse {
+  return {
+    schemaVersion: MATERIAL_RENDERER_CONTRACT,
+    requestId,
+    ok: false,
+    error: { code, message }
+  }
+}
+
+async function waitForMaterialScene(
+  root: HTMLElement,
+  view: MaterialViewportState['mode'],
+  timeoutMs: number
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const viewport = root.querySelector<HTMLElement>(
+      '.lab-unified-viewport'
+    )
+    const pascal = root.querySelector<HTMLElement>('[data-pascal-scene-ready]')
+    if (
+      viewport?.dataset.labViewMode === view &&
+      pascal?.dataset.pascalSceneReady === 'true'
+    ) break
+    await stableAnimationFrames(1)
+  }
+  if (Date.now() >= deadline) {
+    throw new Error(`物料场景在 ${timeoutMs}ms 内未进入 ready`)
+  }
+  if (globalThis.document?.fonts) await globalThis.document.fonts.ready
+  await waitForImages(root, deadline)
+  const module = await import('@unilab/pascal-lab-plugin')
+  let previousRevision = -1
+  let stable = 0
+  while (Date.now() < deadline && stable < 3) {
+    const runtime = module.readMaterialSceneRuntimeState()
+    const failures = Object.entries(runtime.modelFailures)
+    if (failures.length > 0) {
+      throw new Error(`3D 模型加载失败：${failures.map(
+        ([identity, message]) => `${identity}: ${message}`
+      ).join('；')}`)
+    }
+    stable = runtime.geometryRevision === previousRevision ? stable + 1 : 0
+    previousRevision = runtime.geometryRevision
+    await stableAnimationFrames(1)
+  }
+  if (stable < 3) throw new Error('物料场景几何在超时前仍未稳定')
+}
+
+async function waitForImages(root: HTMLElement, deadline: number): Promise<void> {
+  const images = [...root.querySelectorAll('img')]
+  for (const image of images) {
+    while (!image.complete && Date.now() < deadline) {
+      await stableAnimationFrames(1)
+    }
+    if (!image.complete || (image.src && image.naturalWidth === 0)) {
+      throw new Error(`画布图片加载失败：${image.currentSrc || image.src}`)
+    }
+  }
+}
+
+function stableAnimationFrames(count: number): Promise<void> {
+  return new Promise(resolve => {
+    const next = (remaining: number): void => {
+      if (remaining <= 0) {
+        resolve()
+        return
+      }
+      requestAnimationFrame(() => next(remaining - 1))
+    }
+    next(count)
+  })
+}
+
+async function captureMaterialDom(
+  root: HTMLElement,
+  view: Exclude<MaterialViewportState['mode'], '3d'>,
+  options: MaterialRendererOptions
+): Promise<HTMLCanvasElement> {
+  const selector = view === '2.5d'
+    ? '.pascal-lab-workbench__oblique'
+    : view === '2d'
+      ? '.material-canvas.is-floorplan-overlay'
+      : '.pascal-editor-host'
+  const target = root.querySelector<HTMLElement>(selector)
+  if (!target) throw new Error(`${view} 物料画布尚未挂载`)
+  const rect = target.getBoundingClientRect()
+  const width = options.viewport?.width ?? Math.round(rect.width)
+  const height = options.viewport?.height ?? Math.round(rect.height)
+  const scale = options.viewport?.pixelRatio ?? 1
+  const restoreSvgPresentation = inlineSvgPresentation(target)
+  try {
+    return await toCanvas(target, {
+      width,
+      height,
+      canvasWidth: Math.round(width * scale),
+      canvasHeight: Math.round(height * scale),
+      pixelRatio: 1,
+      backgroundColor: '#ffffff',
+      cacheBust: true,
+      skipAutoScale: true
+    })
+  } finally {
+    restoreSvgPresentation()
+  }
+}
+
+const SVG_PRESENTATION_PROPERTIES = [
+  'color',
+  'display',
+  'dominant-baseline',
+  'fill',
+  'fill-opacity',
+  'fill-rule',
+  'flood-color',
+  'flood-opacity',
+  'font-family',
+  'font-size',
+  'font-style',
+  'font-weight',
+  'letter-spacing',
+  'marker-end',
+  'marker-mid',
+  'marker-start',
+  'opacity',
+  'paint-order',
+  'shape-rendering',
+  'stop-color',
+  'stop-opacity',
+  'stroke',
+  'stroke-dasharray',
+  'stroke-dashoffset',
+  'stroke-linecap',
+  'stroke-linejoin',
+  'stroke-miterlimit',
+  'stroke-opacity',
+  'stroke-width',
+  'text-anchor',
+  'text-rendering',
+  'transform',
+  'transform-origin',
+  'visibility'
+] as const
+
+/**
+ * SVG presentation rules can depend on a CSS-module scope outside the capture
+ * target. Inline their computed values so the renderer clone keeps the exact
+ * live material colours without retaining or parsing the whole Workbench DOM.
+ */
+function inlineSvgPresentation(root: HTMLElement): () => void {
+  const elements = [...root.querySelectorAll<SVGElement>('svg, svg *')]
+  const previousStyles = elements.map(element => element.getAttribute('style'))
+  elements.forEach(element => {
+    const computed = getComputedStyle(element)
+    for (const property of SVG_PRESENTATION_PROPERTIES) {
+      const value = computed.getPropertyValue(property)
+      if (value) element.style.setProperty(property, value)
+    }
+  })
+  return () => {
+    elements.forEach((element, index) => {
+      const previous = previousStyles[index]
+      if (previous == null) element.removeAttribute('style')
+      else element.setAttribute('style', previous)
+    })
+  }
+}
+
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer)
+  const chunkSize = 0x8000
+  let binary = ''
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize))
+  }
+  return globalThis.btoa(binary)
 }

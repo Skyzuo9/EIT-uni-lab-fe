@@ -25,9 +25,10 @@
     "@unilab/pascal-lab-plugin": "workspace:*",
     "@unilab/robot-workstation": "workspace:*",
     "@unilab/services": "workspace:*",
+    "@unilab/workbench-session": "workspace:*",
     "@unilab/workflow-editor": "workspace:*",
     "@unilab/workflow-ide-bridge": "workspace:*",
-    "@unilab/workbench-session": "workspace:*",
+    "html-to-image": "1.11.13",
     "react": "^19.2.1",
     "react-dom": "^19.2.1"
   },

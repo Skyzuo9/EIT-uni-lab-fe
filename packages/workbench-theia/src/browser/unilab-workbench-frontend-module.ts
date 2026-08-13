@@ -56,13 +56,18 @@ export default new ContainerModule((bind) => {
   )
   bind(WorkbenchSessionClientImpl).toSelf().inSingletonScope()
   bind(WorkbenchSessionClient).toService(WorkbenchSessionClientImpl)
-  bind(WorkbenchSessionServer).toDynamicValue(context =>
-    WebSocketConnectionProvider.createProxy(
+  bind(WorkbenchSessionServer).toDynamicValue(context => {
+    const client = context.container.get<WorkbenchSessionClientImpl>(
+      WorkbenchSessionClientImpl
+    )
+    const server = WebSocketConnectionProvider.createProxy<WorkbenchSessionServer>(
       context.container,
       WORKBENCH_SESSION_PATH,
-      context.container.get(WorkbenchSessionClient)
+      client
     )
-  ).inSingletonScope()
+    client.setServer(server)
+    return server
+  }).inSingletonScope()
 
   bindViewContribution(bind, UniLabAgentContribution)
   bind(FrontendApplicationContribution).toService(UniLabAgentContribution)
