@@ -23,7 +23,7 @@ describe('WorkbenchSessionGate', () => {
       <WorkbenchSessionGate
         snapshot={{
           phase: 'failed',
-          message: '等待 Uni-Lab OS 就绪超时',
+          message: 'PLC 连接失败，Uni-Lab OS 未就绪',
           configuredGraphPath: 'deployment/graphs/szlab-local-debug.json',
           configuredRuntimeMode: 'normal',
           agent: null,
@@ -50,9 +50,9 @@ describe('WorkbenchSessionGate', () => {
             agent: null
           },
           diagnostic: {
-            code: 'os_readiness_failed',
-            message: 'http://127.0.0.1:18103/api/v1/devices 尚未就绪',
-            recovery: '启动 PLC-Sim 后重启 OS'
+            code: 'plc_connection_failed',
+            message: '无法解析 PLC 的 OPC UA 主机名，OS 设备目录未完成初始化。',
+            recovery: '检查设备图中的 PLC OPC UA 地址后重试'
           },
           plcSimulator: {
             phase: 'idle',
@@ -82,6 +82,10 @@ describe('WorkbenchSessionGate', () => {
 
     expect(markup).toContain('环境管理')
     expect(markup).toContain('启动 PLC-Sim')
+    expect(markup).toContain('PLC 连接失败')
+    expect(markup).toContain('无法解析 PLC 的 OPC UA 主机名')
+    expect(markup).toContain('建议：')
+    expect(markup).toContain('诊断代码：plc_connection_failed')
     expect(markup).toContain('unilab-workbench-session-actions')
     expect(markup).toContain('class="is-primary"')
     expect(markup).toContain('codicon-settings-gear')

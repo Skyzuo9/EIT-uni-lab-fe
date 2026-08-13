@@ -578,6 +578,38 @@ describe('managed local Workbench session', () => {
     })
   })
 
+  it('fails fast with an actionable PLC diagnosis when the backend thread terminates', async () => {
+    const fixture = await createFixture()
+    const session = createManagedLocalWorkbenchSession({
+      workspacePath: fixture.workspacePath,
+      osProjectPath: fixture.osProjectPath,
+      environmentPath: fixture.environmentPath,
+      plcSimulatorGuiPort: fixture.plcSimulatorGuiPort,
+      plcSimulatorOpcUaPort: fixture.plcSimulatorOpcUaPort,
+      readinessTimeoutMs: 5_000,
+      environment: {
+        ...process.env,
+        UNILAB_FIXTURE_DEVICES_NOT_READY: '1',
+        UNILAB_FIXTURE_PLC_CONNECTION_FAILURE: '1'
+      }
+    })
+    sessions.push(session)
+    const startedAt = Date.now()
+
+    await expect(session.start()).rejects.toThrow('PLC')
+
+    expect(Date.now() - startedAt).toBeLessThan(2_000)
+    expect(session.getSnapshot()).toMatchObject({
+      phase: 'failed',
+      message: 'PLC 连接失败，Uni-Lab OS 未就绪',
+      diagnostic: {
+        code: 'plc_connection_failed',
+        message: expect.stringContaining('无法解析 PLC'),
+        recovery: expect.stringContaining('127.0.0.1')
+      }
+    })
+  })
+
   it('starts PLC-Sim independently after authoring becomes ready', async () => {
     const fixture = await createFixture()
     const plcReadyFile = join(fixture.workspacePath, '.unilabos', 'plc-ready')
@@ -1008,6 +1040,18 @@ const args = process.argv.slice(2)
 const port = Number(args[args.indexOf('--port') + 1])
 const graphPath = args[args.indexOf('--graph') + 1]
 if (process.env.UNILAB_FIXTURE_EXIT_BEFORE_READY === '1') process.exit(17)
+if (process.env.UNILAB_FIXTURE_PLC_CONNECTION_FAILURE === '1') {
+  setTimeout(() => process.stderr.write([
+    '[ERROR] client connect failed: [Errno 8] nodename nor servname provided, or not known',
+    'Exception in thread backend_thread:',
+    '  File "/os/unilabos/ros/nodes/presets/host_node.py", line 945, in initialize_device',
+    '  File "/workspace/szlab_poly_plc/device.py", line 501, in _connect',
+    '  File "/python/site-packages/opcua/client/client.py", line 307, in connect_socket',
+    '    sock = socket.create_connection((host, port), timeout=self.timeout)',
+    'socket.gaierror: [Errno 8] nodename nor servname provided, or not known',
+    ''
+  ].join('\\n')), 25)
+}
 let exitScheduled = false
 const json = (response, body) => {
   response.writeHead(200, { 'content-type': 'application/json' })

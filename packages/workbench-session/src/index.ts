@@ -54,6 +54,7 @@ import {
 import { releaseLoopbackPorts } from './port-release'
 import { waitForWorkbenchReadiness } from './readiness'
 import { isRetryableWindowsReadinessExit } from './startup-retry'
+import { createWorkbenchStartupFailureMonitor } from './startup-diagnostics'
 import { prepareWorkbenchState } from './workbench-state'
 export {
   MANAGED_WORKSPACE_SKILL_NAMES,
@@ -92,6 +93,7 @@ export interface WorkbenchSessionDiagnostic {
     | 'port_conflict'
     | 'os_start_failed'
     | 'os_readiness_failed'
+    | 'plc_connection_failed'
     | 'os_exited'
   message: string
   recovery: string
@@ -1012,6 +1014,10 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
       launchedChild = child
       this.child = child
       launch.identity.pid = requireProcessId(child.pid)
+      const startupFailureMonitor = createWorkbenchStartupFailureMonitor()
+      const observeStartupOutput = startupFailureMonitor.observe
+      child.stdout.on('data', observeStartupOutput)
+      child.stderr.on('data', observeStartupOutput)
       child.stdout.pipe(log, { end: false })
       child.stderr.pipe(log, { end: false })
       child.once('error', error => {
@@ -1041,11 +1047,17 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
         identity: { ...launch.identity },
         diagnostic: null
       })
-      launch.identity.packageMounts = await waitForWorkbenchReadiness(
-        launch.identity.backendUrl,
-        child,
-        this.options.readinessTimeoutMs ?? DEFAULT_READINESS_TIMEOUT_MS
-      )
+      try {
+        launch.identity.packageMounts = await waitForWorkbenchReadiness(
+          launch.identity.backendUrl,
+          child,
+          this.options.readinessTimeoutMs ?? DEFAULT_READINESS_TIMEOUT_MS,
+          startupFailureMonitor.failure
+        )
+      } finally {
+        child.stdout.off('data', observeStartupOutput)
+        child.stderr.off('data', observeStartupOutput)
+      }
       if (this.stopRequested) return this.getSnapshot()
       launch.identity.agent = this.snapshot.agent
       if (child.exitCode !== null || child.signalCode !== null) {
@@ -1097,16 +1109,20 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
         await delay(WINDOWS_READINESS_RETRY_DELAY_MS)
         return await this.startManaged(readinessRetries - 1)
       }
-      const diagnostic: WorkbenchSessionDiagnostic = {
-        code: source.code === 'os_start_failed'
-          ? 'os_start_failed'
-          : 'os_readiness_failed',
-        message: source.message,
-        recovery: `检查日志 ${launch.identity.logPath}，确认端口与 OS 依赖后重试`
-      }
+      const diagnostic: WorkbenchSessionDiagnostic = source.code === 'plc_connection_failed'
+        ? source
+        : {
+            code: source.code === 'os_start_failed'
+              ? 'os_start_failed'
+              : 'os_readiness_failed',
+            message: source.message,
+            recovery: `检查日志 ${launch.identity.logPath}，确认端口与 OS 依赖后重试`
+          }
       this.publish({
         phase: 'failed',
-        message: 'Uni-Lab OS 启动失败',
+        message: diagnostic.code === 'plc_connection_failed'
+          ? 'PLC 连接失败，Uni-Lab OS 未就绪'
+          : 'Uni-Lab OS 启动失败',
         identity: { ...launch.identity },
         diagnostic
       })

@@ -10,7 +10,8 @@ import type {
 export async function waitForWorkbenchReadiness(
   backendUrl: string,
   child: ChildProcessWithoutNullStreams,
-  timeoutMs: number
+  timeoutMs: number,
+  startupFailure?: () => WorkbenchLaunchError | null
 ): Promise<WorkspacePackageMountProjection> {
   const probes: Array<[string, (payload: unknown) => boolean]> = [
     ['/api/v1/health', isHealthReady],
@@ -26,6 +27,8 @@ export async function waitForWorkbenchReadiness(
   for (const [path, accepts] of probes) {
     let ready = false
     while (Date.now() < deadline) {
+      const detectedFailure = startupFailure?.()
+      if (detectedFailure) throw detectedFailure
       if (child.exitCode !== null || child.signalCode !== null) {
         throw new WorkbenchLaunchError(
           'os_readiness_failed',
@@ -58,7 +61,8 @@ export async function waitForWorkbenchReadiness(
     backendUrl,
     child,
     '/api/v1/workspace/package-mounts',
-    deadline
+    deadline,
+    startupFailure
   )
   return parseWorkspacePackageMountProjection(mountPayload)
 }
@@ -67,9 +71,12 @@ async function fetchWorkbenchReadinessPayload(
   backendUrl: string,
   child: ChildProcessWithoutNullStreams,
   path: string,
-  deadline: number
+  deadline: number,
+  startupFailure?: () => WorkbenchLaunchError | null
 ): Promise<unknown> {
   while (Date.now() < deadline) {
+    const detectedFailure = startupFailure?.()
+    if (detectedFailure) throw detectedFailure
     if (child.exitCode !== null || child.signalCode !== null) {
       throw new WorkbenchLaunchError(
         'os_readiness_failed',

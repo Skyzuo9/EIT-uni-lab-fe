@@ -761,12 +761,30 @@ body.unilab-environment-manager-open .material-oblique-stack__label {
   margin: 18px 0;
   padding: 12px 14px;
   color: var(--unilab-color-danger);
-  border-left: 3px solid var(--unilab-color-danger);
+  border: 1px solid color-mix(in srgb, var(--unilab-color-danger) 36%, transparent);
+  border-radius: var(--unilab-radius-control);
   background: color-mix(in srgb, var(--unilab-color-danger) 8%, transparent);
 }
 
 .unilab-workbench-session-diagnostic p {
   margin: 6px 0 0;
+}
+
+.unilab-workbench-session-diagnostic__recovery {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.unilab-workbench-session-diagnostic__recovery span {
+  flex: 0 0 auto;
+  font-weight: 700;
+}
+
+.unilab-workbench-session-diagnostic code {
+  display: block;
+  margin-top: 10px;
+  font: 600 11px/1.4 var(--unilab-font-mono);
 }
 
 .unilab-workbench-session-actions {
