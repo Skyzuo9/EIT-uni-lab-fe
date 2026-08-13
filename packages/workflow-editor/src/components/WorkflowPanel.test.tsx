@@ -85,9 +85,9 @@ describe('WorkflowPanel Runtime entry', () => {
     )
 
     expect(markup).toContain('Backend 定义 · 已同步')
-    expect(markup).toContain('画布直接编辑 Backend 工作流')
+    expect(markup).toContain('画布可编辑并直接保存')
     expect(markup).toContain('Backend 画布没有待保存修改')
-    expect(markup).toContain('工作区代码不会作用于本图')
+    expect(markup).toContain('工作区代码修改不生效')
   })
 
   /** Backend 画布的编辑权与 Edge 运行就绪状态必须解耦。 */

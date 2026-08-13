@@ -477,7 +477,7 @@ export function ExistingWorkflowRuntimePanel({
         codeMode={{
           active: false,
           disabled: true,
-          disabledReason: 'Backend 模式只编辑远端画布；工作区代码不会作用于本图'
+          disabledReason: 'Backend Authority 下仅前端画布可保存；工作区代码修改不生效'
         }}
         canvasMode={{
           active: true,

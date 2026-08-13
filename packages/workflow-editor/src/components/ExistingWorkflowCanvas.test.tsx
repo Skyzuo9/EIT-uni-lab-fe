@@ -36,8 +36,9 @@ describe('ExistingWorkflowCanvas Backend authority states', () => {
     })
 
     expect(markup).toContain('Backend 定义 · 已同步')
-    expect(markup).toContain('revision CAS 直接保存到 Backend')
-    expect(markup).toContain('本地 Python 代码不会作用于本图')
+    expect(markup).toContain('前端画布修改通过 revision CAS 直接保存到 Backend')
+    expect(markup).toContain('画布可编辑并直接保存')
+    expect(markup).toContain('本地 Python 代码修改不生效')
   })
 
   it('labels a live task as a temporary lock instead of missing authoring', () => {

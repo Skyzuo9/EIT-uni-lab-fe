@@ -64,7 +64,7 @@ export function ExistingWorkflowCanvas({
       ? 'Backend 定义 · 运行中锁定'
       : 'Backend 定义 · 只读'
   const projectionTitle = editable
-    ? '画布修改通过 revision CAS 直接保存到 Backend；不改写工作区代码'
+    ? '前端画布修改通过 revision CAS 直接保存到 Backend；工作区代码修改不生效'
     : temporarilyLocked
       ? readOnlyReason || '当前有活动任务；任务结束后可继续编辑和保存 Backend 工作流定义'
       : readOnlyReason || 'Backend 当前未提供工作流定义写能力'
@@ -83,9 +83,9 @@ export function ExistingWorkflowCanvas({
         description={(
           <p>
             {editable
-              ? '画布直接编辑 Backend 工作流；本地 Python 代码不会作用于本图。'
+              ? 'Backend Authority：画布可编辑并直接保存；本地 Python 代码修改不生效。'
               : temporarilyLocked
-                ? '活动任务期间画布暂时锁定；任务结束后可继续编辑和保存，本地 Python 代码仍不会作用于本图。'
+                ? '活动任务期间画布暂时锁定；任务结束后可继续编辑和保存，本地 Python 代码修改仍不生效。'
                 : '选择节点查看运行结果；当前 Backend 未开放画布保存。'}
           </p>
         )}
