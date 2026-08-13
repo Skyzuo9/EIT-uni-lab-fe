@@ -19,12 +19,14 @@ export function WorkbenchSessionGate({
   onRetry,
   onStop,
   connectionSelector,
+  onOpenLog,
   renderEnvironmentManager
 }: {
   snapshot: WorkbenchSessionSnapshot
   onRetry: () => Promise<void>
   onStop: () => Promise<void>
   connectionSelector?: React.ReactNode
+  onOpenLog?: (path: string) => Promise<void>
   renderEnvironmentManager: (onClose: () => void) => React.ReactNode
 }): React.JSX.Element {
   const [environmentOpen, setEnvironmentOpen] = React.useState(
@@ -32,10 +34,28 @@ export function WorkbenchSessionGate({
     && snapshot.diagnostic?.code === 'os_readiness_failed'
   )
   const [operationError, setOperationError] = React.useState<string | null>(null)
+  const [launchRequested, setLaunchRequested] = React.useState(false)
   const run = React.useCallback(async (operation: () => Promise<void>) => {
     setOperationError(null)
     await captureWorkbenchUiOperation(operation, setOperationError)
   }, [])
+  const launchLoading = launchRequested
+    || snapshot.phase === 'starting'
+    || snapshot.phase === 'waiting'
+
+  const start = React.useCallback(async () => {
+    setLaunchRequested(true)
+    setOperationError(null)
+    await captureWorkbenchUiOperation(onRetry, message => {
+      setOperationError(message)
+      setLaunchRequested(false)
+    })
+  }, [onRetry])
+
+  const stop = React.useCallback(async () => {
+    await run(onStop)
+    setLaunchRequested(false)
+  }, [onStop, run])
 
   React.useEffect(() => {
     if (
@@ -65,8 +85,23 @@ export function WorkbenchSessionGate({
             <dd>{snapshot.identity.generation}</dd>
             <dt>Backend</dt>
             <dd>{snapshot.identity.backendUrl}</dd>
-            <dt>Log</dt>
-            <dd>{snapshot.identity.logPath}</dd>
+            <div className="unilab-workbench-session-log">
+              <dt>Log</dt>
+              <dd>
+                {onOpenLog ? (
+                  <button
+                    type="button"
+                    title="在编辑器中打开日志文件"
+                    onClick={() => void run(
+                      () => onOpenLog(snapshot.identity?.logPath ?? '')
+                    )}
+                  >
+                    <span className="codicon codicon-go-to-file" aria-hidden="true" />
+                    <span>{snapshot.identity.logPath}</span>
+                  </button>
+                ) : snapshot.identity.logPath}
+              </dd>
+            </div>
           </dl>
         ) : null}
         {snapshot.diagnostic ? (
@@ -88,7 +123,7 @@ export function WorkbenchSessionGate({
               <button
                 type="button"
                 className="is-primary"
-                onClick={() => void run(onRetry)}
+                onClick={() => void start()}
               >
                 <span className="codicon codicon-play" aria-hidden="true" />
                 校验并启动
@@ -98,7 +133,7 @@ export function WorkbenchSessionGate({
               <button
                 type="button"
                 className="is-danger"
-                onClick={() => void run(onStop)}
+                onClick={() => void stop()}
               >
                 <span className="codicon codicon-debug-stop" aria-hidden="true" />
                 停止
@@ -120,6 +155,26 @@ export function WorkbenchSessionGate({
       {environmentOpen
         ? renderEnvironmentManager(() => setEnvironmentOpen(false))
         : null}
+      {launchLoading ? (
+        <div
+          className="unilab-workbench-session-loading"
+          role="status"
+          aria-live="assertive"
+          aria-label="正在启动 Unilab 调试工作台"
+        >
+          <div className="unilab-workbench-session-loading__content">
+            <span
+              className="unilab-workbench-session-loading__spinner"
+              aria-hidden="true"
+            />
+            <strong>正在启动 Unilab 调试工作台</strong>
+            <p>{snapshot.message || '正在校验工作区并启动 Uni-Lab OS…'}</p>
+            <button type="button" onClick={() => void stop()}>
+              取消启动
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }

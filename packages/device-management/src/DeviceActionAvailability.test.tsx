@@ -368,6 +368,23 @@ describe('device Action lock controls', () => {
     expect(errorMarkup).toContain('role="alert"')
   })
 
+  it('announces action submission errors as alerts', () => {
+    const markup = renderToStaticMarkup(
+      <DeviceActionAvailability
+        state={{
+          kind: 'error',
+          message: '提交内容格式不正确',
+          retryable: false
+        }}
+        onRun={() => undefined}
+      />
+    )
+
+    expect(markup).toContain('is-error')
+    expect(markup).toContain('role="alert"')
+    expect(markup).toContain('提交内容格式不正确')
+  })
+
   it('shows an OS-confirmed result only after the refreshed Action is free', () => {
     const markup = renderToStaticMarkup(
       <DeviceLockControl

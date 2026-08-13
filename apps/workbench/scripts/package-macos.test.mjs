@@ -218,6 +218,23 @@ describe('Workbench macOS distribution gate', () => {
     )
   })
 
+  it('prefers the current bundled Runtime over a persisted older environment', async () => {
+    const launcher = await readFile(
+      new URL('../desktop/main.mjs', import.meta.url),
+      'utf8'
+    )
+    const managedLookup = launcher.indexOf(
+      "process.env['UNILAB_MANAGED_RUNTIME_PREFIX']"
+    )
+    const persistedLookup = launcher.indexOf(
+      'if (persisted)',
+      managedLookup
+    )
+
+    assert.ok(managedLookup >= 0)
+    assert.ok(persistedLookup > managedLookup)
+  })
+
   it('launch-smokes the packaged Electron app and checks the Agent archive through original-fs', async () => {
     const launcher = await readFile(
       new URL('../desktop/main.mjs', import.meta.url),

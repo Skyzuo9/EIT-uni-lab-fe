@@ -1,9 +1,10 @@
 import {
+  execFile,
   spawn,
   type ChildProcessWithoutNullStreams
 } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
-import { constants as fsConstants, createWriteStream } from 'node:fs'
+import { constants as fsConstants, createWriteStream, existsSync } from 'node:fs'
 import {
   access,
   mkdir,
@@ -228,6 +229,9 @@ export interface WorkbenchSession {
   refreshPlcVariableTables(): Promise<WorkbenchSessionSnapshot>
   startPlcSimulator(): Promise<WorkbenchSessionSnapshot>
   stopPlcSimulator(): Promise<WorkbenchSessionSnapshot>
+  releaseEnvironmentPorts(
+    target: 'os' | 'plc-sim'
+  ): Promise<WorkbenchSessionSnapshot>
   setRuntimeMode(mode: WorkbenchRuntimeMode): Promise<WorkbenchSessionSnapshot>
 }
 
@@ -296,7 +300,7 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
         projectPath: options.plcSimulatorProjectPath
           ?? options.environment?.['UNILAB_PLC_SIM_PROJECT']
           ?? process.env['UNILAB_PLC_SIM_PROJECT']
-          ?? '',
+          ?? defaultPlcSimulatorProjectPath(options.workspacePath),
         variableTablePath: this.selectedPlcVariableTablePath,
         handshakeProfile: this.selectedPlcHandshakeProfile
       })
@@ -619,6 +623,41 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
     })
     this.plcSimulatorStopping = trackedStop
     return trackedStop
+  }
+
+  async releaseEnvironmentPorts(
+    target: 'os' | 'plc-sim'
+  ): Promise<WorkbenchSessionSnapshot> {
+    if (target === 'plc-sim') {
+      await this.stopPlcSimulator()
+      const ports = [
+        this.options.plcSimulatorGuiPort ?? PLC_SIMULATOR_GUI_PORT,
+        this.options.plcSimulatorOpcUaPort ?? PLC_SIMULATOR_OPC_UA_PORT
+      ]
+      await releaseLoopbackPorts(ports)
+      this.publishPlcSimulator({
+        ...this.snapshot.plcSimulator,
+        phase: 'idle',
+        pid: null,
+        diagnostic: null,
+        message: `已释放 PLC-Sim 端口 ${ports.join('、')}`
+      })
+      return this.getSnapshot()
+    }
+
+    await this.stop()
+    const ports = [this.options.backendPort, this.options.hostLinkPort]
+      .filter((port): port is number => Number.isInteger(port))
+    await releaseLoopbackPorts(ports)
+    this.publish({
+      ...this.snapshot,
+      phase: 'idle',
+      diagnostic: null,
+      message: ports.length > 0
+        ? `已释放 OS 端口 ${ports.join('、')}`
+        : 'OS 使用自动端口，无需额外释放'
+    })
+    return this.getSnapshot()
   }
 
   private async stopManagedPlcSimulator(): Promise<WorkbenchSessionSnapshot> {
@@ -1530,6 +1569,45 @@ function idlePlcSimulatorSnapshot(options: {
     logPath: '',
     diagnostic: null
   }
+}
+
+/** Derive the conventional sibling PLC-Sim checkout for a new workspace. */
+export function defaultPlcSimulatorProjectPath(workspacePath: string): string {
+  const candidate = resolve(dirname(resolve(workspacePath)), 'PLC-Sim')
+  return existsSync(candidate) ? candidate : ''
+}
+
+async function releaseLoopbackPorts(ports: readonly number[]): Promise<void> {
+  if (process.platform === 'win32') {
+    throw new Error('Windows 暂不支持自动释放端口，请在任务管理器中结束占用进程')
+  }
+  const pids = new Set<number>()
+  for (const port of ports) {
+    const output = await execFileOutput('lsof', [
+      '-nP', `-iTCP:${port}`, '-sTCP:LISTEN', '-t'
+    ])
+    for (const value of output.split(/\s+/u)) {
+      const pid = Number(value)
+      if (Number.isInteger(pid) && pid > 1 && pid !== process.pid) pids.add(pid)
+    }
+  }
+  for (const pid of pids) {
+    try { process.kill(pid, 'SIGTERM') } catch { /* process already exited */ }
+  }
+  if (pids.size > 0) await delay(500)
+  for (const pid of pids) {
+    try { process.kill(pid, 0); process.kill(pid, 'SIGKILL') } catch {
+      // Process exited after SIGTERM.
+    }
+  }
+}
+
+function execFileOutput(command: string, args: readonly string[]): Promise<string> {
+  return new Promise(resolveOutput => {
+    execFile(command, [...args], { encoding: 'utf8' }, (error, stdout) => {
+      resolveOutput(error && !stdout ? '' : stdout)
+    })
+  })
 }
 
 async function requireRealCsvFile(candidate: string): Promise<string> {

@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
   ManagedRuntimeSupervisorClient,
+  managedRuntimeSupervisorPort,
   type ManagedWorkerLaunch
 } from './managedRuntimeSupervisor'
 
@@ -19,6 +20,18 @@ afterEach(async () => {
 })
 
 describe('ManagedRuntimeSupervisorClient', () => {
+  it('isolates detached supervisors by immutable Runtime digest', () => {
+    const first = managedRuntimeSupervisorPort('0'.repeat(64))
+    const second = managedRuntimeSupervisorPort(`00000001${'0'.repeat(56)}`)
+
+    expect(first).toBe(20_000)
+    expect(second).toBe(20_001)
+    expect(first).not.toBe(second)
+    expect(() => managedRuntimeSupervisorPort('not-a-digest')).toThrow(
+      'Runtime manifest SHA-256 无效'
+    )
+  })
+
   it('starts a detached supervisor and controls its worker over the token seam', async () => {
     const stateDirectory = await mkdtemp(join(tmpdir(), 'unilab-supervisor-'))
     temporaryDirectories.push(stateDirectory)

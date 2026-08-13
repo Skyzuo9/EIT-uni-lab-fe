@@ -19,6 +19,7 @@ import * as asar from '@electron/asar'
 
 export const PINNED_AGENT_DISTRIBUTION_VERSION = '2.1.53'
 export const EXTERNAL_ONLY_AGENT_CLIS = ['codex', 'claude']
+export const SHARED_AGENT_NODE_ENV = 'UNILAB_AGENT_NODE_BINARY'
 
 export function resolveAgentTarget(platform, architecture) {
   const key = `${platform}/${architecture}`
@@ -89,6 +90,13 @@ export function prepareBundledAgentPayload(destination, options = {}) {
     target.directory,
     'managed-resources'
   )
+  pruneManagedNodeDevelopmentResources(managedResources)
+  if (options.sharedNodeExecutable && platform !== 'win32') {
+    replaceManagedNodeWithSharedLauncher(
+      managedResources,
+      options.sharedNodeVersion
+    )
+  }
   // Agent CLIs are intentionally never redistributed by UniLab Workbench.
   // Aioncore and its UI remain bundled, while a user-installed CLI may be
   // selected from the host environment at runtime.
@@ -123,6 +131,43 @@ export function prepareBundledAgentPayload(destination, options = {}) {
       target.directory,
       target.executable
     )
+  }
+}
+
+/** Reuse Workbench's signed Node binary while retaining Agent's npm modules. */
+function replaceManagedNodeWithSharedLauncher(managedResources, version) {
+  const manifestPath = join(managedResources, 'manifest.json')
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
+  const nodeRoot = join(managedResources, String(manifest.node?.root || ''))
+  const executable = join(nodeRoot, String(manifest.node?.executable || 'bin/node'))
+  writeFileSync(executable, `#!/bin/sh
+shared_node=\${${SHARED_AGENT_NODE_ENV}:-}
+if [ -z "$shared_node" ] || [ ! -x "$shared_node" ]; then
+  echo "UniLab shared Agent Node runtime is unavailable" >&2
+  exit 127
+fi
+exec "$shared_node" "$@"
+`)
+  chmodSync(executable, 0o755)
+  if (version) {
+    manifest.node.version = version
+    writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
+  }
+}
+
+/** Remove build-time Node resources that are not needed by Agent or npm/npx. */
+function pruneManagedNodeDevelopmentResources(managedResources) {
+  const manifestPath = join(managedResources, 'manifest.json')
+  if (!existsSync(manifestPath)) return
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
+  const nodeRoot = join(managedResources, String(manifest.node?.root || ''))
+  for (const relativePath of [
+    'include',
+    'share',
+    'CHANGELOG.md',
+    'README.md'
+  ]) {
+    rmSync(join(nodeRoot, relativePath), { recursive: true, force: true })
   }
 }
 

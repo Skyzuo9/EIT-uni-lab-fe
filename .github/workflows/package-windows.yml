@@ -61,7 +61,13 @@ jobs:
           run_install: false
 
       - name: Install Workbench dependencies
-        run: pnpm install --frozen-lockfile
+        run: |
+          pnpm install --frozen-lockfile
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to install Workbench dependencies' }
+          $windowsCaNative = 'node_modules/.pnpm/@vscode+windows-ca-certs@0.3.4/node_modules/@vscode/windows-ca-certs/build/Release/crypt32.node'
+          if (-not (Test-Path $windowsCaNative)) {
+            throw "Windows CA native module was not built: $windowsCaNative"
+          }
 
       - name: Set up Constructor
         uses: conda-incubator/setup-miniconda@v4
@@ -112,6 +118,30 @@ jobs:
             Where-Object { Test-Path (Join-Path $_.FullName 'app.asar') } |
             Select-Object -First 1
           if (-not $agentResources) { throw 'AionUi resources directory was not found' }
+
+          # AionUi's packaged Windows core directory has changed names across
+          # releases. Normalize the directory containing the complete native
+          # payload to the name expected by UniLab instead of assuming that the
+          # upstream archive already calls it windows-x64.
+          $agentCore = Get-ChildItem $applicationContents -Recurse -File -Filter 'aioncore.exe' |
+            Where-Object { Test-Path (Join-Path $_.Directory.FullName 'managed-resources') } |
+            Select-Object -First 1
+          if (-not $agentCore) {
+            $coreCandidates = Get-ChildItem $applicationContents -Recurse -File -Filter 'aioncore.exe' |
+              ForEach-Object { $_.FullName }
+            throw "AionUi application does not contain a complete Windows core. Candidates: $($coreCandidates -join ', ')"
+          }
+
+          $normalizedCore = Join-Path $agentResources.FullName 'bundled-aioncore\windows-x64'
+          $normalizedExecutable = Join-Path $normalizedCore 'aioncore.exe'
+          if (-not (Test-Path $normalizedExecutable)) {
+            New-Item -ItemType Directory -Path $normalizedCore -Force | Out-Null
+            Get-ChildItem $agentCore.Directory.FullName -Force |
+              Copy-Item -Destination $normalizedCore -Recurse -Force
+          }
+          if (-not (Test-Path $normalizedExecutable)) {
+            throw "Unable to normalize the Windows Agent core: $normalizedExecutable"
+          }
 
           "UNILAB_RUNTIME_INSTALLER=$($runtime.FullName)" >> $env:GITHUB_ENV
           "UNILAB_AGENT_DISTRIBUTION=$($agentResources.FullName)" >> $env:GITHUB_ENV

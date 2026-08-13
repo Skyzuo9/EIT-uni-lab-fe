@@ -15,6 +15,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import {
   createManagedLocalWorkbenchSession,
+  defaultPlcSimulatorProjectPath,
   type WorkbenchSession
 } from './index'
 
@@ -30,6 +31,12 @@ afterEach(async () => {
 })
 
 describe('managed local Workbench session', () => {
+  it('pre-fills the conventional sibling PLC-Sim path for a new workspace', async () => {
+    const fixture = await createFixture()
+    expect(defaultPlcSimulatorProjectPath(fixture.workspacePath))
+      .toBe(fixture.plcSimulatorPath)
+  })
+
   it('owns the Workspace Agent independently from the OS lifecycle', async () => {
     const fixture = await createFixture()
     let agentStopCalls = 0
@@ -326,8 +333,8 @@ describe('managed local Workbench session', () => {
       diagnostic: null,
       plcSimulator: {
         phase: 'idle',
-        message: '尚未选择 PLC-Sim 项目目录',
-        projectPath: '',
+        message: 'PLC-Sim 尚未启动',
+        projectPath: fixture.plcSimulatorPath,
         variableTablePath: '',
         variableTableCandidates: [],
         handshakeProfile: 'szlab',

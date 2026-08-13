@@ -441,7 +441,7 @@ export default function DevicePanel({
     }
     let input: Record<string, unknown>
     try {
-      input = serializeDeviceActionInput(action, argumentDraft)
+      input = serializeDeviceActionInput(action, argumentDraft, template)
     } catch (error) {
       setRunOperation({
         actionRef: action.actionRef,

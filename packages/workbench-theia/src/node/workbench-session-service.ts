@@ -108,6 +108,12 @@ implements WorkbenchSessionServer, BackendApplicationContribution {
     return this.session.stopPlcSimulator()
   }
 
+  releaseEnvironmentPorts(
+    target: Parameters<WorkbenchSession['releaseEnvironmentPorts']>[0]
+  ) {
+    return this.session.releaseEnvironmentPorts(target)
+  }
+
   setRuntimeMode(mode: Parameters<WorkbenchSession['setRuntimeMode']>[0]) {
     return this.session.setRuntimeMode(mode)
   }

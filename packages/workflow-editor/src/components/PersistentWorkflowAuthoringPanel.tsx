@@ -23,6 +23,7 @@ export type {
 interface PersistentWorkflowAuthoringPanelProps {
   runtime: WorkflowRuntimePort
   workflowUuid: string
+  workflowName?: string
   traceRuntime?: WorkflowTracePort
   resourceSlotOptionsPort?: WorkflowResourceSlotOptionsPort
   onUnsavedChangesChange?: (hasUnsavedChanges: boolean) => void
@@ -59,6 +60,7 @@ export function PersistentWorkflowAuthoringPanel(
   return (
     <PersistentWorkflowAuthoringView
       model={model}
+      workflowName={props.workflowName}
       visibleMaterialRoles={props.visibleMaterialRoles}
       onVisibleMaterialRolesChange={props.onVisibleMaterialRolesChange}
       hideEmbeddedCodeEditor={props.hideEmbeddedCodeEditor}

@@ -20,11 +20,13 @@ export const COMPACT_WORKFLOW_CANVAS_WIDTH = 1024
 
 export function PersistentWorkflowAuthoringView({
   model,
+  workflowName,
   visibleMaterialRoles,
   onVisibleMaterialRolesChange,
   hideEmbeddedCodeEditor = false
 }: {
   model: PersistentWorkflowAuthoringModel
+  workflowName?: string
   visibleMaterialRoles?: readonly string[] | null
   onVisibleMaterialRolesChange?: (
     visibleMaterialRoles: readonly string[] | null
@@ -316,7 +318,7 @@ export function PersistentWorkflowAuthoringView({
         >
           <header className="persistent-authoring__stage-header">
             <div>
-              <strong>完整控制流 DAG</strong>
+              <strong>{workflowName || '完整控制流 DAG'}</strong>
               <span>
                 {structure.nodes.length} 个节点 · {structure.links.length} 条边
               </span>

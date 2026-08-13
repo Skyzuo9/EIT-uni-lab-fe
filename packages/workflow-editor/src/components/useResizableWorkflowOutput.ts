@@ -7,9 +7,11 @@ import {
   type PointerEventHandler
 } from 'react'
 
-const DEFAULT_OUTPUT_HEIGHT = 260
-const MINIMUM_OUTPUT_HEIGHT = 180
+export const MINIMUM_OUTPUT_HEIGHT = 40
+const DEFAULT_OUTPUT_HEIGHT = 120
 const MAXIMUM_OUTPUT_HEIGHT = 720
+const MINIMUM_CANVAS_HEIGHT = 360
+const MAXIMUM_OUTPUT_RATIO = 0.55
 const KEYBOARD_RESIZE_STEP = 24
 
 interface ResizeOrigin {
@@ -68,6 +70,23 @@ export function workflowOutputAvailableHeight(
 }
 
 /**
+ * 计算运行输出的动态上限，避免它把上方流程画布压缩成不可用的窄条。
+ *
+ * @param availableHeight 当前工作流视口的可用高度。
+ * @returns 兼顾画布保留高度与输出占比的最大输出高度。
+ */
+export function maximumWorkflowOutputHeight(availableHeight: number): number {
+  return Math.floor(Math.max(
+    MINIMUM_OUTPUT_HEIGHT,
+    Math.min(
+      MAXIMUM_OUTPUT_HEIGHT,
+      availableHeight - MINIMUM_CANVAS_HEIGHT,
+      availableHeight * MAXIMUM_OUTPUT_RATIO
+    )
+  ))
+}
+
+/**
  * 为运行输出提供指针、键盘和双击复位共用的确定性尺寸状态。
  *
  * @returns 可直接绑定到水平分隔条的状态和事件处理器。
@@ -118,14 +137,16 @@ export function useResizableWorkflowOutput(): ResizableWorkflowOutput {
       panel,
       globalThis.innerHeight
     )
-    const nextMaximum = Math.max(
-      MINIMUM_OUTPUT_HEIGHT,
-      Math.min(MAXIMUM_OUTPUT_HEIGHT, availableHeight - 160)
-    )
+    const nextMaximum = maximumWorkflowOutputHeight(availableHeight)
     const currentHeight = panel?.getBoundingClientRect().height ?? height
+    const nextHeight = Math.min(
+      nextMaximum,
+      Math.max(MINIMUM_OUTPUT_HEIGHT, currentHeight)
+    )
     setMaximum(nextMaximum)
+    setHeight(nextHeight)
     resizeOrigin.current = {
-      height: Math.min(nextMaximum, Math.max(MINIMUM_OUTPUT_HEIGHT, currentHeight)),
+      height: nextHeight,
       pointerY: event.clientY
     }
     setResizing(true)

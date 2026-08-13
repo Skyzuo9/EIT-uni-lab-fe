@@ -300,6 +300,16 @@ export class UniLabWorkbenchWidget extends ReactWidget {
     await this.refreshSessionSnapshot()
   }
 
+  protected readonly releaseEnvironmentPorts = async (
+    target: 'os' | 'plc-sim'
+  ): Promise<void> => {
+    try {
+      await this.workbenchSession.releaseEnvironmentPorts(target)
+    } finally {
+      await this.refreshSessionSnapshot()
+    }
+  }
+
   protected readonly startAgent = async (): Promise<void> => {
     try {
       await this.workbenchSession.startAgent()
@@ -528,6 +538,23 @@ export class UniLabWorkbenchWidget extends ReactWidget {
     widget.editor.revealRange({ start, end })
   }
 
+  /** 在 Workbench 主编辑区打开当前会话日志。 */
+  protected readonly openSessionLog = async (logPath: string): Promise<void> => {
+    if (!logPath) throw new Error('当前会话尚未生成日志文件')
+    const uri = URI.fromFilePath(logPath)
+    const existing = this.editorManager.all.find(
+      candidate => candidate.editor.uri.toString() === uri.toString()
+    )
+    if (existing) {
+      await this.shell.activateWidget(existing.id)
+      return
+    }
+    await this.editorManager.open(uri, {
+      mode: 'activate',
+      widgetOptions: { area: 'main', mode: 'split-right', ref: this }
+    })
+  }
+
   protected readonly replaceDiagnostics = (
     diagnostics: readonly WorkflowIdeResolvedDiagnostic[]
   ): void => {
@@ -592,6 +619,7 @@ export class UniLabWorkbenchWidget extends ReactWidget {
               onSelect={this.setConnectionMode}
             />
           )}
+          onOpenLog={this.openSessionLog}
           renderEnvironmentManager={onClose => (
             <EnvironmentManager
               session={this.sessionSnapshot}
@@ -603,6 +631,7 @@ export class UniLabWorkbenchWidget extends ReactWidget {
               onRefreshPlcVariableTables={this.refreshPlcVariableTables}
               onStartPlcSimulator={this.startPlcSimulator}
               onStopPlcSimulator={this.stopPlcSimulator}
+              onReleaseEnvironmentPorts={this.releaseEnvironmentPorts}
               onStartAgent={this.startAgent}
               onStopAgent={this.stopAgent}
               onRestartAgent={this.restartAgent}
@@ -633,6 +662,7 @@ export class UniLabWorkbenchWidget extends ReactWidget {
         onRefreshPlcVariableTables={this.refreshPlcVariableTables}
         onStartPlcSimulator={this.startPlcSimulator}
         onStopPlcSimulator={this.stopPlcSimulator}
+        onReleaseEnvironmentPorts={this.releaseEnvironmentPorts}
         onStartAgent={this.startAgent}
         onStopAgent={this.stopAgent}
         onRestartAgent={this.restartAgent}
@@ -670,6 +700,7 @@ function WorkbenchSurface({
   onRefreshPlcVariableTables,
   onStartPlcSimulator,
   onStopPlcSimulator,
+  onReleaseEnvironmentPorts,
   onStartAgent,
   onStopAgent,
   onRestartAgent,
@@ -694,6 +725,7 @@ function WorkbenchSurface({
   onRefreshPlcVariableTables: () => Promise<void>
   onStartPlcSimulator: () => Promise<void>
   onStopPlcSimulator: () => Promise<void>
+  onReleaseEnvironmentPorts: (target: 'os' | 'plc-sim') => Promise<void>
   onStartAgent: () => Promise<void>
   onStopAgent: () => Promise<void>
   onRestartAgent: () => Promise<void>
@@ -981,6 +1013,7 @@ function WorkbenchSurface({
             onRefreshPlcVariableTables={onRefreshPlcVariableTables}
             onStartPlcSimulator={onStartPlcSimulator}
             onStopPlcSimulator={onStopPlcSimulator}
+            onReleaseEnvironmentPorts={onReleaseEnvironmentPorts}
             onStartAgent={onStartAgent}
             onStopAgent={onStopAgent}
             onRestartAgent={onRestartAgent}

@@ -54,11 +54,13 @@
     "typescript": "^5.6.3"
   },
   "allowScripts": {
+    "@vscode/windows-ca-certs@0.3.4": true,
     "electron@33.4.11": true,
     "esbuild@0.21.5": true
   },
   "pnpm": {
     "onlyBuiltDependencies": [
+      "@vscode/windows-ca-certs",
       "electron",
       "esbuild",
       "drivelist",

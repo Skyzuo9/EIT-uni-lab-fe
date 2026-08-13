@@ -26,6 +26,7 @@ type WorkbenchSessionRemoteOperations = Pick<
   | 'refreshPlcVariableTables'
   | 'startPlcSimulator'
   | 'stopPlcSimulator'
+  | 'releaseEnvironmentPorts'
   | 'setRuntimeMode'
 >
 

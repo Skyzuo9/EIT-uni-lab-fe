@@ -16,4 +16,13 @@ describe('WorkflowDag viewport authority', () => {
     expect(source).not.toContain('ResizeObserver')
     expect(source).not.toContain('graphSignature')
   })
+
+  it('keeps layout controls and dropdowns inside narrow windows', () => {
+    const styles = readFileSync(
+      new URL('./_workflow-beautify.scss', import.meta.url),
+      'utf8'
+    )
+    expect(styles).toContain('width: min(280px, calc(100vw - 32px))')
+    expect(styles).toContain('flex-wrap: wrap')
+  })
 })

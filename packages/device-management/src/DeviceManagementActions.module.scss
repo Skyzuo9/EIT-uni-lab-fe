@@ -212,6 +212,7 @@
 
 .edge-device__debug-actions {
   display: flex;
+  min-width: 0;
   align-items: center;
   gap: 8px;
   margin-top: 14px;
@@ -242,7 +243,15 @@
 }
 
 .edge-device__debug-actions > span {
-  margin-left: auto;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}
+
+.edge-device__debug-actions.is-error > span,
+.edge-device__debug-actions.is-failed > span {
+  color: var(--unilab-color-danger);
 }
 
 .edge-device__execution {

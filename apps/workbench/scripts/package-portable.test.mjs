@@ -27,6 +27,50 @@ describe('portable Workbench packaging contract', () => {
     }
   })
 
+  it('extracts the Windows Node runtime without PowerShell argument binding', async () => {
+    const packagingScript = await readFile(
+      new URL('./package-portable.mjs', import.meta.url),
+      'utf8'
+    )
+
+    assert.match(packagingScript, /runCommand\('tar\.exe', \[/u)
+    assert.doesNotMatch(packagingScript, /Expand-Archive/u)
+  })
+
+  it('runs the Windows pnpm command through its command interpreter', async () => {
+    const packagingScript = await readFile(
+      new URL('./package-portable.mjs', import.meta.url),
+      'utf8'
+    )
+
+    assert.match(
+      packagingScript,
+      /'pnpm\.cmd' : 'pnpm',[\s\S]*?\{ shell: process\.platform === 'win32' \}/u
+    )
+    assert.match(packagingScript, /shell: options\.shell \?\? false/u)
+  })
+
+  it('resolves the platform esbuild binary from the declared version', async () => {
+    const packagingScript = await readFile(
+      new URL('./package-portable.mjs', import.meta.url),
+      'utf8'
+    )
+
+    assert.match(
+      packagingScript,
+      /const esbuildVersion = workbenchManifest\.devDependencies\?\.esbuild/u
+    )
+    assert.match(
+      packagingScript,
+      /`@esbuild\+\$\{descriptor\.esbuildPackage\}@\$\{esbuildVersion\}`/u
+    )
+    assert.match(
+      packagingScript,
+      /descriptor\.hostPlatform === 'win32' \? \[\] : \['bin'\]/u
+    )
+    assert.doesNotMatch(packagingScript, /esbuildPackage\}@0\.21\.5/u)
+  })
+
   it('does not make portable packaging depend on pnpm metadata already being cached', async () => {
     const packagingScript = await readFile(
       new URL('./package-portable.mjs', import.meta.url),
@@ -40,6 +84,10 @@ describe('portable Workbench packaging contract', () => {
   it('builds every installer from a bounded production Workbench bundle', async () => {
     const packageManifest = JSON.parse(await readFile(
       new URL('../package.json', import.meta.url),
+      'utf8'
+    ))
+    const workspaceManifest = JSON.parse(await readFile(
+      new URL('../../../package.json', import.meta.url),
       'utf8'
     ))
     const builderConfiguration = await readFile(
@@ -73,6 +121,13 @@ describe('portable Workbench packaging contract', () => {
       packageManifest.optionalDependencies['@vscode/windows-ca-certs'],
       '0.3.4'
     )
+    assert.equal(
+      workspaceManifest.allowScripts['@vscode/windows-ca-certs@0.3.4'],
+      true
+    )
+    assert.ok(workspaceManifest.pnpm.onlyBuiltDependencies.includes(
+      '@vscode/windows-ca-certs'
+    ))
     assert.match(
       builderConfiguration,
       /from: plugins[\s\S]*?filter:[\s\S]*?'!\*\*\/\*\.map'/u
@@ -181,6 +236,7 @@ describe('portable Workbench packaging contract', () => {
     )
 
     assert.match(workflow, /runs-on: windows-2022/u)
+    assert.match(workflow, /build\/Release\/crypt32\.node/u)
     assert.match(
       workflow,
       /ref: b09c0c048f6de1e5027deb1733da439598c577cf/u
@@ -193,6 +249,9 @@ describe('portable Workbench packaging contract', () => {
     assert.match(workflow, /pnpm --filter @unilab\/workbench package:win/u)
     assert.match(workflow, /UNILAB_RUNTIME_INSTALLER=/u)
     assert.match(workflow, /UNILAB_AGENT_DISTRIBUTION=/u)
+    assert.match(workflow, /Filter 'aioncore\.exe'/u)
+    assert.match(workflow, /Test-Path \(Join-Path \$_\.Directory\.FullName 'managed-resources'\)/u)
+    assert.match(workflow, /bundled-aioncore\\windows-x64/u)
     assert.match(workflow, /actions\/upload-artifact@v6/u)
   })
 

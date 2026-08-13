@@ -200,10 +200,19 @@ export function supportsD1AS1(
  */
 export function serializeDeviceActionInput(
   action: DeviceAction,
-  draft: DeviceActionArgumentDraft
+  draft: DeviceActionArgumentDraft,
+  template?: WorkflowActionNodeTemplate
 ): Record<string, unknown> {
+  const allowedNames = template
+    ? new Set(Object.keys(template.goal))
+    : null
   return Object.fromEntries(
     Object.entries(action.inputSchema).flatMap(([name, schema]) => {
+      // The live Device catalog may expose routing helpers such as
+      // `unilabos_device_id` that are not part of the frozen Action contract.
+      // DeviceActionRun validation is closed (`additionalProperties: false`),
+      // so only submit fields owned by the selected workflow template.
+      if (allowedNames && !allowedNames.has(name)) return []
       const value = draft[name]
       if (value === '' || value === undefined) {
         if (schema.required) throw new Error(`${fieldLabel(name, schema)} 为必填项`)

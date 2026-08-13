@@ -266,7 +266,7 @@ export function DeviceActionAvailability({
     <>
       <div
         className={deviceClass('edge-device__debug-actions', `is-${state.kind}`)}
-        role={state.kind === 'failed' ? 'alert' : 'status'}
+        role={state.kind === 'failed' || state.kind === 'error' ? 'alert' : 'status'}
       >
         <button
           type="button"

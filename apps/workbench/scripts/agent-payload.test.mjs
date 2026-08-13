@@ -19,6 +19,7 @@ import * as asar from '@electron/asar'
 import {
   EXTERNAL_ONLY_AGENT_CLIS,
   PINNED_AGENT_DISTRIBUTION_VERSION,
+  SHARED_AGENT_NODE_ENV,
   prepareBundledAgentPayload,
   resolveAgentTarget
 } from './agent-payload.mjs'
@@ -216,6 +217,7 @@ describe('bundled Workbench Agent payload', () => {
     )
     try {
       await mkdir(join(nodeRoot, 'bin'), { recursive: true })
+      await mkdir(join(nodeRoot, 'include', 'node'), { recursive: true })
       await mkdir(join(nodeRoot, 'lib', 'node_modules', 'npm', 'bin'), {
         recursive: true
       })
@@ -246,6 +248,7 @@ describe('bundled Workbench Agent payload', () => {
         join(nodeRoot, 'bin', 'node'),
         `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} "$@"\n`
       )
+      await writeFile(join(nodeRoot, 'include', 'node', 'node.h'), 'build-only')
       await chmod(join(nodeRoot, 'bin', 'node'), 0o755)
       await writeFile(
         join(nodeRoot, 'lib', 'node_modules', 'npm', 'bin', 'npm-cli.js'),
@@ -279,8 +282,23 @@ describe('bundled Workbench Agent payload', () => {
       prepareBundledAgentPayload(destination, {
         sourcePath: join(root, 'AionUi.app'),
         platform: 'darwin',
-        architecture: 'arm64'
+        architecture: 'arm64',
+        sharedNodeExecutable: process.execPath,
+        sharedNodeVersion: process.versions.node
       })
+
+      const previousSharedNode = process.env[SHARED_AGENT_NODE_ENV]
+      process.env[SHARED_AGENT_NODE_ENV] = process.execPath
+
+      await assert.rejects(lstat(join(
+        destination,
+        'bundled-aioncore',
+        'darwin-arm64',
+        'managed-resources',
+        'node',
+        'node-v24.11.0-darwin-arm64',
+        'include'
+      )), error => error?.code === 'ENOENT')
 
       for (const launcher of ['npm', 'npx']) {
         const packagedLauncher = join(
@@ -303,6 +321,11 @@ describe('bundled Workbench Agent payload', () => {
           result.error?.message || result.stderr
         )
         assert.equal(result.stdout.trim(), '11.6.1')
+      }
+      if (previousSharedNode === undefined) {
+        delete process.env[SHARED_AGENT_NODE_ENV]
+      } else {
+        process.env[SHARED_AGENT_NODE_ENV] = previousSharedNode
       }
     } finally {
       await rm(root, { recursive: true, force: true })
