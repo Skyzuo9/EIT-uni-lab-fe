@@ -89,6 +89,10 @@ test('keeps the last-valid Workflow and renders Material before Edge starts', as
     expect(invalid.candidate).toBeNull()
     expect(invalid.draft?.diagnostics.map(({ code }) => code))
       .toContain('syntax_error')
+    // AIW-01 verifies that the persistent Backend owns the authoring state.
+    // The Workspace Host event stream that invalidates an already-open view is
+    // introduced in AIW-02, so reload through the same Workbench URL here.
+    await page.reload({ waitUntil: 'domcontentloaded' })
     await expect(workflow.getByText(
       '草稿存在错误，当前仍使用已保存的工作流',
       { exact: true }
@@ -117,9 +121,27 @@ test('keeps the last-valid Workflow and renders Material before Edge starts', as
   expect(restored.draft?.python_source).toBe(originalSource)
   expect(restored.draft?.diagnostics.map(({ code }) => code))
     .toEqual(before.draft.diagnostics.map(({ code }) => code))
+  await page.reload({ waitUntil: 'domcontentloaded' })
   await expect(workflow.getByText('syntax_error', { exact: true }))
     .toHaveCount(0, { timeout: 15_000 })
 
+  await page.locator(
+    '[id="shell-tab-unilab:device-management-navigation"]'
+  ).click()
+  await expect(page.locator('main[data-workbench-view]')).toHaveAttribute(
+    'data-workbench-view',
+    'device'
+  )
+  const instruments = page.getByRole('region', { name: '仪器设备窗口' })
+  await expect(instruments.getByText(/\d+ 台设备/).first()).toBeVisible()
+  await expect(instruments.getByText('动作目录', { exact: true })).toBeVisible()
+  await expect(instruments.getByText('设备目录不可用', { exact: true }))
+    .toHaveCount(0)
+  await capture(page, testInfo, '03-instruments-backend-only')
+
+  await page.locator(
+    '[id="shell-tab-unilab:device-management-navigation"]'
+  ).click()
   await page.locator('[id="shell-tab-unilab:material-navigation"]').click()
   await expect(page.locator('main[data-workbench-view]')).toHaveAttribute(
     'data-workbench-view',
@@ -139,7 +161,7 @@ test('keeps the last-valid Workflow and renders Material before Edge starts', as
     timeout: 45_000
   })
   await expect(page.getByRole('region', { name: '工作流窗口' })).toBeVisible()
-  await capture(page, testInfo, '03-workflow-material-backend-only')
+  await capture(page, testInfo, '04-workflow-material-backend-only')
 
   expect(browserErrors).toEqual([])
 })
