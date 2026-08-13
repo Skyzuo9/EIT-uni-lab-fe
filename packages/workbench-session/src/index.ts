@@ -47,6 +47,7 @@ import {
   readLocalEnvironmentConfiguration,
   writeLocalEnvironmentConfigurationFile
 } from './local-environment-configuration'
+import { projectManagedLocalGraph } from './managed-local-graph'
 import {
   discoverWorkbenchPlcVariableTables,
   type WorkbenchPlcVariableTableCandidate
@@ -1323,12 +1324,16 @@ async function resolveWorkbenchLaunch(
   const graphFingerprint = createHash('sha256')
     .update(graphBytes)
     .digest('hex')
+  const runtimeGraphBytes = projectManagedLocalGraph(
+    graphBytes,
+    options.plcSimulatorOpcUaPort ?? PLC_SIMULATOR_OPC_UA_PORT
+  )
   const validatedGraphPath = join(
     runtimeDirectory,
     'selected-graph.json'
   )
   await mkdir(runtimeDirectory, { recursive: true })
-  await writeFile(validatedGraphPath, graphBytes, {
+  await writeFile(validatedGraphPath, runtimeGraphBytes, {
     flag: 'wx',
     mode: 0o600
   })

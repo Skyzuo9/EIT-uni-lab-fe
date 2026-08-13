@@ -15,6 +15,7 @@ import {
   managedLocalBootstrapScript,
   normalizeAgentRendererArchiveEntry,
   prepareRenderer,
+  resolveManagedAgentDistribution,
   waitForManagedAgentApi
 } from './agent-sidecar'
 
@@ -83,6 +84,39 @@ describe('Workbench Agent renderer cache', () => {
       await rm(root, { recursive: true, force: true })
     }
   })
+})
+
+describe('Workbench Agent distribution discovery', () => {
+  it.each([
+    ['win32', 'x64', 'windows-x64', 'aioncore.exe'],
+    ['darwin', 'arm64', 'darwin-arm64', 'aioncore']
+  ] as const)(
+    'finds a packaged short-path payload on %s/%s',
+    async (platform, architecture, targetDirectory, executable) => {
+      const root = await mkdtemp(join(tmpdir(), 'unilab-agent-discovery-'))
+      try {
+        const corePath = join(root, 'c', targetDirectory, executable)
+        await mkdir(dirname(corePath), { recursive: true })
+        await Promise.all([
+          writeFile(join(root, 'app.asar'), 'fixture'),
+          writeFile(corePath, 'fixture')
+        ])
+
+        expect(resolveManagedAgentDistribution({
+          environment: {},
+          platform,
+          architecture,
+          candidateAppPaths: [root]
+        })).toEqual({
+          appPath: root,
+          asarPath: join(root, 'app.asar'),
+          corePath
+        })
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    }
+  )
 })
 
 describe('Workbench Agent private-state boundary', () => {

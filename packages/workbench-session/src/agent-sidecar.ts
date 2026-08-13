@@ -11,6 +11,7 @@ import {
 } from 'node:http'
 import { createRequire } from 'node:module'
 import net from 'node:net'
+import { homedir } from 'node:os'
 import { dirname, extname, join, resolve, sep } from 'node:path'
 import * as asar from '@electron/asar'
 
@@ -59,6 +60,12 @@ export interface ManagedLocalAgentAuthStatus {
   }
 }
 
+export interface ManagedAgentDistribution {
+  appPath: string
+  asarPath: string
+  corePath: string
+}
+
 const MIME_TYPES = new Map([
   ['.css', 'text/css; charset=utf-8'],
   ['.html', 'text/html; charset=utf-8'],
@@ -85,22 +92,15 @@ export async function startManagedWorkbenchAgent(
   options: ManagedWorkbenchAgentOptions
 ): Promise<ManagedWorkbenchAgent> {
   const environment = options.environment ?? process.env
-  const appPath = options.appPath ?? environment['UNILAB_AIONUI_APP'] ??
-    '/Applications/AionUi.app'
-  const resources = existsSync(join(appPath, 'app.asar'))
-    ? appPath
-    : join(appPath, 'Contents', 'Resources')
-  const architecture = agentCoreTarget(process.platform, process.arch)
-  const corePath = environment['UNILAB_AIONCORE_PATH'] ?? join(
-    resources,
-    'bundled-aioncore',
-    architecture.directory,
-    architecture.executable
+  const distribution = resolveManagedAgentDistribution({
+    environment,
+    appPath: options.appPath
+  })
+  if (!distribution) throw new Error(
+    `UniLab Agent implementation is unavailable for ${process.platform}/${process.arch}; ` +
+    'run the packaged Workbench or set UNILAB_AIONUI_APP'
   )
-  const asarPath = environment['UNILAB_AIONUI_ASAR'] ?? join(resources, 'app.asar')
-  if (!existsSync(corePath) || !existsSync(asarPath)) {
-    throw new Error(`UniLab Agent implementation is unavailable under ${appPath}`)
-  }
+  const { asarPath, corePath } = distribution
   const distributionVersion = readDistributionVersion(asarPath)
   const expectedVersion = environment['UNILAB_AIONUI_VERSION'] ??
     PINNED_AIONUI_VERSION
@@ -208,6 +208,95 @@ export async function startManagedWorkbenchAgent(
     await stopChild(child)
     throw error
   }
+}
+
+/** Resolve an explicit, packaged, or installed Agent payload on this host. */
+export function resolveManagedAgentDistribution(options: {
+  environment?: NodeJS.ProcessEnv
+  appPath?: string
+  platform?: NodeJS.Platform
+  architecture?: string
+  homeDirectory?: string
+  candidateAppPaths?: readonly string[]
+} = {}): ManagedAgentDistribution | null {
+  const environment = options.environment ?? process.env
+  const platform = options.platform ?? process.platform
+  const architecture = agentCoreTarget(
+    platform,
+    options.architecture ?? process.arch
+  )
+  const explicitAppPath = options.appPath ?? environment['UNILAB_AIONUI_APP']
+  const candidates = explicitAppPath
+    ? [explicitAppPath]
+    : options.candidateAppPaths ?? defaultAgentAppPaths(
+        platform,
+        environment,
+        options.homeDirectory ?? homedir()
+      )
+
+  for (const appPath of uniquePaths(candidates)) {
+    const resources = existsSync(join(appPath, 'app.asar'))
+      ? appPath
+      : join(appPath, 'Contents', 'Resources')
+    const asarPath = environment['UNILAB_AIONUI_ASAR'] ??
+      join(resources, 'app.asar')
+    const explicitCorePath = environment['UNILAB_AIONCORE_PATH']
+    const coreCandidates = explicitCorePath
+      ? [explicitCorePath]
+      : [
+          join(resources, 'c', architecture.directory, architecture.executable),
+          join(
+            resources,
+            'bundled-aioncore',
+            architecture.directory,
+            architecture.executable
+          )
+        ]
+    const corePath = coreCandidates.find(candidate => existsSync(candidate))
+    if (corePath && existsSync(asarPath)) {
+      return { appPath, asarPath, corePath }
+    }
+  }
+  return null
+}
+
+function defaultAgentAppPaths(
+  platform: NodeJS.Platform,
+  environment: NodeJS.ProcessEnv,
+  homeDirectory: string
+): string[] {
+  if (platform === 'win32') {
+    const installSuffixes = [
+      join('Uni-Lab', 'UniLab Workbench', 'resources', 'a'),
+      join('UniLab Workbench', 'resources', 'a')
+    ]
+    const programRoots = [
+      environment['ProgramFiles'],
+      environment['ProgramW6432'],
+      environment['ProgramFiles(x86)'],
+      environment['LOCALAPPDATA']
+        ? join(environment['LOCALAPPDATA'], 'Programs')
+        : null,
+      ...'CDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map(drive => `${drive}:\\Program Files`)
+    ].filter((value): value is string => Boolean(value))
+    return programRoots.flatMap(root => (
+      installSuffixes.map(suffix => join(root, suffix))
+    ))
+  }
+  if (platform === 'darwin') return [
+    '/Applications/UniLab Workbench.app/Contents/Resources/a',
+    join(homeDirectory, 'Applications', 'UniLab Workbench.app', 'Contents', 'Resources', 'a'),
+    '/Applications/AionUi.app'
+  ]
+  return [
+    '/opt/UniLab Workbench/resources/a',
+    '/usr/lib/unilab-workbench/resources/a',
+    join(homeDirectory, '.local', 'lib', 'unilab-workbench', 'resources', 'a')
+  ]
+}
+
+function uniquePaths(paths: readonly string[]): string[] {
+  return [...new Set(paths.map(candidate => resolve(candidate)))]
 }
 
 function agentCoreTarget(
