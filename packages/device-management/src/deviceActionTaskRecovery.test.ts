@@ -81,7 +81,9 @@ describe('device Action Task REST rehydrate recovery', () => {
   it('rehydrates a device action after the standard workflow runtime event', async () => {
     const environment = createEnvironment()
     const subscription = createSubscriptionPort()
-    const read = vi.fn(async () => false)
+    const read = vi.fn()
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(true)
     const recovery = startDeviceActionTaskRecovery({
       tasks: [{ taskUuid: 'task-1', actionRef: 'action-1' }],
       environment,
@@ -104,10 +106,12 @@ describe('device Action Task REST rehydrate recovery', () => {
     recovery.dispose()
   })
 
-  it('only enables fallback polling while the runtime event stream is unavailable', async () => {
+  it('keeps a REST watchdog when the runtime event stream drops a terminal event', async () => {
     const environment = createEnvironment()
     const subscription = createSubscriptionPort()
-    const read = vi.fn(async () => false)
+    const read = vi.fn()
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(true)
     const recovery = startDeviceActionTaskRecovery({
       tasks: [{ taskUuid: 'task-1', actionRef: 'action-1' }],
       environment,
@@ -118,18 +122,11 @@ describe('device Action Task REST rehydrate recovery', () => {
     await flushMicrotasks()
     expect(read).toHaveBeenCalledTimes(1)
 
-    await vi.advanceTimersByTimeAsync(5_000)
-    expect(read).toHaveBeenCalledTimes(1)
-
-    subscription.emit.onError(new Error('SSE disconnected'))
     await vi.advanceTimersByTimeAsync(1_000)
     expect(read).toHaveBeenCalledTimes(2)
 
-    subscription.emit.onOpen()
-    await flushMicrotasks()
-    expect(read).toHaveBeenCalledTimes(3)
     await vi.advanceTimersByTimeAsync(5_000)
-    expect(read).toHaveBeenCalledTimes(3)
+    expect(read).toHaveBeenCalledTimes(2)
     recovery.dispose()
   })
 

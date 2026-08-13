@@ -56,7 +56,7 @@ export function shouldRecoverActiveDeviceActionTask(
  *
  * @param options 活动任务、事件订阅、权威 REST 补读与浏览器环境端口。
  * @returns 可幂等释放的协调器句柄。
- * @safety SSE 仅触发失效补读；缺少 SSE 时使用有界 REST 补读，任务终态始终由 REST 投影判定。
+ * @safety SSE 仅触发失效补读；低频 REST watchdog 覆盖通知丢失，任务终态始终由 REST 投影判定。
  */
 export function startDeviceActionTaskRecovery(
   options: DeviceActionTaskRecoveryOptions
@@ -79,7 +79,6 @@ export function startDeviceActionTaskRecovery(
     }])
   )
   let disposed = false
-  let fallbackPollingEnabled = !options.subscribe
 
   const clearTimer = (state: ActiveTaskState): void => {
     if (state.timer !== null) globalThis.clearTimeout(state.timer)
@@ -92,7 +91,6 @@ export function startDeviceActionTaskRecovery(
       state.timer !== null ||
       state.inFlight !== null ||
       !active.has(state.task.taskUuid) ||
-      !fallbackPollingEnabled ||
       !environment.isVisible()
     ) return
     state.timer = globalThis.setTimeout(() => {
@@ -155,12 +153,9 @@ export function startDeviceActionTaskRecovery(
         },
         {
           onOpen: () => {
-            fallbackPollingEnabled = false
-            pausePolling()
             rehydrateAll()
           },
           onError: (error) => {
-            fallbackPollingEnabled = true
             const firstActiveTask = active.values().next().value?.task
             if (firstActiveTask) options.onError?.(firstActiveTask, error)
             for (const state of active.values()) schedule(state)
@@ -168,8 +163,7 @@ export function startDeviceActionTaskRecovery(
         }
       )
     } catch {
-      // 当前 Backend 的事件能力可能关闭；仅此时启用 REST 补读兜底。
-      fallbackPollingEnabled = true
+      // 当前 Backend 的事件能力可能关闭；REST watchdog 仍会继续补读。
     }
   }
 
