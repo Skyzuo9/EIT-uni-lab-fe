@@ -22,6 +22,7 @@ type WorkbenchSessionRemoteOperations = Pick<
   | 'readLogTail'
   | 'readEnvironmentLog'
   | 'configureGraph'
+  | 'setExternalDevicesOnly'
   | 'configurePlcSimulator'
   | 'refreshPlcVariableTables'
   | 'startPlcSimulator'

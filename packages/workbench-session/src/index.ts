@@ -173,6 +173,7 @@ export interface WorkbenchSessionSnapshot {
   phase: WorkbenchSessionPhase
   message: string
   configuredGraphPath: string
+  configuredExternalDevicesOnly: boolean
   configuredRuntimeMode: WorkbenchRuntimeMode
   identity: WorkbenchSessionIdentity | null
   agent: WorkbenchAgentIdentity | null
@@ -185,6 +186,7 @@ export interface ManagedLocalWorkbenchSessionOptions {
   osProjectPath?: string
   environmentPath?: string
   graphPath?: string
+  externalDevicesOnly?: boolean
   backendPort?: number
   hostLinkPort?: number
   readinessTimeoutMs?: number
@@ -223,6 +225,7 @@ export interface WorkbenchSession {
     maxBytes?: number
   ): Promise<string>
   configureGraph(graphPath: string): Promise<WorkbenchSessionSnapshot>
+  setExternalDevicesOnly(enabled: boolean): Promise<WorkbenchSessionSnapshot>
   configurePlcSimulator(
     configuration: string | WorkbenchPlcSimulatorConfiguration
   ): Promise<WorkbenchSessionSnapshot>
@@ -279,6 +282,7 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
   private plcSimulatorStopRequested = false
   private selectedMode: WorkbenchRuntimeMode
   private selectedGraphPath: string
+  private selectedExternalDevicesOnly: boolean
   private selectedPlcVariableTablePath: string
   private selectedPlcHandshakeProfile: WorkbenchPlcHandshakeProfile
 
@@ -286,12 +290,14 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
     this.selectedMode = options.runtimeMode ?? 'normal'
     this.selectedGraphPath = options.graphPath
       ?? join('deployment', 'graphs', 'szlab-local-debug.json')
+    this.selectedExternalDevicesOnly = options.externalDevicesOnly ?? true
     this.selectedPlcVariableTablePath = options.plcVariableTablePath ?? ''
     this.selectedPlcHandshakeProfile = options.plcHandshakeProfile ?? 'szlab'
     this.snapshot = {
       phase: 'idle',
       message: '尚未启动 Uni-Lab OS',
       configuredGraphPath: this.selectedGraphPath,
+      configuredExternalDevicesOnly: this.selectedExternalDevicesOnly,
       configuredRuntimeMode: this.selectedMode,
       identity: null,
       agent: null,
@@ -455,6 +461,25 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
     return await this.refreshPlcVariableTables()
   }
 
+  async setExternalDevicesOnly(
+    enabled: boolean
+  ): Promise<WorkbenchSessionSnapshot> {
+    if (typeof enabled !== 'boolean') {
+      throw new Error('仅加载外部设备包配置必须是布尔值')
+    }
+    if (this.selectedExternalDevicesOnly === enabled) return this.getSnapshot()
+    await this.persistConfiguration({ externalDevicesOnly: enabled })
+    this.selectedExternalDevicesOnly = enabled
+    this.publish({
+      ...this.snapshot,
+      configuredExternalDevicesOnly: enabled,
+      message: this.snapshot.phase === 'ready'
+        ? 'OS 设备目录加载范围已保存，将在下次启动时生效'
+        : 'OS 设备目录加载范围已保存'
+    })
+    return this.getSnapshot()
+  }
+
   async configurePlcSimulator(
     configuration: string | WorkbenchPlcSimulatorConfiguration
   ): Promise<WorkbenchSessionSnapshot> {
@@ -543,6 +568,7 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
 
   private async persistConfiguration(overrides: Partial<{
     graphPath: string
+    externalDevicesOnly: boolean
     plcSimulatorProjectPath: string
     plcVariableTablePath: string
     plcHandshakeProfile: WorkbenchPlcHandshakeProfile
@@ -550,6 +576,8 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
   }> = {}): Promise<void> {
     await writeLocalEnvironmentConfiguration(this.options.workspacePath, {
       graphPath: overrides.graphPath ?? this.selectedGraphPath,
+      externalDevicesOnly: overrides.externalDevicesOnly
+        ?? this.selectedExternalDevicesOnly,
       plcSimulatorProjectPath: overrides.plcSimulatorProjectPath
         ?? this.snapshot.plcSimulator.projectPath,
       plcVariableTablePath: overrides.plcVariableTablePath
@@ -572,6 +600,9 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
     this.selectedGraphPath = this.options.graphPath
       ?? localConfiguration.graphPath
       ?? this.selectedGraphPath
+    this.selectedExternalDevicesOnly = this.options.externalDevicesOnly
+      ?? localConfiguration.externalDevicesOnly
+      ?? this.selectedExternalDevicesOnly
     this.selectedPlcVariableTablePath = this.options.plcVariableTablePath
       ?? localConfiguration.plcVariableTablePath
       ?? this.selectedPlcVariableTablePath
@@ -584,6 +615,7 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
     this.snapshot = {
       ...this.snapshot,
       configuredGraphPath: this.selectedGraphPath,
+      configuredExternalDevicesOnly: this.selectedExternalDevicesOnly,
       configuredRuntimeMode: this.selectedMode,
       plcSimulator: {
         ...this.snapshot.plcSimulator,
@@ -959,7 +991,8 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
       launch = await resolveWorkbenchLaunch(
         {
           ...this.options,
-          graphPath: this.selectedGraphPath
+          graphPath: this.selectedGraphPath,
+          externalDevicesOnly: this.selectedExternalDevicesOnly
         },
         this.selectedMode
       )
@@ -1085,9 +1118,14 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
   private publish(
     snapshot: Omit<
       WorkbenchSessionSnapshot,
-      'configuredGraphPath' | 'configuredRuntimeMode' | 'plcSimulator' | 'agent'
+      | 'configuredGraphPath'
+      | 'configuredExternalDevicesOnly'
+      | 'configuredRuntimeMode'
+      | 'plcSimulator'
+      | 'agent'
     > & {
       configuredGraphPath?: string
+      configuredExternalDevicesOnly?: boolean
       configuredRuntimeMode?: WorkbenchRuntimeMode
       plcSimulator?: WorkbenchPlcSimulatorSnapshot
       agent?: WorkbenchAgentIdentity | null
@@ -1105,6 +1143,9 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
       } : null,
       configuredGraphPath:
         snapshot.configuredGraphPath ?? this.snapshot.configuredGraphPath,
+      configuredExternalDevicesOnly:
+        snapshot.configuredExternalDevicesOnly
+        ?? this.snapshot.configuredExternalDevicesOnly,
       configuredRuntimeMode:
         snapshot.configuredRuntimeMode ?? this.snapshot.configuredRuntimeMode,
       plcSimulator: snapshot.plcSimulator ?? this.snapshot.plcSimulator
@@ -1320,7 +1361,9 @@ async function resolveWorkbenchLaunch(
       '--disable_browser',
       '--action_mode',
       mode === 'normal' ? 'real' : 'simulate',
-      '--external_devices_only',
+      ...(options.externalDevicesOnly === false
+        ? []
+        : ['--external_devices_only']),
       '--ros_discovery_server',
       'off'
     ],
@@ -1530,14 +1573,22 @@ async function stopProcessTree(child: ChildProcessWithoutNullStreams): Promise<v
     })
     return
   }
+  // Subscribe before signalling: a short-lived child can emit ``close``
+  // synchronously enough that attaching afterward misses it and forces every
+  // graceful stop through the forced-termination timeout.
+  const closed = new Promise<void>(resolveStop => {
+    child.once('close', () => resolveStop())
+  })
   try {
     process.kill(-child.pid, 'SIGTERM')
   } catch {
     child.kill('SIGTERM')
   }
   await Promise.race([
-    new Promise<void>(resolveStop => child.once('close', () => resolveStop())),
-    delay(5_000)
+    closed,
+    // Uvicorn/Node keep-alive sockets may outlive the managed launch request;
+    // bound graceful teardown so cancel/retry stays responsive.
+    delay(2_000)
   ])
   if (child.exitCode === null) {
     try {
@@ -1744,6 +1795,7 @@ async function writeLocalEnvironmentConfiguration(
   workspacePath: string,
   configuration: {
     graphPath: string
+    externalDevicesOnly: boolean
     plcSimulatorProjectPath: string
     plcVariableTablePath: string
     plcHandshakeProfile: WorkbenchPlcHandshakeProfile
