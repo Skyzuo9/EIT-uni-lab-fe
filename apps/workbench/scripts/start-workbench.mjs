@@ -83,6 +83,14 @@ const activatedEnvironment = {
     workspace,
     process.env.PYTHONPATH
   ].filter(Boolean).join(path.delimiter),
+  UNILAB_WORKBENCH_SKILLS: process.env.UNILAB_WORKBENCH_SKILLS ??
+    path.join(
+      workspaceRoot,
+      'apps',
+      'workbench',
+      'resources',
+      'workspace-skills'
+    ),
   UNILAB_AGENT_ICON: process.env.UNILAB_AGENT_ICON ??
     path.join(desktopRoot, 'build', 'icon.png')
 }

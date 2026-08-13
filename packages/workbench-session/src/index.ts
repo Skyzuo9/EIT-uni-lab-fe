@@ -252,6 +252,7 @@ interface ResolvedWorkbenchLaunch {
 
 const LOOPBACK_HOST = '127.0.0.1'
 const DEFAULT_READINESS_TIMEOUT_MS = 90_000
+const DEFAULT_OS_READINESS_TIMEOUT_MS = 180_000
 const WINDOWS_READINESS_RETRY_DELAY_MS = 1_500
 const LOCAL_ENVIRONMENT_CONFIG = 'environment.local.json'
 
@@ -1052,7 +1053,7 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
         launch.identity.packageMounts = await waitForWorkbenchReadiness(
           launch.identity.backendUrl,
           child,
-          this.options.readinessTimeoutMs ?? DEFAULT_READINESS_TIMEOUT_MS,
+          this.options.readinessTimeoutMs ?? DEFAULT_OS_READINESS_TIMEOUT_MS,
           startupFailureMonitor.failure
         )
       } finally {
