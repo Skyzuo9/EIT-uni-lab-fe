@@ -237,6 +237,22 @@ export class WorkspaceHostWorkbenchSession implements WorkbenchSession {
     return this.getSnapshot()
   }
 
+  /**
+   * 更新 OS 是否仅加载外部设备包的配置。
+   * @param enabled true 表示仅加载外部设备包，false 表示同时允许内置设备包。
+   * @returns Workspace Host 确认配置后的最新工作台会话快照。
+   * @throws 当 enabled 不是布尔值时抛出配置错误。
+   */
+  async setExternalDevicesOnly(
+    enabled: boolean
+  ): Promise<WorkbenchSessionSnapshot> {
+    if (typeof enabled !== 'boolean') {
+      throw new Error('仅加载外部设备包配置必须是布尔值')
+    }
+    await this.updateConfiguration({ externalDevicesOnly: enabled })
+    return this.getSnapshot()
+  }
+
   async configurePlcSimulator(
     configuration: string | WorkbenchPlcSimulatorConfiguration
   ): Promise<WorkbenchSessionSnapshot> {
@@ -525,6 +541,10 @@ export class WorkspaceHostWorkbenchSession implements WorkbenchSession {
     return payload.content
   }
 
+  /**
+   * 从本地环境文件读取可持久化配置，并按显式启动选项优先的规则投影到会话快照。
+   * @returns 配置读取及快照发布完成后结束，不返回业务数据。
+   */
   private async loadConfiguration(): Promise<void> {
     const configuration = await readLocalEnvironmentConfiguration(join(
       this.options.workspacePath,
@@ -534,6 +554,9 @@ export class WorkspaceHostWorkbenchSession implements WorkbenchSession {
     const graphPath = this.options.graphPath
       ?? configuration.graphPath
       ?? this.snapshot.configuredGraphPath
+    const externalDevicesOnly = this.options.externalDevicesOnly
+      ?? configuration.externalDevicesOnly
+      ?? this.snapshot.configuredExternalDevicesOnly
     const mode = this.options.runtimeMode
       ?? configuration.runtimeMode
       ?? this.snapshot.configuredRuntimeMode
@@ -545,6 +568,7 @@ export class WorkspaceHostWorkbenchSession implements WorkbenchSession {
       ?? this.snapshot.configuredBackendUrl
     this.publish({
       configuredGraphPath: graphPath,
+      configuredExternalDevicesOnly: externalDevicesOnly,
       configuredRuntimeMode: mode,
       configuredDomainMode: domainMode,
       configuredBackendUrl: backendUrl,
@@ -724,6 +748,13 @@ async function hostRequest<T>(
   return payload as T
 }
 
+/**
+ * 将 Workspace Host 的权威运行状态投影成渲染端使用的工作台会话快照。
+ * @param host Workspace Host 发布的当前快照。
+ * @param previous 上一次已发布的会话快照，用于兼容 Host 暂未返回的字段。
+ * @param options 当前工作区的启动选项，用于补充不属于 Host 配置的身份信息。
+ * @returns 可安全发布给工作台界面的完整会话快照。
+ */
 function projectSnapshot(
   host: WorkspaceHostSnapshot,
   previous: WorkbenchSessionSnapshot,
@@ -735,6 +766,10 @@ function projectSnapshot(
   const configuration = host.configuration
   const graphPath = stringValue(configuration['graphPath'])
     ?? previous.configuredGraphPath
+  const externalDevicesOnly =
+    typeof configuration['externalDevicesOnly'] === 'boolean'
+      ? configuration['externalDevicesOnly']
+      : previous.configuredExternalDevicesOnly
   const mode = runtimeMode(configuration['runtimeMode'])
     ?? previous.configuredRuntimeMode
   const domainMode = domainModeValue(configuration['domainMode'])
@@ -766,6 +801,7 @@ function projectSnapshot(
     phase: backendPhase,
     message: componentMessage('Workspace Backend', backend),
     configuredGraphPath: graphPath,
+    configuredExternalDevicesOnly: externalDevicesOnly,
     configuredRuntimeMode: mode,
     configuredDomainMode: domainMode,
     configuredBackendUrl: backendUrl,
@@ -805,6 +841,13 @@ function projectSnapshot(
   }
 }
 
+/**
+ * 构造尚未连接 Workspace Host 时的完整工作台会话快照。
+ * @param options 当前工作区的显式启动选项。
+ * @param graphPath 已解析的默认工作流图路径。
+ * @param mode 已解析的 OS 运行模式。
+ * @returns 具备安全默认值的空闲会话快照。
+ */
 function initialSnapshot(
   options: ManagedLocalWorkbenchSessionOptions,
   graphPath: string,
@@ -815,6 +858,7 @@ function initialSnapshot(
     phase: 'idle',
     message: 'Workspace Host 尚未连接',
     configuredGraphPath: graphPath,
+    configuredExternalDevicesOnly: options.externalDevicesOnly ?? true,
     configuredRuntimeMode: mode,
     configuredDomainMode: options.domainMode ?? 'local',
     configuredBackendUrl: options.backendAuthorityUrl ?? null,
