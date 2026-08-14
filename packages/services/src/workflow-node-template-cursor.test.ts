@@ -56,6 +56,10 @@ function registerWorkflowNodeTemplateCursorTests(): void {
     sendsExplicitMaterialSourceFilter
   )
   it(
+    'scopes the catalog to one resource template when requested',
+    sendsResourceTemplateFilter
+  )
+  it(
     'merges default and PublishedWorkflow catalogs by stable UUID identity',
     mergesDefaultAndPublishedWorkflowCatalogs
   )
@@ -279,6 +283,25 @@ async function sendsExplicitMaterialSourceFilter(): Promise<void> {
 
   const catalog = await loadWorkflowNodeTemplateCatalog(http, {
     nodeType: 'material_source'
+  })
+
+  expect(catalog.items).toHaveLength(1)
+  expect(requests).toEqual([path])
+}
+
+/**
+ * 验证设备单点动作只读取当前业务设备模板的动作，避免浏览器扇出全局详情请求。
+ */
+async function sendsResourceTemplateFilter(): Promise<void> {
+  const requests: string[] = []
+  const path = '/api/v1/workflow-node-templates?limit=100'
+    + `&resource_template_uuid=${resourceTemplateUuid}`
+  const http = fixtureHttp({
+    [path]: page([summary(firstUuid, 'mix')], false, null)
+  }, requests)
+
+  const catalog = await loadWorkflowNodeTemplateCatalog(http, {
+    resourceTemplateUuid
   })
 
   expect(catalog.items).toHaveLength(1)

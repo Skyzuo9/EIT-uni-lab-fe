@@ -17,6 +17,8 @@ const TASK_UUID = '10000000-0000-4000-8000-000000000001'
 const JOB_UUID = '10000000-0000-4000-8000-000000000002'
 const TEMPLATE_UUID = '10000000-0000-4000-8000-000000000003'
 const RESOURCE_UUID = '10000000-0000-4000-8000-000000000004'
+const OTHER_TEMPLATE_UUID = '10000000-0000-4000-8000-000000000007'
+const OTHER_RESOURCE_UUID = '10000000-0000-4000-8000-000000000008'
 const MATERIAL_UUID = '10000000-0000-4000-8000-000000000006'
 const FINGERPRINT = `sha256:${'a'.repeat(64)}`
 
@@ -78,6 +80,10 @@ describe('DeviceCardActionController', () => {
         action_name: 'test_hold'
       }
     })
+    expect(workflow.getWorkflowActionCatalog).toHaveBeenCalledWith(
+      undefined,
+      { resourceTemplateUuid: RESOURCE_UUID }
+    )
 
     await expect(result).resolves.toMatchObject({
       status: 'DONE',
@@ -130,6 +136,7 @@ function device(): DeviceCatalogItem {
   return {
     deviceId: 'D1ADevice1',
     materialUuid: MATERIAL_UUID,
+    resourceTemplateUuid: RESOURCE_UUID,
     deviceTypeId: 'd1a.simulator',
     deviceKey: '/devices/D1ADevice1',
     namespace: '/devices',
@@ -169,18 +176,32 @@ function catalog() {
     authorityId: 'os-local',
     authorityKind: 'local' as const,
     fingerprint: FINGERPRINT,
-    actionTemplates: [{
-      uuid: TEMPLATE_UUID,
-      resourceTemplateUuid: RESOURCE_UUID,
-      name: 'test_hold',
-      displayName: '单节点运行',
-      actionClass: null,
-      actionType: 'UniLabJsonCommand',
-      schema: { 'x-unilabos-action-contract': { version: 1 } },
-      goal: {},
-      goalDefault: {},
-      handles: []
-    }],
+    actionTemplates: [
+      {
+        uuid: TEMPLATE_UUID,
+        resourceTemplateUuid: RESOURCE_UUID,
+        name: 'test_hold',
+        displayName: '单节点运行',
+        actionClass: null,
+        actionType: 'UniLabJsonCommand',
+        schema: { 'x-unilabos-action-contract': { version: 1 } },
+        goal: {},
+        goalDefault: {},
+        handles: []
+      },
+      {
+        uuid: OTHER_TEMPLATE_UUID,
+        resourceTemplateUuid: OTHER_RESOURCE_UUID,
+        name: 'test_hold',
+        displayName: '另一个设备模板的同名动作',
+        actionClass: null,
+        actionType: 'UniLabJsonCommand',
+        schema: { 'x-unilabos-action-contract': { version: 1 } },
+        goal: {},
+        goalDefault: {},
+        handles: []
+      }
+    ],
     workflowTemplates: []
   }
 }

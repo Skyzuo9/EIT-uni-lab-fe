@@ -19,6 +19,7 @@ describe('Backend 设备目录 adapter', () => {
     ).resolves.toEqual([{
       deviceId: 'material-pump',
       materialUuid: 'material-pump',
+      resourceTemplateUuid: 'template-pump',
       deviceTypeId: 'template-pump',
       deviceKey: 'pump-01',
       namespace: 'edge-01',
@@ -51,6 +52,7 @@ describe('Backend 设备目录 adapter', () => {
     ).resolves.toMatchObject([{
       id: 'material-pump',
       materialUuid: 'material-pump',
+      resourceTemplateUuid: 'template-pump',
       online: false,
       actions: [{
         actionName: 'dispense',

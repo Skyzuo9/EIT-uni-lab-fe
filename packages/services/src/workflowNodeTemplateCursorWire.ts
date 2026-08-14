@@ -35,13 +35,17 @@ export type CatalogPagination =
 export function workflowNodeTemplateNumberedListPath(
   nodeType: string | undefined,
   page: number,
-  pageSize: number
+  pageSize: number,
+  resourceTemplateUuid?: string
 ): string {
   const query = new URLSearchParams({
     page: String(page),
     page_size: String(pageSize)
   })
   if (nodeType !== undefined) query.set('node_type', nodeType.trim())
+  if (resourceTemplateUuid !== undefined) {
+    query.set('resource_template_uuid', resourceTemplateUuid)
+  }
   return `/api/v1/workflow-node-templates?${query.toString()}`
 }
 

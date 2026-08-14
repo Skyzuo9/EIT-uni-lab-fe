@@ -39,6 +39,7 @@ export interface DeviceActionTarget {
 export interface OnlineDevice {
   id: string
   materialUuid: string
+  resourceTemplateUuid: string
   deviceKey: string
   namespace: string
   machineName: string
@@ -107,6 +108,7 @@ export interface DeviceCatalogAction {
 export interface DeviceCatalogItem {
   deviceId: string
   materialUuid: string
+  resourceTemplateUuid: string
   deviceTypeId: string
   deviceKey: string
   namespace: string
@@ -172,6 +174,7 @@ export function createLaboratoryService(
         .map((device) => ({
           id: device.id,
           materialUuid: device.materialUuid,
+          resourceTemplateUuid: device.resourceTemplateUuid,
           deviceKey: device.deviceKey,
           namespace: device.namespace,
           machineName: device.name,

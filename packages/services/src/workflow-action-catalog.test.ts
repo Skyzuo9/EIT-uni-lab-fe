@@ -66,6 +66,10 @@ function registerActionCatalogTests(): void {
     verifiesAbortSignalForwarding
   )
   it(
+    'forwards a device resource-template scope to both catalog lists',
+    verifiesResourceTemplateScopeForwarding
+  )
+  it(
     'loads one authority-scoped snapshot without splitting action strings',
     verifiesActionSnapshot
   )
@@ -164,6 +168,36 @@ async function verifiesAbortSignalForwarding(): Promise<void> {
 
   expect(observedSignals.length).toBeGreaterThan(1)
   expect(new Set(observedSignals)).toEqual(new Set([controller.signal]))
+}
+
+/**
+ * 证明设备单点动作目录只读取一个业务设备模板，同时仍保持发布工作流列表的显式类型筛选。
+ */
+async function verifiesResourceTemplateScopeForwarding(): Promise<void> {
+  const responses = catalogResponses()
+  const scopedDefaultPath = `${defaultCatalogPath}`
+    + `&resource_template_uuid=${resourceTemplateUuid}`
+  const scopedWorkflowPath = `${workflowCatalogPath}`
+    + `&resource_template_uuid=${resourceTemplateUuid}`
+  responses[scopedDefaultPath] = responses[defaultCatalogPath]
+  responses[scopedWorkflowPath] = responses[workflowCatalogPath]
+  delete responses[defaultCatalogPath]
+  delete responses[workflowCatalogPath]
+  const requests: string[] = []
+  const runtime = createWorkflowRuntime(
+    fixtureHttp(responses, requests),
+    getDefaultBackend('local-python')
+  )
+
+  const catalog = await runtime.getWorkflowActionCatalog(undefined, {
+    resourceTemplateUuid
+  })
+
+  expect(catalog.actionTemplates).toHaveLength(1)
+  expect(requests.slice(0, 2)).toEqual([
+    scopedDefaultPath,
+    scopedWorkflowPath
+  ])
 }
 
 /**

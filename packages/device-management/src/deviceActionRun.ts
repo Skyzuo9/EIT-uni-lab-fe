@@ -9,9 +9,11 @@ export type DeviceActionArgumentDraft = Record<string, string | boolean>
 
 export function matchDeviceActionTemplate(
   catalog: WorkflowActionCatalogSnapshot,
+  device: { resourceTemplateUuid: string },
   action: DeviceAction
 ): WorkflowActionNodeTemplate | null {
   const matches = catalog.actionTemplates.filter((template) =>
+    template.resourceTemplateUuid === device.resourceTemplateUuid &&
     template.name === action.actionName &&
     template.actionType === action.typeName
   )

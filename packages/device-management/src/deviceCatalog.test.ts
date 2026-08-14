@@ -18,6 +18,7 @@ describe('Edge device catalog', () => {
     expect(presentEdgeDevices([{
       id: 'host_node',
       materialUuid: '10000000-0000-4000-8000-000000000001',
+      resourceTemplateUuid: '20000000-0000-4000-8000-000000000001',
       deviceKey: '/devices/host_node/host_node',
       namespace: '/devices/host_node',
       machineName: 'Local',
@@ -31,6 +32,7 @@ describe('Edge device catalog', () => {
       {
         id: 'robot',
         materialUuid: '10000000-0000-4000-8000-000000000002',
+        resourceTemplateUuid: '20000000-0000-4000-8000-000000000002',
         deviceKey: '/cell/robot',
         namespace: '/cell',
         machineName: 'Edge A',
@@ -40,6 +42,7 @@ describe('Edge device catalog', () => {
       {
         id: 'pump',
         materialUuid: '10000000-0000-4000-8000-000000000003',
+        resourceTemplateUuid: '20000000-0000-4000-8000-000000000003',
         deviceKey: '/cell/pump',
         namespace: '/cell',
         machineName: 'Edge A',

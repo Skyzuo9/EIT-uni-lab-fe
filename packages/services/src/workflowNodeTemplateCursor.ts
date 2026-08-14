@@ -68,6 +68,7 @@ export interface WorkflowNodeTemplateCatalog {
 /** 节点模板目录的显式查询条件。 */
 export interface WorkflowNodeTemplateCatalogQuery {
   nodeType?: string
+  resourceTemplateUuid?: string
   signal?: AbortSignal
 }
 
@@ -109,9 +110,14 @@ export async function loadWorkflowNodeTemplateCatalog(
       ? workflowNodeTemplateNumberedListPath(
         query.nodeType,
         numberedState.page,
-        numberedState.pageSize ?? PAGE_LIMIT
+        numberedState.pageSize ?? PAGE_LIMIT,
+        query.resourceTemplateUuid
       )
-      : workflowNodeTemplateListPath(query.nodeType, cursorUuid)
+      : workflowNodeTemplateListPath(
+        query.nodeType,
+        cursorUuid,
+        query.resourceTemplateUuid
+      )
     const data = catalogEnvelope(await http.request<unknown>(path, {
       signal: query.signal
     }))
@@ -340,7 +346,8 @@ export function parseWorkflowNodeTemplateDetail(
  */
 function workflowNodeTemplateListPath(
   nodeType: string | undefined,
-  cursorUuid: string | null
+  cursorUuid: string | null,
+  resourceTemplateUuid: string | undefined
 ): string {
   const query = new URLSearchParams({ limit: String(PAGE_LIMIT) })
   if (cursorUuid) query.set('cursor_uuid', cursorUuid)
@@ -350,6 +357,9 @@ function workflowNodeTemplateListPath(
       '节点模板（WorkflowNodeTemplate）node_type 不能为空'
     )
     query.set('node_type', normalizedNodeType)
+  }
+  if (resourceTemplateUuid !== undefined) {
+    query.set('resource_template_uuid', uuidValue(resourceTemplateUuid))
   }
   return `/api/v1/workflow-node-templates?${query.toString()}`
 }

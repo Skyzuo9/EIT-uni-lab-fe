@@ -15,13 +15,27 @@ describe('device Action D1A preparation', () => {
   it('joins live Action to exactly one stable A1 identity', () => {
     const template = actionTemplate()
     const catalog = actionCatalog([template])
+    const device = { resourceTemplateUuid: RESOURCE_UUID }
 
-    expect(matchDeviceActionTemplate(catalog, liveAction())).toBe(template)
+    expect(matchDeviceActionTemplate(catalog, device, liveAction())).toBe(template)
     expect(matchDeviceActionTemplate(
-      actionCatalog([template, { ...template, uuid: UUID_2 }]),
+      actionCatalog([
+        template,
+        {
+          ...template,
+          uuid: UUID_3,
+          resourceTemplateUuid: OTHER_RESOURCE_UUID
+        }
+      ]),
+      device,
+      liveAction()
+    )).toBe(template)
+    expect(matchDeviceActionTemplate(
+      actionCatalog([template, { ...template, uuid: UUID_3 }]),
+      device,
       liveAction()
     )).toBeNull()
-    expect(matchDeviceActionTemplate(catalog, {
+    expect(matchDeviceActionTemplate(catalog, device, {
       ...liveAction(),
       typeName: 'other.Action'
     })).toBeNull()
@@ -125,6 +139,8 @@ describe('device Action D1A preparation', () => {
 const UUID_1 = '10000000-0000-4000-8000-000000000001'
 const UUID_2 = '10000000-0000-4000-8000-000000000002'
 const RESOURCE_UUID = '10000000-0000-4000-8000-000000000003'
+const UUID_3 = '10000000-0000-4000-8000-000000000004'
+const OTHER_RESOURCE_UUID = '10000000-0000-4000-8000-000000000005'
 
 function liveAction(): DeviceAction {
   return {

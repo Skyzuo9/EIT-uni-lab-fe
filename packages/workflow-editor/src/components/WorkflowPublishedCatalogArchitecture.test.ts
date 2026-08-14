@@ -137,6 +137,17 @@ describe('Published Workflow Catalog in the Authoring module', () => {
     )
   })
 
+  it('defers the full action catalog until the canvas editing surface needs it', () => {
+    const authoring = readFileSync(authoringHookPath, 'utf8')
+    const catalogs = readFileSync(catalogHookPath, 'utf8')
+
+    expect(authoring).toContain(
+      "loadActionCatalog: nodePaletteOpen || mode === 'canvas'"
+    )
+    expect(catalogs).toContain('loadActionCatalog: boolean')
+    expect(catalogs).toContain('if (!loadActionCatalog)')
+  })
+
   it('clears an obsolete transport error after authority is installed', () => {
     const source = readFileSync(authoringHookPath, 'utf8')
     const installStart = source.indexOf('const installAggregate = useCallback')

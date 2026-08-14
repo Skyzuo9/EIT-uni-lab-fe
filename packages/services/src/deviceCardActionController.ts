@@ -121,8 +121,12 @@ export class DeviceCardActionController {
       const action = device.actions.find(
         (candidate) => candidate.actionName === request.action
       )!
-      const catalog = await this.ports.workflow.getWorkflowActionCatalog()
+      const catalog = await this.ports.workflow.getWorkflowActionCatalog(
+        undefined,
+        { resourceTemplateUuid: device.resourceTemplateUuid }
+      )
       const matches = catalog.actionTemplates.filter((template) =>
+        template.resourceTemplateUuid === device.resourceTemplateUuid &&
         template.name === action.actionName &&
         template.actionType === action.typeName
       )
@@ -199,6 +203,9 @@ function assertRunnableDeviceAction(
   if (!device.online) throw new Error(`设备已离线：${request.deviceId}`)
   if (!device.materialUuid) {
     throw new Error('当前设备缺少运行标识，请刷新设备列表后重试。')
+  }
+  if (!device.resourceTemplateUuid) {
+    throw new Error('当前设备缺少模板标识，请刷新设备列表后重试。')
   }
   if (!device.actions.some((action) => action.actionName === request.action)) {
     throw new Error(`设备未声明 Action：${request.action}`)
