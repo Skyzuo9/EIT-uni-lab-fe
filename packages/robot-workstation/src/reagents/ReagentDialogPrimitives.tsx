@@ -70,15 +70,17 @@ export function ReagentDialogFrame({
 export function ReagentDialogActions({
   onClose,
   submitLabel,
-  disabled
+  disabled,
+  cancelDisabled = false
 }: {
   onClose: () => void
   submitLabel: string
   disabled: boolean
+  cancelDisabled?: boolean
 }): React.JSX.Element {
   return (
     <div className={uiClass.dialogActions}>
-      <Button variant="outline" disabled={disabled} onClick={onClose}>取消</Button>
+      <Button variant="outline" disabled={cancelDisabled} onClick={onClose}>取消</Button>
       <Button type="submit" disabled={disabled}>{submitLabel}</Button>
     </div>
   )

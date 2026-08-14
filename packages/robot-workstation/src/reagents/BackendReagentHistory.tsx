@@ -60,21 +60,21 @@ export function BackendReagentHistory({
       <div className={uiClass.panelHeader}>
         <div>
           <h2>{item.name} · 操作记录</h2>
-          <small>来自 Backend 物料台账；数量变化、操作通道和任务身份均保持原始权威字段。</small>
+          <small>记录数量变化、操作来源及关联任务，便于追溯库存流转。</small>
         </div>
         <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="关闭操作记录">
           <WorkstationIcon name="close" />
         </Button>
       </div>
       {state.phase === 'loading' ? (
-        <div className={styles.historyState} role="status">正在读取 Backend 试剂历史…</div>
+        <div className={styles.historyState} role="status">正在读取库存变更记录…</div>
       ) : state.phase === 'error' ? (
         <div className={styles.historyState} role="alert">
           <span>{state.message}</span>
           <Button variant="outline" size="sm" onClick={() => setRevision(value => value + 1)}>重新读取</Button>
         </div>
       ) : state.entries.length === 0 ? (
-        <div className={styles.historyState} role="status">当前容器没有试剂台账记录。</div>
+        <div className={styles.historyState} role="status">当前容器没有库存变更记录。</div>
       ) : (
         <div className={styles.reagentRecords}>
           {state.entries.map(entry => (

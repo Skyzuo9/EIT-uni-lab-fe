@@ -8,11 +8,10 @@ const PHYSICAL_STATE_OPTIONS: readonly {
   value: ReagentPhysicalState
   label: string
 }[] = [
-  { value: 'unknown', label: '未知' },
+  { value: 'unknown', label: '未确定' },
   { value: 'liquid', label: '液体' },
   { value: 'solid', label: '固体' },
-  { value: 'gas', label: '气体' },
-  { value: 'other', label: '其他' }
+  { value: 'gas', label: '气体' }
 ]
 
 /** 使用工作台视觉与完整键盘语义选择试剂常温物态。 */
@@ -26,13 +25,27 @@ export function PhysicalStateSelect({
   const listboxId = useId()
   const rootRef = useRef<HTMLDivElement>(null)
   const [open, setOpen] = useState(false)
-  const [value, setValue] = useState(defaultValue)
+  const initialValue = PHYSICAL_STATE_OPTIONS.some(option => option.value === defaultValue)
+    ? defaultValue
+    : 'unknown'
+  const [value, setValue] = useState<ReagentPhysicalState>(initialValue)
+  const [placement, setPlacement] = useState<'top' | 'bottom'>('bottom')
   const [highlightedIndex, setHighlightedIndex] = useState(() =>
-    Math.max(0, PHYSICAL_STATE_OPTIONS.findIndex(option => option.value === defaultValue))
+    Math.max(0, PHYSICAL_STATE_OPTIONS.findIndex(option => option.value === initialValue))
   )
   const selected = PHYSICAL_STATE_OPTIONS.find(option => option.value === value) ?? PHYSICAL_STATE_OPTIONS[0]
 
   function openMenu(): void {
+    const triggerRect = rootRef.current?.getBoundingClientRect()
+    const dialogRect = rootRef.current?.closest('[role="dialog"]')?.getBoundingClientRect()
+    if (triggerRect) {
+      const visibleTop = Math.max(0, dialogRect?.top ?? 0)
+      const visibleBottom = Math.min(globalThis.innerHeight, dialogRect?.bottom ?? globalThis.innerHeight)
+      const menuHeight = PHYSICAL_STATE_OPTIONS.length * 40 + 14
+      const spaceAbove = triggerRect.top - visibleTop
+      const spaceBelow = visibleBottom - triggerRect.bottom
+      setPlacement(spaceBelow < menuHeight && spaceAbove > spaceBelow ? 'top' : 'bottom')
+    }
     setHighlightedIndex(Math.max(0, PHYSICAL_STATE_OPTIONS.findIndex(option => option.value === value)))
     setOpen(true)
   }
@@ -96,7 +109,7 @@ export function PhysicalStateSelect({
         </span>
         <span aria-hidden="true" className={styles.reagentContainerSelectArrow} />
       </Button>
-      <div className={styles.physicalStateSelectPopup} hidden={!open}>
+      <div className={styles.physicalStateSelectPopup} data-placement={placement} hidden={!open}>
         <div id={listboxId} role="listbox" aria-label="常温物态">
           {PHYSICAL_STATE_OPTIONS.map((option, index) => (
             <button

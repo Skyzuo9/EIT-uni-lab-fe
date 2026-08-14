@@ -109,13 +109,13 @@ describe('RobotWorkstation', () => {
       />
     )
 
-    expect(markup).toContain('登记试剂')
+    expect(markup).toContain('登记库存')
     expect(markup).toContain('编辑 乙醇')
     expect(markup).toContain('查看 乙醇 历史')
     expect(markup).not.toContain('试剂身份、数量、修订与历史由 Go Backend 持久化')
   })
 
-  /** 证明真实试剂管理恢复附件中的台账/试剂库分层，并展示权威基础化学信息。 */
+  /** 证明真实试剂管理清晰区分库存试剂与试剂身份，并展示权威基础化学信息。 */
   it('renders separate ledger and authoritative reagent library views', () => {
     const markup = renderToStaticMarkup(
       <RobotWorkstation
@@ -136,15 +136,13 @@ describe('RobotWorkstation', () => {
       />
     )
 
-    expect(markup).toContain('试剂台账')
-    expect(markup).toContain('试剂库')
-    expect(markup).toContain('库存实例')
-    expect(markup).toContain('试剂基础信息')
+    expect(markup).toContain('库存试剂')
+    expect(markup).toContain('试剂身份')
     expect(markup).toContain('64-17-5')
     expect(markup).toContain('C2H6O')
     expect(markup).toContain('46.07 g/mol')
     expect(markup).toContain('阴凉通风')
-    expect(markup).not.toContain('新增试剂基础信息')
+    expect(markup).not.toContain('新建试剂身份')
   })
 
   it('uses registration as the empty-ledger action when the reagent library has entries', () => {
@@ -169,7 +167,7 @@ describe('RobotWorkstation', () => {
       />
     )
 
-    expect(markup).toMatch(/data-testid="reagent-empty-primary"[^>]*>登记试剂<\/button>/)
+    expect(markup).toMatch(/data-testid="reagent-empty-primary"[^>]*>登记库存<\/button>/)
     expect(markup).not.toContain('>重新读取</button>')
   })
 
@@ -190,7 +188,7 @@ describe('RobotWorkstation', () => {
       />
     )
 
-    expect(markup).toMatch(/data-testid="reagent-empty-primary"[^>]*>新增试剂<\/button>/)
+    expect(markup).toMatch(/data-testid="reagent-empty-primary"[^>]*>新建试剂身份<\/button>/)
     expect(markup).not.toContain('>重新读取</button>')
   })
 })

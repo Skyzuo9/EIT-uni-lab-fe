@@ -27,6 +27,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@unilab/design-system": "workspace:*"
+    "@unilab/design-system": "workspace:*",
+    "smiles-drawer": "2.4.1"
   }
 }

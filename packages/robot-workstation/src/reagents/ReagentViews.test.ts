@@ -64,8 +64,8 @@ describe('ReagentViews filters', () => {
     })).toEqual(['纯度: AR', '储存要求: 阴凉通风'])
   })
 
-  /** 证明全部身份都只有内部元数据时，列表不保留空的自定义参数列。 */
-  it('omits the custom parameter column until user parameters exist', () => {
+  /** 证明自定义参数只在有值的行内出现，不增加整张表的横向负担。 */
+  it('renders custom parameters inline only when they exist', () => {
     const base = {
       id: 'info-1', name: '乙醇', aliases: [], physicalState: 'liquid' as const
     }
@@ -79,6 +79,27 @@ describe('ReagentViews filters', () => {
     }))
 
     expect(internalOnly).not.toContain('<th>自定义参数</th>')
-    expect(withUserParameters).toContain('<th>自定义参数</th>')
+    expect(internalOnly).not.toContain('储存要求: 阴凉通风')
+    expect(withUserParameters).not.toContain('<th>自定义参数</th>')
+    expect(withUserParameters).toContain('储存要求: 阴凉通风')
+  })
+
+  /** 证明身份列表把 SMILES 投影为本地二维结构入口，不再只展示原始字符串。 */
+  it('renders a local 2D structure preview when SMILES exists', () => {
+    const markup = renderToStaticMarkup(createElement(ReagentLibraryView, {
+      infos: [{
+        id: 'info-1', name: '乙醇', aliases: [], physicalState: 'liquid', smiles: 'CCO'
+      }],
+      query: ''
+    }))
+
+    expect(markup).toContain('<th>2D 结构</th>')
+    expect(markup).toContain('<th>物性</th>')
+    expect(markup).not.toContain('个试剂身份')
+    expect(markup).not.toContain('<h2')
+    expect(markup).not.toContain('<th>分子量</th>')
+    expect(markup).not.toContain('<th>常温形态</th>')
+    expect(markup).toContain('data-smiles="CCO"')
+    expect(markup).not.toContain('<th>SMILES</th>')
   })
 })
