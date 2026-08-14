@@ -5,9 +5,18 @@ import type {
 import { describe, expect, it, vi } from 'vitest'
 
 import type { WorkbenchSessionClient } from '../common/workbench-session-protocol'
-import { WorkbenchSessionService } from './workbench-session-service'
+import {
+  supportsWorkspaceHostCheckout,
+  WorkbenchSessionService
+} from './workbench-session-service'
 
 describe('WorkbenchSessionService', () => {
+  it('falls back when an explicit OS checkout has no Workspace Host module', () => {
+    expect(supportsWorkspaceHostCheckout('/os', () => false)).toBe(false)
+    expect(supportsWorkspaceHostCheckout('/os', () => true)).toBe(true)
+    expect(supportsWorkspaceHostCheckout(undefined, () => false)).toBe(true)
+  })
+
   it('starts Workspace Backend and Agent when the Theia backend opens', async () => {
     const startAgent = vi.fn().mockResolvedValue(snapshot('idle', null))
     const startWorkspaceBackend = vi.fn().mockResolvedValue(

@@ -96,7 +96,7 @@ import {
 import { useRobotWorkstationData } from './robot-workstation-data'
 import { WorkbenchDomainLayout } from './workbench-domain-layout'
 import { WorkbenchMaterialViewport } from './workbench-material-viewport'
-import { workflowExecutionStatusForEdge } from './workbench-execution-readiness'
+import { workflowExecutionStatusForConnection } from './workbench-execution-readiness'
 import { WorkbenchSessionGate } from './workbench-session-gate'
 import {
   WorkbenchViewState,
@@ -972,6 +972,8 @@ function WorkbenchSurface({
     ].filter((value): value is string => Boolean(value))
   }, [runtimeProjection, selectedWorkflowNode])
 
+  const workflowRunStatus = services.getCapabilityStatus('workflow.runTasks')
+
   const workflowSurface = (
     <section
       className="unilab-workbench__surface unilab-workbench__surface--workflow"
@@ -990,8 +992,12 @@ function WorkbenchSurface({
         definitionEditingMode={connectionMode === 'backend'
           ? 'backend'
           : 'workspace'}
-        runStatus={services.getCapabilityStatus('workflow.runTasks')}
-        executionStatus={workflowExecutionStatusForEdge(session.edgeRuntime)}
+        runStatus={workflowRunStatus}
+        executionStatus={workflowExecutionStatusForConnection(
+          connectionMode,
+          session.edgeRuntime,
+          workflowRunStatus
+        )}
         resourceSlotOptionsPort={resourceSlotOptionsPort}
         active={isWorkflowWorkbenchView(viewMode)}
         workflowUuid={workflowUuid}

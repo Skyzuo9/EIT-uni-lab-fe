@@ -1,7 +1,6 @@
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { createWriteStream } from 'node:fs'
-import { mkdir, readFile, realpath } from 'node:fs/promises'
+import { mkdir, open, readFile, realpath } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 
@@ -234,6 +233,26 @@ export class WorkspaceHostWorkbenchSession implements WorkbenchSession {
     await this.updateConfiguration({ graphPath })
     if (wasBackendReady) await this.run('local.reset-state')
     if (wasEdgeReady) await this.run('os.start')
+    return this.getSnapshot()
+  }
+
+  /**
+   * 更新“仅加载外部设备包”配置并返回最新会话快照。
+   *
+   * @param enabled 是否只加载外部设备包。
+   * @returns Workspace Host 确认配置后的工作台会话快照。
+   * @throws 参数不是布尔值时拒绝更新，避免写入歧义配置。
+   */
+  async setExternalDevicesOnly(
+    enabled: boolean
+  ): Promise<WorkbenchSessionSnapshot> {
+    if (typeof enabled !== 'boolean') {
+      throw new Error('仅加载外部设备包配置必须是布尔值')
+    }
+    if (this.snapshot.configuredExternalDevicesOnly === enabled) {
+      return this.getSnapshot()
+    }
+    await this.updateConfiguration({ externalDevicesOnly: enabled })
     return this.getSnapshot()
   }
 
@@ -631,6 +650,13 @@ async function discoverHost(workspacePath: string): Promise<HostConnection | nul
   }
 }
 
+/**
+ * 使用已解析的工作台配置启动 Workspace Host 子进程。
+ *
+ * @param options 工作区、Python 环境和 Uni-Lab OS checkout 配置。
+ * @returns 子进程成功派生并接管日志文件后完成的 Promise。
+ * @throws 环境缺失、路径无效或子进程无法启动时抛出诊断错误。
+ */
 async function startWorkspaceHost(
   options: ManagedLocalWorkbenchSessionOptions
 ): Promise<void> {
@@ -667,32 +693,35 @@ async function startWorkspaceHost(
     'workspace-host.log'
   )
   await mkdir(dirname(logPath), { recursive: true })
-  const log = createWriteStream(logPath, { flags: 'a' })
-  const child = spawn(
-    pythonExecutable,
-    [
-      '-m',
-      'unilabos.workspace_host.host',
-      '--workspace',
-      workspacePath,
-      '--port',
-      '0'
-    ],
-    {
-      cwd: workspacePath,
-      env: {
-        ...hostEnvironment,
-        PYTHONPATH: pythonPath,
-        PYTHONUNBUFFERED: '1'
-      },
-      detached: platform !== 'win32',
-      shell: false,
-      windowsHide: true,
-      stdio: ['ignore', log, log]
-    }
-  )
-  child.unref()
-  log.end()
+  const log = await open(logPath, 'a')
+  try {
+    const child = spawn(
+      pythonExecutable,
+      [
+        '-m',
+        'unilabos.workspace_host.host',
+        '--workspace',
+        workspacePath,
+        '--port',
+        '0'
+      ],
+      {
+        cwd: workspacePath,
+        env: {
+          ...hostEnvironment,
+          PYTHONPATH: pythonPath,
+          PYTHONUNBUFFERED: '1'
+        },
+        detached: platform !== 'win32',
+        shell: false,
+        windowsHide: true,
+        stdio: ['ignore', log.fd, log.fd]
+      }
+    )
+    child.unref()
+  } finally {
+    await log.close()
+  }
 }
 
 async function hostRequest<T>(
@@ -724,6 +753,14 @@ async function hostRequest<T>(
   return payload as T
 }
 
+/**
+ * 将 Workspace Host 权威快照投影为前端统一会话快照。
+ *
+ * @param host Workspace Host 返回的组件与配置事实。
+ * @param previous 上一次前端快照，用于保留 Host 未返回的稳定字段。
+ * @param options 当前工作区的启动配置。
+ * @returns 可供 Workbench 渲染和控制的统一会话快照。
+ */
 function projectSnapshot(
   host: WorkspaceHostSnapshot,
   previous: WorkbenchSessionSnapshot,
@@ -735,6 +772,8 @@ function projectSnapshot(
   const configuration = host.configuration
   const graphPath = stringValue(configuration['graphPath'])
     ?? previous.configuredGraphPath
+  const externalDevicesOnly = booleanValue(configuration['externalDevicesOnly'])
+    ?? previous.configuredExternalDevicesOnly
   const mode = runtimeMode(configuration['runtimeMode'])
     ?? previous.configuredRuntimeMode
   const domainMode = domainModeValue(configuration['domainMode'])
@@ -766,6 +805,7 @@ function projectSnapshot(
     phase: backendPhase,
     message: componentMessage('Workspace Backend', backend),
     configuredGraphPath: graphPath,
+    configuredExternalDevicesOnly: externalDevicesOnly,
     configuredRuntimeMode: mode,
     configuredDomainMode: domainMode,
     configuredBackendUrl: backendUrl,
@@ -805,6 +845,14 @@ function projectSnapshot(
   }
 }
 
+/**
+ * 构造 Workspace Host 连接前的失败关闭初始快照。
+ *
+ * @param options 当前工作区的启动配置。
+ * @param graphPath 已选择的工作流图路径。
+ * @param mode 本地动作运行模式。
+ * @returns 尚未连接任何运行组件的会话快照。
+ */
 function initialSnapshot(
   options: ManagedLocalWorkbenchSessionOptions,
   graphPath: string,
@@ -815,6 +863,7 @@ function initialSnapshot(
     phase: 'idle',
     message: 'Workspace Host 尚未连接',
     configuredGraphPath: graphPath,
+    configuredExternalDevicesOnly: options.externalDevicesOnly ?? true,
     configuredRuntimeMode: mode,
     configuredDomainMode: options.domainMode ?? 'local',
     configuredBackendUrl: options.backendAuthorityUrl ?? null,
@@ -899,6 +948,16 @@ function handshakeProfile(value: unknown): WorkbenchPlcHandshakeProfile {
 
 function stringValue(value: unknown): string | null {
   return typeof value === 'string' && value ? value : null
+}
+
+/**
+ * 严格读取布尔配置值，不接受字符串等隐式转换。
+ *
+ * @param value Workspace Host 配置中的未知值。
+ * @returns 布尔值；类型不匹配时返回 null。
+ */
+function booleanValue(value: unknown): boolean | null {
+  return typeof value === 'boolean' ? value : null
 }
 
 function startingAgentIdentity(workspacePath: string): WorkbenchAgentIdentity {

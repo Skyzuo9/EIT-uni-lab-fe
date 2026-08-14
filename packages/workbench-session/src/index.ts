@@ -234,6 +234,7 @@ export interface ManagedLocalWorkbenchSessionOptions {
   environmentPath?: string
   graphPath?: string
   externalDevicesOnly?: boolean
+  supportsProcessRoles?: boolean
   backendPort?: number
   hostLinkPort?: number
   readinessTimeoutMs?: number
@@ -1656,6 +1657,14 @@ function agentDataDirectory(workspacePath: string): string {
   return join(workspacePath, '.unilabos', 'agent', 'aionui')
 }
 
+/**
+ * 解析并验证本地 Workspace Backend 的完整启动计划。
+ *
+ * @param options 工作区、Python 环境、OS checkout 与兼容能力配置。
+ * @param mode 本地动作运行模式。
+ * @returns 已冻结命令、参数、环境和运行身份的启动计划。
+ * @throws 路径、端口、环境或工作流图不满足启动条件时抛出诊断错误。
+ */
 async function resolveWorkbenchLaunch(
   options: ManagedLocalWorkbenchSessionOptions,
   mode: WorkbenchRuntimeMode
@@ -1806,8 +1815,9 @@ async function resolveWorkbenchLaunch(
       localConfigPath,
       '--working_dir',
       runtimeDirectory,
-      '--process_role',
-      'workspace_backend',
+      ...(options.supportsProcessRoles === false
+        ? []
+        : ['--process_role', 'workspace_backend']),
       '--backend',
       'ros',
       '--app_bridges',

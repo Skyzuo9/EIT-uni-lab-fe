@@ -1,8 +1,23 @@
 import { describe, expect, it } from 'vitest'
 
-import { workflowExecutionStatusForEdge } from './workbench-execution-readiness'
+import {
+  workflowExecutionStatusForConnection,
+  workflowExecutionStatusForEdge
+} from './workbench-execution-readiness'
 
 describe('Workbench workflow execution readiness', () => {
+  it('后端控制使用 Backend 运行能力而不是本地 Edge 状态', () => {
+    expect(workflowExecutionStatusForConnection(
+      'backend',
+      {
+        phase: 'idle',
+        message: 'Edge Runtime 尚未启动',
+        diagnostic: null
+      },
+      { available: true }
+    )).toEqual({ available: true })
+  })
+
   it('只在 Edge Runtime 就绪后开放工作流运行', () => {
     expect(workflowExecutionStatusForEdge({
       phase: 'ready',

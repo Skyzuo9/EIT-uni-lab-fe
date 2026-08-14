@@ -114,6 +114,7 @@ describe('Workspace Host Workbench adapter', () => {
     expect(receivedCommands).toEqual(['renderer.attach', 'backend.start'])
     expect(backend).toMatchObject({
       phase: 'ready',
+      configuredExternalDevicesOnly: true,
       identity: {
         workspacePath,
         pid: 4101,
@@ -122,6 +123,11 @@ describe('Workspace Host Workbench adapter', () => {
     })
     expect(await session.readEnvironmentLog('workspace-backend'))
       .toBe('backend fixture log')
+
+    const allDevices = await session.setExternalDevicesOnly(false)
+    expect(receivedCommands.at(-1)).toBe('configuration.update')
+    expect(allDevices.configuredExternalDevicesOnly).toBe(false)
+    expect(snapshot.configuration.externalDevicesOnly).toBe(false)
 
     await expect(session.inspectReleaseTarget('http://192.168.1.20:9000'))
       .resolves.toEqual({
@@ -301,6 +307,7 @@ function hostSnapshot(workspacePath: string) {
     },
     configuration: {
       graphPath: 'deployment/graphs/fixture.json',
+      externalDevicesOnly: true,
       runtimeMode: 'normal',
       domainMode: 'local',
       backendUrl: null as string | null
@@ -363,6 +370,8 @@ function applyCommand(
     })
   } else if (command === 'renderer.detach') {
     snapshot.components.renderer = component('renderer')
+  } else if (command === 'configuration.update') {
+    Object.assign(snapshot.configuration, parameters)
   } else if (command === 'authority.switch') {
     snapshot.configuration.domainMode = String(parameters['mode'])
     snapshot.configuration.backendUrl = parameters['backendUrl'] == null

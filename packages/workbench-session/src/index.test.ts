@@ -886,6 +886,30 @@ describe('managed local Workbench session', () => {
     )).resolves.toContain('"externalDevicesOnly": false')
   })
 
+  it('omits split-process CLI arguments for an older OS checkout', async () => {
+    const fixture = await createFixture()
+    const argumentLogPath = join(fixture.workspacePath, 'legacy-unilab-args.json')
+    const session = createManagedLocalWorkbenchSession({
+      workspacePath: fixture.workspacePath,
+      osProjectPath: fixture.osProjectPath,
+      environmentPath: fixture.environmentPath,
+      supportsProcessRoles: false,
+      readinessTimeoutMs: 5_000,
+      environment: {
+        ...process.env,
+        UNILAB_FIXTURE_ARGUMENT_LOG: argumentLogPath
+      }
+    })
+    sessions.push(session)
+
+    await expect(session.startWorkspaceBackend()).resolves.toMatchObject({
+      phase: 'ready'
+    })
+    expect(JSON.parse(await readFile(argumentLogPath, 'utf8'))).not.toContain(
+      '--process_role'
+    )
+  })
+
   it('cancels PLC-Sim while its launch plan is still validating', async () => {
     const fixture = await createFixture()
     const session = createManagedLocalWorkbenchSession({
