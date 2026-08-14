@@ -139,6 +139,9 @@
 }
 
 .formDialog {
+  --unilab-color-control: var(--unilab-color-device);
+  --unilab-color-control-hover: #0b625c;
+
   padding-bottom: 14px;
 }
 

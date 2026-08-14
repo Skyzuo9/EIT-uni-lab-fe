@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Button, Input, NativeSelect, Textarea } from '@unilab/design-system'
 
 import type {
   ReagentInfoCreateCommand,
@@ -6,7 +7,7 @@ import type {
   ReagentInfoUpdateCommand,
   ReagentPhysicalState
 } from '../types'
-import { buttonClass, uiClass } from '../uiClasses'
+import { uiClass } from '../uiClasses'
 import styles from '../workstation.module.scss'
 import {
   ReagentDialogActions,
@@ -80,55 +81,55 @@ export function ReagentInfoEditorDialog(props: EditorProps): React.JSX.Element {
         <div className={styles.dialogFields}>
           <label>
             <span>试剂名称</span>
-            <input name="name" defaultValue={initial?.name ?? ''} maxLength={255} required data-dialog-initial-focus />
+            <Input name="name" defaultValue={initial?.name ?? ''} maxLength={255} required data-dialog-initial-focus />
           </label>
           <label>
             <span>英文名称（可选）</span>
-            <input name="nameEn" defaultValue={initial?.nameEn ?? ''} maxLength={255} />
+            <Input name="nameEn" defaultValue={initial?.nameEn ?? ''} maxLength={255} />
           </label>
           <label>
             <span>CAS 号（可选）</span>
-            <input name="cas" defaultValue={initial?.cas ?? ''} placeholder="例如 64-17-5" maxLength={64} />
+            <Input name="cas" defaultValue={initial?.cas ?? ''} placeholder="例如 64-17-5" maxLength={64} />
             <small>没有登记号的自配物质可以留空；填写后按 CAS 校验位验证。</small>
           </label>
           <label>
             <span>常温物态</span>
-            <select name="physicalState" defaultValue={initial?.physicalState ?? 'unknown'}>
+            <NativeSelect name="physicalState" defaultValue={initial?.physicalState ?? 'unknown'}>
               <option value="unknown">未知</option>
               <option value="liquid">液体</option>
               <option value="solid">固体</option>
               <option value="gas">气体</option>
               <option value="other">其他</option>
-            </select>
+            </NativeSelect>
             <small>用于展示试剂在常温条件下的默认形态。</small>
           </label>
           <label>
             <span>分子式（可选）</span>
-            <input name="molecularFormula" defaultValue={initial?.molecularFormula ?? ''} />
+            <Input name="molecularFormula" defaultValue={initial?.molecularFormula ?? ''} />
           </label>
           <label>
             <span>分子量（g/mol，可选）</span>
-            <input name="molecularWeight" type="number" min="0" step="any" inputMode="decimal" defaultValue={initial?.molecularWeight ?? ''} />
+            <Input name="molecularWeight" type="number" min="0" step="any" inputMode="decimal" defaultValue={initial?.molecularWeight ?? ''} />
           </label>
           <label>
             <span>参考密度（g/mL，可选）</span>
-            <input name="densityGPerMl" type="number" min="0" step="any" inputMode="decimal" defaultValue={initial?.densityGPerMl ?? ''} />
+            <Input name="densityGPerMl" type="number" min="0" step="any" inputMode="decimal" defaultValue={initial?.densityGPerMl ?? ''} />
           </label>
           <label>
             <span>别名（可选）</span>
-            <input name="aliases" defaultValue={initial?.aliases.join('，') ?? ''} placeholder="用逗号分隔多个别名" />
+            <Input name="aliases" defaultValue={initial?.aliases.join('，') ?? ''} placeholder="用逗号分隔多个别名" />
           </label>
           <label className={styles.dialogFieldWide}>
             <span>SMILES（可选）</span>
-            <input name="smiles" className={uiClass.mono} defaultValue={initial?.smiles ?? ''} />
+            <Input name="smiles" className={uiClass.mono} defaultValue={initial?.smiles ?? ''} />
           </label>
           <label className={styles.dialogFieldWide}>
             <span>InChIKey（可选）</span>
-            <input name="inchiKey" className={uiClass.mono} defaultValue={initial?.inchiKey ?? ''} maxLength={64} />
+            <Input name="inchiKey" className={uiClass.mono} defaultValue={initial?.inchiKey ?? ''} maxLength={64} />
           </label>
           <label className={styles.dialogFieldWide}>
             <span>说明（可选）</span>
-            <textarea name="description" rows={3} maxLength={1000} defaultValue={initial?.description ?? ''} />
+            <Textarea name="description" rows={3} maxLength={1000} defaultValue={initial?.description ?? ''} />
           </label>
         </div>
         {error ? <p className={styles.dialogError} role="alert">{error}</p> : null}
@@ -186,7 +187,7 @@ export function ReagentInfoDeleteDialog({
       <div className={styles.deleteConfirmation}>
         <label>
           <span>输入“删除”确认</span>
-          <input
+          <Input
             data-dialog-initial-focus
             value={confirmation}
             onChange={event => setConfirmation(event.target.value)}
@@ -196,15 +197,15 @@ export function ReagentInfoDeleteDialog({
         {error ? <p className={styles.dialogError} role="alert">{error}</p> : null}
       </div>
       <div className={uiClass.dialogActions}>
-        <button className={buttonClass()} type="button" disabled={submitting} onClick={onClose}>取消</button>
-        <button
-          className={buttonClass('danger')}
+        <Button variant="outline" disabled={submitting} onClick={onClose}>取消</Button>
+        <Button
+          variant="destructive"
           type="button"
           disabled={submitting || confirmation !== '删除'}
           onClick={() => void handleDelete()}
         >
           {submitting ? '正在删除…' : '确认删除身份'}
-        </button>
+        </Button>
       </div>
     </ReagentDialogFrame>
   )

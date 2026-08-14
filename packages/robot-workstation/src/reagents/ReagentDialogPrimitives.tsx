@@ -1,7 +1,14 @@
-import { useId } from 'react'
+import {
+  Button,
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle
+} from '@unilab/design-system'
 
-import { buttonClass, uiClass } from '../uiClasses'
-import { useAccessibleDialog } from '../useAccessibleDialog'
+import { uiClass } from '../uiClasses'
 import { WorkstationIcon } from '../WorkstationIcon'
 import styles from '../workstation.module.scss'
 
@@ -25,35 +32,33 @@ export function ReagentDialogFrame({
   children: React.ReactNode
   onClose: () => void
 }): React.JSX.Element {
-  const titleId = useId()
-  const descriptionId = useId()
-  const dialogRef = useAccessibleDialog(() => {
-    if (!busy) onClose()
-  })
+  /** 只在没有写请求进行时接受 Radix 发出的关闭状态。 */
+  function handleOpenChange(open: boolean): void {
+    if (!open && !busy) onClose()
+  }
+
   return (
-    <div className={uiClass.dialogBackdrop} role="presentation">
-      <section
-        ref={dialogRef}
+    <Dialog open onOpenChange={handleOpenChange}>
+      <DialogContent
         className={`${styles.formDialog} ${wide ? styles.formDialogWide : ''}`}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        aria-describedby={descriptionId}
         aria-busy={busy}
-        tabIndex={-1}
+        showCloseButton={false}
+        portalled={false}
       >
         <div className={uiClass.panelHeader}>
-          <div>
-            <h2 id={titleId}>{title}</h2>
-            <small id={descriptionId}>{description}</small>
-          </div>
-          <button className={buttonClass('secondary', 'icon')} type="button" disabled={busy} onClick={onClose} aria-label="关闭">
-            <WorkstationIcon name="close" />
-          </button>
+          <DialogHeader>
+            <DialogTitle>{title}</DialogTitle>
+            <DialogDescription>{description}</DialogDescription>
+          </DialogHeader>
+          <DialogClose asChild>
+            <Button variant="ghost" size="icon-sm" disabled={busy} aria-label="关闭">
+              <WorkstationIcon name="close" />
+            </Button>
+          </DialogClose>
         </div>
         {children}
-      </section>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -73,8 +78,8 @@ export function ReagentDialogActions({
 }): React.JSX.Element {
   return (
     <div className={uiClass.dialogActions}>
-      <button className={buttonClass()} type="button" disabled={disabled} onClick={onClose}>取消</button>
-      <button className={buttonClass('primary')} type="submit" disabled={disabled}>{submitLabel}</button>
+      <Button variant="outline" disabled={disabled} onClick={onClose}>取消</Button>
+      <Button type="submit" disabled={disabled}>{submitLabel}</Button>
     </div>
   )
 }

@@ -1,5 +1,7 @@
+import { Button } from '@unilab/design-system'
+
 import type { ReagentInfoProjection, ReagentInventoryProjection } from '../types'
-import { buttonClass, pillBaseClass, uiClass } from '../uiClasses'
+import { pillBaseClass, uiClass } from '../uiClasses'
 import { WorkstationIcon, type WorkstationIconName } from '../WorkstationIcon'
 import styles from '../workstation.module.scss'
 
@@ -267,16 +269,16 @@ function RowAction({
   onClick: () => void
 }): React.JSX.Element {
   return (
-    <button
-      className={buttonClass('secondary', 'icon')}
-      type="button"
+    <Button
+      variant="ghost"
+      size="icon-sm"
       disabled={disabled}
       onClick={onClick}
       aria-label={label}
       title={disabled ? `${label}（权威字段缺失）` : label}
     >
       <WorkstationIcon name={icon} />
-    </button>
+    </Button>
   )
 }
 

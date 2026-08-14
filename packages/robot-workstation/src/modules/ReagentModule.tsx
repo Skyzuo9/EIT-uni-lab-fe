@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { Button, Input } from '@unilab/design-system'
 
 import { DataAuthorityNotice, ModuleHeader, WorkstationDataState } from '../ModuleHeader'
 import { BackendReagentDeleteDialog, BackendReagentEditorDialog } from '../reagents/BackendReagentDialogs'
@@ -16,7 +17,7 @@ import type {
   ReagentUpdateCommand,
   WorkstationDataStatus
 } from '../types'
-import { buttonClass, uiClass } from '../uiClasses'
+import { uiClass } from '../uiClasses'
 import { WorkstationIcon } from '../WorkstationIcon'
 import styles from '../workstation.module.scss'
 
@@ -121,9 +122,8 @@ export function ReagentModule({
         actions={(
           <>
             {view === 'ledger' && management ? (
-              <button
-                className={buttonClass('primary', 'compact')}
-                type="button"
+              <Button
+                size="sm"
                 disabled={!createReady}
                 title={createReady ? '登记试剂' : management.containerStatus.message}
                 onClick={() => setDialog({ kind: 'create' })}
@@ -131,12 +131,11 @@ export function ReagentModule({
               >
                 <WorkstationIcon name="plus" />
                 登记试剂
-              </button>
+              </Button>
             ) : null}
             {view === 'library' && infoManagement ? (
-              <button
-                className={buttonClass('primary', 'compact')}
-                type="button"
+              <Button
+                size="sm"
                 disabled={!infoCreateReady}
                 title={infoCreateReady ? '新增试剂基础信息' : infoStatus.message}
                 onClick={() => setDialog({ kind: 'info-create' })}
@@ -144,10 +143,10 @@ export function ReagentModule({
               >
                 <WorkstationIcon name="plus" />
                 新增基础信息
-              </button>
+              </Button>
             ) : null}
             {retry ? (
-              <button className={buttonClass('secondary', 'compact')} type="button" onClick={retry}>刷新数据</button>
+              <Button variant="outline" size="sm" onClick={retry}>刷新数据</Button>
             ) : null}
           </>
         )}
@@ -155,25 +154,27 @@ export function ReagentModule({
 
       <div className={styles.reagentViewToolbar}>
         <nav className={styles.reagentNavigation} aria-label="试剂管理功能" role="tablist">
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="sm"
             role="tab"
             aria-selected={view === 'ledger'}
             aria-controls="reagent-ledger-panel"
             onClick={() => setView('ledger')}
-          >试剂台账</button>
-          <button
-            type="button"
+          >试剂台账</Button>
+          <Button
+            variant="ghost"
+            size="sm"
             role="tab"
             aria-selected={view === 'library'}
             aria-controls="reagent-library-panel"
             onClick={() => setView('library')}
-          >试剂库</button>
+          >试剂库</Button>
         </nav>
         <label className={styles.searchField}>
           <WorkstationIcon name="search" />
           <span className={uiClass.screenReaderOnly}>{view === 'ledger' ? '搜索试剂台账' : '搜索试剂库'}</span>
-          <input
+          <Input
             value={query}
             onChange={event => setQuery(event.target.value)}
             placeholder={view === 'ledger' ? '搜索名称、CAS、批次、库位或任务' : '搜索名称、别名、CAS 或分子式'}

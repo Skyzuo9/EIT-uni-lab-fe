@@ -1,4 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { Button, Input, NativeSelect, Textarea } from '@unilab/design-system'
 
 import type {
   CustomParameter,
@@ -8,7 +9,7 @@ import type {
   ReagentInventoryProjection,
   ReagentUpdateCommand
 } from '../types'
-import { buttonClass, uiClass } from '../uiClasses'
+import { uiClass } from '../uiClasses'
 import styles from '../workstation.module.scss'
 import {
   ReagentDialogActions,
@@ -126,7 +127,7 @@ export function BackendReagentEditorDialog(props: EditorProps): React.JSX.Elemen
               </div>
               <label>
                 <span>选择试剂</span>
-                <select
+                <NativeSelect
                   value={selectedInfoId}
                   required
                   onChange={event => setSelectedInfoId(event.target.value)}
@@ -137,13 +138,13 @@ export function BackendReagentEditorDialog(props: EditorProps): React.JSX.Elemen
                       {info.name}{info.cas ? ` · ${info.cas}` : ''}
                     </option>
                   ))}
-                </select>
+                </NativeSelect>
                 <input type="hidden" name="cas" value={selectedInfo?.cas ?? ''} />
                 <input type="hidden" name="physicalState" value={selectedInfo?.physicalState ?? 'unknown'} />
               </label>
               <label>
                 <span>实际密度（g/mL）</span>
-                <input
+                <Input
                   key={selectedInfoId}
                   name="densityGPerMl"
                   type="number"
@@ -155,11 +156,11 @@ export function BackendReagentEditorDialog(props: EditorProps): React.JSX.Elemen
               </label>
               <label>
                 <span>密度测定条件</span>
-                <input name="densityCondition" defaultValue="20℃" maxLength={64} />
+                <Input name="densityCondition" defaultValue="20℃" maxLength={64} />
               </label>
               <label>
                 <span>供应商</span>
-                <input name="supplier" maxLength={255} />
+                <Input name="supplier" maxLength={255} />
               </label>
             </>
           ) : (
@@ -171,7 +172,7 @@ export function BackendReagentEditorDialog(props: EditorProps): React.JSX.Elemen
           )}
           <label>
             <span>{props.mode === 'create' ? '初始数量' : '当前数量'}</span>
-            <input
+            <Input
               name="quantity"
               type="number"
               min="0"
@@ -184,7 +185,7 @@ export function BackendReagentEditorDialog(props: EditorProps): React.JSX.Elemen
           </label>
           <label>
             <span>单位</span>
-            <input
+            <Input
               name="quantityUnit"
               defaultValue={initial?.unit ?? 'mL'}
               readOnly={props.mode === 'edit'}
@@ -196,13 +197,13 @@ export function BackendReagentEditorDialog(props: EditorProps): React.JSX.Elemen
           {props.mode === 'create' ? (
             <label>
               <span>有效期</span>
-              <input name="expiresOn" type="date" defaultValue={defaultReagentExpiryDate()} />
+              <Input name="expiresOn" type="date" defaultValue={defaultReagentExpiryDate()} />
             </label>
           ) : null}
           {props.mode === 'create' ? null : (
           <label>
             <span>浓度数值（可选）</span>
-            <input
+            <Input
               name="concentrationValue"
               type="number"
               min="0"
@@ -215,7 +216,7 @@ export function BackendReagentEditorDialog(props: EditorProps): React.JSX.Elemen
           {props.mode === 'create' ? null : (
           <label>
             <span>浓度单位</span>
-            <input
+            <Input
               name="concentrationUnit"
               maxLength={32}
               placeholder="例如 %、mol/L"
@@ -226,7 +227,7 @@ export function BackendReagentEditorDialog(props: EditorProps): React.JSX.Elemen
           {props.mode === 'create' ? null : (
           <label className={styles.dialogFieldWide}>
             <span>说明（可选）</span>
-            <textarea name="description" rows={3} maxLength={1000} defaultValue={initial?.description ?? ''} />
+            <Textarea name="description" rows={3} maxLength={1000} defaultValue={initial?.description ?? ''} />
           </label>
           )}
         </div>
@@ -290,8 +291,9 @@ function ContainerSearchSelect({
       }}
     >
       <input type="hidden" name="materialId" value={selectedId} />
-      <button
+      <Button
         type="button"
+        variant="outline"
         className={styles.reagentContainerSelectControl}
         data-dialog-initial-focus
         aria-haspopup="listbox"
@@ -312,12 +314,12 @@ function ContainerSearchSelect({
           {selected ? reagentContainerLabel(selected) : '请选择空容器物料'}
         </span>
         <span aria-hidden="true" className={styles.reagentContainerSelectArrow} />
-      </button>
+      </Button>
       <div
         className={styles.reagentContainerSelectPopup}
         hidden={!open}
       >
-        <input
+        <Input
           ref={searchRef}
           type="search"
           value={query}
@@ -340,9 +342,11 @@ function ContainerSearchSelect({
         />
         <div id={listboxId} role="listbox" className={styles.reagentContainerSelectMenu}>
           {options.length > 0 ? options.map(container => (
-            <button
+            <Button
               key={container.id}
               type="button"
+              variant="ghost"
+              size="sm"
               role="option"
               aria-selected={container.id === selectedId}
               onClick={() => select(container)}
@@ -352,7 +356,7 @@ function ContainerSearchSelect({
                 <small>{container.barcode || container.id}</small>
               </span>
               {container.id === selectedId ? <b aria-hidden="true">✓</b> : null}
-            </button>
+            </Button>
           )) : (
             <p>没有匹配的空容器物料</p>
           )}
@@ -407,7 +411,7 @@ export function BackendReagentDeleteDialog({
       <div className={styles.deleteConfirmation}>
         <label>
           <span>输入“删除”确认</span>
-          <input
+          <Input
             data-dialog-initial-focus
             value={confirmation}
             onChange={event => setConfirmation(event.target.value)}
@@ -417,15 +421,15 @@ export function BackendReagentDeleteDialog({
         {error ? <p className={styles.dialogError} role="alert">{error}</p> : null}
       </div>
       <div className={uiClass.dialogActions}>
-        <button className={buttonClass()} type="button" disabled={submitting} onClick={onClose}>取消</button>
-        <button
-          className={buttonClass('danger')}
+        <Button variant="outline" disabled={submitting} onClick={onClose}>取消</Button>
+        <Button
+          variant="destructive"
           type="button"
           disabled={submitting || confirmation !== '删除'}
           onClick={() => void handleDelete()}
         >
           {submitting ? '正在删除…' : '确认软删除'}
-        </button>
+        </Button>
       </div>
     </ReagentDialogFrame>
   )

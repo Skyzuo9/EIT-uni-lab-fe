@@ -1,40 +1,8 @@
+import { badgeVariants, buttonVariants } from '@unilab/design-system'
+
 type ButtonTone = 'primary' | 'secondary' | 'danger'
 type ButtonSize = 'default' | 'compact' | 'icon'
 type PillTone = 'info' | 'success' | 'warning' | 'neutral'
-
-const BUTTON_BASE = [
-  'box-border inline-flex min-h-9 items-center justify-center gap-[7px] rounded-[var(--unilab-radius-control)] border px-3',
-  'cursor-pointer font-[var(--unilab-font-sans)] text-[13px] leading-[1.2] font-semibold',
-  'transition-colors duration-[var(--unilab-motion-fast)] motion-reduce:transition-none',
-  '[&>svg]:size-4',
-  'focus-visible:[outline:3px_solid_var(--unilab-color-focus)] focus-visible:outline-offset-2',
-  'disabled:cursor-not-allowed disabled:bg-[var(--unilab-color-bg-muted)] disabled:text-[var(--unilab-color-text-subtle)] disabled:opacity-[0.72]',
-].join(' ')
-
-const BUTTON_TONE: Record<ButtonTone, string> = {
-  primary:
-    'border-[var(--unilab-color-device)] bg-[var(--unilab-color-device)] text-white [&:hover:not(:disabled)]:border-[#0b625c] [&:hover:not(:disabled)]:bg-[#0b625c]',
-  secondary:
-    'border-[var(--unilab-color-border-strong)] bg-[var(--unilab-color-surface)] text-[var(--unilab-color-text)] [&:hover:not(:disabled)]:border-[var(--unilab-color-primary)]',
-  danger:
-    'border-[#fca5a5] bg-[var(--unilab-color-danger-soft)] text-[var(--unilab-color-danger)] [&:hover:not(:disabled)]:border-[var(--unilab-color-primary)]',
-}
-
-const BUTTON_SIZE: Record<ButtonSize, string> = {
-  default: '',
-  compact: 'min-h-[30px] px-[9px]',
-  icon: 'min-h-[30px] w-[30px] border-transparent bg-transparent p-0 text-[var(--unilab-color-text-muted)]',
-}
-
-const PILL_BASE =
-  'inline-flex min-h-[22px] w-fit items-center gap-[5px] whitespace-nowrap rounded-full px-[7px] py-0.5 text-xs leading-[1.2] font-semibold'
-
-const PILL_TONE: Record<PillTone, string> = {
-  info: 'bg-[var(--unilab-color-primary-soft)] text-[var(--unilab-color-primary)]',
-  success: 'bg-[var(--unilab-color-success-soft)] text-[#166534]',
-  warning: 'bg-[var(--unilab-color-warning-soft)] text-[var(--unilab-color-warning)]',
-  neutral: 'bg-[var(--unilab-color-bg-muted)] text-[var(--unilab-color-text-muted)]',
-}
 
 /** 共享的原子样式只保留为静态 Tailwind 类，确保构建期可以完整扫描。 */
 export const uiClass = {
@@ -58,15 +26,27 @@ export const uiClass = {
   tableScroll: 'min-w-0 overflow-auto',
 } as const
 
-/** 返回按钮的稳定 Tailwind 类集合；业务组件只选择语义和尺寸。 */
+/**
+ * 把机械臂工作台的既有按钮语义映射到共享 shadcn/ui 变体。
+ * @param tone 主操作、次操作或危险操作语义。
+ * @param size 常规、紧凑或纯图标尺寸。
+ * @returns 可以用于渐进迁移既有原生按钮的共享组件类名。
+ */
 export function buttonClass(tone: ButtonTone = 'secondary', size: ButtonSize = 'default'): string {
-  return `${BUTTON_BASE} ${BUTTON_TONE[tone]} ${BUTTON_SIZE[size]}`
+  const variant = tone === 'primary' ? 'default' : tone === 'danger' ? 'destructive' : 'outline'
+  const mappedSize = size === 'compact' ? 'sm' : size === 'icon' ? 'icon-sm' : 'default'
+  return buttonVariants({ variant, size: mappedSize })
 }
 
-/** 返回状态标签的稳定 Tailwind 类集合。 */
+/**
+ * 把工作台状态语义映射到共享 shadcn/ui Badge 变体。
+ * @param tone 信息、成功、警告或中性状态。
+ * @returns 可用于现有状态标签的共享组件类名。
+ */
 export function pillClass(tone: PillTone): string {
-  return `${PILL_BASE} ${PILL_TONE[tone]}`
+  const variant = tone === 'info' ? 'default' : tone
+  return badgeVariants({ variant: variant === 'neutral' ? 'secondary' : variant })
 }
 
 /** 给动态状态标签复用结构，不抢占其由模块 SCSS 决定的语义颜色。 */
-export const pillBaseClass = PILL_BASE
+export const pillBaseClass = badgeVariants({ variant: 'secondary' })

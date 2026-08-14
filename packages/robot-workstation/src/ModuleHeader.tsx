@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
+import { Button } from '@unilab/design-system'
 
-import { buttonClass, uiClass } from './uiClasses'
+import { uiClass } from './uiClasses'
 import { WorkstationIcon } from './WorkstationIcon'
 import type { WorkstationDataStatus } from './types'
 
@@ -58,9 +59,9 @@ export function WorkstationDataState({
         <h2 className="m-0 text-base font-semibold">{title}</h2>
         <p className="mx-auto mt-2 max-w-[46ch] text-sm leading-6 text-[var(--unilab-color-text-muted)]">{status.message}</p>
         {status.retry ? (
-          <button className={`${buttonClass()} mt-4`} type="button" onClick={status.retry}>
+          <Button variant="outline" className="mt-4" onClick={status.retry}>
             重新读取
-          </button>
+          </Button>
         ) : null}
       </div>
     </section>

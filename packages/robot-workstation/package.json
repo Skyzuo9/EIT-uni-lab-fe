@@ -25,5 +25,8 @@
   },
   "exports": {
     ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@unilab/design-system": "workspace:*"
   }
 }
