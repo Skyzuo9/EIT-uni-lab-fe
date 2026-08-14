@@ -1,5 +1,6 @@
 import type {
   ReagentInfoCreateCommand,
+  ReagentInfoLookupResult,
   ReagentInfoManagement,
   ReagentInfoUpdateCommand
 } from '@unilab/robot-workstation'
@@ -16,6 +17,14 @@ export function useReagentInfoManagement(
   services: Services,
   refresh: () => void
 ): ReagentInfoManagement | undefined {
+  /** 读取 Backend 的 PubChem 候选值；输入变化时允许对话框取消旧请求。 */
+  const lookupByCAS = useCallback(async (
+    cas: string,
+    signal?: AbortSignal
+  ): Promise<ReagentInfoLookupResult> => {
+    return await services.inventory.lookupCompoundByCAS(cas, signal)
+  }, [services.inventory])
+
   /** 手工登记独立化学品身份，并标记 Workbench 写入来源。 */
   const create = useCallback(async (
     command: ReagentInfoCreateCommand
@@ -53,6 +62,6 @@ export function useReagentInfoManagement(
     if (requiredCapabilities.some(capability =>
       !services.getCapabilityStatus(capability).available
     )) return undefined
-    return { create, update, delete: remove }
-  }, [create, remove, services, update])
+    return { lookupByCAS, create, update, delete: remove }
+  }, [create, lookupByCAS, remove, services, update])
 }

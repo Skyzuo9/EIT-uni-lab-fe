@@ -114,6 +114,43 @@ describe('inventory read port', () => {
     }])
   })
 
+  /** 证明 CAS 预填只读取 Backend 的 PubChem 候选值，并保留隐藏 InChIKey。 */
+  it('looks up PubChem candidates through the Backend CAS endpoint', async () => {
+    const request = vi.fn(async (path: string) => {
+      expect(path).toBe('/api/v1/compounds/64-17-5')
+      return {
+        code: 0,
+        data: {
+          cas: '64-17-5',
+          status: 'ok',
+          compound: {
+            name: 'Ethanol',
+            molecular_formula: 'C2H6O',
+            smiles: 'CCO',
+            inchi_key: 'LFQSCWFLJHTTHZ-UHFFFAOYSA-N',
+            molecular_weight: 46.07
+          }
+        }
+      }
+    })
+    const port = createInventoryReadPort(
+      { request } as HttpClient,
+      getDefaultBackend('local-go')
+    )
+
+    await expect(port.lookupCompoundByCAS('64-17-5')).resolves.toEqual({
+      cas: '64-17-5',
+      status: 'ok',
+      compound: {
+        name: 'Ethanol',
+        molecularFormula: 'C2H6O',
+        smiles: 'CCO',
+        inchiKey: 'LFQSCWFLJHTTHZ-UHFFFAOYSA-N',
+        molecularWeight: 46.07
+      }
+    })
+  })
+
   /** 证明化学品字典 CRUD 使用 feat/workflow 的手工登记、三态纠错和受限删除路由。 */
   it('writes Backend reagent information through the feat/workflow contract', async () => {
     const request = vi.fn(async (path: string, init?: RequestInit) => {

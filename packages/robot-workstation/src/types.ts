@@ -192,8 +192,24 @@ export interface ReagentInfoUpdateCommand extends ReagentInfoCreateCommand {
   id: string
 }
 
+export interface ReagentInfoLookupCandidate {
+  name?: string
+  molecularFormula?: string
+  smiles?: string
+  inchiKey?: string
+  molecularWeight?: number
+}
+
+export interface ReagentInfoLookupResult {
+  cas: string
+  status: 'ok' | 'registered' | 'not_found' | 'unavailable'
+  message?: string
+  compound?: ReagentInfoLookupCandidate
+}
+
 /** Backend 化学品字典 CRUD 命令端口，独立于容器级试剂实例管理。 */
 export interface ReagentInfoManagement {
+  lookupByCAS(cas: string, signal?: AbortSignal): Promise<ReagentInfoLookupResult>
   create(command: ReagentInfoCreateCommand): Promise<void>
   update(command: ReagentInfoUpdateCommand): Promise<void>
   delete(reagentInfoId: string): Promise<void>

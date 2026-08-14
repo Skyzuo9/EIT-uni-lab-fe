@@ -466,6 +466,7 @@ function ReagentDialogLayer({
     return (
       <ReagentInfoEditorDialog
         mode="create"
+        onLookup={infoManagement.lookupByCAS}
         onSave={onInfoCreate}
         onClose={onClose}
       />
@@ -476,6 +477,7 @@ function ReagentDialogLayer({
       <ReagentInfoEditorDialog
         mode="edit"
         item={dialogInfo}
+        onLookup={infoManagement.lookupByCAS}
         onSave={onInfoUpdate}
         onClose={onClose}
       />

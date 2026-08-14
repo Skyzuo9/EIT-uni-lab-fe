@@ -182,6 +182,7 @@ describe('RobotWorkstation', () => {
         reagentInfoStatus={{ phase: 'ready', message: '已同步' }}
         reagentInfos={[]}
         reagentInfoManagement={{
+          lookupByCAS: async cas => ({ cas, status: 'not_found' }),
           create: async () => undefined,
           update: async () => undefined,
           delete: async () => undefined

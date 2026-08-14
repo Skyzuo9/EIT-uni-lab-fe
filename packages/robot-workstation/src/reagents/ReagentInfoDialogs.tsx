@@ -1,8 +1,10 @@
-import { useState } from 'react'
-import { Button, Input, NativeSelect, Textarea } from '@unilab/design-system'
+import { useEffect, useRef, useState } from 'react'
+import { Button, Input, Textarea } from '@unilab/design-system'
 
 import type {
   ReagentInfoCreateCommand,
+  ReagentInfoLookupCandidate,
+  ReagentInfoLookupResult,
   ReagentInfoProjection,
   ReagentInfoUpdateCommand,
   ReagentPhysicalState
@@ -15,9 +17,11 @@ import {
   reagentDialogErrorMessage
 } from './ReagentDialogPrimitives'
 import { isValidCAS, optionalNumber, textValue } from './reagentFormValues'
+import { PhysicalStateSelect } from './PhysicalStateSelect'
 
 type EditorProps = {
   onClose: () => void
+  onLookup: (cas: string, signal?: AbortSignal) => Promise<ReagentInfoLookupResult>
 } & (
   | {
       mode: 'create'
@@ -30,6 +34,20 @@ type EditorProps = {
     }
 )
 
+interface LookupFormFields {
+  nameEn: string
+  molecularFormula: string
+  smiles: string
+  inchiKey: string
+  molecularWeight: string
+}
+
+interface LookupFeedback {
+  phase: 'loading' | 'success' | 'warning'
+  message: string
+  blocksSubmit: boolean
+}
+
 /**
  * 手工登记或纠错 Backend 化学品字典身份。
  * @param props 创建/编辑上下文、真实写入回调和关闭回调。
@@ -37,13 +55,97 @@ type EditorProps = {
  */
 export function ReagentInfoEditorDialog(props: EditorProps): React.JSX.Element {
   const initial = props.mode === 'edit' ? props.item : undefined
+  const initialPhysicalState = normalizePhysicalState(initial?.physicalState)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  const [cas, setCAS] = useState(initial?.cas ?? '')
+  const [lookupFields, setLookupFields] = useState<LookupFormFields>({
+    nameEn: initial?.nameEn ?? '',
+    molecularFormula: initial?.molecularFormula ?? '',
+    smiles: initial?.smiles ?? '',
+    inchiKey: initial?.inchiKey ?? '',
+    molecularWeight: initial?.molecularWeight == null
+      ? ''
+      : String(initial.molecularWeight)
+  })
+  const [lookupFeedback, setLookupFeedback] = useState<LookupFeedback | null>(null)
+  const lastCandidate = useRef<ReagentInfoLookupCandidate | null>(null)
+
+  useEffect(() => {
+    const normalizedCAS = cas.trim()
+    const initialCAS = initial?.cas?.trim() ?? ''
+
+    /** 清除上一 CAS 自动写入的值，但不覆盖用户随后手工修改的字段。 */
+    const clearPreviousCandidate = (): void => {
+      if (!lastCandidate.current) return
+      const previous = lastCandidate.current
+      setLookupFields(current => mergeLookupFields(current, previous, null))
+      lastCandidate.current = null
+    }
+
+    if (
+      !normalizedCAS ||
+      !isValidCAS(normalizedCAS) ||
+      (props.mode === 'edit' && normalizedCAS === initialCAS)
+    ) {
+      clearPreviousCandidate()
+      setLookupFeedback(null)
+      return
+    }
+
+    const controller = new AbortController()
+    setLookupFeedback({
+      phase: 'loading',
+      message: '正在通过 Backend 查询 PubChem…',
+      blocksSubmit: true
+    })
+    const timeout = globalThis.setTimeout(() => {
+      void props.onLookup(normalizedCAS, controller.signal).then(result => {
+        if (controller.signal.aborted) return
+        if (result.status === 'ok' && result.compound) {
+          const previous = lastCandidate.current
+          setLookupFields(current => mergeLookupFields(current, previous, result.compound ?? null))
+          lastCandidate.current = result.compound
+          setLookupFeedback({
+            phase: 'success',
+            message: '已从 PubChem 补全可用字段，请核对后保存。',
+            blocksSubmit: false
+          })
+          return
+        }
+        clearPreviousCandidate()
+        setLookupFeedback({
+          phase: 'warning',
+          message: result.message ?? compoundLookupFallback(result.status),
+          blocksSubmit: result.status === 'registered'
+        })
+      }).catch(lookupError => {
+        if (controller.signal.aborted) return
+        clearPreviousCandidate()
+        setLookupFeedback({
+          phase: 'warning',
+          message: reagentDialogErrorMessage(
+            lookupError,
+            'PubChem 查询失败，仍可手工填写化学信息。'
+          ),
+          blocksSubmit: false
+        })
+      })
+    }, 500)
+    return () => {
+      globalThis.clearTimeout(timeout)
+      controller.abort()
+    }
+  }, [cas, initial?.cas, props.mode, props.onLookup])
 
   /** 读取并校验完整化学身份，只向上层提交一次 Backend 命令。 */
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault()
-    if (submitting) return
+    if (submitting || lookupFeedback?.phase === 'loading') return
+    if (lookupFeedback?.blocksSubmit) {
+      setError(lookupFeedback.message)
+      return
+    }
     const values = reagentInfoEditorValues(new FormData(event.currentTarget))
     const validationError = validateReagentInfoEditor(values)
     if (validationError) {
@@ -72,44 +174,42 @@ export function ReagentInfoEditorDialog(props: EditorProps): React.JSX.Element {
     <ReagentDialogFrame
       title={props.mode === 'create' ? '新增试剂基础信息' : `编辑 ${props.item.name}`}
       description={props.mode === 'create'
-        ? '先登记独立化学品身份；这一步不会创建容器、库存实例或余量。CAS 可留空。'
+        ? '先登记独立化学品身份；填写有效 CAS 后会通过 Backend 查询 PubChem，并补全可用化学字段。'
         : '纠错会更新共享化学身份；已登记试剂实例的数量、密度和物态不会被前端联动改写。'}
       busy={submitting}
       onClose={props.onClose}
     >
-      <form onSubmit={(event) => void handleSubmit(event)}>
+      <form autoComplete="off" onSubmit={(event) => void handleSubmit(event)}>
         <div className={styles.dialogFields}>
           <label>
             <span>试剂名称</span>
-            <Input name="name" defaultValue={initial?.name ?? ''} maxLength={255} required data-dialog-initial-focus />
+            <Input name="name" defaultValue={initial?.name ?? ''} maxLength={255} required autoComplete="off" spellCheck={false} data-dialog-initial-focus />
           </label>
           <label>
             <span>英文名称（可选）</span>
-            <Input name="nameEn" defaultValue={initial?.nameEn ?? ''} maxLength={255} />
+            <Input name="nameEn" value={lookupFields.nameEn} onChange={event => setLookupFields(current => ({ ...current, nameEn: event.target.value }))} maxLength={255} />
           </label>
           <label>
             <span>CAS 号（可选）</span>
-            <Input name="cas" defaultValue={initial?.cas ?? ''} placeholder="例如 64-17-5" maxLength={64} />
-            <small>没有登记号的自配物质可以留空；填写后按 CAS 校验位验证。</small>
+            <Input name="cas" value={cas} onChange={event => setCAS(event.target.value)} placeholder="例如 64-17-5" maxLength={64} />
+            <small aria-live="polite">
+              {lookupFeedback?.message ?? '没有登记号的自配物质可以留空；有效 CAS 会自动查询 PubChem。'}
+            </small>
           </label>
           <label>
             <span>常温物态</span>
-            <NativeSelect name="physicalState" defaultValue={initial?.physicalState ?? 'unknown'}>
-              <option value="unknown">未知</option>
-              <option value="liquid">液体</option>
-              <option value="solid">固体</option>
-              <option value="gas">气体</option>
-              <option value="other">其他</option>
-            </NativeSelect>
-            <small>用于展示试剂在常温条件下的默认形态。</small>
+            <PhysicalStateSelect
+              name="physicalState"
+              defaultValue={initialPhysicalState}
+            />
           </label>
           <label>
             <span>分子式（可选）</span>
-            <Input name="molecularFormula" defaultValue={initial?.molecularFormula ?? ''} />
+            <Input name="molecularFormula" value={lookupFields.molecularFormula} onChange={event => setLookupFields(current => ({ ...current, molecularFormula: event.target.value }))} />
           </label>
           <label>
             <span>分子量（g/mol，可选）</span>
-            <Input name="molecularWeight" type="number" min="0" step="any" inputMode="decimal" defaultValue={initial?.molecularWeight ?? ''} />
+            <Input name="molecularWeight" type="number" min="0" step="any" inputMode="decimal" value={lookupFields.molecularWeight} onChange={event => setLookupFields(current => ({ ...current, molecularWeight: event.target.value }))} />
           </label>
           <label>
             <span>参考密度（g/mL，可选）</span>
@@ -121,12 +221,9 @@ export function ReagentInfoEditorDialog(props: EditorProps): React.JSX.Element {
           </label>
           <label className={styles.dialogFieldWide}>
             <span>SMILES（可选）</span>
-            <Input name="smiles" className={uiClass.mono} defaultValue={initial?.smiles ?? ''} />
+            <Input name="smiles" className={uiClass.mono} value={lookupFields.smiles} onChange={event => setLookupFields(current => ({ ...current, smiles: event.target.value }))} />
           </label>
-          <label className={styles.dialogFieldWide}>
-            <span>InChIKey（可选）</span>
-            <Input name="inchiKey" className={uiClass.mono} defaultValue={initial?.inchiKey ?? ''} maxLength={64} />
-          </label>
+          <input type="hidden" name="inchiKey" value={lookupFields.inchiKey} />
           <label className={styles.dialogFieldWide}>
             <span>说明（可选）</span>
             <Textarea name="description" rows={3} maxLength={1000} defaultValue={initial?.description ?? ''} />
@@ -136,7 +233,7 @@ export function ReagentInfoEditorDialog(props: EditorProps): React.JSX.Element {
         <ReagentDialogActions
           onClose={props.onClose}
           submitLabel={submitting ? '正在保存…' : props.mode === 'create' ? '确认新增' : '保存修改'}
-          disabled={submitting}
+          disabled={submitting || lookupFeedback?.phase === 'loading' || Boolean(lookupFeedback?.blocksSubmit)}
         />
       </form>
     </ReagentDialogFrame>
@@ -212,6 +309,58 @@ export function ReagentInfoDeleteDialog({
 }
 
 export interface ReagentInfoEditorValues extends ReagentInfoCreateCommand {}
+
+/**
+ * 合并一次 PubChem 候选值，只替换空字段或上一轮自动填充值。
+ * @param current 当前表单字段。
+ * @param previous 上一 CAS 自动填入的候选值。
+ * @param next 当前 CAS 的新候选值；null 表示清除上一轮自动补全。
+ * @returns 保留用户手工编辑并同步隐藏 InChIKey 的表单字段。
+ */
+export function mergeLookupFields(
+  current: LookupFormFields,
+  previous: ReagentInfoLookupCandidate | null,
+  next: ReagentInfoLookupCandidate | null
+): LookupFormFields {
+  return {
+    nameEn: replaceAutoFilledValue(current.nameEn, previous?.name, next?.name),
+    molecularFormula: replaceAutoFilledValue(
+      current.molecularFormula,
+      previous?.molecularFormula,
+      next?.molecularFormula
+    ),
+    smiles: replaceAutoFilledValue(current.smiles, previous?.smiles, next?.smiles),
+    inchiKey: next?.inchiKey ?? '',
+    molecularWeight: replaceAutoFilledValue(
+      current.molecularWeight,
+      numberText(previous?.molecularWeight),
+      numberText(next?.molecularWeight)
+    )
+  }
+}
+
+/** 已登记 CAS 阻止重复创建；其他降级状态仍允许用户手工录入。 */
+function compoundLookupFallback(status: ReagentInfoLookupResult['status']): string {
+  if (status === 'registered') return '该 CAS 已登记，请直接选择现有试剂身份。'
+  if (status === 'not_found') return 'PubChem 未收录该 CAS，请手工填写化学信息。'
+  return 'PubChem 暂时不可用，请手工填写化学信息。'
+}
+
+/** 只有空值或未被用户改写的自动值才跟随新候选更新。 */
+function replaceAutoFilledValue(
+  current: string,
+  previous: string | undefined,
+  next: string | undefined
+): string {
+  return !current.trim() || (previous != null && current === previous)
+    ? next ?? ''
+    : current
+}
+
+/** 把可选分子量转换为 number 输入使用的稳定文本。 */
+function numberText(value: number | undefined): string | undefined {
+  return value == null ? undefined : String(value)
+}
 
 /**
  * 校验 Backend 化学品字典的当前必填项、CAS 校验位与正数参考属性。
@@ -290,4 +439,9 @@ function optionalNumberCommand<Key extends 'molecularWeight' | 'densityGPerMl'>(
 function isPhysicalState(value: string): value is ReagentPhysicalState {
   return value === 'solid' || value === 'liquid' || value === 'gas' ||
     value === 'other' || value === 'unknown'
+}
+
+/** 将 Backend 可能扩展的物态值收敛为当前编辑器支持的闭集。 */
+function normalizePhysicalState(value: string | undefined): ReagentPhysicalState {
+  return value && isPhysicalState(value) ? value : 'unknown'
 }

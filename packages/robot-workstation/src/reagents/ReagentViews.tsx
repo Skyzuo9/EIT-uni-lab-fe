@@ -107,6 +107,8 @@ export function ReagentLibraryView({
   actions?: ReagentInfoActions
 }): React.JSX.Element {
   const visibleInfos = filterReagentInfos(infos, query)
+  const showCustomParameters = infos.some(info => reagentInfoParameterEntries(info).length > 0)
+  const columnCount = 6 + Number(showCustomParameters) + Number(Boolean(actions))
   return (
     <section className={uiClass.panel}>
       <div className={uiClass.panelHeader}>
@@ -128,7 +130,7 @@ export function ReagentLibraryView({
               <th>结构式</th>
               <th>分子量</th>
               <th>常温形态</th>
-              <th>自定义参数</th>
+              {showCustomParameters ? <th>自定义参数</th> : null}
               {actions ? <th>操作</th> : null}
             </tr>
           </thead>
@@ -144,7 +146,9 @@ export function ReagentLibraryView({
                 <td data-label="结构式" className={uiClass.mono}>{info.smiles ?? '—'}</td>
                 <td data-label="分子量">{info.molecularWeight == null ? '—' : `${info.molecularWeight.toLocaleString('zh-CN')} g/mol`}</td>
                 <td data-label="常温形态">{physicalStateLabel(info.physicalState)}</td>
-                <td data-label="自定义参数">{formatInfoParameters(info)}</td>
+                {showCustomParameters ? (
+                  <td data-label="自定义参数">{formatInfoParameters(info)}</td>
+                ) : null}
                 {actions ? (
                   <td data-label="操作">
                     <div className={uiClass.rowActions}>
@@ -156,7 +160,7 @@ export function ReagentLibraryView({
               </tr>
             ))}
             {visibleInfos.length === 0 ? (
-              <tr><td colSpan={actions ? 8 : 7}><div className={uiClass.compactEmptyState}>没有符合搜索条件的试剂基础信息</div></td></tr>
+              <tr><td colSpan={columnCount}><div className={uiClass.compactEmptyState}>没有符合搜索条件的试剂基础信息</div></td></tr>
             ) : null}
           </tbody>
         </table>
@@ -323,15 +327,49 @@ function formatAliases(info: ReagentInfoProjection): string {
   return [info.nameEn, ...info.aliases].filter(Boolean).join(' · ') || '—'
 }
 
-/** 把参考密度和标量元数据显示为只读自定义参数。 */
+const INTERNAL_REAGENT_INFO_METADATA = new Set([
+  'source',
+  'created_at',
+  'created_by',
+  'updated_at',
+  'updated_by'
+])
+
+/** 只提取用户可识别的自定义参数，不暴露前端来源等内部元数据。 */
+export function reagentInfoParameterEntries(info: ReagentInfoProjection): readonly string[] {
+  const metadata = info.metadata ?? {}
+  const nestedParameters = Array.isArray(metadata.custom_parameters)
+    ? metadata.custom_parameters.flatMap(parameter => {
+      if (!isRecord(parameter)) return []
+      const name = scalarText(parameter.name)
+      const value = scalarText(parameter.value)
+      return name && value ? [`${name}: ${value}`] : []
+    })
+    : []
+  const scalarParameters = Object.entries(metadata).flatMap(([key, value]) => {
+    if (key === 'custom_parameters' || INTERNAL_REAGENT_INFO_METADATA.has(key)) return []
+    const text = scalarText(value)
+    return text ? [`${metadataLabel(key)}: ${text}`] : []
+  })
+  return [...nestedParameters, ...scalarParameters]
+}
+
+/** 把用户自定义参数压缩为表格中的只读摘要。 */
 function formatInfoParameters(info: ReagentInfoProjection): string {
-  const entries = Object.entries(info.metadata ?? {}).flatMap(([key, value]) =>
-    typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'
-      ? [`${metadataLabel(key)}: ${String(value)}`]
-      : []
-  )
-  if (info.densityGPerMl != null) entries.unshift(`参考密度: ${info.densityGPerMl.toLocaleString('zh-CN')} g/mL`)
-  return entries.slice(0, 3).join('；') || '—'
+  return reagentInfoParameterEntries(info).slice(0, 3).join('；') || '—'
+}
+
+/** 将未信任元数据中的标量转换为非空展示文本。 */
+function scalarText(value: unknown): string | undefined {
+  if (typeof value === 'string') return value.trim() || undefined
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value)
+  if (typeof value === 'boolean') return String(value)
+  return undefined
+}
+
+/** 判断自定义参数元素是否为可读取的普通对象。 */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 /** 将常见元数据键转为产品中文，其余键保持服务端名称。 */
