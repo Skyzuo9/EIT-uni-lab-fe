@@ -203,8 +203,8 @@ describe('WorkbenchSessionGate', () => {
       />
     )
 
-    expect(markup).toContain('正在切换到 Backend 模式')
-    expect(markup).toContain('正在连接 Backend Authority…')
-    expect(markup).toContain('取消切换')
+    expect(markup).toContain('正在启动 Backend 模式')
+    expect(markup).toContain('正在连接 Backend + Scheduler，并启动 Edge Runtime…')
+    expect(markup).toContain('取消启动')
   })
 })
