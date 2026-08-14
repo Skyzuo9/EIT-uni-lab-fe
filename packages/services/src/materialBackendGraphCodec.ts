@@ -15,20 +15,14 @@ import {
   stringArray
 } from './materialCodecPrimitives'
 
-export interface MaterialGraphDecodeOptions {
-  requireAuthoritativeRevision?: boolean
-}
-
 /**
  * 把 Backend/OS 公共物料图解码为共享物料聚合。
  *
  * @param raw 未信任的公共物料图响应主体。
- * @param options Backend 直连时要求物料权威修订号；旧 OS 可回退只读 token。
  * @returns 已校验身份、库位占用、展示投影和修订号的物料聚合。
  */
 export function mapBackendMaterialGraph(
-  raw: Record<string, unknown>,
-  options: MaterialGraphDecodeOptions = {}
+  raw: Record<string, unknown>
 ): MaterialAggregate[] {
   if (!Array.isArray(raw.nodes) || raw.nodes.some((node) => !isRecord(node))) {
     throw invalidGraph('nodes must be an object array')
@@ -62,6 +56,7 @@ export function mapBackendMaterialGraph(
       material.resource_template_uuid,
       'material.resource_template_uuid'
     )
+    requiredString(material.type, 'material.type')
     const updateTime = requiredString(
       material.update_time,
       'material.update_time'
@@ -115,9 +110,7 @@ export function mapBackendMaterialGraph(
       ),
       sites,
       revision: materialRevision(
-        material.revision,
-        updateTime,
-        options.requireAuthoritativeRevision === true
+        material.revision
       )
     }
   })
@@ -172,15 +165,14 @@ function mapBackendMaterialConfig(
 /**
  * 校验物料图节点携带的资源模板展示摘要。
  *
- * @param value 可选展示摘要 wire 值。
+ * @param value 展示摘要 wire 值。
  * @param expectedUuid 物料实例引用的资源模板稳定 UUID。
- * @returns 使用前端命名的展示对象；旧 OS 未发布时返回 undefined。
+ * @returns 使用前端命名的展示对象。
  */
 function mapBackendResourceTemplateDisplay(
   value: unknown,
   expectedUuid: string
-): Record<string, unknown> | undefined {
-  if (value == null) return undefined
+): Record<string, unknown> {
   const raw = recordValue(value)
   const uuid = requiredString(raw.uuid, 'resource_template.uuid')
   if (uuid !== expectedUuid) {
@@ -318,37 +310,18 @@ function zeroPose(): LabPose {
 }
 
 /**
- * 优先读取物料（Material）权威修订号，旧 OS 缺失时生成只读 adapter token。
+ * 读取物料（Material）权威修订号。
  *
  * @param value 公共图中的 material.revision。
- * @param updateTime 旧 OS 生成只读 token 使用的更新时间。
- * @param required Backend 直连是否必须发布权威修订号。
  * @returns 正安全整数修订号。
  */
 function materialRevision(
-  value: unknown,
-  updateTime: string,
-  required: boolean
+  value: unknown
 ): number {
   if (Number.isSafeInteger(value) && (value as number) > 0) {
     return value as number
   }
-  if (required || value !== undefined) {
-    throw invalidGraph('material.revision must be a positive safe integer')
-  }
-  return adapterRevision(updateTime)
-}
-
-/** 为未发布权威修订号的旧 OS 生成稳定、仅用于只读 store 的 token。 */
-function adapterRevision(updateTime: string): number {
-  const parsed = Date.parse(updateTime)
-  if (Number.isFinite(parsed) && parsed > 0) return parsed
-  let hash = 2166136261
-  for (const character of updateTime) {
-    hash ^= character.codePointAt(0) ?? 0
-    hash = Math.imul(hash, 16777619)
-  }
-  return Math.max(1, hash >>> 0)
+  throw invalidGraph('material.revision must be a positive safe integer')
 }
 
 function optionalRecord(

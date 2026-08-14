@@ -140,6 +140,8 @@ function serviceResponses(): Record<string, unknown> {
           material: {
             uuid: materialUuid,
             resource_template_uuid: materialTemplateUuid,
+            type: 'resource',
+            revision: 1,
             barcode: 'plate-1',
             name: 'Assay plate',
             create_time: '2026-08-05T00:00:00Z',
@@ -151,7 +153,13 @@ function serviceResponses(): Record<string, unknown> {
           relative_position: null,
           sites: [],
           current_site_uuid: null,
-          handles: []
+          handles: [],
+          resource_template: {
+            uuid: materialTemplateUuid,
+            name: 'assay_plate',
+            display_name: 'Assay plate',
+            resource_type: 'resource'
+          }
         }]
       }
     }

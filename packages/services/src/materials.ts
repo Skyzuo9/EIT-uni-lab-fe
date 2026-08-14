@@ -118,7 +118,7 @@ export function createMaterialService(
       return mapTemplateDetail(response, backend.apiUrl)
     },
 
-    /** 读取公共物料图；Backend 直连必须发布权威 Material.revision。 */
+    /** 读取公共物料图；Local 与 Backend 必须发布同一权威 Material.revision。 */
     getGraph: async (scope) => {
       requireReadGraph()
       assertSingletonScope(scope)
@@ -126,9 +126,7 @@ export function createMaterialService(
         http,
         '/api/v1/materials/graph'
       )
-      return mapBackendMaterialGraph(response, {
-        requireAuthoritativeRevision: backend.serverKind === 'backend'
-      })
+      return mapBackendMaterialGraph(response)
     },
     subscribeMoves: (onMove) => {
       if (backend.serverKind === 'backend') return { dispose: () => undefined }

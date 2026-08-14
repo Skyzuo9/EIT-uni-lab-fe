@@ -53,7 +53,15 @@ describe('Workspace Host Workbench adapter', () => {
         const operation = {
           operationId: body.operationId,
           phase: 'succeeded',
-          result: { revision: snapshot.revision },
+          result: body.command === 'release.publish'
+            ? {
+                releaseId: 'sha256:fixture-release',
+                targetAddress: 'http://127.0.0.1:8080/api/v1',
+                verified: true,
+                activated: body.parameters['activate'] === true,
+                counts: { templates: 3, materials: 2, workflows: 1 }
+              }
+            : { revision: snapshot.revision },
           error: null
         }
         operations.set(body.operationId, operation)
@@ -104,6 +112,16 @@ describe('Workspace Host Workbench adapter', () => {
     })
     expect(await session.readEnvironmentLog('workspace-backend'))
       .toBe('backend fixture log')
+
+    const release = await session.publishRelease({ activate: false })
+    expect(receivedCommands.at(-1)).toBe('release.publish')
+    expect(release).toEqual({
+      releaseId: 'sha256:fixture-release',
+      targetAddress: 'http://127.0.0.1:8080/api/v1',
+      verified: true,
+      activated: false,
+      counts: { templates: 3, materials: 2, workflows: 1 }
+    })
 
     const switched = await session.setDomainAuthority('backend')
     expect(receivedCommands.at(-1)).toBe('authority.switch')
@@ -307,6 +325,9 @@ function applyCommand(
     snapshot.configuration.backendUrl = parameters['backendUrl'] == null
       ? null
       : String(parameters['backendUrl'])
+  } else if (command === 'release.publish' && parameters['activate'] === true) {
+    snapshot.configuration.domainMode = 'backend'
+    snapshot.configuration.backendUrl = String(parameters['backendUrl'])
   }
   snapshot.revision += 1
   snapshot.eventCursor += 1

@@ -18,6 +18,8 @@ async function mapsMaterialCategoryToRenderingKind(): Promise<void> {
         material: {
           uuid: 'material-beaker',
           resource_template_uuid: 'template-beaker',
+          type: 'resource',
+          revision: 1,
           class: 'community.szlab.beaker',
           barcode: '',
           name: '500 mL 烧杯',
@@ -35,7 +37,13 @@ async function mapsMaterialCategoryToRenderingKind(): Promise<void> {
         ),
         sites: [],
         current_site_uuid: null,
-        handles: []
+        handles: [],
+        resource_template: {
+          uuid: 'template-beaker',
+          name: 'community.szlab.beaker',
+          display_name: '500 mL 烧杯',
+          resource_type: 'resource'
+        }
       }]
     }
   })
@@ -267,6 +275,7 @@ describe('material template adapter', () => {
               uuid: 'material-root',
               resource_template_uuid: 'template-device',
               revision: 11,
+              type: 'device',
               class: 'liquid_handler',
               barcode: 'LH-001',
               name: 'Liquid Handler',
@@ -318,6 +327,7 @@ describe('material template adapter', () => {
               uuid: 'material-vessel',
               resource_template_uuid: 'template-vessel',
               revision: 12,
+              type: 'resource',
               parent_uuid: 'material-root',
               class: 'sample_vial',
               barcode: '',
@@ -646,6 +656,8 @@ describe('material template adapter', () => {
             material: {
               uuid: 'material-bad',
               resource_template_uuid: 'template-device',
+              type: 'device',
+              revision: 1,
               barcode: 'bad',
               name: 'Bad material',
               create_time: '2026-07-26T00:00:00Z',
@@ -666,7 +678,13 @@ describe('material template adapter', () => {
             },
             sites: [],
             current_site_uuid: null,
-            handles: []
+            handles: [],
+            resource_template: {
+              uuid: 'template-device',
+              name: 'device.bad',
+              display_name: 'Bad device',
+              resource_type: 'device'
+            }
           }
         ]
       }
@@ -674,6 +692,25 @@ describe('material template adapter', () => {
     const backend = getDefaultBackend('local-python')
     const service = createMaterialService(
       http,
+      backend,
+      resolveServerCapabilities(backend)
+    )
+
+    await expect(
+      service.getGraph({ kind: 'singleton' })
+    ).rejects.toMatchObject({
+      code: 'INVALID_MATERIAL_GRAPH_RESPONSE'
+    })
+  })
+
+  it('requires the same authoritative revision and template summary for Local graphs', async () => {
+    const node = rawMaterialGraphNode(1)
+    const material = node.material as Record<string, unknown>
+    delete material.revision
+    delete node.resource_template
+    const backend = getDefaultBackend('local-python')
+    const service = createMaterialService(
+      mockHttp({ data: { nodes: [node] } }).http,
       backend,
       resolveServerCapabilities(backend)
     )
@@ -740,17 +777,25 @@ function rawMaterialGraphNode(index: number): Record<string, unknown> {
     material: {
       uuid: materialId,
       resource_template_uuid: 'template-device',
+      type: 'device',
       barcode: materialId,
       name: `SZLab Material ${index}`,
       create_time: '2026-07-31T00:00:00Z',
       update_time: '2026-07-31T00:00:00Z',
+      revision: index,
       meta_data: {},
       config: {},
       data: {}
     },
     sites: [],
     current_site_uuid: null,
-    handles: []
+    handles: [],
+    resource_template: {
+      uuid: 'template-device',
+      name: 'device.template',
+      display_name: 'Device template',
+      resource_type: 'device'
+    }
   }
 }
 

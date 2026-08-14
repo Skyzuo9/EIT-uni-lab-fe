@@ -9,13 +9,14 @@
  * Human Review Status: [ ] Pending  [ ] Reviewed  [ ] Approved
  * ============================================================
  */
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Services } from '@unilab/services'
 import {
   presentEdgeDevices,
   type ManagedDevice
 } from './deviceCatalog'
 import type { DeviceManagementConnection } from './types'
+import { deviceCatalogRecoveryDelay } from './deviceCatalogRecovery'
 
 interface UseDevicesResult {
   devices: ManagedDevice[]
@@ -41,6 +42,7 @@ export function useDevices({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [lastUpdated, setLastUpdated] = useState<number | null>(null)
+  const recoveryAttemptRef = useRef(0)
 
   const refresh = useCallback(async (signal?: AbortSignal) => {
     if (!backendEnabled) {
@@ -90,6 +92,30 @@ export function useDevices({
       controller.abort()
     }
   }, [connection, isOnline, refresh])
+
+  // Workspace Backend may become ready before its Edge has registered device
+  // bindings. Recover that bounded startup window automatically; once any
+  // device is dispatchable, avoid polling the full device/action catalog.
+  useEffect(() => {
+    const delay = deviceCatalogRecoveryDelay({
+      attempt: recoveryAttemptRef.current,
+      backendEnabled,
+      connection,
+      lastUpdated,
+      devices
+    })
+    if (delay === null) {
+      if (!isOnline || devices.some(device => device.online)) {
+        recoveryAttemptRef.current = 0
+      }
+      return
+    }
+    const timer = globalThis.setTimeout(() => {
+      recoveryAttemptRef.current += 1
+      void refresh()
+    }, delay)
+    return () => globalThis.clearTimeout(timer)
+  }, [backendEnabled, connection, devices, isOnline, lastUpdated, refresh])
 
   return { devices, loading, error, lastUpdated, refresh }
 }

@@ -95,6 +95,7 @@ type WorkbenchSessionRemoteOperations = Pick<
   | 'releaseEnvironmentPorts'
   | 'setRuntimeMode'
   | 'setDomainAuthority'
+  | 'publishRelease'
 >
 
 export interface WorkbenchSessionServer

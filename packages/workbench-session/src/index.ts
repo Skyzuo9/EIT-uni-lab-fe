@@ -100,6 +100,18 @@ export interface WorkbenchSessionDiagnostic {
 export type WorkbenchRuntimeMode = 'normal' | 'dry-run'
 export type WorkbenchDomainMode = 'local' | 'backend'
 
+export interface WorkbenchReleaseReceipt {
+  releaseId: string
+  targetAddress: string
+  verified: true
+  activated: boolean
+  counts: {
+    templates: number
+    materials: number
+    workflows: number
+  }
+}
+
 export interface WorkbenchSessionIdentity {
   workspacePath: string
   osProjectPath: string
@@ -259,6 +271,7 @@ export interface WorkbenchSession {
   ): Promise<WorkbenchSessionSnapshot>
   setRuntimeMode(mode: WorkbenchRuntimeMode): Promise<WorkbenchSessionSnapshot>
   setDomainAuthority(mode: WorkbenchDomainMode): Promise<WorkbenchSessionSnapshot>
+  publishRelease(options?: { activate?: boolean }): Promise<WorkbenchReleaseReceipt>
 }
 
 interface ResolvedWorkbenchLaunch {
@@ -706,6 +719,10 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
       throw new Error(`不支持的 Domain Authority：${String(mode)}`)
     }
     throw new Error('Domain Authority 切换需要由 Workspace Host 执行')
+  }
+
+  async publishRelease(): Promise<WorkbenchReleaseReceipt> {
+    throw new Error('WorkspaceRelease 发布需要由 Workspace Host 执行')
   }
 
   private async persistConfiguration(overrides: Partial<{

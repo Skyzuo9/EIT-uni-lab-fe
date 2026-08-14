@@ -178,6 +178,12 @@ implements WorkbenchSessionServer, BackendApplicationContribution {
     return this.session.setDomainAuthority(mode)
   }
 
+  publishRelease(
+    options?: Parameters<WorkbenchSession['publishRelease']>[0]
+  ) {
+    return this.session.publishRelease(options)
+  }
+
   setClient(client: WorkbenchSessionClient): void {
     this.clients.add(client)
     this.activeRendererClient = client

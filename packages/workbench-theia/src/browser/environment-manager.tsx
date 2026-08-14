@@ -2,6 +2,7 @@ import type {
   WorkbenchEnvironmentLogKind,
   WorkbenchPlcHandshakeProfile,
   WorkbenchPlcSimulatorConfiguration,
+  WorkbenchReleaseReceipt,
   WorkbenchRuntimeMode,
   WorkbenchSessionSnapshot
 } from '@unilab/workbench-session'
@@ -26,6 +27,7 @@ export interface EnvironmentManagerProps {
   onClose: () => void
   onRestartSession: () => Promise<void>
   onRebuildLocalData: () => Promise<void>
+  onPublishRelease: () => Promise<WorkbenchReleaseReceipt>
   onReadEnvironmentLog: (kind: WorkbenchEnvironmentLogKind) => Promise<string>
   onConfigureGraph: (graphPath: string) => Promise<void>
   onConfigurePlcSimulator: (
@@ -48,6 +50,7 @@ export function EnvironmentManager({
   onClose,
   onRestartSession,
   onRebuildLocalData,
+  onPublishRelease,
   onReadEnvironmentLog,
   onConfigureGraph,
   onConfigurePlcSimulator,
@@ -76,6 +79,8 @@ export function EnvironmentManager({
   const [logKind, setLogKind] = useState<WorkbenchEnvironmentLogKind>('os')
   const [logTail, setLogTail] = useState<string | null>(null)
   const [operationError, setOperationError] = useState<string | null>(null)
+  const [releaseReceipt, setReleaseReceipt] =
+    useState<WorkbenchReleaseReceipt | null>(null)
   const remoteAccessApi = useMemo(desktopWorkbenchRemoteApi, [])
   const managedRuntimeApi = useMemo(desktopManagedRuntimeApi, [])
   const [runtimeInstallation, setRuntimeInstallation] =
@@ -254,8 +259,31 @@ export function EnvironmentManager({
           )}
         />
         <EnvironmentStatusCard
-          name="OS"
+          name="发布到 Backend"
           order={2}
+          phase={releaseReceipt ? 'ready' : 'idle'}
+          message={releaseReceipt
+            ? `已校验 ${releaseReceipt.counts.templates} 个模板、${releaseReceipt.counts.materials} 个物料、${releaseReceipt.counts.workflows} 个工作流`
+            : '从当前 Local Authority 构建不可变 Release，写入后回读校验'}
+          facts={[
+            ['目标', session.configuredBackendUrl ?? '未配置'],
+            ['Release', releaseReceipt?.releaseId ?? '—'],
+            ['状态', releaseReceipt?.verified ? '已验证并切换' : '等待发布']
+          ]}
+          actions={(
+            <button
+              type="button"
+              className="is-primary"
+              disabled={Boolean(busyAction) || !session.configuredBackendUrl}
+              onClick={() => void run('publish-release', async () => {
+                setReleaseReceipt(await onPublishRelease())
+              })}
+            >一键发布、校验并切换</button>
+          )}
+        />
+        <EnvironmentStatusCard
+          name="OS"
+          order={3}
           phase={edgeRuntime.phase}
           message={edgeRuntime.diagnostic ?? edgeRuntime.message}
           facts={[

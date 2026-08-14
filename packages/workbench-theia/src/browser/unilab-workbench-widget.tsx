@@ -52,6 +52,7 @@ import {
 import type {
   WorkbenchEnvironmentLogKind,
   WorkbenchPlcSimulatorConfiguration,
+  WorkbenchReleaseReceipt,
   WorkbenchRuntimeMode,
   WorkbenchSessionSnapshot
 } from '@unilab/workbench-session'
@@ -270,6 +271,27 @@ export class UniLabWorkbenchWidget extends ReactWidget {
       // Session publishes the actionable backend or Edge diagnostic.
     }
     await this.refreshSessionSnapshot()
+  }
+
+  protected readonly publishRelease = async (): Promise<WorkbenchReleaseReceipt> => {
+    if (this.lastReportedUnsavedChanges) {
+      throw new Error('请先保存当前工作流修改，再发布 WorkspaceRelease')
+    }
+    try {
+      const receipt = await this.workbenchSession.publishRelease({ activate: true })
+      this.sessionSnapshot = await this.workbenchSession.getSnapshot()
+      if (receipt.activated) {
+        this.connectionMode = 'backend'
+        persistWorkbenchConnectionMode('backend')
+      }
+      void this.messages.info(
+        `发布并校验完成：${receipt.counts.templates} 个模板、` +
+        `${receipt.counts.materials} 个物料、${receipt.counts.workflows} 个工作流`
+      )
+      return receipt
+    } finally {
+      await this.refreshSessionSnapshot()
+    }
   }
 
   protected readonly readEnvironmentLog = async (
@@ -690,6 +712,7 @@ export class UniLabWorkbenchWidget extends ReactWidget {
               onClose={onClose}
               onRestartSession={this.restartSession}
               onRebuildLocalData={this.rebuildLocalData}
+              onPublishRelease={this.publishRelease}
               onReadEnvironmentLog={this.readEnvironmentLog}
               onConfigureGraph={this.configureGraph}
               onConfigurePlcSimulator={this.configurePlcSimulator}
@@ -725,6 +748,7 @@ export class UniLabWorkbenchWidget extends ReactWidget {
         onUnsavedChangesChange={this.setWorkflowPanelDirty}
         onRestartSession={this.restartSession}
         onRebuildLocalData={this.rebuildLocalData}
+        onPublishRelease={this.publishRelease}
         onReadEnvironmentLog={this.readEnvironmentLog}
         onConfigureGraph={this.configureGraph}
         onConfigurePlcSimulator={this.configurePlcSimulator}
@@ -765,6 +789,7 @@ function WorkbenchSurface({
   onUnsavedChangesChange,
   onRestartSession,
   onRebuildLocalData,
+  onPublishRelease,
   onReadEnvironmentLog,
   onConfigureGraph,
   onConfigurePlcSimulator,
@@ -790,6 +815,7 @@ function WorkbenchSurface({
   onUnsavedChangesChange: (hasUnsavedChanges: boolean) => void
   onRestartSession: () => Promise<void>
   onRebuildLocalData: () => Promise<void>
+  onPublishRelease: () => Promise<WorkbenchReleaseReceipt>
   onReadEnvironmentLog: (kind: WorkbenchEnvironmentLogKind) => Promise<string>
   onConfigureGraph: (graphPath: string) => Promise<void>
   onConfigurePlcSimulator: (
@@ -1107,6 +1133,7 @@ function WorkbenchSurface({
             onClose={() => setEnvironmentOpen(false)}
             onRestartSession={onRestartSession}
             onRebuildLocalData={onRebuildLocalData}
+            onPublishRelease={onPublishRelease}
             onReadEnvironmentLog={onReadEnvironmentLog}
             onConfigureGraph={onConfigureGraph}
             onConfigurePlcSimulator={onConfigurePlcSimulator}

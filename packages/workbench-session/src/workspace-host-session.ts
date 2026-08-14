@@ -30,6 +30,7 @@ import type {
   WorkbenchPlcHandshakeProfile,
   WorkbenchPlcSimulatorConfiguration,
   WorkbenchRuntimeMode,
+  WorkbenchReleaseReceipt,
   WorkbenchSession,
   WorkbenchSessionDiagnostic,
   WorkbenchSessionPhase,
@@ -316,6 +317,37 @@ export class WorkspaceHostWorkbenchSession implements WorkbenchSession {
       throw new Error('未配置 Backend Authority 地址')
     }
     return await this.run('authority.switch', { mode, backendUrl })
+  }
+
+  async publishRelease(
+    options: { activate?: boolean } = {}
+  ): Promise<WorkbenchReleaseReceipt> {
+    const backendUrl = this.options.backendAuthorityUrl
+    if (!backendUrl) throw new Error('未配置 Backend Authority 地址')
+    const connection = await this.ensureHost()
+    const operation = await hostRequest<WorkspaceHostOperation>(
+      connection,
+      'POST',
+      '/v1/operations',
+      {
+        operationId: randomUUID(),
+        command: 'release.publish',
+        parameters: {
+          backendUrl,
+          activate: options.activate === true,
+          verify: true
+        }
+      }
+    )
+    const completed = await this.waitOperation(connection, operation.operationId)
+    if (completed.phase === 'failed') {
+      throw new Error(completed.error?.message ?? 'release.publish 操作失败')
+    }
+    await this.refreshHost(connection)
+    if (!isReleaseReceipt(completed.result)) {
+      throw new Error('Workspace Host 返回了无效的发布回执')
+    }
+    return completed.result
   }
 
   private async run(
@@ -864,6 +896,18 @@ async function tailFile(path: string, maxBytes: number): Promise<string> {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object'
+}
+
+function isReleaseReceipt(value: unknown): value is WorkbenchReleaseReceipt {
+  if (!isRecord(value) || value['verified'] !== true) return false
+  const counts = value['counts']
+  return typeof value['releaseId'] === 'string'
+    && typeof value['targetAddress'] === 'string'
+    && typeof value['activated'] === 'boolean'
+    && isRecord(counts)
+    && Number.isSafeInteger(counts['templates'])
+    && Number.isSafeInteger(counts['materials'])
+    && Number.isSafeInteger(counts['workflows'])
 }
 
 function delay(milliseconds: number): Promise<void> {
