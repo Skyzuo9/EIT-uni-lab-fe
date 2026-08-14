@@ -216,11 +216,17 @@ describe('portable Workbench packaging contract', () => {
       new URL('../electron-builder.yml', import.meta.url),
       'utf8'
     )
+    const protectedTheiaBuild = await readFile(
+      new URL('./run-theia-build.mjs', import.meta.url),
+      'utf8'
+    )
 
     assert.match(
       packageManifest.scripts['build:production'],
-      /theia build --mode production/u
+      /run-theia-build\.mjs --mode production/u
     )
+    assert.match(protectedTheiaBuild, /theiaCli,[\s\S]*'build'/u)
+    assert.match(protectedTheiaBuild, /theiaBuildEnvironment\(\)/u)
     assert.match(
       packageManifest.scripts['build:production'],
       /prune-production-output\.mjs/u
@@ -239,6 +245,14 @@ describe('portable Workbench packaging contract', () => {
       )
     }
     assert.match(builderConfiguration, /^compression: maximum$/mu)
+    assert.match(
+      builderConfiguration,
+      /from: \.packaging\/node-runtime\s+to: node-runtime\s+filter:\s+- '\*\*\/\*'/u
+    )
+    assert.doesNotMatch(
+      builderConfiguration,
+      /from: \.packaging\/node-runtime\/bin\/node/u
+    )
     assert.equal(
       packageManifest.optionalDependencies['@vscode/windows-ca-certs'],
       '0.3.4'

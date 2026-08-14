@@ -36,6 +36,7 @@ import {
 } from './unilab-agent-contribution'
 import { UniLabAgentNavigatorWidget } from './unilab-agent-navigator-widget'
 import { UniLabAgentWidget } from './unilab-agent-widget'
+import { UniLabBottomPanelContribution } from './unilab-bottom-panel-contribution'
 import { UniLabSettingsContribution } from './unilab-settings-contribution'
 import { UniLabSettingsWidget } from './unilab-settings-widget'
 import '../../src/browser/style/index.css'
@@ -55,6 +56,10 @@ export default new ContainerModule((bind) => {
       context.container.get(WorkbenchSessionClient)
     )
   ).inSingletonScope()
+
+  bind(UniLabBottomPanelContribution).toSelf().inSingletonScope()
+  bind(FrontendApplicationContribution)
+    .toService(UniLabBottomPanelContribution)
 
   bindViewContribution(bind, UniLabAgentContribution)
   bind(FrontendApplicationContribution).toService(UniLabAgentContribution)

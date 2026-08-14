@@ -1,7 +1,27 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 
-import { RuntimeModeControl } from './environment-manager'
+import {
+  ExternalDevicesOnlyControl,
+  RuntimeModeControl
+} from './environment-manager'
+
+describe('ExternalDevicesOnlyControl', () => {
+  it('renders the external-only launch option as a checked checkbox by default', () => {
+    const markup = renderToStaticMarkup(
+      <ExternalDevicesOnlyControl
+        checked
+        disabled={false}
+        onChange={vi.fn()}
+      />
+    )
+
+    expect(markup).toContain('type="checkbox"')
+    expect(markup).toContain('checked=""')
+    expect(markup).toContain('仅加载外部设备包')
+    expect(markup).toContain('同时加载 OS 内置 Registry')
+  })
+})
 
 describe('RuntimeModeControl', () => {
   it.each([

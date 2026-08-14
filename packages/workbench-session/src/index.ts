@@ -1,5 +1,4 @@
 import {
-  execFile,
   spawn,
   type ChildProcessWithoutNullStreams
 } from 'node:child_process'
@@ -48,11 +47,15 @@ import {
   readLocalEnvironmentConfiguration,
   writeLocalEnvironmentConfigurationFile
 } from './local-environment-configuration'
+import { projectManagedLocalGraph } from './managed-local-graph'
 import {
   discoverWorkbenchPlcVariableTables,
   type WorkbenchPlcVariableTableCandidate
 } from './plc-variable-tables'
+import { releaseLoopbackPorts } from './port-release'
 import { waitForWorkbenchReadiness } from './readiness'
+import { isRetryableWindowsReadinessExit } from './startup-retry'
+import { createWorkbenchStartupFailureMonitor } from './startup-diagnostics'
 import { prepareWorkbenchState } from './workbench-state'
 export {
   MANAGED_WORKSPACE_SKILL_NAMES,
@@ -91,6 +94,7 @@ export interface WorkbenchSessionDiagnostic {
     | 'port_conflict'
     | 'os_start_failed'
     | 'os_readiness_failed'
+    | 'plc_connection_failed'
     | 'os_exited'
   message: string
   recovery: string
@@ -106,6 +110,7 @@ export interface WorkbenchSessionIdentity {
   graphPath: string
   graphFingerprint: string
   backendUrl: string
+  hostLinkPort?: number
   pid: number
   generation: string
   logPath: string
@@ -173,6 +178,7 @@ export interface WorkbenchSessionSnapshot {
   phase: WorkbenchSessionPhase
   message: string
   configuredGraphPath: string
+  configuredExternalDevicesOnly: boolean
   configuredRuntimeMode: WorkbenchRuntimeMode
   identity: WorkbenchSessionIdentity | null
   agent: WorkbenchAgentIdentity | null
@@ -185,6 +191,7 @@ export interface ManagedLocalWorkbenchSessionOptions {
   osProjectPath?: string
   environmentPath?: string
   graphPath?: string
+  externalDevicesOnly?: boolean
   backendPort?: number
   hostLinkPort?: number
   readinessTimeoutMs?: number
@@ -223,6 +230,7 @@ export interface WorkbenchSession {
     maxBytes?: number
   ): Promise<string>
   configureGraph(graphPath: string): Promise<WorkbenchSessionSnapshot>
+  setExternalDevicesOnly(enabled: boolean): Promise<WorkbenchSessionSnapshot>
   configurePlcSimulator(
     configuration: string | WorkbenchPlcSimulatorConfiguration
   ): Promise<WorkbenchSessionSnapshot>
@@ -247,6 +255,8 @@ interface ResolvedWorkbenchLaunch {
 
 const LOOPBACK_HOST = '127.0.0.1'
 const DEFAULT_READINESS_TIMEOUT_MS = 90_000
+const DEFAULT_OS_READINESS_TIMEOUT_MS = 180_000
+const WINDOWS_READINESS_RETRY_DELAY_MS = 1_500
 const LOCAL_ENVIRONMENT_CONFIG = 'environment.local.json'
 
 /** Create the single managed OS lifecycle owned by one Workbench window. */
@@ -279,6 +289,7 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
   private plcSimulatorStopRequested = false
   private selectedMode: WorkbenchRuntimeMode
   private selectedGraphPath: string
+  private selectedExternalDevicesOnly: boolean
   private selectedPlcVariableTablePath: string
   private selectedPlcHandshakeProfile: WorkbenchPlcHandshakeProfile
 
@@ -286,12 +297,14 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
     this.selectedMode = options.runtimeMode ?? 'normal'
     this.selectedGraphPath = options.graphPath
       ?? join('deployment', 'graphs', 'szlab-local-debug.json')
+    this.selectedExternalDevicesOnly = options.externalDevicesOnly ?? true
     this.selectedPlcVariableTablePath = options.plcVariableTablePath ?? ''
     this.selectedPlcHandshakeProfile = options.plcHandshakeProfile ?? 'szlab'
     this.snapshot = {
       phase: 'idle',
       message: '尚未启动 Uni-Lab OS',
       configuredGraphPath: this.selectedGraphPath,
+      configuredExternalDevicesOnly: this.selectedExternalDevicesOnly,
       configuredRuntimeMode: this.selectedMode,
       identity: null,
       agent: null,
@@ -455,6 +468,25 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
     return await this.refreshPlcVariableTables()
   }
 
+  async setExternalDevicesOnly(
+    enabled: boolean
+  ): Promise<WorkbenchSessionSnapshot> {
+    if (typeof enabled !== 'boolean') {
+      throw new Error('仅加载外部设备包配置必须是布尔值')
+    }
+    if (this.selectedExternalDevicesOnly === enabled) return this.getSnapshot()
+    await this.persistConfiguration({ externalDevicesOnly: enabled })
+    this.selectedExternalDevicesOnly = enabled
+    this.publish({
+      ...this.snapshot,
+      configuredExternalDevicesOnly: enabled,
+      message: this.snapshot.phase === 'ready'
+        ? 'OS 设备目录加载范围已保存，将在下次启动时生效'
+        : 'OS 设备目录加载范围已保存'
+    })
+    return this.getSnapshot()
+  }
+
   async configurePlcSimulator(
     configuration: string | WorkbenchPlcSimulatorConfiguration
   ): Promise<WorkbenchSessionSnapshot> {
@@ -543,6 +575,7 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
 
   private async persistConfiguration(overrides: Partial<{
     graphPath: string
+    externalDevicesOnly: boolean
     plcSimulatorProjectPath: string
     plcVariableTablePath: string
     plcHandshakeProfile: WorkbenchPlcHandshakeProfile
@@ -550,6 +583,8 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
   }> = {}): Promise<void> {
     await writeLocalEnvironmentConfiguration(this.options.workspacePath, {
       graphPath: overrides.graphPath ?? this.selectedGraphPath,
+      externalDevicesOnly: overrides.externalDevicesOnly
+        ?? this.selectedExternalDevicesOnly,
       plcSimulatorProjectPath: overrides.plcSimulatorProjectPath
         ?? this.snapshot.plcSimulator.projectPath,
       plcVariableTablePath: overrides.plcVariableTablePath
@@ -572,6 +607,9 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
     this.selectedGraphPath = this.options.graphPath
       ?? localConfiguration.graphPath
       ?? this.selectedGraphPath
+    this.selectedExternalDevicesOnly = this.options.externalDevicesOnly
+      ?? localConfiguration.externalDevicesOnly
+      ?? this.selectedExternalDevicesOnly
     this.selectedPlcVariableTablePath = this.options.plcVariableTablePath
       ?? localConfiguration.plcVariableTablePath
       ?? this.selectedPlcVariableTablePath
@@ -584,6 +622,7 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
     this.snapshot = {
       ...this.snapshot,
       configuredGraphPath: this.selectedGraphPath,
+      configuredExternalDevicesOnly: this.selectedExternalDevicesOnly,
       configuredRuntimeMode: this.selectedMode,
       plcSimulator: {
         ...this.snapshot.plcSimulator,
@@ -645,9 +684,14 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
       return this.getSnapshot()
     }
 
-    await this.stop()
-    const ports = [this.options.backendPort, this.options.hostLinkPort]
+    const activeIdentity = this.snapshot.identity
+    const ports = [
+      this.options.backendPort
+        ?? loopbackPortFromUrl(activeIdentity?.backendUrl),
+      this.options.hostLinkPort ?? activeIdentity?.hostLinkPort
+    ]
       .filter((port): port is number => Number.isInteger(port))
+    await this.stop()
     await releaseLoopbackPorts(ports)
     this.publish({
       ...this.snapshot,
@@ -946,7 +990,11 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
     this.publish({ ...this.snapshot, agent })
   }
 
-  private async startManaged(): Promise<WorkbenchSessionSnapshot> {
+  private async startManaged(
+    readinessRetries = (
+      (this.options.platform ?? process.platform) === 'win32' ? 1 : 0
+    )
+  ): Promise<WorkbenchSessionSnapshot> {
     this.publish({
       phase: 'validating',
       message: '正在校验 Workspace、OS 与 Python 环境…',
@@ -959,7 +1007,8 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
       launch = await resolveWorkbenchLaunch(
         {
           ...this.options,
-          graphPath: this.selectedGraphPath
+          graphPath: this.selectedGraphPath,
+          externalDevicesOnly: this.selectedExternalDevicesOnly
         },
         this.selectedMode
       )
@@ -981,6 +1030,7 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
       identity: null,
       diagnostic: null
     })
+    let launchedChild: ChildProcessWithoutNullStreams | null = null
     try {
       await Promise.all([
         mkdir(dirname(launch.identity.logPath), { recursive: true }),
@@ -996,8 +1046,13 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
         shell: false,
         windowsHide: true
       })
+      launchedChild = child
       this.child = child
       launch.identity.pid = requireProcessId(child.pid)
+      const startupFailureMonitor = createWorkbenchStartupFailureMonitor()
+      const observeStartupOutput = startupFailureMonitor.observe
+      child.stdout.on('data', observeStartupOutput)
+      child.stderr.on('data', observeStartupOutput)
       child.stdout.pipe(log, { end: false })
       child.stderr.pipe(log, { end: false })
       child.once('error', error => {
@@ -1027,11 +1082,17 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
         identity: { ...launch.identity },
         diagnostic: null
       })
-      launch.identity.packageMounts = await waitForWorkbenchReadiness(
-        launch.identity.backendUrl,
-        child,
-        this.options.readinessTimeoutMs ?? DEFAULT_READINESS_TIMEOUT_MS
-      )
+      try {
+        launch.identity.packageMounts = await waitForWorkbenchReadiness(
+          launch.identity.backendUrl,
+          child,
+          this.options.readinessTimeoutMs ?? DEFAULT_OS_READINESS_TIMEOUT_MS,
+          startupFailureMonitor.failure
+        )
+      } finally {
+        child.stdout.off('data', observeStartupOutput)
+        child.stderr.off('data', observeStartupOutput)
+      }
       if (this.stopRequested) return this.getSnapshot()
       launch.identity.agent = this.snapshot.agent
       if (child.exitCode !== null || child.signalCode !== null) {
@@ -1046,7 +1107,16 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
       await writeSessionManifest(launch, 'ready')
       return this.getSnapshot()
     } catch (error) {
-      const child = this.child
+      const child = this.child ?? launchedChild
+      const source = diagnosticFromError(error)
+      const retryWindowsReadiness = isRetryableWindowsReadinessExit({
+        platform: this.options.platform ?? process.platform,
+        retriesRemaining: readinessRetries,
+        diagnosticCode: source.code,
+        exitCode: child?.exitCode,
+        signalCode: child?.signalCode,
+        stopRequested: this.stopRequested
+      })
       const cleanup: Promise<unknown>[] = []
       if (child) {
         this.expectedExits.add(child)
@@ -1064,17 +1134,30 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
         })
         return this.getSnapshot()
       }
-      const source = diagnosticFromError(error)
-      const diagnostic: WorkbenchSessionDiagnostic = {
-        code: source.code === 'os_start_failed'
-          ? 'os_start_failed'
-          : 'os_readiness_failed',
-        message: source.message,
-        recovery: `检查日志 ${launch.identity.logPath}，确认端口与 OS 依赖后重试`
+      if (retryWindowsReadiness) {
+        this.publish({
+          phase: 'starting',
+          message: 'Windows 冷启动在就绪前退出，正在重新分配会话并自动重试一次…',
+          identity: null,
+          diagnostic: null
+        })
+        await delay(WINDOWS_READINESS_RETRY_DELAY_MS)
+        return await this.startManaged(readinessRetries - 1)
       }
+      const diagnostic: WorkbenchSessionDiagnostic = source.code === 'plc_connection_failed'
+        ? source
+        : {
+            code: source.code === 'os_start_failed'
+              ? 'os_start_failed'
+              : 'os_readiness_failed',
+            message: source.message,
+            recovery: `检查日志 ${launch.identity.logPath}，确认端口与 OS 依赖后重试`
+          }
       this.publish({
         phase: 'failed',
-        message: 'Uni-Lab OS 启动失败',
+        message: diagnostic.code === 'plc_connection_failed'
+          ? 'PLC 连接失败，Uni-Lab OS 未就绪'
+          : 'Uni-Lab OS 启动失败',
         identity: { ...launch.identity },
         diagnostic
       })
@@ -1085,9 +1168,14 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
   private publish(
     snapshot: Omit<
       WorkbenchSessionSnapshot,
-      'configuredGraphPath' | 'configuredRuntimeMode' | 'plcSimulator' | 'agent'
+      | 'configuredGraphPath'
+      | 'configuredExternalDevicesOnly'
+      | 'configuredRuntimeMode'
+      | 'plcSimulator'
+      | 'agent'
     > & {
       configuredGraphPath?: string
+      configuredExternalDevicesOnly?: boolean
       configuredRuntimeMode?: WorkbenchRuntimeMode
       plcSimulator?: WorkbenchPlcSimulatorSnapshot
       agent?: WorkbenchAgentIdentity | null
@@ -1105,6 +1193,9 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
       } : null,
       configuredGraphPath:
         snapshot.configuredGraphPath ?? this.snapshot.configuredGraphPath,
+      configuredExternalDevicesOnly:
+        snapshot.configuredExternalDevicesOnly
+        ?? this.snapshot.configuredExternalDevicesOnly,
       configuredRuntimeMode:
         snapshot.configuredRuntimeMode ?? this.snapshot.configuredRuntimeMode,
       plcSimulator: snapshot.plcSimulator ?? this.snapshot.plcSimulator
@@ -1183,7 +1274,7 @@ async function resolveWorkbenchLaunch(
   await requireReadableFile(
     localConfigPath,
     'invalid_workspace',
-    '所选 Workspace 缺少 deployment/local_config.py'
+    '所选 Workspace 缺少 deployment/local_config.py；设备图路径不会改变 Workspace，请重新选择领域项目根目录'
   )
   const configuredGraphPath = options.graphPath
     ?? join('deployment', 'graphs', 'szlab-local-debug.json')
@@ -1275,12 +1366,16 @@ async function resolveWorkbenchLaunch(
   const graphFingerprint = createHash('sha256')
     .update(graphBytes)
     .digest('hex')
+  const runtimeGraphBytes = projectManagedLocalGraph(
+    graphBytes,
+    options.plcSimulatorOpcUaPort ?? PLC_SIMULATOR_OPC_UA_PORT
+  )
   const validatedGraphPath = join(
     runtimeDirectory,
     'selected-graph.json'
   )
   await mkdir(runtimeDirectory, { recursive: true })
-  await writeFile(validatedGraphPath, graphBytes, {
+  await writeFile(validatedGraphPath, runtimeGraphBytes, {
     flag: 'wx',
     mode: 0o600
   })
@@ -1292,6 +1387,7 @@ async function resolveWorkbenchLaunch(
     graphPath,
     graphFingerprint,
     backendUrl: `http://${LOOPBACK_HOST}:${backendPort}`,
+    hostLinkPort,
     pid: 0,
     generation,
     logPath,
@@ -1320,7 +1416,9 @@ async function resolveWorkbenchLaunch(
       '--disable_browser',
       '--action_mode',
       mode === 'normal' ? 'real' : 'simulate',
-      '--external_devices_only',
+      ...(options.externalDevicesOnly === false
+        ? []
+        : ['--external_devices_only']),
       '--ros_discovery_server',
       'off'
     ],
@@ -1480,6 +1578,16 @@ function availableLoopbackPort(): Promise<number> {
   })
 }
 
+function loopbackPortFromUrl(value: string | undefined): number | undefined {
+  if (!value) return undefined
+  try {
+    const port = Number(new URL(value).port)
+    return Number.isSafeInteger(port) && port > 0 ? port : undefined
+  } catch {
+    return undefined
+  }
+}
+
 async function requireAvailableLoopbackPort(port: number, label: string): Promise<void> {
   if (!Number.isInteger(port) || port < 1024 || port > 65_535) {
     throw new WorkbenchLaunchError(
@@ -1530,14 +1638,22 @@ async function stopProcessTree(child: ChildProcessWithoutNullStreams): Promise<v
     })
     return
   }
+  // Subscribe before signalling: a short-lived child can emit ``close``
+  // synchronously enough that attaching afterward misses it and forces every
+  // graceful stop through the forced-termination timeout.
+  const closed = new Promise<void>(resolveStop => {
+    child.once('close', () => resolveStop())
+  })
   try {
     process.kill(-child.pid, 'SIGTERM')
   } catch {
     child.kill('SIGTERM')
   }
   await Promise.race([
-    new Promise<void>(resolveStop => child.once('close', () => resolveStop())),
-    delay(5_000)
+    closed,
+    // Uvicorn/Node keep-alive sockets may outlive the managed launch request;
+    // bound graceful teardown so cancel/retry stays responsive.
+    delay(2_000)
   ])
   if (child.exitCode === null) {
     try {
@@ -1575,39 +1691,6 @@ function idlePlcSimulatorSnapshot(options: {
 export function defaultPlcSimulatorProjectPath(workspacePath: string): string {
   const candidate = resolve(dirname(resolve(workspacePath)), 'PLC-Sim')
   return existsSync(candidate) ? candidate : ''
-}
-
-async function releaseLoopbackPorts(ports: readonly number[]): Promise<void> {
-  if (process.platform === 'win32') {
-    throw new Error('Windows 暂不支持自动释放端口，请在任务管理器中结束占用进程')
-  }
-  const pids = new Set<number>()
-  for (const port of ports) {
-    const output = await execFileOutput('lsof', [
-      '-nP', `-iTCP:${port}`, '-sTCP:LISTEN', '-t'
-    ])
-    for (const value of output.split(/\s+/u)) {
-      const pid = Number(value)
-      if (Number.isInteger(pid) && pid > 1 && pid !== process.pid) pids.add(pid)
-    }
-  }
-  for (const pid of pids) {
-    try { process.kill(pid, 'SIGTERM') } catch { /* process already exited */ }
-  }
-  if (pids.size > 0) await delay(500)
-  for (const pid of pids) {
-    try { process.kill(pid, 0); process.kill(pid, 'SIGKILL') } catch {
-      // Process exited after SIGTERM.
-    }
-  }
-}
-
-function execFileOutput(command: string, args: readonly string[]): Promise<string> {
-  return new Promise(resolveOutput => {
-    execFile(command, [...args], { encoding: 'utf8' }, (error, stdout) => {
-      resolveOutput(error && !stdout ? '' : stdout)
-    })
-  })
 }
 
 async function requireRealCsvFile(candidate: string): Promise<string> {
@@ -1744,6 +1827,7 @@ async function writeLocalEnvironmentConfiguration(
   workspacePath: string,
   configuration: {
     graphPath: string
+    externalDevicesOnly: boolean
     plcSimulatorProjectPath: string
     plcVariableTablePath: string
     plcHandshakeProfile: WorkbenchPlcHandshakeProfile

@@ -14,6 +14,29 @@ export async function captureWorkbenchUiOperation(
   }
 }
 
+function opensEnvironmentManager(snapshot: WorkbenchSessionSnapshot): boolean {
+  return snapshot.phase === 'failed'
+    && (
+      snapshot.diagnostic?.code === 'os_readiness_failed'
+      || snapshot.diagnostic?.code === 'plc_connection_failed'
+    )
+}
+
+function diagnosticTitle(
+  code: NonNullable<WorkbenchSessionSnapshot['diagnostic']>['code']
+): string {
+  switch (code) {
+    case 'invalid_workspace': return 'Workspace 校验失败'
+    case 'invalid_os_project': return 'Uni-Lab OS 项目不可用'
+    case 'python_environment_not_found': return 'Python 环境不可用'
+    case 'port_conflict': return '端口不可用'
+    case 'plc_connection_failed': return 'PLC 连接失败'
+    case 'os_readiness_failed': return 'Uni-Lab OS 尚未就绪'
+    case 'os_exited': return 'Uni-Lab OS 已退出'
+    case 'os_start_failed': return 'Uni-Lab OS 未能启动'
+  }
+}
+
 export function WorkbenchSessionGate({
   snapshot,
   onRetry,
@@ -28,8 +51,7 @@ export function WorkbenchSessionGate({
   renderEnvironmentManager: (onClose: () => void) => React.ReactNode
 }): React.JSX.Element {
   const [environmentOpen, setEnvironmentOpen] = React.useState(
-    snapshot.phase === 'failed'
-    && snapshot.diagnostic?.code === 'os_readiness_failed'
+    opensEnvironmentManager(snapshot)
   )
   const [operationError, setOperationError] = React.useState<string | null>(null)
   const [launchRequested, setLaunchRequested] = React.useState(false)
@@ -56,10 +78,7 @@ export function WorkbenchSessionGate({
   }, [onStop, run])
 
   React.useEffect(() => {
-    if (
-      snapshot.phase === 'failed'
-      && snapshot.diagnostic?.code === 'os_readiness_failed'
-    ) {
+    if (opensEnvironmentManager(snapshot)) {
       setEnvironmentOpen(true)
     }
   }, [snapshot.diagnostic?.code, snapshot.phase])
@@ -103,9 +122,13 @@ export function WorkbenchSessionGate({
         ) : null}
         {snapshot.diagnostic ? (
           <div className="unilab-workbench-session-diagnostic" role="alert">
-            <strong>{snapshot.diagnostic.code}</strong>
+            <strong>{diagnosticTitle(snapshot.diagnostic.code)}</strong>
             <p>{snapshot.diagnostic.message}</p>
-            <p>{snapshot.diagnostic.recovery}</p>
+            <p className="unilab-workbench-session-diagnostic__recovery">
+              <span>建议：</span>
+              {snapshot.diagnostic.recovery}
+            </p>
+            <code>诊断代码：{snapshot.diagnostic.code}</code>
           </div>
         ) : null}
         {operationError ? (

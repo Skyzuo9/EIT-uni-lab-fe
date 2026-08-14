@@ -37,7 +37,7 @@ describe('WorkflowOutput', () => {
     )
 
     expect(html).toContain('aria-label="调整运行输出高度"')
-    expect(html).toContain('aria-valuemin="40"')
+    expect(html).toContain('aria-valuemin="48"')
     expect(html).toContain('workflow-runtime__output-body')
     expect(html).not.toContain('workflow-runtime__output-toggle')
     expect(html).not.toContain('展开运行输出')

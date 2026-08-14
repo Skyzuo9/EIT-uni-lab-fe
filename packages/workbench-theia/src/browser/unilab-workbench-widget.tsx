@@ -139,6 +139,7 @@ export class UniLabWorkbenchWidget extends ReactWidget {
     phase: 'idle',
     message: '正在连接 Workbench Backend…',
     configuredGraphPath: 'deployment/graphs/szlab-local-debug.json',
+    configuredExternalDevicesOnly: true,
     configuredRuntimeMode: 'normal',
     identity: null,
     agent: null,
@@ -194,6 +195,7 @@ export class UniLabWorkbenchWidget extends ReactWidget {
         phase: 'failed',
         message: 'Workbench Backend 连接失败',
         configuredGraphPath: 'deployment/graphs/szlab-local-debug.json',
+        configuredExternalDevicesOnly: true,
         configuredRuntimeMode: 'normal',
         identity: null,
         agent: null,
@@ -273,6 +275,20 @@ export class UniLabWorkbenchWidget extends ReactWidget {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       void this.messages.error(`设备图配置失败：${message}`)
+      throw error
+    } finally {
+      await this.refreshSessionSnapshot()
+    }
+  }
+
+  protected readonly setExternalDevicesOnly = async (
+    enabled: boolean
+  ): Promise<void> => {
+    try {
+      await this.workbenchSession.setExternalDevicesOnly(enabled)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      void this.messages.error(`设备目录加载范围配置失败：${message}`)
       throw error
     } finally {
       await this.refreshSessionSnapshot()
@@ -585,6 +601,7 @@ export class UniLabWorkbenchWidget extends ReactWidget {
               onRestartSession={this.restartSession}
               onReadEnvironmentLog={this.readEnvironmentLog}
               onConfigureGraph={this.configureGraph}
+              onSetExternalDevicesOnly={this.setExternalDevicesOnly}
               onConfigurePlcSimulator={this.configurePlcSimulator}
               onRefreshPlcVariableTables={this.refreshPlcVariableTables}
               onStartPlcSimulator={this.startPlcSimulator}
@@ -611,6 +628,7 @@ export class UniLabWorkbenchWidget extends ReactWidget {
         onRestartSession={this.restartSession}
         onReadEnvironmentLog={this.readEnvironmentLog}
         onConfigureGraph={this.configureGraph}
+        onSetExternalDevicesOnly={this.setExternalDevicesOnly}
         onConfigurePlcSimulator={this.configurePlcSimulator}
         onRefreshPlcVariableTables={this.refreshPlcVariableTables}
         onStartPlcSimulator={this.startPlcSimulator}
@@ -641,6 +659,7 @@ function WorkbenchSurface({
   onRestartSession,
   onReadEnvironmentLog,
   onConfigureGraph,
+  onSetExternalDevicesOnly,
   onConfigurePlcSimulator,
   onRefreshPlcVariableTables,
   onStartPlcSimulator,
@@ -661,6 +680,7 @@ function WorkbenchSurface({
   onRestartSession: () => Promise<void>
   onReadEnvironmentLog: (kind: WorkbenchEnvironmentLogKind) => Promise<string>
   onConfigureGraph: (graphPath: string) => Promise<void>
+  onSetExternalDevicesOnly: (enabled: boolean) => Promise<void>
   onConfigurePlcSimulator: (
     configuration: WorkbenchPlcSimulatorConfiguration
   ) => Promise<void>
@@ -900,6 +920,7 @@ function WorkbenchSurface({
             onRestartSession={onRestartSession}
             onReadEnvironmentLog={onReadEnvironmentLog}
             onConfigureGraph={onConfigureGraph}
+            onSetExternalDevicesOnly={onSetExternalDevicesOnly}
             onConfigurePlcSimulator={onConfigurePlcSimulator}
             onRefreshPlcVariableTables={onRefreshPlcVariableTables}
             onStartPlcSimulator={onStartPlcSimulator}

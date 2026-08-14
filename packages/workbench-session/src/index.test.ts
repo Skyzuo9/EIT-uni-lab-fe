@@ -227,7 +227,7 @@ describe('managed local Workbench session', () => {
     })
   })
 
-  it('does not change the selected graph or mode when configuration persistence fails', async () => {
+  it('does not change selected launch settings when persistence fails', async () => {
     const fixture = await createFixture()
     const configurationPath = join(
       fixture.workspacePath,
@@ -246,10 +246,12 @@ describe('managed local Workbench session', () => {
     await expect(session.configureGraph(
       'deployment/graphs/not-recorded.json'
     )).rejects.toThrow()
+    await expect(session.setExternalDevicesOnly(false)).rejects.toThrow()
     await expect(session.setRuntimeMode('dry-run')).rejects.toThrow()
     expect(session.getSnapshot().configuredGraphPath).toBe(
       join('deployment', 'graphs', 'szlab-local-debug.json')
     )
+    expect(session.getSnapshot().configuredExternalDevicesOnly).toBe(true)
 
     await rm(configurationPath, { recursive: true, force: true })
     const ready = await session.start()
@@ -327,6 +329,7 @@ describe('managed local Workbench session', () => {
       phase: 'idle',
       message: 'Uni-Lab OS 已停止',
       configuredGraphPath: 'deployment/graphs/szlab-local-debug.json',
+      configuredExternalDevicesOnly: true,
       configuredRuntimeMode: 'normal',
       identity: null,
       agent: null,
@@ -578,6 +581,38 @@ describe('managed local Workbench session', () => {
     })
   })
 
+  it('fails fast with an actionable PLC diagnosis when the backend thread terminates', async () => {
+    const fixture = await createFixture()
+    const session = createManagedLocalWorkbenchSession({
+      workspacePath: fixture.workspacePath,
+      osProjectPath: fixture.osProjectPath,
+      environmentPath: fixture.environmentPath,
+      plcSimulatorGuiPort: fixture.plcSimulatorGuiPort,
+      plcSimulatorOpcUaPort: fixture.plcSimulatorOpcUaPort,
+      readinessTimeoutMs: 5_000,
+      environment: {
+        ...process.env,
+        UNILAB_FIXTURE_DEVICES_NOT_READY: '1',
+        UNILAB_FIXTURE_PLC_CONNECTION_FAILURE: '1'
+      }
+    })
+    sessions.push(session)
+    const startedAt = Date.now()
+
+    await expect(session.start()).rejects.toThrow('PLC')
+
+    expect(Date.now() - startedAt).toBeLessThan(2_000)
+    expect(session.getSnapshot()).toMatchObject({
+      phase: 'failed',
+      message: 'PLC 连接失败，Uni-Lab OS 未就绪',
+      diagnostic: {
+        code: 'plc_connection_failed',
+        message: expect.stringContaining('无法解析 PLC'),
+        recovery: expect.stringContaining('127.0.0.1')
+      }
+    })
+  })
+
   it('starts PLC-Sim independently after authoring becomes ready', async () => {
     const fixture = await createFixture()
     const plcReadyFile = join(fixture.workspacePath, '.unilabos', 'plc-ready')
@@ -746,6 +781,40 @@ describe('managed local Workbench session', () => {
       ),
       'utf8'
     )).resolves.toContain('192.168.1.10')
+  })
+
+  it('defaults to external-only loading and persists an explicit opt-out', async () => {
+    const fixture = await createFixture()
+    const argumentLogPath = join(fixture.workspacePath, 'unilab-args.json')
+    const session = createManagedLocalWorkbenchSession({
+      workspacePath: fixture.workspacePath,
+      osProjectPath: fixture.osProjectPath,
+      environmentPath: fixture.environmentPath,
+      readinessTimeoutMs: 5_000,
+      environment: {
+        ...process.env,
+        UNILAB_FIXTURE_ARGUMENT_LOG: argumentLogPath
+      }
+    })
+    sessions.push(session)
+
+    expect(session.getSnapshot().configuredExternalDevicesOnly).toBe(true)
+    await expect(session.start()).resolves.toMatchObject({ phase: 'ready' })
+    expect(JSON.parse(await readFile(argumentLogPath, 'utf8'))).toContain(
+      '--external_devices_only'
+    )
+
+    await session.stop()
+    await session.setExternalDevicesOnly(false)
+    expect(session.getSnapshot().configuredExternalDevicesOnly).toBe(false)
+    await expect(session.start()).resolves.toMatchObject({ phase: 'ready' })
+
+    const argumentsUsed = JSON.parse(await readFile(argumentLogPath, 'utf8'))
+    expect(argumentsUsed).not.toContain('--external_devices_only')
+    await expect(readFile(
+      join(fixture.workspacePath, '.unilabos', 'environment.local.json'),
+      'utf8'
+    )).resolves.toContain('"externalDevicesOnly": false')
   })
 
   it('cancels PLC-Sim while its launch plan is still validating', async () => {
@@ -1005,9 +1074,24 @@ function fakeUnilabExecutable(): string {
 const http = require('node:http')
 const fs = require('node:fs')
 const args = process.argv.slice(2)
+if (process.env.UNILAB_FIXTURE_ARGUMENT_LOG) {
+  fs.writeFileSync(process.env.UNILAB_FIXTURE_ARGUMENT_LOG, JSON.stringify(args))
+}
 const port = Number(args[args.indexOf('--port') + 1])
 const graphPath = args[args.indexOf('--graph') + 1]
 if (process.env.UNILAB_FIXTURE_EXIT_BEFORE_READY === '1') process.exit(17)
+if (process.env.UNILAB_FIXTURE_PLC_CONNECTION_FAILURE === '1') {
+  setTimeout(() => process.stderr.write([
+    '[ERROR] client connect failed: [Errno 8] nodename nor servname provided, or not known',
+    'Exception in thread backend_thread:',
+    '  File "/os/unilabos/ros/nodes/presets/host_node.py", line 945, in initialize_device',
+    '  File "/workspace/szlab_poly_plc/device.py", line 501, in _connect',
+    '  File "/python/site-packages/opcua/client/client.py", line 307, in connect_socket',
+    '    sock = socket.create_connection((host, port), timeout=self.timeout)',
+    'socket.gaierror: [Errno 8] nodename nor servname provided, or not known',
+    ''
+  ].join('\\n')), 25)
+}
 let exitScheduled = false
 const json = (response, body) => {
   response.writeHead(200, { 'content-type': 'application/json' })

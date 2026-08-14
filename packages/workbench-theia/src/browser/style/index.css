@@ -338,6 +338,43 @@ body.unilab-environment-manager-open .material-oblique-stack__label {
   font: 10px/1 var(--unilab-font-mono);
 }
 
+.unilab-environment-manager__external-devices-only {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: start;
+  gap: 7px;
+  margin: -2px 0 9px 60px;
+  color: var(--unilab-color-text);
+  cursor: pointer;
+}
+
+.unilab-environment-manager__external-devices-only input {
+  width: 14px;
+  height: 14px;
+  margin: 1px 0 0;
+  accent-color: var(--unilab-color-primary);
+}
+
+.unilab-environment-manager__external-devices-only span {
+  display: grid;
+  gap: 2px;
+}
+
+.unilab-environment-manager__external-devices-only strong {
+  font-size: 10px;
+}
+
+.unilab-environment-manager__external-devices-only small {
+  color: var(--unilab-color-text-muted);
+  font-size: 9px;
+  line-height: 1.35;
+}
+
+.unilab-environment-manager__external-devices-only:has(input:disabled) {
+  cursor: default;
+  opacity: 0.62;
+}
+
 .unilab-environment-manager__mode {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -651,6 +688,16 @@ body.unilab-environment-manager-open .material-oblique-stack__label {
   background: var(--unilab-color-canvas);
 }
 
+/* Theia 底部面板与运行输出共用纵向空间，展开时由宿主隐藏内嵌输出。 */
+#theia-bottom-split-panel:has(
+  > #theia-bottom-content-panel:not(.lm-mod-hidden)
+)
+  > #theia-main-content-panel
+  .unilab-workbench__surface--workflow
+  .workflow-runtime__results:not(.is-fullscreen) {
+  display: none !important;
+}
+
 .unilab-workbench-session-gate {
   align-items: center;
   justify-content: center;
@@ -761,12 +808,30 @@ body.unilab-environment-manager-open .material-oblique-stack__label {
   margin: 18px 0;
   padding: 12px 14px;
   color: var(--unilab-color-danger);
-  border-left: 3px solid var(--unilab-color-danger);
+  border: 1px solid color-mix(in srgb, var(--unilab-color-danger) 36%, transparent);
+  border-radius: var(--unilab-radius-control);
   background: color-mix(in srgb, var(--unilab-color-danger) 8%, transparent);
 }
 
 .unilab-workbench-session-diagnostic p {
   margin: 6px 0 0;
+}
+
+.unilab-workbench-session-diagnostic__recovery {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.unilab-workbench-session-diagnostic__recovery span {
+  flex: 0 0 auto;
+  font-weight: 700;
+}
+
+.unilab-workbench-session-diagnostic code {
+  display: block;
+  margin-top: 10px;
+  font: 600 11px/1.4 var(--unilab-font-mono);
 }
 
 .unilab-workbench-session-actions {

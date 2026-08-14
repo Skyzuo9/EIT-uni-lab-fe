@@ -50,7 +50,9 @@ describe('Workbench macOS distribution gate', () => {
     assert.match(builderConfiguration, /^appId: com\.bohrium\.unilab$/mu)
     assert.match(welcomeDocument, /<title>UniLab 调试工作台<\/title>/u)
     assert.match(welcomeDocument, /id="install-runtime"/u)
+    assert.match(welcomeDocument, /id="choose-runtime"/u)
     assert.match(welcomeScript, /managedRuntime/u)
+    assert.match(welcomeScript, /chooseEnvironment/u)
     assert.match(welcomeScript, /unilab -h/u)
     assert.equal(
       theiaManifest.theiaExtensions[0].frontendPreload,

@@ -27,6 +27,7 @@ export interface EnvironmentManagerProps {
   onRestartSession: () => Promise<void>
   onReadEnvironmentLog: (kind: WorkbenchEnvironmentLogKind) => Promise<string>
   onConfigureGraph: (graphPath: string) => Promise<void>
+  onSetExternalDevicesOnly: (enabled: boolean) => Promise<void>
   onConfigurePlcSimulator: (
     configuration: WorkbenchPlcSimulatorConfiguration
   ) => Promise<void>
@@ -48,6 +49,7 @@ export function EnvironmentManager({
   onRestartSession,
   onReadEnvironmentLog,
   onConfigureGraph,
+  onSetExternalDevicesOnly,
   onConfigurePlcSimulator,
   onRefreshPlcVariableTables,
   onStartPlcSimulator,
@@ -211,7 +213,7 @@ export function EnvironmentManager({
               ['来源', runtimeInstallation.managed ? '应用内置' : '现有环境'],
               ['环境', runtimeInstallation.environmentPath ?? '—']
             ]}
-            actions={[
+            actions={runtimeInstallation.bundled && [
               'not-installed',
               'failed'
             ].includes(runtimeInstallation.phase) ? (
@@ -250,6 +252,14 @@ export function EnvironmentManager({
                   onChange={event => setGraphPath(event.currentTarget.value)}
                 />
               </label>
+              <ExternalDevicesOnlyControl
+                checked={session.configuredExternalDevicesOnly}
+                disabled={Boolean(busyAction)}
+                onChange={enabled => run(
+                  'external-devices-only',
+                  () => onSetExternalDevicesOnly(enabled)
+                )}
+              />
               <RuntimeModeControl
                 mode={identity?.mode ?? session.configuredRuntimeMode}
                 disabled={Boolean(busyAction)}
@@ -629,6 +639,33 @@ function remoteAccessMessage(snapshot: WorkbenchRemoteAccessSnapshot): string {
 function formatRemoteExpiry(expiresAt: number | null): string {
   if (!expiresAt) return '—'
   return new Date(expiresAt).toLocaleString()
+}
+
+export function ExternalDevicesOnlyControl({
+  checked,
+  disabled,
+  onChange
+}: {
+  checked: boolean
+  disabled: boolean
+  onChange: (checked: boolean) => Promise<void>
+}): React.JSX.Element {
+  return (
+    <label className="unilab-environment-manager__external-devices-only">
+      <input
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        onChange={event => void onChange(event.currentTarget.checked)}
+      />
+      <span>
+        <strong>仅加载外部设备包</strong>
+        <small>
+          取消勾选后同时加载 OS 内置 Registry；下次启动 OS 时生效。
+        </small>
+      </span>
+    </label>
+  )
 }
 
 export function RuntimeModeControl({

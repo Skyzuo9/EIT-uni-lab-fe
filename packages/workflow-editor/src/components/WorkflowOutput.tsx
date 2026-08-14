@@ -111,6 +111,7 @@ export function WorkflowOutput({
 
   return (
     <div
+      ref={resizable ? outputResize.panelRef : undefined}
       className={`workflow-runtime__results${
         outputVisible ? ' is-expanded' : ' is-collapsed'
       }${resizable ? ' is-resizable' : ''}${
