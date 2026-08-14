@@ -32,7 +32,16 @@ export interface WorkflowRunNodeOption {
     x: number
     y: number
   }
+  material_source?: WorkflowRunMaterialSourceOption
   handles: WorkflowRunHandleOption[]
+}
+
+/** 已有工作流只读定义中的物料来源（MaterialSource）选择器事实。 */
+export interface WorkflowRunMaterialSourceOption {
+  mode: string
+  flow_role: string
+  mount_uuid: string
+  resource_template_uuid: string
 }
 
 /** 已有工作流只读画布中的一个稳定端口。 */

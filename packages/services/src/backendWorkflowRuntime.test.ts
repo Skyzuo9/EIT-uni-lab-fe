@@ -17,6 +17,9 @@ const TEMPLATE_UUID = '30000000-0000-4000-8000-000000000001'
 const SOURCE_HANDLE_UUID = '40000000-0000-4000-8000-000000000001'
 const TARGET_HANDLE_UUID = '40000000-0000-4000-8000-000000000002'
 const EDGE_UUID = '70000000-0000-4000-8000-000000000001'
+const MATERIAL_TEMPLATE_UUID = '30000000-0000-4000-8000-000000000009'
+const MOUNT_UUID = '10000000-0000-4000-8000-000000000009'
+const RESOURCE_TEMPLATE_UUID = '20000000-0000-4000-8000-000000000009'
 
 describe('Backend 工作流运行 adapter', () => {
   /** 空任务输入可安全省略，并为 Backend 补齐库存绑定数组。 */
@@ -84,14 +87,14 @@ describe('Backend 工作流运行 adapter', () => {
           handle_key: 'output',
           display_name: '输出',
           io_type: 'source',
-          value_type: 'material',
+          value_type: 'ResourceSlot',
           data_key: 'sample'
         }, {
           uuid: TARGET_HANDLE_UUID,
           handle_key: 'input',
           display_name: '输入',
           io_type: 'target',
-          value_type: 'material'
+          value_type: 'ResourceSlot'
         }]
       }, {
         workflow_node_uuid: TARGET_NODE_UUID,
@@ -104,14 +107,14 @@ describe('Backend 工作流运行 adapter', () => {
           handle_key: 'output',
           display_name: '输出',
           io_type: 'source',
-          value_type: 'material',
+          value_type: 'ResourceSlot',
           data_key: 'sample'
         }, {
           uuid: TARGET_HANDLE_UUID,
           handle_key: 'input',
           display_name: '输入',
           io_type: 'target',
-          value_type: 'material'
+          value_type: 'ResourceSlot'
         }]
       }],
       edges: [{
@@ -126,6 +129,66 @@ describe('Backend 工作流运行 adapter', () => {
       `/api/v1/workflows/${WORKFLOW_UUID}/graph`,
       undefined
     )
+  })
+
+  /**
+   * Backend 物料来源（MaterialSource）的角色与挂载身份必须进入共享画布，
+   * 否则主样品蛇形和完整支线控件会因缺少谱系而静默消失。
+   */
+  it('保留 Backend 物料来源角色并归一物料占位符', async () => {
+    const request = vi.fn().mockResolvedValue({
+      code: 0,
+      data: {
+        workflow: { uuid: WORKFLOW_UUID, revision: 3 },
+        nodes: [{
+          uuid: NODE_UUID,
+          workflow_node_template_uuid: MATERIAL_TEMPLATE_UUID,
+          name: '主样品',
+          type: 'material_source',
+          disabled: false,
+          param: {
+            mode: 'existing',
+            resource_template_uuid: RESOURCE_TEMPLATE_UUID,
+            mount: { uuid: MOUNT_UUID },
+            material_uuid: null,
+            site: null,
+            slot_range: null,
+            flow_role: 'primary_sample'
+          }
+        }],
+        edges: [],
+        handle_templates: [{
+          uuid: SOURCE_HANDLE_UUID,
+          workflow_node_template_uuid: MATERIAL_TEMPLATE_UUID,
+          handle_key: 'material',
+          display_name: 'Material',
+          io_type: 'source',
+          type: 'material',
+          required: false,
+          data_key: 'material'
+        }]
+      }
+    })
+
+    await expect(loadBackendWorkflowRunPreparation(
+      mockHttp(request),
+      WORKFLOW_UUID
+    )).resolves.toMatchObject({
+      nodes: [{
+        workflow_node_uuid: NODE_UUID,
+        material_source: {
+          mode: 'existing',
+          resource_template_uuid: RESOURCE_TEMPLATE_UUID,
+          mount_uuid: MOUNT_UUID,
+          flow_role: 'primary_sample'
+        },
+        handles: [{
+          uuid: SOURCE_HANDLE_UUID,
+          value_type: 'ResourceSlot',
+          data_key: 'material'
+        }]
+      }]
+    })
   })
 
   /** 重复节点身份会使目标选择含糊，必须在前端合同边界拒绝。 */

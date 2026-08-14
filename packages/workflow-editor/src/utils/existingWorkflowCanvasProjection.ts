@@ -26,6 +26,17 @@ export function projectExistingWorkflowCanvas(
       ...(node.position
         ? { x: node.position.x, y: node.position.y }
         : {}),
+      ...(node.material_source
+        ? {
+            materialSource: {
+              mode: node.material_source.mode,
+              flowRole: node.material_source.flow_role,
+              mountUuid: node.material_source.mount_uuid,
+              resourceTemplateUuid:
+                node.material_source.resource_template_uuid
+            }
+          }
+        : {}),
       handles: node.handles.map((handle) => ({
         uuid: handle.uuid,
         handleKey: handle.handle_key,
