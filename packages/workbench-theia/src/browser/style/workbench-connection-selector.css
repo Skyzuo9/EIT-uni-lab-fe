@@ -6,7 +6,8 @@
 
 .unilab-workbench-connection > summary {
   display: grid;
-  min-height: 34px;
+  height: 44px;
+  box-sizing: border-box;
   grid-template-columns: 8px minmax(0, 1fr) 14px;
   align-items: center;
   gap: 8px;

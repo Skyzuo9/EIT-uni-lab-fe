@@ -7,6 +7,7 @@ import {
 
 export const WORKBENCH_CONNECTION_STORAGE_KEY =
   'unilab.workbench.connection-mode.v1'
+export const WORKBENCH_LOCAL_PROXY_PREFIX = '/__unilab_local'
 export const WORKBENCH_BACKEND_PROXY_PREFIX = '/__unilab_backend'
 
 export type WorkbenchConnectionMode = 'local' | 'backend'
@@ -77,7 +78,9 @@ export function createWorkbenchConnectionTargets(
     getDefaultBackend('local-python').apiUrl
   )
   const backendUrl = workbenchBackendProxyUrl(environment.browserOrigin)
-  const localApiUrl = environment.browserOrigin ? backendUrl : localUrl
+  const localApiUrl = environment.browserOrigin
+    ? workbenchLocalProxyUrl(environment.browserOrigin)
+    : localUrl
   const localBackend: BackendConfig = {
     ...getDefaultBackend('local-python'),
     name: '本地调试',
@@ -163,6 +166,22 @@ function workbenchBackendProxyUrl(browserOrigin: string | undefined): string {
       .replace(/\/$/u, '')
   } catch {
     return getDefaultBackend('local-go').apiUrl
+  }
+}
+
+/**
+ * 生成只转发 Workspace Backend 的同源代理地址。
+ * @param browserOrigin 当前 Theia 页面 Origin。
+ * @returns 本地权威专用代理；缺少 Origin 时回退到运行时直连地址。
+ */
+function workbenchLocalProxyUrl(browserOrigin: string | undefined): string {
+  if (!browserOrigin) return getDefaultBackend('local-python').apiUrl
+  try {
+    return new URL(WORKBENCH_LOCAL_PROXY_PREFIX, browserOrigin)
+      .toString()
+      .replace(/\/$/u, '')
+  } catch {
+    return getDefaultBackend('local-python').apiUrl
   }
 }
 

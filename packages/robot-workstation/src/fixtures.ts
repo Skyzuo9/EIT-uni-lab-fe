@@ -209,14 +209,14 @@ export const BENCH_HISTORY: readonly BenchHistoryRecord[] = [
 /** 试剂库基础信息夹具；编码仅作内部身份，不在产品列表展示。 */
 export const REAGENT_DEFINITIONS: readonly ReagentDefinition[] = [
   reagent('reagent-acn', 'RGT-ACN-001', '乙腈', '75-05-8', 'C₂H₃N', 'CC#N', '41.05 g/mol', '液体', 'mL', [
-    { name: '品牌货号', value: 'ACN-4L-01', unit: '' },
+    { name: '品牌货号', value: 'ACN-4L-01' },
   ]),
   reagent('reagent-meoh', 'RGT-MEOH-001', '甲醇', '67-56-1', 'CH₄O', 'CO', '32.04 g/mol', '液体', 'mL', []),
   reagent('reagent-nacl', 'RGT-NACL-001', '氯化钠', '7647-14-5', 'NaCl', '[Na+].[Cl-]', '58.44 g/mol', '固体', 'g', [
-    { name: '粒径', value: '100-200', unit: 'μm' },
+    { name: '粒径', value: '100-200' },
   ]),
   reagent('reagent-hcl', 'RGT-HCL-005', '盐酸', '7647-01-0', 'HCl', 'Cl', '36.46 g/mol', '液体（水溶液）', 'mL', [
-    { name: '开封温度', value: '20', unit: '℃' },
+    { name: '开封温度', value: '20' },
   ]),
 ]
 

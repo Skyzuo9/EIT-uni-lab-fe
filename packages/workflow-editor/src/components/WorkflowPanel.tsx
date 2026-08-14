@@ -24,6 +24,7 @@ import { PersistentWorkflowAuthoringPanel } from './PersistentWorkflowAuthoringP
 
 export type { WorkflowCatalogState } from './WorkflowCatalog'
 export {
+  WORKFLOW_CATALOG_FILTER_CONTROLS_VISIBLE,
   WORKFLOW_CATALOG_MANAGEMENT_ACTIONS_VISIBLE,
   groupWorkflowCatalog,
   workflowGroupLabel

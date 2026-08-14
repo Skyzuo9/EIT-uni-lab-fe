@@ -4,7 +4,7 @@ import type { CustomParameter } from '../types'
 import { WorkstationIcon } from '../WorkstationIcon'
 import styles from '../workstation.module.scss'
 
-/** 提供可增加、编辑和移除的名称/值/单位自定义参数组。 */
+/** 提供可增加、编辑和移除的名称/值自定义参数组。 */
 export function CustomParameterFields({
   value,
   onChange,
@@ -22,7 +22,7 @@ export function CustomParameterFields({
         <Button
           variant="outline"
           size="sm"
-          onClick={() => onChange([...value, { name: '', value: '', unit: '' }])}
+          onClick={() => onChange([...value, { name: '', value: '' }])}
         >
           <WorkstationIcon name="plus" />
           添加参数
@@ -40,10 +40,6 @@ export function CustomParameterFields({
             <label>
               <span>值</span>
               <Input value={parameter.value} onChange={(event) => update(index, { value: event.target.value })} required />
-            </label>
-            <label>
-              <span>单位</span>
-              <Input value={parameter.unit} onChange={(event) => update(index, { unit: event.target.value })} />
             </label>
             <Button
               variant="ghost"

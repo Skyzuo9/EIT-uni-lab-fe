@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import type { WorkflowRuntimePort, WorkflowSummary } from '@unilab/services'
 
 import WorkflowPanel, {
+  WORKFLOW_CATALOG_FILTER_CONTROLS_VISIBLE,
   WORKFLOW_CATALOG_MANAGEMENT_ACTIONS_VISIBLE,
   groupWorkflowCatalog,
   workflowGroupLabel
@@ -128,6 +129,10 @@ describe('WorkflowPanel Runtime entry', () => {
 
   it('temporarily hides workflow catalog change-log and delete actions', () => {
     expect(WORKFLOW_CATALOG_MANAGEMENT_ACTIONS_VISIBLE).toBe(false)
+  })
+
+  it('temporarily hides workflow range and status filters', () => {
+    expect(WORKFLOW_CATALOG_FILTER_CONTROLS_VISIBLE).toBe(false)
   })
 
   it('reserves the canvas by collapsing auxiliary panels on narrow workspaces', () => {

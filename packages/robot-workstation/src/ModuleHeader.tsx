@@ -44,11 +44,13 @@ export function DataAuthorityNotice({ children }: { children: ReactNode }): Reac
 export function WorkstationDataState({
   status,
   title,
-  icon = 'shield'
+  icon = 'shield',
+  action
 }: {
   status: WorkstationDataStatus
   title: string
   icon?: 'shield' | 'point' | 'map' | 'flask'
+  action?: ReactNode
 }): React.JSX.Element {
   return (
     <section className="flex min-h-[280px] items-center justify-center px-6 py-10" role={status.phase === 'error' ? 'alert' : 'status'}>
@@ -58,7 +60,9 @@ export function WorkstationDataState({
         </span>
         <h2 className="m-0 text-base font-semibold">{title}</h2>
         <p className="mx-auto mt-2 max-w-[46ch] text-sm leading-6 text-[var(--unilab-color-text-muted)]">{status.message}</p>
-        {status.retry ? (
+        {action ? (
+          <div className="mt-4">{action}</div>
+        ) : status.retry ? (
           <Button variant="outline" className="mt-4" onClick={status.retry}>
             重新读取
           </Button>

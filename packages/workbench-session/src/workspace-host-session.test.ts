@@ -27,6 +27,7 @@ describe('Workspace Host Workbench adapter', () => {
     const token = 'fixture-token'
     const operations = new Map<string, Record<string, unknown>>()
     const receivedCommands: string[] = []
+    let receivedReleaseParameters: Record<string, unknown> | null = null
     const snapshot = hostSnapshot(workspacePath)
     const server = createServer(async (request, response) => {
       if (request.headers.authorization !== `Bearer ${token}`) {
@@ -49,6 +50,9 @@ describe('Workspace Host Workbench adapter', () => {
           parameters: Record<string, unknown>
         }
         receivedCommands.push(body.command)
+        if (body.command === 'release.publish') {
+          receivedReleaseParameters = body.parameters
+        }
         applyCommand(snapshot, body.command, body.parameters)
         const operation = {
           operationId: body.operationId,
@@ -61,6 +65,12 @@ describe('Workspace Host Workbench adapter', () => {
                 activated: body.parameters['activate'] === true,
                 counts: { templates: 3, materials: 2, workflows: 1 }
               }
+            : body.command === 'release.inspect'
+              ? {
+                  targetAddress: String(body.parameters['backendUrl']),
+                  empty: false,
+                  counts: { templates: 4, materials: 2, workflows: 1 }
+                }
             : { revision: snapshot.revision },
           error: null
         }
@@ -113,8 +123,26 @@ describe('Workspace Host Workbench adapter', () => {
     expect(await session.readEnvironmentLog('workspace-backend'))
       .toBe('backend fixture log')
 
-    const release = await session.publishRelease({ activate: false })
+    await expect(session.inspectReleaseTarget('http://192.168.1.20:9000'))
+      .resolves.toEqual({
+        targetAddress: 'http://192.168.1.20:9000',
+        empty: false,
+        counts: { templates: 4, materials: 2, workflows: 1 }
+      })
+
+    const release = await session.publishRelease({
+      activate: false,
+      backendUrl: 'http://192.168.1.20:9000',
+      resetTarget: true
+    })
     expect(receivedCommands.at(-1)).toBe('release.publish')
+    expect(receivedReleaseParameters).toMatchObject({
+      backendUrl: 'http://192.168.1.20:9000',
+      activate: false,
+      verify: true,
+      resetTarget: true,
+      confirmation: 'CLEAR_BACKEND'
+    })
     expect(release).toEqual({
       releaseId: 'sha256:fixture-release',
       targetAddress: 'http://127.0.0.1:8080/api/v1',

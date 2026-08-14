@@ -112,6 +112,16 @@ export interface WorkbenchReleaseReceipt {
   }
 }
 
+export interface WorkbenchReleaseTargetInspection {
+  targetAddress: string
+  empty: boolean
+  counts: {
+    templates: number
+    materials: number
+    workflows: number
+  }
+}
+
 export interface WorkbenchSessionIdentity {
   workspacePath: string
   osProjectPath: string
@@ -271,7 +281,14 @@ export interface WorkbenchSession {
   ): Promise<WorkbenchSessionSnapshot>
   setRuntimeMode(mode: WorkbenchRuntimeMode): Promise<WorkbenchSessionSnapshot>
   setDomainAuthority(mode: WorkbenchDomainMode): Promise<WorkbenchSessionSnapshot>
-  publishRelease(options?: { activate?: boolean }): Promise<WorkbenchReleaseReceipt>
+  publishRelease(options?: {
+    activate?: boolean
+    backendUrl?: string
+    resetTarget?: boolean
+  }): Promise<WorkbenchReleaseReceipt>
+  inspectReleaseTarget(
+    backendUrl: string
+  ): Promise<WorkbenchReleaseTargetInspection>
 }
 
 interface ResolvedWorkbenchLaunch {
@@ -723,6 +740,10 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
 
   async publishRelease(): Promise<WorkbenchReleaseReceipt> {
     throw new Error('WorkspaceRelease 发布需要由 Workspace Host 执行')
+  }
+
+  async inspectReleaseTarget(): Promise<WorkbenchReleaseTargetInspection> {
+    throw new Error('Backend 发布目标检查需要由 Workspace Host 执行')
   }
 
   private async persistConfiguration(overrides: Partial<{

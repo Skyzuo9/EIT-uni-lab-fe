@@ -112,7 +112,7 @@ describe('RobotWorkstation', () => {
     expect(markup).toContain('登记试剂')
     expect(markup).toContain('编辑 乙醇')
     expect(markup).toContain('查看 乙醇 历史')
-    expect(markup).toContain('expected_revision')
+    expect(markup).not.toContain('试剂身份、数量、修订与历史由 Go Backend 持久化')
   })
 
   /** 证明真实试剂管理恢复附件中的台账/试剂库分层，并展示权威基础化学信息。 */
@@ -145,5 +145,51 @@ describe('RobotWorkstation', () => {
     expect(markup).toContain('46.07 g/mol')
     expect(markup).toContain('阴凉通风')
     expect(markup).not.toContain('新增试剂基础信息')
+  })
+
+  it('uses registration as the empty-ledger action when the reagent library has entries', () => {
+    const markup = renderToStaticMarkup(
+      <RobotWorkstation
+        module="reagents"
+        reagentStatus={{ phase: 'ready', message: '已同步', retry: () => {} }}
+        reagentItems={[]}
+        reagentInfoStatus={{ phase: 'ready', message: '已同步' }}
+        reagentInfos={[{
+          id: 'info-1', name: '乙醇', cas: '64-17-5', aliases: [],
+          physicalState: 'liquid'
+        }]}
+        reagentManagement={{
+          containers: [],
+          containerStatus: { phase: 'ready', message: '已同步' },
+          create: async () => undefined,
+          update: async () => undefined,
+          delete: async () => undefined,
+          readHistory: async () => []
+        }}
+      />
+    )
+
+    expect(markup).toMatch(/data-testid="reagent-empty-primary"[^>]*>登记试剂<\/button>/)
+    expect(markup).not.toContain('>重新读取</button>')
+  })
+
+  it('uses reagent creation as the empty-ledger action when the reagent library is empty', () => {
+    const markup = renderToStaticMarkup(
+      <RobotWorkstation
+        module="reagents"
+        reagentStatus={{ phase: 'ready', message: '已同步', retry: () => {} }}
+        reagentItems={[]}
+        reagentInfoStatus={{ phase: 'ready', message: '已同步' }}
+        reagentInfos={[]}
+        reagentInfoManagement={{
+          create: async () => undefined,
+          update: async () => undefined,
+          delete: async () => undefined
+        }}
+      />
+    )
+
+    expect(markup).toMatch(/data-testid="reagent-empty-primary"[^>]*>新增试剂<\/button>/)
+    expect(markup).not.toContain('>重新读取</button>')
   })
 })

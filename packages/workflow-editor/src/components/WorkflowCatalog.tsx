@@ -17,6 +17,12 @@ import styles from './workflow.module.scss'
 /** 修改日志与删除能力暂不向工作流目录开放。 */
 export const WORKFLOW_CATALOG_MANAGEMENT_ACTIONS_VISIBLE = false
 
+/** 新建能力保留在底层，目录入口暂不向用户展示。 */
+export const WORKFLOW_CATALOG_CREATION_ENTRY_VISIBLE = false
+
+/** 目录范围与状态筛选暂不向用户展示，只保留关键词搜索。 */
+export const WORKFLOW_CATALOG_FILTER_CONTROLS_VISIBLE = false
+
 export interface WorkflowCatalogState {
   status: 'loading' | 'ready' | 'error'
   summary: string
@@ -174,12 +180,7 @@ export function WorkflowCatalog({
           ) : null}
         </div>
         <div className="workflow-runtime__catalog-header-actions">
-          {!loading && !error ? (
-            <span aria-label={`共 ${workflows.length} 个工作流`}>
-              {workflows.length}
-            </span>
-          ) : null}
-          {authoringAvailable ? (
+          {WORKFLOW_CATALOG_CREATION_ENTRY_VISIBLE && authoringAvailable ? (
             <button type="button" onClick={() => setCreateOpen(true)}>
               <span aria-hidden="true">＋</span>
               新建工作流
@@ -199,36 +200,40 @@ export function WorkflowCatalog({
               onChange={(event) => setQuery(event.target.value)}
             />
           </label>
-          <div role="group" aria-label="工作流目录范围">
-            <button
-              type="button"
-              aria-pressed={catalogView === 'all'}
-              onClick={() => setCatalogView('all')}
-            >
-              全部
-            </button>
-            <button
-              type="button"
-              aria-pressed={catalogView === 'recent'}
-              onClick={() => setCatalogView('recent')}
-            >
-              最近使用{recentWorkflows.length > 0 ? ` ${recentWorkflows.length}` : ''}
-            </button>
-          </div>
-          <label className="workflow-runtime__catalog-status-filter">
-            <span className="workflow-runtime__visually-hidden">按状态筛选</span>
-            <select
-              value={statusFilter}
-              aria-label="按工作流状态筛选"
-              onChange={(event) => setStatusFilter(
-                event.target.value as typeof statusFilter
-              )}
-            >
-              <option value="all">全部状态</option>
-              <option value="configured">已配置</option>
-              <option value="empty">待编排</option>
-            </select>
-          </label>
+          {WORKFLOW_CATALOG_FILTER_CONTROLS_VISIBLE ? (
+            <>
+              <div role="group" aria-label="工作流目录范围">
+                <button
+                  type="button"
+                  aria-pressed={catalogView === 'all'}
+                  onClick={() => setCatalogView('all')}
+                >
+                  全部
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={catalogView === 'recent'}
+                  onClick={() => setCatalogView('recent')}
+                >
+                  最近使用{recentWorkflows.length > 0 ? ` ${recentWorkflows.length}` : ''}
+                </button>
+              </div>
+              <label className="workflow-runtime__catalog-status-filter">
+                <span className="workflow-runtime__visually-hidden">按状态筛选</span>
+                <select
+                  value={statusFilter}
+                  aria-label="按工作流状态筛选"
+                  onChange={(event) => setStatusFilter(
+                    event.target.value as typeof statusFilter
+                  )}
+                >
+                  <option value="all">全部状态</option>
+                  <option value="configured">已配置</option>
+                  <option value="empty">待编排</option>
+                </select>
+              </label>
+            </>
+          ) : null}
           <span role="status">{filteredWorkflows.length} 个结果</span>
         </div>
       ) : null}
@@ -255,7 +260,7 @@ export function WorkflowCatalog({
         <div className="workflow-runtime__catalog-state" role="status">
           <strong>当前后端还没有工作流</strong>
           <span>{workflowCatalogEmptyMessage(selectionMode)}</span>
-          {authoringAvailable ? (
+          {WORKFLOW_CATALOG_CREATION_ENTRY_VISIBLE && authoringAvailable ? (
             <button type="button" onClick={() => setCreateOpen(true)}>
               新建工作流
             </button>

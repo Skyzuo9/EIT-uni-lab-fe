@@ -9,6 +9,8 @@ import { json, Router } from '@theia/core/shared/express'
 
 import {
   WORKBENCH_BACKEND_PROXY_PREFIX,
+  WORKBENCH_LOCAL_PROXY_PREFIX,
+  WORKBENCH_MATERIAL_MODEL_PROXY_PREFIX,
   WorkbenchBackendProxyContribution,
   resolveWorkbenchBackendProxyTarget,
   resolveWorkbenchBackendProxyTargetFromSession,
@@ -50,19 +52,79 @@ describe('Workbench Backend same-origin proxy', () => {
       .toBe('http://localhost:9000')
   })
 
-  /** Authority 切换后每个请求都必须跟随 Workspace Host 的当前目标。 */
-  it('resolves Local and Backend targets from the live managed session', () => {
+  /** 两个代理入口必须固定到各自权威，不能被当前已提交模式串线。 */
+  it('resolves Local and Backend targets independently of current mode', () => {
     expect(resolveWorkbenchBackendProxyTargetFromSession({
       configuredDomainMode: 'local',
       configuredBackendUrl: null,
       identity: { backendUrl: 'http://127.0.0.1:54865' }
-    }, 'http://127.0.0.1:18080')).toBe('http://127.0.0.1:54865')
+    }, 'http://127.0.0.1:18080', 'local'))
+      .toBe('http://127.0.0.1:54865')
 
     expect(resolveWorkbenchBackendProxyTargetFromSession({
-      configuredDomainMode: 'backend',
+      configuredDomainMode: 'local',
       configuredBackendUrl: 'http://127.0.0.1:18080',
       identity: { backendUrl: 'http://127.0.0.1:62030' }
-    }, 'http://127.0.0.1:8080')).toBe('http://127.0.0.1:18080')
+    }, 'http://127.0.0.1:8080', 'backend'))
+      .toBe('http://127.0.0.1:18080')
+
+    expect(workbenchBackendUpstreamUrl(
+      `${WORKBENCH_LOCAL_PROXY_PREFIX}/api/v1/health`,
+      'http://127.0.0.1:54865'
+    )).toBe('http://127.0.0.1:54865/api/v1/health')
+  })
+
+  /** 公共模型路径原样转发；不借用 Backend 私有前缀改写接口权威。 */
+  it('preserves the public material model asset path', () => {
+    expect(workbenchBackendUpstreamUrl(
+      `${WORKBENCH_MATERIAL_MODEL_PROXY_PREFIX}/szlab/device.xacro`,
+      'http://127.0.0.1:54865'
+    )).toBe(
+      'http://127.0.0.1:54865/api/v1/material-models/szlab/device.xacro'
+    )
+  })
+
+  /** 只有公共模型路径回源 Workspace；Backend 私有入口始终保持 Go Backend。 */
+  it('proxies only the public model route to Workspace Backend', async () => {
+    const upstream = (authority: string) => createServer((_request, response) => {
+      response.setHeader('content-type', 'text/plain')
+      response.end(authority)
+    })
+    const localPort = await listen(upstream('workspace'))
+    const backendPort = await listen(upstream('go-backend'))
+    const contribution = new WorkbenchBackendProxyContribution()
+    const earlyMiddleware = { handlers: [] as ReturnType<typeof Router>[] }
+    Object.assign(contribution, {
+      configuredTarget: `http://127.0.0.1:${backendPort}`,
+      earlyMiddleware,
+      logger: { warn() {} },
+      sessions: {
+        async getSnapshot() {
+          return {
+            configuredDomainMode: 'backend',
+            configuredBackendUrl: `http://127.0.0.1:${backendPort}`,
+            identity: { backendUrl: `http://127.0.0.1:${localPort}` }
+          }
+        }
+      }
+    })
+    contribution.initialize()
+    const app = Router()
+    earlyMiddleware.handlers.forEach(handler => app.use(handler))
+    const proxyPort = await listen(createServer(app as unknown as (
+      request: IncomingMessage,
+      response: ServerResponse
+    ) => void))
+
+    const model = await fetch(
+      `http://127.0.0.1:${proxyPort}/api/v1/material-models/szlab/device.xacro`
+    )
+    const shapes = await fetch(
+      `http://127.0.0.1:${proxyPort}${WORKBENCH_BACKEND_PROXY_PREFIX}/api/v1/material-shapes`
+    )
+
+    expect(await model.text()).toBe('workspace')
+    expect(await shapes.text()).toBe('go-backend')
   })
 
   /** 证明危险或含凭证的代理目标会在启动时失败关闭。 */

@@ -64,12 +64,12 @@ describe('environment manager layering and responsive layout', () => {
     expect(rule).toMatch(/inset 3px 0 0 var\(--unilab-color-primary\)/u)
   })
 
-  it('separates primary and maintenance actions in the OS toolbar', () => {
+  it('keeps OS actions in a left-to-right flow while preserving their visual hierarchy', () => {
     const primary = cssRule('.unilab-environment-card__actions button.is-primary')
     const port = cssRule('.unilab-environment-card__actions button.is-port-action')
 
     expect(primary).toMatch(/background:\s*var\(--unilab-color-primary\)/u)
-    expect(port).toMatch(/margin-left:\s*auto/u)
+    expect(port).not.toMatch(/margin-left:\s*auto/u)
     expect(port).toMatch(/border-style:\s*dashed/u)
   })
 

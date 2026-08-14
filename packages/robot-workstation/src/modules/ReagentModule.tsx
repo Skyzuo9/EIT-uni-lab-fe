@@ -186,7 +186,10 @@ export function ReagentModule({
         hidden={view !== 'ledger'}
         items={items}
         status={status}
+        infos={infos}
+        infoStatus={infoStatus}
         management={management}
+        infoManagement={infoManagement}
         query={query}
         feedback={feedback}
         historyId={historyId}
@@ -229,7 +232,10 @@ function ReagentLedgerSurface({
   hidden,
   items,
   status,
+  infos,
+  infoStatus,
   management,
+  infoManagement,
   query,
   feedback,
   historyId,
@@ -239,7 +245,10 @@ function ReagentLedgerSurface({
   hidden: boolean
   items?: readonly ReagentInventoryProjection[]
   status: WorkstationDataStatus
+  infos?: readonly ReagentInfoProjection[]
+  infoStatus: WorkstationDataStatus
   management?: ReagentManagement
+  infoManagement?: ReagentInfoManagement
   query: string
   feedback: string
   historyId?: string
@@ -247,17 +256,38 @@ function ReagentLedgerSurface({
   onHistory: (id?: string) => void
 }): React.JSX.Element {
   const historyItem = items?.find(item => item.id === historyId)
+  const emptyAction = infoStatus.phase === 'ready' && infos
+    ? infos.length > 0 && management
+      ? (
+          <Button
+            data-testid="reagent-empty-primary"
+            disabled={management.containerStatus.phase !== 'ready'}
+            title={management.containerStatus.phase === 'ready'
+              ? '登记试剂'
+              : management.containerStatus.message}
+            onClick={() => onDialog({ kind: 'create' })}
+          >登记试剂</Button>
+        )
+      : infos.length === 0 && infoManagement
+        ? (
+            <Button
+              data-testid="reagent-empty-primary"
+              onClick={() => onDialog({ kind: 'info-create' })}
+            >新增试剂</Button>
+          )
+        : undefined
+    : undefined
   return (
     <section id="reagent-ledger-panel" role="tabpanel" hidden={hidden}>
       {status.phase !== 'ready' || !items ? (
         <WorkstationDataState status={status} title={reagentStateTitle(status)} icon="flask" />
       ) : (
         <>
-          <DataAuthorityNotice>
-            {management
-              ? '试剂身份、数量、修订与历史由 Go Backend 持久化；修改使用 expected_revision，失败或冲突时不会覆盖当前界面事实。'
-              : '数量、批次和库区来自当前 Edge 库存权威快照；接口未返回的维度保持“—”，前端不提供本地写入。'}
-          </DataAuthorityNotice>
+          {!management ? (
+            <DataAuthorityNotice>
+              数量、批次和库区来自当前 Edge 库存权威快照；接口未返回的维度保持“—”，前端不提供本地写入。
+            </DataAuthorityNotice>
+          ) : null}
           {items.length === 0 ? (
             <WorkstationDataState
               status={{
@@ -269,6 +299,7 @@ function ReagentLedgerSurface({
               }}
               title="暂无试剂台账"
               icon="flask"
+              action={emptyAction}
             />
           ) : (
             <ReagentLedgerView

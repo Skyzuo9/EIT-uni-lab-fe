@@ -3,6 +3,7 @@ import type {
   WorkbenchPlcHandshakeProfile,
   WorkbenchPlcSimulatorConfiguration,
   WorkbenchReleaseReceipt,
+  WorkbenchReleaseTargetInspection,
   WorkbenchRuntimeMode,
   WorkbenchSessionSnapshot
 } from '@unilab/workbench-session'
@@ -27,7 +28,13 @@ export interface EnvironmentManagerProps {
   onClose: () => void
   onRestartSession: () => Promise<void>
   onRebuildLocalData: () => Promise<void>
-  onPublishRelease: () => Promise<WorkbenchReleaseReceipt>
+  onInspectReleaseTarget: (
+    backendUrl: string
+  ) => Promise<WorkbenchReleaseTargetInspection>
+  onPublishRelease: (
+    backendUrl: string,
+    resetTarget?: boolean
+  ) => Promise<WorkbenchReleaseReceipt>
   onReadEnvironmentLog: (kind: WorkbenchEnvironmentLogKind) => Promise<string>
   onConfigureGraph: (graphPath: string) => Promise<void>
   onConfigurePlcSimulator: (
@@ -50,6 +57,7 @@ export function EnvironmentManager({
   onClose,
   onRestartSession,
   onRebuildLocalData,
+  onInspectReleaseTarget,
   onPublishRelease,
   onReadEnvironmentLog,
   onConfigureGraph,
@@ -81,6 +89,11 @@ export function EnvironmentManager({
   const [operationError, setOperationError] = useState<string | null>(null)
   const [releaseReceipt, setReleaseReceipt] =
     useState<WorkbenchReleaseReceipt | null>(null)
+  const [releaseInspection, setReleaseInspection] =
+    useState<WorkbenchReleaseTargetInspection | null>(null)
+  const [releaseBackendUrl, setReleaseBackendUrl] = useState(
+    session.configuredBackendUrl ?? 'http://127.0.0.1:8080'
+  )
   const remoteAccessApi = useMemo(desktopWorkbenchRemoteApi, [])
   const managedRuntimeApi = useMemo(desktopManagedRuntimeApi, [])
   const [runtimeInstallation, setRuntimeInstallation] =
@@ -266,19 +279,85 @@ export function EnvironmentManager({
             ? `已校验 ${releaseReceipt.counts.templates} 个模板、${releaseReceipt.counts.materials} 个物料、${releaseReceipt.counts.workflows} 个工作流`
             : '从当前 Local Authority 构建不可变 Release，写入后回读校验'}
           facts={[
-            ['目标', session.configuredBackendUrl ?? '未配置'],
             ['Release', releaseReceipt?.releaseId ?? '—'],
             ['状态', releaseReceipt?.verified ? '已验证并切换' : '等待发布']
           ]}
+          content={(
+            <>
+              <label className="unilab-environment-manager__path unilab-environment-manager__backend-target">
+                <span>目标地址</span>
+                <input
+                  type="url"
+                  value={releaseBackendUrl}
+                  disabled={Boolean(busyAction)}
+                  placeholder="http://127.0.0.1:8080"
+                  aria-label="Backend 发布目标地址"
+                  onChange={event => {
+                    setReleaseBackendUrl(event.currentTarget.value)
+                    setReleaseInspection(null)
+                    setReleaseReceipt(null)
+                  }}
+                />
+              </label>
+              {releaseInspection ? (
+                <p className={`unilab-environment-manager__target-summary ${
+                  releaseInspection.empty ? 'is-empty' : 'is-occupied'
+                }`}>
+                  {releaseInspection.empty
+                    ? '目标为空，可以安全发布。'
+                    : `目标已有 ${releaseInspection.counts.templates} 个模板、` +
+                      `${releaseInspection.counts.materials} 个物料、` +
+                      `${releaseInspection.counts.workflows} 个工作流。`}
+                </p>
+              ) : null}
+            </>
+          )}
           actions={(
-            <button
-              type="button"
-              className="is-primary"
-              disabled={Boolean(busyAction) || !session.configuredBackendUrl}
-              onClick={() => void run('publish-release', async () => {
-                setReleaseReceipt(await onPublishRelease())
-              })}
-            >一键发布、校验并切换</button>
+            <>
+              <button
+                type="button"
+                disabled={Boolean(busyAction) || !releaseBackendUrl.trim()}
+                onClick={() => void run('inspect-release-target', async () => {
+                  const backendUrl = normalizeBackendUrl(releaseBackendUrl)
+                  setReleaseBackendUrl(backendUrl)
+                  setReleaseInspection(await onInspectReleaseTarget(backendUrl))
+                })}
+              >检查目标数据</button>
+              <button
+                type="button"
+                className="is-primary"
+                disabled={Boolean(busyAction) || !releaseBackendUrl.trim()}
+                onClick={() => void run('publish-release', async () => {
+                  const backendUrl = normalizeBackendUrl(releaseBackendUrl)
+                  setReleaseBackendUrl(backendUrl)
+                  setReleaseReceipt(await onPublishRelease(backendUrl))
+                })}
+              >发布、校验并切换</button>
+              {releaseInspection && !releaseInspection.empty ? (
+                <button
+                  type="button"
+                  className="is-danger"
+                  disabled={Boolean(busyAction)}
+                  onClick={() => {
+                    const { templates, materials, workflows } =
+                      releaseInspection.counts
+                    const confirmed = globalThis.confirm(
+                      `将永久删除目标 Backend 的 ${templates} 个模板、` +
+                      `${materials} 个物料和 ${workflows} 个工作流，然后重新发布。` +
+                      '\n\n此操作不可撤销，确定继续吗？'
+                    )
+                    if (!confirmed) return
+                    void run('reset-and-publish-release', async () => {
+                      setReleaseReceipt(await onPublishRelease(
+                        releaseInspection.targetAddress,
+                        true
+                      ))
+                      setReleaseInspection(null)
+                    })
+                  }}
+                >清空并发布</button>
+              ) : null}
+            </>
           )}
         />
         <EnvironmentStatusCard
@@ -531,6 +610,23 @@ export function EnvironmentManager({
   return typeof document === 'undefined'
     ? overlay
     : createPortal(overlay, document.body)
+}
+
+function normalizeBackendUrl(value: string): string {
+  const candidate = value.trim()
+  let url: URL
+  try {
+    url = new URL(candidate)
+  } catch {
+    throw new Error('请输入有效的 Backend 地址，例如 http://127.0.0.1:8080')
+  }
+  if (!['http:', 'https:'].includes(url.protocol) || !url.hostname) {
+    throw new Error('Backend 地址仅支持 http 或 https')
+  }
+  if (url.username || url.password || url.pathname !== '/' || url.search || url.hash) {
+    throw new Error('Backend 地址只需填写协议、IP（或主机名）和端口')
+  }
+  return url.origin
 }
 
 function agentStatusMessage(

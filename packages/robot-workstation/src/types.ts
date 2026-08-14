@@ -255,7 +255,6 @@ export interface ReagentManagement {
 export interface CustomParameter {
   name: string
   value: string
-  unit: string
 }
 
 export interface ReagentDefinition {

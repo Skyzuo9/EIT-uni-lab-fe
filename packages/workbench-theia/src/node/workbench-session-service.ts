@@ -13,6 +13,7 @@ import type {
   WorkbenchSessionClient,
   WorkbenchSessionServer
 } from '../common/workbench-session-protocol'
+import { DEFAULT_BACKEND_PROXY_TARGET } from './workbench-backend-proxy-config'
 
 type WorkbenchNodeSession = WorkbenchSession & {
   registerRenderer?(): Promise<void>
@@ -41,6 +42,7 @@ implements WorkbenchSessionServer, BackendApplicationContribution {
       agentBrandIconPath: process.env['UNILAB_AGENT_ICON'],
       plcSimulatorProjectPath: process.env['UNILAB_PLC_SIM_PROJECT'],
       backendAuthorityUrl: process.env['UNILAB_BACKEND_PROXY_TARGET']
+        ?? DEFAULT_BACKEND_PROXY_TARGET
     })
   private readonly clients = new Set<WorkbenchSessionClient>()
   private readonly rendererManagedByHost =
@@ -182,6 +184,12 @@ implements WorkbenchSessionServer, BackendApplicationContribution {
     options?: Parameters<WorkbenchSession['publishRelease']>[0]
   ) {
     return this.session.publishRelease(options)
+  }
+
+  inspectReleaseTarget(
+    backendUrl: Parameters<WorkbenchSession['inspectReleaseTarget']>[0]
+  ) {
+    return this.session.inspectReleaseTarget(backendUrl)
   }
 
   setClient(client: WorkbenchSessionClient): void {

@@ -31,6 +31,7 @@ import type {
   WorkbenchPlcSimulatorConfiguration,
   WorkbenchRuntimeMode,
   WorkbenchReleaseReceipt,
+  WorkbenchReleaseTargetInspection,
   WorkbenchSession,
   WorkbenchSessionDiagnostic,
   WorkbenchSessionPhase,
@@ -312,6 +313,7 @@ export class WorkspaceHostWorkbenchSession implements WorkbenchSession {
     }
     const backendUrl = mode === 'backend'
       ? this.options.backendAuthorityUrl
+        ?? this.snapshot.configuredBackendUrl
       : undefined
     if (mode === 'backend' && !backendUrl) {
       throw new Error('未配置 Backend Authority 地址')
@@ -320,9 +322,14 @@ export class WorkspaceHostWorkbenchSession implements WorkbenchSession {
   }
 
   async publishRelease(
-    options: { activate?: boolean } = {}
+    options: {
+      activate?: boolean
+      backendUrl?: string
+      resetTarget?: boolean
+    } = {}
   ): Promise<WorkbenchReleaseReceipt> {
-    const backendUrl = this.options.backendAuthorityUrl
+    const backendUrl = options.backendUrl?.trim()
+      || this.options.backendAuthorityUrl
     if (!backendUrl) throw new Error('未配置 Backend Authority 地址')
     const connection = await this.ensureHost()
     const operation = await hostRequest<WorkspaceHostOperation>(
@@ -335,7 +342,9 @@ export class WorkspaceHostWorkbenchSession implements WorkbenchSession {
         parameters: {
           backendUrl,
           activate: options.activate === true,
-          verify: true
+          verify: true,
+          resetTarget: options.resetTarget === true,
+          confirmation: options.resetTarget === true ? 'CLEAR_BACKEND' : undefined
         }
       }
     )
@@ -346,6 +355,30 @@ export class WorkspaceHostWorkbenchSession implements WorkbenchSession {
     await this.refreshHost(connection)
     if (!isReleaseReceipt(completed.result)) {
       throw new Error('Workspace Host 返回了无效的发布回执')
+    }
+    return completed.result
+  }
+
+  async inspectReleaseTarget(
+    backendUrl: string
+  ): Promise<WorkbenchReleaseTargetInspection> {
+    const connection = await this.ensureHost()
+    const operation = await hostRequest<WorkspaceHostOperation>(
+      connection,
+      'POST',
+      '/v1/operations',
+      {
+        operationId: randomUUID(),
+        command: 'release.inspect',
+        parameters: { backendUrl: backendUrl.trim() }
+      }
+    )
+    const completed = await this.waitOperation(connection, operation.operationId)
+    if (completed.phase === 'failed') {
+      throw new Error(completed.error?.message ?? 'release.inspect 操作失败')
+    }
+    if (!isReleaseTargetInspection(completed.result)) {
+      throw new Error('Workspace Host 返回了无效的目标检查结果')
     }
     return completed.result
   }
@@ -905,6 +938,18 @@ function isReleaseReceipt(value: unknown): value is WorkbenchReleaseReceipt {
     && typeof value['targetAddress'] === 'string'
     && typeof value['activated'] === 'boolean'
     && isRecord(counts)
+    && Number.isSafeInteger(counts['templates'])
+    && Number.isSafeInteger(counts['materials'])
+    && Number.isSafeInteger(counts['workflows'])
+}
+
+function isReleaseTargetInspection(
+  value: unknown
+): value is WorkbenchReleaseTargetInspection {
+  if (!isRecord(value) || !isRecord(value['counts'])) return false
+  const counts = value['counts']
+  return typeof value['targetAddress'] === 'string'
+    && typeof value['empty'] === 'boolean'
     && Number.isSafeInteger(counts['templates'])
     && Number.isSafeInteger(counts['materials'])
     && Number.isSafeInteger(counts['workflows'])

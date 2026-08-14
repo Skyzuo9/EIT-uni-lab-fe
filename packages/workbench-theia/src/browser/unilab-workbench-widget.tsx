@@ -53,6 +53,7 @@ import type {
   WorkbenchEnvironmentLogKind,
   WorkbenchPlcSimulatorConfiguration,
   WorkbenchReleaseReceipt,
+  WorkbenchReleaseTargetInspection,
   WorkbenchRuntimeMode,
   WorkbenchSessionSnapshot
 } from '@unilab/workbench-session'
@@ -273,12 +274,19 @@ export class UniLabWorkbenchWidget extends ReactWidget {
     await this.refreshSessionSnapshot()
   }
 
-  protected readonly publishRelease = async (): Promise<WorkbenchReleaseReceipt> => {
+  protected readonly publishRelease = async (
+    backendUrl: string,
+    resetTarget = false
+  ): Promise<WorkbenchReleaseReceipt> => {
     if (this.lastReportedUnsavedChanges) {
       throw new Error('请先保存当前工作流修改，再发布 WorkspaceRelease')
     }
     try {
-      const receipt = await this.workbenchSession.publishRelease({ activate: true })
+      const receipt = await this.workbenchSession.publishRelease({
+        activate: true,
+        backendUrl,
+        resetTarget
+      })
       this.sessionSnapshot = await this.workbenchSession.getSnapshot()
       if (receipt.activated) {
         this.connectionMode = 'backend'
@@ -292,6 +300,12 @@ export class UniLabWorkbenchWidget extends ReactWidget {
     } finally {
       await this.refreshSessionSnapshot()
     }
+  }
+
+  protected readonly inspectReleaseTarget = async (
+    backendUrl: string
+  ): Promise<WorkbenchReleaseTargetInspection> => {
+    return await this.workbenchSession.inspectReleaseTarget(backendUrl)
   }
 
   protected readonly readEnvironmentLog = async (
@@ -712,6 +726,7 @@ export class UniLabWorkbenchWidget extends ReactWidget {
               onClose={onClose}
               onRestartSession={this.restartSession}
               onRebuildLocalData={this.rebuildLocalData}
+              onInspectReleaseTarget={this.inspectReleaseTarget}
               onPublishRelease={this.publishRelease}
               onReadEnvironmentLog={this.readEnvironmentLog}
               onConfigureGraph={this.configureGraph}
@@ -748,6 +763,7 @@ export class UniLabWorkbenchWidget extends ReactWidget {
         onUnsavedChangesChange={this.setWorkflowPanelDirty}
         onRestartSession={this.restartSession}
         onRebuildLocalData={this.rebuildLocalData}
+        onInspectReleaseTarget={this.inspectReleaseTarget}
         onPublishRelease={this.publishRelease}
         onReadEnvironmentLog={this.readEnvironmentLog}
         onConfigureGraph={this.configureGraph}
@@ -789,6 +805,7 @@ function WorkbenchSurface({
   onUnsavedChangesChange,
   onRestartSession,
   onRebuildLocalData,
+  onInspectReleaseTarget,
   onPublishRelease,
   onReadEnvironmentLog,
   onConfigureGraph,
@@ -815,7 +832,13 @@ function WorkbenchSurface({
   onUnsavedChangesChange: (hasUnsavedChanges: boolean) => void
   onRestartSession: () => Promise<void>
   onRebuildLocalData: () => Promise<void>
-  onPublishRelease: () => Promise<WorkbenchReleaseReceipt>
+  onInspectReleaseTarget: (
+    backendUrl: string
+  ) => Promise<WorkbenchReleaseTargetInspection>
+  onPublishRelease: (
+    backendUrl: string,
+    resetTarget?: boolean
+  ) => Promise<WorkbenchReleaseReceipt>
   onReadEnvironmentLog: (kind: WorkbenchEnvironmentLogKind) => Promise<string>
   onConfigureGraph: (graphPath: string) => Promise<void>
   onConfigurePlcSimulator: (
@@ -1136,6 +1159,7 @@ function WorkbenchSurface({
             onClose={() => setEnvironmentOpen(false)}
             onRestartSession={onRestartSession}
             onRebuildLocalData={onRebuildLocalData}
+            onInspectReleaseTarget={onInspectReleaseTarget}
             onPublishRelease={onPublishRelease}
             onReadEnvironmentLog={onReadEnvironmentLog}
             onConfigureGraph={onConfigureGraph}

@@ -12,6 +12,7 @@ import type {
 } from 'node:http'
 
 import { WorkbenchSessionService } from './workbench-session-service'
+import { DEFAULT_BACKEND_PROXY_TARGET } from './workbench-backend-proxy-config'
 
 type Request = IncomingMessage & {
   originalUrl: string
@@ -25,7 +26,9 @@ type Response = ServerResponse & {
 }
 
 export const WORKBENCH_BACKEND_PROXY_PREFIX = '/__unilab_backend'
-const DEFAULT_BACKEND_PROXY_TARGET = 'http://127.0.0.1:8080'
+export const WORKBENCH_LOCAL_PROXY_PREFIX = '/__unilab_local'
+export const WORKBENCH_MATERIAL_MODEL_PROXY_PREFIX = '/api/v1/material-models'
+type WorkbenchProxyAuthority = 'local' | 'backend'
 const REQUEST_HEADERS_TO_SKIP = new Set([
   'connection',
   'content-length',
@@ -61,10 +64,13 @@ implements BackendApplicationContribution {
    */
   initialize(): void {
     const router = Router()
-    router.use(
-      WORKBENCH_BACKEND_PROXY_PREFIX,
-      (request, response) => {
+    const mountProxy = (
+      prefix: string,
+      authority: WorkbenchProxyAuthority
+    ): void => {
+      router.use(prefix, (request, response) => {
         void this.proxyRequest(
+          authority,
           request as Request,
           response as Response
         ).catch((error) => {
@@ -83,18 +89,28 @@ implements BackendApplicationContribution {
             }
           })
         })
-      }
-    )
+      })
+    }
+    mountProxy(WORKBENCH_LOCAL_PROXY_PREFIX, 'local')
+    mountProxy(WORKBENCH_BACKEND_PROXY_PREFIX, 'backend')
+    // 模型 URL 是包资产合同定义的公共绝对路径，只将这一条路径回源到
+    // Workspace Backend；material-shapes 等业务接口仍由 Go Backend 提供。
+    mountProxy(WORKBENCH_MATERIAL_MODEL_PROXY_PREFIX, 'local')
     // Theia 的文件下载贡献会全局安装默认 100 KiB JSON parser。工作流图可达
     // 8 MiB，因此代理必须在所有 configure() 中间件之前取得原始请求流。
     this.earlyMiddleware.handlers.push(router)
   }
 
-  private async proxyRequest(request: Request, response: Response): Promise<void> {
+  private async proxyRequest(
+    authority: WorkbenchProxyAuthority,
+    request: Request,
+    response: Response
+  ): Promise<void> {
     const snapshot = await this.sessions.getSnapshot()
     const target = resolveWorkbenchBackendProxyTargetFromSession(
       snapshot,
-      this.configuredTarget
+      this.configuredTarget,
+      authority
     )
     await proxyWorkbenchBackendRequest(request, response, target)
   }
@@ -107,19 +123,24 @@ interface WorkbenchBackendProxySessionSnapshot {
 }
 
 /**
- * 从 Workspace Host 的当前 Authority 快照选择同源代理目标。
- * @param snapshot 当前 managed session；Local 使用动态 Workspace Backend，Backend 使用配置的 Go Backend。
+ * 按代理入口选择固定权威目标，切换预检不依赖当前已提交模式。
+ * @param snapshot 当前 managed session，包含动态 Workspace Backend 与配置的 Go Backend。
  * @param configuredTarget 会话尚未就绪时的可信启动兜底。
+ * @param authority 当前请求使用的专用代理入口。
  * @returns 已校验的 HTTP/HTTPS 根地址。
  */
 export function resolveWorkbenchBackendProxyTargetFromSession(
   snapshot: WorkbenchBackendProxySessionSnapshot,
-  configuredTarget: string | undefined
+  configuredTarget: string | undefined,
+  authority: WorkbenchProxyAuthority
 ): string {
-  const liveTarget = snapshot.configuredDomainMode === 'backend'
-    ? snapshot.configuredBackendUrl
+  const liveTarget = authority === 'backend'
+    ? snapshot.configuredBackendUrl ?? configuredTarget
     : snapshot.identity?.backendUrl
-  return resolveWorkbenchBackendProxyTarget(liveTarget ?? configuredTarget)
+  if (!liveTarget) {
+    throw new Error('Workspace Backend 尚未就绪')
+  }
+  return resolveWorkbenchBackendProxyTarget(liveTarget)
 }
 
 /**
@@ -157,10 +178,16 @@ export function workbenchBackendUpstreamUrl(
   originalUrl: string,
   target: string
 ): string {
-  const suffix = originalUrl.startsWith(WORKBENCH_BACKEND_PROXY_PREFIX)
-    ? originalUrl.slice(WORKBENCH_BACKEND_PROXY_PREFIX.length)
-    : originalUrl
+  const suffix = workbenchBackendPublicPath(originalUrl)
   return new URL(suffix || '/', `${target}/`).toString()
+}
+
+function workbenchBackendPublicPath(originalUrl: string): string {
+  const prefix = [
+    WORKBENCH_LOCAL_PROXY_PREFIX,
+    WORKBENCH_BACKEND_PROXY_PREFIX
+  ].find(candidate => originalUrl.startsWith(candidate))
+  return prefix ? originalUrl.slice(prefix.length) : originalUrl
 }
 
 /**

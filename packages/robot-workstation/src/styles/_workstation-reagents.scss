@@ -437,7 +437,7 @@
 
 .customParameterRow {
   display: grid;
-  grid-template-columns: minmax(120px, 0.9fr) minmax(160px, 1.3fr) minmax(90px, 0.55fr) 30px;
+  grid-template-columns: minmax(120px, 0.9fr) minmax(160px, 1.3fr) 30px;
   gap: 7px;
   align-items: end;
 }
