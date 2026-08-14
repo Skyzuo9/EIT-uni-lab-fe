@@ -32,6 +32,7 @@ describe('Workspace Host Workbench adapter', () => {
     const token = 'fixture-token'
     const operations = new Map<string, Record<string, unknown>>()
     const receivedCommands: string[] = []
+    const receivedParameters = new Map<string, Record<string, unknown>>()
     const snapshot = hostSnapshot(workspacePath)
     const server = createServer(async (request, response) => {
       if (request.headers.authorization !== `Bearer ${token}`) {
@@ -54,6 +55,7 @@ describe('Workspace Host Workbench adapter', () => {
           parameters: Record<string, unknown>
         }
         receivedCommands.push(body.command)
+        receivedParameters.set(body.command, body.parameters)
         applyCommand(snapshot, body.command, body.parameters)
         const resetBlocked = body.command === 'local.reset-state'
         const operation = {
@@ -150,12 +152,19 @@ describe('Workspace Host Workbench adapter', () => {
       counts: { templates: 3, materials: 2, workflows: 1 }
     })
 
+    const workspaceBackendIdentity = session.getSnapshot().identity
     const switched = await session.setDomainAuthority('backend')
     expect(receivedCommands.at(-1)).toBe('authority.switch')
+    expect(receivedParameters.get('authority.switch')).toEqual({
+      mode: 'backend',
+      backendUrl: 'http://127.0.0.1:8080',
+      bootstrap: false
+    })
     expect(switched).toMatchObject({
       configuredDomainMode: 'backend',
       configuredBackendUrl: 'http://127.0.0.1:8080'
     })
+    expect(switched.identity).toEqual(workspaceBackendIdentity)
 
     snapshot.components.edge = component('edge', {
       phase: 'ready',
