@@ -43,7 +43,8 @@ export interface WorkflowMaterialTransferRoute {
 
 /**
  * 从操作系统（OS）权威编写图与工作流节点作业（WorkflowNodeJob）生成只读
- * 物料（Material）转运路线。只有已发布的标准转运复合工作流可以进入投影。
+ * 物料（Material）转运路线。已发布的标准转运复合工作流与 OS 权威
+ * `HostNode.transfer_resource` 记账动作都可以进入投影。
  */
 export function projectWorkflowMaterialTransferRoutes(
   graph: WorkflowAuthoringGraph,
@@ -60,6 +61,7 @@ export function projectWorkflowMaterialTransferRoutes(
   )
   const jobsByRoute = new Map<string, WorkflowNodeJob[]>()
   const materialLineageByNode = workflowMaterialLineageByNode(graph)
+  const materialPredecessors = materialPredecessorsByNode(graph)
 
   for (const job of jobs) {
     const routeNodeUuid = transferAncestor(
@@ -74,15 +76,36 @@ export function projectWorkflowMaterialTransferRoutes(
   }
 
   return graph.nodes.flatMap((node) => {
-    if (!isTransferNode(node, templateByUuid)) return []
     const workflowNodeUuid = stringValue(node.uuid)
+    const transferKind = transferNodeKind(node, templateByUuid)
+    if (!workflowNodeUuid || !transferKind) return []
     const param = recordValue(node.param)
-    const sourceOwner = resourceIdentity(param.source_warehouse)
-    const targetOwner = resourceIdentity(param.target_warehouse)
-    const sourceSite = optionalString(param.source_site)
-    const targetSite = optionalString(param.target_site)
+    const source = transferKind === 'standard'
+      ? {
+          ownerMaterialId: resourceIdentity(param.source_warehouse),
+          siteKey: optionalString(param.source_site)
+        }
+      : upstreamMaterialLocation(
+          workflowNodeUuid,
+          nodeByUuid,
+          templateByUuid,
+          materialPredecessors
+        )
+    const target = transferKind === 'standard'
+      ? {
+          ownerMaterialId: resourceIdentity(param.target_warehouse),
+          siteKey: optionalString(param.target_site)
+        }
+      : {
+          ownerMaterialId: resourceIdentity(param.mount_resource),
+          siteKey: optionalString(param.site)
+        }
     const executorId = optionalString(param.target_device)
-    if (!workflowNodeUuid || !sourceOwner || !targetOwner || !executorId) {
+    if (
+      !source?.ownerMaterialId ||
+      !target.ownerMaterialId ||
+      !executorId
+    ) {
       return []
     }
     const lineage = materialLineageByNode.get(workflowNodeUuid)
@@ -93,14 +116,15 @@ export function projectWorkflowMaterialTransferRoutes(
       id: `workflow-transfer-${workflowNodeUuid}`,
       workflowNodeUuid,
       label: optionalString(node.name) ??
-        `${sourceSite ?? sourceOwner} → ${targetSite ?? targetOwner}`,
+        `${source.siteKey ?? source.ownerMaterialId} → ` +
+          `${target.siteKey ?? target.ownerMaterialId}`,
       source: {
-        ownerMaterialId: sourceOwner,
-        siteKey: sourceSite
+        ownerMaterialId: source.ownerMaterialId,
+        siteKey: source.siteKey
       },
       target: {
-        ownerMaterialId: targetOwner,
-        siteKey: targetSite
+        ownerMaterialId: target.ownerMaterialId,
+        siteKey: target.siteKey
       },
       executorId,
       status: aggregateTransferStatus(jobsByRoute.get(workflowNodeUuid) ?? []),
@@ -221,7 +245,7 @@ function transferAncestor(
     const currentUuid = stringValue(current.uuid)
     if (!currentUuid || visited.has(currentUuid)) return null
     visited.add(currentUuid)
-    if (isTransferNode(current, templateByUuid)) return currentUuid
+    if (transferNodeKind(current, templateByUuid)) return currentUuid
     const parentUuid = optionalString(current.parent_uuid)
     if (!parentUuid) return null
     current = nodeByUuid.get(parentUuid)
@@ -229,20 +253,102 @@ function transferAncestor(
   return null
 }
 
-function isTransferNode(
+type TransferNodeKind = 'standard' | 'host-resource'
+
+function transferNodeKind(
   node: Record<string, unknown>,
   templateByUuid: ReadonlyMap<string, Record<string, unknown>>
-): boolean {
+): TransferNodeKind | null {
   const template = templateByUuid.get(
     stringValue(node.workflow_node_template_uuid)
   )
   const metaData = recordValue(template?.meta_data)
   const unilab = recordValue(metaData.unilab)
   const source = recordValue(unilab.workflow_source)
-  return workflowNodeVisualKind({
+  if (workflowNodeVisualKind({
     symbol: optionalString(source.symbol),
     definitionFqid: optionalString(source.definition_fqid)
-  }) === 'robot-transfer'
+  }) === 'robot-transfer') return 'standard'
+
+  const resourceTemplate = recordValue(unilab.resource_template)
+  const templateClass = optionalString(template?.class)
+  const isHostTemplate = optionalString(resourceTemplate.name) === 'host_node' ||
+    templateClass === 'unilabos.ros.nodes.presets.host_node:HostNode'
+  return isHostTemplate &&
+    optionalString(template?.name) === 'transfer_resource' &&
+    optionalString(node.action_name) === 'transfer_resource'
+    ? 'host-resource'
+    : null
+}
+
+function materialPredecessorsByNode(
+  graph: WorkflowAuthoringGraph
+): ReadonlyMap<string, readonly string[]> {
+  const handleByUuid = new Map(
+    graph.handle_templates.map((handle) => [stringValue(handle.uuid), handle])
+  )
+  const predecessors = new Map<string, string[]>()
+  for (const edge of graph.edges) {
+    const sourceHandle = handleByUuid.get(stringValue(edge.source_handle_uuid))
+    const targetHandle = handleByUuid.get(stringValue(edge.target_handle_uuid))
+    if (
+      optionalString(sourceHandle?.type) !== 'ResourceSlot' ||
+      optionalString(targetHandle?.type) !== 'ResourceSlot'
+    ) continue
+    const sourceNodeUuid = stringValue(edge.source_node_uuid)
+    const targetNodeUuid = stringValue(edge.target_node_uuid)
+    if (!sourceNodeUuid || !targetNodeUuid) continue
+    const incoming = predecessors.get(targetNodeUuid) ?? []
+    if (!incoming.includes(sourceNodeUuid)) incoming.push(sourceNodeUuid)
+    predecessors.set(targetNodeUuid, incoming)
+  }
+  return predecessors
+}
+
+function upstreamMaterialLocation(
+  workflowNodeUuid: string,
+  nodeByUuid: ReadonlyMap<string, Record<string, unknown>>,
+  templateByUuid: ReadonlyMap<string, Record<string, unknown>>,
+  predecessors: ReadonlyMap<string, readonly string[]>
+): WorkflowMaterialTransferEndpoint | null {
+  const queue = [...(predecessors.get(workflowNodeUuid) ?? [])]
+  const visited = new Set<string>([workflowNodeUuid])
+  while (queue.length > 0) {
+    const candidateUuid = queue.shift()
+    if (!candidateUuid || visited.has(candidateUuid)) continue
+    visited.add(candidateUuid)
+    const candidate = nodeByUuid.get(candidateUuid)
+    if (!candidate) continue
+    const location = materialLocationAfterNode(candidate, templateByUuid)
+    if (location) return location
+    queue.push(...(predecessors.get(candidateUuid) ?? []))
+  }
+  return null
+}
+
+function materialLocationAfterNode(
+  node: Record<string, unknown>,
+  templateByUuid: ReadonlyMap<string, Record<string, unknown>>
+): WorkflowMaterialTransferEndpoint | null {
+  const param = recordValue(node.param)
+  if (
+    optionalString(node.type) === 'material_source' ||
+    optionalString(node.action_name) === 'material_source'
+  ) {
+    const ownerMaterialId = resourceIdentity(param.mount)
+    return ownerMaterialId
+      ? { ownerMaterialId, siteKey: optionalString(param.site) }
+      : null
+  }
+  const kind = transferNodeKind(node, templateByUuid)
+  if (!kind) return null
+  const ownerMaterialId = kind === 'standard'
+    ? resourceIdentity(param.target_warehouse)
+    : resourceIdentity(param.mount_resource)
+  const siteKey = kind === 'standard'
+    ? optionalString(param.target_site)
+    : optionalString(param.site)
+  return ownerMaterialId ? { ownerMaterialId, siteKey } : null
 }
 
 function resourceIdentity(value: unknown): string | null {

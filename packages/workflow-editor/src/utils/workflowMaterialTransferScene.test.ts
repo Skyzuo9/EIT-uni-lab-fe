@@ -68,6 +68,41 @@ describe('工作流（Workflow）3D 物料转运投影', () => {
     })
   })
 
+  it('projects authoritative host transfer_resource actions along one ResourceSlot lineage', () => {
+    const graph = hostTransferRoundTripGraph()
+
+    expect(projectWorkflowMaterialTransferRoutes(graph)).toMatchObject([
+      {
+        workflowNodeUuid: 'host-transfer-1',
+        source: { ownerMaterialId: 'lpx-warehouse', siteKey: null },
+        target: { ownerMaterialId: 'lpx-warehouse', siteKey: 'interaction_site' },
+        executorId: 'lpx-device',
+        materialRole: 'primary_sample'
+      },
+      {
+        workflowNodeUuid: 'host-transfer-2',
+        source: { ownerMaterialId: 'lpx-warehouse', siteKey: 'interaction_site' },
+        target: { ownerMaterialId: 'sealer-warehouse', siteKey: '0016-0001' },
+        executorId: 'sealer-device',
+        materialRole: 'primary_sample'
+      },
+      {
+        workflowNodeUuid: 'host-transfer-3',
+        source: { ownerMaterialId: 'sealer-warehouse', siteKey: '0016-0001' },
+        target: { ownerMaterialId: 'lpx-warehouse', siteKey: 'interaction_site' },
+        executorId: 'lpx-device',
+        materialRole: 'primary_sample'
+      },
+      {
+        workflowNodeUuid: 'host-transfer-4',
+        source: { ownerMaterialId: 'lpx-warehouse', siteKey: 'interaction_site' },
+        target: { ownerMaterialId: 'lpx-warehouse', siteKey: 'storage-site' },
+        executorId: 'lpx-device',
+        materialRole: 'primary_sample'
+      }
+    ])
+  })
+
   it('忽略名称相似但没有已发布来源身份的节点', () => {
     const graph = transferGraph()
     graph.nodes.push({
@@ -277,6 +312,144 @@ function transferGraph(): WorkflowAuthoringGraph {
       }
     }],
     handle_templates: []
+  }
+}
+
+function hostTransferRoundTripGraph(): WorkflowAuthoringGraph {
+  return {
+    workflow: { uuid: 'host-transfer-workflow', revision: 1 },
+    nodes: [
+      {
+        uuid: 'sample-source',
+        name: '主样品',
+        type: 'material_source',
+        workflow_node_template_uuid: 'source-template',
+        param: {
+          mount: { uuid: 'lpx-warehouse' },
+          site: null,
+          flow_role: 'primary_sample'
+        }
+      },
+      hostTransferNode(
+        'host-transfer-1',
+        'lpx-warehouse',
+        'interaction_site',
+        'lpx-device'
+      ),
+      {
+        uuid: 'robot-place',
+        name: 'place',
+        action_name: 'place',
+        workflow_node_template_uuid: 'passthrough-template',
+        param: {}
+      },
+      hostTransferNode(
+        'host-transfer-2',
+        'sealer-warehouse',
+        '0016-0001',
+        'sealer-device'
+      ),
+      {
+        uuid: 'robot-return',
+        name: 'pick/place',
+        action_name: 'place',
+        workflow_node_template_uuid: 'passthrough-template',
+        param: {}
+      },
+      hostTransferNode(
+        'host-transfer-3',
+        'lpx-warehouse',
+        'interaction_site',
+        'lpx-device'
+      ),
+      {
+        uuid: 'stacker-store',
+        name: 'store_plate_from_transfer',
+        action_name: 'store_plate_from_transfer',
+        workflow_node_template_uuid: 'passthrough-template',
+        param: {}
+      },
+      hostTransferNode(
+        'host-transfer-4',
+        'lpx-warehouse',
+        'storage-site',
+        'lpx-device'
+      )
+    ],
+    edges: [
+      materialEdge('edge-1', 'sample-source', 'source-out', 'host-transfer-1', 'host-in'),
+      materialEdge('edge-2', 'host-transfer-1', 'host-out', 'robot-place', 'pass-in'),
+      materialEdge('edge-3', 'robot-place', 'pass-out', 'host-transfer-2', 'host-in'),
+      materialEdge('edge-4', 'host-transfer-2', 'host-out', 'robot-return', 'pass-in'),
+      materialEdge('edge-5', 'robot-return', 'pass-out', 'host-transfer-3', 'host-in'),
+      materialEdge('edge-6', 'host-transfer-3', 'host-out', 'stacker-store', 'pass-in'),
+      materialEdge('edge-7', 'stacker-store', 'pass-out', 'host-transfer-4', 'host-in')
+    ],
+    node_templates: [
+      {
+        uuid: 'source-template',
+        name: 'material_source',
+        type: 'material_source'
+      },
+      {
+        uuid: 'host-transfer-template',
+        name: 'transfer_resource',
+        class: 'unilabos.ros.nodes.presets.host_node:HostNode',
+        type: 'UniLabJsonCommandAsync',
+        meta_data: {
+          unilab: {
+            resource_template: { name: 'host_node' }
+          }
+        }
+      },
+      {
+        uuid: 'passthrough-template',
+        name: 'place',
+        type: 'UniLabJsonCommandAsync'
+      }
+    ],
+    handle_templates: [
+      resourceSlotHandle('source-out', 'source-template', 'source'),
+      resourceSlotHandle('host-in', 'host-transfer-template', 'target'),
+      resourceSlotHandle('host-out', 'host-transfer-template', 'source'),
+      resourceSlotHandle('pass-in', 'passthrough-template', 'target'),
+      resourceSlotHandle('pass-out', 'passthrough-template', 'source')
+    ]
+  }
+}
+
+function hostTransferNode(
+  uuid: string,
+  mountResourceUuid: string,
+  site: string,
+  targetDevice: string
+): Record<string, unknown> {
+  return {
+    uuid,
+    name: 'transfer_resource',
+    action_name: 'transfer_resource',
+    workflow_node_template_uuid: 'host-transfer-template',
+    param: {
+      mount_resource: { uuid: mountResourceUuid },
+      site,
+      target_device: targetDevice
+    }
+  }
+}
+
+function materialEdge(
+  uuid: string,
+  sourceNodeUuid: string,
+  sourceHandleUuid: string,
+  targetNodeUuid: string,
+  targetHandleUuid: string
+): Record<string, unknown> {
+  return {
+    uuid,
+    source_node_uuid: sourceNodeUuid,
+    source_handle_uuid: sourceHandleUuid,
+    target_node_uuid: targetNodeUuid,
+    target_handle_uuid: targetHandleUuid
   }
 }
 function workflowJob(
