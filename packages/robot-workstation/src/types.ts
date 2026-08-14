@@ -216,6 +216,7 @@ export interface ReagentCreateCommand {
   quantity: number
   quantityUnit: string
   description?: string
+  metadata?: Record<string, unknown>
 }
 
 export interface ReagentUpdateCommand {

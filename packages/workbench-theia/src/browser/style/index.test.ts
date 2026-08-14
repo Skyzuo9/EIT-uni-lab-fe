@@ -100,6 +100,13 @@ describe('environment manager layering and responsive layout', () => {
       /\.theia-app-right\s+\.lm-TabBar-tab\[id='shell-tab-outline-view'\]\s*\{[^}]*display:\s*none/u
     )
   })
+
+  /** 机械臂调试、点位和实验台能力保留，但暂不展示其活动栏入口。 */
+  it('hides the three internal robot navigation entries', () => {
+    expect(domainNavigationStylesheet).toMatch(
+      /data-unilabdomain='robot-debug'[\s\S]*data-unilabdomain='robot-points'[\s\S]*data-unilabdomain='robot-bench'[\s\S]*display:\s*none/u
+    )
+  })
   /** 证明运行连接选择采用扁平分段控件，并在窄屏重排而不是横向压缩。 */
   it('keeps the authority choices readable and responsive', () => {
     const options = cssRule('.unilab-workbench-connection__options')

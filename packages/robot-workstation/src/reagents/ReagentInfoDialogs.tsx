@@ -100,6 +100,7 @@ export function ReagentInfoEditorDialog(props: EditorProps): React.JSX.Element {
               <option value="gas">气体</option>
               <option value="other">其他</option>
             </select>
+            <small>用于展示试剂在常温条件下的默认形态。</small>
           </label>
           <label>
             <span>分子式（可选）</span>

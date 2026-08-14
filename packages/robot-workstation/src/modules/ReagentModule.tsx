@@ -402,6 +402,7 @@ function ReagentDialogLayer({
       <BackendReagentEditorDialog
         mode="create"
         containers={management.containers}
+        infos={infos}
         occupiedMaterialIds={occupiedMaterialIds}
         onSave={onCreate}
         onClose={onClose}

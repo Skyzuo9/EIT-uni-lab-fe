@@ -14,12 +14,14 @@ export function ReagentDialogFrame({
   title,
   description,
   busy,
+  wide = false,
   children,
   onClose
 }: {
   title: string
   description: string
   busy: boolean
+  wide?: boolean
   children: React.ReactNode
   onClose: () => void
 }): React.JSX.Element {
@@ -32,7 +34,7 @@ export function ReagentDialogFrame({
     <div className={uiClass.dialogBackdrop} role="presentation">
       <section
         ref={dialogRef}
-        className={styles.formDialog}
+        className={`${styles.formDialog} ${wide ? styles.formDialogWide : ''}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}

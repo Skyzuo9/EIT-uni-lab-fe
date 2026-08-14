@@ -19,7 +19,7 @@
   border: 1px solid var(--unilab-color-border);
   border-radius: var(--unilab-radius-md);
 
-  button {
+  [role='option'] {
     min-height: 32px;
     padding: 0 13px;
     color: var(--unilab-color-text-muted);
@@ -142,9 +142,17 @@
   padding-bottom: 14px;
 }
 
+.formDialogWide {
+  width: min(900px, calc(100vw - 48px));
+}
+
 .dialogFields {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   padding: 14px;
+
+  label {
+    align-content: start;
+  }
 
   label > span:first-child {
     font-family: var(--unilab-font-sans);
@@ -179,10 +187,181 @@
   grid-column: 1 / -1;
 }
 
-.reagentContainerSelector {
+.dialogFields.reagentRegistrationFields {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.reagentContainerSelect {
+  position: relative;
+  min-width: 0;
+}
+
+.reagentContainerField {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(220px, 1fr);
-  gap: 8px;
+  gap: 5px;
+  min-width: 0;
+
+  > span:first-child {
+    color: var(--unilab-color-text-muted);
+    font-size: 12px;
+    font-weight: 550;
+  }
+
+}
+
+.reagentContainerSelectControl {
+  position: relative;
+  display: flex;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 38px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 36px 0 11px;
+  color: var(--unilab-color-text);
+  font: 500 13px var(--unilab-font-sans);
+  text-align: left;
+  background: var(--unilab-color-surface);
+  border: 1px solid var(--unilab-color-border-strong);
+  border-radius: var(--unilab-radius-control);
+  cursor: pointer;
+
+  &:hover {
+    border-color: color-mix(in srgb, var(--unilab-color-primary) 55%, var(--unilab-color-border-strong));
+  }
+
+  &:focus-visible,
+  &[aria-expanded='true'] {
+    border-color: var(--unilab-color-primary);
+    outline: 3px solid rgb(147 197 253 / 35%);
+  }
+
+  &:disabled {
+    color: var(--unilab-color-text-muted);
+    cursor: not-allowed;
+    background: var(--unilab-color-bg-muted);
+  }
+}
+
+.reagentContainerSelectValue,
+.reagentContainerSelectPlaceholder {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reagentContainerSelectPlaceholder {
+  color: var(--unilab-color-text-muted);
+  font-weight: 400;
+}
+
+.reagentContainerSelectArrow {
+  position: absolute;
+  top: 50%;
+  right: 13px;
+  width: 7px;
+  height: 7px;
+  pointer-events: none;
+  border-right: 1.5px solid var(--unilab-color-text-muted);
+  border-bottom: 1.5px solid var(--unilab-color-text-muted);
+  transform: translateY(-65%) rotate(45deg);
+}
+
+.reagentContainerSelectControl[aria-expanded='true'] .reagentContainerSelectArrow {
+  transform: translateY(-30%) rotate(225deg);
+}
+
+.reagentContainerSelectPopup {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 7px);
+  left: 0;
+  display: grid;
+  width: max(100%, 360px);
+  gap: 5px;
+  padding: 6px;
+  background: var(--unilab-color-surface);
+  border: 1px solid var(--unilab-color-border-strong);
+  border-radius: var(--unilab-radius-md);
+  box-shadow: 0 12px 30px rgb(15 23 42 / 16%), 0 2px 8px rgb(15 23 42 / 8%);
+
+  &[hidden] {
+    display: none;
+  }
+
+  > input {
+    min-height: 36px;
+    padding: 0 10px;
+    font-family: var(--unilab-font-sans);
+    background: var(--unilab-color-bg-subtle);
+  }
+}
+
+.reagentContainerSelectMenu {
+  display: grid;
+  max-height: 208px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+
+  button {
+    display: flex;
+    min-width: 0;
+    min-height: 48px;
+    align-items: center;
+    justify-content: space-between;
+    padding: 7px 10px;
+    color: var(--unilab-color-text);
+    text-align: left;
+    background: transparent;
+    border: 0;
+    border-radius: calc(var(--unilab-radius-control) - 2px);
+    cursor: pointer;
+  }
+
+  button:hover,
+  button:focus-visible,
+  button[aria-selected='true'] {
+    color: var(--unilab-color-primary);
+    background: var(--unilab-color-primary-soft);
+    outline: 0;
+  }
+
+  button > span {
+    display: grid;
+    min-width: 0;
+    gap: 2px;
+  }
+
+  strong,
+  small,
+  b {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  strong {
+    font: 600 13px var(--unilab-font-sans);
+  }
+
+  b {
+    flex: 0 0 auto;
+    color: var(--unilab-color-primary);
+    font-size: 14px;
+  }
+
+  small,
+  p {
+    color: var(--unilab-color-text-muted);
+    font: 12px var(--unilab-font-mono);
+  }
+
+  p {
+    margin: 0;
+    padding: 12px 10px;
+    text-align: center;
+  }
 }
 
 .reagentIdentitySummary {
@@ -214,22 +393,9 @@
   display: grid;
   gap: 8px;
   margin: 0 14px 14px;
-  padding: 12px;
-  border: 1px solid var(--unilab-color-border);
-  border-radius: var(--unilab-radius-md);
+  padding-top: 12px;
+  border-top: 1px solid var(--unilab-color-border);
 
-  legend {
-    padding: 0 5px;
-    color: var(--unilab-color-text-muted);
-    font-size: 12px;
-    font-weight: 650;
-  }
-  > div {
-    display: grid;
-    grid-template-columns: 1fr 1fr 110px 30px;
-    gap: 8px;
-    align-items: end;
-  }
   label {
     display: grid;
     gap: 5px;
@@ -247,6 +413,39 @@
     border: 1px solid var(--unilab-color-border-strong);
     border-radius: var(--unilab-radius-control);
   }
+}
+
+.customParameterHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+
+  strong {
+    font-size: 12px;
+    font-weight: 600;
+  }
+}
+
+.customParameterList {
+  display: grid;
+  gap: 7px;
+}
+
+.customParameterRow {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.9fr) minmax(160px, 1.3fr) minmax(90px, 0.55fr) 30px;
+  gap: 7px;
+  align-items: end;
+}
+
+.customParameterEmpty {
+  padding: 11px;
+  color: var(--unilab-color-text-muted);
+  font-size: 11px;
+  text-align: center;
+  border: 1px dashed var(--unilab-color-border-strong);
+  border-radius: var(--unilab-radius-control);
 }
 
 .dialogError {

@@ -107,6 +107,9 @@
   .dialogFields {
     grid-template-columns: 1fr 1fr;
   }
+  .dialogFields.reagentRegistrationFields {
+    grid-template-columns: 1fr 1fr;
+  }
   .jogControls > div {
     grid-template-columns: 24px 1fr 1fr;
   }
@@ -214,7 +217,7 @@
     align-content: end;
     justify-items: start;
   }
-  .customParameterFields > div {
+  .customParameterRow {
     grid-template-columns: 1fr 1fr;
   }
   .reagentRecords dl {
@@ -249,8 +252,11 @@
   .dialogFields {
     grid-template-columns: 1fr;
   }
-  .reagentContainerSelector {
+  .dialogFields.reagentRegistrationFields {
     grid-template-columns: 1fr;
+  }
+  .reagentContainerSelectPopup {
+    width: 100%;
   }
   .primaryActions {
     grid-template-columns: 1fr;
@@ -277,7 +283,7 @@
   .reagentStats > div > span:first-child {
     display: none;
   }
-  .customParameterFields > div {
+  .customParameterRow {
     grid-template-columns: 1fr;
   }
 }
