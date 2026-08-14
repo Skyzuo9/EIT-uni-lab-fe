@@ -32,10 +32,7 @@ import {
   type WorkflowTaskInputFormState
 } from '../utils/workflowTaskInputForm'
 import { workflowTaskInputProblem } from '../utils/workflowTaskInputProblem'
-import {
-  projectWorkflowTaskEvents,
-  projectWorkflowTaskJob
-} from '../utils/workflowTaskOutputProjection'
+import { projectWorkflowTaskOutput } from '../utils/workflowTaskOutputProjection'
 import {
   loadWorkflowResourceSlotOptions,
   type WorkflowResourceSlotOptionsPort,
@@ -138,10 +135,16 @@ export function usePersistentWorkflowTaskPanel({
     !debugExecutionScope.startNodeId
   const task = taskRuntime.snapshot.task
   const taskJobs = taskRuntime.snapshot.jobs
-  const taskOutputNodes = useMemo(
-    () => taskJobs.map(projectWorkflowTaskJob),
-    [taskJobs]
+  const taskOutput = useMemo(
+    () => projectWorkflowTaskOutput({
+      task,
+      jobs: taskJobs,
+      feedback: taskRuntime.snapshot.feedback
+    }),
+    [task, taskJobs, taskRuntime.snapshot.feedback]
   )
+  const taskOutputNodes = taskOutput.nodes
+  const taskActivity = taskOutput.activity
   const failedTaskJobCount = useMemo(
     () => taskOutputNodes.filter((node) => node.state === 'failed').length,
     [taskOutputNodes]
@@ -162,18 +165,6 @@ export function usePersistentWorkflowTaskPanel({
       node.name || node.id
     ])),
     [structure.nodes]
-  )
-  const taskRuntimeEvents = useMemo(
-    () => projectWorkflowTaskEvents(
-      taskRuntime.snapshot.events,
-      taskRuntime.snapshot.feedback,
-      taskJobs
-    ),
-    [
-      taskJobs,
-      taskRuntime.snapshot.events,
-      taskRuntime.snapshot.feedback
-    ]
   )
   const taskNodeStates = useMemo(
     () => ({
@@ -626,7 +617,7 @@ export function usePersistentWorkflowTaskPanel({
     taskRunMode,
     singleNodeTargetMissing,
     taskRuntime,
-    taskRuntimeEvents,
+    taskActivity,
     toggleDebugBreakpoint,
     toggleDebugStartNode,
     traceViewerOpen,

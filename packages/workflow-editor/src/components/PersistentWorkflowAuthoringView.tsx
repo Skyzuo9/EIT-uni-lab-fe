@@ -105,7 +105,7 @@ export function PersistentWorkflowAuthoringView({
     taskNodeStates,
     taskOutputNodes,
     taskRuntime,
-    taskRuntimeEvents,
+    taskActivity,
     toggleDebugBreakpoint,
     toggleDebugStartNode,
     toggleNodeDisabled,
@@ -645,7 +645,7 @@ export function PersistentWorkflowAuthoringView({
           expectedNodeCount={taskJobs.length}
           nodes={taskOutputNodes}
           nodeNames={taskNodeNames}
-          events={taskRuntimeEvents}
+          activity={taskActivity}
           error={taskRuntime.snapshot.error}
           selectedNode={selectedTaskNode}
           selectedNodeId={selectedJobNodeUuid}

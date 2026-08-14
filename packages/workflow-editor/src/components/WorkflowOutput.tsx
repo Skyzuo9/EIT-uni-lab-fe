@@ -13,9 +13,10 @@ export interface WorkflowOutputNode {
   result: Record<string, unknown>
 }
 
-export interface WorkflowOutputEvent {
-  key?: string
-  seq: number
+export interface WorkflowOutputActivity {
+  key: string
+  occurredAt: string
+  positionLabel: string
   type: string
   nodeId: string | null
   detail?: Record<string, unknown>
@@ -28,7 +29,7 @@ interface WorkflowOutputProps {
   expectedNodeCount: number
   nodes: readonly WorkflowOutputNode[]
   nodeNames: Readonly<Record<string, string>>
-  events: readonly WorkflowOutputEvent[]
+  activity: readonly WorkflowOutputActivity[]
   error: string | null
   selectedNode: WorkflowOutputNode | undefined
   selectedNodeId: string | null
@@ -40,8 +41,8 @@ interface WorkflowOutputProps {
   title?: string
   countLabel?: string
   nodesTabLabel?: string
-  eventsTabLabel?: string
-  eventsEmptyLabel?: string
+  activityTabLabel?: string
+  activityEmptyLabel?: string
   resizable?: boolean
 }
 
@@ -58,7 +59,7 @@ export function WorkflowOutput({
   expectedNodeCount,
   nodes,
   nodeNames,
-  events,
+  activity,
   error,
   selectedNode,
   selectedNodeId,
@@ -70,8 +71,8 @@ export function WorkflowOutput({
   title = '运行输出',
   countLabel = '个节点已有结果',
   nodesTabLabel = '节点结果',
-  eventsTabLabel = '事件流',
-  eventsEmptyLabel = '等待 OS 节点反馈……',
+  activityTabLabel = '运行记录',
+  activityEmptyLabel = '等待 OS 返回运行状态……',
   resizable = false
 }: WorkflowOutputProps): React.JSX.Element {
   const outputResize = useResizableWorkflowOutput()
@@ -86,8 +87,8 @@ export function WorkflowOutput({
     globalThis.addEventListener('keydown', exitOnEscape)
     return () => globalThis.removeEventListener('keydown', exitOnEscape)
   }, [fullscreen])
-  const eventNodeNames = workflowEventNodeNames(nodes, nodeNames)
-  const nodeFailures = workflowNodeFailureLogs(nodes, nodeNames, events)
+  const activityNodeNames = workflowEventNodeNames(nodes, nodeNames)
+  const nodeFailures = workflowNodeFailureLogs(nodes, nodeNames, activity)
   const selectedNodeFailure = selectedNode
     ? nodeFailures.find((failure) => (
         failure.nodeId === selectedNode.nodeId ||
@@ -102,7 +103,7 @@ export function WorkflowOutput({
     Object.keys(selectedNode.result).length > 0
   )
   const selectedNodeLog = selectedNode && selectedNode.state !== 'failed'
-    ? workflowNodeLogText(selectedNode, events)
+    ? workflowNodeLogText(selectedNode, activity)
     : ''
   const selectedNodeName = selectedNode
     ? workflowOutputNodeName(selectedNode, nodeNames)
@@ -163,8 +164,8 @@ export function WorkflowOutput({
             <OutputTabButton
               id="events"
               activeTab={activeTab}
-              label={eventsTabLabel}
-              count={events.length}
+              label={activityTabLabel}
+              count={activity.length}
               onSelect={onTabChange}
             />
             <OutputTabButton
@@ -200,9 +201,9 @@ export function WorkflowOutput({
           activeTab={activeTab}
           nodes={nodes}
           nodeNames={nodeNames}
-          events={events}
-          eventNodeNames={eventNodeNames}
-          eventsEmptyLabel={eventsEmptyLabel}
+          activity={activity}
+          activityNodeNames={activityNodeNames}
+          activityEmptyLabel={activityEmptyLabel}
           error={error}
           errorCount={errorCount}
           nodeFailures={nodeFailures}
@@ -231,9 +232,9 @@ function WorkflowOutputBody({
   activeTab,
   nodes,
   nodeNames,
-  events,
-  eventNodeNames,
-  eventsEmptyLabel,
+  activity,
+  activityNodeNames,
+  activityEmptyLabel,
   error,
   errorCount,
   nodeFailures,
@@ -250,9 +251,9 @@ function WorkflowOutputBody({
   activeTab: WorkflowOutputTab
   nodes: readonly WorkflowOutputNode[]
   nodeNames: Readonly<Record<string, string>>
-  events: readonly WorkflowOutputEvent[]
-  eventNodeNames: ReadonlyMap<string, string>
-  eventsEmptyLabel: string
+  activity: readonly WorkflowOutputActivity[]
+  activityNodeNames: ReadonlyMap<string, string>
+  activityEmptyLabel: string
   error: string | null
   errorCount: number
   nodeFailures: readonly WorkflowNodeFailureLog[]
@@ -342,20 +343,27 @@ function WorkflowOutputBody({
         hidden={activeTab !== 'events'}
       >
         <div className="workflow-runtime__events">
-          {events.length > 0 && (
-            <p className="workflow-runtime__events-order">最新事件在前</p>
+          {activity.length > 0 && (
+            <p className="workflow-runtime__events-order">
+              按 OS 权威时间排序，最新记录在前
+            </p>
           )}
-          {[...events].reverse().slice(0, 50).map((event) => {
+          {[...activity].reverse().slice(0, 50).map((event) => {
             const nodeName = event.nodeId
-              ? eventNodeNames.get(event.nodeId) || '未命名节点'
+              ? activityNodeNames.get(event.nodeId) || '未命名节点'
               : '整体运行'
             return (
               <div
-                key={event.key ?? `${event.nodeId}:${event.seq}:${event.type}`}
+                key={event.key}
                 data-event-kind={event.type}
-                data-event-sequence={event.seq}
+                data-event-time={event.occurredAt}
               >
-                <code>#{event.seq}</code>
+                <code className="workflow-runtime__activity-time">
+                  <b>{event.positionLabel}</b>
+                  <time dateTime={event.occurredAt}>
+                    {formatActivityTime(event.occurredAt)}
+                  </time>
+                </code>
                 <span>
                   <strong>{eventLabel(event.type)}</strong>
                   <small>{event.type}</small>
@@ -374,7 +382,7 @@ function WorkflowOutputBody({
               </div>
             )
           })}
-          {events.length === 0 && <p>{eventsEmptyLabel}</p>}
+          {activity.length === 0 && <p>{activityEmptyLabel}</p>}
         </div>
       </section>
 
@@ -556,7 +564,7 @@ const NODE_LOG_FIELDS = [
 
 function workflowNodeLogText(
   node: WorkflowOutputNode,
-  events: readonly WorkflowOutputEvent[]
+  events: readonly WorkflowOutputActivity[]
 ): string {
   const matchingEvents = events
     .filter((event) => (
@@ -589,7 +597,8 @@ function workflowNodeLogText(
   if (logs.length > 0) return logs.join('\n\n')
 
   return matchingEvents.map((event) => {
-    const heading = `#${event.seq} ${eventLabel(event.type)} (${event.type})`
+    const heading = `${event.positionLabel} ${eventLabel(event.type)} ` +
+      `(${formatActivityTime(event.occurredAt)})`
     const detail = formatLogValue(event.detail)
     return detail ? `${heading}\n${detail}` : heading
   }).join('\n\n')
@@ -606,12 +615,12 @@ function workflowNodeLogText(
 function workflowNodeFailureLogs(
   nodes: readonly WorkflowOutputNode[],
   nodeNames: Readonly<Record<string, string>>,
-  events: readonly WorkflowOutputEvent[]
+  events: readonly WorkflowOutputActivity[]
 ): WorkflowNodeFailureLog[] {
   const exceptionEvents = events.filter(
     (event) => event.type === 'node.exception'
   )
-  const consumedEventSequences = new Set<number>()
+  const consumedEventKeys = new Set<string>()
   const failures = nodes
     .filter((node) => node.state === 'failed')
     .map((node) => {
@@ -620,7 +629,7 @@ function workflowNodeFailureLogs(
         const matches =
           event.nodeId === node.nodeId ||
           event.nodeId === sourceNodeId
-        if (matches) consumedEventSequences.add(event.seq)
+        if (matches) consumedEventKeys.add(event.key)
         return matches
       })
       return {
@@ -639,10 +648,10 @@ function workflowNodeFailureLogs(
 
   const eventNodeNames = workflowEventNodeNames(nodes, nodeNames)
   for (const event of exceptionEvents) {
-    if (consumedEventSequences.has(event.seq)) continue
+    if (consumedEventKeys.has(event.key)) continue
     const sourceNodeId = event.nodeId || '未知节点'
     failures.push({
-      nodeId: `${sourceNodeId}:event:${event.seq}`,
+      nodeId: `${sourceNodeId}:activity:${event.key}`,
       sourceNodeId,
       nodeName: eventNodeNames.get(sourceNodeId) || '未命名节点',
       attempt: 0,
@@ -742,13 +751,20 @@ const EVENT_TYPE_LABELS: Readonly<Record<string, string>> = {
   'run.status': '运行状态已更新',
   'run.completed': '运行已完成',
   'run.failed': '运行失败',
+  'run.canceled': '运行已取消',
+  'run.timeout': '运行已超时',
   'run.command': '控制命令已处理',
   'run.recovered': '运行状态已恢复',
   'node.ready': '节点已就绪',
   'node.dispatched': '动作已下发',
   'node.started': '节点开始执行',
   'node.result': '节点执行成功',
-  'node.completed': '节点执行成功',
+  'node.completed': '节点已完成',
+  'node.canceled': '节点已取消',
+  'node.timeout': '节点执行超时',
+  'node.intervention_required': '节点需要干预',
+  'node.cancel_requested': '节点等待取消',
+  'node.execution_unknown': '节点执行状态未知',
   'node.skipped': '节点已跳过',
   'node.exception': '节点执行异常',
   'node.feedback': '动作反馈',
@@ -774,6 +790,15 @@ function nodeTypeLabel(type: string): string {
 
 function eventLabel(type: string): string {
   return EVENT_TYPE_LABELS[type] || '运行事件'
+}
+
+function formatActivityTime(value: string): string {
+  const timestamp = new Date(value)
+  if (Number.isNaN(timestamp.getTime())) return value
+  const pad = (part: number, width = 2): string =>
+    String(part).padStart(width, '0')
+  return `${pad(timestamp.getHours())}:${pad(timestamp.getMinutes())}:` +
+    `${pad(timestamp.getSeconds())}.${pad(timestamp.getMilliseconds(), 3)}`
 }
 
 /**
