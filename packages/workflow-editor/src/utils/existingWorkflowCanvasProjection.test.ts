@@ -1,8 +1,15 @@
 import { describe, expect, it } from 'vitest'
 
-import type { WorkflowRunPreparation } from '@unilab/services'
+import type {
+  BackendWorkflowGraph,
+  WorkflowRunPreparation
+} from '@unilab/services'
 
-import { projectExistingWorkflowCanvas } from './existingWorkflowCanvasProjection'
+import { projectNestedWorkflow } from './canonicalWorkflow'
+import {
+  projectEditableBackendWorkflowCanvas,
+  projectExistingWorkflowCanvas
+} from './existingWorkflowCanvasProjection'
 
 describe('Backend 已有工作流画布投影', () => {
   /** 证明只读运行快照保留 dev 画布所需的节点、位置、端口与有向边。 */
@@ -87,4 +94,166 @@ describe('Backend 已有工作流画布投影', () => {
       error: null
     })
   })
+
+  /**
+   * Backend 完整图必须与 Local Authoring 共用组合工作流投影，并原样保留
+   * MaterialSource 与上游动作 ResourceSlot 两种边界。
+   */
+  it('折叠 Backend 原生组合合同并保留两类 ResourceSlot 边界', () => {
+    const graph = backendCompositeGraph()
+    const projected = projectEditableBackendWorkflowCanvas(graph, {
+      readOnly: true
+    })
+    const collapsed = projectNestedWorkflow(
+      projected.nodes,
+      projected.links,
+      new Set()
+    )
+
+    expect(projected.nodes.filter(node => node.groupKind === 'subworkflow'))
+      .toHaveLength(2)
+    expect(projected.nodes.filter(node => node.visualKind === 'robot-transfer'))
+      .toHaveLength(2)
+    expect(projected.nodes.every(node => node.authoringReadOnly)).toBe(true)
+    expect(collapsed.nodes.map(node => node.id)).toEqual([
+      'material-source',
+      'transfer-from-source',
+      'upstream-action',
+      'transfer-from-slot',
+      'downstream-action'
+    ])
+    expect(collapsed.links.map(edgeIdentity)).toEqual([
+      'material-source:material-out->transfer-from-source:resource-in',
+      'transfer-from-source:resource-out->upstream-action:action-in',
+      'upstream-action:action-out->transfer-from-slot:resource-in',
+      'transfer-from-slot:resource-out->downstream-action:action-in'
+    ])
+  })
 })
+
+function backendCompositeGraph(): BackendWorkflowGraph {
+  const compositeMeta = {
+    unilab: {
+      composite: {
+        version: 1,
+        child_workflow_uuid: 'child-transfer',
+        child_workflow_revision: 4,
+        child_source_hash: 'sha256:source',
+        contract_digest: 'sha256:contract'
+      },
+      workflow_source: {
+        symbol: 's_z_lab_标准物料转运',
+        definition_fqid:
+          'szlab_poly_studio.workflows.material_transfer.s_z_lab_标准物料转运'
+      }
+    }
+  }
+  return {
+    workflow: { uuid: 'backend-workflow', revision: 9 },
+    nodes: [
+      backendNode('material-source', 'Material Source', 'material_source', 'source-template'),
+      backendNode('transfer-from-source', 'SZLab 标准物料转运', 'workflow', 'composite-template', undefined, compositeMeta),
+      backendNode('source-pick', 'pick', 'device_action', 'action-template', 'transfer-from-source'),
+      backendNode('upstream-action', '上游 ResourceSlot', 'device_action', 'action-template'),
+      backendNode('transfer-from-slot', 'SZLab 标准物料转运', 'workflow', 'composite-template', undefined, compositeMeta),
+      backendNode('slot-pick', 'pick', 'device_action', 'action-template', 'transfer-from-slot'),
+      backendNode('downstream-action', '下游 ResourceSlot', 'device_action', 'action-template')
+    ],
+    edges: [
+      backendEdge('source-boundary', 'material-source', 'material-out', 'transfer-from-source', 'resource-in'),
+      backendEdge('source-result', 'transfer-from-source', 'resource-out', 'upstream-action', 'action-in'),
+      backendEdge('slot-boundary', 'upstream-action', 'action-out', 'transfer-from-slot', 'resource-in'),
+      backendEdge('slot-result', 'transfer-from-slot', 'resource-out', 'downstream-action', 'action-in')
+    ],
+    node_templates: [
+      { uuid: 'source-template', type: 'material_source', name: 'material_source' },
+      {
+        uuid: 'composite-template',
+        type: 'workflow',
+        node_type: 'workflow',
+        name: 'workflow:child-transfer:r4',
+        meta_data: {
+          unilab: {
+            workflow_contract: {
+              version: 1,
+              workflow_uuid: 'child-transfer',
+              workflow_revision: 4,
+              source_hash: 'sha256:source',
+              contract_digest: 'sha256:contract'
+            }
+          }
+        }
+      },
+      { uuid: 'action-template', type: 'device_action', name: 'action' }
+    ],
+    handle_templates: [
+      backendHandle('material-out', 'source-template', 'material', 'source'),
+      backendHandle('resource-in', 'composite-template', 'resource', 'target'),
+      backendHandle('resource-out', 'composite-template', 'resource', 'source'),
+      backendHandle('action-in', 'action-template', 'resource', 'target'),
+      backendHandle('action-out', 'action-template', 'resource', 'source')
+    ],
+    inventory_requirements: []
+  }
+}
+
+function backendNode(
+  uuid: string,
+  name: string,
+  type: string,
+  templateUuid: string,
+  parentUuid?: string,
+  metaData?: Record<string, unknown>
+): BackendWorkflowGraph['nodes'][number] {
+  return {
+    uuid,
+    name,
+    type,
+    disabled: false,
+    workflow_node_template_uuid: templateUuid,
+    ...(parentUuid ? { parent_uuid: parentUuid } : {}),
+    ...(metaData ? { meta_data: metaData } : {})
+  }
+}
+
+function backendEdge(
+  uuid: string,
+  sourceNodeUuid: string,
+  sourceHandleUuid: string,
+  targetNodeUuid: string,
+  targetHandleUuid: string
+): BackendWorkflowGraph['edges'][number] {
+  return {
+    uuid,
+    source_node_uuid: sourceNodeUuid,
+    source_handle_uuid: sourceHandleUuid,
+    target_node_uuid: targetNodeUuid,
+    target_handle_uuid: targetHandleUuid
+  }
+}
+
+function backendHandle(
+  uuid: string,
+  templateUuid: string,
+  handleKey: string,
+  ioType: 'source' | 'target'
+): Record<string, unknown> {
+  return {
+    uuid,
+    workflow_node_template_uuid: templateUuid,
+    handle_key: handleKey,
+    display_name: handleKey,
+    io_type: ioType,
+    type: 'ResourceSlot'
+  }
+}
+
+function edgeIdentity(edge: {
+  source: string
+  sourceHandleUuid?: string | null
+  target: string
+  targetHandleUuid?: string | null
+}): string {
+  return `${edge.source}:${edge.sourceHandleUuid ?? ''}->` +
+    `${edge.target}:${edge.targetHandleUuid ?? ''}`
+}

@@ -94,8 +94,10 @@ export function ExistingWorkflowRuntimePanel({
   const liveTask = workflowTaskIsLive(task)
   const editingEnabled = editingStatus?.available === true
   const structure = useMemo(
-    () => editingEnabled
-      ? projectEditableBackendWorkflowCanvas(editableGraph)
+    () => editableGraph
+      ? projectEditableBackendWorkflowCanvas(editableGraph, {
+          readOnly: !editingEnabled
+        })
       : projectExistingWorkflowCanvas(preparation),
     [editableGraph, editingEnabled, preparation]
   )
@@ -193,13 +195,6 @@ export function ExistingWorkflowRuntimePanel({
   }, [definitionDirty, onUnsavedChangesChange])
 
   useEffect(() => {
-    if (!editingEnabled) {
-      setEditableGraph(null)
-      setDefinitionDirty(false)
-      definitionDirtyRef.current = false
-      setDefinitionError(null)
-      return
-    }
     let current = true
     setDefinitionLoading(true)
     setDefinitionError(null)
@@ -221,7 +216,7 @@ export function ExistingWorkflowRuntimePanel({
     return () => {
       current = false
     }
-  }, [definitionGeneration, editingEnabled, runtime, workflowUuid])
+  }, [definitionGeneration, runtime, workflowUuid])
 
   useEffect(() => {
     if (!editingEnabled) return
