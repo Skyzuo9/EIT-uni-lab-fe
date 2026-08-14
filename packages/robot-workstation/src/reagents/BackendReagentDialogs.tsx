@@ -1,4 +1,4 @@
-import { useId, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 
 import type {
   ReagentContainerOption,
@@ -7,9 +7,13 @@ import type {
   ReagentUpdateCommand
 } from '../types'
 import { buttonClass, uiClass } from '../uiClasses'
-import { useAccessibleDialog } from '../useAccessibleDialog'
-import { WorkstationIcon } from '../WorkstationIcon'
 import styles from '../workstation.module.scss'
+import {
+  ReagentDialogActions,
+  ReagentDialogFrame,
+  reagentDialogErrorMessage
+} from './ReagentDialogPrimitives'
+import { isValidCAS, optionalNumber, textValue } from './reagentFormValues'
 
 type EditorProps = {
   containers: readonly ReagentContainerOption[]
@@ -86,15 +90,15 @@ export function BackendReagentEditorDialog(props: EditorProps): React.JSX.Elemen
         })
       }
     } catch (submitError) {
-      setError(errorMessage(submitError, '试剂保存失败，请检查连接后重试。'))
+      setError(reagentDialogErrorMessage(submitError, '试剂保存失败，请检查连接后重试。'))
       setSubmitting(false)
     }
   }
 
   const noAvailableContainer = props.mode === 'create' && availableContainers.length === 0
   return (
-    <DialogFrame
-      title={props.mode === 'create' ? '新增试剂实例' : `编辑 ${props.item.name}`}
+    <ReagentDialogFrame
+      title={props.mode === 'create' ? '试剂登记' : `编辑 ${props.item.name}`}
       description={props.mode === 'create'
         ? '选择 Backend 中已存在且尚未承载试剂的容器物料；CAS 化学身份由 Backend 查询并保存。'
         : `修订 ${props.item.revision ?? '未知'} · 容器 ${props.item.lotLabel ?? props.item.materialId ?? '未知'}`}
@@ -224,13 +228,13 @@ export function BackendReagentEditorDialog(props: EditorProps): React.JSX.Elemen
           </p>
         ) : null}
         {error ? <p className={styles.dialogError} role="alert">{error}</p> : null}
-        <DialogActions
+        <ReagentDialogActions
           onClose={props.onClose}
-          submitLabel={submitting ? '正在保存…' : props.mode === 'create' ? '创建试剂' : '保存修改'}
+          submitLabel={submitting ? '正在保存…' : props.mode === 'create' ? '确认登记' : '保存修改'}
           disabled={submitting || noAvailableContainer}
         />
       </form>
-    </DialogFrame>
+    </ReagentDialogFrame>
   )
 }
 
@@ -260,13 +264,13 @@ export function BackendReagentDeleteDialog({
     try {
       await onDelete()
     } catch (deleteError) {
-      setError(errorMessage(deleteError, '试剂删除失败，请刷新后重试。'))
+      setError(reagentDialogErrorMessage(deleteError, '试剂删除失败，请刷新后重试。'))
       setSubmitting(false)
     }
   }
 
   return (
-    <DialogFrame
+    <ReagentDialogFrame
       title={`删除 ${item.name}`}
       description={`Backend 会将 ${formatQuantity(item.totalQuantity, item.unit)} 余量闭合为零、追加 remove 台账并软删除试剂；被任务预留或修订冲突时会拒绝。`}
       busy={submitting}
@@ -295,7 +299,7 @@ export function BackendReagentDeleteDialog({
           {submitting ? '正在删除…' : '确认软删除'}
         </button>
       </div>
-    </DialogFrame>
+    </ReagentDialogFrame>
   )
 }
 
@@ -383,100 +387,7 @@ function concentrationCommand(values: EditorValues): Pick<
       }
 }
 
-/** 使用 CAS 标准校验位算法拒绝明显无效身份。 */
-function isValidCAS(value: string): boolean {
-  if (!/^\d{2,7}-\d{2}-\d$/.test(value)) return false
-  const digits = value.replaceAll('-', '')
-  const expected = Number(digits.at(-1))
-  const body = digits.slice(0, -1)
-  let sum = 0
-  for (let index = body.length - 1, weight = 1; index >= 0; index -= 1, weight += 1) {
-    sum += Number(body[index]) * weight
-  }
-  return sum % 10 === expected
-}
-
-/** 读取去空白文本字段。 */
-function textValue(form: FormData, name: string): string {
-  return String(form.get(name) ?? '').trim()
-}
-
-/** 读取可选有限数；空输入保持未提供。 */
-function optionalNumber(value: FormDataEntryValue | null): number | undefined {
-  const text = String(value ?? '').trim()
-  return text ? Number(text) : undefined
-}
-
 /** 格式化当前权威数量；缺失时保留未知。 */
 function formatQuantity(value: number | undefined, unit: string | undefined): string {
   return value == null ? '未知数量' : `${value.toLocaleString('zh-CN')} ${unit ?? ''}`.trim()
-}
-
-/** 把未知写入异常转换为可行动中文错误，同时保留 Backend 原始消息。 */
-function errorMessage(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message ? error.message : fallback
-}
-
-/** 渲染共享模态框结构，并在提交期间阻止关闭造成操作状态丢失。 */
-function DialogFrame({
-  title,
-  description,
-  busy,
-  children,
-  onClose
-}: {
-  title: string
-  description: string
-  busy: boolean
-  children: React.ReactNode
-  onClose: () => void
-}): React.JSX.Element {
-  const titleId = useId()
-  const descriptionId = useId()
-  const dialogRef = useAccessibleDialog(() => {
-    if (!busy) onClose()
-  })
-  return (
-    <div className={uiClass.dialogBackdrop} role="presentation">
-      <section
-        ref={dialogRef}
-        className={styles.formDialog}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        aria-describedby={descriptionId}
-        aria-busy={busy}
-        tabIndex={-1}
-      >
-        <div className={uiClass.panelHeader}>
-          <div>
-            <h2 id={titleId}>{title}</h2>
-            <small id={descriptionId}>{description}</small>
-          </div>
-          <button className={buttonClass('secondary', 'icon')} type="button" disabled={busy} onClick={onClose} aria-label="关闭">
-            <WorkstationIcon name="close" />
-          </button>
-        </div>
-        {children}
-      </section>
-    </div>
-  )
-}
-
-/** 渲染表单取消与提交动作。 */
-function DialogActions({
-  onClose,
-  submitLabel,
-  disabled
-}: {
-  onClose: () => void
-  submitLabel: string
-  disabled: boolean
-}): React.JSX.Element {
-  return (
-    <div className={uiClass.dialogActions}>
-      <button className={buttonClass()} type="button" disabled={disabled} onClick={onClose}>取消</button>
-      <button className={buttonClass('primary')} type="submit" disabled={disabled}>{submitLabel}</button>
-    </div>
-  )
 }

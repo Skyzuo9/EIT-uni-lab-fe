@@ -3,8 +3,12 @@ import { ServiceError } from './errors'
 import { requestCommand, requestData, type HttpClient } from './http'
 import {
   decodeReagentHistoryPage,
+  decodeBackendReagentInfo,
+  loadBackendReagentInfoPage,
   loadBackendReagents,
   mutationReceipt,
+  reagentInfoCreateBody,
+  reagentInfoUpdateBody,
   reagentCreateBody,
   reagentUpdateBody
 } from './inventoryBackendCodec'
@@ -48,10 +52,52 @@ export interface ReagentInventoryItem {
   status: ReagentInventoryStatus
 }
 
+/** Backend 持久化的试剂基础信息（Reagent Info）只读投影。 */
+export interface ReagentInfoItem {
+  id: string
+  name: string
+  nameEn?: string
+  aliases: readonly string[]
+  cas?: string
+  molecularFormula?: string
+  smiles?: string
+  inchiKey?: string
+  molecularWeight?: number
+  densityGPerMl?: number
+  physicalState: string
+  description?: string
+  metadata?: Record<string, unknown>
+  createdAt?: string
+  updatedAt?: string
+}
+
+export type ReagentPhysicalState = 'solid' | 'liquid' | 'gas' | 'other' | 'unknown'
+
+/** 手工登记一条化学品字典身份所需的完整表单值。 */
+export interface ReagentInfoCreateInput {
+  name: string
+  nameEn?: string
+  aliases: readonly string[]
+  cas?: string
+  molecularFormula?: string
+  smiles?: string
+  inchiKey?: string
+  molecularWeight?: number
+  densityGPerMl?: number
+  physicalState: ReagentPhysicalState
+  description?: string
+  metadata?: Record<string, unknown>
+}
+
+/** 纠错既有化学品字典身份；未提供的可空值会被明确清除。 */
+export interface ReagentInfoUpdateInput extends ReagentInfoCreateInput {
+  id: string
+}
+
 export interface ReagentCreateInput {
   materialId: string
   cas: string
-  physicalState?: 'solid' | 'liquid' | 'gas' | 'other' | 'unknown'
+  physicalState?: ReagentPhysicalState
   densityGPerMl?: number
   concentrationValue?: number
   concentrationUnit?: string
@@ -105,6 +151,10 @@ export interface ReagentHistoryPage {
 
 export interface InventoryPort {
   listReagentInventory(signal?: AbortSignal): Promise<ReagentInventoryItem[]>
+  listReagentInfos(signal?: AbortSignal): Promise<ReagentInfoItem[]>
+  createReagentInfo(input: ReagentInfoCreateInput, signal?: AbortSignal): Promise<ReagentInfoItem>
+  updateReagentInfo(input: ReagentInfoUpdateInput, signal?: AbortSignal): Promise<ReagentInfoItem>
+  deleteReagentInfo(reagentInfoId: string, signal?: AbortSignal): Promise<void>
   createReagent(input: ReagentCreateInput, signal?: AbortSignal): Promise<ReagentMutationReceipt>
   updateReagent(input: ReagentUpdateInput, signal?: AbortSignal): Promise<ReagentMutationReceipt>
   deleteReagent(reagentId: string, signal?: AbortSignal): Promise<void>
@@ -136,6 +186,80 @@ export function createInventoryReadPort(
       return items.sort((left, right) =>
         left.name.localeCompare(right.name, 'zh-CN') ||
         left.id.localeCompare(right.id)
+      )
+    },
+
+    /**
+     * 分页读取 Go Backend 自动采集的试剂基础信息目录。
+     * @param signal 调用方用于取消页面卸载后的请求。
+     * @returns 按中文名称和稳定身份排序的完整试剂基础信息。
+     */
+    async listReagentInfos(signal?: AbortSignal) {
+      requireBackendReagentInfoRead(backend)
+      const items: ReagentInfoItem[] = []
+      for (let pageNumber = 1; pageNumber <= 100; pageNumber += 1) {
+        const page = await loadBackendReagentInfoPage(http, pageNumber, signal)
+        items.push(...page.items)
+        if (items.length >= page.total) {
+          return items.sort((left, right) =>
+            left.name.localeCompare(right.name, 'zh-CN') ||
+            left.id.localeCompare(right.id)
+          )
+        }
+      }
+      throw invalidInventoryResponse('试剂基础信息超过 100 页，请缩小服务端查询范围')
+    },
+
+    /**
+     * 在 Go Backend 手工登记独立化学品身份，不创建任何容器或库存实例。
+     * @param input 名称、物态及可选化学属性。
+     * @param signal 调用方取消信号。
+     * @returns Backend 已持久化的完整试剂基础信息。
+     */
+    async createReagentInfo(input, signal) {
+      requireBackendReagentInfoWrite(backend)
+      const result = await requestData<unknown>(http, '/api/v1/reagent-infos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(reagentInfoCreateBody(input)),
+        signal
+      })
+      return decodeBackendReagentInfo(result, 'Backend 新建试剂基础信息')
+    },
+
+    /**
+     * 纠错一条 Backend 化学品身份，并显式清除表单留空的可空字段。
+     * @param input 稳定 UUID 与完整可编辑化学身份。
+     * @param signal 调用方取消信号。
+     * @returns Backend 更新后的完整试剂基础信息。
+     */
+    async updateReagentInfo(input, signal) {
+      requireBackendReagentInfoWrite(backend)
+      const result = await requestData<unknown>(
+        http,
+        `/api/v1/reagent-infos/${encodeURIComponent(input.id)}`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(reagentInfoUpdateBody(input)),
+          signal
+        }
+      )
+      return decodeBackendReagentInfo(result, 'Backend 更新试剂基础信息')
+    },
+
+    /**
+     * 删除从未被库存、仓库或工作流历史引用的误建化学身份。
+     * @param reagentInfoId 待删除试剂基础信息 UUID。
+     * @param signal 调用方取消信号。
+     * @returns Backend 明确接受删除后完成；历史引用冲突会拒绝。
+     */
+    async deleteReagentInfo(reagentInfoId, signal) {
+      requireBackendReagentInfoWrite(backend)
+      await requestCommand(
+        http,
+        `/api/v1/reagent-infos/${encodeURIComponent(reagentInfoId)}`,
+        { method: 'DELETE', signal }
       )
     },
 
@@ -290,6 +414,26 @@ function requireBackendReagentWrite(backend: BackendConfig): void {
   throw new ServiceError({
     code: 'UNSUPPORTED_REAGENT_WRITE',
     message: '当前 Uni-Lab OS 只提供库存快照；试剂新增、更新、删除和历史查询仅由 Go Backend 提供。',
+    retryable: false
+  })
+}
+
+/** 试剂基础信息目录仅在 Go Backend profile 下可读。 */
+function requireBackendReagentInfoRead(backend: BackendConfig): void {
+  if (backend.serverKind === 'backend') return
+  throw new ServiceError({
+    code: 'UNSUPPORTED_REAGENT_INFO_READ',
+    message: '当前 Uni-Lab OS 尚未提供统一试剂基础信息目录；请切换到 Go Backend。',
+    retryable: false
+  })
+}
+
+/** 化学品字典写接口仅在 feat/workflow Go Backend profile 下开放。 */
+function requireBackendReagentInfoWrite(backend: BackendConfig): void {
+  if (backend.serverKind === 'backend') return
+  throw new ServiceError({
+    code: 'UNSUPPORTED_REAGENT_INFO_WRITE',
+    message: '当前 Uni-Lab OS 尚未提供统一化学品字典写接口；请切换到 Go Backend。',
     retryable: false
   })
 }

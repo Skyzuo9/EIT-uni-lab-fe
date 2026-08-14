@@ -78,6 +78,110 @@ describe('inventory read port', () => {
     expect(item.reservedQuantity).toBeUndefined()
   })
 
+  /** 证明 Backend 试剂库读取全部基础化学字段，并保留服务端未提供的值为空。 */
+  it('lists authoritative Backend reagent information for the library view', async () => {
+    const request = vi.fn(async (path: string) => {
+      expect(path).toBe('/api/v1/reagent-infos?page=1&page_size=100')
+      return {
+        code: 0,
+        data: {
+          items: [{
+            uuid: 'info-ethanol', name: '乙醇', name_en: 'Ethanol',
+            aliases: ['酒精'], cas: '64-17-5', molecular_formula: 'C2H6O',
+            smiles: 'CCO', inchi_key: 'LFQSCWFLJHTTHZ-UHFFFAOYSA-N',
+            molecular_weight: 46.07, density_g_per_ml: 0.789,
+            physical_state: 'liquid', meta_data: { storage: '阴凉通风' },
+            create_time: '2026-08-13T00:00:00Z', update_time: '2026-08-13T01:00:00Z'
+          }],
+          total: 1,
+          page: 1,
+          page_size: 100
+        }
+      }
+    })
+    const port = createInventoryReadPort(
+      { request } as HttpClient,
+      getDefaultBackend('local-go')
+    )
+
+    await expect(port.listReagentInfos()).resolves.toEqual([{
+      id: 'info-ethanol', name: '乙醇', nameEn: 'Ethanol', aliases: ['酒精'],
+      cas: '64-17-5', molecularFormula: 'C2H6O', smiles: 'CCO',
+      inchiKey: 'LFQSCWFLJHTTHZ-UHFFFAOYSA-N', molecularWeight: 46.07,
+      densityGPerMl: 0.789, physicalState: 'liquid',
+      metadata: { storage: '阴凉通风' },
+      createdAt: '2026-08-13T00:00:00Z', updatedAt: '2026-08-13T01:00:00Z'
+    }])
+  })
+
+  /** 证明化学品字典 CRUD 使用 feat/workflow 的手工登记、三态纠错和受限删除路由。 */
+  it('writes Backend reagent information through the feat/workflow contract', async () => {
+    const request = vi.fn(async (path: string, init?: RequestInit) => {
+      if (path === '/api/v1/reagent-infos' && init?.method === 'POST') {
+        return {
+          code: 0,
+          data: reagentInfoResponse('info-new', 'E2E 校准液', 'liquid')
+        }
+      }
+      if (path === '/api/v1/reagent-infos/info-new' && init?.method === 'PUT') {
+        return {
+          code: 0,
+          data: reagentInfoResponse('info-new', 'E2E 校准液（已校正）', 'solid')
+        }
+      }
+      if (path === '/api/v1/reagent-infos/info-new' && init?.method === 'DELETE') {
+        return { code: 0 }
+      }
+      throw new Error(`unexpected request ${init?.method ?? 'GET'} ${path}`)
+    })
+    const port = createInventoryReadPort(
+      { request } as HttpClient,
+      getDefaultBackend('local-go')
+    )
+
+    await expect(port.createReagentInfo({
+      name: 'E2E 校准液',
+      aliases: ['质控液'],
+      physicalState: 'liquid',
+      densityGPerMl: 1.02,
+      metadata: { source: 'e2e' }
+    })).resolves.toMatchObject({ id: 'info-new', name: 'E2E 校准液' })
+    await expect(port.updateReagentInfo({
+      id: 'info-new',
+      name: 'E2E 校准液（已校正）',
+      aliases: [],
+      physicalState: 'solid'
+    })).resolves.toMatchObject({
+      id: 'info-new',
+      name: 'E2E 校准液（已校正）',
+      physicalState: 'solid'
+    })
+    await expect(port.deleteReagentInfo('info-new')).resolves.toBeUndefined()
+
+    expect(JSON.parse(String(request.mock.calls[0]?.[1]?.body))).toEqual({
+      cas: '',
+      name: 'E2E 校准液',
+      aliases: ['质控液'],
+      density_g_per_ml: 1.02,
+      physical_state: 'liquid',
+      meta_data: { source: 'e2e' }
+    })
+    expect(JSON.parse(String(request.mock.calls[1]?.[1]?.body))).toEqual({
+      cas: null,
+      name: 'E2E 校准液（已校正）',
+      name_en: null,
+      aliases: [],
+      molecular_formula: null,
+      smiles: null,
+      inchi_key: null,
+      molecular_weight: null,
+      density_g_per_ml: null,
+      physical_state: 'solid',
+      description: null,
+      meta_data: {}
+    })
+  })
+
   /** 证明 Go Backend 试剂创建、乐观更新和软删除都使用正式 CRUD 路由。 */
   it('writes Backend reagents through the verified CRUD contract', async () => {
     const request = vi.fn(async (path: string, init?: RequestInit) => {
@@ -203,3 +307,14 @@ describe('inventory read port', () => {
     })
   })
 })
+
+/** 构造满足 Backend ReagentInfo DTO 的最小单测响应。 */
+function reagentInfoResponse(id: string, name: string, physicalState: string) {
+  return {
+    uuid: id,
+    name,
+    aliases: [],
+    physical_state: physicalState,
+    meta_data: {}
+  }
+}

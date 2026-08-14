@@ -6,6 +6,8 @@ import type {
   ReagentContainerOption,
   ReagentCreateCommand,
   ReagentHistoryProjection,
+  ReagentInfoProjection,
+  ReagentInfoManagement,
   ReagentInventoryProjection,
   ReagentManagement,
   ReagentUpdateCommand,
@@ -13,18 +15,23 @@ import type {
 } from '@unilab/robot-workstation'
 import type {
   MaterialTemplateSummary,
+  ReagentInfoItem,
   ReagentInventoryItem,
   Services
 } from '@unilab/services'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import type { WorkbenchViewMode } from './workbench-view-state'
+import { useReagentInfoManagement } from './reagent-info-management'
 
 export interface RobotWorkstationData {
   benchSnapshot?: BenchSnapshot
   benchStatus: WorkstationDataStatus
   reagentItems?: readonly ReagentInventoryProjection[]
   reagentStatus: WorkstationDataStatus
+  reagentInfos?: readonly ReagentInfoProjection[]
+  reagentInfoStatus: WorkstationDataStatus
+  reagentInfoManagement?: ReagentInfoManagement
   reagentManagement?: ReagentManagement
   pointStatus: WorkstationDataStatus
 }
@@ -55,6 +62,11 @@ export function useRobotWorkstationData(
     phase: 'loading',
     message: '正在读取试剂库存…'
   })
+  const [reagentInfos, setReagentInfos] = useState<readonly ReagentInfoProjection[]>()
+  const [reagentInfoStatus, setReagentInfoStatus] = useState<WorkstationDataStatus>({
+    phase: 'loading',
+    message: '正在读取试剂基础信息…'
+  })
   const [reagentRevision, setReagentRevision] = useState(0)
   const [reagentContainers, setReagentContainers] = useState<readonly ReagentContainerOption[]>()
   const [reagentContainerStatus, setReagentContainerStatus] = useState<WorkstationDataStatus>({
@@ -63,6 +75,7 @@ export function useRobotWorkstationData(
   })
   const retryBench = useCallback(() => setBenchRevision(value => value + 1), [])
   const retryReagents = useCallback(() => setReagentRevision(value => value + 1), [])
+  const reagentInfoManagement = useReagentInfoManagement(services, retryReagents)
 
   /** 创建真实 Backend 试剂后使列表失效，等待权威列表回读。 */
   const createReagent = useCallback(async (command: ReagentCreateCommand): Promise<void> => {
@@ -168,6 +181,42 @@ export function useRobotWorkstationData(
 
   useEffect(() => {
     if (viewMode !== 'robot-reagents') return
+    const capability = services.getCapabilityStatus('reagentInfo.read')
+    if (!capability.available) {
+      setReagentInfos(undefined)
+      setReagentInfoStatus({
+        phase: 'unavailable',
+        message: capability.reason ?? '当前服务端未提供试剂基础信息目录。'
+      })
+      return
+    }
+    const controller = new AbortController()
+    setReagentInfoStatus({ phase: 'loading', message: '正在读取试剂基础信息…' })
+    void services.inventory.listReagentInfos(controller.signal).then(
+      infos => {
+        if (controller.signal.aborted) return
+        setReagentInfos(infos.map(projectReagentInfoItem))
+        setReagentInfoStatus({
+          phase: 'ready',
+          message: '试剂基础信息已同步',
+          retry: retryReagents
+        })
+      },
+      error => {
+        if (controller.signal.aborted) return
+        setReagentInfos(undefined)
+        setReagentInfoStatus({
+          phase: 'error',
+          message: errorMessage(error, '试剂基础信息读取失败'),
+          retry: retryReagents
+        })
+      }
+    )
+    return () => controller.abort()
+  }, [reagentRevision, retryReagents, services, viewMode])
+
+  useEffect(() => {
+    if (viewMode !== 'robot-reagents') return
     const createCapability = services.getCapabilityStatus('inventory.createReagent')
     if (!createCapability.available) {
       setReagentContainers(undefined)
@@ -248,6 +297,9 @@ export function useRobotWorkstationData(
     benchStatus,
     ...(reagentItems ? { reagentItems } : {}),
     reagentStatus,
+    ...(reagentInfos ? { reagentInfos } : {}),
+    reagentInfoStatus,
+    ...(reagentInfoManagement ? { reagentInfoManagement } : {}),
     ...(reagentManagement ? { reagentManagement } : {}),
     pointStatus: POINT_STATUS
   }
@@ -352,6 +404,15 @@ function projectBenchMaterial(
 function projectReagentInventoryItem(
   item: ReagentInventoryItem
 ): ReagentInventoryProjection {
+  return { ...item }
+}
+
+/**
+ * 复制试剂基础信息端口的权威字段，不从库存实例反推目录项。
+ * @param item Backend 试剂基础信息目录项。
+ * @returns 试剂管理界面可直接展示的同语义投影。
+ */
+function projectReagentInfoItem(item: ReagentInfoItem): ReagentInfoProjection {
   return { ...item }
 }
 

@@ -1,5 +1,43 @@
-.reagentToolbar .searchField {
-  width: min(360px, 48%);
+.reagentViewToolbar {
+  display: flex;
+  gap: var(--unilab-space-3);
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--unilab-space-3);
+
+  .searchField {
+    width: min(390px, 48%);
+  }
+}
+
+.reagentNavigation {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 3px;
+  padding: 3px;
+  background: var(--unilab-color-surface);
+  border: 1px solid var(--unilab-color-border);
+  border-radius: var(--unilab-radius-md);
+
+  button {
+    min-height: 32px;
+    padding: 0 13px;
+    color: var(--unilab-color-text-muted);
+    font: 600 13px var(--unilab-font-sans);
+    background: transparent;
+    border: 0;
+    border-radius: var(--unilab-radius-control);
+    cursor: pointer;
+  }
+  button[aria-selected='true'] {
+    color: var(--unilab-color-primary);
+    background: var(--unilab-color-primary-soft);
+    box-shadow: var(--unilab-shadow-control);
+  }
+  button:focus-visible {
+    outline: 3px solid var(--unilab-color-focus);
+    outline-offset: 1px;
+  }
 }
 
 .reagentStats {
@@ -75,6 +113,23 @@
 .reagentStatus[data-tone='archived'] {
   color: var(--unilab-color-text-muted);
   background: var(--unilab-color-bg-muted);
+}
+
+.libraryModeBadge {
+  color: var(--unilab-color-text-muted);
+  background: var(--unilab-color-bg-muted);
+}
+
+.reagentLibraryTable {
+  min-width: 940px;
+
+  td:first-child {
+    min-width: 150px;
+  }
+  td:last-child {
+    max-width: 320px;
+    white-space: normal;
+  }
 }
 
 .feedbackLine {

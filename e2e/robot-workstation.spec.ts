@@ -21,16 +21,12 @@ test.beforeAll(() => {
  * @param page Playwright 管理的真实 Workbench 页面。
  */
 test('四个工站功能从浏览器侧边栏进入并仅展示真实接口状态', async ({ page }) => {
-  await page.goto(workbenchUrl!)
-  await page.waitForSelector(
-    '[data-package-mount-count], button:has-text("校验并启动")',
-    { state: 'visible', timeout: 30_000 }
-  )
-  const startButton = page.getByRole('button', { name: '校验并启动' })
-  if (await startButton.isVisible().catch(() => false)) await startButton.click()
-  await expect(page.locator('[data-package-mount-count]')).toBeVisible({
-    timeout: 60_000
+  await page.addInitScript(() => {
+    localStorage.setItem('unilab.workbench.connection-mode.v1', 'backend')
   })
+  await page.goto(workbenchUrl!)
+  await startWorkbench(page)
+  await selectBackendConnection(page)
 
   const activityIds = await page.locator(
     '.theia-app-left .lm-TabBar-tab[data-unilabgroup="true"]:not([id$="-hidden"])'
@@ -61,7 +57,7 @@ test('四个工站功能从浏览器侧边栏进入并仅展示真实接口状�
   await capture(page, '02-points-api-unavailable.png')
 
   const graphRequest = page.waitForRequest(request =>
-    new URL(request.url()).pathname === '/api/v1/materials/graph'
+    new URL(request.url()).pathname.endsWith('/api/v1/materials/graph')
   )
   await openActivity(page, 'robot-bench', '实验台')
   await graphRequest
@@ -70,29 +66,33 @@ test('四个工站功能从浏览器侧边栏进入并仅展示真实接口状�
   await capture(page, '03-bench-real-material-graph.png')
 
   const inventoryRequest = page.waitForRequest(request =>
-    new URL(request.url()).pathname === '/api/v1/inventory/snapshot'
+    new URL(request.url()).pathname.endsWith('/api/v1/reagents')
   )
   await openActivity(page, 'robot-reagents', '试剂管理')
   await inventoryRequest
   await expect(page.getByTestId('workstation-reagents')).toBeVisible()
-  await expect(page.getByRole('button', { name: '新增' })).toHaveCount(0)
+  await expect(page.getByTestId('reagent-create')).toBeVisible()
   await assertNoFixtureCopy(page)
   await capture(page, '04-reagents-real-inventory.png')
 })
 
 /**
- * 经 Workbench 同源代理验收 Backend 试剂创建、乐观修订、历史读取与软删除闭环。
- * 测试只创建带唯一条码的临时容器，并在 finally 中清理，不修改演示试剂。
+ * 经 Workbench 同源代理验收化学品字典与容器级试剂的两层 CRUD 闭环。
+ * 测试只创建临时化学品身份和唯一条码容器，并在 finally 中清理，不修改演示试剂。
  */
-test('试剂管理通过真实 Backend 完成 CRUD 与不可变历史查询', async ({ page }) => {
+test('试剂管理通过真实 Backend 完成化学品字典、库存 CRUD 与不可变历史查询', async ({ page }) => {
   test.setTimeout(120_000)
   const browserErrors: string[] = []
   const suffix = `${Date.now()}`
   const containerName = `E2E 试剂瓶 ${suffix}`
   const containerBarcode = `E2E-RGT-${suffix}`
+  const infoName = `E2E 校准液 ${suffix}`
+  const updatedInfoName = `${infoName}（已校正）`
   let containerId = ''
   let reagentId = ''
   let reagentDeleted = false
+  let reagentInfoId = ''
+  let reagentInfoDeleted = false
 
   page.on('console', message => {
     if (
@@ -114,17 +114,74 @@ test('试剂管理通过真实 Backend 完成 CRUD 与不可变历史查询', as
       barcode: containerBarcode,
       idempotencyKey: `e2e-reagent-container-${suffix}`
     })
-
-    const initialList = page.waitForResponse(response =>
-      response.request().method() === 'GET' &&
-      new URL(response.url()).pathname.endsWith('/api/v1/reagents')
-    )
+    const initialList = nextReagentListResponse(page)
+    const initialInfoList = nextReagentInfoListResponse(page)
     await openActivity(page, 'robot-reagents', '试剂管理')
-    await initialList
+    await Promise.all([initialList, initialInfoList])
+
+    await page.getByRole('tab', { name: '试剂库' }).click()
+    await expect(page.getByTestId('reagent-info-create')).toBeEnabled()
+    await page.getByTestId('reagent-info-create').click()
+    const infoEditor = page.getByRole('dialog', { name: '新增试剂基础信息' })
+    await infoEditor.locator('input[name="name"]').fill(infoName)
+    await infoEditor.locator('input[name="aliases"]').fill('E2E 质控液，临时化学品')
+    await infoEditor.locator('select[name="physicalState"]').selectOption('liquid')
+    await infoEditor.locator('input[name="molecularFormula"]').fill('H2O')
+    await infoEditor.locator('input[name="molecularWeight"]').fill('18.015')
+    await infoEditor.locator('input[name="densityGPerMl"]').fill('1.02')
+    const infoCreateResponsePromise = page.waitForResponse(response =>
+      response.request().method() === 'POST' &&
+      new URL(response.url()).pathname.endsWith('/api/v1/reagent-infos')
+    )
+    const infoCreateRefreshPromise = nextReagentInfoListResponse(page)
+    await infoEditor.getByRole('button', { name: '确认新增' }).click()
+    const infoCreateResponse = await infoCreateResponsePromise
+    expect(infoCreateResponse.status()).toBe(201)
+    const infoCreateEnvelope = await infoCreateResponse.json() as {
+      data: { uuid: string; cas?: string }
+    }
+    reagentInfoId = infoCreateEnvelope.data.uuid
+    expect(infoCreateEnvelope.data.cas).toBeUndefined()
+    await infoCreateRefreshPromise
+
+    let infoRow = reagentInfoRow(page, infoName)
+    await expect(infoRow).toContainText('H2O')
+    await infoRow.getByRole('button', { name: `编辑试剂基础信息 ${infoName}` }).click()
+    const infoEditDialog = page.getByRole('dialog', { name: `编辑 ${infoName}` })
+    await infoEditDialog.locator('input[name="name"]').fill(updatedInfoName)
+    await infoEditDialog.locator('select[name="physicalState"]').selectOption('solid')
+    const infoUpdateResponsePromise = page.waitForResponse(response =>
+      response.request().method() === 'PUT' &&
+      new URL(response.url()).pathname.endsWith(`/api/v1/reagent-infos/${reagentInfoId}`)
+    )
+    const infoUpdateRefreshPromise = nextReagentInfoListResponse(page)
+    await infoEditDialog.getByRole('button', { name: '保存修改' }).click()
+    expect((await infoUpdateResponsePromise).status()).toBe(200)
+    await infoUpdateRefreshPromise
+    infoRow = reagentInfoRow(page, updatedInfoName)
+    await expect(infoRow).toContainText('固体')
+    await captureViewport(page, '05a-reagent-info-crud-desktop.png')
+
+    await infoRow.getByRole('button', { name: `删除试剂基础信息 ${updatedInfoName}` }).click()
+    const infoDeleteDialog = page.getByRole('dialog', { name: `删除 ${updatedInfoName}` })
+    await expect(infoDeleteDialog).toContainText('工作流历史引用')
+    await infoDeleteDialog.locator('input').fill('删除')
+    const infoDeleteResponsePromise = page.waitForResponse(response =>
+      response.request().method() === 'DELETE' &&
+      new URL(response.url()).pathname.endsWith(`/api/v1/reagent-infos/${reagentInfoId}`)
+    )
+    const infoDeleteRefreshPromise = nextReagentInfoListResponse(page)
+    await infoDeleteDialog.getByRole('button', { name: '确认删除身份' }).click()
+    expect((await infoDeleteResponsePromise).status()).toBe(200)
+    reagentInfoDeleted = true
+    await infoDeleteRefreshPromise
+    await expect(reagentInfoRow(page, updatedInfoName)).toHaveCount(0)
+
+    await page.getByRole('tab', { name: '试剂台账' }).click()
     await expect(page.getByTestId('reagent-create')).toBeEnabled()
 
     await page.getByTestId('reagent-create').click()
-    const editor = page.getByRole('dialog', { name: '新增试剂实例' })
+    const editor = page.getByRole('dialog', { name: '试剂登记' })
     await expect(editor).toBeVisible()
     await expect(editor.locator(
       'option[value="20000000-0000-4000-8000-000000000001"]'
@@ -143,7 +200,7 @@ test('试剂管理通过真实 Backend 完成 CRUD 与不可变历史查询', as
       new URL(response.url()).pathname.endsWith('/api/v1/reagents')
     )
     const createRefreshPromise = nextReagentListResponse(page)
-    await editor.getByRole('button', { name: '创建试剂' }).click()
+    await editor.getByRole('button', { name: '确认登记' }).click()
     const createResponse = await createResponsePromise
     expect(createResponse.status()).toBe(201)
     const createEnvelope = await createResponse.json() as {
@@ -155,8 +212,6 @@ test('试剂管理通过真实 Backend 完成 CRUD 与不可变历史查询', as
 
     let row = reagentRow(page, containerBarcode)
     await expect(row).toContainText('123 mL')
-    await expect(row).toContainText('95 %')
-    await expect(row.locator('td[data-label="修订 / 更新时间"]')).toContainText('1')
 
     await row.locator('button[aria-label^="编辑 "]').click()
     const editDialog = page.getByRole('dialog', { name: /^编辑 / })
@@ -179,7 +234,23 @@ test('试剂管理通过真实 Backend 完成 CRUD 与不可变历史查询', as
 
     row = reagentRow(page, containerBarcode)
     await expect(row).toContainText('100 mL')
-    await expect(row.locator('td[data-label="修订 / 更新时间"]')).toContainText('2')
+    await captureViewport(page, '05-reagents-backend-ledger-desktop.png')
+
+    await page.getByRole('tab', { name: '试剂库' }).click()
+    const library = page.getByRole('table', { name: '试剂基础信息库' })
+    await expect(library).toContainText('Ethanol')
+    await expect(library).toContainText('64-17-5')
+    await expect(library).toContainText('C2H6O')
+    await captureViewport(page, '06-reagents-backend-library-desktop.png')
+    await page.setViewportSize({ width: 390, height: 844 })
+    await scrollReagentSurfaceToTop(page)
+    await captureViewport(page, '07-reagents-backend-library-mobile.png')
+    await page.getByRole('tab', { name: '试剂台账' }).click()
+    await scrollReagentSurfaceToTop(page)
+    await captureViewport(page, '08-reagents-backend-ledger-mobile.png')
+    await page.setViewportSize({ width: 1680, height: 1050 })
+
+    row = reagentRow(page, containerBarcode)
     const historyResponsePromise = page.waitForResponse(response =>
       response.request().method() === 'GET' &&
       new URL(response.url()).pathname.endsWith(`/api/v1/materials/${containerId}/reagent-history`)
@@ -190,10 +261,10 @@ test('试剂管理通过真实 Backend 完成 CRUD 与不可变历史查询', as
     await expect(history).toContainText('新增试剂余量')
     await expect(history).toContainText('校准试剂余量')
     await history.scrollIntoViewIfNeeded()
-    await captureViewport(page, '05-reagents-backend-crud-history-desktop.png')
+    await captureViewport(page, '09-reagents-backend-crud-history-desktop.png')
     await page.setViewportSize({ width: 390, height: 844 })
     await history.scrollIntoViewIfNeeded()
-    await captureViewport(page, '06-reagents-backend-crud-history-mobile.png')
+    await captureViewport(page, '10-reagents-backend-crud-history-mobile.png')
     await page.setViewportSize({ width: 1680, height: 1050 })
 
     row = reagentRow(page, containerBarcode)
@@ -213,6 +284,12 @@ test('试剂管理通过真实 Backend 完成 CRUD 与不可变历史查询', as
     await expect(reagentRow(page, containerBarcode)).toHaveCount(0)
     expect(browserErrors).toEqual([])
   } finally {
+    if (reagentInfoId && !reagentInfoDeleted) {
+      await page.request.delete(
+        backendRequestUrl(`/api/v1/reagent-infos/${reagentInfoId}`),
+        { data: {} }
+      ).catch(() => undefined)
+    }
     if (reagentId && !reagentDeleted) {
       await page.request.delete(
         backendRequestUrl(`/api/v1/reagents/${reagentId}`),
@@ -254,6 +331,14 @@ async function openActivity(
 
 /** 完成 Workbench 首次会话门禁并等待主界面挂载。 */
 async function startWorkbench(page: Page): Promise<void> {
+  const trustDialog = page.locator('.workspace-trust-dialog')
+  const trustPromptVisible = await trustDialog.waitFor({
+    state: 'visible',
+    timeout: 10_000
+  }).then(() => true, () => false)
+  if (trustPromptVisible) {
+    await trustDialog.getByRole('button', { name: /是，我信任此作者/ }).click()
+  }
   await page.waitForSelector(
     '[data-package-mount-count], button:has-text("校验并启动")',
     { state: 'visible', timeout: 30_000 }
@@ -314,11 +399,40 @@ function nextReagentListResponse(page: Page): Promise<import('@playwright/test')
   )
 }
 
+/** 等待一次由化学品字典写操作触发的 Backend 权威目录刷新。 */
+function nextReagentInfoListResponse(page: Page): Promise<import('@playwright/test').Response> {
+  return page.waitForResponse(response =>
+    response.request().method() === 'GET' &&
+    new URL(response.url()).pathname.endsWith('/api/v1/reagent-infos')
+  )
+}
+
 /** 通过唯一容器条码定位本次测试创建的试剂行。 */
 function reagentRow(page: Page, barcode: string): ReturnType<Page['locator']> {
-  return page.getByRole('table', { name: '试剂库存' })
+  return page.getByRole('table', { name: '试剂台账' })
     .getByRole('row')
     .filter({ hasText: barcode })
+}
+
+/** 通过本次测试的唯一名称定位化学品字典行。 */
+function reagentInfoRow(page: Page, name: string): ReturnType<Page['locator']> {
+  return page.getByRole('table', { name: '试剂基础信息库' })
+    .getByRole('row')
+    .filter({ hasText: name })
+}
+
+/** 把 Theia 主区中承载试剂模块的最近滚动容器复位到顶部。 */
+async function scrollReagentSurfaceToTop(page: Page): Promise<void> {
+  await page.getByTestId('workstation-reagents').evaluate(element => {
+    let ancestor = element.parentElement
+    while (ancestor) {
+      if (ancestor.scrollHeight > ancestor.clientHeight) {
+        ancestor.scrollTop = 0
+        return
+      }
+      ancestor = ancestor.parentElement
+    }
+  })
 }
 
 /** 生成指向 Workbench 同源 Backend 代理的绝对请求地址。 */

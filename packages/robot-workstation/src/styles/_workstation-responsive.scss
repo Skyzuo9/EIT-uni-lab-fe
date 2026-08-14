@@ -122,6 +122,16 @@
   .reagentToolbar {
     display: grid;
   }
+  .reagentViewToolbar {
+    display: grid;
+  }
+  .reagentViewToolbar .searchField,
+  .reagentNavigation {
+    width: 100%;
+  }
+  .reagentNavigation button {
+    flex: 1;
+  }
   .toolbarFilters {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -155,18 +165,22 @@
     background: transparent;
     border: 0;
   }
-  .reagentLedgerTable {
+  .reagentLedgerTable,
+  .reagentLibraryTable {
     display: block;
     min-width: 0;
   }
-  .reagentLedgerTable thead {
+  .reagentLedgerTable thead,
+  .reagentLibraryTable thead {
     display: none;
   }
-  .reagentLedgerTable tbody {
+  .reagentLedgerTable tbody,
+  .reagentLibraryTable tbody {
     display: grid;
     gap: 8px;
   }
-  .reagentLedgerTable tr {
+  .reagentLedgerTable tr,
+  .reagentLibraryTable tr {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 10px 12px;
@@ -175,7 +189,8 @@
     border: 1px solid var(--unilab-color-border);
     border-radius: var(--unilab-radius-lg);
   }
-  .reagentLedgerTable td {
+  .reagentLedgerTable td,
+  .reagentLibraryTable td {
     display: grid;
     gap: 3px;
     min-width: 0;
@@ -184,13 +199,15 @@
     border: 0;
     overflow-wrap: anywhere;
   }
-  .reagentLedgerTable td::before {
+  .reagentLedgerTable td::before,
+  .reagentLibraryTable td::before {
     content: attr(data-label);
     color: var(--unilab-color-text-muted);
     font-size: 12px;
     font-weight: 550;
   }
-  .reagentLedgerTable td:first-child {
+  .reagentLedgerTable td:first-child,
+  .reagentLibraryTable td:first-child {
     grid-column: 1 / -1;
   }
   .reagentLedgerTable td:last-child {

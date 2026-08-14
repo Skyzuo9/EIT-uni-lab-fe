@@ -5,10 +5,95 @@ import type {
   ReagentCreateInput,
   ReagentHistoryEntry,
   ReagentHistoryPage,
+  ReagentInfoCreateInput,
+  ReagentInfoItem,
+  ReagentInfoUpdateInput,
   ReagentInventoryItem,
   ReagentMutationReceipt,
   ReagentUpdateInput
 } from './inventory'
+
+export interface ReagentInfoPage {
+  items: readonly ReagentInfoItem[]
+  total: number
+}
+
+/**
+ * 构造 feat/workflow 手工登记化学品字典的 JSON body。
+ * @param input 名称、物态以及可选的化学身份与参考属性。
+ * @returns 与 Backend reagentInfoCreateRequest 对齐的普通对象。
+ */
+export function reagentInfoCreateBody(
+  input: ReagentInfoCreateInput
+): Record<string, unknown> {
+  return {
+    cas: input.cas ?? '',
+    name: input.name,
+    aliases: [...input.aliases],
+    physical_state: input.physicalState,
+    meta_data: input.metadata ?? {},
+    ...optionalField('name_en', input.nameEn),
+    ...optionalField('molecular_formula', input.molecularFormula),
+    ...optionalField('smiles', input.smiles),
+    ...optionalField('inchi_key', input.inchiKey),
+    ...optionalField('molecular_weight', input.molecularWeight),
+    ...optionalField('density_g_per_ml', input.densityGPerMl),
+    ...optionalField('description', input.description)
+  }
+}
+
+/**
+ * 构造 Backend 化学品字典完整纠错 body；空值显式发送 null 以清除旧字段。
+ * @param input 当前表单中的完整可编辑化学身份。
+ * @returns 与三态 reagentInfoUpdateRequest 对齐的普通对象。
+ */
+export function reagentInfoUpdateBody(
+  input: ReagentInfoUpdateInput
+): Record<string, unknown> {
+  return {
+    cas: input.cas ?? null,
+    name: input.name,
+    name_en: input.nameEn ?? null,
+    aliases: [...input.aliases],
+    molecular_formula: input.molecularFormula ?? null,
+    smiles: input.smiles ?? null,
+    inchi_key: input.inchiKey ?? null,
+    molecular_weight: input.molecularWeight ?? null,
+    density_g_per_ml: input.densityGPerMl ?? null,
+    physical_state: input.physicalState,
+    description: input.description ?? null,
+    meta_data: input.metadata ?? {}
+  }
+}
+
+/**
+ * 读取一页 Backend 试剂基础信息，并严格校验化学身份字段。
+ * @param http 已绑定 Backend 地址的 HTTP 客户端。
+ * @param pageNumber 从 1 开始的页码。
+ * @param signal 可选取消信号。
+ * @returns 已解码的试剂基础信息与总数。
+ */
+export async function loadBackendReagentInfoPage(
+  http: HttpClient,
+  pageNumber: number,
+  signal?: AbortSignal
+): Promise<ReagentInfoPage> {
+  const page = await requestData<unknown>(
+    http,
+    `/api/v1/reagent-infos?page=${Math.max(1, Math.trunc(pageNumber))}&page_size=100`,
+    { signal }
+  )
+  const record = object(page, 'Backend 试剂基础信息列表')
+  return {
+    items: array(record.items, 'Backend 试剂基础信息列表 items').map(
+      (value, index) => decodeBackendReagentInfo(
+        value,
+        `Backend 试剂基础信息列表 items[${index}]`
+      )
+    ),
+    total: nonNegativeInteger(record.total, 'Backend 试剂基础信息列表 total')
+  }
+}
 
 /**
  * 从 Go Backend 的正式试剂资源读取容器级台账。
@@ -165,6 +250,38 @@ function decodeBackendReagentItem(
     updatedAt: optionalString(item.update_time),
     status: quantity == null ? 'unknown' : quantity > 0 ? 'available' : 'empty'
   }
+}
+
+/** 解码一个 Backend 试剂基础信息，并拒绝非法别名或物态。 */
+export function decodeBackendReagentInfo(value: unknown, field: string): ReagentInfoItem {
+  const item = object(value, field)
+  return {
+    id: requiredString(item.uuid, `${field}.uuid`),
+    name: requiredString(item.name, `${field}.name`),
+    ...(optionalString(item.name_en) ? { nameEn: optionalString(item.name_en) } : {}),
+    aliases: array(item.aliases, `${field}.aliases`).map(
+      (alias, index) => requiredString(alias, `${field}.aliases[${index}]`)
+    ),
+    ...(optionalString(item.cas) ? { cas: optionalString(item.cas) } : {}),
+    ...(optionalString(item.molecular_formula) ? { molecularFormula: optionalString(item.molecular_formula) } : {}),
+    ...(optionalString(item.smiles) ? { smiles: optionalString(item.smiles) } : {}),
+    ...(optionalString(item.inchi_key) ? { inchiKey: optionalString(item.inchi_key) } : {}),
+    ...(optionalFiniteNumber(item.molecular_weight) == null ? {} : { molecularWeight: optionalFiniteNumber(item.molecular_weight) }),
+    ...(optionalFiniteNumber(item.density_g_per_ml) == null ? {} : { densityGPerMl: optionalFiniteNumber(item.density_g_per_ml) }),
+    physicalState: requiredString(item.physical_state, `${field}.physical_state`),
+    ...(optionalString(item.description) ? { description: optionalString(item.description) } : {}),
+    metadata: object(item.meta_data, `${field}.meta_data`),
+    ...(optionalString(item.create_time) ? { createdAt: optionalString(item.create_time) } : {}),
+    ...(optionalString(item.update_time) ? { updatedAt: optionalString(item.update_time) } : {})
+  }
+}
+
+/** 仅在值存在时加入请求字段，避免把创建请求的可空字段伪造成空串。 */
+function optionalField(
+  key: string,
+  value: string | number | undefined
+): Record<string, unknown> {
+  return value == null ? {} : { [key]: value }
 }
 
 /** 只在值和单位同时存在时发送浓度，避免构造 Backend 必然拒绝的半组输入。 */
