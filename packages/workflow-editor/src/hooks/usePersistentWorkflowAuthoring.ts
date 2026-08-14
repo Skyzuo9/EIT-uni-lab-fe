@@ -87,6 +87,7 @@ export function usePersistentWorkflowAuthoring({
   workflowUuid,
   traceRuntime,
   resourceSlotOptionsPort,
+  executionStatus,
   onUnsavedChangesChange,
   onWorkflowRuntimeProjectionChange,
   onSelectedWorkflowStepChange,
@@ -1102,9 +1103,11 @@ export function usePersistentWorkflowAuthoring({
     context: {
       aggregate,
       dirty,
-      blockedReason: materialSourceAuthorityBlocked
-        ? '物料来源目录或引用已失效，请先刷新'
-        : null,
+      blockedReason: executionStatus?.available === false
+        ? executionStatus.reason || 'OS 未就绪；请先在环境管理中启动 OS'
+        : materialSourceAuthorityBlocked
+          ? '物料来源目录或引用已失效，请先刷新'
+          : null,
       editMode: mode
     },
     hasRemoteInvalidation: () => remotePending.current,

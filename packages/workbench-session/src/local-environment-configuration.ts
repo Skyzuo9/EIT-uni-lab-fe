@@ -4,6 +4,7 @@ import { WorkbenchLaunchError } from './launch-error'
 
 export type PersistedWorkbenchRuntimeMode = 'normal' | 'dry-run'
 export type PersistedPlcHandshakeProfile = 'szlab' | 'xuse'
+export type PersistedWorkbenchDomainMode = 'local' | 'backend'
 
 export interface LocalEnvironmentConfiguration {
   graphPath: string | null
@@ -12,6 +13,8 @@ export interface LocalEnvironmentConfiguration {
   plcVariableTablePath: string | null
   plcHandshakeProfile: PersistedPlcHandshakeProfile | null
   runtimeMode: PersistedWorkbenchRuntimeMode | null
+  domainMode: PersistedWorkbenchDomainMode | null
+  backendUrl: string | null
 }
 
 export interface WritableLocalEnvironmentConfiguration {
@@ -21,6 +24,8 @@ export interface WritableLocalEnvironmentConfiguration {
   plcVariableTablePath: string
   plcHandshakeProfile: PersistedPlcHandshakeProfile
   runtimeMode: PersistedWorkbenchRuntimeMode
+  domainMode: PersistedWorkbenchDomainMode
+  backendUrl: string | null
 }
 
 /** Read the optional managed-local configuration and reject corrupt state. */
@@ -38,7 +43,9 @@ export async function readLocalEnvironmentConfiguration(
         plcSimulatorProjectPath: null,
         plcVariableTablePath: null,
         plcHandshakeProfile: null,
-        runtimeMode: null
+        runtimeMode: null,
+        domainMode: null,
+        backendUrl: null
       }
     }
     throw invalidLocalEnvironmentConfiguration(
@@ -89,7 +96,13 @@ export async function readLocalEnvironmentConfiguration(
       content['plcHandshakeProfile'],
       configurationPath
     ),
-    runtimeMode: persistedRuntimeMode(content['runtimeMode'], configurationPath)
+    runtimeMode: persistedRuntimeMode(content['runtimeMode'], configurationPath),
+    domainMode: persistedDomainMode(content['domainMode'], configurationPath),
+    backendUrl: optionalString(
+      content['backendUrl'],
+      configurationPath,
+      'backendUrl'
+    )
   }
 }
 
@@ -159,6 +172,18 @@ function persistedPlcHandshakeProfile(
   throw invalidLocalEnvironmentConfiguration(
     configurationPath,
     '本地环境配置 plcHandshakeProfile 无效'
+  )
+}
+
+function persistedDomainMode(
+  value: unknown,
+  configurationPath: string
+): PersistedWorkbenchDomainMode | null {
+  if (value === 'local' || value === 'backend') return value
+  if (value === undefined || value === null) return null
+  throw invalidLocalEnvironmentConfiguration(
+    configurationPath,
+    '本地环境配置 domainMode 无效'
   )
 }
 

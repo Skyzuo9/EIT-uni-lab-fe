@@ -1,4 +1,4 @@
-import type { WorkflowRuntimePort } from '@unilab/services'
+import type { CapabilityStatus, WorkflowRuntimePort } from '@unilab/services'
 import { useEffect } from 'react'
 
 import type { WorkflowTracePort } from '../traceRuntime'
@@ -26,6 +26,7 @@ interface PersistentWorkflowAuthoringPanelProps {
   workflowName?: string
   traceRuntime?: WorkflowTracePort
   resourceSlotOptionsPort?: WorkflowResourceSlotOptionsPort
+  executionStatus?: CapabilityStatus
   onUnsavedChangesChange?: (hasUnsavedChanges: boolean) => void
   onWorkflowRuntimeProjectionChange?: (
     projection: WorkflowPanelRuntimeProjection | null

@@ -105,11 +105,15 @@ test.describe('UniLab Workbench real-system contract', () => {
     const unilabActivityTabs = page.locator(
       '.theia-app-left .lm-TabBar-tab[data-unilabgroup="true"]:not([id$="-hidden"])'
     )
-    await expect(unilabActivityTabs).toHaveCount(4)
+    await expect(unilabActivityTabs).toHaveCount(8)
     await expect.poll(async () => unilabActivityTabs.evaluateAll(tabs =>
       tabs.map(tab => tab.id)
     )).toEqual([
       'shell-tab-unilab:device-management-navigation',
+      'shell-tab-unilab:robot-debug-navigation',
+      'shell-tab-unilab:robot-points-navigation',
+      'shell-tab-unilab:robot-bench-navigation',
+      'shell-tab-unilab:robot-reagents-navigation',
       'shell-tab-unilab:material-navigation',
       'shell-tab-unilab:workbench-navigator',
       'shell-tab-unilab:agent-navigation'

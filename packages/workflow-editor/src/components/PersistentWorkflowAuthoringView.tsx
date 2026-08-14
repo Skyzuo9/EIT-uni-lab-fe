@@ -9,6 +9,7 @@ import {
 import WorkflowDag from './WorkflowDag'
 import { WorkflowOutput } from './WorkflowOutput'
 import { WorkflowButton } from './WorkflowButton'
+import { WorkflowCanvasStageHeader } from './WorkflowCanvasStageHeader'
 import { MaterialSourceInspector } from './MaterialSourceInspector'
 import type { PersistentWorkflowAuthoringModel } from './persistentWorkflowAuthoringModel'
 import { PersistentWorkflowOverlays } from './PersistentWorkflowOverlays'
@@ -95,6 +96,7 @@ export function PersistentWorkflowAuthoringView({
     setSelectedNodeName,
     setSelectedNodeNameDirty,
     setSelectedNodeUuid,
+    setTraceViewerOpen,
     setWorkflowIoOpen,
     sourceSelectedNodeUuid,
     sourceProjection,
@@ -106,6 +108,7 @@ export function PersistentWorkflowAuthoringView({
     taskOutputNodes,
     taskRuntime,
     taskRuntimeEvents,
+    traceRuntime,
     toggleDebugBreakpoint,
     toggleDebugStartNode,
     toggleNodeDisabled,
@@ -316,33 +319,26 @@ export function PersistentWorkflowAuthoringView({
           className="persistent-authoring__pane persistent-authoring__canvas"
           aria-label="工作流画布"
         >
-          <header className="persistent-authoring__stage-header">
-            <div>
-              <strong>{workflowName || '完整控制流 DAG'}</strong>
-              <span>
-                {structure.nodes.length} 个节点 · {structure.links.length} 条边
-              </span>
-            </div>
-            <div className="persistent-authoring__stage-context">
-              <span
-                className="persistent-authoring__projection-status"
-                title={projectionKind === 'candidate'
-                  ? mode === 'code'
-                    ? '当前画布是服务器候选版本的只读预览'
-                    : '画布编辑区基于候选版本；保存时由 OS 生成完整 Python'
-                  : mode === 'code'
-                    ? '当前显示已应用版本；暂无待应用修改'
-                    : '画布编辑区基于已应用版本；暂无待应用修改'}
-              >
-                {projectionKind === 'candidate'
-                  ? mode === 'code'
-                    ? '候选版本 · 只读'
-                    : '候选版本 · 待保存'
-                  : mode === 'code'
-                    ? '已应用版本 · 只读'
-                    : '已应用版本 · 可编辑'}
-              </span>
-              <div className="persistent-authoring__stage-tools">
+          <WorkflowCanvasStageHeader
+            title={workflowName || '完整控制流 DAG'}
+            nodeCount={structure.nodes.length}
+            linkCount={structure.links.length}
+            projectionTitle={projectionKind === 'candidate'
+              ? mode === 'code'
+                ? '当前画布是服务器候选版本的只读预览'
+                : '画布编辑区基于候选版本；保存时由 OS 生成完整 Python'
+              : mode === 'code'
+                ? '当前显示已应用版本；暂无待应用修改'
+                : '画布编辑区基于已应用版本；暂无待应用修改'}
+            projectionLabel={projectionKind === 'candidate'
+              ? mode === 'code'
+                ? '候选版本 · 只读'
+                : '候选版本 · 待保存'
+              : mode === 'code'
+                ? '已应用版本 · 只读'
+                : '已应用版本 · 可编辑'}
+            tools={(
+              <>
                 {mode === 'canvas' && !compactCanvas && (
                   <button
                     type="button"
@@ -370,9 +366,9 @@ export function PersistentWorkflowAuthoringView({
                     {' · '}输出 {candidateIo?.output_contract.outputs.length ?? 0}
                   </strong>
                 </WorkflowButton>
-              </div>
-            </div>
-          </header>
+              </>
+            )}
+          />
           <div className={[
             'persistent-authoring__canvas-body',
             mode === 'code' ? 'is-code-mode' : '',
@@ -657,6 +653,9 @@ export function PersistentWorkflowAuthoringView({
           onTabChange={setOutputTab}
           onNodeSelect={handleRuntimeNodeSelect}
           onClearError={taskRuntime.clearError}
+          onTraceOpen={traceRuntime
+            ? () => setTraceViewerOpen(true)
+            : undefined}
         />
       </section>
 

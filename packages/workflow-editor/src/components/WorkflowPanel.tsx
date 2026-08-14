@@ -19,10 +19,12 @@ import {
   WorkflowCatalog,
   type WorkflowCatalogState
 } from './WorkflowCatalog'
+import { ExistingWorkflowRuntimePanel } from './ExistingWorkflowRuntimePanel'
 import { PersistentWorkflowAuthoringPanel } from './PersistentWorkflowAuthoringPanel'
 
 export type { WorkflowCatalogState } from './WorkflowCatalog'
 export {
+  WORKFLOW_CATALOG_FILTER_CONTROLS_VISIBLE,
   WORKFLOW_CATALOG_MANAGEMENT_ACTIONS_VISIBLE,
   groupWorkflowCatalog,
   workflowGroupLabel
@@ -38,6 +40,9 @@ export interface WorkflowPanelProps {
   recoveryRevision?: number
   active?: boolean
   authoringStatus?: CapabilityStatus
+  definitionEditingMode?: 'workspace' | 'backend'
+  runStatus?: CapabilityStatus
+  executionStatus?: CapabilityStatus
   onUnsavedChangesChange?: (hasUnsavedChanges: boolean) => void
   onActiveWorkflowChange?: (workflowUuid: string | null) => void
   onWorkflowRuntimeProjectionChange?: (
@@ -70,6 +75,9 @@ export default function WorkflowPanel({
   recoveryRevision = 0,
   active = true,
   authoringStatus,
+  definitionEditingMode = 'workspace',
+  runStatus,
+  executionStatus,
   onUnsavedChangesChange,
   onActiveWorkflowChange,
   onWorkflowRuntimeProjectionChange,
@@ -88,7 +96,9 @@ export default function WorkflowPanel({
   const [showCatalog, setShowCatalog] = useState(false)
   const handledCatalogRequestRevision = useRef(catalogRequestRevision)
   const authoringAvailable = authoringStatus?.available !== false
-  const workflowUuid = !authoringAvailable || showCatalog
+  const runAvailable = runStatus?.available === true
+  const workflowSelectable = authoringAvailable || runAvailable
+  const workflowUuid = !workflowSelectable || showCatalog
     ? null
     : (allowWorkflowSelection ? selectedWorkflowUuid : null) ||
       explicitWorkflowUuid || selectedWorkflowUuid ||
@@ -114,6 +124,31 @@ export default function WorkflowPanel({
   }, [active, onActiveWorkflowChange, workflowUuid])
 
   if (workflowUuid && isWorkflowUuid(workflowUuid)) {
+    if (
+      definitionEditingMode === 'backend' ||
+      (!authoringAvailable && runAvailable)
+    ) {
+      return (
+        <ExistingWorkflowRuntimePanel
+          key={workflowUuid}
+          runtime={runtime}
+          traceRuntime={traceRuntime}
+          workflowUuid={workflowUuid}
+          workflowName={selectedWorkflowName}
+          editingStatus={definitionEditingMode === 'backend'
+            ? authoringStatus
+            : undefined}
+          executionStatus={executionStatus}
+          onUnsavedChangesChange={onUnsavedChangesChange}
+          onChooseWorkflow={explicitWorkflowUuid && !allowWorkflowSelection
+            ? undefined
+            : () => {
+                persistActiveWorkflowId(activeWorkflowStorageKey, '')
+                setShowCatalog(true)
+              }}
+        />
+      )
+    }
     return (
       <PersistentWorkflowAuthoringPanel
         key={workflowUuid}
@@ -122,6 +157,7 @@ export default function WorkflowPanel({
         workflowName={selectedWorkflowName}
         traceRuntime={traceRuntime}
         resourceSlotOptionsPort={resourceSlotOptionsPort}
+        executionStatus={executionStatus}
         onUnsavedChangesChange={onUnsavedChangesChange}
         onWorkflowRuntimeProjectionChange={active
           ? onWorkflowRuntimeProjectionChange
@@ -147,8 +183,9 @@ export default function WorkflowPanel({
       activeWorkflowStorageKey={activeWorkflowStorageKey}
       recoveryRevision={recoveryRevision}
       authoringStatus={authoringStatus}
+      runStatus={runStatus}
       onStateChange={onCatalogStateChange}
-      onSelect={authoringAvailable
+      onSelect={workflowSelectable
         ? (nextWorkflowUuid, nextWorkflowName) => {
             persistActiveWorkflowId(activeWorkflowStorageKey, nextWorkflowUuid)
             setSelectedWorkflowUuid(nextWorkflowUuid)

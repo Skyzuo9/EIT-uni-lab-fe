@@ -8,13 +8,29 @@ let domainNavigationStylesheet = ''
 
 /** 读取 Workbench 主样式与领域导航样式，供结构性回归断言复用。 */
 beforeAll(async () => {
-  ;[stylesheet, domainNavigationStylesheet] = await Promise.all([
-    readFile(fileURLToPath(new URL('./index.css', import.meta.url)), 'utf8'),
+  const [
+    shell,
+    connection,
+    environment,
+    surfaces,
+    aionui,
+    navigation
+  ] = await Promise.all([
+    readFile(fileURLToPath(new URL('./workbench-shell.css', import.meta.url)), 'utf8'),
+    readFile(
+      fileURLToPath(new URL('./workbench-connection-selector.css', import.meta.url)),
+      'utf8'
+    ),
+    readFile(fileURLToPath(new URL('./environment-manager.css', import.meta.url)), 'utf8'),
+    readFile(fileURLToPath(new URL('./workbench-surfaces.css', import.meta.url)), 'utf8'),
+    readFile(fileURLToPath(new URL('./aionui.css', import.meta.url)), 'utf8'),
     readFile(
       fileURLToPath(new URL('./workbench-domain-navigation.css', import.meta.url)),
       'utf8'
     )
   ])
+  stylesheet = [shell, connection, environment, surfaces, aionui].join('\n')
+  domainNavigationStylesheet = navigation
 })
 
 describe('environment manager layering and responsive layout', () => {
@@ -40,11 +56,21 @@ describe('environment manager layering and responsive layout', () => {
     expect(rule).toMatch(/scrollbar-gutter:\s*stable/u)
   })
 
-  it('uses a high-contrast primary selection for the OS mode control', () => {
+  it('uses a readable accented selection for the OS mode control', () => {
     const rule = cssRule('.unilab-environment-manager__mode button.is-active')
 
-    expect(rule).toMatch(/color:\s*#fff/u)
-    expect(rule).toMatch(/background:\s*var\(--unilab-color-primary\)/u)
+    expect(rule).toMatch(/color:\s*var\(--unilab-color-primary\)/u)
+    expect(rule).toMatch(/background:\s*var\(--unilab-color-primary-soft\)/u)
+    expect(rule).toMatch(/inset 3px 0 0 var\(--unilab-color-primary\)/u)
+  })
+
+  it('keeps OS actions in a left-to-right flow while preserving their visual hierarchy', () => {
+    const primary = cssRule('.unilab-environment-card__actions button.is-primary')
+    const port = cssRule('.unilab-environment-card__actions button.is-port-action')
+
+    expect(primary).toMatch(/background:\s*var\(--unilab-color-primary\)/u)
+    expect(port).not.toMatch(/margin-left:\s*auto/u)
+    expect(port).toMatch(/border-style:\s*dashed/u)
   })
 
   it('shows complete paths instead of silently truncating runtime facts', () => {
@@ -79,6 +105,25 @@ describe('environment manager layering and responsive layout', () => {
   it('hides embedded workflow output while the bottom panel is open', () => {
     expect(stylesheet).toMatch(
       /#theia-bottom-split-panel:has\(\s*> #theia-bottom-content-panel:not\(\.lm-mod-hidden\)\s*\)[\s\S]*?> #theia-main-content-panel[\s\S]*?\.unilab-workbench__surface--workflow[\s\S]*?\.workflow-runtime__results:not\(\.is-fullscreen\)\s*\{\s*display:\s*none !important;/u
+    )
+  })
+
+  /** 机械臂调试、点位和实验台能力保留，但暂不展示其活动栏入口。 */
+  it('hides the three internal robot navigation entries', () => {
+    expect(domainNavigationStylesheet).toMatch(
+      /data-unilabdomain='robot-debug'[\s\S]*data-unilabdomain='robot-points'[\s\S]*data-unilabdomain='robot-bench'[\s\S]*display:\s*none/u
+    )
+  })
+  /** 证明运行连接选择采用扁平分段控件，并在窄屏重排而不是横向压缩。 */
+  it('keeps the authority choices readable and responsive', () => {
+    const options = cssRule('.unilab-workbench-connection__options')
+    const popover = cssRule('.unilab-workbench-connection__popover')
+
+    expect(options).toMatch(/grid-template-columns:\s*1fr 1fr/u)
+    expect(popover).toMatch(/width:\s*min\(460px/u)
+    expect(stylesheet).toContain('@media (max-width: 520px)')
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 520px\)[\s\S]*\.unilab-workbench-connection__options\s*\{[\s\S]*grid-template-columns:\s*1fr/u
     )
   })
 })

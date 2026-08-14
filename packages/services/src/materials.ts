@@ -118,6 +118,7 @@ export function createMaterialService(
       return mapTemplateDetail(response, backend.apiUrl)
     },
 
+    /** 读取公共物料图；Local 与 Backend 必须发布同一权威 Material.revision。 */
     getGraph: async (scope) => {
       requireReadGraph()
       assertSingletonScope(scope)

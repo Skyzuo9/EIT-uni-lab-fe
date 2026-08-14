@@ -1,3 +1,4 @@
+// 设备目录与工作区的复杂关系样式通过 CSS Module 隔离，基础原子样式由组件 Tailwind 类承担。
 .edge-device {
   display: flex;
   width: 100%;
@@ -305,6 +306,10 @@
 
 .device-empty p {
   margin: 5px 0 0;
+}
+
+.device-empty--compact {
+  margin: 28px 16px;
 }
 
 .device-empty--detail {

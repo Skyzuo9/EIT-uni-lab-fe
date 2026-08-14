@@ -27,6 +27,8 @@ describe('WorkbenchSessionGate', () => {
           configuredGraphPath: 'deployment/graphs/szlab-local-debug.json',
           configuredExternalDevicesOnly: true,
           configuredRuntimeMode: 'normal',
+          configuredDomainMode: 'local',
+          configuredBackendUrl: null,
           agent: null,
           identity: {
             workspacePath: '/workspace',
@@ -55,6 +57,16 @@ describe('WorkbenchSessionGate', () => {
             message: '无法解析 PLC 的 OPC UA 主机名，OS 设备目录未完成初始化。',
             recovery: '检查设备图中的 PLC OPC UA 地址后重试'
           },
+          edgeRuntime: {
+            phase: 'failed',
+            message: 'Edge Runtime 未就绪',
+            pid: null,
+            generation: null,
+            graphPath: '/workspace/deployment/graphs/szlab-local-debug.json',
+            mode: 'normal',
+            logPath: '/workspace/.unilabos/logs/workbench/edge.log',
+            diagnostic: '设备运行时未连接'
+          },
           plcSimulator: {
             phase: 'idle',
             message: 'PLC-Sim 未启动',
@@ -71,6 +83,9 @@ describe('WorkbenchSessionGate', () => {
         }}
         onRetry={vi.fn()}
         onStop={vi.fn()}
+        connectionSelector={(
+          <section aria-label="运行连接选择">连接 Backend</section>
+        )}
         onOpenLog={vi.fn()}
         renderEnvironmentManager={onClose => (
           <section aria-label="环境管理">
@@ -90,6 +105,7 @@ describe('WorkbenchSessionGate', () => {
     expect(markup).toContain('unilab-workbench-session-actions')
     expect(markup).toContain('class="is-primary"')
     expect(markup).toContain('codicon-settings-gear')
+    expect(markup).toContain('运行连接选择')
     expect(markup).toContain('在编辑器中打开日志文件')
     expect(markup).toContain('/workspace/.unilabos/logs/workbench/os.log')
   })
@@ -103,9 +119,21 @@ describe('WorkbenchSessionGate', () => {
           configuredGraphPath: 'deployment/graphs/szlab-local-debug.json',
           configuredExternalDevicesOnly: true,
           configuredRuntimeMode: 'normal',
+          configuredDomainMode: 'local',
+          configuredBackendUrl: null,
           agent: null,
           identity: null,
           diagnostic: null,
+          edgeRuntime: {
+            phase: 'idle',
+            message: 'Edge Runtime 尚未启动',
+            pid: null,
+            generation: null,
+            graphPath: 'deployment/graphs/szlab-local-debug.json',
+            mode: 'normal',
+            logPath: '',
+            diagnostic: null
+          },
           plcSimulator: {
             phase: 'idle',
             message: 'PLC-Sim 未启动',

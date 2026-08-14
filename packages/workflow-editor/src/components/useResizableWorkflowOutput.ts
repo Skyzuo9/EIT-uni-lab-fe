@@ -77,7 +77,7 @@ export function workflowOutputAvailableHeight(
 }
 
 /**
- * 计算运行输出的动态上限，避免它把上方流程画布压缩成不可用的窄条。
+ * 计算运行输出的动态上限，避免它把上方工作流画布压缩成不可用的窄条。
  *
  * @param availableHeight 当前工作流视口的可用高度。
  * @returns 兼顾画布保留高度与输出占比的最大输出高度。
