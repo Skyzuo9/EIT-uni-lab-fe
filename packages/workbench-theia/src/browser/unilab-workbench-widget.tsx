@@ -190,12 +190,6 @@ export class UniLabWorkbenchWidget extends ReactWidget {
     }))
     this.toDispose.push(this.workbenchSessionClient.onSessionChanged(snapshot => {
       this.sessionSnapshot = snapshot
-      // Workspace Host is the cross-window authority.  Do not keep the
-      // optimistic selector value while a switch is in flight: every emitted
-      // snapshot already carries either the committed target or the rolled
-      // back source, and must therefore reconcile every renderer immediately.
-      this.connectionMode = snapshot.configuredDomainMode
-      persistWorkbenchConnectionMode(snapshot.configuredDomainMode)
       this.ideAdapter.setPackageMounts(
         snapshot.identity?.packageMounts?.items ?? []
       )
@@ -210,8 +204,6 @@ export class UniLabWorkbenchWidget extends ReactWidget {
   protected async refreshSessionSnapshot(): Promise<void> {
     try {
       this.sessionSnapshot = await this.workbenchSession.getSnapshot()
-      this.connectionMode = this.sessionSnapshot.configuredDomainMode
-      persistWorkbenchConnectionMode(this.connectionMode)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       this.sessionSnapshot = {
@@ -515,9 +507,8 @@ export class UniLabWorkbenchWidget extends ReactWidget {
   }
 
   /**
-   * 切换后续请求使用的调度权威，并保持既有任务身份与权威不变。
-   * @param mode 用户明确选择的 Local 或 Backend Authority 模式。
-   * @returns 无；存在未保存工作流内容时失败关闭并保留当前连接。
+   * 切换后续界面请求使用的连接。这是纯客户端路由选择，
+   * 两个方向都不改变或重启 OS/Edge 运行权威。
    */
   protected readonly setConnectionMode = async (
     mode: WorkbenchConnectionMode
@@ -538,9 +529,6 @@ export class UniLabWorkbenchWidget extends ReactWidget {
     try {
       await preflightWorkbenchRuntimeAuthority(targets[mode])
       if (revision !== this.connectionSwitchRevision) return
-      const session = await this.workbenchSession.setDomainAuthority(mode)
-      if (revision !== this.connectionSwitchRevision) return
-      this.sessionSnapshot = session
       this.connectionMode = mode
       persistWorkbenchConnectionMode(mode)
       void this.messages.info(
@@ -554,11 +542,6 @@ export class UniLabWorkbenchWidget extends ReactWidget {
     } finally {
       if (revision === this.connectionSwitchRevision) {
         this.connectionSwitchingTo = null
-        // An RPC can reject after Workspace Host has already committed and
-        // published a switch.  End the optimistic phase from the last Host
-        // snapshot rather than leaving this window on a stale selector value.
-        this.connectionMode = this.sessionSnapshot.configuredDomainMode
-        persistWorkbenchConnectionMode(this.connectionMode)
         this.update()
       }
     }

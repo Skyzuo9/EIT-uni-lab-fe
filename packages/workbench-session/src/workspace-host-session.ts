@@ -331,6 +331,18 @@ export class WorkspaceHostWorkbenchSession implements WorkbenchSession {
     const backendUrl = options.backendUrl?.trim()
       || this.options.backendAuthorityUrl
     if (!backendUrl) throw new Error('未配置 Backend Authority 地址')
+
+    // A Backend-authority process is an authoring/proxy surface, not a valid
+    // immutable release source. For the UI's publish-and-activate flow,
+    // transparently return to Local Authority first; a successful publish
+    // activates Backend Authority again after verification.
+    if (
+      options.activate === true
+      && this.snapshot.configuredDomainMode === 'backend'
+    ) {
+      await this.setDomainAuthority('local')
+    }
+
     const connection = await this.ensureHost()
     const operation = await hostRequest<WorkspaceHostOperation>(
       connection,

@@ -317,6 +317,16 @@
   background: var(--unilab-color-canvas);
 }
 
+/* The Theia bottom panel and the embedded runtime output share vertical space. */
+#theia-bottom-split-panel:has(
+  > #theia-bottom-content-panel:not(.lm-mod-hidden)
+)
+  > #theia-main-content-panel
+  .unilab-workbench__surface--workflow
+  .workflow-runtime__results:not(.is-fullscreen) {
+  display: none !important;
+}
+
 .unilab-workbench-session-gate {
   align-items: center;
   justify-content: center;

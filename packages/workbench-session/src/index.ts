@@ -1171,7 +1171,8 @@ class ManagedLocalWorkbenchSession implements WorkbenchSession {
     try {
       launch = await resolveEdgeRuntimeLaunch(
         workspaceLaunch,
-        this.selectedMode
+        this.selectedMode,
+        this.selectedExternalDevicesOnly
       )
       await mkdir(launch.runtimeDirectory, { recursive: true })
     } catch (error) {
@@ -1855,7 +1856,8 @@ async function resolveWorkbenchLaunch(
 
 async function resolveEdgeRuntimeLaunch(
   workspaceLaunch: ResolvedWorkbenchLaunch,
-  mode: WorkbenchRuntimeMode
+  mode: WorkbenchRuntimeMode,
+  externalDevicesOnly: boolean
 ): Promise<ResolvedEdgeRuntimeLaunch> {
   const generation = randomUUID()
   const runtimeDirectory = join(
@@ -1900,7 +1902,9 @@ async function resolveEdgeRuntimeLaunch(
       '--disable_browser',
       '--action_mode',
       mode === 'normal' ? 'real' : 'simulate',
-      '--external_devices_only',
+      ...(externalDevicesOnly
+        ? ['--external_devices_only']
+        : []),
       '--ros_discovery_server',
       'off'
     ],

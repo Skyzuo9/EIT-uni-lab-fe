@@ -52,6 +52,33 @@ export interface EnvironmentManagerProps {
   onStopSession: () => Promise<void>
 }
 
+export interface EnvironmentOperationError {
+  title: string
+  message: string
+}
+
+/** Translate release authority failures into an actionable Workbench message. */
+export function describeEnvironmentOperationError(
+  action: string,
+  message: string
+): EnvironmentOperationError {
+  if (message.includes('WorkspaceRelease 只能从 Local Authority 构建')) {
+    const resetAndPublish = action === 'reset-and-publish-release'
+    return {
+      title: resetAndPublish
+        ? '当前模式无法清空并发布'
+        : '当前模式无法发布',
+      message: `当前工作区由 Backend 管理，不能在这里构建发布包。` +
+        `请切换到 Local 模式后，再执行“${resetAndPublish ? '清空并发布' : '发布、校验并切换'}”。` +
+        (resetAndPublish ? '目标 Backend 的数据尚未被清除。' : '')
+    }
+  }
+  return {
+    title: '环境操作失败',
+    message
+  }
+}
+
 /** Manage the local OS, PLC simulator and Agent from one visible surface. */
 export function EnvironmentManager({
   session,
@@ -88,7 +115,8 @@ export function EnvironmentManager({
   const [busyAction, setBusyAction] = useState<string | null>(null)
   const [logKind, setLogKind] = useState<WorkbenchEnvironmentLogKind>('os')
   const [logTail, setLogTail] = useState<string | null>(null)
-  const [operationError, setOperationError] = useState<string | null>(null)
+  const [operationError, setOperationError] =
+    useState<EnvironmentOperationError | null>(null)
   const [releaseReceipt, setReleaseReceipt] =
     useState<WorkbenchReleaseReceipt | null>(null)
   const [releaseInspection, setReleaseInspection] =
@@ -149,7 +177,9 @@ export function EnvironmentManager({
     setBusyAction(action)
     setOperationError(null)
     try {
-      await captureWorkbenchUiOperation(operation, setOperationError)
+      await captureWorkbenchUiOperation(operation, message => {
+        setOperationError(describeEnvironmentOperationError(action, message))
+      })
     } finally {
       setBusyAction(null)
     }
@@ -216,8 +246,8 @@ export function EnvironmentManager({
 
       {operationError ? (
         <div className="unilab-workbench-session-diagnostic" role="alert">
-          <strong>环境操作失败</strong>
-          <p>{operationError}</p>
+          <strong>{operationError.title}</strong>
+          <p>{operationError.message}</p>
         </div>
       ) : null}
 

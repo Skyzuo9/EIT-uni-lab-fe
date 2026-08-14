@@ -158,6 +158,21 @@ describe('Workspace Host Workbench adapter', () => {
       configuredBackendUrl: 'http://127.0.0.1:8080'
     })
 
+    const commandsBeforeBackendPublish = receivedCommands.length
+    await session.publishRelease({
+      activate: true,
+      backendUrl: 'http://192.168.1.20:9000',
+      resetTarget: true
+    })
+    expect(receivedCommands.slice(commandsBeforeBackendPublish)).toEqual([
+      'authority.switch',
+      'release.publish'
+    ])
+    expect(snapshot.configuration).toMatchObject({
+      domainMode: 'backend',
+      backendUrl: 'http://192.168.1.20:9000'
+    })
+
     snapshot.components.edge = component('edge', {
       phase: 'ready',
       pid: 4102,

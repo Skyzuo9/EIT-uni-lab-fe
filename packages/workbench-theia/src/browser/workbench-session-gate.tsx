@@ -64,6 +64,14 @@ export function WorkbenchSessionGate({
   const launchLoading = launchRequested
     || snapshot.phase === 'starting'
     || snapshot.phase === 'waiting'
+  const switchingToBackend = snapshot.configuredDomainMode === 'backend'
+  const launchTitle = switchingToBackend
+    ? '正在切换到 Backend 模式'
+    : '正在启动 Unilab 调试工作台'
+  const launchMessage = switchingToBackend
+    ? '正在连接 Backend Authority…'
+    : snapshot.message || '正在校验工作区并启动 Uni-Lab OS…'
+  const launchCancelLabel = switchingToBackend ? '取消切换' : '取消启动'
 
   const start = React.useCallback(async () => {
     setLaunchRequested(true)
@@ -183,17 +191,17 @@ export function WorkbenchSessionGate({
           className="unilab-workbench-session-loading"
           role="status"
           aria-live="assertive"
-          aria-label="正在启动 Unilab 调试工作台"
+          aria-label={launchTitle}
         >
           <div className="unilab-workbench-session-loading__content">
             <span
               className="unilab-workbench-session-loading__spinner"
               aria-hidden="true"
             />
-            <strong>正在启动 Unilab 调试工作台</strong>
-            <p>{snapshot.message || '正在校验工作区并启动 Uni-Lab OS…'}</p>
+            <strong>{launchTitle}</strong>
+            <p>{launchMessage}</p>
             <button type="button" onClick={() => void stop()}>
-              取消启动
+              {launchCancelLabel}
             </button>
           </div>
         </div>
