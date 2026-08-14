@@ -1,7 +1,18 @@
 import type {
+  CapabilityStatus,
   WorkflowRunPreflightReport,
   WorkflowTaskRunMode
 } from '@unilab/services'
+
+/** Identifies the execution-readiness state that owns one run-preflight result. */
+export function existingWorkflowPreflightReadinessKey(
+  status?: CapabilityStatus
+): string {
+  if (!status) return 'unknown'
+  return status.available
+    ? 'available'
+    : `blocked:${status.reason ?? ''}`
+}
 
 /** Backend 已有工作流入口公开的三种正式运行模式。 */
 export const EXISTING_WORKFLOW_RUN_MODE_OPTIONS: ReadonlyArray<{

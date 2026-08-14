@@ -31,6 +31,7 @@ import {
 } from '../utils/workflowTaskOutputProjection'
 import {
   existingWorkflowPreflightFailureMessage,
+  existingWorkflowPreflightReadinessKey,
   existingWorkflowRunModeLabel,
   existingWorkflowStartDisabledReason
 } from '../utils/existingWorkflowRunProjection'
@@ -160,6 +161,9 @@ export function ExistingWorkflowRuntimePanel({
   const executionBlockedReason = executionStatus?.available === false
     ? executionStatus.reason || 'OS 未就绪；请先在环境管理中启动 OS'
     : null
+  const executionReadinessKey = existingWorkflowPreflightReadinessKey(
+    executionStatus
+  )
   const startDisabled = busy || snapshot.loading || liveTask ||
     Boolean(executionBlockedReason) || preflightLoading ||
     !preflightReady || targetRequired
@@ -267,7 +271,14 @@ export function ExistingWorkflowRuntimePanel({
     return () => {
       current = false
     }
-  }, [preflightGeneration, runMode, runtime, targetNodeUuid, workflowUuid])
+  }, [
+    executionReadinessKey,
+    preflightGeneration,
+    runMode,
+    runtime,
+    targetNodeUuid,
+    workflowUuid
+  ])
 
   /** 执行一次互斥运行操作，并只展示 Backend 已确认的结果。 */
   const runAction = async (
