@@ -196,13 +196,18 @@ function MaterialRenderer(
                 onVisibleMaterialRolesChange={publishVisibleMaterialRoles}
                 renderView={(
                   viewMode,
-                  { showSites, showMaterialTransfers }
+                  {
+                    showSites,
+                    showMaterialTransfers,
+                    showMaterialLabels
+                  }
                 ) => (
                   <SceneRenderer
                     {...props}
                     viewMode={viewMode}
                     showSites={showSites}
                     showMaterialTransfers={showMaterialTransfers}
+                    showMaterialLabels={showMaterialLabels}
                   />
                 )}
               />
@@ -328,6 +333,7 @@ function SceneRenderer(
   props: PanelRendererProps<LabPanelScope> & {
     viewMode?: LabViewMode
     showSites?: boolean
+    showMaterialLabels?: boolean
     showMaterialTransfers?: boolean
   }
 ): React.JSX.Element {
@@ -358,6 +364,7 @@ function SceneRenderer(
     >
       <SceneWorkbench
         showSites={props.showSites}
+        showMaterialLabels={props.showMaterialLabels}
         showMaterialTransfers={props.showMaterialTransfers}
         viewMode={props.viewMode}
       />

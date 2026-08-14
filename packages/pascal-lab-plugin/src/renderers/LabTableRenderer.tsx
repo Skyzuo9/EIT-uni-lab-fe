@@ -69,19 +69,21 @@ export default function LabTableRenderer({
         sites={node.floorplanSnapshot?.sites ?? []}
         showSites={node.floorplanSnapshot?.showSites ?? true}
       />
-      <Html
-        position={[0, height + 0.08, 0]}
-        center
-        zIndexRange={PASCAL_SCENE_HTML_Z_INDEX_RANGE}
-      >
-        <div
-          className={`pascal-model-label${
-            isSelected ? ' is-selected' : ''
-          }`}
+      {node.showLabel ? (
+        <Html
+          position={[0, height + 0.08, 0]}
+          center
+          zIndexRange={PASCAL_SCENE_HTML_Z_INDEX_RANGE}
         >
-          {node.displayName}
-        </div>
-      </Html>
+          <div
+            className={`pascal-model-label${
+              isSelected ? ' is-selected' : ''
+            }`}
+          >
+            {node.displayName}
+          </div>
+        </Html>
+      ) : null}
     </group>
   )
 }

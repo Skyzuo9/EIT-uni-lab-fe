@@ -13,10 +13,13 @@ const STORAGE_KEY = 'unilab.lab.view-mode'
 const SITE_LAYER_STORAGE_KEY = 'unilab.lab.site-layer-visible'
 const MATERIAL_TRANSFER_LAYER_STORAGE_KEY =
   'unilab.lab.material-transfer-layer-visible'
+const MATERIAL_LABEL_LAYER_STORAGE_KEY =
+  'unilab.lab.material-label-layer-visible'
 
 export interface MaterialViewOptions {
   showSites: boolean
   showMaterialTransfers: boolean
+  showMaterialLabels: boolean
 }
 
 export interface MaterialRoleFilterOption {
@@ -48,6 +51,9 @@ export function UnifiedMaterialViewport({
   const [showSites, setShowSites] = useState(readStoredSiteLayer)
   const [showMaterialTransfers, setShowMaterialTransfers] = useState(
     readStoredMaterialTransferLayer
+  )
+  const [showMaterialLabels, setShowMaterialLabels] = useState(
+    readStoredMaterialLabelLayer
   )
   const visibleMaterialRoleSet = new Set(
     visibleMaterialRoles ?? materialRoleOptions.map((option) => option.value)
@@ -89,16 +95,28 @@ export function UnifiedMaterialViewport({
     )
   }, [showMaterialTransfers])
 
+  useEffect(() => {
+    globalThis.localStorage?.setItem(
+      MATERIAL_LABEL_LAYER_STORAGE_KEY,
+      String(showMaterialLabels)
+    )
+  }, [showMaterialLabels])
+
   return (
     <div
       className="lab-unified-viewport"
       data-lab-view-mode={mode}
       data-site-layer-visible={showSites}
       data-material-transfer-layer-visible={showMaterialTransfers}
+      data-material-label-layer-visible={showMaterialLabels}
     >
       <div className="lab-unified-viewport__surface">
         <MaterialViewErrorBoundary mode={mode}>
-          {renderView(mode, { showSites, showMaterialTransfers })}
+          {renderView(mode, {
+            showSites,
+            showMaterialTransfers,
+            showMaterialLabels
+          })}
         </MaterialViewErrorBoundary>
       </div>
       <div className="lab-viewport-controls">
@@ -163,6 +181,22 @@ export function UnifiedMaterialViewport({
           >
             <TransferLayerIcon />
             <span>物料转运</span>
+            <i aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            aria-label="名称标签"
+            aria-pressed={showMaterialLabels}
+            className={showMaterialLabels
+              ? 'is-active is-labels'
+              : undefined}
+            onClick={() => setShowMaterialLabels((visible) => !visible)}
+            title={showMaterialLabels
+              ? '隐藏物料和设备名称标签'
+              : '显示物料和设备名称标签'}
+          >
+            <LabelLayerIcon />
+            <span>名称标签</span>
             <i aria-hidden="true" />
           </button>
         </div>
@@ -360,6 +394,15 @@ function TransferLayerIcon(): React.JSX.Element {
   )
 }
 
+function LabelLayerIcon(): React.JSX.Element {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 18 16">
+      <path d="M2.5 3h8L15.5 8l-5 5h-8V3Z" />
+      <circle cx="6" cy="6.5" r="1.2" />
+    </svg>
+  )
+}
+
 function readStoredMode(): MaterialViewMode {
   const value = globalThis.localStorage?.getItem(STORAGE_KEY)
   return value === '2d' || value === '2.5d' || value === '3d' || value === 'split'
@@ -374,5 +417,11 @@ function readStoredSiteLayer(): boolean {
 function readStoredMaterialTransferLayer(): boolean {
   return globalThis.localStorage?.getItem(
     MATERIAL_TRANSFER_LAYER_STORAGE_KEY
+  ) !== 'false'
+}
+
+function readStoredMaterialLabelLayer(): boolean {
+  return globalThis.localStorage?.getItem(
+    MATERIAL_LABEL_LAYER_STORAGE_KEY
   ) !== 'false'
 }
