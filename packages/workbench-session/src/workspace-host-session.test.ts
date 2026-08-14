@@ -109,12 +109,18 @@ describe('Workspace Host Workbench adapter', () => {
     await mkdir(runtime, { recursive: true })
     await Promise.all([
       writeFile(join(runtime, 'session.json'), JSON.stringify(snapshot)),
-      writeFile(join(runtime, 'host.token'), token)
+      writeFile(join(runtime, 'host.token'), token),
+      writeFile(
+        join(workspacePath, '.unilabos', 'environment.local.json'),
+        JSON.stringify({
+          schemaVersion: 1,
+          backendUrl: 'http://127.0.0.1:8080'
+        })
+      )
     ])
 
     const session = createWorkspaceHostWorkbenchSession({
       workspacePath,
-      backendAuthorityUrl: 'http://127.0.0.1:8080',
       environment: {
         UNILAB_WORKBENCH_RENDERER_URL: 'http://127.0.0.1:3100'
       }

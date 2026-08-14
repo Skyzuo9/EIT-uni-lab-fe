@@ -310,18 +310,25 @@ export class WorkspaceHostWorkbenchSession implements WorkbenchSession {
       throw new Error(`不支持的 Domain Authority：${String(mode)}`)
     }
     const backendUrl = mode === 'backend'
-      ? this.options.backendAuthorityUrl
+      ? this.resolveBackendAuthorityUrl()
       : undefined
     if (mode === 'backend' && !backendUrl) {
       throw new Error('未配置 Backend Authority 地址')
     }
-    return await this.run('authority.switch', { mode, backendUrl })
+    // A plain authority switch reconnects to an already published Backend.
+    // Publication owns Local -> Backend data transfer and verification; repeating
+    // bootstrap here would mutate a centralized Backend on every reconnect.
+    return await this.run('authority.switch', {
+      mode,
+      backendUrl,
+      bootstrap: false
+    })
   }
 
   async publishRelease(
     options: { activate?: boolean } = {}
   ): Promise<WorkbenchReleaseReceipt> {
-    const backendUrl = this.options.backendAuthorityUrl
+    const backendUrl = this.resolveBackendAuthorityUrl()
     if (!backendUrl) throw new Error('未配置 Backend Authority 地址')
     const connection = await this.ensureHost()
     const operation = await hostRequest<WorkspaceHostOperation>(
@@ -347,6 +354,13 @@ export class WorkspaceHostWorkbenchSession implements WorkbenchSession {
       throw new Error('Workspace Host 返回了无效的发布回执')
     }
     return completed.result
+  }
+
+  private resolveBackendAuthorityUrl(): string | undefined {
+    return this.options.backendAuthorityUrl
+      ?? stringValue(this.host?.configuration['backendUrl'])
+      ?? this.snapshot.configuredBackendUrl
+      ?? undefined
   }
 
   private async run(
