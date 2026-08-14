@@ -88,6 +88,23 @@ test('runs all existing Backend Workflow modes through the real Scheduler and mo
   await expect(panel.getByRole('button', { name: '保存工作流' })).toBeDisabled()
   await expect(panel.getByRole('button', { name: '画布模式' }))
     .toHaveAttribute('aria-pressed', 'true')
+  const layoutStrategy = panel.getByLabel('布局策略')
+  await layoutStrategy.selectOption('primary-sample-serpentine')
+  await expect(canvas.locator('.react-flow'))
+    .toHaveClass(/wf-layout--primary-sample-serpentine/)
+  await expect(panel.getByRole('button', {
+    name: '只看主物料',
+    exact: true
+  })).toBeVisible()
+  const fullBranches = panel.getByRole('button', {
+    name: '完整支线',
+    exact: true
+  })
+  await expect(fullBranches).toBeVisible()
+  await fullBranches.click()
+  await expect(canvas.locator(
+    '[data-workflow-supporting-material-presentation="full-branches"]'
+  )).toBeVisible()
   await page.screenshot({
     path: join(artifactDirectory, '02-existing-workflow-ready.png'),
     fullPage: true

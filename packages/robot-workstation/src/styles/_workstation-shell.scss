@@ -1,4 +1,7 @@
 .workstation {
+  --unilab-color-control: var(--unilab-color-device);
+  --unilab-color-control-hover: #0b625c;
+
   display: flex;
   flex-direction: column;
   min-width: 0;

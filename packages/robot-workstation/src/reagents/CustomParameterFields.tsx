@@ -1,5 +1,6 @@
+import { Button, Input } from '@unilab/design-system'
+
 import type { CustomParameter } from '../types'
-import { buttonClass } from '../uiClasses'
 import { WorkstationIcon } from '../WorkstationIcon'
 import styles from '../workstation.module.scss'
 
@@ -15,40 +16,47 @@ export function CustomParameterFields({
     onChange(value.map((parameter, parameterIndex) => (parameterIndex === index ? { ...parameter, ...patch } : parameter)))
   }
   return (
-    <fieldset className={styles.customParameterFields}>
-      <legend>自定义参数</legend>
-      {value.map((parameter, index) => (
-        <div key={index}>
-          <label>
-            <span>名称</span>
-            <input value={parameter.name} onChange={(event) => update(index, { name: event.target.value })} required />
-          </label>
-          <label>
-            <span>值</span>
-            <input value={parameter.value} onChange={(event) => update(index, { value: event.target.value })} required />
-          </label>
-          <label>
-            <span>单位</span>
-            <input value={parameter.unit} onChange={(event) => update(index, { unit: event.target.value })} />
-          </label>
-          <button
-            className={`${buttonClass('secondary', 'icon')} max-[720px]:self-end`}
-            type="button"
-            onClick={() => onChange(value.filter((_item, parameterIndex) => parameterIndex !== index))}
-            aria-label={`移除自定义参数 ${index + 1}`}
-          >
-            <WorkstationIcon name="trash" />
-          </button>
-        </div>
-      ))}
-      <button
-        className={`${buttonClass('secondary', 'compact')} w-fit`}
-        type="button"
-        onClick={() => onChange([...value, { name: '', value: '', unit: '' }])}
-      >
-        <WorkstationIcon name="plus" />
-        添加参数
-      </button>
-    </fieldset>
+    <section className={styles.customParameterFields} aria-label="自定义参数">
+      <div className={styles.customParameterHeader}>
+        <strong>自定义参数</strong>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => onChange([...value, { name: '', value: '', unit: '' }])}
+        >
+          <WorkstationIcon name="plus" />
+          添加参数
+        </Button>
+      </div>
+      <div className={styles.customParameterList}>
+        {value.length === 0 ? (
+          <div className={styles.customParameterEmpty}>暂无自定义参数</div>
+        ) : value.map((parameter, index) => (
+          <div className={styles.customParameterRow} key={index}>
+            <label>
+              <span>名称</span>
+              <Input value={parameter.name} onChange={(event) => update(index, { name: event.target.value })} required />
+            </label>
+            <label>
+              <span>值</span>
+              <Input value={parameter.value} onChange={(event) => update(index, { value: event.target.value })} required />
+            </label>
+            <label>
+              <span>单位</span>
+              <Input value={parameter.unit} onChange={(event) => update(index, { unit: event.target.value })} />
+            </label>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="max-[720px]:self-end"
+              onClick={() => onChange(value.filter((_item, parameterIndex) => parameterIndex !== index))}
+              aria-label={`移除自定义参数 ${index + 1}`}
+            >
+              <WorkstationIcon name="trash" />
+            </Button>
+          </div>
+        ))}
+      </div>
+    </section>
   )
 }

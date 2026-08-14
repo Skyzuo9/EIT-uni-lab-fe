@@ -1,8 +1,16 @@
 import { useMemo, useState } from 'react'
+import {
+  Button,
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle
+} from '@unilab/design-system'
 
 import type { CustomParameter, ReagentDefinition, ReagentLedgerRow, ReagentRecord } from '../types'
-import { buttonClass, uiClass } from '../uiClasses'
-import { useAccessibleDialog } from '../useAccessibleDialog'
+import { uiClass } from '../uiClasses'
 import { WorkstationIcon } from '../WorkstationIcon'
 import styles from '../workstation.module.scss'
 import { CustomParameterFields } from './CustomParameterFields'
@@ -283,12 +291,12 @@ export function DeleteReagentDialog({
   return (
     <DialogFrame title={title} description={description} onClose={onClose}>
       <div className={uiClass.dialogActions}>
-        <button className={buttonClass()} type="button" data-dialog-initial-focus onClick={onClose}>
+        <Button variant="outline" data-dialog-initial-focus onClick={onClose}>
           取消
-        </button>
-        <button className={buttonClass('danger')} type="button" onClick={onDelete}>
+        </Button>
+        <Button variant="destructive" onClick={onDelete}>
           确认删除
-        </button>
+        </Button>
       </div>
     </DialogFrame>
   )
@@ -356,36 +364,43 @@ export function ReagentRecordsDialog({
   )
 }
 
+/**
+ * 渲染本地试剂夹具仍在使用的共享对话框外壳。
+ * @param props 标题、说明、内容、关闭回调和关闭按钮显示方式。
+ * @returns 使用 Radix 焦点管理的 shadcn/ui 对话框。
+ */
 function DialogFrame({ title, description, children, onClose, closeIconOnly = false }: DialogFrameProps): React.JSX.Element {
-  const dialogRef = useAccessibleDialog(onClose)
+  /** 把 Radix 的关闭状态传给本地对话框所有者。 */
+  function handleOpenChange(open: boolean): void {
+    if (!open) onClose()
+  }
+
   return (
-    <div className={uiClass.dialogBackdrop} role="presentation">
-      <section
-        ref={dialogRef}
+    <Dialog open onOpenChange={handleOpenChange}>
+      <DialogContent
         className={styles.formDialog}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="reagent-dialog-title"
-        tabIndex={-1}
+        showCloseButton={false}
+        portalled={false}
       >
         <div className={uiClass.panelHeader}>
-          <div>
-            <h2 id="reagent-dialog-title">{title}</h2>
-            <small>{description}</small>
-          </div>
-          <button
-            className={closeIconOnly ? buttonClass('secondary', 'icon') : buttonClass()}
-            type="button"
-            data-dialog-initial-focus={closeIconOnly || undefined}
-            onClick={onClose}
-            aria-label="关闭"
-          >
-            {closeIconOnly ? <WorkstationIcon name="close" /> : '关闭'}
-          </button>
+          <DialogHeader>
+            <DialogTitle>{title}</DialogTitle>
+            <DialogDescription>{description}</DialogDescription>
+          </DialogHeader>
+          <DialogClose asChild>
+            <Button
+              variant={closeIconOnly ? 'ghost' : 'outline'}
+              size={closeIconOnly ? 'icon-sm' : 'default'}
+              data-dialog-initial-focus={closeIconOnly || undefined}
+              aria-label="关闭"
+            >
+              {closeIconOnly ? <WorkstationIcon name="close" /> : '关闭'}
+            </Button>
+          </DialogClose>
         </div>
         {children}
-      </section>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -402,12 +417,12 @@ function DialogActions({
 }): React.JSX.Element {
   return (
     <div className={uiClass.dialogActions}>
-      <button className={buttonClass()} type="button" onClick={onClose}>
+      <Button variant="outline" onClick={onClose}>
         取消
-      </button>
-      <button className={buttonClass(danger ? 'danger' : 'primary')} type="submit" disabled={disabled}>
+      </Button>
+      <Button variant={danger ? 'destructive' : 'default'} type="submit" disabled={disabled}>
         {submitLabel}
-      </button>
+      </Button>
     </div>
   )
 }

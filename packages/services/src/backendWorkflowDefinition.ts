@@ -73,6 +73,9 @@ function decodeBackendRunNode(
   const actionName = optionalNonEmptyString(node.action_name)
   const actionType = optionalNonEmptyString(node.action_type)
   const position = decodeBackendRunPosition(node.pose)
+  const materialSource = node.type === 'material_source'
+    ? decodeBackendMaterialSource(node.param, index)
+    : undefined
   return {
     workflow_node_uuid: node.uuid,
     ...(templateUuid
@@ -85,9 +88,42 @@ function decodeBackendRunNode(
     ...(actionName ? { action_name: actionName } : {}),
     ...(actionType ? { action_type: actionType } : {}),
     ...(position ? { position } : {}),
+    ...(materialSource ? { material_source: materialSource } : {}),
     handles: templateUuid
       ? [...(handlesByTemplate.get(templateUuid) ?? [])]
       : []
+  }
+}
+
+/**
+ * 严格保留 Backend 物料来源（MaterialSource）的谱系角色与挂载身份。
+ *
+ * @param value 工作流节点 `param` 中的权威物料来源选择器。
+ * @param nodeIndex 节点在 Backend 工作流定义数组中的位置，用于错误定位。
+ * @returns 共享画布建立主样品与辅助物料谱系所需的只读字段。
+ * @throws 选择器缺少模式、物料模板、挂载 UUID 或流角色时关闭失败。
+ */
+function decodeBackendMaterialSource(
+  value: unknown,
+  nodeIndex: number
+): NonNullable<WorkflowRunNodeOption['material_source']> {
+  const selector = asRecord(value)
+  const mount = asRecord(selector.mount)
+  if (
+    !nonEmptyString(selector.mode) ||
+    !nonEmptyString(selector.resource_template_uuid) ||
+    !nonEmptyString(mount.uuid) ||
+    !nonEmptyString(selector.flow_role)
+  ) {
+    throw invalidBackendRunPreparation(
+      `invalid material source selector at node index ${nodeIndex}`
+    )
+  }
+  return {
+    mode: selector.mode,
+    resource_template_uuid: selector.resource_template_uuid,
+    mount_uuid: mount.uuid,
+    flow_role: selector.flow_role
   }
 }
 
@@ -121,7 +157,7 @@ function decodeBackendRunHandles(
       handle_key: handle.handle_key,
       display_name: handle.display_name,
       io_type: handle.io_type,
-      value_type: handle.type,
+      value_type: backendHandleValueType(handle.type),
       ...(dataKey ? { data_key: dataKey } : {})
     }
     const templateHandles = handlesByTemplate.get(
@@ -131,6 +167,16 @@ function decodeBackendRunHandles(
     handlesByTemplate.set(handle.workflow_node_template_uuid, templateHandles)
   })
   return handlesByTemplate
+}
+
+/**
+ * 把 Backend 遗留 `material` Handle 归一为画布物料占位符（ResourceSlot）。
+ *
+ * @param value Backend 工作流 Handle 的类型标识。
+ * @returns 共享物料谱系使用的类型；其它扩展类型保持原值。
+ */
+function backendHandleValueType(value: string): string {
+  return value === 'material' ? 'ResourceSlot' : value
 }
 
 /** 严格解码 Backend 工作流有向边，并验证端点属于当前定义快照。 */

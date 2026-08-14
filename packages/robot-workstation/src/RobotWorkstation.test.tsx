@@ -109,9 +109,41 @@ describe('RobotWorkstation', () => {
       />
     )
 
-    expect(markup).toContain('新增试剂')
+    expect(markup).toContain('登记试剂')
     expect(markup).toContain('编辑 乙醇')
     expect(markup).toContain('查看 乙醇 历史')
     expect(markup).toContain('expected_revision')
+  })
+
+  /** 证明真实试剂管理恢复附件中的台账/试剂库分层，并展示权威基础化学信息。 */
+  it('renders separate ledger and authoritative reagent library views', () => {
+    const markup = renderToStaticMarkup(
+      <RobotWorkstation
+        module="reagents"
+        reagentStatus={{ phase: 'ready', message: '已同步' }}
+        reagentItems={[{
+          id: 'reagent-real', materialId: 'material-1', reagentInfoId: 'info-1',
+          name: '乙醇', totalQuantity: 50, unit: 'mL', densityGPerMl: 0.789,
+          siteLabel: '乙醇瓶', status: 'available'
+        }]}
+        reagentInfoStatus={{ phase: 'ready', message: '已同步' }}
+        reagentInfos={[{
+          id: 'info-1', name: '乙醇', nameEn: 'Ethanol', aliases: ['酒精'],
+          cas: '64-17-5', molecularFormula: 'C2H6O', smiles: 'CCO',
+          molecularWeight: 46.07, densityGPerMl: 0.789,
+          physicalState: 'liquid', metadata: { storage: '阴凉通风' }
+        }]}
+      />
+    )
+
+    expect(markup).toContain('试剂台账')
+    expect(markup).toContain('试剂库')
+    expect(markup).toContain('库存实例')
+    expect(markup).toContain('试剂基础信息')
+    expect(markup).toContain('64-17-5')
+    expect(markup).toContain('C2H6O')
+    expect(markup).toContain('46.07 g/mol')
+    expect(markup).toContain('阴凉通风')
+    expect(markup).not.toContain('新增试剂基础信息')
   })
 })

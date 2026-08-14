@@ -53,6 +53,16 @@ describe('Backend reagent editor validation', () => {
           { id: 'empty-1', name: '空试剂瓶', barcode: 'BOT-001', templateId: 'container-1' },
           { id: 'occupied-1', name: '已用试剂瓶', barcode: 'BOT-002', templateId: 'container-1' }
         ],
+        infos: [
+          {
+            id: 'info-ethanol',
+            name: '乙醇',
+            aliases: [],
+            cas: '64-17-5',
+            physicalState: 'liquid',
+            densityGPerMl: 0.786
+          }
+        ],
         occupiedMaterialIds: new Set(['occupied-1']),
         onSave: async () => {},
         onClose: () => {}
@@ -61,10 +71,20 @@ describe('Backend reagent editor validation', () => {
 
     expect(markup).toContain('空容器物料')
     expect(markup).toContain('请选择空容器物料')
-    expect(markup).toContain('搜索物料名称、条码或 UUID')
-    expect(markup).toContain('value="empty-1"')
-    expect(markup).toContain('空试剂瓶 · BOT-001')
-    expect(markup).not.toContain('value="occupied-1"')
+    expect(markup).toContain('搜索名称、条码或 UUID')
+    expect(markup).toContain('role="combobox"')
+    expect(markup).toContain('role="listbox"')
+    expect(markup).toContain('空试剂瓶')
+    expect(markup).toContain('BOT-001')
+    expect(markup).not.toContain('已用试剂瓶')
+    expect(markup).toContain('选择试剂')
+    expect(markup).toContain('乙醇 · 64-17-5')
+    expect(markup).toContain('实际密度（g/mL）')
+    expect(markup).toContain('密度测定条件')
+    expect(markup).toContain('供应商')
+    expect(markup).toContain('有效期')
+    expect(markup).toContain('自定义参数')
+    expect(markup).toContain('添加参数')
   })
 
   it('按物料名称、条码和 UUID 搜索空容器', () => {

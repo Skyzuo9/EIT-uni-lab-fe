@@ -48,6 +48,10 @@ describe('server capability matrix', () => {
           'workflow.editDefinitions',
           'workflow.runTasks',
           'workflow.subscribeEvents',
+          'reagentInfo.read',
+          'reagentInfo.create',
+          'reagentInfo.update',
+          'reagentInfo.delete',
           'inventory.readReagents',
           'inventory.createReagent',
           'inventory.updateReagent',
@@ -88,11 +92,13 @@ describe('server capability matrix', () => {
     expect(capabilities.material.deleteSubtrees).toBe(false)
     expect(capabilities.reagentInfo).toEqual({
       read: false,
-      create: false
+      create: false,
+      update: false,
+      delete: false
     })
   })
 
-  it('keeps planned content and reagent capabilities fail closed', () => {
+  it('keeps planned material content capabilities fail closed', () => {
     for (const backendId of ['local-go', 'local-python', 'cloud']) {
       const backend = getDefaultBackend(backendId)
       const capabilities = resolveServerCapabilities(backend)
@@ -103,9 +109,25 @@ describe('server capability matrix', () => {
           'material.readContents'
         )
       ).toBe(false)
-      expect(
-        hasServerCapability(capabilities, 'reagentInfo.create')
-      ).toBe(false)
+    }
+  })
+
+  /** 证明化学品字典 CRUD 只在已完成真实联调的 Go Backend 开放。 */
+  it('exposes reagent information CRUD only for the Go Backend', () => {
+    const backendCapabilities = resolveServerCapabilities(
+      getDefaultBackend('local-go')
+    )
+    const edgeCapabilities = resolveServerCapabilities(
+      getDefaultBackend('local-python')
+    )
+
+    for (const capability of [
+      'reagentInfo.create',
+      'reagentInfo.update',
+      'reagentInfo.delete'
+    ] as const) {
+      expect(hasServerCapability(backendCapabilities, capability)).toBe(true)
+      expect(hasServerCapability(edgeCapabilities, capability)).toBe(false)
     }
   })
 

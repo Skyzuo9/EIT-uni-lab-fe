@@ -34,7 +34,10 @@ export function RobotWorkstation({
   benchStatus = { phase: 'loading', message: '正在读取公共物料图…' },
   reagentItems,
   reagentStatus = { phase: 'loading', message: '正在读取试剂库存…' },
-  reagentManagement
+  reagentInfos,
+  reagentInfoStatus = { phase: 'loading', message: '正在读取试剂基础信息…' },
+  reagentManagement,
+  reagentInfoManagement
 }: RobotWorkstationProps): React.JSX.Element {
   return (
     <section className={styles.workstation} aria-label={moduleLabel(module)}>
@@ -57,7 +60,10 @@ export function RobotWorkstation({
           <ReagentModule
             items={reagentItems}
             status={reagentStatus}
+            infos={reagentInfos}
+            infoStatus={reagentInfoStatus}
             management={reagentManagement}
+            infoManagement={reagentInfoManagement}
           />
         ) : null}
       </main>

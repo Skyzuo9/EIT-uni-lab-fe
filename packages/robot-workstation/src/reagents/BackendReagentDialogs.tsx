@@ -1,18 +1,27 @@
-import { useId, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { Button, Input, NativeSelect, Textarea } from '@unilab/design-system'
 
 import type {
+  CustomParameter,
   ReagentContainerOption,
   ReagentCreateCommand,
+  ReagentInfoProjection,
   ReagentInventoryProjection,
   ReagentUpdateCommand
 } from '../types'
-import { buttonClass, uiClass } from '../uiClasses'
-import { useAccessibleDialog } from '../useAccessibleDialog'
-import { WorkstationIcon } from '../WorkstationIcon'
+import { uiClass } from '../uiClasses'
 import styles from '../workstation.module.scss'
+import {
+  ReagentDialogActions,
+  ReagentDialogFrame,
+  reagentDialogErrorMessage
+} from './ReagentDialogPrimitives'
+import { isValidCAS, optionalNumber, textValue } from './reagentFormValues'
+import { CustomParameterFields } from './CustomParameterFields'
 
 type EditorProps = {
   containers: readonly ReagentContainerOption[]
+  infos?: readonly ReagentInfoProjection[]
   occupiedMaterialIds: ReadonlySet<string>
   onClose: () => void
 } & (
@@ -42,12 +51,9 @@ export function BackendReagentEditorDialog(props: EditorProps): React.JSX.Elemen
   const initial = props.mode === 'edit' ? props.item : undefined
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
-  const [containerQuery, setContainerQuery] = useState('')
-  const [selectedMaterialId, setSelectedMaterialId] = useState('')
-  const visibleContainers = useMemo(
-    () => filterReagentContainers(availableContainers, containerQuery),
-    [availableContainers, containerQuery]
-  )
+  const [selectedInfoId, setSelectedInfoId] = useState(props.infos?.[0]?.id ?? '')
+  const [customParameters, setCustomParameters] = useState<CustomParameter[]>([])
+  const selectedInfo = props.infos?.find(info => info.id === selectedInfoId)
 
   /** 校验完整表单并向 Backend 提交一次创建或乐观修订更新。 */
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>): Promise<void> {
@@ -72,6 +78,12 @@ export function BackendReagentEditorDialog(props: EditorProps): React.JSX.Elemen
           ...concentrationCommand(values),
           quantity: values.quantity,
           quantityUnit: values.quantityUnit,
+          metadata: {
+            supplier: values.supplier,
+            density_condition: values.densityCondition,
+            expires_on: values.expiresOn,
+            custom_parameters: customParameters
+          },
           ...(values.description ? { description: values.description } : {})
         })
       } else {
@@ -86,80 +98,69 @@ export function BackendReagentEditorDialog(props: EditorProps): React.JSX.Elemen
         })
       }
     } catch (submitError) {
-      setError(errorMessage(submitError, '试剂保存失败，请检查连接后重试。'))
+      setError(reagentDialogErrorMessage(submitError, '试剂保存失败，请检查连接后重试。'))
       setSubmitting(false)
     }
   }
 
   const noAvailableContainer = props.mode === 'create' && availableContainers.length === 0
   return (
-    <DialogFrame
-      title={props.mode === 'create' ? '新增试剂实例' : `编辑 ${props.item.name}`}
+    <ReagentDialogFrame
+      title={props.mode === 'create' ? '试剂登记' : `编辑 ${props.item.name}`}
       description={props.mode === 'create'
-        ? '选择 Backend 中已存在且尚未承载试剂的容器物料；CAS 化学身份由 Backend 查询并保存。'
+        ? '从试剂库选择身份并补充实际密度、供应商、数量和有效期；空容器仍从 Backend 物料中选择。'
         : `修订 ${props.item.revision ?? '未知'} · 容器 ${props.item.lotLabel ?? props.item.materialId ?? '未知'}`}
       busy={submitting}
+      wide={props.mode === 'create'}
       onClose={props.onClose}
     >
       <form onSubmit={(event) => void handleSubmit(event)}>
-        <div className={styles.dialogFields}>
+        <div className={`${styles.dialogFields} ${props.mode === 'create' ? styles.reagentRegistrationFields : ''}`}>
           {props.mode === 'create' ? (
             <>
-              <label className={styles.dialogFieldWide}>
+              <div className={styles.reagentContainerField}>
                 <span>空容器物料</span>
-                <div className={styles.reagentContainerSelector}>
-                  <input
-                    type="search"
-                    value={containerQuery}
-                    data-dialog-initial-focus
-                    placeholder="搜索物料名称、条码或 UUID"
-                    aria-label="搜索空容器物料"
-                    autoComplete="off"
-                    disabled={noAvailableContainer}
-                    onChange={event => {
-                      setContainerQuery(event.target.value)
-                      setSelectedMaterialId('')
-                    }}
-                  />
-                  <select
-                    name="materialId"
-                    value={selectedMaterialId}
-                    required
-                    disabled={noAvailableContainer || visibleContainers.length === 0}
-                    aria-label="选择空容器物料"
-                    onChange={event => setSelectedMaterialId(event.target.value)}
-                  >
-                    <option value="" disabled>
-                      {visibleContainers.length === 0 && containerQuery.trim()
-                        ? '没有匹配的空容器物料'
-                        : '请选择空容器物料'}
+                <ContainerSearchSelect
+                  containers={availableContainers}
+                  disabled={noAvailableContainer}
+                />
+              </div>
+              <label>
+                <span>选择试剂</span>
+                <NativeSelect
+                  value={selectedInfoId}
+                  required
+                  onChange={event => setSelectedInfoId(event.target.value)}
+                >
+                  <option value="" disabled>请选择试剂库中的基础信息</option>
+                  {(props.infos ?? []).map(info => (
+                    <option key={info.id} value={info.id}>
+                      {info.name}{info.cas ? ` · ${info.cas}` : ''}
                     </option>
-                    {visibleContainers.map(container => (
-                      <option key={container.id} value={container.id}>
-                        {container.name} · {container.barcode || container.id}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <small>Backend 会再次校验资源模板是否带有 container 标签且内容为空。</small>
+                  ))}
+                </NativeSelect>
+                <input type="hidden" name="cas" value={selectedInfo?.cas ?? ''} />
+                <input type="hidden" name="physicalState" value={selectedInfo?.physicalState ?? 'unknown'} />
               </label>
               <label>
-                <span>CAS 号</span>
-                <input name="cas" placeholder="例如 64-17-5" maxLength={64} required />
+                <span>实际密度（g/mL）</span>
+                <Input
+                  key={selectedInfoId}
+                  name="densityGPerMl"
+                  type="number"
+                  min="0"
+                  step="any"
+                  inputMode="decimal"
+                  defaultValue={selectedInfo?.densityGPerMl ?? ''}
+                />
               </label>
               <label>
-                <span>常温物态</span>
-                <select name="physicalState" defaultValue="unknown">
-                  <option value="unknown">未知</option>
-                  <option value="liquid">液体</option>
-                  <option value="solid">固体</option>
-                  <option value="gas">气体</option>
-                  <option value="other">其他</option>
-                </select>
+                <span>密度测定条件</span>
+                <Input name="densityCondition" defaultValue="20℃" maxLength={64} />
               </label>
               <label>
-                <span>密度（g/mL，可选）</span>
-                <input name="densityGPerMl" type="number" min="0" step="any" inputMode="decimal" />
+                <span>供应商</span>
+                <Input name="supplier" maxLength={255} />
               </label>
             </>
           ) : (
@@ -171,7 +172,7 @@ export function BackendReagentEditorDialog(props: EditorProps): React.JSX.Elemen
           )}
           <label>
             <span>{props.mode === 'create' ? '初始数量' : '当前数量'}</span>
-            <input
+            <Input
               name="quantity"
               type="number"
               min="0"
@@ -183,8 +184,8 @@ export function BackendReagentEditorDialog(props: EditorProps): React.JSX.Elemen
             />
           </label>
           <label>
-            <span>计量单位</span>
-            <input
+            <span>单位</span>
+            <Input
               name="quantityUnit"
               defaultValue={initial?.unit ?? 'mL'}
               readOnly={props.mode === 'edit'}
@@ -193,9 +194,16 @@ export function BackendReagentEditorDialog(props: EditorProps): React.JSX.Elemen
             />
             {props.mode === 'edit' ? <small>Backend 不允许在试剂生命周期内修改单位。</small> : null}
           </label>
+          {props.mode === 'create' ? (
+            <label>
+              <span>有效期</span>
+              <Input name="expiresOn" type="date" defaultValue={defaultReagentExpiryDate()} />
+            </label>
+          ) : null}
+          {props.mode === 'create' ? null : (
           <label>
             <span>浓度数值（可选）</span>
-            <input
+            <Input
               name="concentrationValue"
               type="number"
               min="0"
@@ -204,34 +212,162 @@ export function BackendReagentEditorDialog(props: EditorProps): React.JSX.Elemen
               defaultValue={initial?.concentrationValue ?? ''}
             />
           </label>
+          )}
+          {props.mode === 'create' ? null : (
           <label>
             <span>浓度单位</span>
-            <input
+            <Input
               name="concentrationUnit"
               maxLength={32}
               placeholder="例如 %、mol/L"
               defaultValue={initial?.concentrationUnit ?? ''}
             />
           </label>
+          )}
+          {props.mode === 'create' ? null : (
           <label className={styles.dialogFieldWide}>
             <span>说明（可选）</span>
-            <textarea name="description" rows={3} maxLength={1000} defaultValue={initial?.description ?? ''} />
+            <Textarea name="description" rows={3} maxLength={1000} defaultValue={initial?.description ?? ''} />
           </label>
+          )}
         </div>
+        {props.mode === 'create' ? (
+          <CustomParameterFields value={customParameters} onChange={setCustomParameters} />
+        ) : null}
         {noAvailableContainer ? (
           <p className={styles.dialogError} role="alert">
             没有可选容器物料。请先在物料模块创建带 container 标签的空容器。
           </p>
         ) : null}
         {error ? <p className={styles.dialogError} role="alert">{error}</p> : null}
-        <DialogActions
+        <ReagentDialogActions
           onClose={props.onClose}
-          submitLabel={submitting ? '正在保存…' : props.mode === 'create' ? '创建试剂' : '保存修改'}
+          submitLabel={submitting ? '正在保存…' : props.mode === 'create' ? '确认登记' : '保存修改'}
           disabled={submitting || noAvailableContainer}
         />
       </form>
-    </DialogFrame>
+    </ReagentDialogFrame>
   )
+}
+
+/** 使用独立触发器与搜索浮层完成空容器选择。 */
+function ContainerSearchSelect({
+  containers,
+  disabled
+}: {
+  containers: readonly ReagentContainerOption[]
+  disabled: boolean
+}): React.JSX.Element {
+  const listboxId = useId()
+  const rootRef = useRef<HTMLDivElement>(null)
+  const searchRef = useRef<HTMLInputElement>(null)
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const [selectedId, setSelectedId] = useState('')
+  const selected = containers.find(container => container.id === selectedId)
+  const options = useMemo(
+    () => filterReagentContainers(containers, query),
+    [containers, query]
+  )
+
+  useEffect(() => {
+    if (!open) return
+    const frame = requestAnimationFrame(() => searchRef.current?.focus())
+    return () => cancelAnimationFrame(frame)
+  }, [open])
+
+  function select(container: ReagentContainerOption): void {
+    setSelectedId(container.id)
+    setQuery('')
+    setOpen(false)
+  }
+
+  return (
+    <div
+      ref={rootRef}
+      className={styles.reagentContainerSelect}
+      onBlur={event => {
+        if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false)
+      }}
+    >
+      <input type="hidden" name="materialId" value={selectedId} />
+      <Button
+        type="button"
+        variant="outline"
+        className={styles.reagentContainerSelectControl}
+        data-dialog-initial-focus
+        aria-haspopup="listbox"
+        aria-controls={listboxId}
+        aria-expanded={open}
+        disabled={disabled}
+        onClick={() => setOpen(value => !value)}
+        onKeyDown={event => {
+          if (event.key === 'ArrowDown' || event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault()
+            setOpen(true)
+          } else if (event.key === 'Escape') {
+            setOpen(false)
+          }
+        }}
+      >
+        <span className={selected ? styles.reagentContainerSelectValue : styles.reagentContainerSelectPlaceholder}>
+          {selected ? reagentContainerLabel(selected) : '请选择空容器物料'}
+        </span>
+        <span aria-hidden="true" className={styles.reagentContainerSelectArrow} />
+      </Button>
+      <div
+        className={styles.reagentContainerSelectPopup}
+        hidden={!open}
+      >
+        <Input
+          ref={searchRef}
+          type="search"
+          value={query}
+          placeholder="搜索名称、条码或 UUID"
+          aria-label="搜索空容器物料"
+          aria-autocomplete="list"
+          aria-controls={listboxId}
+          role="combobox"
+          autoComplete="off"
+          onChange={event => setQuery(event.target.value)}
+          onKeyDown={event => {
+            if (event.key === 'Escape') {
+              setOpen(false)
+              rootRef.current?.querySelector<HTMLButtonElement>('button')?.focus()
+            } else if (event.key === 'Enter' && options[0]) {
+              event.preventDefault()
+              select(options[0])
+            }
+          }}
+        />
+        <div id={listboxId} role="listbox" className={styles.reagentContainerSelectMenu}>
+          {options.length > 0 ? options.map(container => (
+            <Button
+              key={container.id}
+              type="button"
+              variant="ghost"
+              size="sm"
+              role="option"
+              aria-selected={container.id === selectedId}
+              onClick={() => select(container)}
+            >
+              <span>
+                <strong>{container.name}</strong>
+                <small>{container.barcode || container.id}</small>
+              </span>
+              {container.id === selectedId ? <b aria-hidden="true">✓</b> : null}
+            </Button>
+          )) : (
+            <p>没有匹配的空容器物料</p>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function reagentContainerLabel(container: ReagentContainerOption): string {
+  return `${container.name} · ${container.barcode || container.id}`
 }
 
 /**
@@ -260,13 +396,13 @@ export function BackendReagentDeleteDialog({
     try {
       await onDelete()
     } catch (deleteError) {
-      setError(errorMessage(deleteError, '试剂删除失败，请刷新后重试。'))
+      setError(reagentDialogErrorMessage(deleteError, '试剂删除失败，请刷新后重试。'))
       setSubmitting(false)
     }
   }
 
   return (
-    <DialogFrame
+    <ReagentDialogFrame
       title={`删除 ${item.name}`}
       description={`Backend 会将 ${formatQuantity(item.totalQuantity, item.unit)} 余量闭合为零、追加 remove 台账并软删除试剂；被任务预留或修订冲突时会拒绝。`}
       busy={submitting}
@@ -275,7 +411,7 @@ export function BackendReagentDeleteDialog({
       <div className={styles.deleteConfirmation}>
         <label>
           <span>输入“删除”确认</span>
-          <input
+          <Input
             data-dialog-initial-focus
             value={confirmation}
             onChange={event => setConfirmation(event.target.value)}
@@ -285,17 +421,17 @@ export function BackendReagentDeleteDialog({
         {error ? <p className={styles.dialogError} role="alert">{error}</p> : null}
       </div>
       <div className={uiClass.dialogActions}>
-        <button className={buttonClass()} type="button" disabled={submitting} onClick={onClose}>取消</button>
-        <button
-          className={buttonClass('danger')}
+        <Button variant="outline" disabled={submitting} onClick={onClose}>取消</Button>
+        <Button
+          variant="destructive"
           type="button"
           disabled={submitting || confirmation !== '删除'}
           onClick={() => void handleDelete()}
         >
           {submitting ? '正在删除…' : '确认软删除'}
-        </button>
+        </Button>
       </div>
-    </DialogFrame>
+    </ReagentDialogFrame>
   )
 }
 
@@ -309,6 +445,9 @@ interface EditorValues {
   concentrationValue?: number
   concentrationUnit?: string
   description?: string
+  supplier?: string
+  densityCondition?: string
+  expiresOn?: string
 }
 
 /** 从浏览器 FormData 读取试剂表单值，空数值保持 undefined。 */
@@ -317,6 +456,9 @@ function reagentEditorValues(form: FormData): EditorValues {
   const concentrationValue = optionalNumber(form.get('concentrationValue'))
   const description = textValue(form, 'description')
   const concentrationUnit = textValue(form, 'concentrationUnit')
+  const supplier = textValue(form, 'supplier')
+  const densityCondition = textValue(form, 'densityCondition')
+  const expiresOn = textValue(form, 'expiresOn')
   return {
     materialId: textValue(form, 'materialId'),
     cas: textValue(form, 'cas'),
@@ -326,8 +468,17 @@ function reagentEditorValues(form: FormData): EditorValues {
     quantityUnit: textValue(form, 'quantityUnit'),
     ...(concentrationValue == null ? {} : { concentrationValue }),
     ...(concentrationUnit ? { concentrationUnit } : {}),
-    ...(description ? { description } : {})
+    ...(description ? { description } : {}),
+    ...(supplier ? { supplier } : {}),
+    ...(densityCondition ? { densityCondition } : {}),
+    ...(expiresOn ? { expiresOn } : {})
   }
+}
+
+function defaultReagentExpiryDate(): string {
+  const date = new Date()
+  date.setFullYear(date.getFullYear() + 2)
+  return date.toISOString().slice(0, 10)
 }
 
 /**
@@ -383,100 +534,7 @@ function concentrationCommand(values: EditorValues): Pick<
       }
 }
 
-/** 使用 CAS 标准校验位算法拒绝明显无效身份。 */
-function isValidCAS(value: string): boolean {
-  if (!/^\d{2,7}-\d{2}-\d$/.test(value)) return false
-  const digits = value.replaceAll('-', '')
-  const expected = Number(digits.at(-1))
-  const body = digits.slice(0, -1)
-  let sum = 0
-  for (let index = body.length - 1, weight = 1; index >= 0; index -= 1, weight += 1) {
-    sum += Number(body[index]) * weight
-  }
-  return sum % 10 === expected
-}
-
-/** 读取去空白文本字段。 */
-function textValue(form: FormData, name: string): string {
-  return String(form.get(name) ?? '').trim()
-}
-
-/** 读取可选有限数；空输入保持未提供。 */
-function optionalNumber(value: FormDataEntryValue | null): number | undefined {
-  const text = String(value ?? '').trim()
-  return text ? Number(text) : undefined
-}
-
 /** 格式化当前权威数量；缺失时保留未知。 */
 function formatQuantity(value: number | undefined, unit: string | undefined): string {
   return value == null ? '未知数量' : `${value.toLocaleString('zh-CN')} ${unit ?? ''}`.trim()
-}
-
-/** 把未知写入异常转换为可行动中文错误，同时保留 Backend 原始消息。 */
-function errorMessage(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message ? error.message : fallback
-}
-
-/** 渲染共享模态框结构，并在提交期间阻止关闭造成操作状态丢失。 */
-function DialogFrame({
-  title,
-  description,
-  busy,
-  children,
-  onClose
-}: {
-  title: string
-  description: string
-  busy: boolean
-  children: React.ReactNode
-  onClose: () => void
-}): React.JSX.Element {
-  const titleId = useId()
-  const descriptionId = useId()
-  const dialogRef = useAccessibleDialog(() => {
-    if (!busy) onClose()
-  })
-  return (
-    <div className={uiClass.dialogBackdrop} role="presentation">
-      <section
-        ref={dialogRef}
-        className={styles.formDialog}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        aria-describedby={descriptionId}
-        aria-busy={busy}
-        tabIndex={-1}
-      >
-        <div className={uiClass.panelHeader}>
-          <div>
-            <h2 id={titleId}>{title}</h2>
-            <small id={descriptionId}>{description}</small>
-          </div>
-          <button className={buttonClass('secondary', 'icon')} type="button" disabled={busy} onClick={onClose} aria-label="关闭">
-            <WorkstationIcon name="close" />
-          </button>
-        </div>
-        {children}
-      </section>
-    </div>
-  )
-}
-
-/** 渲染表单取消与提交动作。 */
-function DialogActions({
-  onClose,
-  submitLabel,
-  disabled
-}: {
-  onClose: () => void
-  submitLabel: string
-  disabled: boolean
-}): React.JSX.Element {
-  return (
-    <div className={uiClass.dialogActions}>
-      <button className={buttonClass()} type="button" disabled={disabled} onClick={onClose}>取消</button>
-      <button className={buttonClass('primary')} type="submit" disabled={disabled}>{submitLabel}</button>
-    </div>
-  )
 }

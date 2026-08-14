@@ -1061,7 +1061,10 @@ function WorkbenchSurface({
         benchStatus={workstationData.benchStatus}
         reagentItems={workstationData.reagentItems}
         reagentStatus={workstationData.reagentStatus}
+        reagentInfos={workstationData.reagentInfos}
+        reagentInfoStatus={workstationData.reagentInfoStatus}
         reagentManagement={workstationData.reagentManagement}
+        reagentInfoManagement={workstationData.reagentInfoManagement}
       />
     </section>
   )

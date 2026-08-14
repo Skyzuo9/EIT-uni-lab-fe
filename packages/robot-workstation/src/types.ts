@@ -11,7 +11,10 @@ export interface RobotWorkstationProps {
   benchStatus?: WorkstationDataStatus
   reagentItems?: readonly ReagentInventoryProjection[]
   reagentStatus?: WorkstationDataStatus
+  reagentInfos?: readonly ReagentInfoProjection[]
+  reagentInfoStatus?: WorkstationDataStatus
   reagentManagement?: ReagentManagement
+  reagentInfoManagement?: ReagentInfoManagement
 }
 
 export interface WorkstationDataStatus {
@@ -147,6 +150,55 @@ export interface ReagentInventoryProjection {
   status: 'available' | 'reserved' | 'empty' | 'quarantined' | 'unknown'
 }
 
+/** 试剂库展示的 Backend 试剂基础信息（Reagent Info）只读投影。 */
+export interface ReagentInfoProjection {
+  id: string
+  name: string
+  nameEn?: string
+  aliases: readonly string[]
+  cas?: string
+  molecularFormula?: string
+  smiles?: string
+  inchiKey?: string
+  molecularWeight?: number
+  densityGPerMl?: number
+  physicalState: string
+  description?: string
+  metadata?: Record<string, unknown>
+  createdAt?: string
+  updatedAt?: string
+}
+
+export type ReagentPhysicalState = 'solid' | 'liquid' | 'gas' | 'other' | 'unknown'
+
+/** 手工登记 Backend 化学品字典身份的完整可编辑字段。 */
+export interface ReagentInfoCreateCommand {
+  name: string
+  nameEn?: string
+  aliases: readonly string[]
+  cas?: string
+  molecularFormula?: string
+  smiles?: string
+  inchiKey?: string
+  molecularWeight?: number
+  densityGPerMl?: number
+  physicalState: ReagentPhysicalState
+  description?: string
+  metadata?: Record<string, unknown>
+}
+
+/** 纠错一个既有化学品身份；留空的可空字段由 Backend 清除。 */
+export interface ReagentInfoUpdateCommand extends ReagentInfoCreateCommand {
+  id: string
+}
+
+/** Backend 化学品字典 CRUD 命令端口，独立于容器级试剂实例管理。 */
+export interface ReagentInfoManagement {
+  create(command: ReagentInfoCreateCommand): Promise<void>
+  update(command: ReagentInfoUpdateCommand): Promise<void>
+  delete(reagentInfoId: string): Promise<void>
+}
+
 export interface ReagentContainerOption {
   id: string
   name: string
@@ -157,13 +209,14 @@ export interface ReagentContainerOption {
 export interface ReagentCreateCommand {
   materialId: string
   cas: string
-  physicalState: 'solid' | 'liquid' | 'gas' | 'other' | 'unknown'
+  physicalState: ReagentPhysicalState
   densityGPerMl?: number
   concentrationValue?: number
   concentrationUnit?: string
   quantity: number
   quantityUnit: string
   description?: string
+  metadata?: Record<string, unknown>
 }
 
 export interface ReagentUpdateCommand {

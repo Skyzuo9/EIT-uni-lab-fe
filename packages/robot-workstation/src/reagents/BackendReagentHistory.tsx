@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
+import { Button } from '@unilab/design-system'
 
 import type {
   ReagentHistoryProjection,
   ReagentInventoryProjection
 } from '../types'
-import { buttonClass, uiClass } from '../uiClasses'
+import { uiClass } from '../uiClasses'
 import { WorkstationIcon } from '../WorkstationIcon'
 import styles from '../workstation.module.scss'
 
@@ -61,16 +62,16 @@ export function BackendReagentHistory({
           <h2>{item.name} · 操作记录</h2>
           <small>来自 Backend 物料台账；数量变化、操作通道和任务身份均保持原始权威字段。</small>
         </div>
-        <button className={buttonClass('secondary', 'icon')} type="button" onClick={onClose} aria-label="关闭操作记录">
+        <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="关闭操作记录">
           <WorkstationIcon name="close" />
-        </button>
+        </Button>
       </div>
       {state.phase === 'loading' ? (
         <div className={styles.historyState} role="status">正在读取 Backend 试剂历史…</div>
       ) : state.phase === 'error' ? (
         <div className={styles.historyState} role="alert">
           <span>{state.message}</span>
-          <button className={buttonClass('secondary', 'compact')} type="button" onClick={() => setRevision(value => value + 1)}>重新读取</button>
+          <Button variant="outline" size="sm" onClick={() => setRevision(value => value + 1)}>重新读取</Button>
         </div>
       ) : state.entries.length === 0 ? (
         <div className={styles.historyState} role="status">当前容器没有试剂台账记录。</div>

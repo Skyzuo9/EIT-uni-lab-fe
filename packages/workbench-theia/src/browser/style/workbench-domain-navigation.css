@@ -168,6 +168,13 @@
   box-shadow: inset 2px 0 var(--unilab-color-primary);
 }
 
+/* 机械臂动作调试、点位管理和实验台入口暂不对用户开放。 */
+.theia-app-left .lm-TabBar-tab[data-unilabdomain='robot-debug'],
+.theia-app-left .lm-TabBar-tab[data-unilabdomain='robot-points'],
+.theia-app-left .lm-TabBar-tab[data-unilabdomain='robot-bench'] {
+  display: none;
+}
+
 .unilab-activity-icon {
   display: block;
   width: 22px;

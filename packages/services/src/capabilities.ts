@@ -32,6 +32,8 @@ export interface ServerCapabilities {
   reagentInfo: {
     read: boolean
     create: boolean
+    update: boolean
+    delete: boolean
   }
   inventory: {
     readReagents: boolean
@@ -76,6 +78,8 @@ export const SERVER_CAPABILITY_KEYS = [
   'workflow.subscribeEvents',
   'reagentInfo.read',
   'reagentInfo.create',
+  'reagentInfo.update',
+  'reagentInfo.delete',
   'inventory.readReagents',
   'inventory.createReagent',
   'inventory.updateReagent',
@@ -180,7 +184,9 @@ function unavailableCapabilities(): ServerCapabilities {
     },
     reagentInfo: {
       read: false,
-      create: false
+      create: false,
+      update: false,
+      delete: false
     },
     inventory: {
       readReagents: false,
@@ -213,6 +219,10 @@ function localGoCapabilities(): ServerCapabilities {
   capabilities.workflow.editDefinitions = true
   capabilities.workflow.runTasks = true
   capabilities.workflow.subscribeEvents = true
+  capabilities.reagentInfo.read = true
+  capabilities.reagentInfo.create = true
+  capabilities.reagentInfo.update = true
+  capabilities.reagentInfo.delete = true
   capabilities.inventory.readReagents = true
   capabilities.inventory.createReagent = true
   capabilities.inventory.updateReagent = true
