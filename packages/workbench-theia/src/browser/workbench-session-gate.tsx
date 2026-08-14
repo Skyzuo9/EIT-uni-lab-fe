@@ -14,6 +14,23 @@ export async function captureWorkbenchUiOperation(
   }
 }
 
+export async function runAndRefreshWorkbenchOperation(
+  operation: () => Promise<void>,
+  refresh: () => Promise<void>
+): Promise<void> {
+  try {
+    await operation()
+  } catch (error) {
+    try {
+      await refresh()
+    } catch {
+      // Preserve the actionable operation error if the follow-up refresh fails.
+    }
+    throw error
+  }
+  await refresh()
+}
+
 export function WorkbenchSessionGate({
   snapshot,
   onRetry,

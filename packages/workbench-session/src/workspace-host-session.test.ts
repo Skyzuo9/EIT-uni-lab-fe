@@ -7,10 +7,15 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { createWorkspaceHostWorkbenchSession } from './index'
 
+const launchWorkspaceHostProcess = vi.hoisted(() => vi.fn())
+
+vi.mock('./workspace-host-launch', () => ({ launchWorkspaceHostProcess }))
+
 const roots: string[] = []
 const servers: ReturnType<typeof createServer>[] = []
 
 afterEach(async () => {
+  vi.clearAllMocks()
   await Promise.all(servers.splice(0).map(server => new Promise<void>(resolve => {
     server.close(() => resolve())
   })))
@@ -50,9 +55,10 @@ describe('Workspace Host Workbench adapter', () => {
         }
         receivedCommands.push(body.command)
         applyCommand(snapshot, body.command, body.parameters)
+        const resetBlocked = body.command === 'local.reset-state'
         const operation = {
           operationId: body.operationId,
-          phase: 'succeeded',
+          phase: resetBlocked ? 'failed' : 'succeeded',
           result: body.command === 'release.publish'
             ? {
                 releaseId: 'sha256:fixture-release',
@@ -62,7 +68,22 @@ describe('Workspace Host Workbench adapter', () => {
                 counts: { templates: 3, materials: 2, workflows: 1 }
               }
             : { revision: snapshot.revision },
-          error: null
+          error: resetBlocked
+            ? {
+                code: 'local_reset_state_blocked',
+                message: '存在活动工作流或尚未收敛的 Edge 事实；本地状态未重建',
+                details: {
+                  stage: 'before-stop',
+                  blockers: [{
+                    source: 'local-edge-authority',
+                    kind: 'edge-job',
+                    identity: 'fixture-job',
+                    status: 'unknown',
+                    unknownCommandIds: ['fixture-command']
+                  }]
+                }
+              }
+            : null
         }
         operations.set(body.operationId, operation)
         sendJson(response, 202, operation)
@@ -150,6 +171,11 @@ describe('Workspace Host Workbench adapter', () => {
     await session.unregisterRenderer()
     expect(receivedCommands.at(-1)).toBe('renderer.detach')
     expect(snapshot.components.renderer.phase).toBe('idle')
+
+    await expect(session.rebuildLocalData()).rejects.toThrow(
+      '[local_reset_state_blocked] 存在活动工作流或尚未收敛的 Edge 事实；本地状态未重建；'
+      + '阻断项：local-edge-authority/edge-job/fixture-job，状态 unknown，未确认命令 fixture-command'
+    )
   })
 
   it('accepts a restarted Workspace Host snapshot with the same revision', async () => {
@@ -207,6 +233,78 @@ describe('Workspace Host Workbench adapter', () => {
         }
       })
     }, { timeout: 2_000 })
+  })
+
+  it('replaces an unreachable Host left in the discovery manifest', async () => {
+    const workspacePath = await mkdtemp(join(tmpdir(), 'unilab-host-stale-'))
+    roots.push(workspacePath)
+    const token = 'fixture-token'
+    const stale = hostSnapshot(workspacePath)
+    stale.host.endpoint = 'http://127.0.0.1:1'
+    const replacement = hostSnapshot(workspacePath)
+    const operations = new Map<string, Record<string, unknown>>()
+    const server = createServer(async (request, response) => {
+      if (request.headers.authorization !== `Bearer ${token}`) {
+        sendJson(response, 401, { error: { message: 'unauthorized' } })
+        return
+      }
+      const url = new URL(request.url ?? '/', 'http://127.0.0.1')
+      if (request.method === 'GET' && url.pathname === '/v1/snapshot') {
+        sendJson(response, 200, replacement)
+        return
+      }
+      if (request.method === 'POST' && url.pathname === '/v1/operations') {
+        const body = JSON.parse(await readBody(request)) as {
+          operationId: string
+          command: string
+          parameters: Record<string, unknown>
+        }
+        applyCommand(replacement, body.command, body.parameters)
+        const operation = {
+          operationId: body.operationId,
+          phase: 'succeeded',
+          result: { revision: replacement.revision },
+          error: null
+        }
+        operations.set(body.operationId, operation)
+        sendJson(response, 202, operation)
+        return
+      }
+      const operationId = url.pathname.match(/^\/v1\/operations\/(.+)$/)?.[1]
+      if (request.method === 'GET' && operationId) {
+        const operation = operations.get(decodeURIComponent(operationId))
+        sendJson(response, operation ? 200 : 404, operation ?? {
+          error: { message: 'not found' }
+        })
+        return
+      }
+      sendJson(response, 404, { error: { message: 'not found' } })
+    })
+    servers.push(server)
+    await listen(server)
+    replacement.host.endpoint = serverEndpoint(server)
+
+    const runtime = join(workspacePath, '.unilabos', 'runtime', 'workbench')
+    await mkdir(runtime, { recursive: true })
+    await Promise.all([
+      writeFile(join(runtime, 'session.json'), JSON.stringify(stale)),
+      writeFile(join(runtime, 'host.token'), token)
+    ])
+    launchWorkspaceHostProcess.mockImplementationOnce(async () => {
+      await writeFile(join(runtime, 'session.json'), JSON.stringify(replacement))
+    })
+
+    const session = createWorkspaceHostWorkbenchSession({ workspacePath })
+    const snapshot = await session.startWorkspaceBackend()
+
+    expect(launchWorkspaceHostProcess).toHaveBeenCalledOnce()
+    expect(snapshot).toMatchObject({
+      phase: 'ready',
+      identity: {
+        pid: 4101,
+        backendUrl: 'http://127.0.0.1:42001'
+      }
+    })
   })
 })
 

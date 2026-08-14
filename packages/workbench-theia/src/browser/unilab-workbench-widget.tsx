@@ -96,7 +96,10 @@ import { useRobotWorkstationData } from './robot-workstation-data'
 import { WorkbenchDomainLayout } from './workbench-domain-layout'
 import { WorkbenchMaterialViewport } from './workbench-material-viewport'
 import { workflowExecutionStatusForEdge } from './workbench-execution-readiness'
-import { WorkbenchSessionGate } from './workbench-session-gate'
+import {
+  runAndRefreshWorkbenchOperation,
+  WorkbenchSessionGate
+} from './workbench-session-gate'
 import {
   WorkbenchViewState,
   isRobotWorkbenchViewMode,
@@ -265,12 +268,10 @@ export class UniLabWorkbenchWidget extends ReactWidget {
   }
 
   protected readonly rebuildLocalData = async (): Promise<void> => {
-    try {
-      await this.workbenchSession.rebuildLocalData()
-    } catch {
-      // Session publishes the actionable backend or Edge diagnostic.
-    }
-    await this.refreshSessionSnapshot()
+    await runAndRefreshWorkbenchOperation(
+      () => this.workbenchSession.rebuildLocalData().then(() => undefined),
+      () => this.refreshSessionSnapshot()
+    )
   }
 
   protected readonly publishRelease = async (): Promise<WorkbenchReleaseReceipt> => {
