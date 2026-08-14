@@ -26,7 +26,7 @@ const RUN_MODE_LABELS = {
 /**
  * 单行工作流调试工具栏。编辑模式、保存与任务控制共享同一状态入口。
  *
- * @param props OS 权威工作流编写模型。
+ * @param props 当前工作流定义权威来源的统一编写模型。
  * @returns 根据加载、编辑和任务状态统一约束的工具栏。
  */
 export function PersistentWorkflowToolbar({
@@ -34,7 +34,11 @@ export function PersistentWorkflowToolbar({
 }: PersistentWorkflowToolbarProps): React.JSX.Element {
   const {
     aggregate,
+    authorityLabel,
     busy,
+    debugLaunchAvailable,
+    definitionEditingAvailable,
+    definitionEditingDisabledReason,
     dirty,
     fullSourceDiff,
     message,
@@ -50,6 +54,8 @@ export function PersistentWorkflowToolbar({
     setTaskRunMode,
     setTraceViewerOpen,
     singleNodeTargetMissing,
+    sourceEditingAvailable,
+    sourceEditingDisabledReason,
     startWorkflow,
     task,
     taskControls,
@@ -61,6 +67,10 @@ export function PersistentWorkflowToolbar({
     workflowStartPresentation
   } = model
   const runModeMenuRef = useRef<HTMLDetailsElement | null>(null)
+  const currentAuthorityLabel = authorityLabel ?? 'OS'
+  const canEditDefinition = definitionEditingAvailable !== false
+  const canEditSource = sourceEditingAvailable !== false
+  const canDebugLaunch = debugLaunchAvailable !== false
   const runningEntryBusy = runtimeBusy || workflowStartBusy
   const modeSwitchDisabled = busy || !aggregate
   const modeSwitchDisabledReason = busy
@@ -72,6 +82,8 @@ export function PersistentWorkflowToolbar({
     [task, taskControls]
   )
   const saveDisabled = Boolean(
+    !dirty ||
+    !canEditDefinition ||
     busy ||
     runningEntryBusy ||
     !aggregate ||
@@ -121,8 +133,10 @@ export function PersistentWorkflowToolbar({
         : '请先保存当前可写内容'}
       codeMode={{
         active: mode === 'code',
-        disabled: modeSwitchDisabled,
-        disabledReason: modeSwitchDisabledReason,
+        disabled: modeSwitchDisabled || !canEditSource,
+        disabledReason: !canEditSource
+          ? sourceEditingDisabledReason ?? '当前数据源不支持代码模式'
+          : modeSwitchDisabledReason,
         onSelect: () => requestMode('code')
       }}
       canvasMode={{
@@ -136,8 +150,13 @@ export function PersistentWorkflowToolbar({
         disabled: saveDisabled,
         disabledReason: busy || runningEntryBusy
           ? '正在处理工作流，请稍后保存'
+          : !canEditDefinition
+            ? definitionEditingDisabledReason ??
+              `${currentAuthorityLabel} 未提供工作流定义写能力`
           : !aggregate
             ? '工作流尚未加载完成'
+            : !dirty
+              ? `${currentAuthorityLabel} 画布没有待保存修改`
             : fullSourceDiff || pendingMode || remoteConflict || taskInputForm
               ? '请先完成当前工作流确认操作'
               : '当前工作流不能保存',
@@ -164,7 +183,9 @@ export function PersistentWorkflowToolbar({
               <span aria-hidden="true">⌄</span>
             </summary>
             <div role="menu" aria-label="任务运行模式">
-              {(['normal', 'debug', 'step', 'single_node'] as const).map((runMode) => (
+              {(['normal', 'debug', 'step', 'single_node'] as const)
+                .filter((runMode) => runMode !== 'debug' || canDebugLaunch)
+                .map((runMode) => (
                 <WorkflowButton
                   key={runMode}
                   type="button"
