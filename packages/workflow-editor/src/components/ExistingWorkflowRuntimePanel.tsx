@@ -25,10 +25,7 @@ import {
   workflowTaskIsLive,
   workflowTaskToolbarControls
 } from '../utils/workflowTaskPresentation'
-import {
-  projectWorkflowTaskEvents,
-  projectWorkflowTaskJob
-} from '../utils/workflowTaskOutputProjection'
+import { projectWorkflowTaskOutput } from '../utils/workflowTaskOutputProjection'
 import {
   existingWorkflowPreflightFailureMessage,
   existingWorkflowRunModeLabel,
@@ -99,14 +96,15 @@ export function ExistingWorkflowRuntimePanel({
       : projectExistingWorkflowCanvas(preparation),
     [editableGraph, editingEnabled, preparation]
   )
-  const outputNodes = useMemo(
-    () => snapshot.jobs.map(projectWorkflowTaskJob),
-    [snapshot.jobs]
+  const output = useMemo(
+    () => projectWorkflowTaskOutput({
+      task,
+      jobs: snapshot.jobs,
+      feedback: snapshot.feedback
+    }),
+    [snapshot.feedback, snapshot.jobs, task]
   )
-  const outputEvents = useMemo(
-    () => projectWorkflowTaskEvents(snapshot.events, snapshot.feedback, snapshot.jobs),
-    [snapshot.events, snapshot.feedback, snapshot.jobs]
-  )
+  const outputNodes = output.nodes
   const nodeNames = useMemo(() => ({
     ...Object.fromEntries(structure.nodes.map((node) => [node.id, node.name])),
     ...snapshotNodeNames(task?.workflow_snapshot)
@@ -585,7 +583,7 @@ export function ExistingWorkflowRuntimePanel({
           expectedNodeCount={snapshot.jobs.length}
           nodes={outputNodes}
           nodeNames={nodeNames}
-          events={outputEvents}
+          activity={output.activity}
           error={runtimeError}
           selectedNode={selectedNode}
           selectedNodeId={selectedNodeId}
@@ -593,8 +591,8 @@ export function ExistingWorkflowRuntimePanel({
           title="运行输出"
           countLabel="个节点任务已结束"
           nodesTabLabel="节点任务状态"
-          eventsTabLabel="节点反馈"
-          eventsEmptyLabel="刷新后显示 Backend 已持久化的节点反馈"
+          activityTabLabel="运行记录"
+          activityEmptyLabel="刷新后显示 Backend 已持久化的任务、节点和反馈状态"
           onExpandedChange={setOutputExpanded}
           onTabChange={setOutputTab}
           onNodeSelect={setSelectedNodeId}

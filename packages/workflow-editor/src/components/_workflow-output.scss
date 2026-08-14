@@ -426,7 +426,7 @@
 .workflow :global(.workflow-runtime__events) div {
   position: relative;
   display: grid;
-  grid-template-columns: 52px minmax(0, 1fr) minmax(80px, 140px);
+  grid-template-columns: 112px minmax(0, 1fr) minmax(80px, 140px);
   gap: var(--unilab-space-2);
   align-items: start;
   min-height: 54px;
@@ -448,7 +448,7 @@
   position: absolute;
   z-index: 1;
   top: 14px;
-  left: 46px;
+  left: 106px;
   width: 9px;
   height: 9px;
   border: 2px solid var(--unilab-color-surface);
@@ -466,7 +466,7 @@
   position: absolute;
   top: 24px;
   bottom: -9px;
-  left: 50px;
+  left: 110px;
   width: 1px;
   background: color-mix(
     in srgb,
@@ -490,14 +490,22 @@
 .workflow :global(.workflow-runtime__events)
   div[data-event-kind*='completed']::before,
 .workflow :global(.workflow-runtime__events)
-  div[data-event-kind*='succeeded']::before {
+  div[data-event-kind*='succeeded']::before,
+.workflow :global(.workflow-runtime__events)
+  div[data-event-kind='node.result']::before {
   background: var(--unilab-color-success);
 }
 
 .workflow :global(.workflow-runtime__events)
   div[data-event-kind*='failed']::before,
 .workflow :global(.workflow-runtime__events)
-  div[data-event-kind*='cancelled']::before {
+  div[data-event-kind*='cancelled']::before,
+.workflow :global(.workflow-runtime__events)
+  div[data-event-kind*='canceled']::before,
+.workflow :global(.workflow-runtime__events)
+  div[data-event-kind*='exception']::before,
+.workflow :global(.workflow-runtime__events)
+  div[data-event-kind*='timeout']::before {
   background: var(--unilab-color-danger);
 }
 
@@ -506,6 +514,21 @@
   color: var(--unilab-color-primary);
   text-align: right;
   font: 12px/18px var(--unilab-font-mono);
+}
+
+.workflow :global(.workflow-runtime__activity-time) {
+  display: grid;
+  justify-items: end;
+  white-space: nowrap;
+}
+
+.workflow :global(.workflow-runtime__activity-time) b {
+  font-weight: 600;
+}
+
+.workflow :global(.workflow-runtime__activity-time) time {
+  color: var(--unilab-color-text-subtle);
+  font-size: 11px;
 }
 
 .workflow :global(.workflow-runtime__events) span {
@@ -543,7 +566,7 @@
 
 .workflow :global(.workflow-runtime__events-order) {
   margin: 0;
-  padding: 0 0 6px 60px;
+  padding: 0 0 6px 120px;
   border-bottom: 1px solid var(--unilab-color-border);
   font-size: 10px !important;
 }
