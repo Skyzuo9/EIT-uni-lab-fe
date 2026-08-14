@@ -17,7 +17,11 @@ export function presentEdgeDevices(
   edgeDevices: readonly OnlineDevice[]
 ): ManagedDevice[] {
   return edgeDevices
-    .filter((device) => device.id !== 'host_node')
+    .filter((device) => (
+      device.id !== 'host_node' &&
+      device.deviceKey !== 'host_node' &&
+      !device.deviceKey.endsWith('/host_node')
+    ))
     .map((device) => ({
       ...device,
       displayName: device.machineName,

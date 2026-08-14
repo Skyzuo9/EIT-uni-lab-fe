@@ -16,11 +16,11 @@ describe('Edge device catalog', () => {
    */
   it('hides the system host node from the instrument device list', () => {
     expect(presentEdgeDevices([{
-      id: 'host_node',
+      id: '10000000-0000-4000-8000-000000000001',
       materialUuid: '10000000-0000-4000-8000-000000000001',
-      deviceKey: '/devices/host_node/host_node',
-      namespace: '/devices/host_node',
-      machineName: 'Local',
+      deviceKey: 'host_node',
+      namespace: '20000000-0000-4000-8000-000000000001',
+      machineName: 'host_node',
       online: true,
       actions: []
     }])).toEqual([])

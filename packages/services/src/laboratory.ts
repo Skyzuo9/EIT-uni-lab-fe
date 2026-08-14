@@ -21,11 +21,8 @@ import {
   loadBackendOnlineDevices
 } from './backendDevices'
 import {
-  asRuntimeRecord,
   getRuntimeDevices,
   mapRuntimeDeviceAction,
-  mapRuntimeDeviceActionSchema,
-  mapRuntimeDeviceCatalogItem,
   mapRuntimeResource,
   runtimeString,
   runtimeStringArray
@@ -150,66 +147,26 @@ export function createLaboratoryService(
     },
 
     async getActionDevices(): Promise<DeviceActionTarget[]> {
-      if (backend.serverKind === 'backend') return loadBackendActionDevices(http)
-      return (await getRuntimeDevices(http))
-        .filter((device) => device.actions.length > 0)
-        .sort((left, right) => left.id.localeCompare(right.id))
-        .map((device) => ({ deviceId: device.id, label: device.id }))
+      return loadBackendActionDevices(http)
     },
 
     async getDeviceCatalog(): Promise<DeviceCatalogItem[]> {
-      if (backend.serverKind === 'backend') return loadBackendDeviceCatalog(http)
-      const raw = await requestData<Record<string, unknown>>(
-        http,
-        '/api/v1/devices'
-      )
-      const items = Array.isArray(raw.items) ? raw.items : []
-      return items.map((value) => (
-        mapRuntimeDeviceCatalogItem(asRuntimeRecord(value))
-      ))
+      return loadBackendDeviceCatalog(http)
     },
 
     async getOnlineDevices(signal?: AbortSignal): Promise<OnlineDevice[]> {
-      if (backend.serverKind === 'backend') return loadBackendOnlineDevices(http, signal)
-      return (await getRuntimeDevices(http, signal))
-        .sort((left, right) => left.id.localeCompare(right.id))
-        .map((device) => ({
-          id: device.id,
-          materialUuid: device.materialUuid,
-          deviceKey: device.deviceKey,
-          namespace: device.namespace,
-          machineName: device.name,
-          online: device.online,
-          actions: device.actions.map(mapRuntimeDeviceAction)
-        }))
+      return loadBackendOnlineDevices(http, signal)
     },
 
     async getDeviceActions(deviceId: string): Promise<DeviceAction[]> {
-      if (backend.serverKind === 'backend') return loadBackendDeviceActions(http, deviceId)
-      const device = (await getRuntimeDevices(http)).find(
-        (candidate) => candidate.id === deviceId
-      )
-      return (device?.actions ?? []).map(mapRuntimeDeviceAction)
+      return loadBackendDeviceActions(http, deviceId)
     },
 
     async getActionSchema(
       deviceId: string,
       actionName: string
     ): Promise<DeviceActionSchema> {
-      if (backend.serverKind === 'backend') return loadBackendActionSchema(http, deviceId, actionName)
-      const actionRef = `${deviceId}.${actionName}`
-      const template = (await getRuntimeDevices(http))
-        .flatMap((device) => device.actions)
-        .find((candidate) => candidate.actionRef === actionRef)
-      if (!template) {
-        throw new ServiceError({
-          code: 'ACTION_NOT_FOUND',
-          message: `未找到 Action：${actionRef}`,
-          status: 404,
-          retryable: false
-        })
-      }
-      return mapRuntimeDeviceActionSchema(template)
+      return loadBackendActionSchema(http, deviceId, actionName)
     },
 
     async forceUnlockDeviceAction(input: {
@@ -261,3 +218,26 @@ export function createLaboratoryService(
 }
 
 export type LaboratoryService = ReturnType<typeof createLaboratoryService>
+
+/**
+ * 创建只供桌面端本地 Driver/注册表诊断使用的富设备目录读取端口。
+ * 正常产品界面必须使用 createLaboratoryService 的共享 DeviceOverview 合同。
+ */
+export function createLocalAuthoringLaboratoryService(http: HttpClient) {
+  return {
+    async getOnlineDevices(signal?: AbortSignal): Promise<OnlineDevice[]> {
+      return (await getRuntimeDevices(http, signal))
+        .sort((left, right) => left.id.localeCompare(right.id))
+        .map((device) => ({
+          id: device.id,
+          materialUuid: device.materialUuid,
+          resourceTemplateUuid: device.deviceTypeId,
+          deviceKey: device.deviceKey,
+          namespace: device.namespace,
+          machineName: device.name,
+          online: device.online,
+          actions: device.actions.map(mapRuntimeDeviceAction)
+        }))
+    }
+  }
+}

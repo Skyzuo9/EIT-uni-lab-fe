@@ -610,12 +610,12 @@ export default function DevicePanel({
         className={deviceClass('edge-device', devices.length === 0 && 'is-empty')}
         data-device-management="panel"
       >
-      <aside className={deviceClass('section__list')} aria-label="Edge 设备列表">
+      <aside className={deviceClass('section__list')} aria-label="设备实例列表">
         <header className={deviceClass('edge-device__list-head')}>
           <div>
             <h1 className={deviceClass('section__list-title')}>仪器设备</h1>
             <span className={deviceClass('section__list-meta')}>
-              {devices.length} 台设备 · Edge 实时上报
+              {devices.length} 台设备 · Authority 设备目录
             </span>
           </div>
           <button
@@ -634,7 +634,7 @@ export default function DevicePanel({
         />
         {loading && devices.length === 0 ? (
           <div className={deviceClass('device-loading')} role="status">
-            正在读取 Edge 设备与动作目录…
+            正在读取设备实例与动作模板目录…
           </div>
         ) : null}
         {error ? (
@@ -651,7 +651,7 @@ export default function DevicePanel({
             <strong>
               {connection === 'connected'
                 ? '当前未配置仪器设备'
-                : '等待 Edge 上报设备'}
+                : '等待 Authority 提供设备'}
             </strong>
             {connection === 'connected' ? (
               <p>
@@ -659,7 +659,7 @@ export default function DevicePanel({
               </p>
             ) : (
               <p>
-                Edge 连接后会自动上报在线设备、动作节点及其参数 Schema。
+                连接后会读取设备实例，并关联动作节点模板的参数 Schema。
               </p>
             )}
           </div>
@@ -677,7 +677,7 @@ export default function DevicePanel({
         )}
         <div className={deviceClass('edge-device__source-note')}>
           <span>数据来源</span>
-          设备、在线状态、动作与结果均来自 Edge 实时上报。
+          设备与在线状态来自 DeviceOverview；动作参数来自 WorkflowNodeTemplate。
         </div>
       </aside>
 

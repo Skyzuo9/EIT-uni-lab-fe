@@ -186,10 +186,10 @@ export function DeviceWorkspace({
 
       <div className={deviceClass('edge-device__metrics')} aria-label="设备目录信息">
         <Metric
-          label="上报 Edge"
+          label="设备名称"
           value={device.machineName}
         />
-        <Metric label="命名空间" value={device.namespace || '—'} />
+        <Metric label="Edge 身份" value={device.namespace || '—'} />
         <Metric label="动作节点" value={`${device.actions.length}`} />
         <Metric
           label="当前状态"
