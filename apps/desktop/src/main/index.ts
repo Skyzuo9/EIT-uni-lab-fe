@@ -277,23 +277,33 @@ function createWindow(): void {
           right: 0 !important;
           width: 100% !important;
         }
-        #theia-left-right-split-panel > #theia-right-content-panel,
         .theia-app-right {
           display: none !important;
         }
-        #theia-left-right-split-panel > #theia-bottom-split-panel {
-          left: 48px !important;
+        #theia-left-right-split-panel > #theia-right-content-panel.theia-mod-collapsed {
+          min-width: 0 !important;
+          max-width: 0 !important;
+        }
+        #theia-left-right-split-panel:has(> #theia-right-content-panel.theia-mod-collapsed) > #theia-bottom-split-panel {
           right: 0 !important;
-          width: calc(100% - 48px) !important;
+          width: auto !important;
+        }
+        #theia-left-content-panel {
+          z-index: 20 !important;
         }
         #theia-bottom-split-panel > #theia-main-content-panel {
           right: 0 !important;
           width: 100% !important;
         }
         #theia-main-content-panel > .lm-DockPanel-widget {
+          top: 0 !important;
           left: 0 !important;
           right: 0 !important;
           width: 100% !important;
+          height: 100% !important;
+        }
+        #theia-main-content-panel > .lm-TabBar.theia-app-centers.theia-app-main {
+          display: none !important;
         }
       `)
     })
