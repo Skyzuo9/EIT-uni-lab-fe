@@ -281,7 +281,7 @@ export function EnvironmentManager({
           name="Workspace Backend"
           order={1}
           phase={session.phase}
-          message={session.message}
+          message={session.diagnostic?.message ?? session.message}
           facts={[
             ['PID', String(identity?.pid ?? '—')],
             ['Authority API', identity?.backendUrl ?? '—'],
@@ -291,7 +291,10 @@ export function EnvironmentManager({
           actions={(
             <button
               type="button"
-              disabled={Boolean(busyAction) || session.phase !== 'ready'}
+              disabled={Boolean(busyAction) || ![
+                'ready',
+                'failed'
+              ].includes(session.phase)}
               onClick={() => {
                 const confirmed = globalThis.confirm(
                   '重建 Workspace Backend 会清空本地调试库存、设备状态和工作流历史。继续？'

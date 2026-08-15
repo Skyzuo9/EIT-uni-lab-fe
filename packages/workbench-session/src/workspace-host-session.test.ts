@@ -303,7 +303,79 @@ describe('Workspace Host Workbench adapter', () => {
     }, { timeout: 2_000 })
   })
 
-  it('replaces an unreachable Host left in the discovery manifest', async () => {
+  /**
+   * Theia 启动时会并发注册 renderer 与启动 Backend；首次 Host 连接必须合并，
+   * 否则同一工作区会派生多个 Host，再依赖单例锁淘汰输家。
+   */
+  it('coalesces concurrent first connections into one Host probe', async () => {
+    const workspacePath = await mkdtemp(join(tmpdir(), 'unilab-host-concurrent-'))
+    roots.push(workspacePath)
+    const token = 'fixture-token'
+    const snapshot = hostSnapshot(workspacePath)
+    let snapshotRequests = 0
+    const server = createSnapshotServer(token, snapshot, () => {
+      snapshotRequests += 1
+    })
+    servers.push(server)
+    await listen(server)
+    snapshot.host.endpoint = serverEndpoint(server)
+
+    const runtime = join(workspacePath, '.unilabos', 'runtime', 'workbench')
+    await mkdir(runtime, { recursive: true })
+    await Promise.all([
+      writeFile(join(runtime, 'session.json'), JSON.stringify(snapshot)),
+      writeFile(join(runtime, 'host.token'), token)
+    ])
+
+    const session = createWorkspaceHostWorkbenchSession({ workspacePath })
+    await expect(Promise.all([
+      session.readEnvironmentLog('workspace-backend'),
+      session.readEnvironmentLog('workspace-backend')
+    ])).resolves.toEqual(['backend fixture log', 'backend fixture log'])
+    expect(snapshotRequests).toBe(1)
+  })
+
+  /** Host 在探活后中断时也必须返回可行动诊断，不能泄漏 Node 底层文案。 */
+  it('normalizes a Host transport failure after a successful probe', async () => {
+    const workspacePath = await mkdtemp(join(tmpdir(), 'unilab-host-drop-'))
+    roots.push(workspacePath)
+    const token = 'fixture-token'
+    const snapshot = hostSnapshot(workspacePath)
+    const server = createServer((request, response) => {
+      const url = new URL(request.url ?? '/', 'http://127.0.0.1')
+      if (request.method === 'GET' && url.pathname === '/v1/snapshot') {
+        sendJson(response, 200, snapshot)
+        return
+      }
+      request.socket.destroy()
+    })
+    servers.push(server)
+    await listen(server)
+    snapshot.host.endpoint = serverEndpoint(server)
+
+    const runtime = join(workspacePath, '.unilabos', 'runtime', 'workbench')
+    await mkdir(runtime, { recursive: true })
+    await Promise.all([
+      writeFile(join(runtime, 'session.json'), JSON.stringify(snapshot)),
+      writeFile(join(runtime, 'host.token'), token)
+    ])
+
+    const session = createWorkspaceHostWorkbenchSession({ workspacePath })
+    const failure = await session.readEnvironmentLog('workspace-backend').then(
+      () => null,
+      error => error instanceof Error ? error : new Error(String(error))
+    )
+    expect(failure?.message).toContain(
+      `Workspace Host 不可达：${snapshot.host.endpoint}`
+    )
+    expect(failure?.message).not.toContain('fetch failed')
+  })
+
+  /**
+   * 磁盘中的 Host 会话可能在桌面应用重启后仍然格式合法，但其进程和端口已经失效。
+   * 适配器应启动并连接替代 Host，而不是把底层 fetch 错误泄漏给环境操作。
+   */
+  it('replaces a stale Host once across concurrent operations', async () => {
     const workspacePath = await mkdtemp(join(tmpdir(), 'unilab-host-stale-'))
     roots.push(workspacePath)
     const token = 'fixture-token'
@@ -363,22 +435,29 @@ describe('Workspace Host Workbench adapter', () => {
     })
 
     const session = createWorkspaceHostWorkbenchSession({ workspacePath })
-    const snapshot = await session.startWorkspaceBackend()
+    const snapshots = await Promise.all([
+      session.startWorkspaceBackend(),
+      session.startWorkspaceBackend()
+    ])
 
     expect(launchWorkspaceHostProcess).toHaveBeenCalledOnce()
-    expect(snapshot).toMatchObject({
-      phase: 'ready',
-      identity: {
-        pid: 4101,
-        backendUrl: 'http://127.0.0.1:42001'
-      }
-    })
+    expect(snapshots).toHaveLength(2)
+    for (const snapshot of snapshots) {
+      expect(snapshot).toMatchObject({
+        phase: 'ready',
+        identity: {
+          pid: 4101,
+          backendUrl: 'http://127.0.0.1:42001'
+        }
+      })
+    }
   })
 })
 
 function createSnapshotServer(
   token: string,
-  snapshot: ReturnType<typeof hostSnapshot>
+  snapshot: ReturnType<typeof hostSnapshot>,
+  onSnapshot: () => void = () => undefined
 ) {
   return createServer((request, response) => {
     if (request.headers.authorization !== `Bearer ${token}`) {
@@ -387,6 +466,7 @@ function createSnapshotServer(
     }
     const url = new URL(request.url ?? '/', 'http://127.0.0.1')
     if (request.method === 'GET' && url.pathname === '/v1/snapshot') {
+      onSnapshot()
       sendJson(response, 200, snapshot)
       return
     }

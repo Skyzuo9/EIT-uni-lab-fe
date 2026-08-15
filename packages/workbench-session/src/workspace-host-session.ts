@@ -101,6 +101,7 @@ export class WorkspaceHostWorkbenchSession implements WorkbenchSession {
   private snapshot: WorkbenchSessionSnapshot
   private host: WorkspaceHostSnapshot | null = null
   private connection: HostConnection | null = null
+  private hostEnsuring: Promise<HostConnection> | null = null
   private readonly listeners = new Set<(
     snapshot: WorkbenchSessionSnapshot
   ) => void>()
@@ -456,13 +457,23 @@ export class WorkspaceHostWorkbenchSession implements WorkbenchSession {
     await this.run('configuration.update', configuration)
   }
 
-  private async ensureHost(): Promise<HostConnection> {
-    if (this.connection) {
+  private ensureHost(): Promise<HostConnection> {
+    if (this.hostEnsuring) return this.hostEnsuring
+    const ensuring = this.ensureHostManaged().finally(() => {
+      if (this.hostEnsuring === ensuring) this.hostEnsuring = null
+    })
+    this.hostEnsuring = ensuring
+    return ensuring
+  }
+
+  private async ensureHostManaged(): Promise<HostConnection> {
+    const connected = this.connection
+    if (connected) {
       try {
-        await this.refreshHost(this.connection)
-        return this.connection
+        await this.refreshHost(connected)
+        return connected
       } catch {
-        this.connection = null
+        if (this.connection === connected) this.connection = null
       }
     }
     const discovered = await discoverHost(this.options.workspacePath)
@@ -473,8 +484,8 @@ export class WorkspaceHostWorkbenchSession implements WorkbenchSession {
         return discovered
       } catch {
         // A crashed Host can leave a valid token and manifest behind. Treat
-        // unreachable discovery as stale and bootstrap a replacement Host.
-        this.connection = null
+        // unreachable discovery as stale and bootstrap a replacement instead
+        // of leaking Node's `fetch failed`.
       }
     }
     await startWorkspaceHost(this.options)
@@ -516,22 +527,41 @@ export class WorkspaceHostWorkbenchSession implements WorkbenchSession {
   }
 
   private async pollHost(): Promise<void> {
-    if (this.polling) return
+    if (this.polling || this.hostEnsuring) return
     this.polling = true
+    const connectionBeforePoll = this.connection
+    let polledConnection: HostConnection | null = null
     try {
-      const connection = this.connection
+      polledConnection = connectionBeforePoll
         ?? await discoverHost(this.options.workspacePath)
-      if (!connection) return
-      this.connection = connection
-      await this.refreshHost(connection)
+      if (!polledConnection) return
+      const host = await this.fetchHost(polledConnection)
+      if (
+        this.hostEnsuring ||
+        this.connection !== connectionBeforePoll
+      ) return
+      this.applyHost(host)
+      this.connection = polledConnection
     } catch {
-      this.connection = null
+      // Do not let an older in-flight poll erase a connection recovered by a
+      // concurrent explicit operation.
+      if (
+        !this.hostEnsuring &&
+        this.connection === connectionBeforePoll &&
+        connectionBeforePoll === polledConnection
+      ) this.connection = null
     } finally {
       this.polling = false
     }
   }
 
   private async refreshHost(connection: HostConnection): Promise<void> {
+    this.applyHost(await this.fetchHost(connection))
+  }
+
+  private async fetchHost(
+    connection: HostConnection
+  ): Promise<WorkspaceHostSnapshot> {
     const host = await hostRequest<WorkspaceHostSnapshot>(
       connection,
       'GET',
@@ -540,11 +570,13 @@ export class WorkspaceHostWorkbenchSession implements WorkbenchSession {
     if (host.schemaVersion !== HOST_SCHEMA) {
       throw new Error(`Workspace Host schema 不兼容：${host.schemaVersion}`)
     }
-    if (
-      this.host?.host.endpoint === host.host.endpoint
+    return host
+  }
+
+  private applyHost(host: WorkspaceHostSnapshot): void {
+    const sameHost = this.host?.host.endpoint === host.host.endpoint
       && this.host.host.pid === host.host.pid
-      && this.host.revision === host.revision
-    ) return
+    if (sameHost && this.host!.revision >= host.revision) return
     this.host = host
     this.snapshot = projectSnapshot(host, this.snapshot, this.options)
     this.emit()
@@ -786,16 +818,35 @@ async function hostRequest<T>(
   path: string,
   body?: unknown
 ): Promise<T> {
-  const response = await fetch(`${connection.endpoint}${path}`, {
-    method,
-    headers: {
-      authorization: `Bearer ${connection.token}`,
-      'content-type': 'application/json'
-    },
-    body: body === undefined ? undefined : JSON.stringify(body),
-    signal: AbortSignal.timeout(2_000)
-  })
-  const payload = await response.json() as unknown
+  let response: Response
+  try {
+    response = await fetch(`${connection.endpoint}${path}`, {
+      method,
+      headers: {
+        authorization: `Bearer ${connection.token}`,
+        'content-type': 'application/json'
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: AbortSignal.timeout(2_000)
+    })
+  } catch (error) {
+    throw new Error(
+      `Workspace Host 不可达：${connection.endpoint}；请重试，` +
+      '若持续失败请查看 workspace-host.log',
+      { cause: error }
+    )
+  }
+  let payload: unknown
+  try {
+    payload = await response.json() as unknown
+  } catch (error) {
+    throw new Error(
+      response.ok
+        ? `Workspace Host 响应无效：${connection.endpoint}`
+        : `Workspace Host HTTP ${response.status}`,
+      { cause: error }
+    )
+  }
   if (!response.ok) {
     const record = isRecord(payload) && isRecord(payload['error'])
       ? payload['error']

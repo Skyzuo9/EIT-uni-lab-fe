@@ -1,11 +1,27 @@
+import type { WorkbenchSessionSnapshot } from '@unilab/workbench-session'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 
 import {
   describeEnvironmentOperationError,
+  EnvironmentManager,
+  type EnvironmentManagerProps,
   ExternalDevicesOnlyControl,
   RuntimeModeControl
 } from './environment-manager'
+
+describe('EnvironmentManager', () => {
+  it('keeps local data recovery available when Workspace Backend has failed', () => {
+    const markup = renderToStaticMarkup(
+      <EnvironmentManager {...environmentManagerProps(failedSession())} />
+    )
+
+    expect(markup).toContain(
+      '<button type="button">重建本地数据</button>'
+    )
+    expect(markup).toContain('本地数据损坏')
+  })
+})
 
 describe('ExternalDevicesOnlyControl', () => {
   it('renders the external-only launch option as a checked checkbox by default', () => {
@@ -71,3 +87,82 @@ describe('RuntimeModeControl', () => {
     expect(markup).toContain('aria-pressed="false"')
   })
 })
+
+function failedSession(): WorkbenchSessionSnapshot {
+  return {
+    phase: 'failed',
+    message: 'Workspace Backend 运行失败',
+    configuredGraphPath: 'deployment/graphs/fixture.json',
+    configuredExternalDevicesOnly: true,
+    configuredRuntimeMode: 'normal',
+    configuredDomainMode: 'local',
+    configuredBackendUrl: 'http://127.0.0.1:8080',
+    identity: null,
+    agent: null,
+    diagnostic: {
+      code: 'os_start_failed',
+      message: '本地数据损坏',
+      recovery: '重建本地数据'
+    },
+    edgeRuntime: {
+      phase: 'idle',
+      message: 'OS 尚未启动',
+      pid: null,
+      generation: null,
+      graphPath: 'deployment/graphs/fixture.json',
+      mode: 'normal',
+      logPath: '',
+      diagnostic: null
+    },
+    plcSimulator: {
+      phase: 'idle',
+      message: 'PLC-Sim 尚未启动',
+      projectPath: '',
+      variableTablePath: '',
+      variableTableCandidates: [],
+      handshakeProfile: 'szlab',
+      pid: null,
+      guiUrl: '',
+      opcUaUrl: '',
+      logPath: '',
+      diagnostic: null
+    }
+  }
+}
+
+function environmentManagerProps(
+  session: WorkbenchSessionSnapshot
+): EnvironmentManagerProps {
+  const complete = vi.fn(async () => undefined)
+  return {
+    session,
+    onClose: vi.fn(),
+    onRestartSession: complete,
+    onRebuildLocalData: complete,
+    onInspectReleaseTarget: vi.fn(async backendUrl => ({
+      targetAddress: backendUrl,
+      empty: true,
+      counts: { templates: 0, materials: 0, workflows: 0 }
+    })),
+    onPublishRelease: vi.fn(async backendUrl => ({
+      releaseId: 'sha256:fixture',
+      targetAddress: backendUrl,
+      verified: true as const,
+      activated: true,
+      counts: { templates: 0, materials: 0, workflows: 0 }
+    })),
+    onReadEnvironmentLog: vi.fn(async () => ''),
+    onConfigureGraph: complete,
+    onSetExternalDevicesOnly: complete,
+    onConfigurePlcSimulator: complete,
+    onRefreshPlcVariableTables: complete,
+    onStartPlcSimulator: complete,
+    onStopPlcSimulator: complete,
+    onReleaseEnvironmentPorts: complete,
+    onStartAgent: complete,
+    onStopAgent: complete,
+    onRestartAgent: complete,
+    onSetRuntimeMode: complete,
+    onStopSession: complete
+  }
+}
