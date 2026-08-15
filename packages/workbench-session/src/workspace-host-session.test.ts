@@ -21,6 +21,9 @@ afterEach(async () => {
 })
 
 describe('Workspace Host Workbench adapter', () => {
+  /**
+   * 验证适配器会提交已认证命令、投影 Host 状态，并将“仅加载外部设备包”配置更新回传为最新会话快照。
+   */
   it('submits authenticated commands and observes external state changes', async () => {
     const workspacePath = await mkdtemp(join(tmpdir(), 'unilab-host-adapter-'))
     roots.push(workspacePath)
@@ -108,6 +111,7 @@ describe('Workspace Host Workbench adapter', () => {
         UNILAB_WORKBENCH_RENDERER_URL: 'http://127.0.0.1:3100'
       }
     })
+    expect(session.getSnapshot().configuredExternalDevicesOnly).toBe(true)
     await session.registerRenderer()
     const backend = await session.startWorkspaceBackend()
 
@@ -178,6 +182,11 @@ describe('Workspace Host Workbench adapter', () => {
       domainMode: 'backend',
       backendUrl: 'http://192.168.1.20:9000'
     })
+
+    const configured = await session.setExternalDevicesOnly(false)
+    expect(receivedCommands.at(-1)).toBe('configuration.update')
+    expect(snapshot.configuration.externalDevicesOnly).toBe(false)
+    expect(configured.configuredExternalDevicesOnly).toBe(false)
 
     snapshot.components.edge = component('edge', {
       phase: 'ready',
@@ -291,6 +300,11 @@ function serverEndpoint(server: ReturnType<typeof createServer>): string {
   return `http://127.0.0.1:${address.port}`
 }
 
+/**
+ * 构造 Workspace Host 测试快照。
+ * @param workspacePath 测试工作区的绝对路径。
+ * @returns 带有默认外部设备包策略及空闲组件的可变 Host 快照。
+ */
 function hostSnapshot(workspacePath: string) {
   return {
     schemaVersion: 'unilab-workspace-host/v1' as const,
@@ -342,6 +356,12 @@ function componentShape(name: string) {
   }
 }
 
+/**
+ * 将收到的 Host 命令投影到测试快照。
+ * @param snapshot 代表 Workspace Host 当前权威状态的测试快照。
+ * @param command 被适配器提交的命令名。
+ * @param parameters 命令携带的配置或操作参数。
+ */
 function applyCommand(
   snapshot: ReturnType<typeof hostSnapshot>,
   command: string,

@@ -544,6 +544,10 @@ export class WorkspaceHostWorkbenchSession implements WorkbenchSession {
     return payload.content
   }
 
+  /**
+   * 从本地环境文件读取可持久化配置，并按显式启动选项优先的规则投影到会话快照。
+   * @returns 配置读取及快照发布完成后结束，不返回业务数据。
+   */
   private async loadConfiguration(): Promise<void> {
     const configuration = await readLocalEnvironmentConfiguration(join(
       this.options.workspacePath,
@@ -553,6 +557,9 @@ export class WorkspaceHostWorkbenchSession implements WorkbenchSession {
     const graphPath = this.options.graphPath
       ?? configuration.graphPath
       ?? this.snapshot.configuredGraphPath
+    const externalDevicesOnly = this.options.externalDevicesOnly
+      ?? configuration.externalDevicesOnly
+      ?? this.snapshot.configuredExternalDevicesOnly
     const mode = this.options.runtimeMode
       ?? configuration.runtimeMode
       ?? this.snapshot.configuredRuntimeMode
@@ -564,6 +571,7 @@ export class WorkspaceHostWorkbenchSession implements WorkbenchSession {
       ?? this.snapshot.configuredBackendUrl
     this.publish({
       configuredGraphPath: graphPath,
+      configuredExternalDevicesOnly: externalDevicesOnly,
       configuredRuntimeMode: mode,
       configuredDomainMode: domainMode,
       configuredBackendUrl: backendUrl,

@@ -10,7 +10,6 @@ import type {
   WorkflowTask,
   WorkflowTaskCommand,
   WorkflowTaskCommandType,
-  WorkflowTaskRuntimeEvent,
   WorkflowTaskRunMode
 } from '@unilab/services'
 
@@ -18,7 +17,6 @@ export interface WorkflowTaskRuntimeSnapshot {
   loading: boolean
   task: WorkflowTask | null
   jobs: readonly WorkflowNodeJob[]
-  events: readonly WorkflowTaskRuntimeEvent[]
   feedback: readonly WorkflowNodeJobFeedback[]
   lastCommand: WorkflowTaskCommand | null
   debug: DebugWorkflowTaskProjection | null
@@ -42,7 +40,6 @@ export class WorkflowTaskController {
     loading: true,
     task: null,
     jobs: [],
-    events: [],
     feedback: [],
     lastCommand: null,
     debug: null,
@@ -295,7 +292,6 @@ export class WorkflowTaskController {
             loading: false,
             task: null,
             jobs: [],
-            events: [],
             feedback: [],
             debug: null,
             projectionError: null,
@@ -325,7 +321,7 @@ export class WorkflowTaskController {
         task,
         jobs: sortedJobs,
         debug,
-        ...(taskChanged ? { events: [], feedback: [] } : {}),
+        ...(taskChanged ? { feedback: [] } : {}),
         projectionError: null,
         projectionStale: false,
         generation: this.snapshot.generation + 1
