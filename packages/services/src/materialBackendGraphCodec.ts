@@ -2,6 +2,7 @@ import type {
   LabPose,
   MaterialAggregate,
   MaterialPlacement,
+  MaterialShapeIdentity,
   MaterialSite
 } from '@unilab/material'
 
@@ -88,6 +89,7 @@ export function mapBackendMaterialGraph(
         sourceTemplateId
       )
     )
+    const shapeIdentity = mapBackendShapeIdentity(position)
     return {
       material: {
         id,
@@ -109,11 +111,27 @@ export function mapBackendMaterialGraph(
         siteById
       ),
       sites,
-      revision: materialRevision(
-        material.revision
-      )
+      revision: materialRevision(material.revision),
+      ...(shapeIdentity ? { shapeIdentity } : {})
     }
   })
+}
+
+/**
+ * 读取 Backend 冻结在物料相对位置上的公共 2.5D 外形身份。
+ *
+ * @param position 可空的权威相对位置；旧数据可以没有 shape。
+ * @returns 同时具有 bundle 与 id 时返回精确身份，否则返回 undefined 并允许视图降级。
+ */
+function mapBackendShapeIdentity(
+  position: Record<string, unknown> | undefined
+): MaterialShapeIdentity | undefined {
+  if (!position || !isRecord(position.shape)) return undefined
+  // shapeBundle/shapeId 共同构成 Backend `/material-shapes` 的稳定去重键。
+  const shapeBundle = optionalString(position.shape.bundle)?.trim()
+  const shapeId = optionalString(position.shape.id)?.trim()
+  if (!shapeBundle || !shapeId) return undefined
+  return { bundle: shapeBundle, id: shapeId }
 }
 
 /**
