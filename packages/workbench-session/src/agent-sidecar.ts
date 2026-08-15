@@ -72,7 +72,7 @@ const MIME_TYPES = new Map([
   ['.woff', 'font/woff'],
   ['.woff2', 'font/woff2']
 ])
-export const PINNED_AIONUI_VERSION = '2.1.52'
+export const MINIMUM_AIONUI_VERSION = '2.1.52'
 const MANAGED_LOCAL_DEFAULT_ASSISTANT_ID = 'bare:8e1acf31'
 const MANAGED_LOCAL_DEFAULT_LANGUAGE = 'zh-CN'
 const MANAGED_LOCAL_DEFAULT_LANGUAGE_VERSION_KEY =
@@ -102,11 +102,17 @@ export async function startManagedWorkbenchAgent(
     throw new Error(`UniLab Agent implementation is unavailable under ${appPath}`)
   }
   const distributionVersion = readDistributionVersion(asarPath)
-  const expectedVersion = environment['UNILAB_AIONUI_VERSION'] ??
-    PINNED_AIONUI_VERSION
-  if (distributionVersion !== expectedVersion) {
+  const expectedVersion = environment['UNILAB_AIONUI_VERSION']?.trim()
+  if (expectedVersion && distributionVersion !== expectedVersion) {
     throw new Error(
       `UniLab Agent requires AionUi ${expectedVersion}; found ${distributionVersion}`
+    )
+  }
+  if (!expectedVersion && !isAgentDistributionVersionSupported(
+    distributionVersion
+  )) {
+    throw new Error(
+      `UniLab Agent requires AionUi >= ${MINIMUM_AIONUI_VERSION}; found ${distributionVersion}`
     )
   }
   const workspaceSkillSource = resolveManagedWorkspaceSkillSource(environment)
@@ -208,6 +214,27 @@ export async function startManagedWorkbenchAgent(
     await stopChild(child)
     throw error
   }
+}
+
+/** Return whether an external Agent distribution satisfies the Workbench floor. */
+export function isAgentDistributionVersionSupported(version: string): boolean {
+  const actual = parseStableSemanticVersion(version)
+  const minimum = parseStableSemanticVersion(MINIMUM_AIONUI_VERSION)
+  if (!actual || !minimum) return false
+  for (let index = 0; index < minimum.length; index += 1) {
+    if (actual[index] !== minimum[index]) {
+      return actual[index] > minimum[index]
+    }
+  }
+  return true
+}
+
+function parseStableSemanticVersion(version: string): [number, number, number] | null {
+  const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(version.trim())
+  if (!match) return null
+  const values = match.slice(1).map(value => Number.parseInt(value, 10))
+  if (values.some(value => !Number.isSafeInteger(value))) return null
+  return values as [number, number, number]
 }
 
 function agentCoreTarget(
