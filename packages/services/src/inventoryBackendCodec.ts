@@ -2,6 +2,7 @@ import type { HttpClient } from './http'
 import { requestData } from './http'
 import { ServiceError } from './errors'
 import type {
+  CompoundLookupResult,
   ReagentCreateInput,
   ReagentHistoryEntry,
   ReagentHistoryPage,
@@ -16,6 +17,44 @@ import type {
 export interface ReagentInfoPage {
   items: readonly ReagentInfoItem[]
   total: number
+}
+
+/**
+ * 解码 Backend 的 CAS 化合物查询结果，拒绝未知状态和错误字段类型。
+ * @param value 未信任的 Backend 响应 data。
+ * @returns 可直接驱动登记表单补全的类型安全结果。
+ */
+export function decodeCompoundLookupResult(value: unknown): CompoundLookupResult {
+  const record = object(value, 'Backend CAS 化合物查询')
+  const cas = requiredString(record.cas, 'Backend CAS 化合物查询.cas')
+  const status = compoundLookupStatus(record.status)
+  const message = optionalString(record.message)
+  const compoundRecord = record.compound == null
+    ? undefined
+    : object(record.compound, 'Backend CAS 化合物查询.compound')
+  const name = optionalString(compoundRecord?.name)
+  const molecularFormula = optionalString(compoundRecord?.molecular_formula)
+  const smiles = optionalString(compoundRecord?.smiles)
+  const inchiKey = optionalString(compoundRecord?.inchi_key)
+  const molecularWeight = optionalFiniteNumber(compoundRecord?.molecular_weight)
+  const compound: CompoundLookupResult['compound'] = compoundRecord == null
+    ? undefined
+    : {
+        ...(name ? { name } : {}),
+        ...(molecularFormula ? { molecularFormula } : {}),
+        ...(smiles ? { smiles } : {}),
+        ...(inchiKey ? { inchiKey } : {}),
+        ...(molecularWeight == null ? {} : { molecularWeight })
+      }
+  if (status === 'ok' && !compound) {
+    throw invalidInventoryResponse('Backend CAS 化合物查询.compound 在 ok 状态下必须是对象')
+  }
+  return {
+    cas,
+    status,
+    ...(message ? { message } : {}),
+    ...(compound ? { compound } : {})
+  }
 }
 
 /**
@@ -344,6 +383,17 @@ function optionalString(value: unknown): string | undefined {
 /** 读取可选有限数；缺失时保持未知。 */
 function optionalFiniteNumber(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined
+}
+
+/** 只接受 Backend 公布的四种 CAS 查询状态。 */
+function compoundLookupStatus(value: unknown): CompoundLookupResult['status'] {
+  if (
+    value === 'ok' ||
+    value === 'registered' ||
+    value === 'not_found' ||
+    value === 'unavailable'
+  ) return value
+  throw invalidInventoryResponse('Backend CAS 化合物查询.status 无效')
 }
 
 /** 读取必填非负整数。 */

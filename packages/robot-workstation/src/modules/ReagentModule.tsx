@@ -53,7 +53,8 @@ export function ReagentModule({
   infoManagement?: ReagentInfoManagement
 }): React.JSX.Element {
   const [view, setView] = useState<ReagentView>('ledger')
-  const [query, setQuery] = useState('')
+  const [ledgerQuery, setLedgerQuery] = useState('')
+  const [libraryQuery, setLibraryQuery] = useState('')
   const [dialog, setDialog] = useState<ReagentDialog>(null)
   const [historyId, setHistoryId] = useState<string>()
   const [feedback, setFeedback] = useState('')
@@ -64,13 +65,15 @@ export function ReagentModule({
   )
   const infoCreateReady = Boolean(infoManagement && infoStatus.phase === 'ready')
   const retry = view === 'ledger' ? status.retry : infoStatus.retry
+  const query = view === 'ledger' ? ledgerQuery : libraryQuery
+  const setQuery = view === 'ledger' ? setLedgerQuery : setLibraryQuery
 
   /** 创建提交成功后关闭模态框并等待列表和目录权威回读。 */
   async function createReagent(command: ReagentCreateCommand): Promise<void> {
     if (!management) return
     await management.create(command)
     setDialog(null)
-    setFeedback('试剂已由 Backend 登记，正在刷新权威台账。')
+    setFeedback('库存试剂已登记，正在刷新列表。')
   }
 
   /** 更新提交成功后关闭模态框；界面不在本地推进修订或数量。 */
@@ -78,7 +81,7 @@ export function ReagentModule({
     if (!management) return
     await management.update(command)
     setDialog(null)
-    setFeedback('试剂修改已提交，正在读取 Backend 最新修订。')
+    setFeedback('库存信息已保存，正在刷新列表。')
   }
 
   /** 删除提交成功后清理详情选择，并等待 Backend 软删除后的台账。 */
@@ -87,7 +90,7 @@ export function ReagentModule({
     await management.delete(item.id)
     if (historyId === item.id) setHistoryId(undefined)
     setDialog(null)
-    setFeedback('试剂已软删除，余量闭合记录已由 Backend 写入台账。')
+    setFeedback('库存试剂已删除，余量变更已记录。')
   }
 
   /** 手工登记化学品身份后关闭表单，并等待 Backend 目录权威回读。 */
@@ -95,7 +98,7 @@ export function ReagentModule({
     if (!infoManagement) return
     await infoManagement.create(command)
     setDialog(null)
-    setFeedback('试剂基础信息已登记，正在刷新 Backend 化学品字典。')
+    setFeedback('试剂身份已创建，正在刷新身份库。')
   }
 
   /** 纠错化学品身份后不在本地改行，统一等待 Backend 返回最新目录。 */
@@ -103,7 +106,7 @@ export function ReagentModule({
     if (!infoManagement) return
     await infoManagement.update(command)
     setDialog(null)
-    setFeedback('试剂基础信息已更新，正在读取 Backend 最新内容。')
+    setFeedback('试剂身份已更新，正在刷新身份库。')
   }
 
   /** 删除未被引用的误建身份；成功前不从目录乐观移除。 */
@@ -111,38 +114,38 @@ export function ReagentModule({
     if (!infoManagement) return
     await infoManagement.delete(item.id)
     setDialog(null)
-    setFeedback('误建试剂身份已删除，正在刷新 Backend 化学品字典。')
+    setFeedback('试剂身份已删除，正在刷新身份库。')
   }
 
   return (
     <div className={uiClass.modulePage} data-testid="workstation-reagents">
       <ModuleHeader
         title="试剂管理"
-        description="维护真实试剂基础信息与库存台账；预留、扣减和位置变化由权威后端推进。"
+        description="维护试剂身份与库存实例；预留、扣减和位置变化由系统统一记录。"
         actions={(
           <>
             {view === 'ledger' && management ? (
               <Button
                 size="sm"
                 disabled={!createReady}
-                title={createReady ? '登记试剂' : management.containerStatus.message}
+                title={createReady ? '登记库存试剂' : management.containerStatus.message}
                 onClick={() => setDialog({ kind: 'create' })}
                 data-testid="reagent-create"
               >
                 <WorkstationIcon name="plus" />
-                登记试剂
+                登记库存
               </Button>
             ) : null}
             {view === 'library' && infoManagement ? (
               <Button
                 size="sm"
                 disabled={!infoCreateReady}
-                title={infoCreateReady ? '新增试剂基础信息' : infoStatus.message}
+                title={infoCreateReady ? '新建试剂身份' : infoStatus.message}
                 onClick={() => setDialog({ kind: 'info-create' })}
                 data-testid="reagent-info-create"
               >
                 <WorkstationIcon name="plus" />
-                新增基础信息
+                新建身份
               </Button>
             ) : null}
             {retry ? (
@@ -161,7 +164,7 @@ export function ReagentModule({
             aria-selected={view === 'ledger'}
             aria-controls="reagent-ledger-panel"
             onClick={() => setView('ledger')}
-          >试剂台账</Button>
+          >库存试剂</Button>
           <Button
             variant="ghost"
             size="sm"
@@ -169,15 +172,15 @@ export function ReagentModule({
             aria-selected={view === 'library'}
             aria-controls="reagent-library-panel"
             onClick={() => setView('library')}
-          >试剂库</Button>
+          >试剂身份</Button>
         </nav>
         <label className={styles.searchField}>
           <WorkstationIcon name="search" />
-          <span className={uiClass.screenReaderOnly}>{view === 'ledger' ? '搜索试剂台账' : '搜索试剂库'}</span>
+          <span className={uiClass.screenReaderOnly}>{view === 'ledger' ? '搜索库存试剂' : '搜索试剂身份'}</span>
           <Input
             value={query}
             onChange={event => setQuery(event.target.value)}
-            placeholder={view === 'ledger' ? '搜索名称、CAS、批次、库位或任务' : '搜索名称、别名、CAS 或分子式'}
+            placeholder={view === 'ledger' ? '搜索名称、CAS、容器或库位' : '搜索名称、别名、CAS 或分子式'}
           />
         </label>
       </div>
@@ -263,17 +266,17 @@ function ReagentLedgerSurface({
             data-testid="reagent-empty-primary"
             disabled={management.containerStatus.phase !== 'ready'}
             title={management.containerStatus.phase === 'ready'
-              ? '登记试剂'
+              ? '登记库存试剂'
               : management.containerStatus.message}
             onClick={() => onDialog({ kind: 'create' })}
-          >登记试剂</Button>
+          >登记库存</Button>
         )
       : infos.length === 0 && infoManagement
         ? (
             <Button
               data-testid="reagent-empty-primary"
               onClick={() => onDialog({ kind: 'info-create' })}
-            >新增试剂</Button>
+            >新建试剂身份</Button>
           )
         : undefined
     : undefined
@@ -285,7 +288,7 @@ function ReagentLedgerSurface({
         <>
           {!management ? (
             <DataAuthorityNotice>
-              数量、批次和库区来自当前 Edge 库存权威快照；接口未返回的维度保持“—”，前端不提供本地写入。
+              当前库存为只读；数据源未提供的字段显示为“—”。
             </DataAuthorityNotice>
           ) : null}
           {items.length === 0 ? (
@@ -293,11 +296,11 @@ function ReagentLedgerSurface({
               status={{
                 phase: 'empty',
                 message: management
-                  ? 'Backend 试剂接口已连接，但当前没有库存实例。可以选择一个空容器物料登记试剂。'
-                  : 'Edge 库存接口已连接，但当前没有明确标记为试剂的批次。',
+                  ? '当前没有库存试剂。请选择试剂身份和空容器完成登记。'
+                  : '当前数据源没有可展示的库存试剂。',
                 retry: status.retry
               }}
-              title="暂无试剂台账"
+              title="暂无库存试剂"
               icon="flask"
               action={emptyAction}
             />
@@ -358,20 +361,20 @@ function ReagentLibrarySurface({
           status={{
             phase: 'empty',
             message: management
-              ? 'Backend 化学品字典已连接，但当前目录为空。可以先登记一条独立试剂基础信息。'
-              : 'Backend 试剂基础信息接口已连接，但当前目录为空。',
+              ? '当前还没有试剂身份。创建身份后即可登记库存试剂。'
+              : '当前数据源没有可展示的试剂身份。',
             retry: status.retry
           }}
-          title="暂无试剂基础信息"
+          title="暂无试剂身份"
           icon="flask"
         />
       ) : (
         <>
-          <DataAuthorityNotice>
-            {management
-              ? '试剂基础信息是 Backend 化学品字典；登记不会创建容器或余量，纠错不会联动覆盖既有试剂实例，历史已引用的身份不能删除。'
-              : '试剂基础信息来自 Backend 化学品字典；当前服务配置只开放查询，前端不保存本地副本。'}
-          </DataAuthorityNotice>
+          {!management ? (
+            <DataAuthorityNotice>
+              当前身份库为只读，库存和历史数据不会在浏览器中另存副本。
+            </DataAuthorityNotice>
+          ) : null}
           <ReagentLibraryView
             infos={infos}
             query={query}
@@ -466,6 +469,7 @@ function ReagentDialogLayer({
     return (
       <ReagentInfoEditorDialog
         mode="create"
+        onLookup={infoManagement.lookupByCAS}
         onSave={onInfoCreate}
         onClose={onClose}
       />
@@ -476,6 +480,7 @@ function ReagentDialogLayer({
       <ReagentInfoEditorDialog
         mode="edit"
         item={dialogInfo}
+        onLookup={infoManagement.lookupByCAS}
         onSave={onInfoUpdate}
         onClose={onClose}
       />
@@ -495,16 +500,16 @@ function ReagentDialogLayer({
 
 /** 返回试剂台账接口状态的简短标题。 */
 function reagentStateTitle(status: WorkstationDataStatus): string {
-  if (status.phase === 'loading') return '正在读取试剂台账'
-  if (status.phase === 'error') return '试剂台账读取失败'
-  if (status.phase === 'unavailable') return '试剂台账接口不可用'
-  return '暂无试剂台账'
+  if (status.phase === 'loading') return '正在读取库存试剂'
+  if (status.phase === 'error') return '库存试剂读取失败'
+  if (status.phase === 'unavailable') return '库存试剂暂不可用'
+  return '暂无库存试剂'
 }
 
 /** 返回试剂基础信息接口状态的简短标题。 */
 function reagentInfoStateTitle(status: WorkstationDataStatus): string {
-  if (status.phase === 'loading') return '正在读取试剂基础信息'
-  if (status.phase === 'error') return '试剂基础信息读取失败'
-  if (status.phase === 'unavailable') return '试剂基础信息接口不可用'
-  return '暂无试剂基础信息'
+  if (status.phase === 'loading') return '正在读取试剂身份'
+  if (status.phase === 'error') return '试剂身份读取失败'
+  if (status.phase === 'unavailable') return '试剂身份暂不可用'
+  return '暂无试剂身份'
 }

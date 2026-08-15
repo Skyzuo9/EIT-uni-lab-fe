@@ -107,9 +107,6 @@
   .dialogFields {
     grid-template-columns: 1fr 1fr;
   }
-  .dialogFields.reagentRegistrationFields {
-    grid-template-columns: 1fr 1fr;
-  }
   .jogControls > div {
     grid-template-columns: 24px 1fr 1fr;
   }
@@ -217,6 +214,11 @@
     align-content: end;
     justify-items: start;
   }
+  .reagentLibraryActions {
+    grid-column: 1 / -1;
+    align-content: end;
+    justify-items: start;
+  }
   .customParameterRow {
     grid-template-columns: 1fr 1fr;
   }
@@ -252,8 +254,9 @@
   .dialogFields {
     grid-template-columns: 1fr;
   }
-  .dialogFields.reagentRegistrationFields {
-    grid-template-columns: 1fr;
+  .formSections {
+    padding-right: 10px;
+    padding-left: 10px;
   }
   .reagentContainerSelectPopup {
     width: 100%;

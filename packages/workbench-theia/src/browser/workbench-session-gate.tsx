@@ -1,7 +1,14 @@
-import type { WorkbenchSessionSnapshot } from '@unilab/workbench-session'
+import type {
+  WorkbenchEnvironmentLogKind,
+  WorkbenchSessionSnapshot
+} from '@unilab/workbench-session'
 import * as React from 'react'
 
 import { DesktopWorkspaceSwitchButton } from './desktop-workspace-switch'
+import {
+  WorkbenchRuntimeLogLauncher,
+  workbenchRuntimeLogPaths
+} from './workbench-runtime-log-drawer'
 
 export async function captureWorkbenchUiOperation(
   operation: () => Promise<void>,
@@ -43,6 +50,7 @@ export function WorkbenchSessionGate({
   onStop,
   connectionSelector,
   onOpenLog,
+  onReadEnvironmentLog,
   renderEnvironmentManager
 }: {
   snapshot: WorkbenchSessionSnapshot
@@ -50,6 +58,9 @@ export function WorkbenchSessionGate({
   onStop: () => Promise<void>
   connectionSelector?: React.ReactNode
   onOpenLog?: (path: string) => Promise<void>
+  onReadEnvironmentLog?: (
+    kind: WorkbenchEnvironmentLogKind
+  ) => Promise<string>
   renderEnvironmentManager: (onClose: () => void) => React.ReactNode
 }): React.JSX.Element {
   const [environmentOpen, setEnvironmentOpen] = React.useState(
@@ -66,12 +77,12 @@ export function WorkbenchSessionGate({
     || snapshot.phase === 'waiting'
   const switchingToBackend = snapshot.configuredDomainMode === 'backend'
   const launchTitle = switchingToBackend
-    ? '正在切换到 Backend 模式'
+    ? '正在启动 Backend 模式'
     : '正在启动 Unilab 调试工作台'
   const launchMessage = switchingToBackend
-    ? '正在连接 Backend Authority…'
+    ? '正在连接 Backend + Scheduler，并启动 Edge Runtime…'
     : snapshot.message || '正在校验工作区并启动 Uni-Lab OS…'
-  const launchCancelLabel = switchingToBackend ? '取消切换' : '取消启动'
+  const launchCancelLabel = '取消启动'
 
   const start = React.useCallback(async () => {
     setLaunchRequested(true)
@@ -179,6 +190,13 @@ export function WorkbenchSessionGate({
               <span className="codicon codicon-settings-gear" aria-hidden="true" />
               环境管理
             </button>
+            {onReadEnvironmentLog ? (
+              <WorkbenchRuntimeLogLauncher
+                onReadLog={onReadEnvironmentLog}
+                logPaths={workbenchRuntimeLogPaths(snapshot)}
+                onOpenLog={onOpenLog}
+              />
+            ) : null}
           </div>
           <DesktopWorkspaceSwitchButton />
         </footer>

@@ -1,6 +1,30 @@
 import type { CapabilityStatus } from '@unilab/services'
 import type { WorkbenchEdgeRuntimeSnapshot } from '@unilab/workbench-session'
 
+import type { WorkbenchConnectionMode } from './workbench-connection-profile'
+
+/**
+ * 按当前调度权威选择工作流执行门禁。
+ * 后端控制（backend_controlled）的 Edge 在线性由 Backend 预检负责，本地 Edge 快照只约束本地调试。
+ *
+ * @param mode 当前 Workbench 连接模式。
+ * @param edgeRuntime 本地 Edge 运行态快照。
+ * @param backendRunStatus Backend 报告的工作流任务运行能力。
+ * @returns 与当前调度权威一致的运行门禁状态。
+ */
+export function workflowExecutionStatusForConnection(
+  mode: WorkbenchConnectionMode,
+  edgeRuntime: Pick<
+    WorkbenchEdgeRuntimeSnapshot,
+    'phase' | 'message' | 'diagnostic'
+  >,
+  backendRunStatus: CapabilityStatus
+): CapabilityStatus {
+  return mode === 'backend'
+    ? backendRunStatus
+    : workflowExecutionStatusForEdge(edgeRuntime)
+}
+
 /**
  * 把受管 Edge Runtime 状态投影为工作流运行门禁。
  *

@@ -8,6 +8,8 @@ export type {
   ReagentCreateCommand,
   ReagentHistoryProjection,
   ReagentInfoCreateCommand,
+  ReagentInfoLookupCandidate,
+  ReagentInfoLookupResult,
   ReagentInfoManagement,
   ReagentInfoProjection,
   ReagentInfoUpdateCommand,

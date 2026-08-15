@@ -10,6 +10,44 @@ import {
 } from './workbench-connection-profile'
 import type { WorkbenchConnectionState } from './workbench-connection-selector'
 
+const BACKEND_CONNECTION_PROBE_INTERVAL_MS = 3_000
+
+type BackendPing = (signal: AbortSignal) => Promise<boolean>
+
+/**
+ * 持续探测 Backend 健康状态，避免把一次成功或连接模式选择当成长期在线事实。
+ * @param ping 可取消的 Backend 健康探测。
+ * @param report 每次真实探测完成后的连接状态通知。
+ * @param intervalMs 两次探测之间的等待时间。
+ * @returns 停止后续探测并取消当前请求的清理函数。
+ */
+export function monitorBackendConnection(
+  ping: BackendPing,
+  report: (state: WorkbenchConnectionState) => void,
+  intervalMs = BACKEND_CONNECTION_PROBE_INTERVAL_MS
+): () => void {
+  const controller = new AbortController()
+  let timer: ReturnType<typeof setTimeout> | null = null
+
+  const probe = async (): Promise<void> => {
+    let available = false
+    try {
+      available = await ping(controller.signal)
+    } catch {
+      available = false
+    }
+    if (controller.signal.aborted) return
+    report(available ? 'connected' : 'error')
+    timer = setTimeout(() => void probe(), intervalMs)
+  }
+
+  void probe()
+  return () => {
+    controller.abort()
+    if (timer) clearTimeout(timer)
+  }
+}
+
 /**
  * 对选中的 Backend 执行一次健康探测，并拒绝把 HTTP 可达误称为任务成功。
  * @param mode 当前用户确认的运行连接模式。
@@ -31,19 +69,11 @@ export function useBackendConnectionState(
       setState('disconnected')
       return
     }
-    const controller = new AbortController()
     setState('connecting')
-    void services.laboratory.ping(controller.signal).then(
-      (available) => {
-        if (!controller.signal.aborted) {
-          setState(available ? 'connected' : 'error')
-        }
-      },
-      () => {
-        if (!controller.signal.aborted) setState('error')
-      }
+    return monitorBackendConnection(
+      signal => services.laboratory.ping(signal),
+      setState
     )
-    return () => controller.abort()
   }, [mode, retryRevision, services])
 
   return state

@@ -7,7 +7,7 @@ import styles from '../workstation.module.scss'
 /** 提供可增加、编辑和移除的名称/值自定义参数组。 */
 export function CustomParameterFields({
   value,
-  onChange,
+  onChange
 }: {
   value: CustomParameter[]
   onChange: (value: CustomParameter[]) => void
@@ -15,11 +15,27 @@ export function CustomParameterFields({
   function update(index: number, patch: Partial<CustomParameter>): void {
     onChange(value.map((parameter, parameterIndex) => (parameterIndex === index ? { ...parameter, ...patch } : parameter)))
   }
+  if (value.length === 0) {
+    return (
+      <div className={styles.customParameterAddOnly}>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => onChange([{ name: '', value: '' }])}
+        >
+          <WorkstationIcon name="plus" />
+          添加自定义参数
+        </Button>
+      </div>
+    )
+  }
   return (
     <section className={styles.customParameterFields} aria-label="自定义参数">
       <div className={styles.customParameterHeader}>
         <strong>自定义参数</strong>
         <Button
+          type="button"
           variant="outline"
           size="sm"
           onClick={() => onChange([...value, { name: '', value: '' }])}
@@ -29,9 +45,7 @@ export function CustomParameterFields({
         </Button>
       </div>
       <div className={styles.customParameterList}>
-        {value.length === 0 ? (
-          <div className={styles.customParameterEmpty}>暂无自定义参数</div>
-        ) : value.map((parameter, index) => (
+        {value.map((parameter, index) => (
           <div className={styles.customParameterRow} key={index}>
             <label>
               <span>名称</span>
@@ -42,6 +56,7 @@ export function CustomParameterFields({
               <Input value={parameter.value} onChange={(event) => update(index, { value: event.target.value })} required />
             </label>
             <Button
+              type="button"
               variant="ghost"
               size="icon-sm"
               className="max-[720px]:self-end"

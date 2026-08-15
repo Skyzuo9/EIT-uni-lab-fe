@@ -23,6 +23,12 @@ describe('Backend reagent editor validation', () => {
     expect(validateReagentEditor({ ...base, cas: '64-17-6' }, 'create')).toBe(
       '请输入校验位正确的 CAS 号'
     )
+    expect(validateReagentEditor({ ...base, reagentInfoId: '' }, 'create')).toBe(
+      '请选择试剂身份'
+    )
+    expect(validateReagentEditor({ ...base, quantityUnit: 'mol' }, 'create')).toBe(
+      '请选择 Backend 支持的计量单位'
+    )
   })
 
   /** 证明浓度值和单位必须成对提交，且库存数量不能为负。 */
@@ -77,14 +83,26 @@ describe('Backend reagent editor validation', () => {
     expect(markup).toContain('空试剂瓶')
     expect(markup).toContain('BOT-001')
     expect(markup).not.toContain('已用试剂瓶')
-    expect(markup).toContain('选择试剂')
-    expect(markup).toContain('乙醇 · 64-17-5')
-    expect(markup).toContain('实际密度（g/mL）')
-    expect(markup).toContain('密度测定条件')
+    expect(markup).toContain('试剂身份')
+    expect(markup).toContain('乙醇')
+    expect(markup).toContain('64-17-5')
+    expect(markup).toContain('请选择试剂身份')
+    expect(markup).toContain('密度（g/mL）')
+    expect(markup).not.toContain('密度条件')
     expect(markup).toContain('供应商')
     expect(markup).toContain('有效期')
-    expect(markup).toContain('自定义参数')
-    expect(markup).toContain('添加参数')
+    expect(markup).toContain('更多信息')
+    expect(markup).toContain('添加自定义参数')
+    expect(markup).not.toContain('暂无自定义参数')
+    expect(markup).toContain('aria-label="计量单位"')
+    expect(markup).toContain('aria-label="体积"')
+    expect(markup).toContain('aria-label="质量"')
+    for (const unit of ['µL', 'mL', 'L', 'mg', 'g', 'kg']) {
+      expect(markup).toContain(`>${unit}<`)
+    }
+    expect(markup).not.toContain('mol</')
+    expect(markup).not.toMatch(/name="quantityUnit"[^>]*value="mL"/)
+    expect(markup).not.toMatch(/name="expiresOn"[^>]*value=/)
   })
 
   it('按物料名称、条码和 UUID 搜索空容器', () => {

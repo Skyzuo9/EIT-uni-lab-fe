@@ -2,6 +2,7 @@ import type { BackendConfig } from './backends'
 import { ServiceError } from './errors'
 import { requestCommand, requestData, type HttpClient } from './http'
 import {
+  decodeCompoundLookupResult,
   decodeReagentHistoryPage,
   decodeBackendReagentInfo,
   loadBackendReagentInfoPage,
@@ -69,6 +70,25 @@ export interface ReagentInfoItem {
   metadata?: Record<string, unknown>
   createdAt?: string
   updatedAt?: string
+}
+
+export type CompoundLookupStatus = 'ok' | 'registered' | 'not_found' | 'unavailable'
+
+/** Backend 按 CAS 返回的 PubChem 表单预填候选值。 */
+export interface CompoundLookupCandidate {
+  name?: string
+  molecularFormula?: string
+  smiles?: string
+  inchiKey?: string
+  molecularWeight?: number
+}
+
+/** CAS 查询结果；非 ok 状态不携带候选化学字段。 */
+export interface CompoundLookupResult {
+  cas: string
+  status: CompoundLookupStatus
+  message?: string
+  compound?: CompoundLookupCandidate
 }
 
 export type ReagentPhysicalState = 'solid' | 'liquid' | 'gas' | 'other' | 'unknown'
@@ -152,6 +172,7 @@ export interface ReagentHistoryPage {
 export interface InventoryPort {
   listReagentInventory(signal?: AbortSignal): Promise<ReagentInventoryItem[]>
   listReagentInfos(signal?: AbortSignal): Promise<ReagentInfoItem[]>
+  lookupCompoundByCAS(cas: string, signal?: AbortSignal): Promise<CompoundLookupResult>
   createReagentInfo(input: ReagentInfoCreateInput, signal?: AbortSignal): Promise<ReagentInfoItem>
   updateReagentInfo(input: ReagentInfoUpdateInput, signal?: AbortSignal): Promise<ReagentInfoItem>
   deleteReagentInfo(reagentInfoId: string, signal?: AbortSignal): Promise<void>
@@ -208,6 +229,22 @@ export function createInventoryReadPort(
         }
       }
       throw invalidInventoryResponse('试剂基础信息超过 100 页，请缩小服务端查询范围')
+    },
+
+    /**
+     * 按 CAS 请求 Backend 的 PubChem 表单预填候选值，不直接写入化学品字典。
+     * @param cas 已由表单完成格式和校验位检查的 CAS 编号。
+     * @param signal 调用方用于取消输入变化后的旧查询。
+     * @returns 可区分已登记、未收录和数据源不可用的查询结果。
+     */
+    async lookupCompoundByCAS(cas, signal) {
+      requireBackendReagentInfoRead(backend)
+      const result = await requestData<unknown>(
+        http,
+        `/api/v1/compounds/${encodeURIComponent(cas)}`,
+        { signal }
+      )
+      return decodeCompoundLookupResult(result)
     },
 
     /**

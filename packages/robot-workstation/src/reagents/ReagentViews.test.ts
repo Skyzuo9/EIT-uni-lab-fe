@@ -1,6 +1,13 @@
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 
-import { filterReagentInfos, filterReagentInventory } from './ReagentViews'
+import {
+  reagentInfoParameterEntries,
+  filterReagentInfos,
+  filterReagentInventory,
+  ReagentLibraryView
+} from './ReagentViews'
 
 describe('ReagentViews filters', () => {
   /** 证明试剂台账可以按真实供应商与当前任务元数据检索。 */
@@ -35,5 +42,64 @@ describe('ReagentViews filters', () => {
       .toEqual(['info-2'])
     expect(filterReagentInfos(infos, 'C2H6O').map(info => info.id))
       .toEqual(['info-1'])
+  })
+
+  /** 证明内部写入来源不会冒充自定义参数，用户参数仍按可读名称展示。 */
+  it('hides internal reagent metadata and keeps user-defined parameters', () => {
+    const base = {
+      id: 'info-1', name: '乙醇', aliases: [], physicalState: 'liquid' as const
+    }
+
+    expect(reagentInfoParameterEntries({
+      ...base,
+      metadata: { source: 'frontend:robot-workstation' }
+    })).toEqual([])
+    expect(reagentInfoParameterEntries({
+      ...base,
+      metadata: {
+        source: 'frontend:robot-workstation',
+        storage: '阴凉通风',
+        custom_parameters: [{ name: '纯度', value: 'AR' }]
+      }
+    })).toEqual(['纯度: AR', '储存要求: 阴凉通风'])
+  })
+
+  /** 证明自定义参数只在有值的行内出现，不增加整张表的横向负担。 */
+  it('renders custom parameters inline only when they exist', () => {
+    const base = {
+      id: 'info-1', name: '乙醇', aliases: [], physicalState: 'liquid' as const
+    }
+    const internalOnly = renderToStaticMarkup(createElement(ReagentLibraryView, {
+      infos: [{ ...base, metadata: { source: 'frontend:robot-workstation' } }],
+      query: ''
+    }))
+    const withUserParameters = renderToStaticMarkup(createElement(ReagentLibraryView, {
+      infos: [{ ...base, metadata: { storage: '阴凉通风' } }],
+      query: ''
+    }))
+
+    expect(internalOnly).not.toContain('<th>自定义参数</th>')
+    expect(internalOnly).not.toContain('储存要求: 阴凉通风')
+    expect(withUserParameters).not.toContain('<th>自定义参数</th>')
+    expect(withUserParameters).toContain('储存要求: 阴凉通风')
+  })
+
+  /** 证明身份列表把 SMILES 投影为本地二维结构入口，不再只展示原始字符串。 */
+  it('renders a local 2D structure preview when SMILES exists', () => {
+    const markup = renderToStaticMarkup(createElement(ReagentLibraryView, {
+      infos: [{
+        id: 'info-1', name: '乙醇', aliases: [], physicalState: 'liquid', smiles: 'CCO'
+      }],
+      query: ''
+    }))
+
+    expect(markup).toContain('<th>2D 结构</th>')
+    expect(markup).toContain('<th>物性</th>')
+    expect(markup).not.toContain('个试剂身份')
+    expect(markup).not.toContain('<h2')
+    expect(markup).not.toContain('<th>分子量</th>')
+    expect(markup).not.toContain('<th>常温形态</th>')
+    expect(markup).toContain('data-smiles="CCO"')
+    expect(markup).not.toContain('<th>SMILES</th>')
   })
 })

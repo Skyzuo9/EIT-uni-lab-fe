@@ -96,7 +96,11 @@ import {
 import { useRobotWorkstationData } from './robot-workstation-data'
 import { WorkbenchDomainLayout } from './workbench-domain-layout'
 import { WorkbenchMaterialViewport } from './workbench-material-viewport'
-import { workflowExecutionStatusForEdge } from './workbench-execution-readiness'
+import { workflowExecutionStatusForConnection } from './workbench-execution-readiness'
+import {
+  WorkbenchRuntimeLogLauncher,
+  workbenchRuntimeLogPaths
+} from './workbench-runtime-log-drawer'
 import { WorkbenchSessionGate } from './workbench-session-gate'
 import {
   WorkbenchViewState,
@@ -719,6 +723,7 @@ export class UniLabWorkbenchWidget extends ReactWidget {
             />
           )}
           onOpenLog={this.openSessionLog}
+          onReadEnvironmentLog={this.readEnvironmentLog}
           renderEnvironmentManager={onClose => (
             <EnvironmentManager
               session={this.sessionSnapshot}
@@ -766,6 +771,7 @@ export class UniLabWorkbenchWidget extends ReactWidget {
         onInspectReleaseTarget={this.inspectReleaseTarget}
         onPublishRelease={this.publishRelease}
         onReadEnvironmentLog={this.readEnvironmentLog}
+        onOpenLog={this.openSessionLog}
         onConfigureGraph={this.configureGraph}
         onSetExternalDevicesOnly={this.setExternalDevicesOnly}
         onConfigurePlcSimulator={this.configurePlcSimulator}
@@ -809,6 +815,7 @@ function WorkbenchSurface({
   onInspectReleaseTarget,
   onPublishRelease,
   onReadEnvironmentLog,
+  onOpenLog,
   onConfigureGraph,
   onSetExternalDevicesOnly,
   onConfigurePlcSimulator,
@@ -842,6 +849,7 @@ function WorkbenchSurface({
     resetTarget?: boolean
   ) => Promise<WorkbenchReleaseReceipt>
   onReadEnvironmentLog: (kind: WorkbenchEnvironmentLogKind) => Promise<string>
+  onOpenLog: (path: string) => Promise<void>
   onConfigureGraph: (graphPath: string) => Promise<void>
   onSetExternalDevicesOnly: (enabled: boolean) => Promise<void>
   onConfigurePlcSimulator: (
@@ -972,6 +980,8 @@ function WorkbenchSurface({
     ].filter((value): value is string => Boolean(value))
   }, [runtimeProjection, selectedWorkflowNode])
 
+  const workflowRunStatus = services.getCapabilityStatus('workflow.runTasks')
+
   const workflowSurface = (
     <section
       className="unilab-workbench__surface unilab-workbench__surface--workflow"
@@ -990,8 +1000,12 @@ function WorkbenchSurface({
         definitionEditingMode={connectionMode === 'backend'
           ? 'backend'
           : 'workspace'}
-        runStatus={services.getCapabilityStatus('workflow.runTasks')}
-        executionStatus={workflowExecutionStatusForEdge(session.edgeRuntime)}
+        runStatus={workflowRunStatus}
+        executionStatus={workflowExecutionStatusForConnection(
+          connectionMode,
+          session.edgeRuntime,
+          workflowRunStatus
+        )}
         resourceSlotOptionsPort={resourceSlotOptionsPort}
         active={isWorkflowWorkbenchView(viewMode)}
         workflowUuid={workflowUuid}
@@ -1141,6 +1155,11 @@ function WorkbenchSurface({
               onSelect={onConnectionModeChange}
             />
             <nav aria-label="调试工作台页面">
+              <WorkbenchRuntimeLogLauncher
+                onReadLog={onReadEnvironmentLog}
+                logPaths={workbenchRuntimeLogPaths(session)}
+                onOpenLog={onOpenLog}
+              />
               <button
                 className={environmentOpen ? 'is-active' : ''}
                 aria-expanded={environmentOpen}
