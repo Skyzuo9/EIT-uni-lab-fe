@@ -143,7 +143,14 @@ function backendAggregate(graph: BackendWorkflowGraph): WorkflowAuthoringAggrega
     applied_graph: graph as WorkflowAuthoringGraph,
     draft: null,
     candidate: null,
-    applied_source: null
+    applied_source: null,
+    // Backend 直接保存图；源码能力仍由 definitionPort.sourceEditing=false
+    // 单独关闭。此处沿用现有可写拓扑策略，不新增 wire enum。
+    topology_authoring: {
+      authority: 'python_source',
+      graph_mode: 'read_write',
+      graph_to_python: 'supported'
+    }
   }
 }
 

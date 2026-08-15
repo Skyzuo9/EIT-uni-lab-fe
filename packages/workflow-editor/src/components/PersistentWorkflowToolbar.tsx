@@ -45,6 +45,7 @@ export function PersistentWorkflowToolbar({
     mode,
     onChooseWorkflow,
     pendingMode,
+    policy,
     remoteConflict,
     requestMode,
     runRuntime,
@@ -86,6 +87,7 @@ export function PersistentWorkflowToolbar({
   const saveDisabled = Boolean(
     !dirty ||
     !canEditDefinition ||
+    !policy.authoringMutationEnabled ||
     busy ||
     runningEntryBusy ||
     !aggregate ||
@@ -152,6 +154,8 @@ export function PersistentWorkflowToolbar({
         disabled: saveDisabled,
         disabledReason: busy || runningEntryBusy
           ? '正在处理工作流，请稍后保存'
+          : !policy.authoringMutationEnabled
+            ? '受管精确拓扑由 OS 管理，只能查看'
           : !canEditDefinition
             ? definitionEditingDisabledReason ??
               `${currentAuthorityLabel} 未提供工作流定义写能力`

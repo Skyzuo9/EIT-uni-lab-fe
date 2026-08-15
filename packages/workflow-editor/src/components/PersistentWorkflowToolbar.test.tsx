@@ -42,6 +42,23 @@ describe('PersistentWorkflowToolbar', () => {
       /<button[^>]*disabled=""[^>]*data-disabled-reason="工作流尚未加载完成"[^>]*>画布模式<\/button>/
     )
   })
+
+  it('disables saving when the installed topology authority is read-only', () => {
+    const model = toolbarModel()
+    model.aggregate = {} as PersistentWorkflowAuthoringModel['aggregate']
+    model.policy = {
+      pythonEditorReadOnly: true,
+      canvasMutationEnabled: false,
+      authoringMutationEnabled: false
+    }
+    const html = renderToStaticMarkup(
+      <PersistentWorkflowToolbar model={model} />
+    )
+
+    expect(html).toMatch(
+      /aria-label="保存工作流"[^>]*disabled=""[^>]*data-disabled-reason="受管精确拓扑由 OS 管理，只能查看"/
+    )
+  })
 })
 
 function toolbarModel(): PersistentWorkflowAuthoringModel {
@@ -54,6 +71,11 @@ function toolbarModel(): PersistentWorkflowAuthoringModel {
     mode: 'canvas',
     onChooseWorkflow: () => {},
     pendingMode: null,
+    policy: {
+      pythonEditorReadOnly: true,
+      canvasMutationEnabled: true,
+      authoringMutationEnabled: true
+    },
     remoteConflict: null,
     requestMode: () => {},
     runRuntime: () => {},
