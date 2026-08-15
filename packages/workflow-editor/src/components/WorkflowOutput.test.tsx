@@ -469,6 +469,50 @@ describe('WorkflowOutput', () => {
     expect(html).toContain('&quot;transferred_ul&quot;: 50')
   })
 
+  it('presents node result metadata as a readable summary with raw data available', () => {
+    const selectedNode = {
+      nodeId: 'job-material-source',
+      sourceNodeId: 'material-source',
+      nodeType: 'material_source',
+      state: 'success' as const,
+      result: {
+        job_uuid: 'job-42',
+        workflow_node_uuid: 'node-42',
+        executor_kind: 'material_source',
+        status: 'succeeded'
+      },
+      attempt: 1
+    }
+    const html = renderToStaticMarkup(
+      <WorkflowOutput
+        expanded
+        activeTab="nodes"
+        completedNodeCount={1}
+        expectedNodeCount={1}
+        nodes={[selectedNode]}
+        nodeNames={{ 'material-source': 'Material Source' }}
+        activity={[]}
+        error={null}
+        selectedNode={selectedNode}
+        selectedNodeId="material-source"
+        pausedBeforeNodeId={null}
+        onExpandedChange={() => {}}
+        onTabChange={() => {}}
+        onNodeSelect={() => {}}
+        onClearError={() => {}}
+      />
+    )
+
+    expect(html).toContain('aria-label="Material Source 节点结果"')
+    expect(html).toContain('运行结果')
+    expect(html).toContain('执行成功')
+    expect(html).toContain('Job ID')
+    expect(html).toContain('节点 ID')
+    expect(html).toContain('workflow-runtime__node-result-raw')
+    expect(html).not.toContain('查看原始数据')
+    expect(html).toContain('&quot;job_uuid&quot;: &quot;job-42&quot;')
+  })
+
   it('labels the durable dispatch and feedback event types', () => {
     const html = renderToStaticMarkup(
       <WorkflowOutput

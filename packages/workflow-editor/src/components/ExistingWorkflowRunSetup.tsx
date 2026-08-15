@@ -54,6 +54,15 @@ export function ExistingWorkflowRunSetup({
     disabled || preparationLoading
   const noEnabledNode = !preparationLoading &&
     !preparationError && enabledNodes.length === 0
+  const blockingChecks = preflight?.checks.filter((check) => (
+    check.blocking || check.status === 'confirmation_required'
+  )) ?? []
+  const preflightSummary = existingWorkflowPreflightSummaryLabel({
+    loading: preflightLoading,
+    report: preflight,
+    error: preflightError,
+    targetRequired
+  })
   return (
     <section
       className="workflow-runtime__existing-run-setup"
@@ -108,22 +117,50 @@ export function ExistingWorkflowRunSetup({
         ) : null}
       </div>
 
-      <div
-        className={`workflow-runtime__existing-run-preflight${preflightReady ? ' is-ready' : ''}`}
-        role={preflightError || preflight?.status === 'blocked' ? 'alert' : 'status'}
-        aria-live="polite"
-      >
-        <span>运行预检</span>
-        <strong>{existingWorkflowPreflightSummaryLabel({
-          loading: preflightLoading,
-          report: preflight,
-          error: preflightError,
-          targetRequired
-        })}</strong>
-        {preflightError ? (
+      {blockingChecks.length > 0 ? (
+        <details
+          className="workflow-runtime__existing-run-preflight is-blocked"
+          role="alert"
+        >
+          <summary>
+            <span>运行预检</span>
+            <strong>{preflightSummary}</strong>
+            <span className="codicon codicon-chevron-down" aria-hidden="true" />
+          </summary>
+          <ul aria-label="运行预检阻塞原因">
+            {blockingChecks.map((check, index) => (
+              <li key={`${check.code}:${check.node_uuid ?? index}`}>
+                <strong>{check.message}</strong>
+                <span>
+                  {check.node_name
+                    ? `节点：${check.node_name}`
+                    : check.node_uuid
+                      ? `节点 ID：${check.node_uuid}`
+                      : `检查类型：${check.type}`}
+                  {' · '}状态：{check.status}
+                  {' · '}错误码：{check.code}
+                </span>
+                {Object.keys(check.details).length > 0 ? (
+                  <pre>{JSON.stringify(check.details, null, 2)}</pre>
+                ) : null}
+              </li>
+            ))}
+          </ul>
           <button type="button" onClick={onPreflightRetry}>重新预检</button>
-        ) : null}
-      </div>
+        </details>
+      ) : (
+        <div
+          className={`workflow-runtime__existing-run-preflight${preflightReady ? ' is-ready' : ''}`}
+          role={preflightError ? 'alert' : 'status'}
+          aria-live="polite"
+        >
+          <span>运行预检</span>
+          <strong>{preflightSummary}</strong>
+          {preflightError ? (
+            <button type="button" onClick={onPreflightRetry}>重新预检</button>
+          ) : null}
+        </div>
+      )}
     </section>
   )
 }

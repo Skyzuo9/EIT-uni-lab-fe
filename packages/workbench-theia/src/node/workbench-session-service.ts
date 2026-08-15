@@ -2,12 +2,8 @@ import type { BackendApplicationContribution } from '@theia/core/lib/node'
 import { ILogger } from '@theia/core/lib/common/logger'
 import type { Disposable } from '@theia/core/lib/common/disposable'
 import { inject, injectable } from '@theia/core/shared/inversify'
-import { existsSync } from 'node:fs'
-import { join } from 'node:path'
 import {
-  createManagedLocalWorkbenchSession,
   createWorkspaceHostWorkbenchSession,
-  type ManagedLocalWorkbenchSessionOptions,
   type WorkbenchSession
 } from '@unilab/workbench-session'
 
@@ -17,7 +13,6 @@ import type {
   WorkbenchSessionClient,
   WorkbenchSessionServer
 } from '../common/workbench-session-protocol'
-import { DEFAULT_BACKEND_PROXY_TARGET } from './workbench-backend-proxy-config'
 
 type WorkbenchNodeSession = WorkbenchSession & {
   registerRenderer?(): Promise<void>
@@ -30,48 +25,17 @@ interface PendingMaterialRendererRequest {
   timeout: ReturnType<typeof setTimeout>
 }
 
-/**
- * 判断显式 Uni-Lab OS checkout 是否包含 Workspace Host 模块。
- *
- * @param osProjectPath 显式 OS checkout 路径；未指定时使用环境安装版能力。
- * @param fileExists 文件存在性检查器，测试可注入替身。
- * @returns checkout 可启动 Workspace Host 时返回 true。
- */
-export function supportsWorkspaceHostCheckout(
-  osProjectPath: string | undefined,
-  fileExists: (path: string) => boolean = existsSync
-): boolean {
-  if (!osProjectPath) return true
-  return fileExists(join(
-    osProjectPath,
-    'unilabos',
-    'workspace_host',
-    'host.py'
-  ))
-}
-
-/**
- * 根据当前 OS 能力创建 Workbench Node 会话。
- *
- * @returns 新版 checkout 的 Workspace Host 会话，或旧版 checkout 的兼容本地会话。
- */
 function createWorkbenchNodeSession(): WorkbenchNodeSession {
-  const osProjectPath = process.env['UNILAB_OS_PROJECT']
-  const options: ManagedLocalWorkbenchSessionOptions = {
+  return createWorkspaceHostWorkbenchSession({
     workspacePath: process.env['THEIA_WORKSPACE'] ?? '',
-    osProjectPath,
-    supportsProcessRoles: supportsWorkspaceHostCheckout(osProjectPath),
+    osProjectPath: process.env['UNILAB_OS_PROJECT'],
     environmentPath: process.env['UNILAB_PYTHON_ENV'],
     enableAgent: process.env['UNILAB_AGENT_ENABLED'] !== '0',
     agentAppPath: process.env['UNILAB_AIONUI_APP'],
     agentBrandIconPath: process.env['UNILAB_AGENT_ICON'],
     plcSimulatorProjectPath: process.env['UNILAB_PLC_SIM_PROJECT'],
     backendAuthorityUrl: process.env['UNILAB_BACKEND_PROXY_TARGET']
-      ?? DEFAULT_BACKEND_PROXY_TARGET
-  }
-  return supportsWorkspaceHostCheckout(osProjectPath)
-    ? createWorkspaceHostWorkbenchSession(options)
-    : createManagedLocalWorkbenchSession(options)
+  })
 }
 
 @injectable()

@@ -19,7 +19,6 @@ import {
   WorkflowCatalog,
   type WorkflowCatalogState
 } from './WorkflowCatalog'
-import { ExistingWorkflowRuntimePanel } from './ExistingWorkflowRuntimePanel'
 import { PersistentWorkflowAuthoringPanel } from './PersistentWorkflowAuthoringPanel'
 
 export type { WorkflowCatalogState } from './WorkflowCatalog'
@@ -124,35 +123,16 @@ export default function WorkflowPanel({
   }, [active, onActiveWorkflowChange, workflowUuid])
 
   if (workflowUuid && isWorkflowUuid(workflowUuid)) {
-    if (
-      definitionEditingMode === 'backend' ||
+    const definitionAuthority = definitionEditingMode === 'backend' ||
       (!authoringAvailable && runAvailable)
-    ) {
-      return (
-        <ExistingWorkflowRuntimePanel
-          key={workflowUuid}
-          runtime={runtime}
-          traceRuntime={traceRuntime}
-          workflowUuid={workflowUuid}
-          workflowName={selectedWorkflowName}
-          editingStatus={definitionEditingMode === 'backend'
-            ? authoringStatus
-            : undefined}
-          executionStatus={executionStatus}
-          onUnsavedChangesChange={onUnsavedChangesChange}
-          onChooseWorkflow={explicitWorkflowUuid && !allowWorkflowSelection
-            ? undefined
-            : () => {
-                persistActiveWorkflowId(activeWorkflowStorageKey, '')
-                setShowCatalog(true)
-              }}
-        />
-      )
-    }
+      ? 'backend'
+      : 'workspace'
     return (
       <PersistentWorkflowAuthoringPanel
-        key={workflowUuid}
+        key={`${workflowUuid}:${definitionAuthority}`}
         runtime={runtime}
+        definitionAuthority={definitionAuthority}
+        definitionEditingStatus={authoringStatus}
         workflowUuid={workflowUuid}
         workflowName={selectedWorkflowName}
         traceRuntime={traceRuntime}

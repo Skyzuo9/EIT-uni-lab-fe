@@ -40,6 +40,12 @@ export interface ManagedWorkbenchAgent {
   stop(): Promise<void>
 }
 
+export interface ManagedAgentDistribution {
+  appPath: string
+  asarPath: string
+  corePath: string
+}
+
 export interface ManagedWorkbenchAgentOptions {
   workspacePath: string
   environment?: NodeJS.ProcessEnv
@@ -60,12 +66,6 @@ export interface ManagedLocalAgentAuthStatus {
   }
 }
 
-export interface ManagedAgentDistribution {
-  appPath: string
-  asarPath: string
-  corePath: string
-}
-
 const MIME_TYPES = new Map([
   ['.css', 'text/css; charset=utf-8'],
   ['.html', 'text/html; charset=utf-8'],
@@ -79,7 +79,7 @@ const MIME_TYPES = new Map([
   ['.woff', 'font/woff'],
   ['.woff2', 'font/woff2']
 ])
-export const PINNED_AIONUI_VERSION = '2.1.53'
+export const MINIMUM_AIONUI_VERSION = '2.1.52'
 const MANAGED_LOCAL_DEFAULT_ASSISTANT_ID = 'bare:8e1acf31'
 const MANAGED_LOCAL_DEFAULT_LANGUAGE = 'zh-CN'
 const MANAGED_LOCAL_DEFAULT_LANGUAGE_VERSION_KEY =
@@ -92,21 +92,34 @@ export async function startManagedWorkbenchAgent(
   options: ManagedWorkbenchAgentOptions
 ): Promise<ManagedWorkbenchAgent> {
   const environment = options.environment ?? process.env
-  const distribution = resolveManagedAgentDistribution({
-    environment,
-    appPath: options.appPath
-  })
-  if (!distribution) throw new Error(
-    `UniLab Agent implementation is unavailable for ${process.platform}/${process.arch}; ` +
-    'run the packaged Workbench or set UNILAB_AIONUI_APP'
+  const appPath = options.appPath ?? environment['UNILAB_AIONUI_APP'] ??
+    '/Applications/AionUi.app'
+  const resources = existsSync(join(appPath, 'app.asar'))
+    ? appPath
+    : join(appPath, 'Contents', 'Resources')
+  const architecture = agentCoreTarget(process.platform, process.arch)
+  const corePath = environment['UNILAB_AIONCORE_PATH'] ?? join(
+    resources,
+    'bundled-aioncore',
+    architecture.directory,
+    architecture.executable
   )
-  const { asarPath, corePath } = distribution
+  const asarPath = environment['UNILAB_AIONUI_ASAR'] ?? join(resources, 'app.asar')
+  if (!existsSync(corePath) || !existsSync(asarPath)) {
+    throw new Error(`UniLab Agent implementation is unavailable under ${appPath}`)
+  }
   const distributionVersion = readDistributionVersion(asarPath)
-  const expectedVersion = environment['UNILAB_AIONUI_VERSION'] ??
-    PINNED_AIONUI_VERSION
-  if (distributionVersion !== expectedVersion) {
+  const expectedVersion = environment['UNILAB_AIONUI_VERSION']?.trim()
+  if (expectedVersion && distributionVersion !== expectedVersion) {
     throw new Error(
       `UniLab Agent requires AionUi ${expectedVersion}; found ${distributionVersion}`
+    )
+  }
+  if (!expectedVersion && !isAgentDistributionVersionSupported(
+    distributionVersion
+  )) {
+    throw new Error(
+      `UniLab Agent requires AionUi >= ${MINIMUM_AIONUI_VERSION}; found ${distributionVersion}`
     )
   }
   const workspaceSkillSource = resolveManagedWorkspaceSkillSource(environment)
@@ -238,8 +251,7 @@ export function resolveManagedAgentDistribution(options: {
     const resources = existsSync(join(appPath, 'app.asar'))
       ? appPath
       : join(appPath, 'Contents', 'Resources')
-    const asarPath = environment['UNILAB_AIONUI_ASAR'] ??
-      join(resources, 'app.asar')
+    const asarPath = environment['UNILAB_AIONUI_ASAR'] ?? join(resources, 'app.asar')
     const explicitCorePath = environment['UNILAB_AIONCORE_PATH']
     const coreCandidates = explicitCorePath
       ? [explicitCorePath]
@@ -297,6 +309,27 @@ function defaultAgentAppPaths(
 
 function uniquePaths(paths: readonly string[]): string[] {
   return [...new Set(paths.map(candidate => resolve(candidate)))]
+}
+
+/** Return whether an external Agent distribution satisfies the Workbench floor. */
+export function isAgentDistributionVersionSupported(version: string): boolean {
+  const actual = parseStableSemanticVersion(version)
+  const minimum = parseStableSemanticVersion(MINIMUM_AIONUI_VERSION)
+  if (!actual || !minimum) return false
+  for (let index = 0; index < minimum.length; index += 1) {
+    if (actual[index] !== minimum[index]) {
+      return actual[index] > minimum[index]
+    }
+  }
+  return true
+}
+
+function parseStableSemanticVersion(version: string): [number, number, number] | null {
+  const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(version.trim())
+  if (!match) return null
+  const values = match.slice(1).map(value => Number.parseInt(value, 10))
+  if (values.some(value => !Number.isSafeInteger(value))) return null
+  return values as [number, number, number]
 }
 
 function agentCoreTarget(

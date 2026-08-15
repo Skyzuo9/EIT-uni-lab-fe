@@ -38,7 +38,7 @@ describe('WorkflowPanel Runtime entry', () => {
     expect(markup).not.toContain('workflow-runtime__authoring')
   })
 
-  /** Backend 运行能力必须进入 dev 风格画布，而不是整页运行表单。 */
+  /** Backend 运行能力必须进入统一工作流工作区，而不是整页运行表单。 */
   it('opens the existing Workflow in a read-only canvas without exposing authoring', () => {
     const markup = renderToStaticMarkup(
       <WorkflowPanel
@@ -56,15 +56,13 @@ describe('WorkflowPanel Runtime entry', () => {
     expect(markup).toContain('persistent-authoring__canvas')
     expect(markup).toContain('Backend 定义 · 只读')
     expect(markup).toContain('正在读取 Backend 工作流图')
-    expect(markup).toContain('运行已有工作流')
-    expect(markup).toContain('完整运行')
-    expect(markup).toContain('单步运行')
+    expect(markup).toContain('正常运行')
+    expect(markup).toContain('单步模式')
     expect(markup).toContain('单节点调试')
-    expect(markup).toContain('运行预检')
     expect(markup).toContain('persistent-authoring__toolbar-navigation')
     expect(markup).toContain('代码模式')
     expect(markup).toContain('画布模式')
-    expect(markup).toContain('Backend 未提供工作流图写接口')
+    expect(markup).toContain('Backend 未实现工作流创作')
     expect(markup).toContain('>运行输出<')
     expect(markup).toContain('全屏显示运行输出')
     expect(markup).toContain('persistent-authoring__runtime')
@@ -87,7 +85,7 @@ describe('WorkflowPanel Runtime entry', () => {
 
     expect(markup).toContain('Backend 定义 · 已同步')
     expect(markup).toContain('画布可编辑并直接保存')
-    expect(markup).toContain('Backend 画布没有待保存修改')
+    expect(markup).toContain('aria-label="保存工作流"')
     expect(markup).toContain('工作区代码修改不生效')
   })
 

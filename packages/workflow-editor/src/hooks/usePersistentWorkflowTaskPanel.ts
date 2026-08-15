@@ -1,5 +1,6 @@
 import type {
   WorkflowAuthoringAggregate,
+  WorkflowDefinitionPort,
   WorkflowRuntimePort,
   WorkflowTaskRunMode
 } from '@unilab/services'
@@ -7,6 +8,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { createWorkflowExecutionScope } from '../utils/canonicalWorkflow'
 import type { WorkflowStructure } from '../utils/parseWorkflow'
+import {
+  existingWorkflowPreflightFailureMessage
+} from '../utils/existingWorkflowRunProjection'
 import {
   errorMessage,
   workflowSourceMap
@@ -56,6 +60,7 @@ export type PersistentWorkflowRunMode = WorkflowTaskRunMode | 'debug'
 
 interface PersistentWorkflowTaskPanelOptions {
   runtime: WorkflowRuntimePort
+  definitionPort: WorkflowDefinitionPort
   workflowUuid: string
   aggregate: WorkflowAuthoringAggregate | null
   structure: WorkflowStructure
@@ -75,6 +80,7 @@ interface PersistentWorkflowTaskPanelOptions {
  */
 export function usePersistentWorkflowTaskPanel({
   runtime,
+  definitionPort,
   workflowUuid,
   aggregate,
   structure,
@@ -367,9 +373,7 @@ export function usePersistentWorkflowTaskPanel({
     }
     runRuntime(async () => {
       try {
-        const latest = await queue.run(
-          () => runtime.getWorkflowAuthoring(workflowUuid)
-        )
+        const latest = await queue.run(() => definitionPort.read())
         await openTaskInputFormForAuthority(latest)
       } catch (openError) {
         setError(errorMessage(openError))
@@ -423,17 +427,28 @@ export function usePersistentWorkflowTaskPanel({
       try {
         const result = await submitWorkflowTaskInput({
           form: submittedForm,
-          readApplied: () => queue.run(
-            () => runtime.getWorkflowAuthoring(workflowUuid)
-          ),
+          readApplied: () => queue.run(() => definitionPort.read()),
           createTask: async (input) => {
             if (taskRunMode !== 'debug') {
+              const targetNodeUuid = taskRunMode === 'single_node'
+                ? debugExecutionScope.startNodeId ?? undefined
+                : undefined
+              const preflight = await definitionPort.preflightRun(
+                taskRunMode,
+                targetNodeUuid
+              )
+              if (
+                preflight &&
+                (preflight.status !== 'ready' || !preflight.can_run)
+              ) {
+                throw new Error(
+                  existingWorkflowPreflightFailureMessage(preflight)
+                )
+              }
               return taskRuntime.create(
                 taskRunMode,
                 input,
-                taskRunMode === 'single_node'
-                  ? debugExecutionScope.startNodeId ?? undefined
-                  : undefined
+                targetNodeUuid
               )
             }
             const preflight = await taskRuntime.preflightDebug(

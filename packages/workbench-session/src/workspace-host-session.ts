@@ -1,6 +1,5 @@
-import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { mkdir, open, readFile, realpath } from 'node:fs/promises'
+import { mkdir, readFile, realpath } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 
@@ -22,6 +21,7 @@ import {
   discoverWorkbenchPlcVariableTables,
   type WorkbenchPlcVariableTableCandidate
 } from './plc-variable-tables'
+import { launchWorkspaceHostProcess } from './workspace-host-launch'
 import type {
   ManagedLocalWorkbenchSessionOptions,
   WorkbenchDomainMode,
@@ -82,7 +82,7 @@ interface WorkspaceHostOperation {
   operationId: string
   phase: 'pending' | 'running' | 'succeeded' | 'failed'
   result: unknown
-  error: { code?: string; message?: string } | null
+  error: { code?: string; message?: string; details?: unknown } | null
 }
 
 interface HostConnection {
@@ -331,13 +331,19 @@ export class WorkspaceHostWorkbenchSession implements WorkbenchSession {
       throw new Error(`不支持的 Domain Authority：${String(mode)}`)
     }
     const backendUrl = mode === 'backend'
-      ? this.options.backendAuthorityUrl
-        ?? this.snapshot.configuredBackendUrl
+      ? this.resolveBackendAuthorityUrl()
       : undefined
     if (mode === 'backend' && !backendUrl) {
       throw new Error('未配置 Backend Authority 地址')
     }
-    return await this.run('authority.switch', { mode, backendUrl })
+    // A plain authority switch reconnects to an already published Backend.
+    // Publication owns Local -> Backend data transfer and verification; repeating
+    // bootstrap here would mutate a centralized Backend on every reconnect.
+    return await this.run('authority.switch', {
+      mode,
+      backendUrl,
+      bootstrap: false
+    })
   }
 
   async publishRelease(
@@ -348,7 +354,7 @@ export class WorkspaceHostWorkbenchSession implements WorkbenchSession {
     } = {}
   ): Promise<WorkbenchReleaseReceipt> {
     const backendUrl = options.backendUrl?.trim()
-      || this.options.backendAuthorityUrl
+      || this.resolveBackendAuthorityUrl()
     if (!backendUrl) throw new Error('未配置 Backend Authority 地址')
 
     // A Backend-authority process is an authoring/proxy surface, not a valid
@@ -381,7 +387,7 @@ export class WorkspaceHostWorkbenchSession implements WorkbenchSession {
     )
     const completed = await this.waitOperation(connection, operation.operationId)
     if (completed.phase === 'failed') {
-      throw new Error(completed.error?.message ?? 'release.publish 操作失败')
+      throw workspaceHostOperationError(completed, 'release.publish 操作失败')
     }
     await this.refreshHost(connection)
     if (!isReleaseReceipt(completed.result)) {
@@ -414,6 +420,13 @@ export class WorkspaceHostWorkbenchSession implements WorkbenchSession {
     return completed.result
   }
 
+  private resolveBackendAuthorityUrl(): string | undefined {
+    return this.options.backendAuthorityUrl
+      ?? stringValue(this.host?.configuration['backendUrl'])
+      ?? this.snapshot.configuredBackendUrl
+      ?? undefined
+  }
+
   private async run(
     command: string,
     parameters: Record<string, unknown> = {}
@@ -431,7 +444,7 @@ export class WorkspaceHostWorkbenchSession implements WorkbenchSession {
     )
     const completed = await this.waitOperation(connection, operation.operationId)
     if (completed.phase === 'failed') {
-      throw new Error(completed.error?.message ?? `${command} 操作失败`)
+      throw workspaceHostOperationError(completed, `${command} 操作失败`)
     }
     await this.refreshHost(connection)
     return this.getSnapshot()
@@ -454,9 +467,15 @@ export class WorkspaceHostWorkbenchSession implements WorkbenchSession {
     }
     const discovered = await discoverHost(this.options.workspacePath)
     if (discovered) {
-      this.connection = discovered
-      await this.refreshHost(discovered)
-      return discovered
+      try {
+        await this.refreshHost(discovered)
+        this.connection = discovered
+        return discovered
+      } catch {
+        // A crashed Host can leave a valid token and manifest behind. Treat
+        // unreachable discovery as stale and bootstrap a replacement Host.
+        this.connection = null
+      }
     }
     await startWorkspaceHost(this.options)
     const deadline = Date.now() + HOST_START_TIMEOUT_MS
@@ -640,6 +659,45 @@ export class WorkspaceHostWorkbenchSession implements WorkbenchSession {
   }
 }
 
+function workspaceHostOperationError(
+  operation: WorkspaceHostOperation,
+  fallback: string
+): Error {
+  const code = operation.error?.code?.trim()
+  const message = operation.error?.message?.trim() || fallback
+  const blockerSummary = formatOperationBlockers(operation.error?.details)
+  return new Error([
+    code ? `[${code}] ${message}` : message,
+    blockerSummary
+  ].filter(Boolean).join('；'))
+}
+
+function formatOperationBlockers(details: unknown): string {
+  if (!isRecord(details) || !Array.isArray(details['blockers'])) return ''
+  const blockers = details['blockers'].flatMap(blocker => {
+    if (!isRecord(blocker)) return []
+    const source = textValue(blocker['source'])
+    const kind = textValue(blocker['kind'])
+    const identity = textValue(blocker['identity'])
+    const status = textValue(blocker['status'])
+    const commands = Array.isArray(blocker['unknownCommandIds'])
+      ? blocker['unknownCommandIds'].map(textValue).filter(Boolean)
+      : []
+    const target = [source, kind, identity].filter(Boolean).join('/')
+    const state = status ? `状态 ${status}` : ''
+    const pending = commands.length > 0
+      ? `未确认命令 ${commands.join(', ')}`
+      : ''
+    const description = [target, state, pending].filter(Boolean).join('，')
+    return description ? [description] : []
+  })
+  return blockers.length > 0 ? `阻断项：${blockers.join('；')}` : ''
+}
+
+function textValue(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
 async function discoverHost(workspacePath: string): Promise<HostConnection | null> {
   const runtime = join(workspacePath, '.unilabos', 'runtime', 'workbench')
   try {
@@ -701,35 +759,25 @@ async function startWorkspaceHost(
     'workspace-host.log'
   )
   await mkdir(dirname(logPath), { recursive: true })
-  const log = await open(logPath, 'a')
-  try {
-    const child = spawn(
-      pythonExecutable,
-      [
-        '-m',
-        'unilabos.workspace_host.host',
-        '--workspace',
-        workspacePath,
-        '--port',
-        '0'
-      ],
-      {
-        cwd: workspacePath,
-        env: {
-          ...hostEnvironment,
-          PYTHONPATH: pythonPath,
-          PYTHONUNBUFFERED: '1'
-        },
-        detached: platform !== 'win32',
-        shell: false,
-        windowsHide: true,
-        stdio: ['ignore', log.fd, log.fd]
-      }
-    )
-    child.unref()
-  } finally {
-    await log.close()
-  }
+  await launchWorkspaceHostProcess({
+    command: pythonExecutable,
+    args: [
+      '-m',
+      'unilabos.workspace_host.host',
+      '--workspace',
+      workspacePath,
+      '--port',
+      '0'
+    ],
+    cwd: workspacePath,
+    environment: {
+      ...hostEnvironment,
+      PYTHONPATH: pythonPath,
+      PYTHONUNBUFFERED: '1'
+    },
+    detached: platform !== 'win32',
+    logPath
+  })
 }
 
 async function hostRequest<T>(
