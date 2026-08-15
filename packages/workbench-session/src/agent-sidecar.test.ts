@@ -8,6 +8,7 @@ import * as asar from '@electron/asar'
 import { describe, expect, it } from 'vitest'
 
 import {
+  PINNED_AIONUI_VERSION,
   ensureManagedLocalAgentDefaults,
   isProtectedAgentRequest,
   managedConversationRequestBody,
@@ -17,6 +18,12 @@ import {
   prepareRenderer,
   waitForManagedAgentApi
 } from './agent-sidecar'
+
+describe('Workbench Agent distribution compatibility', () => {
+  it('uses the development Agent runtime baseline independently of packaging', () => {
+    expect(PINNED_AIONUI_VERSION).toBe('2.1.52')
+  })
+})
 
 async function createRendererArchive(
   root: string,

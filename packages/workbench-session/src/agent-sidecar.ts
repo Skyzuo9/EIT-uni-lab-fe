@@ -72,7 +72,7 @@ const MIME_TYPES = new Map([
   ['.woff', 'font/woff'],
   ['.woff2', 'font/woff2']
 ])
-export const PINNED_AIONUI_VERSION = '2.1.53'
+export const PINNED_AIONUI_VERSION = '2.1.52'
 const MANAGED_LOCAL_DEFAULT_ASSISTANT_ID = 'bare:8e1acf31'
 const MANAGED_LOCAL_DEFAULT_LANGUAGE = 'zh-CN'
 const MANAGED_LOCAL_DEFAULT_LANGUAGE_VERSION_KEY =
