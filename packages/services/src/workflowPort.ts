@@ -1,4 +1,7 @@
-import type { WorkflowActionCatalogSnapshot } from './workflowActionCatalog'
+import type {
+  WorkflowActionCatalogQuery,
+  WorkflowActionCatalogSnapshot
+} from './workflowActionCatalog'
 import type {
   WorkflowAuthoringAggregate,
   WorkflowAuthoringApplyRequest,
@@ -53,7 +56,8 @@ import type {
  */
 export interface WorkflowRuntimePort {
   getWorkflowActionCatalog: (
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    query?: WorkflowActionCatalogQuery
   ) => Promise<WorkflowActionCatalogSnapshot>
   getWorkflowMaterialSourceCatalog: () =>
     Promise<WorkflowMaterialSourceCatalogSnapshot>

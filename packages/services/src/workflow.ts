@@ -254,9 +254,9 @@ export function createWorkflowRuntime(
   }
 
   const port: WorkflowRuntimePort = {
-    getWorkflowActionCatalog: (signal) => {
+    getWorkflowActionCatalog: (signal, query) => {
       requireWorkflowCapability('workflow.readDefinitions')
-      return loadWorkflowActionCatalog(http, signal)
+      return loadWorkflowActionCatalog(http, signal, query)
     },
     getWorkflowMaterialSourceCatalog,
     listWorkflows: async (query = {}) => {

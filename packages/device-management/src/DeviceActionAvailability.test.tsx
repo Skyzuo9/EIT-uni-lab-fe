@@ -39,6 +39,7 @@ describe('device action Runtime availability', () => {
       device: {
         id: 'pump-1',
         materialUuid: '',
+        resourceTemplateUuid: '20000000-0000-4000-8000-000000000001',
         deviceKey: '/devices/pump-1',
         namespace: '/devices',
         machineName: '本地',

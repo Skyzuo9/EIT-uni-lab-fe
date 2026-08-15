@@ -50,6 +50,10 @@ export type {
   WorkflowActionCatalogSnapshot
 } from './workflowActionCatalogTypes'
 
+export interface WorkflowActionCatalogQuery {
+  resourceTemplateUuid?: string
+}
+
 /**
  * 加载动作模板与已发布工作流（PublishedWorkflow）的统一可执行目录。
  *
@@ -60,13 +64,18 @@ export type {
  */
 export async function loadWorkflowActionCatalog(
   http: HttpClient,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  query: WorkflowActionCatalogQuery = {}
 ): Promise<WorkflowExecutableCatalogSnapshot> {
   // `defaultCatalog` 只请求 Backend 默认可见动作类型，不能混入物料来源。
-  const defaultCatalog = await loadWorkflowNodeTemplateCatalog(http, { signal })
+  const defaultCatalog = await loadWorkflowNodeTemplateCatalog(http, {
+    resourceTemplateUuid: query.resourceTemplateUuid,
+    signal
+  })
   // `workflowCatalog` 显式请求已发布工作流，避免依赖服务端默认类型集合。
   const workflowCatalog = await loadWorkflowNodeTemplateCatalog(http, {
     nodeType: 'workflow',
+    resourceTemplateUuid: query.resourceTemplateUuid,
     signal
   })
   const catalog = mergeWorkflowNodeTemplateCatalogs(

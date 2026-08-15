@@ -135,6 +135,7 @@ export default function DevicePanel({
       ?? null,
     [selectedActionRef, selectedDevice]
   )
+  const selectedResourceTemplateUuid = selectedDevice?.resourceTemplateUuid ?? ''
   // 投影必须同时绑定资源模板（ResourceTemplate）身份，防止同名动作跨设备误派发。
   const selectedActionProjection = useMemo(
     () => projectSelectedDeviceAction(
@@ -167,11 +168,18 @@ export default function DevicePanel({
   const loadActionCatalog = useCallback(async (
     signal?: AbortSignal
   ): Promise<boolean> => {
-    if (!canRunActionTask || connection !== 'connected') return false
+    if (
+      !canRunActionTask ||
+      connection !== 'connected' ||
+      !selectedResourceTemplateUuid
+    ) return false
     setActionCatalogLoading(true)
     setActionCatalogError(null)
     try {
-      const catalog = await services.workflow.getWorkflowActionCatalog(signal)
+      const catalog = await services.workflow.getWorkflowActionCatalog(
+        signal,
+        { resourceTemplateUuid: selectedResourceTemplateUuid }
+      )
       if (signal?.aborted) return false
       setActionCatalog(catalog)
       return true
@@ -185,7 +193,12 @@ export default function DevicePanel({
     } finally {
       if (!signal?.aborted) setActionCatalogLoading(false)
     }
-  }, [canRunActionTask, connection, services.workflow])
+  }, [
+    canRunActionTask,
+    connection,
+    selectedResourceTemplateUuid,
+    services.workflow
+  ])
 
   useEffect(() => {
     if (!canRunActionTask || connection !== 'connected') {

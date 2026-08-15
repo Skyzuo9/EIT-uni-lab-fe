@@ -149,7 +149,11 @@ export function usePersistentWorkflowAuthoring({
     materialSourceCatalogLoading,
     refreshMaterialSourceCatalog,
     refreshWorkflowCatalogsAfterConflict
-  } = usePersistentWorkflowCatalogs({ runtime, graph })
+  } = usePersistentWorkflowCatalogs({
+    runtime,
+    graph,
+    loadActionCatalog: nodePaletteOpen || mode === 'canvas'
+  })
   // Resource-template source navigation uses the same exact package identity
   // as Workflow navigation. Re-entering that source deterministically selects
   // the first MaterialSource/ResourceSlot consumer in the current graph.

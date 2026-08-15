@@ -496,3 +496,4 @@ function containsUnsupportedContract(value: unknown): boolean {
   }
   return Object.values(record).some(containsUnsupportedContract)
 }
+

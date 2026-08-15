@@ -366,7 +366,11 @@ export function WorkbenchMaterialViewport({
           setViewState(next)
           writeStoredMaterialViewportState(next)
         }}
-        renderView={(viewMode, { showSites, showMaterialTransfers }) => (
+        renderView={(viewMode, {
+          showSites,
+          showMaterialTransfers,
+          showMaterialLabels
+        }) => (
           <Suspense
             fallback={(
               <div className="unilab-workbench-material-loading">
@@ -380,6 +384,7 @@ export function WorkbenchMaterialViewport({
               aggregates={displayedAggregates}
               shapes={shapeLibrary}
               showSites={showSites}
+              showMaterialLabels={showMaterialLabels}
               showMaterialTransfers={showMaterialTransfers}
               materialTransferRoutes={materialTransferRoutes}
               materialTransferProjectionError={null}

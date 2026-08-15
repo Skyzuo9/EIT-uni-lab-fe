@@ -20,6 +20,7 @@ describe('device Action D1A preparation', () => {
   it('joins live Action to exactly one stable A1 identity', () => {
     const template = actionTemplate()
     const catalog = actionCatalog([template])
+    const device = { resourceTemplateUuid: RESOURCE_UUID }
 
     expect(matchDeviceActionTemplate(catalog, liveAction(), RESOURCE_UUID)).toBe(template)
     expect(matchDeviceActionTemplate(
@@ -28,13 +29,26 @@ describe('device Action D1A preparation', () => {
       '10000000-0000-4000-8000-000000000099'
     )).toBeNull()
     expect(matchDeviceActionTemplate(
-      actionCatalog([template, { ...template, uuid: UUID_2 }]),
-      liveAction()
+      actionCatalog([
+        template,
+        {
+          ...template,
+          uuid: UUID_3,
+          resourceTemplateUuid: OTHER_RESOURCE_UUID
+        }
+      ]),
+      liveAction(),
+      RESOURCE_UUID
+    )).toBe(template)
+    expect(matchDeviceActionTemplate(
+      actionCatalog([template, { ...template, uuid: UUID_3 }]),
+      liveAction(),
+      RESOURCE_UUID
     )).toBeNull()
     expect(matchDeviceActionTemplate(catalog, {
       ...liveAction(),
       typeName: 'other.Action'
-    })).toBeNull()
+    }, RESOURCE_UUID)).toBeNull()
   })
 
   /** 证明选择投影与草稿键同时隔离资源模板、Backend 和目录代际。 */
@@ -281,6 +295,8 @@ describe('device Action D1A preparation', () => {
 const UUID_1 = '10000000-0000-4000-8000-000000000001'
 const UUID_2 = '10000000-0000-4000-8000-000000000002'
 const RESOURCE_UUID = '10000000-0000-4000-8000-000000000003'
+const UUID_3 = '10000000-0000-4000-8000-000000000004'
+const OTHER_RESOURCE_UUID = '10000000-0000-4000-8000-000000000005'
 
 function liveAction(): DeviceAction {
   return {

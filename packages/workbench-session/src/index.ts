@@ -265,3 +265,4 @@ export function createWorkspaceHostWorkbenchSession(
 ): WorkspaceHostWorkbenchSession {
   return new WorkspaceHostWorkbenchSession(options)
 }
+

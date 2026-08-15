@@ -26,6 +26,7 @@ interface RuntimeActionTemplate {
 export interface RuntimeDeviceCatalogItem {
   id: string
   materialUuid: string
+  resourceTemplateUuid: string
   deviceTypeId?: string
   deviceKey: string
   namespace: string
@@ -43,6 +44,7 @@ export function mapRuntimeDeviceCatalogItem(
   return {
     deviceId,
     materialUuid: runtimeString(raw.materialUuid),
+    resourceTemplateUuid: runtimeString(raw.resourceTemplateUuid),
     // 新目录提供 Driver 类型；保留旧 Edge 的实例 id 回退。
     deviceTypeId: runtimeString(
       raw.deviceTypeId ?? raw.typeId ?? raw.className
@@ -172,6 +174,7 @@ export async function getRuntimeDevices(
     return [{
       id: deviceId,
       materialUuid: runtimeString(item.materialUuid),
+      resourceTemplateUuid: runtimeString(item.resourceTemplateUuid),
       deviceTypeId: optionalRuntimeString(item.deviceTypeId) ?? undefined,
       deviceKey: runtimeString(item.deviceKey),
       namespace: runtimeString(item.namespace),

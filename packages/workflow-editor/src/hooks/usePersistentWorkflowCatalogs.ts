@@ -16,6 +16,7 @@ import {
 interface PersistentWorkflowCatalogOptions {
   runtime: WorkflowRuntimePort
   graph: WorkflowAuthoringGraph | null
+  loadActionCatalog: boolean
 }
 
 const CATALOG_READ_RETRY_DELAY_MS = 250
@@ -55,7 +56,8 @@ async function readCatalogWithRetry<Value>(
  */
 export function usePersistentWorkflowCatalogs({
   runtime,
-  graph
+  graph,
+  loadActionCatalog
 }: PersistentWorkflowCatalogOptions) {
   const [actionCatalog, setActionCatalog] =
     useState<WorkflowActionCatalogSnapshot | null>(null)
@@ -169,6 +171,11 @@ export function usePersistentWorkflowCatalogs({
   }, [refreshMaterialSourceCatalog])
 
   useEffect(() => {
+    if (!loadActionCatalog) {
+      setActionCatalog(null)
+      setActionCatalogError(null)
+      return
+    }
     if (
       materialSourceCatalogLoading ||
       materialSourceCatalogError ||
@@ -214,6 +221,7 @@ export function usePersistentWorkflowCatalogs({
     materialSourceCatalog,
     materialSourceCatalogError,
     materialSourceCatalogLoading,
+    loadActionCatalog,
     runtime
   ])
 

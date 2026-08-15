@@ -18,6 +18,7 @@ describe('Edge device catalog', () => {
     expect(presentEdgeDevices([{
       id: '10000000-0000-4000-8000-000000000001',
       materialUuid: '10000000-0000-4000-8000-000000000001',
+      resourceTemplateUuid: '20000000-0000-4000-8000-000000000001',
       deviceKey: 'host_node',
       namespace: '20000000-0000-4000-8000-000000000001',
       machineName: 'host_node',
@@ -31,6 +32,7 @@ describe('Edge device catalog', () => {
       {
         id: 'robot',
         materialUuid: '10000000-0000-4000-8000-000000000002',
+        resourceTemplateUuid: '20000000-0000-4000-8000-000000000002',
         deviceKey: '/cell/robot',
         namespace: '/cell',
         machineName: '机械臂',
@@ -40,6 +42,7 @@ describe('Edge device catalog', () => {
       {
         id: 'pump',
         materialUuid: '10000000-0000-4000-8000-000000000003',
+        resourceTemplateUuid: '20000000-0000-4000-8000-000000000003',
         deviceKey: '/cell/pump',
         namespace: '/cell',
         machineName: '注射泵',
