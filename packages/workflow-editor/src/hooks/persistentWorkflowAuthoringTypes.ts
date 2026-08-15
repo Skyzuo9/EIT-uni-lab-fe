@@ -1,5 +1,6 @@
 import type {
   CapabilityStatus,
+  WorkflowDefinitionPort,
   WorkflowAuthoringAggregate,
   WorkflowAuthoringGraph,
   WorkflowRuntimePort
@@ -13,6 +14,8 @@ import type { WorkflowIdeBridge } from '../utils/workflowSourceNavigation'
 
 export interface PersistentWorkflowAuthoringOptions {
   runtime: WorkflowRuntimePort
+  definitionPort: WorkflowDefinitionPort
+  definitionEditingStatus?: CapabilityStatus
   workflowUuid: string
   traceRuntime?: WorkflowTracePort
   resourceSlotOptionsPort?: WorkflowResourceSlotOptionsPort

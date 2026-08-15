@@ -11,23 +11,29 @@ function componentSource(name: string): string {
 }
 
 describe('Workflow workspace authority', () => {
-  /** OS 与 Backend 必须复用唯一工具栏实现，避免部署差异产生第二套页面。 */
-  it('routes both runtime adapters through the dev workspace toolbar', () => {
+  /** OS 与 Backend 必须复用唯一工作区实现，避免部署差异产生第二套页面。 */
+  it('routes both definition adapters through the persistent workspace', () => {
+    expect(componentSource('WorkflowPanel.tsx'))
+      .toContain('definitionAuthority={definitionAuthority}')
+    expect(componentSource('WorkflowPanel.tsx'))
+      .toContain('<PersistentWorkflowAuthoringPanel')
     expect(componentSource('PersistentWorkflowToolbar.tsx'))
       .toContain('WorkflowWorkspaceToolbar')
-    expect(componentSource('ExistingWorkflowRuntimePanel.tsx'))
-      .toContain('WorkflowWorkspaceToolbar')
+    expect(existsSync(
+      `${componentDirectory}/ExistingWorkflowRuntimePanel.tsx`
+    )).toBe(false)
     expect(existsSync(
       `${componentDirectory}/ExistingWorkflowRuntimeToolbar.tsx`
     )).toBe(false)
   })
 
   /** 两种工作流权威来源必须共用画布身份和投影状态标题条。 */
-  it('keeps one canvas stage header for OS and Backend projections', () => {
+  it('keeps one canvas stage for OS and Backend projections', () => {
     expect(componentSource('PersistentWorkflowAuthoringView.tsx'))
       .toContain('WorkflowCanvasStageHeader')
-    expect(componentSource('ExistingWorkflowCanvas.tsx'))
-      .toContain('WorkflowCanvasStageHeader')
+    expect(existsSync(
+      `${componentDirectory}/ExistingWorkflowCanvas.tsx`
+    )).toBe(false)
   })
 
   /** Backend 只读控件可以有适配样式，但不得恢复独立页面壳。 */

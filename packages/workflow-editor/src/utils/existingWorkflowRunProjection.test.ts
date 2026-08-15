@@ -5,12 +5,20 @@ import type { WorkflowRunPreflightReport } from '@unilab/services'
 import {
   EXISTING_WORKFLOW_RUN_MODE_OPTIONS,
   existingWorkflowPreflightFailureMessage,
+  existingWorkflowPreflightReadinessKey,
   existingWorkflowPreflightSummaryLabel,
   existingWorkflowRunButtonLabel,
   existingWorkflowStartDisabledReason
 } from './existingWorkflowRunProjection'
 
 describe('Backend 已有工作流运行投影', () => {
+  it('Edge 执行就绪后替换旧运行预检', () => {
+    expect(existingWorkflowPreflightReadinessKey({
+      available: false,
+      reason: 'OS 正在连接 Backend'
+    })).not.toBe(existingWorkflowPreflightReadinessKey({ available: true }))
+  })
+
   /** 三种正式运行模式必须使用稳定 wire 值，并与单动作调试区分。 */
   it('公开完整运行、单步运行和单节点调试', () => {
     expect(EXISTING_WORKFLOW_RUN_MODE_OPTIONS.map((option) => option.value))

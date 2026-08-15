@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import {
   captureWorkbenchUiOperation,
+  runAndRefreshWorkbenchOperation,
   WorkbenchSessionGate
 } from './workbench-session-gate'
 
@@ -16,6 +17,22 @@ describe('WorkbenchSessionGate', () => {
     )).resolves.toBeUndefined()
 
     expect(errors).toEqual(['fixture operation failed'])
+  })
+
+  it('refreshes the snapshot without swallowing an operation failure', async () => {
+    const refresh = vi.fn().mockResolvedValue(undefined)
+    const errors: string[] = []
+
+    await captureWorkbenchUiOperation(
+      () => runAndRefreshWorkbenchOperation(
+        async () => { throw new Error('local reset is blocked') },
+        refresh
+      ),
+      message => errors.push(message)
+    )
+
+    expect(refresh).toHaveBeenCalledOnce()
+    expect(errors).toEqual(['local reset is blocked'])
   })
 
   it('keeps environment management reachable while OS readiness is blocked', () => {
