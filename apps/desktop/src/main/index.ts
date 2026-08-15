@@ -268,6 +268,36 @@ function createWindow(): void {
       new Error(desc)
     )
   })
+  if (desktopSurface.kind === 'workbench') {
+    mainWindow.webContents.on('dom-ready', () => {
+      const window = mainWindow
+      if (!window || window.isDestroyed()) return
+      void window.webContents.insertCSS(`
+        #theia-left-right-split-panel {
+          right: 0 !important;
+          width: 100% !important;
+        }
+        #theia-left-right-split-panel > #theia-right-content-panel,
+        .theia-app-right {
+          display: none !important;
+        }
+        #theia-left-right-split-panel > #theia-bottom-split-panel {
+          left: 48px !important;
+          right: 0 !important;
+          width: calc(100% - 48px) !important;
+        }
+        #theia-bottom-split-panel > #theia-main-content-panel {
+          right: 0 !important;
+          width: 100% !important;
+        }
+        #theia-main-content-panel > .lm-DockPanel-widget {
+          left: 0 !important;
+          right: 0 !important;
+          width: 100% !important;
+        }
+      `)
+    })
+  }
   mainWindow.webContents.on('render-process-gone', (_e, details) => {
     logLine(`renderer 进程退出: ${JSON.stringify(details)}`)
     electronObservability.record(

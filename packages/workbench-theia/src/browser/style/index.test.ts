@@ -113,6 +113,25 @@ describe('environment manager layering and responsive layout', () => {
     )
   })
 
+  /** 证明产品不保留 48px 右活动栏，主工作区始终铺到窗口边缘。 */
+  it('reclaims the right sidebar width for the main workbench', () => {
+    expect(domainNavigationStylesheet).toMatch(
+      /#theia-left-right-split-panel\s*\{[^}]*right:\s*0 !important;[^}]*width:\s*100% !important/u
+    )
+    expect(domainNavigationStylesheet).toMatch(
+      /#theia-left-right-split-panel\s*> #theia-right-content-panel,\s*\.theia-app-right\s*\{[^}]*display:\s*none !important/u
+    )
+    expect(domainNavigationStylesheet).toMatch(
+      /#theia-left-right-split-panel\s*> #theia-bottom-split-panel\s*\{[^}]*left:\s*48px !important;[^}]*right:\s*0 !important;[^}]*width:\s*calc\(100% - 48px\) !important/u
+    )
+    expect(domainNavigationStylesheet).toMatch(
+      /#theia-bottom-split-panel\s*> #theia-main-content-panel\s*\{[^}]*right:\s*0 !important;[^}]*width:\s*100% !important/u
+    )
+    expect(domainNavigationStylesheet).toMatch(
+      /#theia-main-content-panel\s*> \.lm-DockPanel-widget\s*\{[^}]*left:\s*0 !important;[^}]*right:\s*0 !important;[^}]*width:\s*100% !important/u
+    )
+  })
+
   /** 证明 Theia 底部面板展开时，运行输出连同表头一起让出空间。 */
   it('hides embedded workflow output while the bottom panel is open', () => {
     expect(stylesheet).toMatch(
