@@ -37,6 +37,9 @@ describe('WorkflowOutput', () => {
     expect(stylesheet).toMatch(
       /node-result\) > header\s*> :global\(\.workflow-runtime__node-detail-actions\)\s*\{\s*align-items:\s*center;/u
     )
+    expect(stylesheet).toMatch(
+      /workflow-runtime__node-details\.is-collapsed\)[\s\S]*margin-top:\s*auto;/u
+    )
   })
 
   it('keeps the node panel hidden when another output tab is active', () => {

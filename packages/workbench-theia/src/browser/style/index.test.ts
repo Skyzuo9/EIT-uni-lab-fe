@@ -170,10 +170,10 @@ describe('environment manager layering and responsive layout', () => {
       /#theia-bottom-split-panel\s*> #theia-main-content-panel\s*\{[^}]*right:\s*0 !important;[^}]*width:\s*100% !important/u
     )
     expect(domainNavigationStylesheet).toMatch(
-      /#theia-main-content-panel\s*> \.lm-DockPanel-widget\s*\{[^}]*top:\s*0 !important;[^}]*left:\s*0 !important;[^}]*right:\s*0 !important;[^}]*width:\s*100% !important;[^}]*height:\s*100% !important/u
+      /#theia-main-content-panel:not\([\s\S]*?:has\(\.lm-TabBar-tab\.lm-mod-closable\)[\s\S]*?\)\s*> \.lm-DockPanel-widget\s*\{[^}]*top:\s*0 !important;[^}]*left:\s*0 !important;[^}]*right:\s*0 !important;[^}]*width:\s*100% !important;[^}]*height:\s*100% !important/u
     )
     expect(domainNavigationStylesheet).toMatch(
-      /#theia-main-content-panel\s*> \.lm-TabBar\.theia-app-centers\.theia-app-main\s*\{[^}]*display:\s*none !important/u
+      /#theia-main-content-panel[\s\S]*?> \.lm-TabBar\.theia-app-centers\.theia-app-main:not\([\s\S]*?:has\(\.lm-TabBar-tab\.lm-mod-closable\)[\s\S]*?\)\s*\{[^}]*display:\s*none !important/u
     )
   })
 

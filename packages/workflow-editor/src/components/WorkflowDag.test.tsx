@@ -305,6 +305,12 @@ describe('WorkflowDag material handles and execution signals', () => {
     expect(swimlaneStylesheet).toMatch(
       /layout-direction='horizontal'[\s\S]*flex-direction:\s*column/
     )
+    expect(swimlaneStylesheet).toMatch(
+      /wf-node--material-source\[data-workflow-layout-direction='horizontal'\][\s\S]*height:\s*126px;[\s\S]*max-height:\s*126px;/
+    )
+    expect(swimlaneStylesheet).toMatch(
+      /wf-node--material-source\[data-workflow-layout-direction='horizontal'\][\s\S]*material-source-label[\s\S]*height:\s*53px;[\s\S]*align-content:\s*start;/
+    )
     expect(transferStylesheet).toMatch(
       /robot-transfer-visual[\s\S]*color:\s*var\(--unilab-color-text\)[\s\S]*background:\s*var\(--unilab-color-text\)/
     )
@@ -313,6 +319,9 @@ describe('WorkflowDag material handles and execution signals', () => {
     )
     expect(transferStylesheet).toMatch(
       /wf-node--robot-transfer[\s\S]*flex-direction:\s*row-reverse/
+    )
+    expect(transferStylesheet).toMatch(
+      /layout-direction='horizontal'[\s\S]*robot-transfer-copy[\s\S]*justify-items:\s*center;[\s\S]*text-align:\s*center;/
     )
     expect(transferStylesheet).toMatch(
       /layout-direction='horizontal'[\s\S]*flex-direction:\s*column-reverse/
