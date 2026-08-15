@@ -340,12 +340,10 @@ function WorkflowOutputBody({
               </article>
             )}
             {selectedNodeHasResult && (
-              <pre
-                className="workflow-runtime__node-result"
-                aria-label={`${selectedNodeName} 节点结果`}
-              >
-                {JSON.stringify(selectedNode.result, null, 2)}
-              </pre>
+              <WorkflowNodeResult
+                nodeName={selectedNodeName}
+                result={selectedNode.result}
+              />
             )}
           </div>
         )}
@@ -450,6 +448,75 @@ function WorkflowOutputBody({
         )}
       </section>
     </div>
+  )
+}
+
+const NODE_RESULT_SUMMARY_FIELDS = [
+  ['executor_kind', '执行器'],
+  ['job_uuid', 'Job ID'],
+  ['workflow_node_uuid', '节点 ID']
+] as const
+
+const NODE_RESULT_STATUS_LABELS: Readonly<Record<string, string>> = {
+  succeeded: '执行成功',
+  success: '执行成功',
+  failed: '执行失败',
+  canceled: '已取消',
+  cancelled: '已取消',
+  running: '执行中',
+  pending: '等待执行'
+}
+
+/** 将节点任务的技术响应整理为可扫读摘要，同时保留完整原始数据。 */
+function WorkflowNodeResult({
+  nodeName,
+  result
+}: {
+  nodeName: string
+  result: Record<string, unknown>
+}): React.JSX.Element {
+  const rawStatus = typeof result.status === 'string'
+    ? result.status.toLowerCase()
+    : ''
+  const statusLabel = NODE_RESULT_STATUS_LABELS[rawStatus] || rawStatus || '已返回'
+  const statusTone = rawStatus === 'succeeded' || rawStatus === 'success'
+    ? 'is-success'
+    : rawStatus === 'failed'
+      ? 'is-error'
+      : 'is-neutral'
+  const summaryFields = NODE_RESULT_SUMMARY_FIELDS.flatMap(([field, label]) => {
+    const value = result[field]
+    return typeof value === 'string' && value.length > 0
+      ? [{ field, label, value }]
+      : []
+  })
+
+  return (
+    <article
+      className="workflow-runtime__node-result"
+      aria-label={`${nodeName} 节点结果`}
+    >
+      <header>
+        <div>
+          <strong>运行结果</strong>
+          <small>节点执行返回</small>
+        </div>
+        <span className={statusTone}>{statusLabel}</span>
+      </header>
+      {summaryFields.length > 0 && (
+        <dl>
+          {summaryFields.map(({ field, label, value }) => (
+            <div key={field}>
+              <dt>{label}</dt>
+              <dd title={value}>{value}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      <div className="workflow-runtime__node-result-raw">
+        <pre>{JSON.stringify(result, null, 2)}</pre>
+      </div>
+    </article>
   )
 }
 
