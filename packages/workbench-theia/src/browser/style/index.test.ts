@@ -113,6 +113,20 @@ describe('environment manager layering and responsive layout', () => {
     expect(icon).toMatch(/flex:\s*0 0 14px/u)
   })
 
+  /** 临时错误与状态提示应出现在窗口顶部水平中央。 */
+  it('centers notification toasts at the top of the window', () => {
+    const rule = cssRule(
+      '.theia-notifications-container.theia-notification-toasts'
+    )
+
+    expect(rule).toMatch(/position:\s*fixed/u)
+    expect(rule).toMatch(/top:\s*16px/u)
+    expect(rule).toMatch(/bottom:\s*auto/u)
+    expect(rule).toMatch(/left:\s*50%/u)
+    expect(rule).toMatch(/transform:\s*translateX\(-50%\)/u)
+    expect(rule).toMatch(/width:\s*min\(500px, calc\(100vw - 32px\)\)/u)
+  })
+
   /** 证明大纲不再占用 Workbench 右侧产品导航入口。 */
   it('removes the outline entry from the right product navigation', () => {
     expect(domainNavigationStylesheet).toMatch(
