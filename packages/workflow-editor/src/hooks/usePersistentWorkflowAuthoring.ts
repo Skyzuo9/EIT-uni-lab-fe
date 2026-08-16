@@ -51,7 +51,8 @@ import {
   isAuthoringSnapshotDirty,
   isSameAuthoringVersion,
   isTemplateCatalogConflict,
-  resolveWorkflowCanvasModeProjection
+  resolveWorkflowCanvasModeProjection,
+  workflowCanvasModeProjectionInstallPolicy
 } from '../utils/persistentAuthoringSession'
 import {
   authoritativePython,
@@ -735,10 +736,18 @@ export function usePersistentWorkflowAuthoring({
         aggregate,
         generate: (sourceGraph) => generateCanvasPython(sourceGraph)
       })
-      setGraph(beautifyPersistentAuthoringGraph(
-        projection.graph
-      ))
-      editor.replaceContent(projection.pythonSource)
+      const installPolicy = workflowCanvasModeProjectionInstallPolicy({
+        readOnly: projection.readOnly,
+        graphInstalled: graph !== null
+      })
+      if (installPolicy.replaceGraph) {
+        setGraph(projection.readOnly
+          ? projection.graph
+          : beautifyPersistentAuthoringGraph(projection.graph))
+      }
+      if (installPolicy.replacePython) {
+        editor.replaceContent(projection.pythonSource)
+      }
       setCanvasDirty(false)
       setSelectedNodeUuid(null)
       setSelectedNodeName('')
@@ -764,7 +773,13 @@ export function usePersistentWorkflowAuthoring({
     setMessage(definitionPort.capabilities.sourceEditing
       ? authoringStateMessage(aggregate)
       : 'Backend 工作流 JSON 代码视图（只读）')
-  }, [aggregate, definitionPort, editor.replaceContent, generateCanvasPython])
+  }, [
+    aggregate,
+    definitionPort,
+    editor.replaceContent,
+    generateCanvasPython,
+    graph
+  ])
 
   /**
    * 请求切换工作流单编辑权模式。
