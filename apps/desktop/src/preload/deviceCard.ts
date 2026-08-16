@@ -3,6 +3,8 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type {
   DeviceCardActionRun,
   DeviceCardBridge,
+  DeviceCardHostManualExclusiveResult,
+  DeviceCardManualExclusiveSnapshot,
   DeviceCardRuntimeSnapshot,
   JsonObject
 } from '@unilab/device-card-sdk'
@@ -43,12 +45,28 @@ const bridge: DeviceCardBridge = {
     ipcRenderer.invoke('device-card-runtime:callAction', { action, params }),
   saveConfig: (patch: JsonObject): Promise<JsonObject> =>
     ipcRenderer.invoke('device-card-runtime:saveConfig', patch),
+  readManualExclusive: () => manualExclusive('read'),
+  acquireManualExclusive: () => manualExclusive('acquire'),
+  releaseManualExclusive: () => manualExclusive('release'),
   log: (level, message) => {
     ipcRenderer.send('device-card-runtime:log', { level, message })
   }
 }
 
 contextBridge.exposeInMainWorld('unilabCard', bridge)
+
+async function manualExclusive(
+  operation: 'read' | 'acquire' | 'release'
+): Promise<DeviceCardManualExclusiveSnapshot> {
+  const result = await ipcRenderer.invoke(
+    'device-card-runtime:manualExclusive',
+    operation
+  ) as DeviceCardHostManualExclusiveResult
+  if (!result.ok || !result.snapshot) {
+    throw new Error(result.error || '手动独占（Exclusive）请求失败')
+  }
+  return result.snapshot
+}
 
 function filterState(
   state: Record<string, unknown>,

@@ -1,4 +1,5 @@
-import { basename, join, resolve } from 'node:path'
+import { readdir, readFile, realpath } from 'node:fs/promises'
+import { basename, join, relative, resolve, sep } from 'node:path'
 
 import {
   BrowserWindow,
@@ -11,9 +12,11 @@ import {
 } from 'electron'
 import {
   installDeviceCardArchive,
+  createDeviceCardWorkspace,
   LocalDeviceCardAuthoringAutomation,
   listInstalledDeviceCards,
-  verifyArtifactKey
+  verifyArtifactKey,
+  type DeviceCardWorkspace
 } from '@unilab/device-card-host'
 import type {
   DeviceCardActionRun,
@@ -24,6 +27,8 @@ import type {
   DeviceCardAuthoringTargetResponse,
   DeviceCardBounds,
   DeviceCardRuntimeSnapshot,
+  DeviceCardHostManualExclusiveResult,
+  DevicePackageCardProject,
   DeviceCardWorkspaceStatus,
   InstalledDeviceCard,
   JsonObject,
@@ -35,6 +40,7 @@ import { ElectronDeviceCardAuthoringApprovals } from './deviceCardAgentPermissio
 import { RendererDeviceCardAuthoringTargetPort } from './deviceCardAuthoringTargets'
 import { DeviceCardVisibilityController } from './deviceCardVisibility'
 import { dispatchDeviceCardAction } from './deviceCardActionDispatch'
+import { dispatchDeviceCardManualExclusive } from './deviceCardManualExclusiveDispatch'
 import {
   assertDeviceCardRuntimeCapabilities,
   filterAllowedState,
@@ -53,12 +59,18 @@ type RuntimeSession = {
   config: JsonObject; actions: Map<string, DeviceCardActionContract>
 }
 type PendingAction = { resolve: (run: DeviceCardActionRun) => void }
+type PendingManualExclusive = {
+  resolve: (result: DeviceCardHostManualExclusiveResult) => void
+}
 
 export class DeviceCardManager {
   private readonly sessions = new Map<number, RuntimeSession>()
   private readonly pendingActions = new Map<string, PendingAction>()
+  private readonly pendingManualExclusive =
+    new Map<string, PendingManualExclusive>()
   private readonly visibility = new DeviceCardVisibilityController()
   private activeView: WebContentsView | null = null
+  private packageWorkspace: DeviceCardWorkspace | null = null
   private readonly targetPort: RendererDeviceCardAuthoringTargetPort
   readonly authoring: LocalDeviceCardAuthoringAutomation
 
@@ -133,6 +145,45 @@ export class DeviceCardManager {
     ipcMain.handle('device-cards:workspace:close', async (event) => {
       this.assertMainRenderer(event)
       await this.closeWorkspace()
+    })
+    ipcMain.handle(
+      'device-cards:package:discover',
+      async (event, workspacePath: unknown) => {
+        this.assertMainRenderer(event)
+        return discoverPackageCardProjects(
+          await this.assertTrustedWorkspace(workspacePath)
+        )
+      }
+    )
+    ipcMain.handle(
+      'device-cards:package:open',
+      async (event, input: unknown) => {
+        this.assertMainRenderer(event)
+        if (!isPackageCardOpenInput(input)) {
+          throw new Error('领域包设备卡片参数无效。')
+        }
+        const projectDir = await this.assertPackageCardProject(input.projectDir)
+        await this.closePackageWorkspace()
+        this.packageWorkspace = await createDeviceCardWorkspace({
+          projectDir,
+          workRoot: this.options.workspaceRoot,
+          authoringContext: input.context,
+          contextAuthority: 'host',
+          watch: false
+        })
+        return this.packageWorkspace.getStatus()
+      }
+    )
+    ipcMain.handle(
+      'device-cards:package:preview',
+      async (event, request: OpenDeviceCardWorkspaceRequest) => {
+        this.assertMainRenderer(event)
+        await this.openPackagePreview(request)
+      }
+    )
+    ipcMain.handle('device-cards:package:close', async (event) => {
+      this.assertMainRenderer(event)
+      await this.closePackageWorkspace()
     })
     ipcMain.handle('device-cards:workspace:rebuild', async (event) => {
       this.assertMainRenderer(event)
@@ -266,6 +317,13 @@ export class DeviceCardManager {
       }
     )
     ipcMain.handle(
+      'device-cards:resolveManualExclusive',
+      (event, result: DeviceCardHostManualExclusiveResult) => {
+        this.assertMainRenderer(event)
+        this.resolveManualExclusive(result)
+      }
+    )
+    ipcMain.handle(
       'device-card-runtime:getContext',
       (event) => this.runtimeSession(event).context
     )
@@ -277,6 +335,21 @@ export class DeviceCardManager {
     ipcMain.handle(
       'device-card-runtime:saveConfig',
       (event, patch: JsonObject) => this.saveConfig(event, patch)
+    )
+    ipcMain.handle(
+      'device-card-runtime:manualExclusive',
+      (event, operation: unknown) => {
+        const session = this.runtimeSession(event)
+        return dispatchDeviceCardManualExclusive({
+          context: session.context,
+          uiFeatures: session.record.metadata.manifest.uiFeatures,
+          operation,
+          window: this.requireMainWindow(),
+          registerPending: (requestId, resolve) => {
+            this.pendingManualExclusive.set(requestId, { resolve })
+          }
+        })
+      }
     )
     ipcMain.on(
       'device-card-runtime:log',
@@ -291,6 +364,7 @@ export class DeviceCardManager {
 
   destroy(): void {
     this.closeActive()
+    void this.closePackageWorkspace()
     this.targetPort.destroy()
     void this.authoring.destroy()
     for (const pending of this.pendingActions.values()) {
@@ -302,6 +376,14 @@ export class DeviceCardManager {
       })
     }
     this.pendingActions.clear()
+    for (const pending of this.pendingManualExclusive.values()) {
+      pending.resolve({
+        requestId: '',
+        ok: false,
+        error: 'Electron 主窗口已关闭。'
+      })
+    }
+    this.pendingManualExclusive.clear()
   }
 
   private async listPublic(): Promise<InstalledDeviceCard[]> {
@@ -328,6 +410,20 @@ export class DeviceCardManager {
     const active = this.requireAuthoringSession()
     const artifact = this.authoring.getPreviewArtifact(active.session.sessionId)
     await this.openRecord(workspaceRuntimeRecord(artifact), request)
+  }
+
+  private async openPackagePreview(
+    request: OpenDeviceCardWorkspaceRequest
+  ): Promise<void> {
+    if (!isOpenWorkspaceRequest(request)) {
+      throw new Error('领域包设备卡片预览参数无效。')
+    }
+    const workspace = this.packageWorkspace
+    if (!workspace) throw new Error('当前没有已发现的领域包设备卡片。')
+    await this.openRecord(
+      workspaceRuntimeRecord(workspace.getPreviewArtifact()),
+      request
+    )
   }
 
   private async openRecord(
@@ -400,6 +496,42 @@ export class DeviceCardManager {
     await this.authoring.close(active.session.sessionId)
   }
 
+  private async closePackageWorkspace(): Promise<void> {
+    const workspace = this.packageWorkspace
+    if (!workspace) return
+    this.packageWorkspace = null
+    this.closeActive()
+    await workspace.close()
+  }
+
+  private async assertTrustedWorkspace(workspacePath: unknown): Promise<string> {
+    if (typeof workspacePath !== 'string' || !workspacePath.trim()) {
+      throw new Error('领域包工作区路径无效。')
+    }
+    const configured = process.env.THEIA_WORKSPACE
+    if (!configured) throw new Error('桌面 Workbench 未声明当前工作区。')
+    const [requested, trusted] = await Promise.all([
+      realpath(resolve(workspacePath)),
+      realpath(resolve(configured))
+    ])
+    if (requested !== trusted) throw new Error('拒绝读取当前工作区之外的设备卡片。')
+    return trusted
+  }
+
+  private async assertPackageCardProject(projectDir: string): Promise<string> {
+    const workspace = await this.assertTrustedWorkspace(
+      process.env.THEIA_WORKSPACE
+    )
+    const cardsRoot = await realpath(join(workspace, 'frontend', 'cards'))
+    const candidate = await realpath(resolve(projectDir))
+    const child = relative(cardsRoot, candidate)
+    if (!child || child.startsWith(`..${sep}`) || child === '..'
+      || child.includes(sep)) {
+      throw new Error('设备卡片必须是当前领域包 frontend/cards 的直接子目录。')
+    }
+    return candidate
+  }
+
   private closeActive(): void {
     const view = this.activeView
     if (!view) return
@@ -464,6 +596,16 @@ export class DeviceCardManager {
     pending.resolve(run)
   }
 
+  private resolveManualExclusive(
+    result: DeviceCardHostManualExclusiveResult
+  ): void {
+    if (!result || typeof result.requestId !== 'string') return
+    const pending = this.pendingManualExclusive.get(result.requestId)
+    if (!pending) return
+    this.pendingManualExclusive.delete(result.requestId)
+    pending.resolve(result)
+  }
+
   private runtimeSession(
     event: IpcMainInvokeEvent | IpcMainEvent
   ): RuntimeSession {
@@ -497,4 +639,63 @@ export class DeviceCardManager {
     if (!window || window.isDestroyed()) return
     window.webContents.send('device-cards:workspaceStatus', status)
   }
+}
+
+async function discoverPackageCardProjects(
+  workspace: string
+): Promise<DevicePackageCardProject[]> {
+  const cardsRoot = join(workspace, 'frontend', 'cards')
+  let entries
+  try {
+    entries = await readdir(cardsRoot, { withFileTypes: true })
+  } catch {
+    return []
+  }
+  const projects: DevicePackageCardProject[] = []
+  for (const entry of entries) {
+    if (!entry.isDirectory() || entry.isSymbolicLink()) continue
+    const projectDir = join(cardsRoot, entry.name)
+    try {
+      const manifest = JSON.parse(
+        await readFile(join(projectDir, 'card.manifest.json'), 'utf8')
+      ) as unknown
+      if (!isPackageCardManifest(manifest)) continue
+      projects.push({
+        projectDir: await realpath(projectDir),
+        id: manifest.id,
+        version: manifest.version,
+        title: manifest.title,
+        deviceTypes: [...manifest.deviceTypes]
+      })
+    } catch {
+      // 不完整的源码目录不进入发现结果，由卡片检查命令单独报告。
+    }
+  }
+  return projects.sort((left, right) => left.id.localeCompare(right.id))
+}
+
+function isPackageCardManifest(value: unknown): value is {
+  schemaVersion: 1
+  id: string
+  version: string
+  title: string
+  deviceTypes: string[]
+} {
+  return isPlainRecord(value)
+    && value.schemaVersion === 1
+    && typeof value.id === 'string'
+    && typeof value.version === 'string'
+    && typeof value.title === 'string'
+    && Array.isArray(value.deviceTypes)
+    && value.deviceTypes.length > 0
+    && value.deviceTypes.every((item) => typeof item === 'string' && item.length > 0)
+}
+
+function isPackageCardOpenInput(value: unknown): value is {
+  projectDir: string
+  context: DeviceCardAuthoringContext
+} {
+  return isPlainRecord(value)
+    && typeof value.projectDir === 'string'
+    && isAuthoringContext(value.context)
 }

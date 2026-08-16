@@ -449,6 +449,15 @@ if (!window.unilabCard) {
       config = { ...config, ...patch }
       return { ...config }
     },
+    async readManualExclusive() {
+      return { localDeviceId: 'mock-device', state: 'idle', exclusive: false }
+    },
+    async acquireManualExclusive() {
+      return { localDeviceId: 'mock-device', state: 'exclusive', exclusive: true }
+    },
+    async releaseManualExclusive() {
+      return { localDeviceId: 'mock-device', state: 'idle', exclusive: false }
+    },
     log(level, message) {
       console[level === 'error' ? 'error' : level === 'warn' ? 'warn' : 'info']('[device-card]', message)
     }

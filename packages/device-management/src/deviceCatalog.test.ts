@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
-import { presentEdgeDevices } from './deviceCatalog'
+import {
+  preferredManagedDevice,
+  presentEdgeDevices
+} from './deviceCatalog'
 
 describe('Edge device catalog', () => {
   it('does not create default devices when Edge reports nothing', () => {
@@ -62,5 +65,37 @@ describe('Edge device catalog', () => {
       displayName: '注射泵',
       displayDetail: ''
     })
+  })
+
+  /** 证明定制卡片匹配的设备也是通用动作页首次打开的设备。 */
+  it('prefers the custom-card device before the catalog default', () => {
+    const devices = presentEdgeDevices([
+      {
+        id: 'vision',
+        materialUuid: 'material-vision',
+        resourceTemplateUuid: 'template-vision',
+        deviceKey: 'vision',
+        namespace: 'ptlc',
+        machineName: '视觉服务',
+        online: true,
+        actions: []
+      },
+      {
+        id: 'material-robot',
+        materialUuid: 'material-robot',
+        resourceTemplateUuid: 'template-robot',
+        deviceKey: 'robot',
+        namespace: 'ptlc',
+        machineName: 'pTLC DOBOT CR5',
+        online: true,
+        actions: []
+      }
+    ])
+
+    expect(preferredManagedDevice(
+      devices,
+      null,
+      'material-robot'
+    )?.deviceKey).toBe('robot')
   })
 })

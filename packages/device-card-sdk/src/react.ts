@@ -8,6 +8,7 @@ import { getDeviceCardBridge } from './bridge'
 import type {
   DeviceCardActionRun,
   DeviceCardRuntimeSnapshot,
+  DeviceCardManualExclusiveSnapshot,
   JsonObject
 } from './contracts'
 
@@ -22,6 +23,9 @@ export function useDeviceCard(options: {
     params?: Record<string, unknown>
   ) => Promise<DeviceCardActionRun>
   saveConfig: (patch: JsonObject) => Promise<JsonObject>
+  readManualExclusive: () => Promise<DeviceCardManualExclusiveSnapshot>
+  acquireManualExclusive: () => Promise<DeviceCardManualExclusiveSnapshot>
+  releaseManualExclusive: () => Promise<DeviceCardManualExclusiveSnapshot>
 } {
   const [state, setState] = useState<Record<string, unknown>>({})
   const [context, setContext] =
@@ -60,5 +64,14 @@ export function useDeviceCard(options: {
     return getDeviceCardBridge().saveConfig(patch)
   }, [])
 
-  return { state, ready, context, callAction, saveConfig }
+  return {
+    state,
+    ready,
+    context,
+    callAction,
+    saveConfig,
+    readManualExclusive: () => getDeviceCardBridge().readManualExclusive(),
+    acquireManualExclusive: () => getDeviceCardBridge().acquireManualExclusive(),
+    releaseManualExclusive: () => getDeviceCardBridge().releaseManualExclusive()
+  }
 }

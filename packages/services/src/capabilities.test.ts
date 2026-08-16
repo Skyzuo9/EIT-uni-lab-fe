@@ -31,12 +31,14 @@ describe('server capability matrix', () => {
           'devices.subscribeStatus',
           'devices.forceUnlock',
           'devices.runActionTask',
+          'devices.manualExclusive',
           'material.readGraph',
           'workflow.readDefinitions',
           'workflow.authoring',
           'workflow.runTasks',
           'workflow.subscribeEvents',
-          'inventory.readReagents'
+          'inventory.readReagents',
+          'realtime.subscribeJointState'
         ]
         const localGoCapabilities = [
           'devices.listOnline',

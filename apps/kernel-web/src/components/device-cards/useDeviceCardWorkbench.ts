@@ -189,7 +189,7 @@ export function useDeviceCardWorkbench() {
 
   const runtimeState = useMemo<Record<string, unknown>>(() => {
     if (!selectedDevice) return { status: 'idle', online: false }
-    // Edge /api/v1/ws/device_status 真值；online / actionBusy 仍来自目录。
+    // 设备属性来自统一 SSE；online / actionBusy 仍来自设备目录。
     return buildDeviceCardRuntimeState(selectedDevice, statusMap)
   }, [selectedDevice, statusMap])
   const previewState = useMemo<Record<string, unknown>>(
@@ -251,7 +251,15 @@ export function useDeviceCardWorkbench() {
             ? previewStateSignature.split('\u0000')
             : []
           : undefined,
-        availableMedia: liveMode ? [] : undefined
+        availableMedia: liveMode ? [] : undefined,
+        availableUiFeatures: liveMode
+          ? [
+              'core',
+              ...(services.capabilities.devices.manualExclusive
+                ? ['manual-exclusive']
+                : [])
+            ]
+          : undefined
       }
       const opening = workspaceActive
         ? desktopApi.workspace.preview(request)
@@ -284,7 +292,8 @@ export function useDeviceCardWorkbench() {
     liveMode,
     selectedCard?.key,
     workspaceActive,
-    workspaceCard?.sourceHash
+    workspaceCard?.sourceHash,
+    services.capabilities.devices.manualExclusive
   ])
 
   useEffect(() => {
@@ -328,6 +337,37 @@ export function useDeviceCardWorkbench() {
     services.deviceActionTasks,
     services.workflow
   ])
+
+  useEffect(() => {
+    if (!desktopApi) return
+    return desktopApi.onManualExclusiveRequest((request) => {
+      const device = devicesRef.current.find(
+        (candidate) => candidate.deviceId === request.deviceId
+      )
+      if (!device) {
+        void desktopApi.resolveManualExclusive({
+          requestId: request.requestId,
+          ok: false,
+          error: `未找到设备绑定：${request.deviceId}`
+        })
+        return
+      }
+      const operation = services.manualExclusive[request.operation]
+      // 卡片 Action 使用设备物料 UUID；手动独占路径使用 Edge local_id。
+      void operation(device.deviceKey).then(
+        snapshot => desktopApi.resolveManualExclusive({
+          requestId: request.requestId,
+          ok: true,
+          snapshot
+        }),
+        error => desktopApi.resolveManualExclusive({
+          requestId: request.requestId,
+          ok: false,
+          error: error instanceof Error ? error.message : String(error)
+        })
+      )
+    })
+  }, [desktopApi, services.manualExclusive])
 
   const workspaceActions = useDeviceCardWorkspaceActions({
     desktopApi,

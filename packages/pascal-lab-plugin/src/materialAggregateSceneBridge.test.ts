@@ -52,12 +52,41 @@ describe('Material Aggregate / Pascal bridge', () => {
     ])
   })
 
+  /** 验证八槽展开缸的世界偏航同时进入场景节点与碰撞视图快照。 */
+  it('preserves the develop station Z quarter-turn in scene projection', () => {
+    const develop = aggregate('develop', {
+      placement: {
+        kind: 'world',
+        pose: {
+          positionMm: [1100, -12, 850],
+          rotationDegXYZ: [0, 0, 90]
+        }
+      }
+    })
+
+    const scene = materialAggregatesToSceneGraph([develop])
+    const node = scene.nodes['lab-develop']
+    if (!isLabDeviceNode(node)) throw new Error('Expected lab device')
+
+    expectTupleCloseTo(node.rotation, [0, Math.PI / 2, 0])
+    expectTupleCloseTo(
+      node.floorplanSnapshot?.worldRotationDegXYZ ?? [],
+      [0, 0, 90]
+    )
+  })
+
   it('projects the instance rendering snapshot without copying the entity', () => {
     const robot = aggregate('robot', {
       config: {
         rendering: {
           kind: 'robot',
           dimensionsMm: [500, 700, 400],
+          kinematics: {
+            device_id: 'robot',
+            topology_digest: 'a'.repeat(64),
+            qualified_joint_names: ['robot/joint_1'],
+            stale_after_s: 2
+          },
           model: {
             path: '/assets/robot.xacro',
             macro: 'szlab_mixer_robot',
@@ -77,7 +106,8 @@ describe('Material Aggregate / Pascal bridge', () => {
 
     const scene = materialAggregatesToSceneGraph([robot], {
       fitSceneRevision: 7,
-      fitSceneView: 'top'
+      fitSceneView: 'top',
+      fitSceneFocus: 'kinematics'
     })
     const node = scene.nodes['lab-robot']
 
@@ -98,9 +128,11 @@ describe('Material Aggregate / Pascal bridge', () => {
     const site = scene.nodes.site_unilab as {
       fitSceneRevision?: number
       fitSceneView?: string
+      fitSceneObjectIds?: readonly string[]
     }
     expect(site.fitSceneRevision).toBe(7)
     expect(site.fitSceneView).toBe('top')
+    expect(site.fitSceneObjectIds).toEqual(['lab-robot'])
     expect(site).not.toHaveProperty('camera')
     expect(scene.nodes.level_unilab).not.toHaveProperty('camera')
     expect(sceneGraphToMaterialMoves(scene, [robot])).toEqual([])

@@ -9,6 +9,7 @@ import {
 } from './workflow-action-catalog.fixtures'
 
 const materialUuid = '50000000-0000-4000-8000-000000000001'
+const deviceTypeId = 'szlab.devices.pump:Pump'
 
 describe('laboratory service', () => {
   /** 验证 Backend 与 Local Backend 都统一通过 v1 健康检查路径探测连接。 */
@@ -80,11 +81,15 @@ describe('laboratory service', () => {
 
   it('fails closed when Local returns a non-DeviceOverview catalog', async () => {
     const service = createLaboratoryService(
-      fixtureHttp({
-        ...catalogResponses(),
-        '/api/v1/devices': {
-          code: 0,
-          data: { schemaVersion: 'device-catalog/v1', items: [] }
+    fixtureHttp({
+      ...catalogResponses(),
+      '/api/v1/authoring/device-catalog': {
+        code: 0,
+        data: { items: [] }
+      },
+      '/api/v1/devices': {
+        code: 0,
+        data: { schemaVersion: 'device-catalog/v1', items: [] }
         }
       }),
       getDefaultBackend('local-python')
@@ -178,6 +183,23 @@ describe('laboratory service', () => {
 function sharedDeviceResponses(): Record<string, unknown> {
   return {
     ...catalogResponses(),
+    '/api/v1/authoring/device-catalog': {
+      code: 0,
+      data: {
+        items: [{
+          id: 'pump-01',
+          materialUuid,
+          resourceTemplateUuid,
+          deviceTypeId,
+          deviceKey: '/devices/pump/pump-01',
+          namespace: '/devices/pump',
+          name: '主泵',
+          online: true,
+          stateSchema: { pressure: { type: 'number' } },
+          actions: []
+        }]
+      }
+    },
     '/api/v1/devices': {
       code: 0,
       data: [{
@@ -191,6 +213,7 @@ function sharedDeviceResponses(): Record<string, unknown> {
         material: {
           uuid: materialUuid,
           resource_template_uuid: resourceTemplateUuid,
+          class: deviceTypeId,
           name: '主泵'
         },
         edge_status: 'online',

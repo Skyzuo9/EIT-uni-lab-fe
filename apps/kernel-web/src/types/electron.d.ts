@@ -9,6 +9,9 @@ import type {
   DeviceCardAuthoringTargetResponse,
   DeviceCardBounds,
   DeviceCardHostActionRequest,
+  DeviceCardHostManualExclusiveRequest,
+  DeviceCardHostManualExclusiveResult,
+  DevicePackageCardProject,
   DeviceCardWorkspaceStatus,
   InstalledDeviceCard,
   OpenDeviceCardRequest,
@@ -457,6 +460,15 @@ interface DesktopApi {
         listener: (status: DeviceCardWorkspaceStatus | null) => void
       ) => () => void
     }
+    package: {
+      discover: (workspacePath: string) => Promise<DevicePackageCardProject[]>
+      open: (input: {
+        projectDir: string
+        context: DeviceCardAuthoringContext
+      }) => Promise<DeviceCardWorkspaceStatus>
+      preview: (request: OpenDeviceCardWorkspaceRequest) => Promise<void>
+      close: () => Promise<void>
+    }
     open: (request: OpenDeviceCardRequest) => Promise<void>
     updateBounds: (bounds: DeviceCardBounds) => Promise<void>
     setOccluded: (source: string, occluded: boolean) => Promise<void>
@@ -465,6 +477,12 @@ interface DesktopApi {
     resolveAction: (run: DeviceCardActionRun) => Promise<void>
     onActionRequest: (
       listener: (request: DeviceCardHostActionRequest) => void
+    ) => () => void
+    resolveManualExclusive: (
+      result: DeviceCardHostManualExclusiveResult
+    ) => Promise<void>
+    onManualExclusiveRequest: (
+      listener: (request: DeviceCardHostManualExclusiveRequest) => void
     ) => () => void
   }
   runtime?: DesktopRuntimeApi

@@ -1,4 +1,4 @@
-import { useRegistry } from '@pascal-app/core'
+import { sceneRegistry, useRegistry } from '@pascal-app/core'
 import { NodeRenderer } from '@pascal-app/viewer'
 import { useThree } from '@react-three/fiber'
 import { useCallback, useEffect, useRef } from 'react'
@@ -13,6 +13,8 @@ import MaterialTransferLayerRenderer from './MaterialTransferLayerRenderer'
 import type { LabMaterialTransferLayerNode } from '../schema'
 import {
   applySceneCameraRequest,
+  insetSceneBounds,
+  outsetSceneBounds,
   type SceneCameraControls,
   type SceneCameraView
 } from '../sceneCameraRequest'
@@ -26,6 +28,7 @@ interface HierarchyNode {
   rotation?: number | readonly [number, number, number]
   fitSceneRevision?: number
   fitSceneView?: SceneCameraView
+  fitSceneObjectIds?: readonly string[]
   materialTransferLayer?: LabMaterialTransferLayerNode | null
 }
 
@@ -57,6 +60,7 @@ export default function HierarchyRenderer({
       if (
         node.type !== 'site' ||
         !controls?.fitToBox ||
+        !controls.rotateAzimuthTo ||
         !controls.rotatePolarTo ||
         viewportWidth <= 0 ||
         viewportHeight <= 0
@@ -64,24 +68,43 @@ export default function HierarchyRenderer({
         return
       }
       const fitToBox = controls.fitToBox.bind(controls)
+      const rotateAzimuthTo = controls.rotateAzimuthTo.bind(controls)
       const rotatePolarTo = controls.rotatePolarTo.bind(controls)
       const root = groupRef.current
       root.updateWorldMatrix(true, true)
-      const bounds = new Box3().setFromObject(root)
+      const focusObjects = (node.fitSceneObjectIds ?? [])
+        .map((id) => sceneRegistry.nodes.get(id))
+        .filter((object): object is Group => object != null)
+      if ((node.fitSceneObjectIds?.length ?? 0) > 0 && focusObjects.length === 0) {
+        return
+      }
+      const bounds = new Box3()
+      if (focusObjects.length > 0) {
+        for (const object of focusObjects) bounds.expandByObject(object)
+      } else {
+        bounds.setFromObject(root)
+      }
       if (bounds.isEmpty()) return
 
-      const size = bounds.getSize(new Vector3())
-      const padding = Math.max(size.x, size.y, size.z) * 0.06
+      const focusedBounds = focusObjects.length > 0
+        ? outsetSceneBounds(bounds, 0.38)
+        : insetSceneBounds(bounds, 0.16)
+      const size = focusedBounds.getSize(new Vector3())
+      const padding = Math.max(size.x, size.y, size.z) * 0.012
       const fit = async (): Promise<void> => {
         await applySceneCameraRequest({
-          bounds,
+          bounds: focusedBounds,
           controls: {
             fitToBox,
+            rotateAzimuthTo,
             rotatePolarTo
           },
           padding,
           smooth,
-          view
+          view:
+            view === 'default' && focusObjects.length > 0
+              ? 'kinematics'
+              : view
         })
         invalidate()
       }
@@ -91,6 +114,7 @@ export default function HierarchyRenderer({
       controls,
       invalidate,
       node.type,
+      node.fitSceneObjectIds,
       viewportHeight,
       viewportWidth
     ]
@@ -101,6 +125,7 @@ export default function HierarchyRenderer({
       node.type !== 'site' ||
       hasAppliedInitialFitRef.current ||
       !controls?.fitToBox ||
+      !controls.rotateAzimuthTo ||
       !controls.rotatePolarTo ||
       viewportWidth <= 0 ||
       viewportHeight <= 0

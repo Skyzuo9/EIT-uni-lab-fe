@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { HttpRequestTraceEvent } from './http'
-import { connectDeviceStatus } from './realtime'
+import { connectDeviceTelemetry } from './realtime'
 import { createWorkflowSseTransport } from './workflowSse'
 
 afterEach(() => {
@@ -44,30 +44,33 @@ describe('Edge streaming transport tracing', () => {
     })
   })
 
-  it('passes WebSocket trace context in the handshake query', async () => {
+  it('passes SSE trace context in the device telemetry query', async () => {
     const events: HttpRequestTraceEvent[] = []
     const urls: string[] = []
 
-    class FakeWebSocket {
-      onopen: (() => void) | null = null
-      onmessage: ((event: MessageEvent) => void) | null = null
-      onerror: (() => void) | null = null
-      onclose: (() => void) | null = null
+    class FakeEventSource extends EventTarget {
+      static readonly CLOSED = 2
+      readonly readyState = 1
 
       constructor(url: string | URL) {
+        super()
         urls.push(String(url))
-        queueMicrotask(() => this.onopen?.())
+        queueMicrotask(() => this.dispatchEvent(new Event('open')))
       }
 
       close(): void {}
     }
 
-    vi.stubGlobal('WebSocket', FakeWebSocket)
+    vi.stubGlobal('EventSource', FakeEventSource)
     const opened = new Promise<void>((resolve) => {
-      const close = connectDeviceStatus(
+      const close = connectDeviceTelemetry(
         'http://127.0.0.1:18003',
-        { onDeviceStatus: () => undefined, onOpen: resolve },
-        (event) => { events.push(event) }
+        {
+          onSnapshot: () => undefined,
+          onChanged: () => undefined,
+          onOpen: resolve
+        },
+        (event: HttpRequestTraceEvent) => { events.push(event) }
       )
       void close
     })
@@ -77,10 +80,10 @@ describe('Edge streaming transport tracing', () => {
     const traceparent = new URL(urls[0] ?? '').searchParams.get('traceparent')
     expect(traceparent).toMatch(/^00-[0-9a-f]{32}-[0-9a-f]{16}-01$/)
     expect(events[0]).toMatchObject({
-      transport: 'websocket',
-      path: '/api/v1/ws/device_status',
+      transport: 'sse',
+      path: '/api/v1/device-telemetry/events',
       outcome: 'open',
-      statusCode: 101,
+      statusCode: 200,
       traceparent
     })
   })

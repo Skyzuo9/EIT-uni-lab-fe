@@ -1,14 +1,3 @@
-/**
- * ============================================================
- * AI-GENERATED CODE METADATA
- * ============================================================
- * Model: Claude Opus 4.8
- * Generation Date: 2026-07-22
- * Prompt Summary: Uni-Lab-OS WebSocket 客户端封装(设备状态订阅)
- * Context: 订阅 Edge FastAPI /api/v1/ws/device_status（约 1Hz）
- * Human Review Status: [ ] Pending  [ ] Reviewed  [ ] Approved
- * ============================================================
- */
 import type { BackendConfig } from './backends'
 import type { DeviceStatus } from './laboratory'
 import {
@@ -18,177 +7,380 @@ import {
   type HttpRequestTraceReporter
 } from './http'
 
-interface DeviceStatusMessage {
-  type: string
-  data: {
-    device_status?: Record<string, Record<string, unknown>>
-    device_status_timestamps?: Record<string, number | Record<string, unknown>>
-  }
+export interface DeviceJointStateFrame {
+  materialId: string
+  deviceId: string
+  topologyDigest: string
+  bootId: string
+  sequence: number
+  acceptedRef: string
+  observedAt: number
+  staleAfterSeconds: number
+  stale: boolean
+  jointStates: Readonly<Record<string, number>>
 }
 
 export interface DeviceStatusHandlers {
   onDeviceStatus: (statuses: DeviceStatus[]) => void
+  /** 兼容订阅入口；新消费者优先使用独立关节状态（JointState）订阅。 */
+  onJointState?: (frame: DeviceJointStateFrame) => void
   onOpen?: () => void
   onClose?: () => void
   onError?: (error: string) => void
 }
 
-/** Edge mounts the api router at /api/v1; route is /ws/device_status. */
-export function toDeviceStatusUrl(baseUrl: string): string {
-  const trimmed = baseUrl.replace(/\/$/, '')
-  const wsBase = trimmed.replace(/^http/, 'ws')
-  if (wsBase.endsWith('/api/v1/ws/device_status')) return wsBase
-  if (wsBase.endsWith('/ws/device_status')) {
-    return wsBase.replace(/\/ws\/device_status$/, '/api/v1/ws/device_status')
-  }
-  return `${wsBase}/api/v1/ws/device_status`
+export interface JointStateHandlers {
+  onJointState: (frame: DeviceJointStateFrame) => void
+  onSnapshot?: (frames: readonly DeviceJointStateFrame[]) => void
+  onOpen?: () => void
+  onClose?: () => void
+  onError?: (error: string) => void
 }
 
-// 建立设备状态订阅连接,返回关闭函数
-export function connectDeviceStatus(
+interface DeviceTelemetryEvent {
+  material_uuid: string
+  local_device_id: string
+  telemetry_type: 'device_properties' | 'joint_state'
+  boot_id: string
+  sequence: number
+  accepted_ref: string
+  observed_at: string
+  stale_after_s: number | null
+  stale: boolean
+  data: Record<string, unknown>
+}
+
+interface DeviceTelemetryHandlers {
+  onSnapshot: (items: DeviceTelemetryEvent[]) => void
+  onChanged: (item: DeviceTelemetryEvent) => void
+  onOpen?: () => void
+  onClose?: () => void
+  onError?: (error: string) => void
+}
+
+/**
+ * 把旧实时地址或 HTTP 根地址规范成统一设备遥测（DeviceTelemetry）SSE。
+ * 旧 `/api/v1/ws/device_status` 与 `/api/v1/edge/ws` 只参与地址迁移，绝不回退。
+ */
+export function toDeviceTelemetryUrl(baseUrl: string): string {
+  const normalized = baseUrl.trim().replace(/^ws:/u, 'http:')
+    .replace(/^wss:/u, 'https:')
+  const url = new URL(normalized)
+  const legacySuffixes = [
+    '/api/v1/ws/device_status',
+    '/api/v1/edge/ws',
+    '/ws/device_status'
+  ]
+  for (const suffix of legacySuffixes) {
+    if (url.pathname.endsWith(suffix)) {
+      url.pathname = `${url.pathname.slice(0, -suffix.length)}/api/v1/device-telemetry/events`
+      url.search = ''
+      url.hash = ''
+      return url.toString()
+    }
+  }
+  if (!url.pathname.endsWith('/api/v1/device-telemetry/events')) {
+    const basePath = url.pathname.replace(/\/+$/u, '')
+    url.pathname = basePath.endsWith('/api/v1')
+      ? `${basePath}/device-telemetry/events`
+      : `${basePath}/api/v1/device-telemetry/events`
+  }
+  url.search = ''
+  url.hash = ''
+  return url.toString()
+}
+
+/** 建立先快照后更新的设备遥测（DeviceTelemetry）SSE。 */
+export function connectDeviceTelemetry(
   baseUrl: string,
-  handlers: DeviceStatusHandlers,
+  handlers: DeviceTelemetryHandlers,
   traceRequest?: HttpRequestTraceReporter
 ): () => void {
-  let closedByCaller = false
-  let socket: WebSocket | null = null
-  let reconnectTimer: ReturnType<typeof globalThis.setTimeout> | null = null
-
-  const scheduleReconnect = (): void => {
-    if (closedByCaller || reconnectTimer !== null) return
-    reconnectTimer = globalThis.setTimeout(() => {
-      reconnectTimer = null
-      openSocket()
-    }, 1_000)
+  const streamUrl = toDeviceTelemetryUrl(baseUrl)
+  const trace = createHttpRequestTrace(streamUrl, 'GET', 'sse')
+  const tracedUrl = new URL(streamUrl)
+  tracedUrl.searchParams.set('traceparent', trace.traceparent)
+  const source = new EventSource(tracedUrl.toString())
+  let opened = false
+  let traceReported = false
+  const onOpen = (): void => {
+    opened = true
+    reportHttpRequestTrace(traceRequest, finishHttpRequestTrace(trace, 'open', 200))
+    traceReported = true
+    handlers.onOpen?.()
   }
-
-  const openSocket = (): void => {
-    if (closedByCaller) return
-    try {
-      const socketUrl = toDeviceStatusUrl(baseUrl)
-      const requestTrace = createHttpRequestTrace(socketUrl, 'GET', 'websocket')
-      const tracedUrl = new URL(socketUrl)
-      tracedUrl.searchParams.set('traceparent', requestTrace.traceparent)
-      let traceReported = false
-      const nextSocket = new WebSocket(tracedUrl)
-      socket = nextSocket
-      nextSocket.onopen = () => {
-        reportHttpRequestTrace(traceRequest, finishHttpRequestTrace(
-          requestTrace,
-          'open',
-          101
-        ))
-        traceReported = true
-        handlers.onOpen?.()
-      }
-      nextSocket.onmessage = (event) => {
-        const parsed = parseMessage(event.data)
-        if (!parsed || parsed.type !== 'device_status') return
-        handlers.onDeviceStatus(mapStatuses(parsed.data))
-      }
-      nextSocket.onerror = () => {
-        if (!traceReported) {
-          reportHttpRequestTrace(traceRequest, finishHttpRequestTrace(
-            requestTrace,
-            'error'
-          ))
-          traceReported = true
-        }
-        handlers.onError?.('设备状态 WebSocket 连接出错')
-      }
-      nextSocket.onclose = () => {
-        if (socket === nextSocket) socket = null
-        if (closedByCaller) return
-        handlers.onClose?.()
-        scheduleReconnect()
-      }
-    } catch {
-      handlers.onError?.('设备状态 WebSocket 连接出错')
+  const onSnapshot = (event: Event): void => {
+    const payload = parseJsonEvent(event)
+    if (!isExactRecord(payload, ['items']) || !Array.isArray(payload.items)) {
+      handlers.onError?.('设备遥测快照合同无效')
+      return
+    }
+    const items = payload.items.map(parseTelemetryEvent)
+    if (items.some(item => item === null)) {
+      handlers.onError?.('设备遥测快照合同无效')
+      return
+    }
+    handlers.onSnapshot(items as DeviceTelemetryEvent[])
+  }
+  const onChanged = (event: Event): void => {
+    const item = parseTelemetryEvent(parseJsonEvent(event))
+    if (!item) {
+      handlers.onError?.('设备遥测更新合同无效')
+      return
+    }
+    handlers.onChanged(item)
+  }
+  const onError = (): void => {
+    if (!traceReported) {
+      reportHttpRequestTrace(traceRequest, finishHttpRequestTrace(trace, 'error'))
+      traceReported = true
+    }
+    handlers.onError?.('设备遥测 SSE 连接出错')
+    if (opened && source.readyState === EventSource.CLOSED) {
+      opened = false
       handlers.onClose?.()
-      scheduleReconnect()
     }
   }
-
-  openSocket()
-
+  source.addEventListener('open', onOpen)
+  source.addEventListener('device.telemetry.snapshot', onSnapshot)
+  source.addEventListener('device.telemetry.changed', onChanged)
+  source.addEventListener('error', onError)
   return () => {
-    closedByCaller = true
-    if (reconnectTimer !== null) {
-      globalThis.clearTimeout(reconnectTimer)
-      reconnectTimer = null
-    }
-    socket?.close()
-    socket = null
+    source.removeEventListener('open', onOpen)
+    source.removeEventListener('device.telemetry.snapshot', onSnapshot)
+    source.removeEventListener('device.telemetry.changed', onChanged)
+    source.removeEventListener('error', onError)
+    source.close()
   }
 }
 
 export interface RealtimeService {
   subscribeDeviceStatus: (handlers: DeviceStatusHandlers) => () => void
+  subscribeJointState: (handlers: JointStateHandlers) => () => void
   dispose: () => void
 }
 
+/**
+ * 创建单连接实时服务：通用设备卡片和 Pascal 共用一个 SSE，并从内存 latest
+ * 给迟到订阅者重放。正式后端（Backend）能力未声明时由上层能力门禁关闭。
+ */
 export function createRealtimeService(
   backend: BackendConfig,
-  traceRequest?: HttpRequestTraceReporter
+  _traceRequest?: HttpRequestTraceReporter
 ): RealtimeService {
-  const disposers = new Set<() => void>()
-  const realtimeBaseUrl = backend.realtimeUrl || backend.apiUrl
+  const statusSubscribers = new Set<DeviceStatusHandlers>()
+  const jointSubscribers = new Set<JointStateHandlers>()
+  const statuses = new Map<string, DeviceStatus>()
+  const jointFrames = new Map<string, DeviceJointStateFrame>()
+  const baseUrl = backend.realtimeUrl || backend.apiUrl
+  let closeConnection: (() => void) | null = null
+  let connected = false
+
+  const broadcastStatuses = (): void => {
+    const snapshot = [...statuses.values()]
+    for (const subscriber of statusSubscribers) {
+      subscriber.onDeviceStatus(snapshot)
+    }
+  }
+  const publishEvent = (event: DeviceTelemetryEvent): void => {
+    if (event.telemetry_type === 'device_properties') {
+      const status = mapDeviceStatus(event)
+      if (!status) return
+      statuses.set(status.deviceId, status)
+      broadcastStatuses()
+      return
+    }
+    const frame = mapJointState(event)
+    if (!frame) return
+    jointFrames.set(frame.materialId, frame)
+    for (const subscriber of statusSubscribers) subscriber.onJointState?.(frame)
+    for (const subscriber of jointSubscribers) subscriber.onJointState(frame)
+  }
+  const ensureConnection = (): void => {
+    if (closeConnection || statusSubscribers.size + jointSubscribers.size === 0) return
+    closeConnection = connectDeviceTelemetry(baseUrl, {
+      onOpen: () => {
+        connected = true
+        for (const subscriber of statusSubscribers) subscriber.onOpen?.()
+        for (const subscriber of jointSubscribers) subscriber.onOpen?.()
+      },
+      onClose: () => {
+        connected = false
+        for (const subscriber of statusSubscribers) subscriber.onClose?.()
+        for (const subscriber of jointSubscribers) subscriber.onClose?.()
+      },
+      onError: (error) => {
+        for (const subscriber of statusSubscribers) subscriber.onError?.(error)
+        for (const subscriber of jointSubscribers) subscriber.onError?.(error)
+      },
+      onSnapshot: (items) => {
+        statuses.clear()
+        jointFrames.clear()
+        for (const item of items) {
+          if (item.telemetry_type === 'device_properties') {
+            const status = mapDeviceStatus(item)
+            if (status) statuses.set(status.deviceId, status)
+          } else {
+            const frame = mapJointState(item)
+            if (frame) jointFrames.set(frame.materialId, frame)
+          }
+        }
+        broadcastStatuses()
+        const frameSnapshot = [...jointFrames.values()]
+        for (const frame of frameSnapshot) {
+          for (const subscriber of statusSubscribers) subscriber.onJointState?.(frame)
+        }
+        for (const subscriber of jointSubscribers) {
+          if (subscriber.onSnapshot) subscriber.onSnapshot(frameSnapshot)
+          else for (const frame of frameSnapshot) subscriber.onJointState(frame)
+        }
+      },
+      onChanged: publishEvent
+    }, backend.serverKind === 'edge' ? _traceRequest : undefined)
+  }
+  const releaseConnectionIfUnused = (): void => {
+    if (statusSubscribers.size + jointSubscribers.size > 0) return
+    closeConnection?.()
+    closeConnection = null
+    connected = false
+    statuses.clear()
+    jointFrames.clear()
+  }
 
   return {
     subscribeDeviceStatus: (handlers) => {
-      const close = connectDeviceStatus(
-        realtimeBaseUrl,
-        handlers,
-        backend.serverKind === 'edge' ? traceRequest : undefined
-      )
-      disposers.add(close)
+      statusSubscribers.add(handlers)
+      if (connected) handlers.onOpen?.()
+      if (statuses.size > 0) handlers.onDeviceStatus([...statuses.values()])
+      for (const frame of jointFrames.values()) handlers.onJointState?.(frame)
+      ensureConnection()
       return () => {
-        close()
-        disposers.delete(close)
+        statusSubscribers.delete(handlers)
+        releaseConnectionIfUnused()
+      }
+    },
+    subscribeJointState: (handlers) => {
+      jointSubscribers.add(handlers)
+      if (connected) handlers.onOpen?.()
+      const snapshot = [...jointFrames.values()]
+      if (handlers.onSnapshot) handlers.onSnapshot(snapshot)
+      else for (const frame of snapshot) handlers.onJointState(frame)
+      ensureConnection()
+      return () => {
+        jointSubscribers.delete(handlers)
+        releaseConnectionIfUnused()
       }
     },
     dispose: () => {
-      for (const close of disposers) close()
-      disposers.clear()
+      closeConnection?.()
+      closeConnection = null
+      connected = false
+      statusSubscribers.clear()
+      jointSubscribers.clear()
+      statuses.clear()
+      jointFrames.clear()
     }
   }
 }
 
-// 解析消息文本为结构体;失败返回 null
-function parseMessage(raw: unknown): DeviceStatusMessage | null {
-  if (typeof raw !== 'string') return null
-  try {
-    const obj = JSON.parse(raw)
-    if (obj && typeof obj === 'object') return obj as DeviceStatusMessage
-    return null
-  } catch {
-    return null
+function parseTelemetryEvent(value: unknown): DeviceTelemetryEvent | null {
+  const keys = [
+    'material_uuid', 'local_device_id', 'telemetry_type', 'boot_id',
+    'sequence', 'accepted_ref', 'observed_at', 'stale_after_s', 'stale', 'data'
+  ] as const
+  if (!isExactRecord(value, keys)) return null
+  if (!boundedText(value.material_uuid, 200) || !boundedText(value.local_device_id, 200)) return null
+  if (value.telemetry_type !== 'device_properties' && value.telemetry_type !== 'joint_state') return null
+  if (!boundedText(value.boot_id, 128) || !boundedText(value.accepted_ref, 80)) return null
+  if (!positiveInteger(value.sequence) || !timestamp(value.observed_at)) return null
+  if (typeof value.stale !== 'boolean' || !isRecord(value.data)) return null
+  if (value.telemetry_type === 'device_properties' && value.stale_after_s !== null) return null
+  if (value.telemetry_type === 'joint_state' && !finiteNumber(value.stale_after_s)) return null
+  return value as unknown as DeviceTelemetryEvent
+}
+
+function mapDeviceStatus(event: DeviceTelemetryEvent): DeviceStatus | null {
+  if (!isExactRecord(event.data, ['properties', 'property_observed_at'])) return null
+  if (!isRecord(event.data.properties) || !isRecord(event.data.property_observed_at)) return null
+  const names = Object.keys(event.data.properties)
+  if (names.length === 0 || names.length > 512 ||
+      !sameKeys(event.data.properties, event.data.property_observed_at)) return null
+  for (const name of names) {
+    const value = event.data.properties[name]
+    if (!name || !isScalar(value) || !timestamp(event.data.property_observed_at[name])) return null
+  }
+  return {
+    deviceId: event.local_device_id,
+    status: { ...event.data.properties },
+    timestamp: Date.parse(event.observed_at)
   }
 }
 
-// 将推送的 device_status 字典拍平为数组
-function mapStatuses(data: DeviceStatusMessage['data']): DeviceStatus[] {
-  const statusMap = data.device_status ?? {}
-  const timestamps = data.device_status_timestamps ?? {}
-  return Object.entries(statusMap).map(([deviceId, status]) => ({
-    deviceId,
-    status,
-    timestamp: deviceTimestamp(timestamps[deviceId])
-  }))
+function mapJointState(event: DeviceTelemetryEvent): DeviceJointStateFrame | null {
+  if (!isExactRecord(event.data, ['topology_digest', 'joint_states'])) return null
+  if (typeof event.data.topology_digest !== 'string' ||
+      !/^[0-9a-f]{64}$/u.test(event.data.topology_digest) ||
+      !isRecord(event.data.joint_states)) return null
+  const entries = Object.entries(event.data.joint_states)
+  if (entries.length === 0 || entries.length > 512) return null
+  const jointStates: Record<string, number> = {}
+  for (const [name, value] of entries) {
+    if (!name || name.length > 255 || !finiteNumber(value)) return null
+    jointStates[name] = value
+  }
+  return Object.freeze({
+    materialId: event.material_uuid,
+    deviceId: event.local_device_id,
+    topologyDigest: event.data.topology_digest,
+    bootId: event.boot_id,
+    sequence: event.sequence,
+    acceptedRef: event.accepted_ref,
+    observedAt: Date.parse(event.observed_at),
+    staleAfterSeconds: event.stale_after_s as number,
+    stale: event.stale,
+    jointStates: Object.freeze(jointStates)
+  })
 }
 
-function deviceTimestamp(value: unknown): number {
-  if (typeof value === 'number' && Number.isFinite(value)) return value
-  if (value && typeof value === 'object' && !Array.isArray(value)) {
-    const nums = Object.values(value).flatMap((item) => {
-      if (typeof item === 'number' && Number.isFinite(item)) return [item]
-      if (item && typeof item === 'object' && !Array.isArray(item)) {
-        const nested = (item as { timestamp?: unknown }).timestamp
-        if (typeof nested === 'number' && Number.isFinite(nested)) return [nested]
-      }
-      return []
-    })
-    if (nums.length > 0) return Math.max(...nums)
-  }
-  return 0
+function parseJsonEvent(event: Event): unknown {
+  if (!(event instanceof MessageEvent) || typeof event.data !== 'string') return null
+  try { return JSON.parse(event.data) as unknown } catch { return null }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+function isExactRecord<const K extends readonly string[]>(
+  value: unknown,
+  keys: K
+): value is Record<K[number], unknown> {
+  return isRecord(value) && Object.keys(value).length === keys.length &&
+    keys.every(key => Object.prototype.hasOwnProperty.call(value, key))
+}
+
+function boundedText(value: unknown, maximum: number): value is string {
+  return typeof value === 'string' && value.length > 0 && value.length <= maximum
+}
+
+function positiveInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value > 0
+}
+
+function finiteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value)
+}
+
+function timestamp(value: unknown): value is string {
+  return typeof value === 'string' && Number.isFinite(Date.parse(value))
+}
+
+function isScalar(value: unknown): boolean {
+  return typeof value === 'string' || typeof value === 'boolean' || finiteNumber(value)
+}
+
+function sameKeys(left: Record<string, unknown>, right: Record<string, unknown>): boolean {
+  const leftKeys = Object.keys(left).sort()
+  const rightKeys = Object.keys(right).sort()
+  return leftKeys.length === rightKeys.length && leftKeys.every((key, index) => key === rightKeys[index])
 }

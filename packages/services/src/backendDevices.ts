@@ -10,14 +10,20 @@ import { ServiceError } from './errors'
 import { requestData, type HttpClient } from './http'
 import { loadWorkflowActionCatalog } from './workflowActionCatalog'
 import type { WorkflowActionNodeTemplate } from './workflowActionCatalogTypes'
+import {
+  getRuntimeDevices,
+  normalizeDeviceStateSchema
+} from './laboratoryRuntimeAdapter'
 
 interface BackendDevice {
   id: string
+  resourceTemplateUuid: string
   deviceTypeId: string
   deviceKey: string
   namespace: string
   label: string
   online: boolean
+  stateSchema?: Record<string, unknown>
   actions: BackendDeviceAction[]
 }
 
@@ -41,12 +47,13 @@ export async function loadBackendDeviceCatalog(
   return devices.map((device) => ({
     deviceId: device.id,
     materialUuid: device.id,
-    resourceTemplateUuid: device.deviceTypeId,
+    resourceTemplateUuid: device.resourceTemplateUuid,
     deviceTypeId: device.deviceTypeId,
     deviceKey: device.deviceKey,
     namespace: device.namespace,
     label: device.label,
     online: device.online,
+    stateSchema: device.stateSchema,
     actions: device.actions.map((action) => {
       const template = matchActionTemplate(device, action, templates)
       return {
@@ -72,7 +79,7 @@ export async function loadBackendOnlineDevices(
   return devices.map((device) => ({
     id: device.id,
     materialUuid: device.id,
-    resourceTemplateUuid: device.deviceTypeId,
+    resourceTemplateUuid: device.resourceTemplateUuid,
     deviceKey: device.deviceKey,
     namespace: device.namespace,
     machineName: device.label,
@@ -161,11 +168,23 @@ async function loadBackendDeviceContext(
   devices: BackendDevice[]
   templates: WorkflowActionNodeTemplate[]
 }> {
-  const [devices, catalog] = await Promise.all([
+  const [devices, catalog, authoringDevices] = await Promise.all([
     loadBackendDevices(http, signal),
-    loadWorkflowActionCatalog(http, signal)
+    loadWorkflowActionCatalog(http, signal),
+    getRuntimeDevices(http, signal)
   ])
-  return { devices, templates: catalog.actionTemplates }
+  const devicesWithState = devices.map((device) => {
+    const authoring = authoringDevices.find(
+      (candidate) => candidate.materialUuid === device.id
+    )
+    return {
+      ...device,
+      stateSchema: authoring?.stateSchema
+        ? normalizeDeviceStateSchema(authoring.stateSchema)
+        : undefined
+    }
+  })
+  return { devices: devicesWithState, templates: catalog.actionTemplates }
 }
 
 /** 解码 Backend `/devices` 数组，并把设备身份固定为 Material UUID。 */
@@ -189,13 +208,15 @@ function mapBackendDevice(raw: Record<string, unknown>): BackendDevice {
   const id = requiredString(material.uuid, 'material.uuid')
   const deviceKey = requiredString(binding.local_id, 'binding.local_id')
   const namespace = requiredString(binding.edge_uuid, 'binding.edge_uuid')
-  const deviceTypeId = requiredString(
+  const resourceTemplateUuid = requiredString(
     material.resource_template_uuid,
     'material.resource_template_uuid'
   )
+  const deviceTypeId = requiredString(material.class, 'material.class')
 
   return {
     id,
+    resourceTemplateUuid,
     deviceTypeId,
     deviceKey,
     namespace,
@@ -242,7 +263,7 @@ function matchActionTemplate(
   templates: WorkflowActionNodeTemplate[]
 ): WorkflowActionNodeTemplate | null {
   const matches = templates.filter((template) =>
-    template.resourceTemplateUuid === device.deviceTypeId &&
+    template.resourceTemplateUuid === device.resourceTemplateUuid &&
     template.name === action.actionName &&
     template.actionType === action.typeName
   )

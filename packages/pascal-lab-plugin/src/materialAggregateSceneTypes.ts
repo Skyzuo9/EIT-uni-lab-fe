@@ -11,6 +11,7 @@ export interface MaterialSceneMove {
 export interface MaterialSceneProjectionOptions {
   fitSceneRevision?: number
   fitSceneView?: SceneCameraView
+  fitSceneFocus?: 'scene' | 'kinematics'
   showSites?: boolean
   showMaterialLabels?: boolean
   showMaterialTransfers?: boolean
@@ -50,6 +51,12 @@ export interface MaterialRenderingSnapshot {
   dimensionsMm: MaterialVector3Tuple
   footprintMm: readonly [number, number]
   scale: MaterialVector3Tuple
+  kinematics?: {
+    deviceId: string
+    topologyDigest: string
+    qualifiedJointNames: readonly string[]
+    staleAfterSeconds: number
+  }
   model: {
     path: string
     format?: string

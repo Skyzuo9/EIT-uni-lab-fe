@@ -274,16 +274,26 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /** 把旧 registry/package-catalog 来源名称归一化为 driver。 */
-function normalizeDeviceStateSchema(value: unknown): Record<string, unknown> {
+/**
+ * 给正式作者设备目录声明补上可信来源与解析状态。
+ *
+ * `/api/v1/authoring/device-catalog` 只传输属性 JSON Schema；来源由读取该正式
+ * Driver 目录的 Host 确认，不能由运行时样本或 Action 输出推断。
+ */
+export function normalizeDeviceStateSchema(value: unknown): Record<string, unknown> {
   return Object.fromEntries(
     Object.entries(asRuntimeRecord(value)).map(([key, definition]) => {
       if (!isRecord(definition)) return [key, definition]
       const source = definition.source
       return [
         key,
-        source === 'registry' || source === 'package-catalog'
-          ? { ...definition, source: 'driver' }
-          : { ...definition }
+        {
+          ...definition,
+          source: source === 'registry' || source === 'package-catalog'
+            ? 'driver'
+            : source ?? 'driver',
+          status: definition.status ?? 'resolved'
+        }
       ]
     })
   )

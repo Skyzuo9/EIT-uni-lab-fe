@@ -21,6 +21,7 @@ export function readMaterialRendering(
   const config = readRecord(aggregate.material.config)
   const source = recordValue(config.rendering) ?? config
   const model = recordValue(source.model) ?? {}
+  const kinematics = readKinematics(recordValue(source.kinematics))
   const pose = recordValue(source.pose) ?? {}
   const size = recordValue(pose.size) ?? {}
   const kind = stringValue(
@@ -46,6 +47,7 @@ export function readMaterialRendering(
     dimensionsMm,
     footprintMm,
     scale: vectorTuple(source.scale) ?? [1, 1, 1],
+    ...(kinematics ? { kinematics } : {}),
     model: {
       path: stringValue(model.path ?? model.mesh),
       format: optionalString(model.format ?? model.model_type),
@@ -78,6 +80,28 @@ function readBackendDimensions(
   return sizeX == null || sizeY == null || sizeZ == null
     ? undefined
     : [sizeX, sizeZ, sizeY]
+}
+
+function readKinematics(
+  source: Record<string, unknown> | undefined
+): MaterialRenderingSnapshot['kinematics'] {
+  if (!source) return undefined
+  const deviceId = optionalString(source.device_id)
+  const topologyDigest = optionalString(source.topology_digest)
+  const qualifiedJointNames = stringArray(source.qualified_joint_names)
+  const staleAfterSeconds = optionalNumber(source.stale_after_s)
+  if (!deviceId || !topologyDigest ||
+      !/^[0-9a-f]{64}$/u.test(topologyDigest) ||
+      !qualifiedJointNames || qualifiedJointNames.length === 0 ||
+      qualifiedJointNames.some(name => !name.trim()) ||
+      new Set(qualifiedJointNames).size !== qualifiedJointNames.length ||
+      staleAfterSeconds == null || staleAfterSeconds <= 0) return undefined
+  return {
+    deviceId,
+    topologyDigest,
+    qualifiedJointNames,
+    staleAfterSeconds
+  }
 }
 
 function readModelInstances(

@@ -9,6 +9,9 @@ import type {
   DeviceCardAuthoringTargetResponse,
   DeviceCardBounds,
   DeviceCardHostActionRequest,
+  DeviceCardHostManualExclusiveRequest,
+  DeviceCardHostManualExclusiveResult,
+  DevicePackageCardProject,
   DeviceCardWorkspaceStatus,
   InstalledDeviceCard,
   OpenDeviceCardRequest,
@@ -275,6 +278,19 @@ const api = {
         )
       }
     },
+    package: {
+      discover: (workspacePath: string): Promise<DevicePackageCardProject[]> =>
+        ipcRenderer.invoke('device-cards:package:discover', workspacePath),
+      open: (input: {
+        projectDir: string
+        context: DeviceCardAuthoringContext
+      }): Promise<DeviceCardWorkspaceStatus> =>
+        ipcRenderer.invoke('device-cards:package:open', input),
+      preview: (request: OpenDeviceCardWorkspaceRequest): Promise<void> =>
+        ipcRenderer.invoke('device-cards:package:preview', request),
+      close: (): Promise<void> =>
+        ipcRenderer.invoke('device-cards:package:close')
+    },
     open: (request: OpenDeviceCardRequest): Promise<void> =>
       ipcRenderer.invoke('device-cards:open', request),
     updateBounds: (bounds: DeviceCardBounds): Promise<void> =>
@@ -296,6 +312,25 @@ const api = {
       ipcRenderer.on('device-cards:actionRequest', wrapped)
       return () => ipcRenderer.removeListener(
         'device-cards:actionRequest',
+        wrapped
+      )
+    },
+    resolveManualExclusive: (
+      result: DeviceCardHostManualExclusiveResult
+    ): Promise<void> => ipcRenderer.invoke(
+      'device-cards:resolveManualExclusive',
+      result
+    ),
+    onManualExclusiveRequest: (
+      listener: (request: DeviceCardHostManualExclusiveRequest) => void
+    ): (() => void) => {
+      const wrapped = (
+        _event: Electron.IpcRendererEvent,
+        request: DeviceCardHostManualExclusiveRequest
+      ): void => listener(request)
+      ipcRenderer.on('device-cards:manualExclusiveRequest', wrapped)
+      return () => ipcRenderer.removeListener(
+        'device-cards:manualExclusiveRequest',
         wrapped
       )
     }

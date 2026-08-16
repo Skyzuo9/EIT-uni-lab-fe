@@ -195,6 +195,13 @@ export const SDK_DECLARATION = `declare module '@unilab/device-card-sdk' {
     saveConfig(
       patch: Record<string, JsonValue>
     ): Promise<Record<string, JsonValue>>
+    readManualExclusive(): Promise<{
+      localDeviceId: string
+      state: 'idle' | 'busy' | 'exclusive'
+      exclusive: boolean
+    }>
+    acquireManualExclusive(): ReturnType<DeviceCardBridge['readManualExclusive']>
+    releaseManualExclusive(): ReturnType<DeviceCardBridge['readManualExclusive']>
     log(level: 'info' | 'warn' | 'error', message: string): void
   }
   export function getDeviceCardBridge(): DeviceCardBridge

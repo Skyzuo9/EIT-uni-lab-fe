@@ -27,29 +27,30 @@ describe('Workbench domain view presentation', () => {
     expect(state.isVisible('material')).toBe(false)
   })
 
-  it('toggles instruments without discarding the authoring panel selection', () => {
+  it('keeps material beside instruments and restores the authoring split', () => {
     const state = new WorkbenchViewState()
 
     state.toggle('material')
     state.toggle('device')
-    expect(state.currentMode).toBe('device')
+    expect(state.currentMode).toBe('material-device')
     expect(state.isVisible('device')).toBe(true)
+    expect(state.isVisible('material')).toBe(true)
     expect(state.isVisible('workflow')).toBe(false)
-    expect(state.isVisible('material')).toBe(false)
     state.toggle('device')
 
     expect(state.currentMode).toBe('device')
     expect(state.isVisible('device')).toBe(true)
   })
 
-  it('opens each robot function as an exclusive Workbench surface', () => {
+  it('keeps material beside robot debug while other robot functions stay exclusive', () => {
     const state = new WorkbenchViewState()
 
     state.toggle('material')
     state.toggle('robot-debug')
 
-    expect(state.currentMode).toBe('robot-debug')
+    expect(state.currentMode).toBe('material-robot-debug')
     expect(state.isVisible('robot-debug')).toBe(true)
+    expect(state.isVisible('material')).toBe(true)
     expect(state.isVisible('device')).toBe(false)
 
     state.toggle('robot-points')
@@ -83,6 +84,48 @@ describe('Workbench domain view presentation', () => {
       ['material'],
       ['device']
     ])
+  })
+
+  it('renders material and robot debug as two resizable surfaces', () => {
+    const markup = renderToStaticMarkup(
+      <WorkbenchDomainLayout
+        mode="material-robot-debug"
+        workflow={<section data-testid="workflow-surface" />}
+        material={<section data-testid="material-surface" />}
+        device={<section data-testid="device-surface" />}
+        robotWorkstation={<section data-testid="robot-workstation-surface" />}
+      />
+    )
+
+    expect(markup).toContain('data-workbench-view="material-robot-debug"')
+    expect(markup).toContain('data-testid="material-surface"')
+    expect(markup).toContain('data-testid="robot-workstation-surface"')
+    expect(markup).toContain('调整物料与机械臂调试窗口宽度')
+    expect(markup.indexOf('data-testid="robot-workstation-surface"'))
+      .toBeLessThan(markup.indexOf('role="separator"'))
+    expect(markup.indexOf('role="separator"'))
+      .toBeLessThan(markup.indexOf('data-testid="material-surface"'))
+  })
+
+  it('renders instruments and material as two resizable surfaces', () => {
+    const markup = renderToStaticMarkup(
+      <WorkbenchDomainLayout
+        mode="material-device"
+        workflow={<section data-testid="workflow-surface" />}
+        material={<section data-testid="material-surface" />}
+        device={<section data-testid="device-surface" />}
+        robotWorkstation={<section data-testid="robot-workstation-surface" />}
+      />
+    )
+
+    expect(markup).toContain('data-workbench-view="material-device"')
+    expect(markup).toContain('data-testid="device-surface"')
+    expect(markup).toContain('data-testid="material-surface"')
+    expect(markup).toContain('调整仪器设备与物料窗口宽度')
+    expect(markup.indexOf('data-testid="device-surface"'))
+      .toBeLessThan(markup.indexOf('role="separator"'))
+    expect(markup.indexOf('role="separator"'))
+      .toBeLessThan(markup.indexOf('data-testid="material-surface"'))
   })
 
   it('presents an instrument entry without nesting the other domains', () => {

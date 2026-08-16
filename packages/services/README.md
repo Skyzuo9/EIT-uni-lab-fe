@@ -67,12 +67,14 @@ OS 与 Go backend 的逐路由、字段和调用链对照记录在 Uni-Lab-OS：
 
 ## 设备端口
 
-设备目录与低频 `device_status` 也服从 capability matrix。`local-python` 直接访问
-Edge FastAPI：设备目录使用 `:18003/api/v1/devices`，状态订阅使用
-`:18003/api/v1/ws/device_status`。这里不经过已退役的 `:8014` 网络 Bridge；
-未声明的其它能力仍直接降级。
+设备目录、设备遥测（DeviceTelemetry）和手动独占（Exclusive）服从能力矩阵
+（Capability Matrix）。`local-python` 直接访问本地后端（Local Backend）：设备目录使用
+`:18003/api/v1/devices`，通用设备属性与关节状态（JointState）共用
+`:18003/api/v1/device-telemetry/events` SSE，手动独占使用
+`/api/v1/devices/{local_device_id}/exclusive`。旧 `/api/v1/ws/device_status` 不再连接，
+也没有兼容回退；未声明的其它能力仍直接降级。
 
-`local-go` 使用 Backend `/api/v1/devices` 的 DeviceOverview，只把设备物料 UUID、
+`local-go` 使用正式后端（Backend）`/api/v1/devices` 的设备概览（DeviceOverview），只把设备物料 UUID、
 Edge 绑定、`dispatchable` 与实例动作声明映射为只读目录。动作运行、忙碌状态、参数
 schema 与强制解锁未形成完整端到端语义，因此不会因目录可读而自动启用。
 

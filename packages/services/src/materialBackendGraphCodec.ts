@@ -243,11 +243,18 @@ function mapBackendPlacement(
 
   const pose = mapBackendPose(position, 'relative_position')
   const parentId = optionalString(material.parent_uuid)
+  const materialConfig = isRecord(material.config) ? material.config : {}
+  const rendering = isRecord(materialConfig.rendering)
+    ? materialConfig.rendering
+    : {}
+  const parentLink = optionalString(rendering.parent_link)?.trim()
   return parentId
     ? {
         kind: 'parent',
         parentId,
-        anchor: { kind: 'root' },
+        anchor: parentLink
+          ? { kind: 'link', linkName: parentLink }
+          : { kind: 'root' },
         localPose: pose
       }
     : { kind: 'world', pose }

@@ -4,7 +4,9 @@ import {
 } from '@pascal-app/core'
 import { useNodeEvents, useViewer } from '@pascal-app/viewer'
 import { Html } from '@react-three/drei'
+import { useFrame } from '@react-three/fiber'
 import { shouldShowMaterialLabelByDefault } from '@unilab/material/domain'
+import { getJointStateFrame } from '@unilab/scene-runtime'
 import {
   useEffect,
   useLayoutEffect,
@@ -29,6 +31,11 @@ import {
   loadLabDeviceModel
 } from '../modelRuntime'
 import { findLinkObject } from '../mounting'
+import {
+  applyJointStateToUrdf,
+  captureInitialJointState,
+  resetJointStateUrdf
+} from '../jointStateRuntime'
 import type { LabDeviceNode } from '../schema'
 import {
   isSiteBoundsPointerHit,
@@ -219,6 +226,8 @@ export default function LabDeviceRenderer({
     [number, number, number]
   >([0, Math.max(node.dimensions[1], 0.2) + 0.08, 0])
   const { object, error, loading } = useLabModel(node)
+  const appliedJointFrameRef = useRef<object | null>(null)
+  const lastJointApplySecondsRef = useRef(0)
   const events = useCustomNodeEvents(node, node.type)
   const isSelected = useViewer((state) =>
     state.selection.selectedIds.includes(node.id as never)
@@ -233,6 +242,31 @@ export default function LabDeviceRenderer({
   )
 
   useRegistry(node.id, node.type, groupRef)
+
+  // 高频关节状态（JointState）只在 Three render frame 中命令式读取。
+  useFrame(({ clock }) => {
+    if (!object || !node.kinematics) return
+    const frame = getJointStateFrame(node.materialNodeId)
+    if (!frame) {
+      if (appliedJointFrameRef.current) resetJointStateUrdf(object)
+      appliedJointFrameRef.current = null
+      return
+    }
+    if (frame === appliedJointFrameRef.current || frame.stale) return
+    if (!matchesKinematicContract(node.kinematics, frame)) return
+    if (clock.elapsedTime - lastJointApplySecondsRef.current < 0.1) return
+    captureInitialJointState(object)
+    if (applyJointStateToUrdf(object, frame.jointStates)) {
+      appliedJointFrameRef.current = frame
+      lastJointApplySecondsRef.current = clock.elapsedTime
+    }
+  })
+
+  useEffect(() => {
+    // 模型实例变化后必须重新应用当前 latest，不能沿用旧对象引用。
+    appliedJointFrameRef.current = null
+    lastJointApplySecondsRef.current = 0
+  }, [object, node.materialNodeId])
 
   useEffect(() => {
     if (!groupRef.current) return
@@ -435,6 +469,12 @@ export default function LabDeviceRenderer({
           <div
             className="pascal-model-label pascal-model-label--status"
             title={error}
+            data-unilab-model-failure="true"
+            data-node-id={node.id}
+            data-material-id={node.materialNodeId}
+            data-model-path={node.model.path}
+            data-model-format={node.model.format}
+            data-model-error={error}
           >
             模型加载失败，已使用占位体
           </div>
@@ -442,4 +482,16 @@ export default function LabDeviceRenderer({
       )}
     </group>
   )
+}
+
+function matchesKinematicContract(
+  kinematics: NonNullable<LabDeviceNode['kinematics']>,
+  frame: NonNullable<ReturnType<typeof getJointStateFrame>>
+): boolean {
+  if (frame.deviceId !== kinematics.deviceId ||
+      frame.topologyDigest !== kinematics.topologyDigest) return false
+  const expected = [...kinematics.qualifiedJointNames].sort()
+  const actual = Object.keys(frame.jointStates).sort()
+  return expected.length === actual.length &&
+    expected.every((name, index) => name === actual[index])
 }

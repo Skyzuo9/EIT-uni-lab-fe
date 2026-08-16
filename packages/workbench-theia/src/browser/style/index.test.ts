@@ -15,6 +15,8 @@ beforeAll(async () => {
     runtimeLogs,
     environment,
     surfaces,
+    deviceSurface,
+    deviceCard,
     aionui,
     navigation,
     navigator
@@ -30,6 +32,8 @@ beforeAll(async () => {
     ),
     readFile(fileURLToPath(new URL('./environment-manager.css', import.meta.url)), 'utf8'),
     readFile(fileURLToPath(new URL('./workbench-surfaces.css', import.meta.url)), 'utf8'),
+    readFile(fileURLToPath(new URL('./workbench-device-surface.css', import.meta.url)), 'utf8'),
+    readFile(fileURLToPath(new URL('./workbench-device-card.css', import.meta.url)), 'utf8'),
     readFile(fileURLToPath(new URL('./aionui.css', import.meta.url)), 'utf8'),
     readFile(
       fileURLToPath(new URL('./workbench-domain-navigation.css', import.meta.url)),
@@ -46,6 +50,8 @@ beforeAll(async () => {
     runtimeLogs,
     environment,
     surfaces,
+    deviceSurface,
+    deviceCard,
     aionui
   ].join('\n')
   domainNavigationStylesheet = navigation
@@ -216,6 +222,51 @@ describe('environment manager layering and responsive layout', () => {
     expect(navigatorSource).not.toMatch(
       /mode:\s*'robot-reagents',[\s\S]*?label:\s*'试剂管理'/u
     )
+  })
+
+  /** 机械臂调试组合视图必须是整高左右分栏，不能被 Grid 自动排成对角两行。 */
+  it('pins the robot card and material scene to one shared grid row', () => {
+    expect(domainNavigationStylesheet).toMatch(
+      /is-material-robot-debug[\s\S]*is-robot-workstation\s*\{[^}]*grid-column:\s*1[^}]*grid-row:\s*1/u
+    )
+    expect(domainNavigationStylesheet).toMatch(
+      /is-material-robot-debug[\s\S]*__splitter\s*\{[^}]*grid-column:\s*2[^}]*grid-row:\s*1/u
+    )
+    expect(domainNavigationStylesheet).toMatch(
+      /is-material-robot-debug[\s\S]*is-material\s*\{[^}]*grid-column:\s*3[^}]*grid-row:\s*1/u
+    )
+    expect(domainNavigationStylesheet).toMatch(
+      /is-material-robot-debug[\s\S]*material-tree-sidebar[\s\S]*display:\s*none\s*!important/u
+    )
+  })
+
+  /** 证明仪器设备中的定制卡片与物料三维视口固定在同一行。 */
+  it('pins the instrument surface and material scene to one shared grid row', () => {
+    expect(domainNavigationStylesheet).toMatch(
+      /is-material-device[\s\S]*is-device\s*\{[^}]*grid-column:\s*1[^}]*grid-row:\s*1/u
+    )
+    expect(domainNavigationStylesheet).toMatch(
+      /is-material-device[\s\S]*__splitter\s*\{[^}]*grid-column:\s*2[^}]*grid-row:\s*1/u
+    )
+    expect(domainNavigationStylesheet).toMatch(
+      /is-material-device[\s\S]*is-material\s*\{[^}]*grid-column:\s*3[^}]*grid-row:\s*1/u
+    )
+    expect(domainNavigationStylesheet).toMatch(
+      /is-material-device[\s\S]*material-tree-sidebar[\s\S]*display:\s*none\s*!important/u
+    )
+  })
+
+  it('lets the hosted robot card fill the instrument split-column height', () => {
+    const card = cssRule('.unilab-workbench-device-card')
+    const preview = cssRule('.unilab-workbench-device-card__preview')
+    const panel = cssRule('.unilab-workbench-device-shell__panel')
+
+    expect(card).toMatch(/height:\s*100%/u)
+    expect(card).toMatch(/min-height:\s*0/u)
+    expect(preview).toMatch(/height:\s*100%/u)
+    expect(preview).toMatch(/min-height:\s*0/u)
+    expect(panel).toMatch(/min-height:\s*0/u)
+    expect(panel).toMatch(/flex:\s*1 1 auto/u)
   })
   /** 证明运行连接选择采用扁平分段控件，并在窄屏重排而不是横向压缩。 */
   it('keeps the authority choices readable and responsive', () => {

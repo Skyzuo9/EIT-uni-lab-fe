@@ -9,6 +9,7 @@ import { getDeviceCardBridge } from './bridge'
 import type {
   DeviceCardActionRun,
   DeviceCardRuntimeSnapshot,
+  DeviceCardManualExclusiveSnapshot,
   JsonObject
 } from './contracts'
 
@@ -23,6 +24,9 @@ export function useDeviceCard(options: {
     params?: Record<string, unknown>
   ) => Promise<DeviceCardActionRun>
   saveConfig: (patch: JsonObject) => Promise<JsonObject>
+  readManualExclusive: () => Promise<DeviceCardManualExclusiveSnapshot>
+  acquireManualExclusive: () => Promise<DeviceCardManualExclusiveSnapshot>
+  releaseManualExclusive: () => Promise<DeviceCardManualExclusiveSnapshot>
 } {
   const bridge = getDeviceCardBridge()
   const state = reactive<Record<string, unknown>>({})
@@ -53,6 +57,9 @@ export function useDeviceCard(options: {
     ready,
     context,
     callAction: (action, params) => bridge.callAction(action, params),
-    saveConfig: (patch) => bridge.saveConfig(patch)
+    saveConfig: (patch) => bridge.saveConfig(patch),
+    readManualExclusive: () => bridge.readManualExclusive(),
+    acquireManualExclusive: () => bridge.acquireManualExclusive(),
+    releaseManualExclusive: () => bridge.releaseManualExclusive()
   }
 }

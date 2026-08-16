@@ -28,6 +28,15 @@ export function assertDeviceCardRuntimeCapabilities(
     )
   }
   if (request.context.mode !== 'live') return
+  const availableUiFeatures = new Set(request.availableUiFeatures ?? ['core'])
+  const unavailableUiFeatures = record.metadata.manifest.uiFeatures.filter(
+    feature => !availableUiFeatures.has(feature)
+  )
+  if (unavailableUiFeatures.length > 0) {
+    throw new Error(
+      `当前 Host 不包含卡片请求的 UI Feature：${unavailableUiFeatures.join('、')}`
+    )
+  }
   const unavailable = unavailableDeviceCardCapabilities(
     record.metadata.manifest.permissions,
     {
@@ -132,6 +141,10 @@ function isOpenPreviewRequest(value: Record<string, unknown>): boolean {
       value.availableMedia === undefined ||
       Array.isArray(value.availableMedia) &&
       value.availableMedia.every((key) => typeof key === 'string')
+    ) && (
+      value.availableUiFeatures === undefined ||
+      Array.isArray(value.availableUiFeatures) &&
+      value.availableUiFeatures.every((key) => typeof key === 'string')
     )
 }
 

@@ -89,6 +89,13 @@ export const LabPlacementRefSchema = z
     anchorLinkName: null
   })
 
+export const LabKinematicsSchema = z.object({
+  deviceId: z.string().min(1),
+  topologyDigest: z.string().regex(/^[0-9a-f]{64}$/u),
+  qualifiedJointNames: z.array(z.string().min(1)).min(1),
+  staleAfterSeconds: z.number().positive()
+})
+
 export const LabDeviceNodeSchema = BaseNode.extend({
   type: z.literal('lab-device'),
   materialNodeId: z.string(),
@@ -103,6 +110,7 @@ export const LabDeviceNodeSchema = BaseNode.extend({
   scale: Vector3Schema.default([1, 1, 1]),
   dimensions: Vector3Schema.default([0.6, 0.5, 0.6]),
   renderBody: z.boolean().default(true),
+  kinematics: LabKinematicsSchema.optional(),
   model: z
     .object({
       path: z.string().default(''),
@@ -203,6 +211,7 @@ export type LabFloorplanSnapshot = z.infer<
   typeof LabFloorplanSnapshotSchema
 >
 export type LabPlacementRef = z.infer<typeof LabPlacementRefSchema>
+export type LabKinematics = z.infer<typeof LabKinematicsSchema>
 export type LabDeviceNode = z.infer<typeof LabDeviceNodeSchema>
 export type LabTableNode = z.infer<typeof LabTableNodeSchema>
 export type LabMaterialTransferStatus = z.infer<

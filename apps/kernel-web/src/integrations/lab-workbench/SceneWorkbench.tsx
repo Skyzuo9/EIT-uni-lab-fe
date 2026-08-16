@@ -8,6 +8,14 @@ import {
   type MaterialSceneMove,
   type MaterialTransferSceneRoute
 } from '@unilab/pascal-lab-plugin'
+import {
+  activateSceneRuntimeScope,
+  publishJointStateFrame,
+  replaceJointStateSnapshot,
+  sceneRuntimeScopeId,
+  type JointStateFrameInput
+} from '@unilab/scene-runtime'
+import { useServices, type DeviceJointStateFrame } from '@unilab/services'
 import { useEffect, useMemo } from 'react'
 
 import { useWorkbench } from '../../context/WorkbenchContext'
@@ -34,6 +42,7 @@ export function SceneWorkbench({
   viewMode?: LabViewMode
 }): React.JSX.Element {
   const { backend } = useWorkbench()
+  const services = useServices()
   const runtime = useMaterialRuntime()
   const store = useMaterialStoreApi()
   const aggregatesById = useMaterialStore(
@@ -96,6 +105,24 @@ export function SceneWorkbench({
   )
   const readStatus = runtime.getStatus('material.readGraph')
   const moveStatus = runtime.getStatus('material.move')
+
+  useEffect(() => {
+    activateSceneRuntimeScope(sceneRuntimeScopeId(backend.id, backend.apiUrl))
+    if (!services.capabilities.realtime.subscribeJointState) return
+    const project = (frame: DeviceJointStateFrame): JointStateFrameInput => ({
+      ...frame,
+      source: 'live'
+    })
+    return services.realtime.subscribeJointState({
+      onJointState: frame => publishJointStateFrame(project(frame)),
+      onSnapshot: frames => replaceJointStateSnapshot(frames.map(project))
+    })
+  }, [
+    backend.apiUrl,
+    backend.id,
+    services.capabilities.realtime.subscribeJointState,
+    services.realtime
+  ])
 
   useEffect(() => {
     if (!readStatus.available || loadState !== 'idle') return

@@ -13,7 +13,10 @@ import {
   type WorkflowNodeJobFeedback
 } from '@unilab/services'
 
-import type { ManagedDevice } from './deviceCatalog'
+import {
+  preferredManagedDevice,
+  type ManagedDevice
+} from './deviceCatalog'
 import { useDevices } from './useDevices'
 import {
   deviceActionDraftStorageKey,
@@ -80,7 +83,8 @@ export default function DevicePanel({
   services,
   backend,
   connection,
-  backendEnabled = true
+  backendEnabled = true,
+  preferredDeviceId
 }: DeviceManagementPanelProps): React.JSX.Element {
   const {
     devices,
@@ -120,11 +124,12 @@ export default function DevicePanel({
   }, [backend.apiUrl, backend.id])
 
   const selectedDevice = useMemo(
-    () =>
-      devices.find((device) => device.id === selectedDeviceId)
-      ?? devices[0]
-      ?? null,
-    [devices, selectedDeviceId]
+    () => preferredManagedDevice(
+      devices,
+      selectedDeviceId,
+      preferredDeviceId
+    ),
+    [devices, preferredDeviceId, selectedDeviceId]
   )
   const selectedCatalogAction = useMemo(
     () =>
@@ -222,14 +227,11 @@ export default function DevicePanel({
   }, [backend.apiUrl, backend.id, canRunActionTask, connection, loadActionCatalog])
 
   useEffect(() => {
-    if (!devices.length) {
-      setSelectedDeviceId(null)
-      return
+    const resolvedDeviceId = selectedDevice?.id ?? null
+    if (resolvedDeviceId !== selectedDeviceId) {
+      setSelectedDeviceId(resolvedDeviceId)
     }
-    if (!devices.some((device) => device.id === selectedDeviceId)) {
-      setSelectedDeviceId(devices[0]?.id ?? null)
-    }
-  }, [devices, selectedDeviceId])
+  }, [selectedDevice?.id, selectedDeviceId])
 
   useEffect(() => {
     if (!selectedDevice?.actions.length) {

@@ -56,6 +56,8 @@ export interface PascalLabWorkbenchProps {
   /** Agent 截图使用的显式相机预设；普通交互仍由工具栏维护。 */
   cameraPreset?: SceneCameraView
   cameraRequestRevision?: number
+  /** 并排调试时可把“适配场景”聚焦到具有运动学声明的设备。 */
+  cameraFocus?: 'scene' | 'kinematics'
   /** 复用 Pascal WebGPU 离屏管线的宿主截图请求。 */
   captureRequest?: {
     revision: number
@@ -92,6 +94,7 @@ export function PascalLabWorkbench({
   viewMode = '3d',
   cameraPreset,
   cameraRequestRevision = 0,
+  cameraFocus = 'scene',
   captureRequest = null,
   onCaptureReady,
   projectId = 'unilab-local-scene',
@@ -117,6 +120,12 @@ export function PascalLabWorkbench({
     }))
   }, [cameraPreset, cameraRequestRevision])
   useEffect(() => {
+    setCameraRequest(({ revision, view }) => ({
+      revision: revision + 1,
+      view
+    }))
+  }, [cameraFocus])
+  useEffect(() => {
     if (!captureRequest || !onCaptureReady) return
     const frame = requestAnimationFrame(() => {
       emitter.emit('camera-controls:generate-thumbnail', {
@@ -135,6 +144,7 @@ export function PascalLabWorkbench({
       materialAggregatesToSceneGraph(aggregates, {
         fitSceneRevision: cameraRequest.revision,
         fitSceneView: cameraRequest.view,
+        fitSceneFocus: cameraFocus,
         showSites,
         showMaterialLabels,
         showMaterialTransfers,
@@ -143,6 +153,7 @@ export function PascalLabWorkbench({
     [
       aggregates,
       cameraRequest,
+      cameraFocus,
       materialTransferRoutes,
       showMaterialTransfers,
       showMaterialLabels,

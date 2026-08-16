@@ -18,6 +18,8 @@ export type WorkbenchViewMode =
   | 'robot-points'
   | 'robot-bench'
   | 'robot-reagents'
+  | 'material-device'
+  | 'material-robot-debug'
   | 'split'
 
 export type RobotWorkbenchViewMode = Extract<
@@ -45,6 +47,12 @@ export class WorkbenchViewState {
 
   /** 返回当前 Workbench 主区唯一可见模式。 */
   get currentMode(): WorkbenchViewMode {
+    if (this.exclusiveDomain === 'device' && this.materialVisible) {
+      return 'material-device'
+    }
+    if (this.exclusiveDomain === 'robot-debug' && this.materialVisible) {
+      return 'material-robot-debug'
+    }
     if (this.exclusiveDomain) return this.exclusiveDomain
     if (this.workflowVisible && this.materialVisible) return 'split'
     if (this.workflowVisible) return 'workflow'
@@ -54,10 +62,16 @@ export class WorkbenchViewState {
 
   /** 判断一个领域入口当前是否在 Workbench 主区可见。 */
   isVisible(domain: WorkbenchDomain): boolean {
-    if (this.exclusiveDomain) return this.exclusiveDomain === domain
-    if (domain === 'workflow') return this.workflowVisible
-    if (domain === 'material') return this.materialVisible
-    return false
+    if (domain === 'workflow') {
+      return this.workflowVisible && this.exclusiveDomain === null
+    }
+    if (domain === 'material') {
+      return this.materialVisible && (
+        this.exclusiveDomain === null || this.exclusiveDomain === 'device'
+        || this.exclusiveDomain === 'robot-debug'
+      )
+    }
+    return this.exclusiveDomain === domain
   }
 
   /**
@@ -72,6 +86,11 @@ export class WorkbenchViewState {
     if (previousMode !== 'split' && this.isVisible(domain)) return
     if (domain !== 'workflow' && domain !== 'material') {
       this.exclusiveDomain = this.exclusiveDomain === domain ? null : domain
+    } else if (
+      domain === 'material'
+      && (this.exclusiveDomain === 'device' || this.exclusiveDomain === 'robot-debug')
+    ) {
+      this.materialVisible = !this.materialVisible
     } else {
       this.exclusiveDomain = null
       if (domain === 'workflow') {

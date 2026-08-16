@@ -74,6 +74,14 @@ export interface DeviceCardRuntimeSnapshot {
   locale: string
 }
 
+export type DeviceCardManualExclusiveState = 'idle' | 'busy' | 'exclusive'
+
+export interface DeviceCardManualExclusiveSnapshot {
+  localDeviceId: string
+  state: DeviceCardManualExclusiveState
+  exclusive: boolean
+}
+
 export type DeviceCardActionStatus =
   | 'SUBMITTED'
   | 'ACCEPTED'
@@ -104,6 +112,9 @@ export interface DeviceCardBridge {
     params?: Record<string, unknown>
   ) => Promise<DeviceCardActionRun>
   saveConfig: (patch: JsonObject) => Promise<JsonObject>
+  readManualExclusive: () => Promise<DeviceCardManualExclusiveSnapshot>
+  acquireManualExclusive: () => Promise<DeviceCardManualExclusiveSnapshot>
+  releaseManualExclusive: () => Promise<DeviceCardManualExclusiveSnapshot>
   log: (level: 'info' | 'warn' | 'error', message: string) => void
 }
 
@@ -121,6 +132,15 @@ export interface InstalledDeviceCard {
   installedAt: string
 }
 
+/** 当前领域包按约定目录发布、可由桌面 Workbench 构建的设备卡片源码。 */
+export interface DevicePackageCardProject {
+  projectDir: string
+  id: string
+  version: string
+  title: string
+  deviceTypes: string[]
+}
+
 export interface DeviceCardBounds {
   x: number
   y: number
@@ -135,6 +155,7 @@ export interface OpenDeviceCardRequest {
   availableActions?: DeviceCardActionContract[]
   availableState?: string[]
   availableMedia?: string[]
+  availableUiFeatures?: string[]
 }
 
 export type DeviceCardWorkspaceState = 'building' | 'ready' | 'error'
@@ -166,6 +187,7 @@ export interface OpenDeviceCardWorkspaceRequest {
   availableActions?: DeviceCardActionContract[]
   availableState?: string[]
   availableMedia?: string[]
+  availableUiFeatures?: string[]
 }
 
 export interface DeviceCardHostActionRequest {
@@ -173,6 +195,24 @@ export interface DeviceCardHostActionRequest {
   deviceId: string
   action: string
   params: Record<string, unknown>
+}
+
+export type DeviceCardManualExclusiveOperation =
+  | 'read'
+  | 'acquire'
+  | 'release'
+
+export interface DeviceCardHostManualExclusiveRequest {
+  requestId: string
+  deviceId: string
+  operation: DeviceCardManualExclusiveOperation
+}
+
+export interface DeviceCardHostManualExclusiveResult {
+  requestId: string
+  ok: boolean
+  snapshot?: DeviceCardManualExclusiveSnapshot
+  error?: string
 }
 
 export interface DeviceCardDiagnostic {

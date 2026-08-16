@@ -16,6 +16,16 @@ import type {
   MaterialTransferSceneRoute
 } from '@unilab/pascal-lab-plugin'
 import { ensurePascalRendererDefaults } from '@unilab/pascal-host'
+import {
+  activateSceneRuntimeScope,
+  publishJointStateFrame,
+  replaceJointStateSnapshot,
+  type JointStateFrameInput
+} from '@unilab/scene-runtime'
+import type {
+  DeviceJointStateFrame,
+  RealtimeService
+} from '@unilab/services'
 import type { WorkflowPanelRuntimeProjection } from '@unilab/workflow-editor'
 import { toCanvas } from 'html-to-image'
 import * as React from 'react'
@@ -36,6 +46,7 @@ import {
   type MaterialRendererResponse
 } from '../common/workbench-session-protocol'
 import type { WorkbenchSessionClientImpl } from './workbench-session-client'
+import { resolveWorkbenchModelUrl } from './workbench-model-url'
 import {
   WorkbenchMaterialSceneState,
   WorkbenchMaterialShapeFallbackNotice
@@ -51,10 +62,14 @@ const PascalLabWorkbench = React.lazy(async () => {
 /** 在 Workbench 中组合物料图存储与 Pascal 视口。 */
 export function WorkbenchMaterialViewport({
   backendUrl,
+  realtime,
+  realtimeEnabled,
+  runtimeScopeId,
   sourceIdentity,
   sessionClient,
   runtimeProjection,
   selectedWorkflowNode,
+  cameraFocus,
   readStatus,
   moveStatus,
   selectedMaterialIds,
@@ -62,10 +77,14 @@ export function WorkbenchMaterialViewport({
   onSelectionChange
 }: MaterialWorkbenchViewportProps & {
   backendUrl: string
+  realtime: RealtimeService
+  realtimeEnabled: boolean
+  runtimeScopeId: string
   sourceIdentity: MaterialSceneSourceIdentity
   sessionClient: WorkbenchSessionClientImpl
   runtimeProjection: WorkflowPanelRuntimeProjection | null
   selectedWorkflowNode: string | null
+  cameraFocus?: 'scene' | 'kinematics'
 }): React.JSX.Element {
   const rootRef = useRef<HTMLDivElement>(null)
   const captureActive = useRef(false)
@@ -128,14 +147,22 @@ export function WorkbenchMaterialViewport({
   )
   const modelRuntime = useMemo(() => ({
     /** 把包内相对模型路径解析到当前 OS 地址。 */
-    resolveUrl: (model: { path: string }) => {
-      if (!model.path || /^https?:\/\//u.test(model.path)) return model.path
-      return new URL(
-        model.path,
-        `${backendUrl.replace(/\/+$/u, '')}/`
-      ).toString()
-    }
+    resolveUrl: (model: { path: string }) =>
+      resolveWorkbenchModelUrl(backendUrl, model.path)
   }), [backendUrl])
+
+  useEffect(() => {
+    activateSceneRuntimeScope(runtimeScopeId)
+    if (!realtimeEnabled) return
+    const project = (frame: DeviceJointStateFrame): JointStateFrameInput => ({
+      ...frame,
+      source: 'live'
+    })
+    return realtime.subscribeJointState({
+      onJointState: frame => publishJointStateFrame(project(frame)),
+      onSnapshot: frames => replaceJointStateSnapshot(frames.map(project))
+    })
+  }, [realtime, realtimeEnabled, runtimeScopeId])
 
   const inspectScene = useCallback(async (
     options: MaterialRendererOptions
@@ -357,7 +384,9 @@ export function WorkbenchMaterialViewport({
       className="unilab-workbench-material-scene"
       data-material-renderer-ready="true"
     >
-      {shapeLibraryState === 'unavailable' ? (
+      {shapeLibraryState === 'unavailable' && (
+        displayedViewState.mode === '2.5d' || displayedViewState.mode === 'split'
+      ) ? (
         <WorkbenchMaterialShapeFallbackNotice />
       ) : null}
       <UnifiedMaterialViewport
@@ -391,6 +420,7 @@ export function WorkbenchMaterialViewport({
               viewMode={viewMode}
               cameraPreset={automationOptions?.cameraPreset}
               cameraRequestRevision={automationRevision}
+              cameraFocus={cameraFocus}
               captureRequest={pascalCaptureRequest}
               onCaptureReady={handlePascalCaptureReady}
               projectId={`unilab-workbench-${new URL(backendUrl).port}`}

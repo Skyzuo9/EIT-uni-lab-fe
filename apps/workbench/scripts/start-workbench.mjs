@@ -241,6 +241,7 @@ async function launchDesktop(rendererUrl) {
   const electronExecutable = desktopRequire('electron')
   const desktopEnvironment = {
     ...activatedEnvironment,
+    THEIA_WORKSPACE: workspace,
     UNILAB_DESKTOP_SURFACE: 'workbench',
     UNILAB_DESKTOP_RENDERER_URL: rendererUrl,
     UNILAB_DESKTOP_OPEN_DEVTOOLS:

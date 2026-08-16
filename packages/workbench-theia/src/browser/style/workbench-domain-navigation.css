@@ -16,9 +16,66 @@
   overflow: hidden;
 }
 
-.unilab-workbench__domain-layout.is-split {
+.unilab-workbench__domain-layout.is-split,
+.unilab-workbench__domain-layout.is-material-device,
+.unilab-workbench__domain-layout.is-material-robot-debug {
   display: grid;
   align-items: stretch;
+}
+
+.unilab-workbench__domain-layout.is-material-device
+  .unilab-workbench__domain-slot.is-device {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.unilab-workbench__domain-layout.is-material-device
+  .unilab-workbench__splitter {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.unilab-workbench__domain-layout.is-material-device
+  .unilab-workbench__domain-slot.is-material {
+  grid-column: 3;
+  grid-row: 1;
+}
+
+.unilab-workbench__domain-layout.is-material-robot-debug
+  .unilab-workbench__domain-slot.is-robot-workstation {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.unilab-workbench__domain-layout.is-material-robot-debug
+  .unilab-workbench__splitter {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.unilab-workbench__domain-layout.is-material-robot-debug
+  .unilab-workbench__domain-slot.is-material {
+  grid-column: 3;
+  grid-row: 1;
+}
+
+/* 并排调试把有限宽度留给 3D 运动观察；物料目录在普通物料视图仍保持原状。 */
+.unilab-workbench__domain-layout.is-material-robot-debug
+  :is(
+    .material-tree-sidebar,
+    .material-tree-sidebar__backdrop,
+    .material-tree-sidebar__reopen
+  ) {
+  display: none !important;
+}
+
+.unilab-workbench__domain-layout.is-material-device
+  :is(
+    .material-tree-sidebar,
+    .material-tree-sidebar__backdrop,
+    .material-tree-sidebar__reopen
+  ) {
+  display: none !important;
 }
 
 .unilab-workbench__domain-slot {

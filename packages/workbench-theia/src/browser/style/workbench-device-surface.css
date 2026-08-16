@@ -1,0 +1,105 @@
+.unilab-workbench-device-shell {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--unilab-color-canvas);
+}
+
+.unilab-workbench-device-switcher {
+  z-index: 2;
+  display: flex;
+  min-height: 42px;
+  flex: 0 0 auto;
+  align-items: flex-end;
+  gap: 4px;
+  padding: 7px 16px 0;
+  border-bottom: 1px solid var(--unilab-color-border);
+  background: var(--unilab-color-surface);
+}
+
+.unilab-workbench-device-switcher button {
+  position: relative;
+  min-height: 34px;
+  padding: 0 12px 8px;
+  color: var(--unilab-color-text-muted);
+  border: 0;
+  background: transparent;
+  font: 650 12px/1.2 var(--unilab-font-sans);
+  cursor: pointer;
+}
+
+.unilab-workbench-device-switcher button::after {
+  position: absolute;
+  right: 10px;
+  bottom: -1px;
+  left: 10px;
+  height: 2px;
+  content: '';
+  background: transparent;
+}
+
+.unilab-workbench-device-switcher button:hover,
+.unilab-workbench-device-switcher button[aria-selected='true'] {
+  color: var(--unilab-color-device);
+}
+
+.unilab-workbench-device-switcher button[aria-selected='true']::after {
+  background: var(--unilab-color-device);
+}
+
+.unilab-workbench-device-switcher button:focus-visible {
+  outline: 2px solid var(--unilab-color-focus);
+  outline-offset: -2px;
+}
+
+.unilab-workbench-device-discovery {
+  display: flex;
+  min-width: 0;
+  min-height: 32px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 16px;
+  color: var(--unilab-color-text-muted);
+  border-bottom: 1px solid var(--unilab-color-border);
+  background: var(--unilab-color-surface-subtle);
+  font: 11px/1.4 var(--unilab-font-sans);
+}
+
+.unilab-workbench-device-discovery span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.unilab-workbench-device-discovery button {
+  min-height: 26px;
+  flex: 0 0 auto;
+  padding: 0 9px;
+  color: var(--unilab-color-device);
+  border: 1px solid var(--unilab-color-border-strong);
+  border-radius: var(--unilab-radius-control);
+  background: var(--unilab-color-surface);
+  font: 650 11px/1 var(--unilab-font-sans);
+  cursor: pointer;
+}
+
+.unilab-workbench-device-discovery button:focus-visible {
+  outline: 2px solid var(--unilab-color-focus);
+  outline-offset: 1px;
+}
+
+.unilab-workbench-device-shell__panel {
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+
+.unilab-workbench-device-shell__panel[hidden] {
+  display: none;
+}

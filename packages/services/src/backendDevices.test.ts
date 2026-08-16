@@ -12,6 +12,7 @@ import {
 } from './backendDevices'
 
 const materialUuid = '50000000-0000-4000-8000-000000000001'
+const deviceTypeId = 'szlab.devices.pump:Pump'
 
 describe('Backend 设备目录 adapter', () => {
   /** 证明 DeviceOverview 负责实例身份，WorkflowNodeTemplate 负责动作参数合同。 */
@@ -22,11 +23,18 @@ describe('Backend 设备目录 adapter', () => {
       deviceId: materialUuid,
       materialUuid,
       resourceTemplateUuid,
-      deviceTypeId: resourceTemplateUuid,
+      deviceTypeId,
       deviceKey: 'pump-01',
       namespace: 'edge-01',
       label: '主泵',
       online: true,
+      stateSchema: {
+        pressure: {
+          type: 'number',
+          source: 'driver',
+          status: 'resolved'
+        }
+      },
       actions: [{
         actionName: 'transfer.sample.v1',
         actionRef: `${materialUuid}.transfer.sample.v1`,
@@ -114,6 +122,23 @@ function fixture(overrides: Record<string, unknown> = {}): {
 function fixtureResponses(): Record<string, unknown> {
   return {
     ...catalogResponses(),
+    '/api/v1/authoring/device-catalog': {
+      code: 0,
+      data: {
+        items: [{
+          id: 'pump-01',
+          materialUuid,
+          resourceTemplateUuid,
+          deviceTypeId,
+          deviceKey: '/devices/pump/pump-01',
+          namespace: '/devices/pump',
+          name: '主泵',
+          online: true,
+          stateSchema: { pressure: { type: 'number' } },
+          actions: []
+        }]
+      }
+    },
     '/api/v1/devices': { code: 0, data: [rawDevice()] }
   }
 }
@@ -131,6 +156,7 @@ function rawDevice(): Record<string, unknown> {
     material: {
       uuid: materialUuid,
       resource_template_uuid: resourceTemplateUuid,
+      class: deviceTypeId,
       name: '主泵'
     },
     edge_status: 'online',

@@ -19,10 +19,7 @@ import {
 } from '@theia/core/lib/common/disposable'
 import { inject, injectable, postConstruct } from '@theia/core/shared/inversify'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import {
-  DeviceManagementPanel,
-  type DeviceManagementConnection
-} from '@unilab/device-management'
+import type { DeviceManagementConnection } from '@unilab/device-management'
 import {
   MaterialStoreProvider,
   MaterialWorkbench,
@@ -99,6 +96,7 @@ import {
 } from './workbench-connection-runtime'
 import { useRobotWorkstationData } from './robot-workstation-data'
 import { WorkbenchDomainLayout } from './workbench-domain-layout'
+import { WorkbenchDeviceSurface } from './workbench-device-surface'
 import { WorkbenchMaterialViewport } from './workbench-material-viewport'
 import { workflowExecutionStatusForConnection } from './workbench-execution-readiness'
 import {
@@ -1158,6 +1156,11 @@ function WorkbenchSurface({
             <WorkbenchMaterialViewport
               {...viewportProps}
               backendUrl={selectedTarget.backend.apiUrl}
+              realtime={services.realtime}
+              realtimeEnabled={
+                services.capabilities.realtime.subscribeJointState
+              }
+              runtimeScopeId={selectedTarget.sourceId}
               sourceIdentity={{
                 sourceId: selectedTarget.sourceId,
                 authority: connectionMode,
@@ -1170,6 +1173,12 @@ function WorkbenchSurface({
               sessionClient={sessionClient}
               runtimeProjection={runtimeProjection}
               selectedWorkflowNode={selectedWorkflowNode}
+              cameraFocus={
+                viewMode === 'material-device'
+                  || viewMode === 'material-robot-debug'
+                  ? 'kinematics'
+                  : 'scene'
+              }
             />
           )}
         />
@@ -1181,11 +1190,14 @@ function WorkbenchSurface({
       className="unilab-workbench__surface unilab-workbench__surface--device"
       aria-label="仪器设备窗口"
     >
-      <DeviceManagementPanel
+      <WorkbenchDeviceSurface
         services={services}
         backend={deviceBackend}
         backendEnabled={Boolean(selectedTarget.backend.apiUrl)}
         connection={deviceConnection}
+        workspacePath={session.identity?.workspacePath ?? ''}
+        runtimeRevision={session.edgeRuntime.phase}
+        active={viewMode === 'device' || viewMode === 'material-device'}
       />
     </section>
   )
@@ -1196,14 +1208,6 @@ function WorkbenchSurface({
     >
       <RobotWorkstation
         module={workstationModule(viewMode)}
-        actionContent={viewMode === 'robot-debug' ? (
-          <DeviceManagementPanel
-            services={services}
-            backend={deviceBackend}
-            backendEnabled={Boolean(selectedTarget.backend.apiUrl)}
-            connection={deviceConnection}
-          />
-        ) : undefined}
         pointStatus={workstationData.pointStatus}
         benchSnapshot={workstationData.benchSnapshot}
         benchStatus={workstationData.benchStatus}
@@ -1351,9 +1355,16 @@ function recordMountedWorkbenchDomains(
   mode: WorkbenchViewMode
 ): void {
   if (isWorkflowWorkbenchView(mode)) mountedDomains.add('workflow')
-  if (mode === 'material' || mode === 'split') mountedDomains.add('material')
-  if (mode === 'device') mountedDomains.add('device')
-  if (isRobotWorkbenchViewMode(mode)) mountedDomains.add('robot-workstation')
+  if (
+    mode === 'material' || mode === 'split'
+    || mode === 'material-device' || mode === 'material-robot-debug'
+  ) mountedDomains.add('material')
+  if (mode === 'device' || mode === 'material-device') {
+    mountedDomains.add('device')
+  }
+  if (
+    isRobotWorkbenchViewMode(mode) || mode === 'material-robot-debug'
+  ) mountedDomains.add('robot-workstation')
 }
 
 /** 返回工作流表面在当前 Workbench 领域模式下是否拥有可见权。 */
@@ -1383,6 +1394,8 @@ function mountedSurface(
 
 /** 返回 Workbench 标题栏使用的当前领域短名称。 */
 function workbenchViewLabel(mode: WorkbenchViewMode): string {
+  if (mode === 'material-device') return '仪器设备 + 物料'
+  if (mode === 'material-robot-debug') return '物料 + 机械臂调试'
   if (mode === 'split') return '工作流 + 物料'
   if (mode === 'workflow') return '工作流'
   if (mode === 'material') return '物料'

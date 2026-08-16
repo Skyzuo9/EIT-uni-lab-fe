@@ -7,6 +7,7 @@ export interface ServerCapabilities {
     subscribeStatus: boolean
     forceUnlock: boolean
     runActionTask: boolean
+    manualExclusive: boolean
   }
   material: {
     readTemplates: boolean
@@ -43,6 +44,7 @@ export interface ServerCapabilities {
     readReagentHistory: boolean
   }
   realtime: {
+    subscribeJointState: boolean
     pushJointState: boolean
     setJointState: boolean
     jointControlLease: boolean
@@ -59,6 +61,7 @@ export const SERVER_CAPABILITY_KEYS = [
   'devices.subscribeStatus',
   'devices.forceUnlock',
   'devices.runActionTask',
+  'devices.manualExclusive',
   'material.readTemplates',
   'material.readGraph',
   'material.create',
@@ -85,6 +88,7 @@ export const SERVER_CAPABILITY_KEYS = [
   'inventory.updateReagent',
   'inventory.deleteReagent',
   'inventory.readReagentHistory',
+  'realtime.subscribeJointState',
   'realtime.pushJointState',
   'realtime.setJointState',
   'realtime.jointControlLease',
@@ -159,7 +163,8 @@ function unavailableCapabilities(): ServerCapabilities {
       listActions: false,
       subscribeStatus: false,
       forceUnlock: false,
-      runActionTask: false
+      runActionTask: false,
+      manualExclusive: false
     },
     material: {
       readTemplates: false,
@@ -196,6 +201,7 @@ function unavailableCapabilities(): ServerCapabilities {
       readReagentHistory: false
     },
     realtime: {
+      subscribeJointState: false,
       pushJointState: false,
       setJointState: false,
       jointControlLease: false
@@ -237,8 +243,10 @@ function localPythonCapabilities(): ServerCapabilities {
   capabilities.devices.listActions = true
   capabilities.devices.forceUnlock = true
   capabilities.devices.runActionTask = true
-  // Edge FastAPI broadcasts at :18003/api/v1/ws/device_status (not Bridge :8014).
+  capabilities.devices.manualExclusive = true
+  // 本地后端（Local Backend）把 Edge 短通知投影为统一设备遥测 SSE。
   capabilities.devices.subscribeStatus = true
+  capabilities.realtime.subscribeJointState = true
   capabilities.material.readGraph = true
   capabilities.workflow.readDefinitions = true
   capabilities.workflow.authoring = true
@@ -305,7 +313,7 @@ function unavailableReason(
       return '当前 Uni-Lab-OS 尚未提供该库存只读能力'
     }
     if (capability === 'realtime.pushJointState') {
-      return '当前 Uni-Lab-OS 仅提供 1 Hz device_status，尚未提供 push_joint_state'
+      return '关节状态（JointState）只允许 OS 通过统一设备遥测合同发布，前端不得 push'
     }
     if (capability.startsWith('realtime.')) {
       return '当前 Uni-Lab-OS 尚未提供统一关节命令与控制租约契约'

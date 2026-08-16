@@ -10,7 +10,10 @@ const MIN_WORKFLOW_PERCENT = 30
 const MAX_WORKFLOW_PERCENT = 70
 
 /**
- * 组合 Workbench 的领域主区，并只在工作流与物料同时可见时提供分隔器。
+ * 组合 Workbench 的领域主区，并在双栏模式提供分隔器。
+ *
+ * 机械臂调试模式把设备卡片置于左栏、物料（Material）3D 置于右栏；普通
+ * 工作流（Workflow）模式仍由隐藏状态选择原来的工作流左栏。
  * @param props 当前模式及已经按需挂载的领域界面。
  * @returns 复用同一主区、不会创建第二侧栏的 Workbench 布局。
  */
@@ -58,7 +61,9 @@ export function WorkbenchDomainLayout({
     setBoundedPercent(workflowPercent + (event.key === 'ArrowLeft' ? -5 : 5))
   }, [setBoundedPercent, workflowPercent])
 
-  const splitStyle = mode === 'split'
+  const splitMode = mode === 'split' || mode === 'material-device'
+    || mode === 'material-robot-debug'
+  const splitStyle = splitMode
     ? {
         gridTemplateColumns:
           `minmax(0, ${workflowPercent}fr) 7px `
@@ -67,8 +72,10 @@ export function WorkbenchDomainLayout({
     : undefined
   const workflowVisible = mode === 'workflow' || mode === 'split'
   const materialVisible = mode === 'material' || mode === 'split'
-  const deviceVisible = mode === 'device'
+    || mode === 'material-device' || mode === 'material-robot-debug'
+  const deviceVisible = mode === 'device' || mode === 'material-device'
   const robotWorkstationVisible = isRobotWorkbenchViewMode(mode)
+    || mode === 'material-robot-debug'
 
   return (
     <main
@@ -78,21 +85,37 @@ export function WorkbenchDomainLayout({
       style={splitStyle}
     >
       <div
+        className="unilab-workbench__domain-slot is-robot-workstation"
+        hidden={!robotWorkstationVisible}
+      >
+        {robotWorkstation}
+      </div>
+      <div
         className="unilab-workbench__domain-slot is-workflow"
         hidden={!workflowVisible}
       >
         {workflow}
       </div>
       <div
+        className="unilab-workbench__domain-slot is-device"
+        hidden={!deviceVisible}
+      >
+        {device}
+      </div>
+      <div
         className="unilab-workbench__splitter"
         role="separator"
-        aria-label="调整工作流与物料窗口宽度"
+        aria-label={mode === 'material-robot-debug'
+          ? '调整物料与机械臂调试窗口宽度'
+          : mode === 'material-device'
+            ? '调整仪器设备与物料窗口宽度'
+            : '调整工作流与物料窗口宽度'}
         aria-orientation="vertical"
         aria-valuemin={MIN_WORKFLOW_PERCENT}
         aria-valuemax={MAX_WORKFLOW_PERCENT}
         aria-valuenow={workflowPercent}
-        hidden={mode !== 'split'}
-        tabIndex={mode === 'split' ? 0 : -1}
+        hidden={!splitMode}
+        tabIndex={splitMode ? 0 : -1}
         onPointerDown={startResize}
         onKeyDown={resizeFromKeyboard}
       >
@@ -103,18 +126,6 @@ export function WorkbenchDomainLayout({
         hidden={!materialVisible}
       >
         {material}
-      </div>
-      <div
-        className="unilab-workbench__domain-slot is-device"
-        hidden={!deviceVisible}
-      >
-        {device}
-      </div>
-      <div
-        className="unilab-workbench__domain-slot is-robot-workstation"
-        hidden={!robotWorkstationVisible}
-      >
-        {robotWorkstation}
       </div>
     </main>
   )

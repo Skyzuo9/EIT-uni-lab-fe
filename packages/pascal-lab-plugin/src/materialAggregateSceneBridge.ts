@@ -129,6 +129,7 @@ export function materialAggregatesToSceneGraph(
   )
   const nodes: Record<string, unknown> = {}
   const labNodeIds: string[] = []
+  const kinematicNodeIds: string[] = []
   const transferLayer = options.showMaterialTransfers === false
     ? null
     : projectMaterialTransferSceneLayer(
@@ -211,6 +212,9 @@ export function materialAggregatesToSceneGraph(
           )
         ),
         scale: rendering.scale,
+        ...(rendering.kinematics
+          ? { kinematics: rendering.kinematics }
+          : {}),
         model: {
           path: rendering.model.path,
           format: inferModelFormat(
@@ -232,6 +236,9 @@ export function materialAggregatesToSceneGraph(
       })
     }
     labNodeIds.push(id)
+    if (rendering.kinematics) {
+      kinematicNodeIds.push(id)
+    }
   }
 
   nodes[SITE_ID] = {
@@ -243,7 +250,9 @@ export function materialAggregatesToSceneGraph(
     visible: true,
     children: [BUILDING_ID],
     fitSceneRevision: options.fitSceneRevision ?? 0,
-    fitSceneView: options.fitSceneView ?? 'default'
+    fitSceneView: options.fitSceneView ?? 'default',
+    fitSceneObjectIds:
+      options.fitSceneFocus === 'kinematics' ? kinematicNodeIds : []
   }
   nodes[BUILDING_ID] = {
     id: BUILDING_ID,

@@ -6,5 +6,7 @@
 @import './workbench-runtime-log-drawer.css';
 @import './environment-manager.css';
 @import './workbench-surfaces.css';
+@import './workbench-device-card.css';
+@import './workbench-device-surface.css';
 @import './aionui.css';
 

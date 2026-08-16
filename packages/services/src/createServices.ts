@@ -28,6 +28,10 @@ import {
   type MaterialService
 } from './materials'
 import {
+  createManualExclusiveService,
+  type ManualExclusiveService
+} from './manualExclusive'
+import {
   createInventoryReadPort,
   type InventoryPort
 } from './inventory'
@@ -46,6 +50,7 @@ export interface Services {
   materials: MaterialService
   inventory: InventoryPort
   realtime: RealtimeService
+  manualExclusive: ManualExclusiveService
   workflow: WorkflowRuntimePort
   dispose: () => void
 }
@@ -93,6 +98,14 @@ export function createServices(options: CreateServicesOptions): Services {
     materials,
     inventory: createInventoryReadPort(http, options.backend),
     realtime,
+    manualExclusive: createManualExclusiveService(
+      http,
+      getCapabilityStatus(
+        options.backend,
+        capabilities,
+        'devices.manualExclusive'
+      )
+    ),
     workflow,
     dispose: () => {
       realtime.dispose()

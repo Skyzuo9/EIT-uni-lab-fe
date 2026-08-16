@@ -4,7 +4,7 @@
  * ============================================================
  * Model: Claude Opus 4.8
  * Generation Date: 2026-07-22
- * Prompt Summary: 设备实时状态订阅 hook(在线模式下连接 /api/v1/ws/device_status)
+ * Prompt Summary: 设备实时状态订阅 hook（统一设备遥测 SSE）
  * Context: 设备方向实时状态灯,离线不连接,连接状态与更新时间对外暴露
  * Human Review Status: [ ] Pending  [ ] Reviewed  [ ] Approved
  * ============================================================
@@ -31,7 +31,7 @@ import type {
 export interface UseDeviceStatusResult {
   // 以 deviceId 为键的实时状态表
   statusMap: Map<string, DeviceStatus>
-  // WebSocket 是否已建立
+  // SSE 是否已建立
   connected: boolean
   // 最近一次收到推送的时间戳(ms),无推送为 null
   lastUpdate: number | null
@@ -48,7 +48,7 @@ export function DeviceStatusProvider({
   return createElement(DeviceStatusContext.Provider, { value }, children)
 }
 
-// 订阅设备实时状态:仅在线模式连接 /api/v1/ws/device_status,离线返回空表
+// 通用设备卡片只消费统一设备遥测（DeviceTelemetry）SSE。
 export function useDeviceStatus(): UseDeviceStatusResult {
   const value = useContext(DeviceStatusContext)
   if (!value) {
@@ -58,7 +58,7 @@ export function useDeviceStatus(): UseDeviceStatusResult {
 }
 
 /**
- * 根据当前工作台切面管理旧设备状态订阅生命周期。
+ * 根据当前工作台切面管理通用设备属性订阅生命周期。
  *
  * @returns 设备状态映射、连接标志和最后更新时间。
  * @throws 实时服务未装配或 React Hook 使用非法时原样传播。
@@ -121,7 +121,7 @@ function useDeviceStatusSubscription(): UseDeviceStatusResult {
 }
 
 /**
- * 判定当前工作台是否需要旧设备状态 WebSocket。
+ * 判定当前工作台是否需要设备遥测（DeviceTelemetry）SSE。
  *
  * @param input 后端开关、连接状态、能力与当前工作台切面。
  * @returns 只有设备或设备卡片切面在能力就绪时返回 `true`。
