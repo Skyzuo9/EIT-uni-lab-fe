@@ -8,6 +8,8 @@ import type {
 } from './plc-variable-tables'
 import { WorkspaceHostWorkbenchSession } from './workspace-host-session'
 
+export { WORKBENCH_OS_READINESS_TIMEOUT_MS } from './workspace-host-session'
+
 export {
   MANAGED_WORKSPACE_SKILL_NAMES,
   resolveManagedWorkspaceSkillSource,

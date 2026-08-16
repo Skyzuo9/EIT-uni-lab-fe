@@ -5,7 +5,10 @@ import { join } from 'node:path'
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { createWorkspaceHostWorkbenchSession } from './index'
+import {
+  createWorkspaceHostWorkbenchSession,
+  WORKBENCH_OS_READINESS_TIMEOUT_MS
+} from './index'
 
 const launchWorkspaceHostProcess = vi.hoisted(() => vi.fn())
 
@@ -26,6 +29,10 @@ afterEach(async () => {
 })
 
 describe('Workspace Host Workbench adapter', () => {
+  it('allows managed exact workflow composition to finish before readiness expires', () => {
+    expect(WORKBENCH_OS_READINESS_TIMEOUT_MS).toBe(600_000)
+  })
+
   /**
    * 验证适配器会提交已认证命令、投影 Host 状态，并将“仅加载外部设备包”配置更新回传为最新会话快照。
    */

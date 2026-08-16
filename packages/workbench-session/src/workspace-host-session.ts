@@ -40,7 +40,7 @@ import type {
 
 const HOST_SCHEMA = 'unilab-workspace-host/v1'
 const HOST_START_TIMEOUT_MS = 15_000
-const OPERATION_TIMEOUT_MS = 120_000
+export const WORKBENCH_OS_READINESS_TIMEOUT_MS = 600_000
 const POLL_INTERVAL_MS = 500
 
 type HostPhase = WorkbenchSessionPhase | 'interrupted' | 'unknown'
@@ -523,7 +523,7 @@ export class WorkspaceHostWorkbenchSession implements WorkbenchSession {
     operationId: string
   ): Promise<WorkspaceHostOperation> {
     const deadline = Date.now() + (this.options.readinessTimeoutMs
-      ?? OPERATION_TIMEOUT_MS)
+      ?? WORKBENCH_OS_READINESS_TIMEOUT_MS)
     while (Date.now() < deadline) {
       const operation = await hostRequest<WorkspaceHostOperation>(
         connection,
