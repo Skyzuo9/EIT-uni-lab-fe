@@ -46,6 +46,7 @@ import {
   type MaterialRendererResponse
 } from '../common/workbench-session-protocol'
 import type { WorkbenchSessionClientImpl } from './workbench-session-client'
+import { useWorkbenchMaterialGraphLoad } from './workbench-material-graph-load'
 import { resolveWorkbenchModelUrl } from './workbench-model-url'
 import {
   WorkbenchMaterialSceneState,
@@ -331,10 +332,7 @@ export function WorkbenchMaterialViewport({
     return () => registration.dispose()
   }, [handleRendererRequest, sessionClient])
 
-  useEffect(() => {
-    if (!readStatus.available || loadState !== 'idle') return
-    void store.getState().loadGraph()
-  }, [loadState, readStatus.available, store])
+  useWorkbenchMaterialGraphLoad(store, readStatus.available, loadState)
 
   /** 依次向 OS 提交物料移动，保留存储端的修订冲突语义。 */
   const applyMoves = useCallback(async (

@@ -127,7 +127,10 @@ export function createWorkbenchConnectionTargets(
 export function createWorkbenchServices(
   target: WorkbenchConnectionTarget
 ): Services {
-  return createServices({ backend: target.backend })
+  return createServices({
+    backend: target.backend,
+    timeoutMs: 30_000
+  })
 }
 
 /**
