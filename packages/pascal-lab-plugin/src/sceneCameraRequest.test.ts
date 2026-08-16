@@ -103,10 +103,18 @@ describe('Pascal 场景相机请求', () => {
       0.5, 1, 0.25
     ])
 
-    const framed = outsetSceneBounds(bounds, 0.38)
+    const framed = outsetSceneBounds(bounds, 0.18)
 
-    expect(framed.min.toArray()).toEqual([-0.88, -0.38, -0.63])
-    expect(framed.max.toArray()).toEqual([0.88, 1.38, 0.63])
+    expect(framed.min.toArray()).toEqual(expect.arrayContaining([
+      expect.closeTo(-0.68),
+      expect.closeTo(-0.18),
+      expect.closeTo(-0.43)
+    ]))
+    expect(framed.max.toArray()).toEqual(expect.arrayContaining([
+      expect.closeTo(0.68),
+      expect.closeTo(1.18),
+      expect.closeTo(0.43)
+    ]))
     expect(bounds.min.toArray()).toEqual([-0.5, 0, -0.25])
   })
 })

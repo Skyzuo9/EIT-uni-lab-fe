@@ -9,6 +9,7 @@ import {
   captureElectronWindow,
   deviceCardText,
   isInvalidWorkflowSseError,
+  openWorkflow,
   readRuntimeSession
 } from './helpers/ptlc-robot-workbench'
 
@@ -140,6 +141,27 @@ test('opens the pTLC custom card from instruments by default', async () => {
       `${JSON.stringify(modelFailures, null, 2)}\n`
     )
     await captureElectronWindow(electronApp, '00a-develop-station-yaw-90.png')
+
+    const materialWorkflowMode = await page.locator('[data-workbench-view]')
+      .first()
+      .getAttribute('data-workbench-view')
+    if (materialWorkflowMode !== 'workflow' && materialWorkflowMode !== 'split') {
+      await activateDomain(page, 'workflow')
+    }
+    await openWorkflow(page, '机械臂-物料与库位安全位')
+    await expect(page.getByText('机械臂-物料与库位安全位', {
+      exact: true
+    }).first()).toBeVisible()
+    await expect(page.getByText('1 个节点 · 0 条边', {
+      exact: true
+    })).toBeVisible({ timeout: 60_000 })
+    await expect(page.getByText('正在读取 OS 工作流编辑数据…', {
+      exact: true
+    })).toBeHidden()
+    await captureElectronWindow(
+      electronApp,
+      '00b-material-site-workflow-readonly.png'
+    )
 
     await activateDomain(page, 'device')
     await expect(page.getByText('仪器设备 + 物料', { exact: true })).toBeVisible()

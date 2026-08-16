@@ -87,7 +87,7 @@ export default function HierarchyRenderer({
       if (bounds.isEmpty()) return
 
       const focusedBounds = focusObjects.length > 0
-        ? outsetSceneBounds(bounds, 0.38)
+        ? outsetSceneBounds(bounds, 0.18)
         : insetSceneBounds(bounds, 0.16)
       const size = focusedBounds.getSize(new Vector3())
       const padding = Math.max(size.x, size.y, size.z) * 0.012
