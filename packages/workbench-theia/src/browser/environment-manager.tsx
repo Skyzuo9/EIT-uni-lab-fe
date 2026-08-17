@@ -22,6 +22,7 @@ import {
   UNAVAILABLE_MANAGED_RUNTIME,
   type ManagedRuntimeInstallationSnapshot
 } from './desktop-managed-runtime'
+import { useDeviceCardSurfaceOcclusion } from './device-card-surface-occlusion'
 
 export interface EnvironmentManagerProps {
   session: WorkbenchSessionSnapshot
@@ -103,6 +104,7 @@ export function EnvironmentManager({
   onSetSchedulerUrl,
   onStopSession
 }: EnvironmentManagerProps): React.JSX.Element {
+  useDeviceCardSurfaceOcclusion('environment-manager')
   const identity = session.identity
   const edgeRuntime = session.edgeRuntime
   const plcSimulator = session.plcSimulator
