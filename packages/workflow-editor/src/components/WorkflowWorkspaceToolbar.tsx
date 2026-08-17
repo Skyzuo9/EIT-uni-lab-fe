@@ -14,6 +14,7 @@ export interface WorkflowWorkspaceModeControl {
   active: boolean
   disabled: boolean
   disabledReason: string
+  visible?: boolean
   onSelect?: () => void
 }
 
@@ -79,16 +80,18 @@ export function WorkflowWorkspaceToolbar({
           role="group"
           aria-label="工作流单编辑权模式"
         >
-          <WorkflowButton
-            type="button"
-            className={codeMode.active ? 'is-active' : ''}
-            aria-pressed={codeMode.active}
-            disabled={codeMode.disabled}
-            disabledReason={codeMode.disabledReason}
-            onClick={codeMode.onSelect}
-          >
-            代码模式
-          </WorkflowButton>
+          {codeMode.visible !== false ? (
+            <WorkflowButton
+              type="button"
+              className={codeMode.active ? 'is-active' : ''}
+              aria-pressed={codeMode.active}
+              disabled={codeMode.disabled}
+              disabledReason={codeMode.disabledReason}
+              onClick={codeMode.onSelect}
+            >
+              代码模式
+            </WorkflowButton>
+          ) : null}
           <WorkflowButton
             type="button"
             className={canvasMode.active ? 'is-active' : ''}

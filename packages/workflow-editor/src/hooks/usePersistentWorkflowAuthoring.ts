@@ -216,6 +216,15 @@ export function usePersistentWorkflowAuthoring({
     selectedNodeNameDirty
   }
 
+  useEffect(() => {
+    if (definitionPort.capabilities.codeViewing || mode === 'canvas') return
+    setMode('canvas')
+    setCodeProjection('json')
+    setPendingMode(null)
+    setPendingPythonImport(null)
+    setMessage('正式 Backend 仅支持画布模式')
+  }, [definitionPort, mode])
+
   const fileUpload = useWorkflowFileUpload({
     onLoaded: ({ content, fileName }) => {
       const current = localState.current

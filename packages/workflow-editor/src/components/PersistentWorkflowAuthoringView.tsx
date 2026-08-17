@@ -50,6 +50,7 @@ export function PersistentWorkflowAuthoringView({
     candidateIo,
     canvasMutationEnabled,
     canvasSaveHint,
+    codeViewingAvailable,
     codeProjection,
     completedTaskJobCount,
     connectTypedHandles,
@@ -268,81 +269,83 @@ export function PersistentWorkflowAuthoringView({
         mode === 'canvas' ? 'is-canvas-mode' : '',
         hideEmbeddedCodeEditor ? 'has-external-code-editor' : ''
       ].filter(Boolean).join(' ')}>
-        <section
-          className="persistent-authoring__pane persistent-authoring__code"
-          aria-label="工作流代码视图"
-          hidden={hideEmbeddedCodeEditor}
-        >
-          {mode === 'code' && (
-            <div className="persistent-authoring__projection-toolbar">
-              <div
-                className="persistent-authoring__projection-switch"
-                role="group"
-                aria-label="代码视图格式"
-              >
-                <WorkflowButton
-                  type="button"
-                  className={codeProjection === 'python' ? 'is-active' : ''}
-                  aria-pressed={codeProjection === 'python'}
-                  disabled={!sourceEditingAvailable}
-                  disabledReason={sourceEditingDisabledReason ??
-                    '当前数据源没有可编辑的 Python 草稿'}
-                  onClick={() => setCodeProjection('python')}
+        {codeViewingAvailable !== false ? (
+          <section
+            className="persistent-authoring__pane persistent-authoring__code"
+            aria-label="工作流代码视图"
+            hidden={hideEmbeddedCodeEditor}
+          >
+            {mode === 'code' && (
+              <div className="persistent-authoring__projection-toolbar">
+                <div
+                  className="persistent-authoring__projection-switch"
+                  role="group"
+                  aria-label="代码视图格式"
                 >
-                  Python
-                </WorkflowButton>
-                <WorkflowButton
-                  type="button"
-                  className={codeProjection === 'json' ? 'is-active' : ''}
-                  aria-pressed={codeProjection === 'json'}
-                  disabled={!graph}
-                  disabledReason="OS 尚未返回可展示的候选工作流图"
-                  onClick={() => setCodeProjection('json')}
-                >
-                  JSON
-                </WorkflowButton>
+                  <WorkflowButton
+                    type="button"
+                    className={codeProjection === 'python' ? 'is-active' : ''}
+                    aria-pressed={codeProjection === 'python'}
+                    disabled={!sourceEditingAvailable}
+                    disabledReason={sourceEditingDisabledReason ??
+                      '当前数据源没有可编辑的 Python 草稿'}
+                    onClick={() => setCodeProjection('python')}
+                  >
+                    Python
+                  </WorkflowButton>
+                  <WorkflowButton
+                    type="button"
+                    className={codeProjection === 'json' ? 'is-active' : ''}
+                    aria-pressed={codeProjection === 'json'}
+                    disabled={!graph}
+                    disabledReason="OS 尚未返回可展示的候选工作流图"
+                    onClick={() => setCodeProjection('json')}
+                  >
+                    JSON
+                  </WorkflowButton>
+                </div>
+                <span title={codeProjection === 'python'
+                  ? 'Python 草稿可编辑'
+                  : `${authorityLabel} 工作流图的只读投影`}>
+                  {codeProjection === 'python'
+                    ? 'Python 草稿 · 可编辑'
+                    : `${authorityLabel} 工作流 JSON · 只读`}
+                </span>
               </div>
-              <span title={codeProjection === 'python'
-                ? 'Python 草稿可编辑'
-                : `${authorityLabel} 工作流图的只读投影`}>
-                {codeProjection === 'python'
-                  ? 'Python 草稿 · 可编辑'
-                  : `${authorityLabel} 工作流 JSON · 只读`}
-              </span>
+            )}
+            <div className="persistent-authoring__code-projections">
+              <div
+                hidden={mode === 'code' && codeProjection === 'json'}
+                aria-hidden={mode === 'code' && codeProjection === 'json'}
+              >
+                <CodeEditor
+                  title={`${workflowUuid}.py`}
+                  editor={editor}
+                  language="Python"
+                />
+              </div>
+              <div
+                hidden={mode !== 'code' || codeProjection !== 'json'}
+                aria-hidden={mode !== 'code' || codeProjection !== 'json'}
+              >
+                <CodeEditor
+                  title={`${workflowUuid}.json`}
+                  editor={jsonProjectionEditor}
+                  language="JSON · 只读"
+                />
+              </div>
             </div>
-          )}
-          <div className="persistent-authoring__code-projections">
-            <div
-              hidden={mode === 'code' && codeProjection === 'json'}
-              aria-hidden={mode === 'code' && codeProjection === 'json'}
-            >
-              <CodeEditor
-                title={`${workflowUuid}.py`}
-                editor={editor}
-                language="Python"
-              />
-            </div>
-            <div
-              hidden={mode !== 'code' || codeProjection !== 'json'}
-              aria-hidden={mode !== 'code' || codeProjection !== 'json'}
-            >
-              <CodeEditor
-                title={`${workflowUuid}.json`}
-                editor={jsonProjectionEditor}
-                language="JSON · 只读"
-              />
-            </div>
-          </div>
-          <p className="persistent-authoring__authority-note">
-            {!sourceEditingAvailable
-              ? 'Backend 代码视图为只读；如需修改，请切回画布模式'
-              : mode === 'canvas'
-                ? 'Python 是 OS 生成的只读投影'
-                : codeProjection === 'json'
-                  ? 'JSON 来自 OS 候选图，仅供查看；切换不会覆盖 Python 草稿'
-                  : 'Python 草稿可编辑；保存时校验草稿哈希与工作流版本'}
-          </p>
-        </section>
+            <p className="persistent-authoring__authority-note">
+              {!sourceEditingAvailable
+                ? 'Backend 代码视图为只读；如需修改，请切回画布模式'
+                : mode === 'canvas'
+                  ? 'Python 是 OS 生成的只读投影'
+                  : codeProjection === 'json'
+                    ? 'JSON 来自 OS 候选图，仅供查看；切换不会覆盖 Python 草稿'
+                    : 'Python 草稿可编辑；保存时校验草稿哈希与工作流版本'}
+            </p>
+          </section>
+        ) : null}
 
         <section
           className="persistent-authoring__pane persistent-authoring__canvas"
@@ -354,7 +357,7 @@ export function PersistentWorkflowAuthoringView({
             linkCount={structure.links.length}
             projectionTitle={authorityLabel === 'Backend'
               ? definitionEditingAvailable
-                ? '画布可编辑并直接保存；代码模式提供只读 JSON 视图'
+                ? '正式 Backend 仅支持画布编辑，修改后可直接保存'
                 : definitionEditingDisabledReason ??
                   '当前 Backend 工作流定义只读'
               : projectionKind === 'candidate'

@@ -50,6 +50,24 @@ describe('PersistentWorkflowToolbar', () => {
     )
   })
 
+  it('hides code mode when the current authority does not allow code viewing', () => {
+    const html = renderToStaticMarkup(
+      <PersistentWorkflowToolbar
+        model={{
+          ...toolbarModel(),
+          aggregate: {} as PersistentWorkflowAuthoringModel['aggregate'],
+          authorityLabel: 'Backend',
+          codeViewingAvailable: false,
+          sourceEditingAvailable: false,
+          sourceEditingDisabledReason: '正式 Backend 仅支持画布模式'
+        }}
+      />
+    )
+
+    expect(html).not.toContain('代码模式')
+    expect(html).toContain('画布模式')
+  })
+
   /** 证明 OS 工作流编写聚合返回前，两个编辑模式入口均不可误触。 */
   it('keeps edit mode unavailable until the OS authoring aggregate loads', () => {
     const html = renderToStaticMarkup(
