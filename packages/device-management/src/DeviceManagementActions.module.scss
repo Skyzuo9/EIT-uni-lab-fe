@@ -179,6 +179,63 @@
   background: var(--unilab-color-warning-soft);
 }
 
+.edge-device__occupancy-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 6px 14px;
+  margin-bottom: 13px;
+  padding: 11px 12px;
+  color: var(--unilab-color-warning);
+  border: 1px solid color-mix(
+    in srgb,
+    var(--unilab-color-warning) 55%,
+    var(--unilab-color-border)
+  );
+  border-radius: 8px;
+  background: var(--unilab-color-warning-soft);
+}
+
+.edge-device__occupancy-panel.is-uncertain {
+  color: var(--unilab-color-danger);
+  border-color: color-mix(
+    in srgb,
+    var(--unilab-color-danger) 55%,
+    var(--unilab-color-border)
+  );
+  background: var(--unilab-color-danger-soft);
+}
+
+.edge-device__occupancy-copy {
+  min-width: 0;
+}
+
+.edge-device__occupancy-copy strong {
+  font-size: 11px;
+}
+
+.edge-device__occupancy-copy p {
+  margin: 3px 0 0;
+  color: var(--unilab-color-text-muted);
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+
+.edge-device__occupancy-panel code {
+  max-width: 190px;
+  overflow: hidden;
+  color: currentColor;
+  font: 600 10px/1.5 var(--unilab-font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.edge-device__occupancy-panel small {
+  grid-column: 1 / -1;
+  color: var(--unilab-color-text-muted);
+  font-size: 9px;
+}
+
 .edge-device__lock-copy {
   display: flex;
   min-width: 0;
@@ -235,6 +292,15 @@
   color: #fff;
   border: 1px solid var(--unilab-color-device);
   background: var(--unilab-color-device);
+}
+
+.edge-device__run-button:disabled,
+.edge-device__cancel-button:disabled,
+.edge-device__unlock-button:disabled {
+  color: var(--unilab-color-text-muted);
+  border-color: var(--unilab-color-border-strong);
+  background: var(--unilab-color-surface-muted);
+  cursor: not-allowed;
 }
 
 .edge-device__cancel-button,

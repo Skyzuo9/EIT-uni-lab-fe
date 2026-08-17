@@ -24,7 +24,9 @@ export function PersistentWorkflowAuthoringView({
   workflowName,
   visibleMaterialRoles,
   onVisibleMaterialRolesChange,
-  hideEmbeddedCodeEditor = false
+  hideEmbeddedCodeEditor = false,
+  onResetEnvironment,
+  environmentResetBusy = false
 }: {
   model: PersistentWorkflowAuthoringModel
   workflowName?: string
@@ -33,6 +35,8 @@ export function PersistentWorkflowAuthoringView({
     visibleMaterialRoles: readonly string[] | null
   ) => void
   hideEmbeddedCodeEditor?: boolean
+  onResetEnvironment?: () => Promise<void>
+  environmentResetBusy?: boolean
 }): React.JSX.Element {
   const {
     actionCatalog,
@@ -201,7 +205,11 @@ export function PersistentWorkflowAuthoringView({
         aggregate?.topology_authoring.authority ?? 'loading'
       }
     >
-      <PersistentWorkflowToolbar model={model} />
+      <PersistentWorkflowToolbar
+        model={model}
+        onResetEnvironment={onResetEnvironment}
+        environmentResetBusy={environmentResetBusy}
+      />
 
       {executionBlockedReason && (
         <div className="workflow-runtime__problem" role="status">

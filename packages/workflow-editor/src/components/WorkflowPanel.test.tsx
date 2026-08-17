@@ -49,6 +49,7 @@ describe('WorkflowPanel Runtime entry', () => {
           reason: 'Backend 未实现工作流创作'
         }}
         runStatus={{ available: true }}
+        onResetEnvironment={async () => {}}
       />
     )
 
@@ -60,6 +61,7 @@ describe('WorkflowPanel Runtime entry', () => {
     expect(markup).toContain('Backend 定义 · 只读')
     expect(markup).toContain('正在读取 Backend 工作流图')
     expect(markup).toContain('aria-label="开始运行"')
+    expect(markup).toContain('aria-label="复位运行环境"')
     expect(markup).toContain('运行设置，当前为正常运行')
     expect(markup).toContain('任务运行模式')
     expect(markup).not.toContain('⌄')

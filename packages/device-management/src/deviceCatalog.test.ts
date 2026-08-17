@@ -59,6 +59,10 @@ describe('Edge device catalog', () => {
       displayName: '机械臂',
       displayDetail: '',
       online: true,
+      edgeStatus: 'online',
+      dispatchable: true,
+      dispatchBlockReason: null,
+      executionOccupancies: null,
       deviceKey: '/cell/robot'
     })
     expect(devices[1]).toMatchObject({
@@ -97,5 +101,36 @@ describe('Edge device catalog', () => {
       null,
       'material-robot'
     )?.deviceKey).toBe('robot')
+  })
+
+  /** 证明 Edge 连接、调度可用性与设备执行占用保持独立。 */
+  it('keeps Edge connectivity separate from scheduling and execution occupancy', () => {
+    const [device] = presentEdgeDevices([{
+      id: 'pump',
+      materialUuid: '10000000-0000-4000-8000-000000000003',
+      deviceKey: '/cell/pump',
+      namespace: '/cell',
+      machineName: '注射泵',
+      online: true,
+      edgeStatus: 'online',
+      dispatchable: false,
+      dispatchBlockReason: 'unresolved_unknown_command:workflow-node-job:old-job',
+      executionOccupancies: [{
+        workflowNodeJobUuid: '90000000-0000-4000-8000-000000000001',
+        workflowTaskUuid: null,
+        leaseUuid: null,
+        actionName: 'dose',
+        state: 'uncertain',
+        acquiredAt: null
+      }],
+      actions: []
+    }])
+
+    expect(device).toMatchObject({
+      online: true,
+      edgeStatus: 'online',
+      dispatchable: false,
+      executionOccupancies: [{ state: 'uncertain' }]
+    })
   })
 })

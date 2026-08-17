@@ -89,6 +89,7 @@ export function mapRuntimeDeviceAction(
     label: template.label,
     typeName: template.typeName,
     isBusy: template.isBusy,
+    busyStatusKnown: true,
     currentJobId: template.currentJobId,
     schema,
     inputSchema: mapActionSchema(schema.properties),

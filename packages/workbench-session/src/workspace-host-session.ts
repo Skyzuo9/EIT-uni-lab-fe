@@ -187,6 +187,9 @@ export class WorkspaceHostWorkbenchSession implements WorkbenchSession {
   }
 
   startAgent(): Promise<WorkbenchSessionSnapshot> {
+    if (this.options.enableAgent === false) {
+      return Promise.resolve(this.getSnapshot())
+    }
     if (this.agent?.identity.phase === 'ready') {
       return Promise.resolve(this.getSnapshot())
     }

@@ -95,11 +95,13 @@ export class WorkbenchViewState {
     if (domain !== 'workflow' && domain !== 'material') {
       this.exclusiveDomain = this.exclusiveDomain === domain ? null : domain
       if (!this.workflowVisible) this.materialVisible = false
-    } else if (
-      domain === 'material'
-      && (this.exclusiveDomain === 'device' || this.exclusiveDomain === 'robot-debug')
-    ) {
-      this.materialVisible = !this.materialVisible
+    } else if (this.exclusiveDomain) {
+      // 从设备或机械臂等互斥页面返回创作区时，明确选择用户点击的领域。
+      // 不能反转离开创作区前遗留的可见标记，否则“物料 → 设备 → 物料”
+      // 会把 materialVisible 从 true 切成 false，导致主区与活动栏选中态不一致。
+      this.exclusiveDomain = null
+      this.workflowVisible = domain === 'workflow'
+      this.materialVisible = domain === 'material'
     } else {
       this.exclusiveDomain = null
       if (domain === 'workflow') {

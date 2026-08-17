@@ -31,10 +31,11 @@ import WorkflowTransferNode from './WorkflowTransferNode'
 import type { WorkflowNodeVisualKind } from '../utils/workflowNodeVisualKind'
 import styles from './workflow.module.scss'
 
-/** 转运 ready 锚点以 72px 端口内 54px 菱形的上、下尖角为中心。 */
+/** 转运 ready 锚点始终以 72px 端口内的菱形为中心，不受上方说明区高度影响。 */
 const ROBOT_TRANSFER_READY_ANCHOR = {
   left: '36px',
-  edgeInset: '3px'
+  edgeInset: '3px',
+  top: 'calc(100% - 36px)'
 } as const
 
 const SEQUENCE_HANDLE_HORIZONTAL_INSET = '16px'
@@ -338,7 +339,11 @@ function renderStructuralHandles(
   ioType: 'source' | 'target',
   position: Position,
   projectedMaterialHandleIds: ReadonlySet<string>,
-  readyAnchor?: Readonly<{ left: string; edgeInset: string }>
+  readyAnchor?: Readonly<{
+    left: string
+    edgeInset: string
+    top?: string
+  }>
 ): React.JSX.Element | React.JSX.Element[] {
   if (handles === undefined) {
     return (
@@ -391,10 +396,14 @@ function renderStructuralHandles(
  */
 export function sequenceHandlePosition(
   position: Position,
-  readyAnchor?: Readonly<{ left: string; edgeInset: string }>
+  readyAnchor?: Readonly<{
+    left: string
+    edgeInset: string
+    top?: string
+  }>
 ): CSSProperties {
   if (position === Position.Left || position === Position.Right) {
-    return { top: SEQUENCE_HANDLE_HORIZONTAL_INSET }
+    return { top: readyAnchor?.top ?? SEQUENCE_HANDLE_HORIZONTAL_INSET }
   }
   return {
     left: readyAnchor?.left ??

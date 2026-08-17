@@ -14,6 +14,8 @@ import {
 
 interface PersistentWorkflowToolbarProps {
   model: PersistentWorkflowAuthoringModel
+  onResetEnvironment?: () => Promise<void>
+  environmentResetBusy?: boolean
 }
 
 const RUN_MODE_LABELS = {
@@ -30,7 +32,9 @@ const RUN_MODE_LABELS = {
  * @returns 根据加载、编辑和任务状态统一约束的工具栏。
  */
 export function PersistentWorkflowToolbar({
-  model
+  model,
+  onResetEnvironment,
+  environmentResetBusy = false
 }: PersistentWorkflowToolbarProps): React.JSX.Element {
   const {
     aggregate,
@@ -245,6 +249,42 @@ export function PersistentWorkflowToolbar({
             <WorkflowToolbarIcon name="play" />
           </WorkflowButton>
         )}
+
+        <WorkflowButton
+          type="button"
+          className="persistent-authoring__debug-icon"
+          aria-label="复位运行环境"
+          disabled={
+            !onResetEnvironment ||
+            busy ||
+            runningEntryBusy ||
+            liveTask ||
+            environmentResetBusy ||
+            dirty
+          }
+          disabledReason={!onResetEnvironment
+            ? '当前宿主不支持复位运行环境'
+            : liveTask
+              ? '工作流运行期间不能复位环境'
+              : environmentResetBusy || runningEntryBusy
+                ? '正在处理运行环境，请稍候'
+                : dirty
+                  ? '请先保存当前工作流修改'
+                  : busy
+                    ? '正在处理工作流编写操作，请稍候'
+                    : '当前运行环境暂时不能复位'}
+          title={environmentResetBusy
+            ? '正在复位运行环境'
+            : '复位 PLC 与 Backend 物料状态'}
+          onClick={() => {
+            if (!onResetEnvironment || !globalThis.confirm(
+              '确定复位运行环境吗？\n\n将重启 PLC-Sim，并使用当前设备图清空并重建 Backend 物料与库位状态。'
+            )) return
+            void onResetEnvironment()
+          }}
+        >
+          <WorkflowToolbarIcon name="refresh" />
+        </WorkflowButton>
 
         {liveTask && !taskRuntime.snapshot.debug && (
           <WorkflowDebugControls
