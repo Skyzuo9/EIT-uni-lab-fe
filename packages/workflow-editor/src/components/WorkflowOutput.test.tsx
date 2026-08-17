@@ -37,8 +37,19 @@ describe('WorkflowOutput', () => {
     expect(stylesheet).toMatch(
       /node-result\) > header\s*> :global\(\.workflow-runtime__node-detail-actions\)\s*\{\s*align-items:\s*center;/u
     )
+  })
+
+  it('reclaims detail height for the node list when details are collapsed', () => {
+    const stylesheet = readFileSync(fileURLToPath(new URL(
+      './_workflow-output.scss',
+      import.meta.url
+    )), 'utf8')
+
     expect(stylesheet).toMatch(
-      /workflow-runtime__node-details\.is-collapsed\)[\s\S]*margin-top:\s*auto;/u
+      /workflow-output-panel-nodes\.is-node-details-collapsed\)[\s\S]*workflow-runtime__node-list\)[\s\S]*max-height:\s*none;[\s\S]*flex:\s*1 1 auto;/u
+    )
+    expect(stylesheet).not.toMatch(
+      /workflow-runtime__node-details\.is-collapsed\)\s*\{[^}]*margin-top:\s*auto;/u
     )
   })
 

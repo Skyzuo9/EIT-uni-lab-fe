@@ -1231,7 +1231,8 @@ function WorkbenchSurface({
               runtimeProjection={runtimeProjection}
               selectedWorkflowNode={selectedWorkflowNode}
               cameraFocus={
-                viewMode === 'material-device'
+                viewMode === 'device-material'
+                  || viewMode === 'material-device'
                   || viewMode === 'material-robot-debug'
                   ? 'kinematics'
                   : 'scene'
@@ -1254,7 +1255,8 @@ function WorkbenchSurface({
         connection={deviceConnection}
         workspacePath={session.identity?.workspacePath ?? ''}
         runtimeRevision={session.edgeRuntime.phase}
-        active={viewMode === 'device' || viewMode === 'material-device'}
+        active={viewMode === 'device' || viewMode === 'device-material'
+          || viewMode === 'material-device'}
       />
     </section>
   )
@@ -1414,9 +1416,13 @@ function recordMountedWorkbenchDomains(
   if (isWorkflowWorkbenchView(mode)) mountedDomains.add('workflow')
   if (
     mode === 'material' || mode === 'split'
-    || mode === 'material-device' || mode === 'material-robot-debug'
+    || mode === 'device-material' || mode === 'material-device'
+    || mode === 'material-robot-debug'
   ) mountedDomains.add('material')
-  if (mode === 'device' || mode === 'material-device') {
+  if (
+    mode === 'device' || mode === 'device-material'
+    || mode === 'material-device'
+  ) {
     mountedDomains.add('device')
   }
   if (
@@ -1454,6 +1460,7 @@ function workbenchViewLabel(mode: WorkbenchViewMode): string {
   if (mode === 'material-device') return '仪器设备 + 物料'
   if (mode === 'material-robot-debug') return '物料 + 机械臂调试'
   if (mode === 'split') return '工作流 + 物料'
+  if (mode === 'device-material') return '仪器设备 + 物料'
   if (mode === 'workflow') return '工作流'
   if (mode === 'material') return '物料'
   if (mode === 'device') return '仪器设备'

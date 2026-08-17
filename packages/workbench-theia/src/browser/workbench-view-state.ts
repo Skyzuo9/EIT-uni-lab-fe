@@ -21,6 +21,7 @@ export type WorkbenchViewMode =
   | 'material-device'
   | 'material-robot-debug'
   | 'split'
+  | 'device-material'
 
 export type RobotWorkbenchViewMode = Extract<
   WorkbenchViewMode,
@@ -39,29 +40,29 @@ const WORKBENCH_VIEW_STORAGE_KEY = 'unilab.workbench.view-mode.v1'
 export class WorkbenchViewState {
   protected workflowVisible = true
   protected materialVisible = false
+  protected deviceVisible = false
   protected exclusiveDomain: Exclude<
     WorkbenchDomain,
-    'workflow' | 'material'
+    'workflow' | 'material' | 'device'
   > | null = null
   protected readonly changeEmitter = new Emitter<WorkbenchViewMode>()
 
   constructor() {
     const initialMode = initialWorkbenchViewMode()
     this.applyMode(initialMode)
-    persistWorkbenchViewMode(initialMode)
+    persistWorkbenchViewMode(this.currentMode)
   }
 
   readonly onDidChangeMode: Event<WorkbenchViewMode> = this.changeEmitter.event
 
   /** 返回当前 Workbench 主区唯一可见模式。 */
   get currentMode(): WorkbenchViewMode {
-    if (this.exclusiveDomain === 'device' && this.materialVisible) {
-      return 'material-device'
-    }
     if (this.exclusiveDomain === 'robot-debug' && this.materialVisible) {
       return 'material-robot-debug'
     }
     if (this.exclusiveDomain) return this.exclusiveDomain
+    if (this.deviceVisible && this.materialVisible) return 'device-material'
+    if (this.deviceVisible) return 'device'
     if (this.workflowVisible && this.materialVisible) return 'split'
     if (this.workflowVisible) return 'workflow'
     if (this.materialVisible) return 'material'
@@ -70,52 +71,60 @@ export class WorkbenchViewState {
 
   /** 判断一个领域入口当前是否在 Workbench 主区可见。 */
   isVisible(domain: WorkbenchDomain): boolean {
-    if (domain === 'workflow') {
-      return this.workflowVisible && this.exclusiveDomain === null
+    if (this.exclusiveDomain) {
+      if (domain === 'material') {
+        return this.materialVisible && this.exclusiveDomain === 'robot-debug'
+      }
+      return this.exclusiveDomain === domain
     }
-    if (domain === 'material') {
-      return this.materialVisible && (
-        this.exclusiveDomain === null || this.exclusiveDomain === 'device'
-        || this.exclusiveDomain === 'robot-debug'
-      )
-    }
-    return this.exclusiveDomain === domain
+    if (domain === 'workflow') return this.workflowVisible
+    if (domain === 'material') return this.materialVisible
+    if (domain === 'device') return this.deviceVisible
+    return false
   }
 
   /**
-   * 切换一个领域主区；设备与四个机械臂入口保持互斥，工作流与物料可组成分栏。
+   * 切换一个领域主区；物料可与工作流或设备组成分栏，机械臂入口保持互斥。
    * @param domain 用户从 Workbench 活动栏选择的领域入口。
    * @returns 无返回值；模式变化时发布一次呈现事件。
    */
   toggle(domain: WorkbenchDomain): void {
     const previousMode = this.currentMode
     if (
-      (previousMode === 'material-device' && domain === 'device')
-      || (previousMode === 'material-robot-debug' && domain === 'robot-debug')
+      previousMode === 'material-robot-debug' && domain === 'robot-debug'
     ) {
       this.materialVisible = false
-      this.changeEmitter.fire(this.currentMode)
+      const nextMode = this.currentMode
+      persistWorkbenchViewMode(nextMode)
+      this.changeEmitter.fire(nextMode)
       return
     }
     // 主区必须始终保留至少一个活动领域。单视图下再次点击当前入口
     // 只用于保持焦点，不能把唯一活动项关闭成 empty。
-    if (previousMode !== 'split' && this.isVisible(domain)) return
-    if (domain !== 'workflow' && domain !== 'material') {
+    if (!isSplitWorkbenchView(previousMode) && this.isVisible(domain)) return
+    if (domain !== 'workflow' && domain !== 'material' && domain !== 'device') {
       this.exclusiveDomain = this.exclusiveDomain === domain ? null : domain
       if (!this.workflowVisible) this.materialVisible = false
     } else if (this.exclusiveDomain) {
-      // 从设备或机械臂等互斥页面返回创作区时，明确选择用户点击的领域。
-      // 不能反转离开创作区前遗留的可见标记，否则“物料 → 设备 → 物料”
+      // 从机械臂等互斥页面返回主区时，明确选择用户点击的领域。
+      // 不能反转离开主区前遗留的可见标记，否则“物料 → 试剂 → 物料”
       // 会把 materialVisible 从 true 切成 false，导致主区与活动栏选中态不一致。
       this.exclusiveDomain = null
       this.workflowVisible = domain === 'workflow'
       this.materialVisible = domain === 'material'
+      this.deviceVisible = domain === 'device'
     } else {
       this.exclusiveDomain = null
       if (domain === 'workflow') {
-        this.workflowVisible = !this.workflowVisible
-      } else {
+        const nextVisible = !this.workflowVisible
+        this.workflowVisible = nextVisible
+        if (nextVisible) this.deviceVisible = false
+      } else if (domain === 'material') {
         this.materialVisible = !this.materialVisible
+      } else {
+        const nextVisible = !this.deviceVisible
+        this.deviceVisible = nextVisible
+        if (nextVisible) this.workflowVisible = false
       }
     }
     const nextMode = this.currentMode
@@ -128,15 +137,17 @@ export class WorkbenchViewState {
   protected applyMode(mode: WorkbenchViewMode): void {
     this.workflowVisible = mode === 'workflow' || mode === 'split'
     this.materialVisible = mode === 'material' || mode === 'split'
-      || mode === 'material-device' || mode === 'material-robot-debug'
+      || mode === 'device-material' || mode === 'material-device'
+      || mode === 'material-robot-debug'
+    this.deviceVisible = mode === 'device' || mode === 'device-material'
+      || mode === 'material-device'
     this.exclusiveDomain = mode === 'empty' || mode === 'workflow'
-      || mode === 'material' || mode === 'split'
+      || mode === 'material' || mode === 'device' || mode === 'split'
+      || mode === 'device-material' || mode === 'material-device'
       ? null
-      : mode === 'material-device'
-        ? 'device'
-        : mode === 'material-robot-debug'
-          ? 'robot-debug'
-          : mode
+      : mode === 'material-robot-debug'
+        ? 'robot-debug'
+        : mode
   }
 }
 
@@ -180,12 +191,19 @@ export function parseWorkbenchViewMode(
     'robot-points',
     'robot-bench',
     'robot-reagents',
+    'device-material',
     'material-device',
     'material-robot-debug',
     'split'
   ].includes(value)
     ? value as WorkbenchViewMode
     : null
+}
+
+/** 判断当前是否为允许用户关闭任一侧的双领域分栏。 */
+function isSplitWorkbenchView(mode: WorkbenchViewMode): boolean {
+  return mode === 'split' || mode === 'device-material'
+    || mode === 'material-device'
 }
 
 function headlessMaterialRendererRequested(): boolean {

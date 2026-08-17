@@ -246,7 +246,11 @@ export function DeviceWorkspace({
             ? `${occupancyStateLabel(occupancy.state)} · Job ${shortIdentifier(occupancy.workflowNodeJobUuid)}`
             : busyActionCount
               ? `${busyActionCount} 个动作占用`
-              : device.executionOccupancies === null ? '未提供' : '空闲'}
+              : device.edgeStatus !== 'online'
+                ? '等待 Edge 连接'
+                : device.executionOccupancies === null
+                  ? '—'
+                  : '空闲'}
           tone={occupancy || busyActionCount ? 'warning' : 'muted'}
         />
       </div>
@@ -284,26 +288,33 @@ export function DeviceWorkspace({
                     <strong>{action.displayName}</strong>
                     <code>{action.actionRef}</code>
                   </span>
-                  <span
-                    className={deviceClass(
-                      'edge-device__node-state',
-                      action.isBusy || occupancy
-                        ? 'is-busy'
-                        : action.busyStatusKnown === false &&
-                            device.executionOccupancies === null
-                          ? 'is-unknown'
-                          : 'is-ready'
-                    )}
-                  >
-                    {action.isBusy
-                      ? '动作占用'
-                      : occupancy
-                        ? '设备占用'
-                        : action.busyStatusKnown === false &&
-                            device.executionOccupancies === null
-                          ? '占用未提供'
-                          : '空闲'}
-                  </span>
+                  {action.isBusy ||
+                  occupancy ||
+                  device.edgeStatus !== 'online' ||
+                  action.busyStatusKnown !== false ||
+                  device.executionOccupancies !== null ? (
+                    <span
+                      title={device.edgeStatus !== 'online'
+                        ? 'Edge 连接后读取动作占用状态'
+                        : undefined}
+                      className={deviceClass(
+                        'edge-device__node-state',
+                        action.isBusy || occupancy
+                          ? 'is-busy'
+                          : device.edgeStatus !== 'online'
+                            ? 'is-unknown'
+                            : 'is-ready'
+                      )}
+                    >
+                      {action.isBusy
+                        ? '动作占用'
+                        : occupancy
+                          ? '设备占用'
+                          : device.edgeStatus !== 'online'
+                            ? '等待连接'
+                            : '空闲'}
+                    </span>
+                  ) : null}
                 </button>
               ))}
             </div>

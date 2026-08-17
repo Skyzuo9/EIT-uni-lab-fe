@@ -3,7 +3,8 @@ import { describe, expect, it } from 'vitest'
 
 import {
   DeviceExecutionOccupancySummary,
-  DeviceListItem
+  DeviceListItem,
+  DeviceWorkspace
 } from './DevicePanelViews'
 import { deviceActionReadiness } from './DeviceActionAvailability'
 
@@ -114,5 +115,75 @@ describe('device status presentation', () => {
       kind: 'ready',
       message: expect.stringContaining('未提供占用明细')
     })
+  })
+
+  it('presents unavailable occupancy as a connection or scheduling step', () => {
+    const action = {
+      actionName: 'dose',
+      actionRef: 'pump-1.dose',
+      displayName: '加液',
+      label: '加液',
+      typeName: 'Dose',
+      isBusy: false,
+      busyStatusKnown: false,
+      currentJobId: null,
+      schema: null,
+      inputSchema: {},
+      outputSchema: {},
+      riskLevel: 'normal' as const
+    }
+    const device = {
+      id: 'pump-1',
+      materialUuid: '10000000-0000-4000-8000-000000000001',
+      deviceKey: '/devices/pump-1',
+      namespace: '/devices',
+      machineName: '一号泵',
+      online: false,
+      edgeStatus: 'offline' as const,
+      dispatchable: false,
+      dispatchBlockReason: null,
+      executionOccupancies: null,
+      actions: [action],
+      displayName: '一号泵',
+      displayDetail: '本地'
+    }
+    const renderWorkspace = (edgeStatus: 'offline' | 'online') =>
+      renderToStaticMarkup(
+        <DeviceWorkspace
+          device={{
+            ...device,
+            online: edgeStatus === 'online',
+            edgeStatus,
+            dispatchable: edgeStatus === 'online'
+          }}
+          selectedAction={action}
+          selectedActionRef={action.actionRef}
+          argumentDraft={{}}
+          onSelectAction={() => {}}
+          onArgumentChange={() => {}}
+          actionTemplate={null}
+          actionCatalogLoading={false}
+          actionCatalogError={null}
+          canRunActionTask={false}
+          connection={edgeStatus === 'online' ? 'connected' : 'disconnected'}
+          runState={null}
+          activeRunActionRef={null}
+          onRunAction={() => {}}
+          onCancelActionTask={() => {}}
+          canForceUnlock={false}
+          unlockOperation={null}
+          onRequestUnlock={() => {}}
+        />
+      )
+
+    const offlineMarkup = renderWorkspace('offline')
+    expect(offlineMarkup).toContain('等待 Edge 连接')
+    expect(offlineMarkup).toContain('等待连接')
+    expect(offlineMarkup).not.toContain('占用未提供')
+
+    const onlineMarkup = renderWorkspace('online')
+    expect(onlineMarkup).not.toContain('提交时确认')
+    expect(onlineMarkup).not.toContain('当前服务未提供占用明细')
+    expect(onlineMarkup).not.toContain('占用未提供')
   })
 })

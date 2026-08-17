@@ -142,6 +142,7 @@ export function PersistentWorkflowToolbar({
       codeMode={{
         active: mode === 'code',
         disabled: modeSwitchDisabled || !canViewCode,
+        visible: canViewCode,
         disabledReason: !canViewCode
           ? sourceEditingDisabledReason ?? '当前数据源不支持代码模式'
           : modeSwitchDisabledReason,
