@@ -81,11 +81,20 @@ export class WorkbenchViewState {
    */
   toggle(domain: WorkbenchDomain): void {
     const previousMode = this.currentMode
+    if (
+      (previousMode === 'material-device' && domain === 'device')
+      || (previousMode === 'material-robot-debug' && domain === 'robot-debug')
+    ) {
+      this.materialVisible = false
+      this.changeEmitter.fire(this.currentMode)
+      return
+    }
     // 主区必须始终保留至少一个活动领域。单视图下再次点击当前入口
     // 只用于保持焦点，不能把唯一活动项关闭成 empty。
     if (previousMode !== 'split' && this.isVisible(domain)) return
     if (domain !== 'workflow' && domain !== 'material') {
       this.exclusiveDomain = this.exclusiveDomain === domain ? null : domain
+      if (!this.workflowVisible) this.materialVisible = false
     } else if (
       domain === 'material'
       && (this.exclusiveDomain === 'device' || this.exclusiveDomain === 'robot-debug')

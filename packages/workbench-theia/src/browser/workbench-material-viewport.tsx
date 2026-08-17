@@ -121,7 +121,8 @@ export function WorkbenchMaterialViewport({
     mode: automationOptions?.view ?? viewState.mode,
     showSites: automationOptions?.showSites ?? viewState.showSites,
     showMaterialTransfers:
-      automationOptions?.showMaterialTransfers ?? viewState.showMaterialTransfers
+      automationOptions?.showMaterialTransfers ?? viewState.showMaterialTransfers,
+    showMaterialLabels: viewState.showMaterialLabels
   }), [automationOptions, viewState])
   const displayedAggregates = useMemo(() => {
     const adjusted = applyLayoutOverrides(

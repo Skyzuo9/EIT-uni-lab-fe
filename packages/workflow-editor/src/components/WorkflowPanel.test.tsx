@@ -54,6 +54,9 @@ describe('WorkflowPanel Runtime entry', () => {
 
     expect(markup).toContain('工作流画布')
     expect(markup).toContain('persistent-authoring__canvas')
+    expect(markup).toContain(
+      'data-workflow-uuid="10000000-0000-4000-8000-000000000001"'
+    )
     expect(markup).toContain('Backend 定义 · 只读')
     expect(markup).toContain('正在读取 Backend 工作流图')
     expect(markup).toContain('aria-label="开始运行"')

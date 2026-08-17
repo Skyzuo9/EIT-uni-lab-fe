@@ -476,7 +476,7 @@ export function writeStoredMaterialViewportState(
     String(state.showMaterialTransfers)
   )
   globalThis.localStorage?.setItem(
-    MATERIAL_LABEL_LAYER_STORAGE_KEY
-    , String(state.showMaterialLabels)
+    MATERIAL_LABEL_LAYER_STORAGE_KEY,
+    String(state.showMaterialLabels)
   )
 }

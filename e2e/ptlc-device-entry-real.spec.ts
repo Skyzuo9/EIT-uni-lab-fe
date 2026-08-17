@@ -148,19 +148,19 @@ test('opens the pTLC custom card from instruments by default', async () => {
     if (materialWorkflowMode !== 'workflow' && materialWorkflowMode !== 'split') {
       await activateDomain(page, 'workflow')
     }
-    await openWorkflow(page, '机械臂-物料与库位安全位')
-    await expect(page.getByText('机械臂-物料与库位安全位', {
+    await openWorkflow(page, 'pTLC 整架物料转移验收')
+    await expect(page.getByText('pTLC 整架物料转移验收', {
       exact: true
     }).first()).toBeVisible()
-    await expect(page.getByText('1 个节点 · 0 条边', {
-      exact: true
-    })).toBeVisible({ timeout: 60_000 })
+    await expect(page.locator(
+      '[data-workflow-node-uuid][data-workflow-node-kind]:visible'
+    )).toHaveCount(2, { timeout: 60_000 })
     await expect(page.getByText('正在读取 OS 工作流编辑数据…', {
       exact: true
     })).toBeHidden()
     await captureElectronWindow(
       electronApp,
-      '00b-material-site-workflow-readonly.png'
+      '00b-material-transfer-workflow-readonly.png'
     )
 
     await activateDomain(page, 'device')

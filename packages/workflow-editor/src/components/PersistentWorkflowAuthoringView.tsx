@@ -190,6 +190,7 @@ export function PersistentWorkflowAuthoringView({
         'relative flex h-full w-full flex-col',
         'bg-[var(--unilab-color-canvas)] text-[var(--unilab-color-text)]'
       ].join(' ')}
+      data-workflow-uuid={workflowUuid}
       data-workflow-source-uri={sourceProjection?.sourceUri ?? ''}
       data-workflow-source-version={sourceProjection?.sourceVersion ?? ''}
       data-workflow-source-mapping={sourceProjection?.mappingAvailable
@@ -602,17 +603,6 @@ export function PersistentWorkflowAuthoringView({
                           </button>
                         </section>
                       )}
-                      {selectedActionProjection.error && (
-                        <p role="alert">
-                          操作模板或端口读取失败：
-                          {selectedActionProjection.error}
-                        </p>
-                      )}
-                    <p id="persistent-node-name-help">
-                      {policy.authoringMutationEnabled
-                        ? canvasSaveHint
-                        : '受管精确拓扑由 OS 提供，节点属性仅供查看。'}
-                    </p>
                   </aside>
                 )}
               </>

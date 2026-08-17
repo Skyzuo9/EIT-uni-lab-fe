@@ -25,7 +25,8 @@ export async function activateDomain(
 
 export async function openWorkflow(
   page: import('@playwright/test').Page,
-  workflowName: string
+  workflowName: string,
+  workflowUuid?: string
 ): Promise<void> {
   const workflowList = page.locator('button:visible').filter({
     hasText: /^工作流列表$/
@@ -38,7 +39,16 @@ export async function openWorkflow(
   ).first()
   await expect(search).toBeVisible({ timeout: 60_000 })
   await search.fill(workflowName)
-  await page.locator('button:visible').filter({ hasText: workflowName }).first().click()
+  await page.getByRole('button', {
+    name: new RegExp(
+      `^(?:打开|运行)工作流 ${workflowName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`
+    )
+  }).click()
+  if (workflowUuid) {
+    await expect(page.locator(
+      `[data-workflow-uuid="${workflowUuid}"]:visible`
+    )).toBeVisible({ timeout: 60_000 })
+  }
   await expect(visibleWorkflowStartButton(page)).toBeVisible({ timeout: 60_000 })
 }
 
@@ -96,6 +106,89 @@ export async function workflowTaskStatus(
   }
   const envelope = await response.json() as { data: { status: string } }
   return envelope.data.status
+}
+
+export async function workflowTaskSnapshot(
+  backendAddress: string,
+  taskUuid: string
+): Promise<unknown> {
+  const response = await fetch(
+    `${backendAddress}/api/v1/workflow-tasks/${taskUuid}`
+  )
+  if (!response.ok) {
+    throw new Error(`读取工作流任务 ${taskUuid} 失败：HTTP ${response.status}`)
+  }
+  return response.json()
+}
+
+export async function captureSucceededSubworkflows(
+  page: import('@playwright/test').Page,
+  electronApp: import('@playwright/test').ElectronApplication,
+  prefix: string
+): Promise<Array<{ nodeUuid: string; name: string; screenshot: string }>> {
+  const visibleSubworkflows = async () => page.locator(
+    '[data-subworkflow-toggle]:visible'
+  ).evaluateAll((buttons) => buttons.map((button) => {
+    const card = button.closest('[data-workflow-node-uuid]') as HTMLElement | null
+    const label = button.getAttribute('aria-label') ?? ''
+    return {
+      nodeUuid: card?.dataset.workflowNodeUuid ?? '',
+      name: label.replace(/^展开子工作流\s*/, '').replace(/^折叠子工作流\s*/, '')
+    }
+  }).filter((item) => item.nodeUuid !== ''))
+
+  const evidence: Array<{ nodeUuid: string; name: string; screenshot: string }> = []
+  const captured = new Set<string>()
+  const captureRecursively = async (subworkflow: {
+    nodeUuid: string
+    name: string
+  }): Promise<void> => {
+    if (captured.has(subworkflow.nodeUuid)) return
+    captured.add(subworkflow.nodeUuid)
+    const card = page.locator(
+      `[data-workflow-node-uuid="${subworkflow.nodeUuid}"]`
+    ).first()
+    await expect(card).toBeVisible({ timeout: 30_000 })
+    const toggle = card.locator('[data-subworkflow-toggle]').first()
+    const visibleBefore = new Set(
+      (await visibleSubworkflows()).map((item) => item.nodeUuid)
+    )
+    await toggle.evaluate((button) => (button as HTMLButtonElement).click())
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    // Successful action cards intentionally hide their text state badge; the
+    // React Flow node carries the authoritative success class instead.
+    await expect(page.locator('.wf-flow-node--success:visible').first())
+      .toBeVisible({ timeout: 60_000 })
+    const fit = page.getByRole('button', {
+      name: '适应完整工作流视图'
+    }).first()
+    if (await fit.isVisible().catch(() => false)) {
+      await fit.evaluate((button) => (button as HTMLButtonElement).click())
+    }
+    await new Promise(resolveDelay => setTimeout(resolveDelay, 250))
+    const screenshot = `${prefix}-${String(evidence.length + 1).padStart(2, '0')}.png`
+    await captureElectronWindow(electronApp, screenshot)
+    evidence.push({ ...subworkflow, screenshot })
+
+    const introducedChildren = (await visibleSubworkflows()).filter(
+      (item) => !visibleBefore.has(item.nodeUuid)
+        && item.nodeUuid !== subworkflow.nodeUuid
+    )
+    for (const child of introducedChildren) {
+      await captureRecursively(child)
+    }
+
+    const currentToggle = page.locator(
+      `[data-workflow-node-uuid="${subworkflow.nodeUuid}"]`
+    ).first().locator('[data-subworkflow-toggle]').first()
+    await currentToggle.evaluate((button) => (button as HTMLButtonElement).click())
+    await expect(currentToggle).toHaveAttribute('aria-expanded', 'false')
+  }
+
+  for (const root of await visibleSubworkflows()) {
+    await captureRecursively(root)
+  }
+  return evidence
 }
 
 export async function captureElectronWindow(
@@ -271,11 +364,12 @@ export async function selectDeviceCardPoint(
 export function startEvidenceProcess(
   command: string,
   args: string[],
-  name: string
+  name: string,
+  environment: NodeJS.ProcessEnv = process.env
 ): { stop: () => Promise<void> } {
   const output = createWriteStream(resolve(artifactDirectory, name))
   const child: ChildProcessWithoutNullStreams = spawn(command, args, {
-    env: process.env
+    env: environment
   })
   child.stdout.pipe(output)
   child.stderr.pipe(output)
@@ -292,12 +386,42 @@ export function startEvidenceProcess(
 }
 
 export function readRuntimeSession(workspace: string): {
-  components: { backend: { address: string } }
+  components: {
+    backend: {
+      address: string
+      phase: string
+      generation: string
+      metadata: { runtimeMode?: string }
+    }
+    edge: {
+      phase: string
+      generation: string
+      pid: number | null
+      metadata: { runtimeMode?: string }
+    }
+  }
+  configuration: { runtimeMode?: string }
 } {
   return JSON.parse(readFileSync(
     resolve(workspace, '.unilabos/runtime/workbench/session.json'),
     'utf8'
-  )) as { components: { backend: { address: string } } }
+  )) as {
+    components: {
+      backend: {
+        address: string
+        phase: string
+        generation: string
+        metadata: { runtimeMode?: string }
+      }
+      edge: {
+        phase: string
+        generation: string
+        pid: number | null
+        metadata: { runtimeMode?: string }
+      }
+    }
+    configuration: { runtimeMode?: string }
+  }
 }
 
 export function isInvalidWorkflowSseError(message: string): boolean {

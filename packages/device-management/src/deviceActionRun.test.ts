@@ -20,7 +20,6 @@ describe('device Action D1A preparation', () => {
   it('joins live Action to exactly one stable A1 identity', () => {
     const template = actionTemplate()
     const catalog = actionCatalog([template])
-    const device = { resourceTemplateUuid: RESOURCE_UUID }
 
     expect(matchDeviceActionTemplate(catalog, liveAction(), RESOURCE_UUID)).toBe(template)
     expect(matchDeviceActionTemplate(
