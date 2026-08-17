@@ -9,6 +9,7 @@
 }
 
 .unilab-workbench__domain-layout {
+  position: relative;
   display: flex;
   min-width: 0;
   min-height: 0;
@@ -29,9 +30,21 @@
   overflow: hidden;
 }
 
-.unilab-workbench__domain-slot[hidden],
 .unilab-workbench__splitter[hidden] {
   display: none !important;
+}
+
+/*
+ * 已访问的领域保持完整尺寸，避免 React Flow、3D 场景和设备面板在
+ * display:none 与可见之间切换时先读到 0×0 容器，造成一帧或多帧白屏。
+ * inert + aria-hidden 负责隔离焦点与辅助技术，绝对定位则不参与当前布局。
+ */
+.unilab-workbench__domain-slot.is-inactive {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .unilab-workbench__domain-slot > .unilab-workbench__surface {

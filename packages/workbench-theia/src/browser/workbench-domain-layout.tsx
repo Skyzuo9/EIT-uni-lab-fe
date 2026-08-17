@@ -78,8 +78,11 @@ export function WorkbenchDomainLayout({
       style={splitStyle}
     >
       <div
-        className="unilab-workbench__domain-slot is-workflow"
-        hidden={!workflowVisible}
+        className={`unilab-workbench__domain-slot is-workflow${
+          workflowVisible ? '' : ' is-inactive'
+        }`}
+        aria-hidden={!workflowVisible}
+        inert={!workflowVisible}
       >
         {workflow}
       </div>
@@ -99,20 +102,29 @@ export function WorkbenchDomainLayout({
         <span aria-hidden="true" />
       </div>
       <div
-        className="unilab-workbench__domain-slot is-material"
-        hidden={!materialVisible}
+        className={`unilab-workbench__domain-slot is-material${
+          materialVisible ? '' : ' is-inactive'
+        }`}
+        aria-hidden={!materialVisible}
+        inert={!materialVisible}
       >
         {material}
       </div>
       <div
-        className="unilab-workbench__domain-slot is-device"
-        hidden={!deviceVisible}
+        className={`unilab-workbench__domain-slot is-device${
+          deviceVisible ? '' : ' is-inactive'
+        }`}
+        aria-hidden={!deviceVisible}
+        inert={!deviceVisible}
       >
         {device}
       </div>
       <div
-        className="unilab-workbench__domain-slot is-robot-workstation"
-        hidden={!robotWorkstationVisible}
+        className={`unilab-workbench__domain-slot is-robot-workstation${
+          robotWorkstationVisible ? '' : ' is-inactive'
+        }`}
+        aria-hidden={!robotWorkstationVisible}
+        inert={!robotWorkstationVisible}
       >
         {robotWorkstation}
       </div>

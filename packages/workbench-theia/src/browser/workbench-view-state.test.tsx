@@ -42,6 +42,29 @@ describe('Workbench domain view presentation', () => {
     expect(state.isVisible('device')).toBe(true)
   })
 
+  it('activates material when returning from an exclusive device view', () => {
+    const state = new WorkbenchViewState()
+    const listener = vi.fn()
+    state.onDidChangeMode(listener)
+
+    state.toggle('material')
+    expect(state.currentMode).toBe('split')
+
+    state.toggle('device')
+    expect(state.currentMode).toBe('device')
+
+    state.toggle('material')
+    expect(state.currentMode).toBe('material')
+    expect(state.isVisible('material')).toBe(true)
+    expect(state.isVisible('workflow')).toBe(false)
+    expect(state.isVisible('device')).toBe(false)
+    expect(listener.mock.calls).toEqual([
+      ['split'],
+      ['device'],
+      ['material']
+    ])
+  })
+
   it('opens each robot function as an exclusive Workbench surface', () => {
     const state = new WorkbenchViewState()
 
@@ -125,7 +148,7 @@ describe('Workbench domain view presentation', () => {
     expect(markup).toContain('aria-valuenow="55"')
   })
 
-  it('keeps inactive domains mounted but hidden in a single-view layout', () => {
+  it('keeps inactive domains mounted, sized and non-interactive', () => {
     const markup = renderToStaticMarkup(
       <WorkbenchDomainLayout
         mode="material"
@@ -141,7 +164,13 @@ describe('Workbench domain view presentation', () => {
     expect(markup).toContain('data-testid="device-surface"')
     expect(markup).toContain('data-testid="robot-workstation-surface"')
     expect(markup).toContain('role="separator"')
-    expect(markup).toContain('hidden=""')
+    expect(markup).toContain(
+      'class="unilab-workbench__domain-slot is-workflow is-inactive"'
+    )
+    expect(markup).toContain('aria-hidden="true" inert=""')
+    expect(markup).toContain(
+      'class="unilab-workbench__domain-slot is-material"'
+    )
   })
 
   it('mounts the shared instrument panel as a first-class domain', () => {
