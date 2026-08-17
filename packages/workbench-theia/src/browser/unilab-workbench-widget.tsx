@@ -185,6 +185,7 @@ export class UniLabWorkbenchWidget extends ReactWidget {
   protected init(): void {
     this.ideAdapter = createTheiaWorkflowIdeAdapter({
       revealSource: location => this.revealResolvedSource(location),
+      hideSource: resolvedUri => this.hideResolvedSource(resolvedUri),
       replaceDiagnostics: diagnostics => this.replaceDiagnostics(diagnostics),
       reportError: message => { void this.messages.error(message) }
     })
@@ -729,6 +730,22 @@ export class UniLabWorkbenchWidget extends ReactWidget {
     widget.editor.selection = { start, end, direction: 'ltr' }
     widget.editor.cursor = start
     widget.editor.revealRange({ start, end })
+  }
+
+  /** 画布重新取得主区时关闭对应 Monaco 源码标签，未保存源码保持打开。 */
+  protected readonly hideResolvedSource = async (
+    resolvedUri: string
+  ): Promise<void> => {
+    const widgets = this.editorManager.all.filter(
+      candidate => candidate.editor.uri.toString() === resolvedUri
+    )
+    for (const widget of widgets) {
+      if (widget.editor.document.dirty) {
+        throw new Error('工作流源码有未保存修改，不能退出代码模式')
+      }
+      await this.shell.closeWidget(widget.id, { save: false })
+    }
+    await this.shell.activateWidget(this.id)
   }
 
   /** 在 Workbench 同一主标签组打开日志，避免分栏与固定工作台层叠。 */

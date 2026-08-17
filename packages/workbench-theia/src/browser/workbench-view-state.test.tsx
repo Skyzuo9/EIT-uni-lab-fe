@@ -3,9 +3,18 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { DomainEntryPanel } from './domain-entry-panel'
 import { WorkbenchDomainLayout } from './workbench-domain-layout'
-import { WorkbenchViewState } from './workbench-view-state'
+import {
+  parseWorkbenchViewMode,
+  WorkbenchViewState
+} from './workbench-view-state'
 
 describe('Workbench domain view presentation', () => {
+  it('restores only known shareable view modes', () => {
+    expect(parseWorkbenchViewMode('split')).toBe('split')
+    expect(parseWorkbenchViewMode('material-device')).toBe('material-device')
+    expect(parseWorkbenchViewMode('legacy-split')).toBeNull()
+  })
+
   it('derives split layout from independent workflow and material toggles', () => {
     const state = new WorkbenchViewState()
     const listener = vi.fn()

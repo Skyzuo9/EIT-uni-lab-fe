@@ -61,6 +61,10 @@ import {
   workflowGraphJsonProjection,
   workflowIoMetadata
 } from '../utils/persistentAuthoringProjection'
+import {
+  initialWorkflowEditMode,
+  persistWorkflowEditMode
+} from '../utils/workflowAuthoringViewState'
 import type {
   FullSourceDiff,
   PersistentWorkflowAuthoringOptions,
@@ -99,7 +103,11 @@ export function usePersistentWorkflowAuthoring({
   recoveryRevision = 0
 }: PersistentWorkflowAuthoringOptions) {
   const [mode, setMode] = useState<WorkflowEditMode>(
-    () => definitionPort.capabilities.sourceEditing ? 'code' : 'canvas'
+    () => initialWorkflowEditMode({
+      codeViewing: definitionPort.capabilities.codeViewing,
+      sourceEditing: definitionPort.capabilities.sourceEditing,
+      hideEmbeddedCodeEditor
+    })
   )
   const [codeProjection, setCodeProjection] =
     useState<WorkflowCodeProjection>(
@@ -394,6 +402,14 @@ export function usePersistentWorkflowAuthoring({
     sourceMap: taskPanel.codeSourceMap,
     ideBridge
   })
+
+  useEffect(() => {
+    persistWorkflowEditMode(mode)
+    if (!hideEmbeddedCodeEditor || !sourceProjection) return
+    const location = { sourceUri: sourceProjection.sourceUri }
+    if (mode === 'code') ideBridge?.onRevealPackageSource?.(location)
+    else ideBridge?.onHidePackageSource?.(location)
+  }, [hideEmbeddedCodeEditor, ideBridge, mode, sourceProjection])
 
   useEffect(() => {
     onUnsavedChangesChange?.(dirty)

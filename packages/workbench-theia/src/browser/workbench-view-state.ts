@@ -27,6 +27,8 @@ export type RobotWorkbenchViewMode = Extract<
   `robot-${string}`
 >
 
+const WORKBENCH_VIEW_STORAGE_KEY = 'unilab.workbench.view-mode.v1'
+
 /**
  * The single UI authority for which UniLab domain surfaces are visible.
  *
@@ -35,13 +37,19 @@ export type RobotWorkbenchViewMode = Extract<
  */
 @injectable()
 export class WorkbenchViewState {
-  protected workflowVisible = !headlessMaterialRendererRequested()
-  protected materialVisible = headlessMaterialRendererRequested()
+  protected workflowVisible = true
+  protected materialVisible = false
   protected exclusiveDomain: Exclude<
     WorkbenchDomain,
     'workflow' | 'material'
   > | null = null
   protected readonly changeEmitter = new Emitter<WorkbenchViewMode>()
+
+  constructor() {
+    const initialMode = initialWorkbenchViewMode()
+    this.applyMode(initialMode)
+    persistWorkbenchViewMode(initialMode)
+  }
 
   readonly onDidChangeMode: Event<WorkbenchViewMode> = this.changeEmitter.event
 
@@ -111,8 +119,73 @@ export class WorkbenchViewState {
       }
     }
     const nextMode = this.currentMode
-    if (nextMode !== previousMode) this.changeEmitter.fire(nextMode)
+    if (nextMode !== previousMode) {
+      persistWorkbenchViewMode(nextMode)
+      this.changeEmitter.fire(nextMode)
+    }
   }
+
+  protected applyMode(mode: WorkbenchViewMode): void {
+    this.workflowVisible = mode === 'workflow' || mode === 'split'
+    this.materialVisible = mode === 'material' || mode === 'split'
+      || mode === 'material-device' || mode === 'material-robot-debug'
+    this.exclusiveDomain = mode === 'empty' || mode === 'workflow'
+      || mode === 'material' || mode === 'split'
+      ? null
+      : mode === 'material-device'
+        ? 'device'
+        : mode === 'material-robot-debug'
+          ? 'robot-debug'
+          : mode
+  }
+}
+
+/** 读取可分享 URL，其次读取同源浏览器状态，最后保持产品默认工作流视图。 */
+export function initialWorkbenchViewMode(): WorkbenchViewMode {
+  if (headlessMaterialRendererRequested()) return 'material'
+  try {
+    const requested = parseWorkbenchViewMode(new URLSearchParams(
+      globalThis.location?.search ?? ''
+    ).get('workbenchView'))
+    if (requested) return requested
+    const stored = parseWorkbenchViewMode(
+      globalThis.localStorage?.getItem(WORKBENCH_VIEW_STORAGE_KEY)
+    )
+    if (stored) return stored
+  } catch {
+    // 浏览器禁用存储时仍使用稳定默认值。
+  }
+  return 'workflow'
+}
+
+/** 把活动领域写入同源状态；明确 URL 会在首次加载时成为后续默认值。 */
+function persistWorkbenchViewMode(mode: WorkbenchViewMode): void {
+  try {
+    globalThis.localStorage?.setItem(WORKBENCH_VIEW_STORAGE_KEY, mode)
+  } catch {
+    // 呈现状态持久化失败不能阻断 Workbench。
+  }
+}
+
+/** 拒绝旧版本或人工写入的未知展示值。 */
+export function parseWorkbenchViewMode(
+  value: string | null | undefined
+): WorkbenchViewMode | null {
+  return value && [
+    'empty',
+    'workflow',
+    'material',
+    'device',
+    'robot-debug',
+    'robot-points',
+    'robot-bench',
+    'robot-reagents',
+    'material-device',
+    'material-robot-debug',
+    'split'
+  ].includes(value)
+    ? value as WorkbenchViewMode
+    : null
 }
 
 function headlessMaterialRendererRequested(): boolean {

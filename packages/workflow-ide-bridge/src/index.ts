@@ -63,6 +63,7 @@ export interface WorkflowIdeBridge {
   activeSourceUri?: string | null
   onRevealSourceLocation?: (location: WorkflowSourceLocation) => void
   onRevealPackageSource?: (location: PackageSourceLocation) => void
+  onHidePackageSource?: (location: PackageSourceLocation) => void
   onSourceProjectionChange?: (
     projection: WorkflowSourceProjection | null
   ) => void
@@ -170,6 +171,7 @@ export interface WorkflowIdeResolvedDiagnostic
 /** The only host-specific surface required by either IDE adapter. */
 export interface WorkflowIdeHostPort {
   revealSource: (location: WorkflowIdeResolvedLocation) => Promise<void>
+  hideSource?: (resolvedUri: string) => Promise<void>
   replaceDiagnostics: (
     diagnostics: readonly WorkflowIdeResolvedDiagnostic[]
   ) => void | Promise<void>
@@ -209,6 +211,9 @@ export class WorkflowIdeHostAdapter {
       },
       onRevealPackageSource: location => {
         void this.revealSource(location).catch(error => this.report(error))
+      },
+      onHidePackageSource: location => {
+        void this.hideSource(location).catch(error => this.report(error))
       },
       onSourceProjectionChange: projection => {
         this.acceptSourceProjection(projection)
@@ -294,6 +299,12 @@ export class WorkflowIdeHostAdapter {
       throw new Error(`OS 未发布源码软件包挂载：${location.sourceUri}`)
     }
     await this.host.revealSource(normalizedLocation(location, target))
+  }
+
+  async hideSource(location: PackageSourceLocation): Promise<void> {
+    const target = resolveIdeSourceUri(location.sourceUri, this.packageMounts)
+    if (!target || !this.host.hideSource) return
+    await this.host.hideSource(target.resolvedUri)
   }
 
   private refreshBridgeContext(): void {

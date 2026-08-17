@@ -42,9 +42,11 @@ describe('workflow IDE bridge', () => {
 
   it('drives reveal, reverse highlight and diagnostics through one host adapter', async () => {
     const reveals: unknown[] = []
+    const hiddenSources: string[] = []
     const diagnosticBatches: unknown[] = []
     const adapter = new WorkflowIdeHostAdapter({
       revealSource: async location => { reveals.push(location) },
+      hideSource: async resolvedUri => { hiddenSources.push(resolvedUri) },
       replaceDiagnostics: diagnostics => { diagnosticBatches.push(diagnostics) }
     })
     adapter.setPackageMounts([{
@@ -77,6 +79,7 @@ describe('workflow IDE bridge', () => {
       endLine: 7,
       endColumn: 18
     })
+    adapter.bridge.onHidePackageSource?.({ sourceUri: projection.sourceUri })
     await adapter.acceptDiagnostics([{
       sourceUri: projection.sourceUri,
       severity: 'error',
@@ -102,6 +105,9 @@ describe('workflow IDE bridge', () => {
         column: 3,
         readOnly: true
       })
+    ])
+    expect(hiddenSources).toEqual([
+      'file:///workspace/szlab_poly_studio/workflows/s06_robot.py'
     ])
     expect(diagnosticBatches.at(-1)).toEqual([
       expect.objectContaining({
