@@ -7,6 +7,7 @@ import {
   isResourceSlotHandle,
   projectMaterialTraces
 } from './workflowMaterialTrace'
+import { projectWorkflowSampleBackbone } from './workflowSampleBackbone'
 import {
   packWorkflowSupportingBranches,
   type WorkflowSupportingBranch,
@@ -40,8 +41,15 @@ export interface WorkflowPrimarySampleLayoutOptions {
   supportingMaterialPresentation?: WorkflowSupportingMaterialPresentation
 }
 
+/*
+ * 该深模块（Deep Module）暂时集中维护蛇形主干的坐标、端口和支线装箱不变量，
+ * 避免布局阶段之间泄漏半成品坐标。后续可执行的拆分边界是：把
+ * groupExpandedBackboneDescendantsByRow 及其纯辅助函数迁移到
+ * workflowPrimarySampleExpandedLayout.ts，并只公开按行分组的纯函数合同。
+ */
+
 /**
- * 以主样品物料流角色（MaterialFlowRole）的第一条物料链为主干生成蛇形布局。
+ * 以主样品及其在样品交汇后的新产物物料链为主干生成蛇形布局。
  *
  * 主干每行最多放置四个节点，奇数行反向排列；其它物料（Material）支线按
  * 最近主干节点归入同一行的辅助区。返回结果只改变前端画布投影坐标与端口方向，
@@ -75,20 +83,15 @@ export function layoutWorkflowPrimarySampleFlow(
   }
 
   const traces = projectMaterialTraces(nodes, visibleLinks)
-  const primaryLineage = traces.lineages.find(
-    (lineage) => lineage.materialRole === 'primary_sample'
+  const sampleBackbone = projectWorkflowSampleBackbone(
+    nodes,
+    visibleLinks,
+    traces
   )
   const nodeOrder = new Map(nodes.map((node, index) => [node.id, index]))
   const layerByNode = workflowLayers(nodes, visibleLinks)
-  const backboneNodeIds = primaryLineage
-    ? primaryLineageNodeIds(
-        nodes,
-        visibleLinks,
-        traces,
-        primaryLineage.key,
-        layerByNode,
-        nodeOrder
-      )
+  const backboneNodeIds = sampleBackbone.hasPrimarySample
+    ? sampleBackbone.nodeIds
     : [...nodes]
         .sort((left, right) =>
           (layerByNode.get(left.id) ?? 0) -
@@ -265,7 +268,7 @@ export function layoutWorkflowPrimarySampleFlow(
     nodePorts,
     edgeDirections,
     primarySample: {
-      hasPrimarySample: Boolean(primaryLineage),
+      hasPrimarySample: sampleBackbone.hasPrimarySample,
       backboneNodeIds,
       rowByNode
     }
@@ -340,45 +343,6 @@ function groupExpandedBackboneDescendantsByRow(
   }
 
   return assigned
-}
-
-/**
- * 提取第一条主样品物料链覆盖的节点并按拓扑层稳定排序。
- *
- * @param nodes 当前可见工作流节点。
- * @param links 当前可见工作流边。
- * @param traces 物料流追踪投影。
- * @param lineageKey 主样品物料链的稳定键。
- * @param layerByNode 节点到最长路径层号的映射。
- * @param nodeOrder 节点在权威图投影中的声明顺序。
- * @returns 主样品物料链上的有序节点 UUID。
- */
-function primaryLineageNodeIds(
-  nodes: readonly WorkflowNode[],
-  links: readonly WorkflowLink[],
-  traces: ReturnType<typeof projectMaterialTraces>,
-  lineageKey: string,
-  layerByNode: ReadonlyMap<string, number>,
-  nodeOrder: ReadonlyMap<string, number>
-): string[] {
-  const primaryNodeIds = new Set<string>()
-  const lineage = traces.lineages.find((item) => item.key === lineageKey)
-  if (lineage) primaryNodeIds.add(lineage.sourceNodeUuid)
-  for (const [nodeId, handles] of traces.handleLineagesByNode) {
-    if ([...handles.values()].includes(lineageKey)) primaryNodeIds.add(nodeId)
-  }
-  links.forEach((link, index) => {
-    if (traces.edgeLineages.get(index) !== lineageKey) return
-    primaryNodeIds.add(link.source)
-    primaryNodeIds.add(link.target)
-  })
-  return nodes
-    .filter((node) => primaryNodeIds.has(node.id))
-    .sort((left, right) =>
-      (layerByNode.get(left.id) ?? 0) - (layerByNode.get(right.id) ?? 0) ||
-      (nodeOrder.get(left.id) ?? 0) - (nodeOrder.get(right.id) ?? 0)
-    )
-    .map((node) => node.id)
 }
 
 /**

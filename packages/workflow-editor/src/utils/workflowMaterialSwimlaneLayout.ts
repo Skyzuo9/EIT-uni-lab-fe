@@ -1,6 +1,7 @@
 import type { WorkflowLink, WorkflowNode } from './parseWorkflow'
 import type { WorkflowMaterialSwimlaneDirection } from './workflowDagLayoutStrategy'
 import { projectMaterialTraces } from './workflowMaterialTrace'
+import { projectWorkflowSampleBackbone } from './workflowSampleBackbone'
 
 export const WORKFLOW_MATERIAL_LANE_GAP = 192
 export const WORKFLOW_MATERIAL_ACTION_FIRST_HANDLE_X = 207
@@ -61,6 +62,8 @@ export interface WorkflowMaterialSwimlaneProjection {
   lanes: WorkflowMaterialSwimlane[]
   nodeLayouts: Map<string, WorkflowMaterialSwimlaneNodeLayout>
   handleLaneIndexes: Map<string, Map<string, number>>
+  sampleBackboneLineageKeys: readonly string[]
+  sampleBackboneNodeIds: readonly string[]
 }
 
 export interface WorkflowMaterialSwimlaneLayoutNode extends WorkflowNode {
@@ -110,7 +113,23 @@ export function layoutWorkflowMaterialSwimlanes(
     nodeIds.has(link.source) && nodeIds.has(link.target)
   )
   const traces = projectMaterialTraces(nodes, visibleLinks)
-  const lanes = traces.lineages.map((lineage, index) => {
+  const sampleBackbone = projectWorkflowSampleBackbone(
+    nodes,
+    visibleLinks,
+    traces
+  )
+  const lineageByKey = new Map(
+    traces.lineages.map((lineage) => [lineage.key, lineage])
+  )
+  const backboneLineageKeys = new Set(sampleBackbone.lineageKeys)
+  const orderedLineages = [
+    ...sampleBackbone.lineageKeys.flatMap((lineageKey) => {
+      const lineage = lineageByKey.get(lineageKey)
+      return lineage ? [lineage] : []
+    }),
+    ...traces.lineages.filter((lineage) => !backboneLineageKeys.has(lineage.key))
+  ]
+  const lanes = orderedLineages.map((lineage, index) => {
     const axis = (direction === 'vertical' ? LANE_ORIGIN_X : LANE_ORIGIN_Y) +
       index * WORKFLOW_MATERIAL_LANE_GAP
     return {
@@ -140,12 +159,15 @@ export function layoutWorkflowMaterialSwimlanes(
     direction,
     lanes,
     nodeLayouts: new Map(),
-    handleLaneIndexes
+    handleLaneIndexes,
+    sampleBackboneLineageKeys: sampleBackbone.lineageKeys,
+    sampleBackboneNodeIds: sampleBackbone.nodeIds
   }
   const supportingSourceAnchors = workflowSupportingSourceAnchors(
     nodes,
     visibleLinks,
-    traces
+    traces,
+    new Set(sampleBackbone.nodeIds)
   )
   return direction === 'horizontal'
     ? layoutHorizontalMaterialSwimlanes(
@@ -402,31 +424,21 @@ function layoutHorizontalMaterialSwimlanes(
 }
 
 /**
- * 找出每个辅助 MaterialSource 最先汇入的主样品节点。
+ * 找出每个辅助物料来源（MaterialSource）最先汇入的动态样品主线节点。
  *
+ * @param nodes 当前可见工作流（Workflow）节点。
+ * @param links 当前可见工作流边。
+ * @param traces 物料占位符（ResourceSlot）谱系投影。
+ * @param sampleBackboneNodeIds 已切换样品身份后的动态主线节点集合。
  * @returns 辅助来源 UUID 到最终主线接入节点 UUID 的映射。
  */
 function workflowSupportingSourceAnchors(
   nodes: readonly WorkflowNode[],
   links: readonly WorkflowLink[],
-  traces: ReturnType<typeof projectMaterialTraces>
+  traces: ReturnType<typeof projectMaterialTraces>,
+  sampleBackboneNodeIds: ReadonlySet<string>
 ): Map<string, string> {
-  const primaryLineage = traces.lineages.find(
-    (lineage) => lineage.materialRole === 'primary_sample'
-  )
-  if (!primaryLineage) return new Map()
-
-  const primaryNodeIds = new Set([primaryLineage.sourceNodeUuid])
-  for (const [nodeId, lineages] of traces.handleLineagesByNode) {
-    if ([...lineages.values()].includes(primaryLineage.key)) {
-      primaryNodeIds.add(nodeId)
-    }
-  }
-  links.forEach((link, index) => {
-    if (traces.edgeLineages.get(index) !== primaryLineage.key) return
-    primaryNodeIds.add(link.source)
-    primaryNodeIds.add(link.target)
-  })
+  if (sampleBackboneNodeIds.size === 0) return new Map()
 
   const outgoing = new Map(nodes.map((node) => [node.id, [] as string[]]))
   links.forEach((link, index) => {
@@ -437,12 +449,12 @@ function workflowSupportingSourceAnchors(
   for (const source of nodes) {
     if (
       source.type !== 'material_source' ||
-      source.materialSource?.flowRole === 'primary_sample'
+      sampleBackboneNodeIds.has(source.id)
     ) continue
     const anchor = nearestPrimaryDescendant(
       source.id,
       outgoing,
-      primaryNodeIds
+      sampleBackboneNodeIds
     )
     if (anchor) anchors.set(source.id, anchor)
   }
