@@ -4,6 +4,7 @@ import type {
   WorkflowNode,
   WorkflowStructure
 } from './parseWorkflow'
+import { workflowCompositeConnectionAllowed } from './workflowCompositeContainment'
 
 export interface CanonicalWorkflowParseResult extends WorkflowStructure {
   revision: WorkflowRevision | null
@@ -142,6 +143,7 @@ export interface NestedWorkflowProjection {
   links: WorkflowLink[]
   collapsedGroupIds: Set<string>
   hiddenNodeIds: Set<string>
+  rejectedBoundaryLinkIds: Set<string>
 }
 
 /**
@@ -217,6 +219,7 @@ export function projectNestedWorkflow(
     key: string
     remapped: boolean
   }> = []
+  const rejectedBoundaryLinkIds = new Set<string>()
   for (const link of links) {
     if (!nodeById.has(link.source) || !nodeById.has(link.target)) continue
     if (nativeGroupIds.has(link.source) || nativeGroupIds.has(link.target)) {
@@ -225,6 +228,17 @@ export function projectNestedWorkflow(
     const source = representative(link.source)
     const target = representative(link.target)
     if (source === target) continue
+    if (!workflowCompositeConnectionAllowed(nodes, source, target)) {
+      rejectedBoundaryLinkIds.add(
+        link.id ?? JSON.stringify([
+          link.source,
+          link.sourceHandleUuid ?? null,
+          link.target,
+          link.targetHandleUuid ?? null
+        ])
+      )
+      continue
+    }
     const key = JSON.stringify([source, target, link.type, link.branch ?? null])
     linkProjections.push({
       link,
@@ -264,7 +278,8 @@ export function projectNestedWorkflow(
     ),
     links: projectedLinks,
     collapsedGroupIds,
-    hiddenNodeIds
+    hiddenNodeIds,
+    rejectedBoundaryLinkIds
   }
 }
 

@@ -8,11 +8,12 @@ import { nodeOptions } from './gen-esbuild.node.mjs';
 import esbuild from 'esbuild';
 import { copy } from 'esbuild-plugin-copy';
 import { sassPlugin } from 'esbuild-sass-plugin';
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile, rm, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
 import { injectWorkbenchPreloadShell } from './scripts/preload-shell.mjs';
 import { copyWorkbenchDracoAssets } from './scripts/draco-assets.mjs';
+import { createBrowserBuildOptions } from './scripts/browser-code-splitting.mjs';
 
 const sharedShimPath = name => fileURLToPath(
     new URL(`../../packages/pascal-host/src/shims/${name}.tsx`, import.meta.url)
@@ -72,6 +73,16 @@ browserOptions.plugins.push({
     },
 });
 
+browserOptions.plugins.unshift({
+    name: 'unilab-workbench-chunk-cleanup',
+    setup(build) {
+        build.onStart(() => rm(
+            fileURLToPath(new URL('./lib/frontend/chunks', import.meta.url)),
+            { force: true, recursive: true },
+        ));
+    },
+});
+
 // drivelist 12.0.2 does not publish a Windows N-API prebuild. Requiring its
 // missing native binding would crash the complete Theia backend during boot,
 // although Theia only needs mount points from it. Keep the native package on
@@ -85,19 +96,26 @@ if (process.platform === 'win32') {
     };
 }
 
-const browserContext = await esbuild.context(browserOptions);
+const { applicationOptions, workerOptions } = createBrowserBuildOptions(browserOptions);
+const browserApplicationContext = await esbuild.context(applicationOptions);
+const browserWorkerContext = await esbuild.context(workerOptions);
 const nodeContext = await esbuild.context(nodeOptions);
 
 
 if (watch) {
     await Promise.all([
-        browserContext.watch(),
+        browserApplicationContext.watch(),
+        browserWorkerContext.watch(),
         nodeContext.watch(),
     ]);
 } else {
     try {
-        await browserContext.rebuild();
-        await browserContext.dispose();
+        await Promise.all([
+            browserApplicationContext.rebuild(),
+            browserWorkerContext.rebuild(),
+        ]);
+        await browserApplicationContext.dispose();
+        await browserWorkerContext.dispose();
         await nodeContext.rebuild();
         await nodeContext.dispose();
     } catch {

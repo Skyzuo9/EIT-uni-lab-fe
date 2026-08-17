@@ -1,4 +1,6 @@
 const PRELOAD_STYLE_ID = 'unilab-workbench-preload-style'
+const CLASSIC_BUNDLE_SCRIPT = '<script type="text/javascript" src="./bundle.js" charset="utf-8"></script>'
+const MODULE_BUNDLE_SCRIPT = '<script type="module" src="./bundle.js" charset="utf-8"></script>'
 
 const PRELOAD_STYLE = `<style id="${PRELOAD_STYLE_ID}">
 html, body {
@@ -47,10 +49,19 @@ html, body {
 </style>`
 
 export function injectWorkbenchPreloadShell(html) {
-  if (html.includes(`id="${PRELOAD_STYLE_ID}"`)) return html
+  let result = html
   const link = '<link rel="stylesheet" href="./bundle.css">'
-  if (!html.includes(link)) {
+  if (!result.includes(link)) {
     throw new Error('Theia frontend index.html 缺少 bundle.css 链接')
   }
-  return html.replace(link, `${link}\n  ${PRELOAD_STYLE}`)
+  if (!result.includes(`id="${PRELOAD_STYLE_ID}"`)) {
+    result = result.replace(link, `${link}\n  ${PRELOAD_STYLE}`)
+  }
+
+  if (result.includes(CLASSIC_BUNDLE_SCRIPT)) {
+    result = result.replace(CLASSIC_BUNDLE_SCRIPT, MODULE_BUNDLE_SCRIPT)
+  } else if (!result.includes(MODULE_BUNDLE_SCRIPT)) {
+    throw new Error('Theia frontend index.html 缺少 bundle.js 入口')
+  }
+  return result
 }

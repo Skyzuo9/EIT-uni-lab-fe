@@ -36,6 +36,11 @@ import WorkflowSupportingMaterialPresentationControl from './WorkflowSupportingM
 import { WORKFLOW_DAG_NODE_TYPES } from './workflowDagNodeTypes'
 import type { WorkflowNodeData } from './WorkflowNodeCard'
 import type { WorkflowLink, WorkflowNode } from '../utils/parseWorkflow'
+import { workflowCompositeConnectionEditable } from '../utils/workflowCompositeContainment'
+import {
+  scheduleWorkflowCompositeFitView,
+  workflowCompositeProjectionReady
+} from '../utils/workflowCompositeViewport'
 import {
   projectNestedWorkflow,
   visibleNestedWorkflowNodeId
@@ -250,6 +255,14 @@ export default function WorkflowDag({
     ),
     [expandedGroupIds, materialRoleProjection]
   )
+  const isValidCompositeConnection = useCallback((connection: Connection) => {
+    if (!connection.source || !connection.target) return false
+    return workflowCompositeConnectionEditable(
+      materialRoleProjection.nodes,
+      connection.source,
+      connection.target
+    )
+  }, [materialRoleProjection.nodes])
   const visibleSelectedNodeId = selectedNodeId === undefined
     ? undefined
     : selectedNodeId === null
@@ -323,6 +336,13 @@ export default function WorkflowDag({
     swimlaneDirection,
     supportingMaterialPresentation
   )
+  const renderedWorkflowNodeIds = useMemo(
+    () => flowNodes
+      .filter((node) => node.type !== 'wfReactionMaterial')
+      .map((node) => node.id),
+    [flowNodes]
+  )
+  const renderedWorkflowNodeSignature = renderedWorkflowNodeIds.join('|')
   // `canvasLayoutDirection` 是当前视觉投影的实际阅读方向；蛇形固定横向，
   // 物料泳道（Material Swimlane）才使用用户选择的方向。
   const canvasLayoutDirection: WorkflowMaterialSwimlaneDirection =
@@ -536,6 +556,27 @@ export default function WorkflowDag({
   const fitWorkflowView = useCallback((): void => {
     void flowInstanceRef.current?.fitView(WORKFLOW_FIT_VIEW_OPTIONS)
   }, [])
+  useEffect(() => {
+    return scheduleWorkflowCompositeFitView(fitWorkflowView, {
+      isReady: () => {
+        const instance = flowInstanceRef.current
+        if (!instance?.viewportInitialized) return false
+        const renderedNodes = instance.getNodes()
+        return renderedNodes.every((node) => node.width && node.height) &&
+          workflowCompositeProjectionReady(
+            renderedWorkflowNodeIds,
+            renderedNodes
+              .filter((node) => node.type !== 'wfReactionMaterial')
+              .map((node) => node.id)
+          )
+      }
+    })
+  }, [
+    expandedGroupIds,
+    fitWorkflowView,
+    renderedWorkflowNodeIds,
+    renderedWorkflowNodeSignature
+  ])
   const handleBeautify = useCallback(() => {
     if (!canBeautify || !onBeautify) return
     setIsBeautifying(true)
@@ -800,6 +841,7 @@ export default function WorkflowDag({
         onConnect={(connection: Connection) => {
           if (
             !canvasMutationEnabled ||
+            !isValidCompositeConnection(connection) ||
             !connection.source ||
             !connection.sourceHandle ||
             !connection.target ||
@@ -812,6 +854,7 @@ export default function WorkflowDag({
             targetHandleUuid: connection.targetHandle
           })
         }}
+        isValidConnection={isValidCompositeConnection}
         nodeTypes={WORKFLOW_DAG_NODE_TYPES}
         edgeTypes={edgeTypes}
         fitView

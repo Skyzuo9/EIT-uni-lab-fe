@@ -1,0 +1,147 @@
+.workflow :global(.react-flow__node-wfCompositeContainer) {
+  z-index: 0 !important;
+}
+
+.workflow :global(.wf-node--composite-container) {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  overflow: visible;
+  border: 1px solid color-mix(
+    in srgb,
+    var(--unilab-color-workflow) 48%,
+    var(--unilab-color-border-strong)
+  );
+  border-radius: var(--unilab-radius-lg);
+  background: color-mix(
+    in srgb,
+    var(--unilab-color-primary-soft) 38%,
+    var(--unilab-color-canvas)
+  );
+}
+
+.workflow :global(.wf-node--composite-container)::after {
+  position: absolute;
+  inset: 52px 12px 12px;
+  border: 1px dashed color-mix(
+    in srgb,
+    var(--unilab-color-workflow) 20%,
+    var(--unilab-color-border)
+  );
+  border-radius: var(--unilab-radius-md);
+  content: '';
+  pointer-events: none;
+}
+
+.workflow :global(.wf-node__composite-header) {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  right: 0;
+  left: 0;
+  display: flex;
+  min-height: 52px;
+  align-items: center;
+  gap: var(--unilab-space-3);
+  padding: 8px 12px;
+  border-bottom: 1px solid color-mix(
+    in srgb,
+    var(--unilab-color-workflow) 24%,
+    var(--unilab-color-border)
+  );
+  border-radius: var(--unilab-radius-lg) var(--unilab-radius-lg) 0 0;
+  background: color-mix(
+    in srgb,
+    var(--unilab-color-surface) 88%,
+    var(--unilab-color-primary-soft)
+  );
+}
+
+.workflow :global(.wf-node__composite-identity) {
+  display: grid;
+  min-width: 0;
+  flex: 1 1 auto;
+  gap: 1px;
+}
+
+.workflow :global(.wf-node__composite-identity) strong {
+  overflow: hidden;
+  color: var(--unilab-color-text);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workflow :global(.wf-node__composite-identity) small {
+  color: var(--unilab-color-text-muted);
+  font-size: 10px;
+  line-height: 14px;
+}
+
+.workflow :global(.wf-node__composite-toggle) {
+  display: inline-flex;
+  height: 28px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
+  color: var(--unilab-color-workflow);
+  border: 1px solid color-mix(
+    in srgb,
+    var(--unilab-color-workflow) 34%,
+    var(--unilab-color-border)
+  );
+  border-radius: var(--unilab-radius-control);
+  background: var(--unilab-color-surface);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.workflow :global(.wf-node__composite-toggle):hover {
+  border-color: var(--unilab-color-focus);
+  background: var(--unilab-color-primary-soft);
+}
+
+.workflow :global(.wf-node__composite-toggle):focus-visible {
+  outline: 2px solid var(--unilab-color-focus);
+  outline-offset: 2px;
+}
+
+.workflow :global(.wf-node__composite-handle) {
+  z-index: 4;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--unilab-color-surface);
+  background: var(--unilab-color-workflow);
+}
+
+.workflow :global(.wf-node__composite-handle--bridge) {
+  opacity: 0;
+}
+
+.workflow :global(.wf-node__handle--material.wf-node__composite-handle) {
+  background: var(--unilab-color-material);
+}
+
+.workflow :global(.react-flow__node-wfCompositeContainer.selected)
+  :global(.wf-node--composite-container),
+.workflow :global(.react-flow__node-wfCompositeContainer:focus-visible)
+  :global(.wf-node--composite-container) {
+  border-color: var(--unilab-color-workflow);
+  outline: 2px solid var(--unilab-color-focus);
+  outline-offset: 2px;
+}
+
+.workflow :global(.react-flow__node-wfCompositeContainer.wf-flow-node--running)
+  :global(.wf-node--composite-container) {
+  border-color: var(--unilab-color-warning);
+}
+
+.workflow :global(.react-flow__node-wfCompositeContainer.wf-flow-node--success)
+  :global(.wf-node--composite-container) {
+  border-color: var(--unilab-color-success);
+}

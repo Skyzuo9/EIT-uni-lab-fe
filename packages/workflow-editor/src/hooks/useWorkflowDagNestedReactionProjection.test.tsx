@@ -48,16 +48,25 @@ describe('useWorkflowDag nested reaction-formula projection', () => {
       'host-transfer',
       'put-resource'
     ])
-    const [outerPosition] = projectionPositions(expandedMarkup, ['outer'])
     for (const [index, left] of childPositions.entries()) {
       for (const right of childPositions.slice(index + 1)) {
         expect(rectanglesOverlap(left, right, 184, 81)).toBe(false)
       }
     }
-    const putResourcePosition = childPositions[2]!
-    expect(putResourcePosition.x).toBeLessThan(outerPosition!.x)
-    expect(outerPosition!.x - putResourcePosition.x).toBeLessThanOrEqual(208)
-    expect(putResourcePosition.y).toBeLessThan(outerPosition!.y)
+    expect(childPositions.every((position) => position.x >= 0)).toBe(true)
+    expect(childPositions.every((position) => position.y >= 52)).toBe(true)
+    expect(projectionAttribute(expandedMarkup, 'data-node-types'))
+      .toContain('wfCompositeContainer')
+    expect(projectionAttribute(expandedMarkup, 'data-node-sizes'))
+      .toContain('reaction-materials:seal@152x22')
+    expect(projectionAttribute(expandedMarkup, 'data-node-parents'))
+      .toContain('get-resource>outer')
+    expect(projectionAttribute(expandedMarkup, 'data-node-parents'))
+      .toContain('host-transfer>outer')
+    expect(projectionAttribute(expandedMarkup, 'data-node-parents'))
+      .toContain('put-resource>outer')
+    expect(projectionAttribute(expandedMarkup, 'data-node-policies'))
+      .toContain('get-resource@false:false:false')
 
     const edgeRoutes = projectionEdgeRoutes(expandedMarkup)
     for (const edgeId of ['inner-get-host', 'inner-host-put']) {
@@ -80,6 +89,10 @@ describe('useWorkflowDag nested reaction-formula projection', () => {
     expect(expandedMarkup).toContain('nested-sequence')
     expect(expandedMarkup).toContain('nested-host')
     expect(expandedMarkup).not.toContain('reagent-source')
+    expect(projectionAttribute(expandedMarkup, 'data-node-parents'))
+      .toContain('nested-sequence>outer')
+    expect(projectionAttribute(expandedMarkup, 'data-node-parents'))
+      .toContain('nested-host>nested-sequence')
 
     const nestedPositions = projectionPositions(expandedMarkup, [
       'nested-sequence',
@@ -95,9 +108,6 @@ describe('useWorkflowDag nested reaction-formula projection', () => {
       .get('inner-nested-host')
     expect(nestedRoute).toBeDefined()
     expect(nestedRoute?.direction).toBe('LR')
-    expect(Math.abs(
-      (nestedRoute?.target.x ?? 0) - (nestedRoute?.source.x ?? 0)
-    )).toBeGreaterThan(0)
   })
 })
 
@@ -167,9 +177,23 @@ function ProjectionHarness({
     <output
       data-node-ids={projection.nodes.map((node) => node.id).sort().join(',')}
       data-node-types={projection.nodes.map((node) => node.type).sort().join(',')}
+      data-node-parents={projection.nodes
+        .flatMap((node) => node.parentId ? [`${node.id}>${node.parentId}`] : [])
+        .sort()
+        .join('|')}
       data-edge-ids={projection.edges.map((edge) => edge.id).sort().join(',')}
       data-node-layout={projection.nodes
         .map((node) => `${node.id}@${node.position.x}:${node.position.y}`)
+        .sort()
+        .join('|')}
+      data-node-sizes={projection.nodes
+        .map((node) => `${node.id}@${node.width}x${node.height}`)
+        .sort()
+        .join('|')}
+      data-node-policies={projection.nodes
+        .map((node) => (
+          `${node.id}@${node.draggable}:${node.connectable}:${node.deletable}`
+        ))
         .sort()
         .join('|')}
       data-edge-routes={projection.edges
@@ -239,7 +263,7 @@ function projectionEdgeRoutes(markup: string): Map<string, ProjectionEdgeRoute> 
 function projectionAttribute(markup: string, name: string): string {
   const value = markup.match(new RegExp(`${name}="([^"]*)"`))?.[1]
   expect(value, `${name} should be rendered`).toBeDefined()
-  return value!
+  return value!.replaceAll('&gt;', '>')
 }
 
 function rectanglesOverlap(

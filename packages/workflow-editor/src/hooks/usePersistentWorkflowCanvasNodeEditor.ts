@@ -29,7 +29,11 @@ import {
   errorMessage,
   parseTypedFieldValue
 } from '../utils/persistentAuthoringProjection'
-import { updatePersistentAuthoringNodeDisabled } from '../utils/persistentAuthoringGraph'
+import {
+  projectPersistentAuthoringGraph,
+  updatePersistentAuthoringNodeDisabled
+} from '../utils/persistentAuthoringGraph'
+import { workflowCompositeConnectionEditable } from '../utils/workflowCompositeContainment'
 import { useWorkflowCanvasDeletion } from './useWorkflowCanvasDeletion'
 import {
   workflowNodeAtSourcePosition,
@@ -446,8 +450,21 @@ export function usePersistentWorkflowCanvasNodeEditor(
     targetNodeUuid: string
     targetHandleUuid: string
   }): void => {
-    if (!actionCatalog || !graph) return
+    if (!actionCatalog || !graph || !canvasMutationEnabled) return
     try {
+      const structure = projectPersistentAuthoringGraph(
+        graph,
+        materialSourceCatalog
+      )
+      if (!workflowCompositeConnectionEditable(
+        structure.nodes,
+        connection.sourceNodeUuid,
+        connection.targetNodeUuid
+      )) {
+        throw new Error(
+          '展开的子工作流内容只读；请连接父节点的输入或输出端口'
+        )
+      }
       const sourceNode = graph.nodes.find(
         (node) => node.uuid === connection.sourceNodeUuid
       )

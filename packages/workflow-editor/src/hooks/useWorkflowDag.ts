@@ -22,6 +22,7 @@ import {
 import { layoutWorkflowMaterialSwimlanes } from '../utils/workflowMaterialSwimlaneLayout'
 import { layoutWorkflowPrimarySampleFlow } from '../utils/workflowPrimarySampleLayout'
 import { reconcileReactFlowNodeMeasurements } from '../utils/reactFlowNodeMeasurement'
+import { projectWorkflowCompositeContainment } from '../utils/workflowCompositeContainment'
 import { materialTraceAccent, projectMaterialTraces } from '../utils/workflowMaterialTrace'
 import type { WorkflowMaterialTraceProjection } from '../utils/workflowMaterialTrace'
 import {
@@ -276,15 +277,33 @@ function buildFlowElements(
   const visibleLayoutNodes = reactionFormulaPresentation
     ? layout.nodes.filter((node) => reactionFormulaVisibleNodeIds?.has(node.id))
     : layout.nodes
-  const flowNodes: Node<WorkflowNodeData>[] = visibleLayoutNodes.map((node) => {
+  const measuredSizes = new Map(
+    visibleLayoutNodes.flatMap((node) => {
+      const laneLayout = layout.swimlanes?.nodeLayouts.get(node.id)
+      return laneLayout && !compactPrimarySampleLayout
+        ? [[node.id, {
+            width: laneLayout.width,
+            height: laneLayout.height
+          }] as const]
+        : []
+    })
+  )
+  const containedLayoutNodes = projectWorkflowCompositeContainment(
+    visibleLayoutNodes,
+    measuredSizes
+  )
+  const flowNodes: Node<WorkflowNodeData>[] = containedLayoutNodes.map((node) => {
     const laneLayout = layout.swimlanes?.nodeLayouts.get(node.id)
     const handleLanes = layout.swimlanes?.handleLaneIndexes.get(node.id)
     const nodePorts = layout.nodePorts?.get(node.id)
+    const containerSize = node.compositeContainerSize
     return {
       id: node.id,
-      type: 'wfNode',
+      type: containerSize ? 'wfCompositeContainer' : 'wfNode',
       focusable: node.groupKind !== 'subworkflow',
-      position: { x: node.x, y: node.y },
+      position: node.renderPosition,
+      width: node.renderSize.width,
+      height: node.renderSize.height,
       targetPosition: nodePorts
         ? reactFlowPosition(nodePorts.target)
         : layout.direction === 'horizontal'
@@ -295,8 +314,26 @@ function buildFlowElements(
         : layout.direction === 'horizontal'
           ? Position.Right
           : Position.Bottom,
-      ...(laneLayout && !compactPrimarySampleLayout
-        ? { style: { width: laneLayout.width, height: laneLayout.height } }
+      ...(containerSize
+        ? {
+            style: {
+              width: containerSize.width,
+              height: containerSize.height
+            }
+          }
+        : laneLayout && !compactPrimarySampleLayout
+          ? { style: { width: laneLayout.width, height: laneLayout.height } }
+          : {}),
+      ...(node.parentContainerId
+        ? {
+            parentId: node.parentContainerId,
+            extent: 'parent' as const,
+            expandParent: false,
+            zIndex: 1,
+            draggable: false,
+            connectable: false,
+            deletable: false
+          }
         : {}),
       data: {
         id: node.id,
@@ -428,6 +465,8 @@ function buildReactionMaterialNodes(
           (PRIMARY_SAMPLE_NODE_WIDTH - REACTION_MATERIAL_NODE_WIDTH) / 2,
         y: targetNode.y - annotationHeight - REACTION_MATERIAL_NODE_GAP
       },
+      width: REACTION_MATERIAL_NODE_WIDTH,
+      height: annotationHeight,
       selectable: false,
       draggable: false,
       focusable: false,

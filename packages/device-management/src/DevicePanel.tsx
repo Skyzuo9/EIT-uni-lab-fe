@@ -6,6 +6,7 @@ import {
   useState
 } from 'react'
 import {
+  createRuntimeUuid,
   ServiceError,
   type DeviceAction,
   type WorkflowActionCatalogSnapshot,
@@ -501,7 +502,7 @@ export default function DevicePanel({
     const previous = runAttemptRef.current
     const idempotencyKey = previous?.signature === signature
       ? previous.idempotencyKey
-      : globalThis.crypto.randomUUID()
+      : createRuntimeUuid()
     runAttemptRef.current = { signature, idempotencyKey }
     setRunOperation({
       actionRef: action.actionRef,
@@ -592,7 +593,7 @@ export default function DevicePanel({
     try {
       await services.workflow.commandWorkflowTask(taskUuid, {
         type: 'cancel',
-        idempotency_key: globalThis.crypto.randomUUID(),
+        idempotency_key: createRuntimeUuid(),
         description: '设备页取消单动作任务'
       })
       setRunOperation((current) => current && 'taskUuid' in current.state

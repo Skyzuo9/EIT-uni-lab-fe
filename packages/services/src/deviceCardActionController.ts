@@ -13,6 +13,7 @@ import type {
   WorkflowRuntimeInvalidationEvent,
   WorkflowRuntimePort
 } from './workflow'
+import { createRuntimeUuid } from './runtimeIdentity'
 
 interface DeviceCardActionControllerPorts {
   workflow: Pick<
@@ -38,7 +39,7 @@ export class DeviceCardActionController {
    * @param ports 设备单点动作所需的可替换服务端口。
    */
   constructor(private readonly ports: DeviceCardActionControllerPorts) {
-    this.randomUuid = ports.randomUuid ?? (() => globalThis.crypto.randomUUID())
+    this.randomUuid = ports.randomUuid ?? createRuntimeUuid
   }
 
   /**

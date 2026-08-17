@@ -13,7 +13,8 @@ vi.mock('reactflow', () => ({
     deleteKeyCode,
     nodes,
     edges,
-    fitViewOptions
+    fitViewOptions,
+    isValidConnection
   }: PropsWithChildren<{
     deleteKeyCode?: string[] | null
     nodes: Array<{
@@ -24,6 +25,12 @@ vi.mock('reactflow', () => ({
     }>
     edges: Array<{ id: string; deletable?: boolean }>
     fitViewOptions?: { maxZoom?: number }
+    isValidConnection?: (connection: {
+      source: string
+      target: string
+      sourceHandle: string | null
+      targetHandle: string | null
+    }) => boolean
   }>) => (
     <div
       data-react-flow-root="true"
@@ -33,6 +40,12 @@ vi.mock('reactflow', () => ({
       data-node-classes={nodes.map((node) => node.className).join('|')}
       data-edge-id={edges[0]?.id}
       data-fit-max-zoom={fitViewOptions?.maxZoom}
+      data-cross-boundary-valid={String(isValidConnection?.({
+        source: 'outside',
+        target: 'inside',
+        sourceHandle: 'outside-output',
+        targetHandle: 'inside-input'
+      }))}
     >
       {children}
     </div>
@@ -103,6 +116,18 @@ describe('WorkflowDag disabled beautify explanation', () => {
     expect(stylesheet).toMatch(
       /workflowDisabledButtonTooltip[\s\S]*overflow-wrap:\s*anywhere/
     )
+  })
+})
+
+describe('WorkflowDag composite detail copy', () => {
+  it('does not describe authoring rules inside the read-only node display', () => {
+    const source = readFileSync(
+      new URL('./WorkflowCompositeContainer.tsx', import.meta.url),
+      'utf8'
+    )
+
+    expect(source).not.toContain('内部连线止于')
+    expect(source).not.toContain('composite-boundary-note')
   })
 })
 
@@ -184,6 +209,33 @@ describe('WorkflowDag deletion interaction', () => {
     expect(markup).toContain(
       'data-disabled-reason="复合工作流内部私有节点只读；请删除或编辑调用边界"'
     )
+  })
+})
+
+describe('WorkflowDag composite connection boundary', () => {
+  it('rejects a direct connection from outside to an expanded child', () => {
+    const markup = renderToStaticMarkup(
+      <WorkflowDag
+        nodes={[
+          { ...workflowNode, id: 'outside' },
+          {
+            ...workflowNode,
+            id: 'outer',
+            type: 'workflow',
+            groupKind: 'subworkflow',
+            collapsedByDefault: true,
+            childNodeIds: ['inside'],
+            descendantNodeIds: ['inside']
+          },
+          { ...workflowNode, id: 'inside', parentGroupId: 'outer' }
+        ]}
+        links={[]}
+        canvasMutationEnabled
+        onNodeSelect={vi.fn()}
+      />
+    )
+
+    expect(markup).toContain('data-cross-boundary-valid="false"')
   })
 })
 

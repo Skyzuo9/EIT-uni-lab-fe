@@ -131,7 +131,7 @@ describe('Canonical workflow projection', () => {
       .toEqual([
         ['outer', 'prepare'],
         ['prepare', 'inner'],
-        ['inner', 'finish']
+        ['outer', 'finish']
       ])
     expect(visibleNestedWorkflowNodeId(
       parsed.nodes,
@@ -168,6 +168,27 @@ describe('Canonical workflow projection', () => {
       'material-a',
       'material-b'
     ])
+  })
+
+  it('fails closed on a direct edge that skips a composite boundary', () => {
+    const nodes: WorkflowNode[] = [
+      workflowNode('outside'),
+      workflowNode('outer', {
+        groupKind: 'subworkflow',
+        collapsedByDefault: true,
+        childNodeIds: ['inside'],
+        descendantNodeIds: ['inside']
+      }),
+      workflowNode('inside', { parentGroupId: 'outer' })
+    ]
+    const projected = projectNestedWorkflow(nodes, [{
+      ...workflowLink('illegal', 'outside-output', 'inside-input'),
+      source: 'outside',
+      target: 'inside'
+    }], new Set(['outer']))
+
+    expect(projected.links).toEqual([])
+    expect([...projected.rejectedBoundaryLinkIds]).toEqual(['illegal'])
   })
 
   it('deduplicates remapped collapsed edges but prefers a direct boundary edge', () => {
@@ -319,7 +340,7 @@ const NESTED_REVISION = {
     { edge_id: 'e1', source: 'outer', target: 'prepare' },
     { edge_id: 'e2', source: 'prepare', target: 'inner' },
     { edge_id: 'e3', source: 'inner', target: 'dose' },
-    { edge_id: 'e4', source: 'dose', target: 'finish' }
+    { edge_id: 'e4', source: 'outer', target: 'finish' }
   ],
   source_map: {
     entries: [
