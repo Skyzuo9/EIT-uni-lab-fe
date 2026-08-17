@@ -1391,8 +1391,12 @@ function recordMountedWorkbenchDomains(
   mode: WorkbenchViewMode
 ): void {
   if (isWorkflowWorkbenchView(mode)) mountedDomains.add('workflow')
-  if (mode === 'material' || mode === 'split') mountedDomains.add('material')
-  if (mode === 'device') mountedDomains.add('device')
+  if (
+    mode === 'material' || mode === 'split' || mode === 'device-material'
+  ) mountedDomains.add('material')
+  if (mode === 'device' || mode === 'device-material') {
+    mountedDomains.add('device')
+  }
   if (isRobotWorkbenchViewMode(mode)) mountedDomains.add('robot-workstation')
 }
 
@@ -1424,6 +1428,7 @@ function mountedSurface(
 /** 返回 Workbench 标题栏使用的当前领域短名称。 */
 function workbenchViewLabel(mode: WorkbenchViewMode): string {
   if (mode === 'split') return '工作流 + 物料'
+  if (mode === 'device-material') return '仪器设备 + 物料'
   if (mode === 'workflow') return '工作流'
   if (mode === 'material') return '物料'
   if (mode === 'device') return '仪器设备'

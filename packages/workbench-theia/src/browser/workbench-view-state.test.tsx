@@ -27,22 +27,23 @@ describe('Workbench domain view presentation', () => {
     expect(state.isVisible('material')).toBe(false)
   })
 
-  it('toggles instruments without discarding the authoring panel selection', () => {
+  it('allows instruments and materials to share the Workbench main area', () => {
     const state = new WorkbenchViewState()
 
     state.toggle('material')
     state.toggle('device')
-    expect(state.currentMode).toBe('device')
+    expect(state.currentMode).toBe('device-material')
     expect(state.isVisible('device')).toBe(true)
     expect(state.isVisible('workflow')).toBe(false)
-    expect(state.isVisible('material')).toBe(false)
+    expect(state.isVisible('material')).toBe(true)
     state.toggle('device')
 
-    expect(state.currentMode).toBe('device')
-    expect(state.isVisible('device')).toBe(true)
+    expect(state.currentMode).toBe('material')
+    expect(state.isVisible('device')).toBe(false)
+    expect(state.isVisible('material')).toBe(true)
   })
 
-  it('activates material when returning from an exclusive device view', () => {
+  it('lets either side of the instrument and material split remain open', () => {
     const state = new WorkbenchViewState()
     const listener = vi.fn()
     state.onDidChangeMode(listener)
@@ -51,17 +52,17 @@ describe('Workbench domain view presentation', () => {
     expect(state.currentMode).toBe('split')
 
     state.toggle('device')
-    expect(state.currentMode).toBe('device')
+    expect(state.currentMode).toBe('device-material')
 
     state.toggle('material')
-    expect(state.currentMode).toBe('material')
-    expect(state.isVisible('material')).toBe(true)
+    expect(state.currentMode).toBe('device')
+    expect(state.isVisible('material')).toBe(false)
     expect(state.isVisible('workflow')).toBe(false)
-    expect(state.isVisible('device')).toBe(false)
+    expect(state.isVisible('device')).toBe(true)
     expect(listener.mock.calls).toEqual([
       ['split'],
-      ['device'],
-      ['material']
+      ['device-material'],
+      ['device']
     ])
   })
 
@@ -100,11 +101,12 @@ describe('Workbench domain view presentation', () => {
 
     state.toggle('device')
     state.toggle('device')
-    expect(state.currentMode).toBe('device')
+    expect(state.currentMode).toBe('material')
     expect(listener.mock.calls).toEqual([
       ['split'],
       ['material'],
-      ['device']
+      ['device-material'],
+      ['material']
     ])
   })
 
@@ -188,6 +190,24 @@ describe('Workbench domain view presentation', () => {
     expect(markup).toContain('data-testid="device-surface"')
     expect(markup).toContain('data-testid="workflow-surface"')
     expect(markup).toContain('data-testid="material-surface"')
+  })
+
+  it('renders instruments and materials with an accessible splitter', () => {
+    const markup = renderToStaticMarkup(
+      <WorkbenchDomainLayout
+        mode="device-material"
+        workflow={<section data-testid="workflow-surface" />}
+        material={<section data-testid="material-surface" />}
+        device={<section data-testid="device-surface" />}
+        robotWorkstation={<section data-testid="robot-workstation-surface" />}
+      />
+    )
+
+    expect(markup).toContain('data-workbench-view="device-material"')
+    expect(markup).toContain('data-testid="device-surface"')
+    expect(markup).toContain('data-testid="material-surface"')
+    expect(markup).toContain('aria-label="调整仪器设备与物料窗口宽度"')
+    expect(markup).toContain('aria-valuenow="55"')
   })
 
   it('mounts the mechanical-arm modules inside the Workbench main area', () => {

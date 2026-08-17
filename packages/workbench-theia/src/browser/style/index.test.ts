@@ -177,6 +177,16 @@ describe('environment manager layering and responsive layout', () => {
     )
   })
 
+  /** 设备与物料分栏必须占据同一网格行，避免设备被自动排到第二行。 */
+  it('keeps instrument and material split surfaces on one row', () => {
+    expect(domainNavigationStylesheet).toMatch(
+      /is-device-material \.is-device\s*\{[^}]*grid-column:\s*1;[^}]*grid-row:\s*1;/u
+    )
+    expect(domainNavigationStylesheet).toMatch(
+      /is-device-material \.is-material\s*\{[^}]*grid-column:\s*3;[^}]*grid-row:\s*1;/u
+    )
+  })
+
   /** 证明 Theia 底部面板展开时，运行输出连同表头一起让出空间。 */
   it('hides embedded workflow output while the bottom panel is open', () => {
     expect(stylesheet).toMatch(
