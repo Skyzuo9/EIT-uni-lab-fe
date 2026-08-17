@@ -26,6 +26,22 @@ afterEach(async () => {
 })
 
 describe('Workspace Host Workbench adapter', () => {
+  it('does not launch the managed agent when agent support is disabled', async () => {
+    const workspacePath = await mkdtemp(join(tmpdir(), 'unilab-host-agent-off-'))
+    roots.push(workspacePath)
+    const agentStarter = vi.fn()
+    const session = createWorkspaceHostWorkbenchSession({
+      workspacePath,
+      enableAgent: false,
+      agentStarter
+    })
+
+    const snapshot = await session.startAgent()
+
+    expect(agentStarter).not.toHaveBeenCalled()
+    expect(snapshot.agent).toBeNull()
+  })
+
   /**
    * 验证适配器会提交已认证命令、投影 Host 状态，并将“仅加载外部设备包”配置更新回传为最新会话快照。
    */

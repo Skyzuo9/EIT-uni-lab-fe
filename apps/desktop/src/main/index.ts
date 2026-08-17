@@ -1498,6 +1498,7 @@ async function getDeviceCardAgentEnvironmentInfo() {
 }
 
 async function readAgentBridgeEnabled(agentRoot: string): Promise<boolean> {
+  if (process.env['UNILAB_AGENT_ENABLED'] === '0') return false
   try {
     const settings = JSON.parse(
       await readFile(join(agentRoot, 'settings.json'), 'utf8')
