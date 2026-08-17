@@ -86,6 +86,29 @@ export function resolveShapeSpec(
   return bestScore >= 0 ? best : undefined
 }
 
+/**
+ * 按 Backend 公共外形的复合稳定身份精确选择声明。
+ *
+ * @param library `/api/v1/material-shapes` 解析后的外形目录。
+ * @param bundle 物料快照声明的设备包身份。
+ * @param id 物料快照声明的包内外形身份。
+ * @returns 复合身份完全一致的外形；目录缺失或未命中时返回 undefined。
+ */
+export function resolveShapeSpecByIdentity(
+  library: MaterialShapeLibrary | undefined,
+  bundle: string,
+  id: string
+): MaterialShapeSpec | undefined {
+  if (!library || library.length === 0) return undefined
+  const normalizedBundle = bundle.trim()
+  const normalizedId = id.trim()
+  if (!normalizedBundle || !normalizedId) return undefined
+  return library.find(
+    (spec) =>
+      spec.bundle === normalizedBundle && spec.id === normalizedId
+  )
+}
+
 export function parseShapeLibrary(raw: unknown): MaterialShapeLibrary {
   if (!Array.isArray(raw)) return []
   const specs: MaterialShapeSpec[] = []
@@ -273,13 +296,22 @@ function parseGridPart(
   return { ...base, type: 'grid', count, pitch, part }
 }
 
-/** 解析由库位（Site）集合驱动的结构生成器。 */
+/**
+ * 解析由库位（Site）集合驱动的结构生成器。
+ * @param raw 公共 Shape wire 中的一条 sites 图元。
+ * @param base 已校验的样式与单位公共字段。
+ * @returns 可绘制的 sites 图元；生成器或可选兜底无效时返回 undefined。
+ */
 function parseSitesPart(
   raw: Record<string, unknown>,
   base: ShapePartBase
 ): MaterialShapeSpecPart | undefined {
   const generator = stringValue(raw.generator)
   if (!generator || !GENERATORS.has(generator)) return undefined
+  const hasFallback = raw.fallback !== undefined
+  const fallback = hasFallback ? parseSiteFallback(raw.fallback) : undefined
+  if (hasFallback && !fallback) return undefined
+  if (fallback && generator !== 'site-holes') return undefined
   return {
     ...base,
     type: 'sites',
@@ -287,8 +319,29 @@ function parseSitesPart(
     boardThicknessMm: numberValue(raw.board_thickness),
     shelfThicknessMm: numberValue(raw.shelf_thickness),
     plateTopZ: numberValue(raw.plate_top_z),
-    collarTopZ: numberValue(raw.collar_top_z)
+    collarTopZ: numberValue(raw.collar_top_z),
+    ...(fallback ? { fallback } : {})
   }
+}
+
+/**
+ * 解析无真实库位（Site）时使用的毫米网格兜底。
+ * @param raw sites 图元中的可疑 fallback 字段。
+ * @returns 仅含矩形子图元的 grid；字段不完整或方向策略无效时返回 undefined。
+ */
+function parseSiteFallback(raw: unknown): MaterialShapeSpecPart | undefined {
+  if (!isRecord(raw)) return undefined
+  if (raw.orientation !== 'match-envelope') return undefined
+  const fallback = parseSpecPart(raw)
+  if (
+    !fallback ||
+    fallback.type !== 'grid' ||
+    fallback.units !== 'mm' ||
+    fallback.part?.type !== 'rect'
+  ) {
+    return undefined
+  }
+  return { ...fallback, orientation: 'match-envelope' }
 }
 
 /** 把声明展开成本地 mm 图元：解归一、铺开网格阵列。 */

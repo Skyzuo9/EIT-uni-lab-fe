@@ -1,3 +1,4 @@
+import { emitter } from '@pascal-app/core'
 import { useViewer } from '@pascal-app/viewer'
 import {
   PascalEditorHost,
@@ -16,6 +17,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState
 } from 'react'
 
@@ -49,6 +51,16 @@ export interface PascalLabWorkbenchProps {
   showMaterialTransfers?: boolean
   materialTransferProjectionError?: string | null
   viewMode?: '2d' | '2.5d' | '3d' | 'split'
+  /** Agent 截图使用的显式相机预设；普通交互仍由工具栏维护。 */
+  cameraPreset?: SceneCameraView
+  cameraRequestRevision?: number
+  /** 复用 Pascal WebGPU 离屏管线的宿主截图请求。 */
+  captureRequest?: {
+    revision: number
+    width: number
+    height: number
+  } | null
+  onCaptureReady?: (blob: Blob) => void
   projectId?: string
   modelRuntime?: LabModelRuntime
   editable?: boolean
@@ -75,6 +87,10 @@ export function PascalLabWorkbench({
   showMaterialTransfers = true,
   materialTransferProjectionError = null,
   viewMode = '3d',
+  cameraPreset,
+  cameraRequestRevision = 0,
+  captureRequest = null,
+  onCaptureReady,
   projectId = 'unilab-local-scene',
   modelRuntime,
   editable = false,
@@ -87,6 +103,30 @@ export function PascalLabWorkbench({
     revision: number
     view: SceneCameraView
   }>({ revision: 0, view: 'default' })
+  useEffect(() => {
+    if (!cameraPreset) return
+    useViewer.getState().setCameraMode(
+      cameraPreset === 'top' ? 'orthographic' : 'perspective'
+    )
+    setCameraRequest(({ revision }) => ({
+      revision: Math.max(revision + 1, cameraRequestRevision),
+      view: cameraPreset
+    }))
+  }, [cameraPreset, cameraRequestRevision])
+  useEffect(() => {
+    if (!captureRequest || !onCaptureReady) return
+    const frame = requestAnimationFrame(() => {
+      emitter.emit('camera-controls:generate-thumbnail', {
+        projectId,
+        captureMode: 'standard',
+        standardSize: {
+          w: captureRequest.width,
+          h: captureRequest.height
+        }
+      })
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [captureRequest, onCaptureReady, projectId])
   const scene = useMemo(
     () =>
       materialAggregatesToSceneGraph(aggregates, {
@@ -142,6 +182,22 @@ export function PascalLabWorkbench({
     () => materialIdsToSceneObjectIds(scene, highlightedMaterialIds),
     [highlightedMaterialIds, scene]
   )
+  const reportedMaterialIdsRef = useRef<readonly string[]>(
+    selectedMaterialIds
+  )
+  reportedMaterialIdsRef.current = selectedMaterialIds
+
+  const reportSelectionChange = useCallback((
+    materialIds: readonly string[],
+    sceneObjectIds: readonly string[]
+  ): void => {
+    if (sameIds(reportedMaterialIdsRef.current, materialIds)) return
+    // Pascal 在 pointerup 和随后 click 中可能连续发出同一选中结果。
+    // 先同步 ref，避免 React 批处理提交前重复刷新整个工作台。
+    reportedMaterialIdsRef.current = [...materialIds]
+    onSelectionChange?.(materialIds, sceneObjectIds)
+  }, [onSelectionChange])
+
   useEffect(() => {
     const state = useViewer.getState()
     if (!sameIds(state.selection.selectedIds, selectedSceneObjectIds)) {
@@ -188,9 +244,9 @@ export function PascalLabWorkbench({
           ? [node.materialNodeId]
           : []
       })
-      onSelectionChange?.(materialIds, sceneObjectIds)
+      reportSelectionChange(materialIds, sceneObjectIds)
     },
-    [onSelectionChange, scene.nodes]
+    [reportSelectionChange, scene.nodes]
   )
 
   const statusLabel = useMemo(() => {
@@ -301,7 +357,7 @@ export function PascalLabWorkbench({
               selectedMaterialIds={selectedMaterialIds}
               highlightedMaterialIds={highlightedMaterialIds}
               onSelectionChange={(materialIds) => {
-                onSelectionChange?.(
+                reportSelectionChange(
                   materialIds,
                   materialIdsToSceneObjectIds(scene, materialIds)
                 )
@@ -309,11 +365,17 @@ export function PascalLabWorkbench({
             />
           }
           toolbar={toolbar}
+          editorProps={{
+            onThumbnailCapture: (blob) => onCaptureReady?.(blob)
+          }}
           onDirty={() => {
             if (editable) setSaveStatus('dirty')
           }}
           onSave={handleSave}
           onSelectionChange={handleSelectionChange}
+          suppressSelectionAfterPointerDrag={
+            viewMode === '3d' || viewMode === 'split'
+          }
         />
       </div>
       {viewMode === '2.5d' && (
@@ -328,7 +390,7 @@ export function PascalLabWorkbench({
             selectedMaterialIds={selectedMaterialIds}
             highlightedMaterialIds={highlightedMaterialIds}
             onSelectionChange={(materialIds) => {
-              onSelectionChange?.(
+              reportSelectionChange(
                 materialIds,
                 materialIdsToSceneObjectIds(scene, materialIds)
               )

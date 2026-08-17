@@ -9,21 +9,24 @@ import {
   createWorkbenchRendererUrl,
   discoverWorkbenchOsProject,
   discoverWorkbenchPythonEnvironment,
+  isolateWorkbenchBackendProcessGroup,
   resolveWorkbenchLaunchConfiguration,
   workbenchEnvironmentPathEntries
 } from './workbench-launch.mjs'
 import { createRemoteWorkbenchController } from './remote-controller.mjs'
+import { stopManagedSessionProcesses } from './managed-session-cleanup.mjs'
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url))
 const workspaceRoot = path.resolve(scriptDirectory, '../../..')
 const desktopRoot = path.join(workspaceRoot, 'apps', 'desktop')
-const workbenchRequire = createRequire(path.join(
+const theiaBackend = path.join(
   workspaceRoot,
   'apps',
   'workbench',
-  'package.json'
-))
-const theiaCli = workbenchRequire.resolve('@theia/cli/bin/theia.js')
+  'lib',
+  'backend',
+  'main.js'
+)
 const launch = resolveWorkbenchLaunchConfiguration(process.argv.slice(2))
 const launchMode = launch.mode
 const desktopEnabled = launchMode === 'desktop' || launchMode === 'desktop-remote'
@@ -136,8 +139,7 @@ if (process.platform !== 'win32' && process.env.SHELL?.endsWith('/zsh')) {
 }
 
 const theia = spawn(process.execPath, [
-  theiaCli,
-  'start',
+  theiaBackend,
   workspace,
   '--hostname',
   '127.0.0.1',
@@ -146,9 +148,12 @@ const theia = spawn(process.execPath, [
   '--plugins=local-dir:plugins'
 ], {
   stdio: 'inherit',
+  detached: isolateWorkbenchBackendProcessGroup(),
   env: {
     ...activatedEnvironment,
     THEIA_WORKSPACE: workspace,
+    UNILAB_WORKBENCH_RENDERER_URL: `http://127.0.0.1:${port}`,
+    UNILAB_WORKBENCH_LAUNCHER_PID: String(process.pid),
     ...(osProject ? { UNILAB_OS_PROJECT: path.resolve(osProject) } : {}),
     UNILAB_PYTHON_ENV: pythonEnvironment
   }
@@ -160,6 +165,7 @@ const rendererUrl = createWorkbenchRendererUrl({
   workflowUuid: launch.workflowUuid
 })
 let stopping = false
+let shutdownPromise = null
 let desktopShell = null
 let remoteController = remoteConfiguration
   ? createRemoteWorkbenchController({
@@ -171,21 +177,38 @@ let remoteController = remoteConfiguration
     })
   : null
 const stop = signal => {
-  if (stopping) return
+  if (shutdownPromise) return shutdownPromise
   stopping = true
-  void closeRemoteAccess().finally(() => {
+  shutdownPromise = (async () => {
+    await closeRemoteAccess()
+    await stopManagedSessionProcesses({
+      workspacePath: workspace,
+      launcherPid: process.pid
+    })
     if (desktopShell && !desktopShell.killed) desktopShell.kill(signal)
     if (!theia.killed) theia.kill(signal)
-  })
+  })()
+  return shutdownPromise
 }
-process.on('SIGINT', () => stop('SIGINT'))
-process.on('SIGTERM', () => stop('SIGTERM'))
+process.on('SIGINT', () => void stop('SIGINT'))
+process.on('SIGTERM', () => void stop('SIGTERM'))
 theia.once('exit', (code, signal) => {
-  if (!stopping) {
-    stopping = true
-    void closeRemoteAccess().finally(() => {
-      if (desktopShell && !desktopShell.killed) desktopShell.kill('SIGTERM')
+  console.error(
+    `[UniLab Workbench] Theia exited code=${code ?? 'null'} signal=${signal ?? 'null'}`
+  )
+  const finalize = async () => {
+    await closeRemoteAccess()
+    await stopManagedSessionProcesses({
+      workspacePath: workspace,
+      launcherPid: process.pid
     })
+    if (!stopping) {
+      stopping = true
+      if (desktopShell && !desktopShell.killed) desktopShell.kill('SIGTERM')
+    }
+  }
+  if (!shutdownPromise) {
+    shutdownPromise = finalize()
   }
   if (process.exitCode === undefined) {
     process.exitCode = signal ? 1 : code ?? 0
@@ -231,7 +254,13 @@ async function launchDesktop(rendererUrl) {
   }
   delete desktopEnvironment.ELECTRON_RUN_AS_NODE
   console.log(`[UniLab Workbench] desktop renderer: ${rendererUrl}`)
-  desktopShell = spawn(electronExecutable, [desktopRoot], {
+  const electronArguments = []
+  const remoteDebuggingPort = process.env.UNILAB_DESKTOP_REMOTE_DEBUGGING_PORT
+  if (remoteDebuggingPort) {
+    electronArguments.push(`--remote-debugging-port=${remoteDebuggingPort}`)
+  }
+  electronArguments.push(desktopRoot)
+  desktopShell = spawn(electronExecutable, electronArguments, {
     cwd: desktopRoot,
     env: desktopEnvironment,
     stdio: remoteController
@@ -249,9 +278,11 @@ async function launchDesktop(rendererUrl) {
     stop('SIGTERM')
   })
   desktopShell.once('exit', (code, signal) => {
+    console.error(
+      `[UniLab Workbench] Electron exited code=${code ?? 'null'} signal=${signal ?? 'null'}`
+    )
     if (!stopping) {
-      stopping = true
-      if (!theia.killed) theia.kill('SIGTERM')
+      void stop('SIGTERM')
     }
     if (process.exitCode === undefined) {
       process.exitCode = signal ? 1 : code ?? 0

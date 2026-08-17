@@ -1,8 +1,4 @@
-import {
-  AbstractViewContribution,
-  type FrontendApplication,
-  type FrontendApplicationContribution
-} from '@theia/core/lib/browser'
+import { AbstractViewContribution } from '@theia/core/lib/browser'
 import type { Command } from '@theia/core/lib/common/command'
 import { injectable } from '@theia/core/shared/inversify'
 
@@ -21,8 +17,7 @@ export const OpenUniLabAgentNavigation: Command = {
 
 @injectable()
 export class UniLabAgentContribution
-  extends AbstractViewContribution<UniLabAgentWidget>
-  implements FrontendApplicationContribution {
+  extends AbstractViewContribution<UniLabAgentWidget> {
   constructor() {
     super({
       widgetId: UniLabAgentWidget.ID,
@@ -32,9 +27,6 @@ export class UniLabAgentContribution
     })
   }
 
-  onStart(_app: FrontendApplication): void {
-    void this.openView({ activate: false, reveal: true })
-  }
 }
 
 @injectable()
@@ -44,7 +36,7 @@ export class UniLabAgentNavigationContribution
     super({
       widgetId: UniLabAgentNavigatorWidget.ID,
       widgetName: 'Agent',
-      defaultWidgetOptions: { area: 'left', rank: 74 },
+      defaultWidgetOptions: { area: 'left', rank: 78 },
       toggleCommandId: OpenUniLabAgentNavigation.id
     })
   }

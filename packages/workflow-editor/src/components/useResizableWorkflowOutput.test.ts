@@ -27,6 +27,18 @@ describe('resizedWorkflowOutputHeight', () => {
   })
 })
 
+describe('maximumWorkflowOutputHeight', () => {
+  it('keeps at least 360px available for the workflow canvas', () => {
+    expect(maximumWorkflowOutputHeight(700)).toBe(340)
+    expect(maximumWorkflowOutputHeight(900)).toBe(495)
+  })
+
+  it('caps output growth on tall and short viewports', () => {
+    expect(maximumWorkflowOutputHeight(1_600)).toBe(720)
+    expect(maximumWorkflowOutputHeight(420)).toBe(60)
+  })
+})
+
 describe('workflowOutputAvailableHeight', () => {
   it('uses the whole workflow viewport instead of the short runtime wrapper', () => {
     const workflow = {
@@ -42,19 +54,6 @@ describe('workflowOutputAvailableHeight', () => {
     expect(workflowOutputAvailableHeight(panel, 900)).toBe(700)
   })
 })
-
-describe('maximumWorkflowOutputHeight', () => {
-  it('keeps at least 360px available for the workflow canvas', () => {
-    expect(maximumWorkflowOutputHeight(700)).toBe(340)
-    expect(maximumWorkflowOutputHeight(900)).toBe(495)
-  })
-
-  it('caps output growth on tall and short viewports', () => {
-    expect(maximumWorkflowOutputHeight(1_600)).toBe(720)
-    expect(maximumWorkflowOutputHeight(420)).toBe(60)
-  })
-})
-
 describe('reconcileWorkflowOutputSize', () => {
   it('constrains the visible output when its workflow viewport shrinks', () => {
     const constrained = reconcileWorkflowOutputSize({

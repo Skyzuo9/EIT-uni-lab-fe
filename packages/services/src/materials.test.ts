@@ -18,6 +18,8 @@ async function mapsMaterialCategoryToRenderingKind(): Promise<void> {
         material: {
           uuid: 'material-beaker',
           resource_template_uuid: 'template-beaker',
+          type: 'resource',
+          revision: 1,
           class: 'community.szlab.beaker',
           barcode: '',
           name: '500 mL 烧杯',
@@ -35,7 +37,13 @@ async function mapsMaterialCategoryToRenderingKind(): Promise<void> {
         ),
         sites: [],
         current_site_uuid: null,
-        handles: []
+        handles: [],
+        resource_template: {
+          uuid: 'template-beaker',
+          name: 'community.szlab.beaker',
+          display_name: '500 mL 烧杯',
+          resource_type: 'resource'
+        }
       }]
     }
   })
@@ -62,10 +70,75 @@ async function mapsMaterialCategoryToRenderingKind(): Promise<void> {
   ])
 }
 
+/** 验证无渲染配置的 Backend 台面仍保留左下角原点语义。 */
+async function mapsDeckMaterialTypeToRenderingKind(): Promise<void> {
+  const { http } = mockHttp({
+    data: {
+      nodes: [{
+        material: {
+          uuid: 'material-deck',
+          resource_template_uuid: 'template-deck',
+          type: 'deck',
+          revision: 1,
+          class: 'community.szlab.deck',
+          barcode: '',
+          name: 'SZLab 聚合物工作站台面',
+          create_time: '2026-08-15T00:00:00Z',
+          update_time: '2026-08-15T00:00:00Z',
+          meta_data: { source_node_id: 'szlab_poly_deck' },
+          config: { setup: false },
+          data: {}
+        },
+        relative_position: rawBackendPosition(
+          'position-deck',
+          'material-deck',
+          [0, 0, 20],
+          [3634, 1674, 20]
+        ),
+        sites: [],
+        current_site_uuid: null,
+        handles: [],
+        resource_template: {
+          uuid: 'template-deck',
+          name: 'community.szlab.deck',
+          display_name: 'SZLab 聚合物工作站台面',
+          resource_type: 'deck'
+        }
+      }]
+    }
+  })
+  const backend = getDefaultBackend('local-python')
+  const service = createMaterialService(
+    http,
+    backend,
+    resolveServerCapabilities(backend)
+  )
+
+  await expect(
+    service.getGraph({ kind: 'singleton' })
+  ).resolves.toEqual([
+    expect.objectContaining({
+      material: expect.objectContaining({
+        config: expect.objectContaining({
+          rendering: {
+            kind: 'deck',
+            dimensionsMm: [3634, 20, 1674]
+          }
+        })
+      })
+    })
+  ])
+}
+
 describe('material template adapter', () => {
   it(
     'uses the material category when the rendering kind is absent',
     mapsMaterialCategoryToRenderingKind
+  )
+
+  it(
+    'uses the deck material type when rendering metadata is absent',
+    mapsDeckMaterialTypeToRenderingKind
   )
 
   it('reads the complete Edge catalog without a fake laboratory ID', async () => {
@@ -257,6 +330,7 @@ describe('material template adapter', () => {
     expect(request).not.toHaveBeenCalled()
   })
 
+  /** 验证 Backend 物料图使用权威修订号并保留资源模板展示摘要。 */
   it('maps the frozen Backend MaterialGraph into shared aggregates', async () => {
     const { http, request } = mockHttp({
       data: {
@@ -265,6 +339,8 @@ describe('material template adapter', () => {
             material: {
               uuid: 'material-root',
               resource_template_uuid: 'template-device',
+              revision: 11,
+              type: 'device',
               class: 'liquid_handler',
               barcode: 'LH-001',
               name: 'Liquid Handler',
@@ -275,6 +351,13 @@ describe('material template adapter', () => {
                 rendering: { kind: 'table' }
               },
               data: {}
+            },
+            resource_template: {
+              uuid: 'template-device',
+              name: 'community.devices.liquid_handler',
+              display_name: '移液工作站',
+              resource_type: 'device',
+              icon: 'robot'
             },
             relative_position: rawBackendPosition(
               'position-root',
@@ -308,6 +391,8 @@ describe('material template adapter', () => {
             material: {
               uuid: 'material-vessel',
               resource_template_uuid: 'template-vessel',
+              revision: 12,
+              type: 'resource',
               parent_uuid: 'material-root',
               class: 'sample_vial',
               barcode: '',
@@ -317,6 +402,12 @@ describe('material template adapter', () => {
               meta_data: {},
               config: { rendering: { kind: 'vial' } },
               data: {}
+            },
+            resource_template: {
+              uuid: 'template-vessel',
+              name: 'community.resources.sample_vial',
+              display_name: '样品瓶',
+              resource_type: 'resource'
             },
             relative_position: rawBackendPosition(
               'position-vessel',
@@ -331,7 +422,7 @@ describe('material template adapter', () => {
         ]
       }
     })
-    const backend = getDefaultBackend('local-python')
+    const backend = getDefaultBackend('local-go')
     const service = createMaterialService(
       http,
       backend,
@@ -350,6 +441,13 @@ describe('material template adapter', () => {
           description: undefined,
           config: expect.objectContaining({
             sourceIdentity: 'liquid-handler',
+            resourceTemplate: {
+              uuid: 'template-device',
+              name: 'community.devices.liquid_handler',
+              displayName: '移液工作站',
+              resourceType: 'device',
+              icon: 'robot'
+            },
             rendering: {
               kind: 'table',
               dimensionsMm: [1400, 180, 720]
@@ -379,7 +477,7 @@ describe('material template adapter', () => {
             }
           })
         ],
-        revision: Date.parse('2026-07-26T00:00:00Z')
+        revision: 11
       },
       {
         material: expect.objectContaining({
@@ -387,6 +485,12 @@ describe('material template adapter', () => {
           sourceTemplateId: 'template-vessel',
           code: '',
           config: expect.objectContaining({
+            resourceTemplate: {
+              uuid: 'template-vessel',
+              name: 'community.resources.sample_vial',
+              displayName: '样品瓶',
+              resourceType: 'resource'
+            },
             rendering: {
               kind: 'vial',
               dimensionsMm: [80, 140, 80]
@@ -403,7 +507,7 @@ describe('material template adapter', () => {
           }
         },
         sites: [],
-        revision: Date.parse('2026-07-26T00:00:01Z')
+        revision: 12
       }
     ])
     expect(request).toHaveBeenCalledWith(
@@ -617,6 +721,8 @@ describe('material template adapter', () => {
             material: {
               uuid: 'material-bad',
               resource_template_uuid: 'template-device',
+              type: 'device',
+              revision: 1,
               barcode: 'bad',
               name: 'Bad material',
               create_time: '2026-07-26T00:00:00Z',
@@ -637,7 +743,13 @@ describe('material template adapter', () => {
             },
             sites: [],
             current_site_uuid: null,
-            handles: []
+            handles: [],
+            resource_template: {
+              uuid: 'template-device',
+              name: 'device.bad',
+              display_name: 'Bad device',
+              resource_type: 'device'
+            }
           }
         ]
       }
@@ -645,6 +757,25 @@ describe('material template adapter', () => {
     const backend = getDefaultBackend('local-python')
     const service = createMaterialService(
       http,
+      backend,
+      resolveServerCapabilities(backend)
+    )
+
+    await expect(
+      service.getGraph({ kind: 'singleton' })
+    ).rejects.toMatchObject({
+      code: 'INVALID_MATERIAL_GRAPH_RESPONSE'
+    })
+  })
+
+  it('requires the same authoritative revision and template summary for Local graphs', async () => {
+    const node = rawMaterialGraphNode(1)
+    const material = node.material as Record<string, unknown>
+    delete material.revision
+    delete node.resource_template
+    const backend = getDefaultBackend('local-python')
+    const service = createMaterialService(
+      mockHttp({ data: { nodes: [node] } }).http,
       backend,
       resolveServerCapabilities(backend)
     )
@@ -711,17 +842,25 @@ function rawMaterialGraphNode(index: number): Record<string, unknown> {
     material: {
       uuid: materialId,
       resource_template_uuid: 'template-device',
+      type: 'device',
       barcode: materialId,
       name: `SZLab Material ${index}`,
       create_time: '2026-07-31T00:00:00Z',
       update_time: '2026-07-31T00:00:00Z',
+      revision: index,
       meta_data: {},
       config: {},
       data: {}
     },
     sites: [],
     current_site_uuid: null,
-    handles: []
+    handles: [],
+    resource_template: {
+      uuid: 'template-device',
+      name: 'device.template',
+      display_name: 'Device template',
+      resource_type: 'device'
+    }
   }
 }
 

@@ -5,7 +5,8 @@ import {
 } from '@theia/core/lib/browser'
 import { CommandRegistry, type Disposable } from '@theia/core/lib/common'
 import { inject, injectable } from '@theia/core/shared/inversify'
-import { TerminalCommands } from '@theia/terminal/lib/browser/terminal-frontend-contribution'
+
+const NEW_TERMINAL_COMMAND_ID = 'terminal:new'
 
 @injectable()
 export class UniLabBottomPanelContribution
@@ -25,7 +26,7 @@ implements FrontendApplicationContribution {
         isEnabled: () =>
           !app.shell.isExpanded('bottom') &&
           app.shell.getWidgets('bottom').length === 0,
-        execute: () => this.commands.executeCommand(TerminalCommands.NEW.id)
+        execute: () => this.commands.executeCommand(NEW_TERMINAL_COMMAND_ID)
       }
     )
   }

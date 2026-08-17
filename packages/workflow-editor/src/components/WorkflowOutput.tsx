@@ -13,9 +13,10 @@ export interface WorkflowOutputNode {
   result: Record<string, unknown>
 }
 
-export interface WorkflowOutputEvent {
-  key?: string
-  seq: number
+export interface WorkflowOutputActivity {
+  key: string
+  occurredAt: string
+  positionLabel: string
   type: string
   nodeId: string | null
   detail?: Record<string, unknown>
@@ -28,7 +29,7 @@ interface WorkflowOutputProps {
   expectedNodeCount: number
   nodes: readonly WorkflowOutputNode[]
   nodeNames: Readonly<Record<string, string>>
-  events: readonly WorkflowOutputEvent[]
+  activity: readonly WorkflowOutputActivity[]
   error: string | null
   selectedNode: WorkflowOutputNode | undefined
   selectedNodeId: string | null
@@ -37,11 +38,12 @@ interface WorkflowOutputProps {
   onTabChange: (tab: WorkflowOutputTab) => void
   onNodeSelect: (nodeId: string) => void
   onClearError: () => void
+  onTraceOpen?: () => void
   title?: string
   countLabel?: string
   nodesTabLabel?: string
-  eventsTabLabel?: string
-  eventsEmptyLabel?: string
+  activityTabLabel?: string
+  activityEmptyLabel?: string
   resizable?: boolean
 }
 
@@ -58,7 +60,7 @@ export function WorkflowOutput({
   expectedNodeCount,
   nodes,
   nodeNames,
-  events,
+  activity,
   error,
   selectedNode,
   selectedNodeId,
@@ -67,11 +69,12 @@ export function WorkflowOutput({
   onTabChange,
   onNodeSelect,
   onClearError,
+  onTraceOpen,
   title = '运行输出',
   countLabel = '个节点已有结果',
   nodesTabLabel = '节点结果',
-  eventsTabLabel = '事件流',
-  eventsEmptyLabel = '等待 OS 节点反馈……',
+  activityTabLabel = '运行记录',
+  activityEmptyLabel = '等待 OS 返回运行状态……',
   resizable = false
 }: WorkflowOutputProps): React.JSX.Element {
   const outputResize = useResizableWorkflowOutput()
@@ -80,14 +83,20 @@ export function WorkflowOutput({
 
   useEffect(() => {
     if (!fullscreen) return
+    /** 允许操作者用 Escape 退出运行输出全屏，而不改变底部面板高度。 */
     const exitOnEscape = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') setFullscreen(false)
     }
     globalThis.addEventListener('keydown', exitOnEscape)
     return () => globalThis.removeEventListener('keydown', exitOnEscape)
   }, [fullscreen])
-  const eventNodeNames = workflowEventNodeNames(nodes, nodeNames)
-  const nodeFailures = workflowNodeFailureLogs(nodes, nodeNames, events)
+  /** 切换运行输出全屏；折叠面板会先恢复为可见状态。 */
+  const toggleFullscreen = (): void => {
+    if (!outputVisible) onExpandedChange(true)
+    setFullscreen(current => !current)
+  }
+  const activityNodeNames = workflowEventNodeNames(nodes, nodeNames)
+  const nodeFailures = workflowNodeFailureLogs(nodes, nodeNames, activity)
   const selectedNodeFailure = selectedNode
     ? nodeFailures.find((failure) => (
         failure.nodeId === selectedNode.nodeId ||
@@ -102,7 +111,7 @@ export function WorkflowOutput({
     Object.keys(selectedNode.result).length > 0
   )
   const selectedNodeLog = selectedNode && selectedNode.state !== 'failed'
-    ? workflowNodeLogText(selectedNode, events)
+    ? workflowNodeLogText(selectedNode, activity)
     : ''
   const selectedNodeName = selectedNode
     ? workflowOutputNodeName(selectedNode, nodeNames)
@@ -164,8 +173,8 @@ export function WorkflowOutput({
             <OutputTabButton
               id="events"
               activeTab={activeTab}
-              label={eventsTabLabel}
-              count={events.length}
+              label={activityTabLabel}
+              count={activity.length}
               onSelect={onTabChange}
             />
             <OutputTabButton
@@ -177,16 +186,24 @@ export function WorkflowOutput({
             />
           </div>
         )}
+        {onTraceOpen && (
+          <button
+            type="button"
+            className="workflow-runtime__output-trace"
+            aria-label="查看工作流 Trace"
+            title="查看 Electron 与 Uni-Lab-OS 上报的运行 Trace"
+            onClick={onTraceOpen}
+          >
+            Trace
+          </button>
+        )}
         <button
           type="button"
           className="workflow-runtime__output-fullscreen"
           aria-pressed={fullscreen}
           aria-label={fullscreen ? '退出运行输出全屏' : '全屏显示运行输出'}
           title={fullscreen ? '退出全屏（Esc）' : '全屏显示运行输出'}
-          onClick={() => {
-            if (!outputVisible) onExpandedChange(true)
-            setFullscreen(value => !value)
-          }}
+          onClick={toggleFullscreen}
         >
           <span
             className={`codicon codicon-${fullscreen ? 'screen-normal' : 'screen-full'}`}
@@ -201,9 +218,9 @@ export function WorkflowOutput({
           activeTab={activeTab}
           nodes={nodes}
           nodeNames={nodeNames}
-          events={events}
-          eventNodeNames={eventNodeNames}
-          eventsEmptyLabel={eventsEmptyLabel}
+          activity={activity}
+          activityNodeNames={activityNodeNames}
+          activityEmptyLabel={activityEmptyLabel}
           error={error}
           errorCount={errorCount}
           nodeFailures={nodeFailures}
@@ -232,9 +249,9 @@ function WorkflowOutputBody({
   activeTab,
   nodes,
   nodeNames,
-  events,
-  eventNodeNames,
-  eventsEmptyLabel,
+  activity,
+  activityNodeNames,
+  activityEmptyLabel,
   error,
   errorCount,
   nodeFailures,
@@ -251,9 +268,9 @@ function WorkflowOutputBody({
   activeTab: WorkflowOutputTab
   nodes: readonly WorkflowOutputNode[]
   nodeNames: Readonly<Record<string, string>>
-  events: readonly WorkflowOutputEvent[]
-  eventNodeNames: ReadonlyMap<string, string>
-  eventsEmptyLabel: string
+  activity: readonly WorkflowOutputActivity[]
+  activityNodeNames: ReadonlyMap<string, string>
+  activityEmptyLabel: string
   error: string | null
   errorCount: number
   nodeFailures: readonly WorkflowNodeFailureLog[]
@@ -267,6 +284,21 @@ function WorkflowOutputBody({
   onNodeSelect: (nodeId: string) => void
   onClearError: () => void
 }): React.JSX.Element {
+  const [nodeLogExpanded, setNodeLogExpanded] = useState(true)
+  const [nodeResultExpanded, setNodeResultExpanded] = useState(true)
+
+  useEffect(() => {
+    setNodeLogExpanded(true)
+    setNodeResultExpanded(true)
+  }, [selectedNodeId])
+
+  const hasCollapsibleNodeDetails = Boolean(selectedNodeLog) ||
+    selectedNodeHasResult
+  const allNodeDetailsCollapsed = !selectedNodeFailure &&
+    hasCollapsibleNodeDetails &&
+    (!selectedNodeLog || !nodeLogExpanded) &&
+    (!selectedNodeHasResult || !nodeResultExpanded)
+
   return (
     <div className="workflow-runtime__output-body">
       <section
@@ -287,7 +319,12 @@ function WorkflowOutputBody({
         {selectedNode && (
           selectedNodeFailure || selectedNodeLog || selectedNodeHasResult
         ) && (
-          <div className="workflow-runtime__node-details">
+          <div
+            className={[
+              'workflow-runtime__node-details',
+              allNodeDetailsCollapsed ? 'is-collapsed' : ''
+            ].filter(Boolean).join(' ')}
+          >
             {selectedNodeFailure && (
               <article
                 className="workflow-runtime__error-detail workflow-runtime__node-error"
@@ -308,27 +345,45 @@ function WorkflowOutputBody({
               </article>
             )}
             {selectedNodeLog && (
-              <article className="workflow-runtime__node-log">
+              <article
+                className={[
+                  'workflow-runtime__node-log',
+                  nodeLogExpanded ? '' : 'is-collapsed'
+                ].filter(Boolean).join(' ')}
+              >
                 <header>
                   <strong>{selectedNodeName} 运行日志</strong>
-                  {selectedNode.attempt > 0 && (
-                    <small>第 {selectedNode.attempt} 次尝试</small>
-                  )}
+                  <div className="workflow-runtime__node-detail-actions">
+                    {selectedNode.attempt > 0 && (
+                      <small>第 {selectedNode.attempt} 次尝试</small>
+                    )}
+                    <OutputCopyButton
+                      label="复制运行日志"
+                      text={selectedNodeLog}
+                    />
+                    <OutputVisibilityButton
+                      label="运行日志"
+                      expanded={nodeLogExpanded}
+                      onExpandedChange={setNodeLogExpanded}
+                    />
+                  </div>
                 </header>
-                <pre
-                  aria-label={`${selectedNodeName} 运行日志`}
-                >
-                  {selectedNodeLog}
-                </pre>
+                {nodeLogExpanded && (
+                  <pre
+                    aria-label={`${selectedNodeName} 运行日志`}
+                  >
+                    {selectedNodeLog}
+                  </pre>
+                )}
               </article>
             )}
             {selectedNodeHasResult && (
-              <pre
-                className="workflow-runtime__node-result"
-                aria-label={`${selectedNodeName} 节点结果`}
-              >
-                {JSON.stringify(selectedNode.result, null, 2)}
-              </pre>
+              <WorkflowNodeResult
+                nodeName={selectedNodeName}
+                result={selectedNode.result}
+                expanded={nodeResultExpanded}
+                onExpandedChange={setNodeResultExpanded}
+              />
             )}
           </div>
         )}
@@ -343,20 +398,27 @@ function WorkflowOutputBody({
         hidden={activeTab !== 'events'}
       >
         <div className="workflow-runtime__events">
-          {events.length > 0 && (
-            <p className="workflow-runtime__events-order">最新事件在前</p>
+          {activity.length > 0 && (
+            <p className="workflow-runtime__events-order">
+              按 OS 权威时间排序，最新记录在前
+            </p>
           )}
-          {[...events].reverse().slice(0, 50).map((event) => {
+          {[...activity].reverse().slice(0, 50).map((event) => {
             const nodeName = event.nodeId
-              ? eventNodeNames.get(event.nodeId) || '未命名节点'
+              ? activityNodeNames.get(event.nodeId) || '未命名节点'
               : '整体运行'
             return (
               <div
-                key={event.key ?? `${event.nodeId}:${event.seq}:${event.type}`}
+                key={event.key}
                 data-event-kind={event.type}
-                data-event-sequence={event.seq}
+                data-event-time={event.occurredAt}
               >
-                <code>#{event.seq}</code>
+                <code className="workflow-runtime__activity-time">
+                  <b>{event.positionLabel}</b>
+                  <time dateTime={event.occurredAt}>
+                    {formatActivityTime(event.occurredAt)}
+                  </time>
+                </code>
                 <span>
                   <strong>{eventLabel(event.type)}</strong>
                   <small>{event.type}</small>
@@ -375,7 +437,7 @@ function WorkflowOutputBody({
               </div>
             )
           })}
-          {events.length === 0 && <p>{eventsEmptyLabel}</p>}
+          {activity.length === 0 && <p>{activityEmptyLabel}</p>}
         </div>
       </section>
 
@@ -426,6 +488,162 @@ function WorkflowOutputBody({
         )}
       </section>
     </div>
+  )
+}
+
+const NODE_RESULT_SUMMARY_FIELDS = [
+  ['executor_kind', '执行器'],
+  ['job_uuid', 'Job ID'],
+  ['workflow_node_uuid', '节点 ID']
+] as const
+
+const NODE_RESULT_STATUS_LABELS: Readonly<Record<string, string>> = {
+  succeeded: '执行成功',
+  success: '执行成功',
+  failed: '执行失败',
+  canceled: '已取消',
+  cancelled: '已取消',
+  running: '执行中',
+  pending: '等待执行'
+}
+
+/** 将节点任务的技术响应整理为可扫读摘要，同时保留完整原始数据。 */
+function WorkflowNodeResult({
+  nodeName,
+  result,
+  expanded,
+  onExpandedChange
+}: {
+  nodeName: string
+  result: Record<string, unknown>
+  expanded: boolean
+  onExpandedChange: (expanded: boolean) => void
+}): React.JSX.Element {
+  const rawStatus = typeof result.status === 'string'
+    ? result.status.toLowerCase()
+    : ''
+  const statusLabel = NODE_RESULT_STATUS_LABELS[rawStatus] || rawStatus || '已返回'
+  const statusTone = rawStatus === 'succeeded' || rawStatus === 'success'
+    ? 'is-success'
+    : rawStatus === 'failed'
+      ? 'is-error'
+      : 'is-neutral'
+  const summaryFields = NODE_RESULT_SUMMARY_FIELDS.flatMap(([field, label]) => {
+    const value = result[field]
+    return typeof value === 'string' && value.length > 0
+      ? [{ field, label, value }]
+      : []
+  })
+
+  return (
+    <article
+      className={[
+        'workflow-runtime__node-result',
+        expanded ? '' : 'is-collapsed'
+      ].filter(Boolean).join(' ')}
+      aria-label={`${nodeName} 节点结果`}
+    >
+      <header>
+        <div>
+          <strong>运行结果</strong>
+          <small>节点执行返回</small>
+        </div>
+        <div className="workflow-runtime__node-detail-actions">
+          <span className={statusTone}>{statusLabel}</span>
+          <OutputCopyButton
+            label="复制运行结果"
+            text={JSON.stringify(result, null, 2)}
+          />
+          <OutputVisibilityButton
+            label="运行结果"
+            expanded={expanded}
+            onExpandedChange={onExpandedChange}
+          />
+        </div>
+      </header>
+      {expanded && summaryFields.length > 0 && (
+        <dl>
+          {summaryFields.map(({ field, label, value }) => (
+            <div key={field}>
+              <dt>{label}</dt>
+              <dd title={value}>{value}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      {expanded && (
+        <div className="workflow-runtime__node-result-raw">
+          <pre>{JSON.stringify(result, null, 2)}</pre>
+        </div>
+      )}
+    </article>
+  )
+}
+
+/** 切换单个节点详情面板的内容可见性，同时保留可操作的标题栏。 */
+function OutputVisibilityButton({
+  label,
+  expanded,
+  onExpandedChange
+}: {
+  label: string
+  expanded: boolean
+  onExpandedChange: (expanded: boolean) => void
+}): React.JSX.Element {
+  const actionLabel = expanded ? `隐藏${label}` : `显示${label}`
+
+  return (
+    <button
+      type="button"
+      className="workflow-runtime__node-detail-toggle"
+      aria-expanded={expanded}
+      aria-label={actionLabel}
+      title={actionLabel}
+      onClick={() => onExpandedChange(!expanded)}
+    >
+      <span
+        className={`codicon codicon-chevron-${expanded ? 'down' : 'right'}`}
+        aria-hidden="true"
+      />
+      {expanded ? '隐藏' : '显示'}
+    </button>
+  )
+}
+
+/** 复制单侧运行详情，并用紧凑状态反馈避免额外提示层。 */
+function OutputCopyButton({
+  label,
+  text
+}: {
+  label: string
+  text: string
+}): React.JSX.Element {
+  const [copied, setCopied] = useState(false)
+
+  const copy = async (): Promise<void> => {
+    try {
+      await globalThis.navigator.clipboard.writeText(text)
+      setCopied(true)
+      globalThis.setTimeout(() => setCopied(false), 1600)
+    } catch {
+      setCopied(false)
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      className="workflow-runtime__node-detail-copy"
+      aria-label={label}
+      title={copied ? '已复制' : label}
+      onClick={() => void copy()}
+    >
+      <span
+        className={`codicon codicon-${copied ? 'check' : 'copy'}`}
+        aria-hidden="true"
+      />
+      {copied ? '已复制' : '复制'}
+    </button>
   )
 }
 
@@ -557,7 +775,7 @@ const NODE_LOG_FIELDS = [
 
 function workflowNodeLogText(
   node: WorkflowOutputNode,
-  events: readonly WorkflowOutputEvent[]
+  events: readonly WorkflowOutputActivity[]
 ): string {
   const matchingEvents = events
     .filter((event) => (
@@ -590,7 +808,8 @@ function workflowNodeLogText(
   if (logs.length > 0) return logs.join('\n\n')
 
   return matchingEvents.map((event) => {
-    const heading = `#${event.seq} ${eventLabel(event.type)} (${event.type})`
+    const heading = `${event.positionLabel} ${eventLabel(event.type)} ` +
+      `(${formatActivityTime(event.occurredAt)})`
     const detail = formatLogValue(event.detail)
     return detail ? `${heading}\n${detail}` : heading
   }).join('\n\n')
@@ -607,12 +826,12 @@ function workflowNodeLogText(
 function workflowNodeFailureLogs(
   nodes: readonly WorkflowOutputNode[],
   nodeNames: Readonly<Record<string, string>>,
-  events: readonly WorkflowOutputEvent[]
+  events: readonly WorkflowOutputActivity[]
 ): WorkflowNodeFailureLog[] {
   const exceptionEvents = events.filter(
     (event) => event.type === 'node.exception'
   )
-  const consumedEventSequences = new Set<number>()
+  const consumedEventKeys = new Set<string>()
   const failures = nodes
     .filter((node) => node.state === 'failed')
     .map((node) => {
@@ -621,7 +840,7 @@ function workflowNodeFailureLogs(
         const matches =
           event.nodeId === node.nodeId ||
           event.nodeId === sourceNodeId
-        if (matches) consumedEventSequences.add(event.seq)
+        if (matches) consumedEventKeys.add(event.key)
         return matches
       })
       return {
@@ -640,10 +859,10 @@ function workflowNodeFailureLogs(
 
   const eventNodeNames = workflowEventNodeNames(nodes, nodeNames)
   for (const event of exceptionEvents) {
-    if (consumedEventSequences.has(event.seq)) continue
+    if (consumedEventKeys.has(event.key)) continue
     const sourceNodeId = event.nodeId || '未知节点'
     failures.push({
-      nodeId: `${sourceNodeId}:event:${event.seq}`,
+      nodeId: `${sourceNodeId}:activity:${event.key}`,
       sourceNodeId,
       nodeName: eventNodeNames.get(sourceNodeId) || '未命名节点',
       attempt: 0,
@@ -743,13 +962,20 @@ const EVENT_TYPE_LABELS: Readonly<Record<string, string>> = {
   'run.status': '运行状态已更新',
   'run.completed': '运行已完成',
   'run.failed': '运行失败',
+  'run.canceled': '运行已取消',
+  'run.timeout': '运行已超时',
   'run.command': '控制命令已处理',
   'run.recovered': '运行状态已恢复',
   'node.ready': '节点已就绪',
   'node.dispatched': '动作已下发',
   'node.started': '节点开始执行',
   'node.result': '节点执行成功',
-  'node.completed': '节点执行成功',
+  'node.completed': '节点已完成',
+  'node.canceled': '节点已取消',
+  'node.timeout': '节点执行超时',
+  'node.intervention_required': '节点需要干预',
+  'node.cancel_requested': '节点等待取消',
+  'node.execution_unknown': '节点执行状态未知',
   'node.skipped': '节点已跳过',
   'node.exception': '节点执行异常',
   'node.feedback': '动作反馈',
@@ -775,6 +1001,15 @@ function nodeTypeLabel(type: string): string {
 
 function eventLabel(type: string): string {
   return EVENT_TYPE_LABELS[type] || '运行事件'
+}
+
+function formatActivityTime(value: string): string {
+  const timestamp = new Date(value)
+  if (Number.isNaN(timestamp.getTime())) return value
+  const pad = (part: number, width = 2): string =>
+    String(part).padStart(width, '0')
+  return `${pad(timestamp.getHours())}:${pad(timestamp.getMinutes())}:` +
+    `${pad(timestamp.getSeconds())}.${pad(timestamp.getMilliseconds(), 3)}`
 }
 
 /**

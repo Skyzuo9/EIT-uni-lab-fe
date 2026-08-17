@@ -8,16 +8,31 @@ import * as asar from '@electron/asar'
 import { describe, expect, it } from 'vitest'
 
 import {
+  MINIMUM_AIONUI_VERSION,
   ensureManagedLocalAgentDefaults,
   isProtectedAgentRequest,
   managedConversationRequestBody,
   managedLocalAgentAuthStatus,
   managedLocalBootstrapScript,
   normalizeAgentRendererArchiveEntry,
+  isAgentDistributionVersionSupported,
   prepareRenderer,
   resolveManagedAgentDistribution,
   waitForManagedAgentApi
 } from './agent-sidecar'
+
+describe('Workbench Agent distribution compatibility', () => {
+  it('accepts stable Agent versions at or above the development baseline', () => {
+    expect(MINIMUM_AIONUI_VERSION).toBe('2.1.52')
+    expect(isAgentDistributionVersionSupported('2.1.51')).toBe(false)
+    expect(isAgentDistributionVersionSupported('2.1.52')).toBe(true)
+    expect(isAgentDistributionVersionSupported('2.1.53')).toBe(true)
+    expect(isAgentDistributionVersionSupported('2.2.0')).toBe(true)
+    expect(isAgentDistributionVersionSupported('3.0.0')).toBe(true)
+    expect(isAgentDistributionVersionSupported('2.1.52-beta.1')).toBe(false)
+    expect(isAgentDistributionVersionSupported('invalid')).toBe(false)
+  })
+})
 
 async function createRendererArchive(
   root: string,

@@ -92,6 +92,7 @@
     "start:desktop-remote": "node scripts/start-workbench.mjs --desktop --remote",
     "start:remote": "node scripts/start-workbench.mjs --remote",
     "start:theia-only": "theia start \"${THEIA_WORKSPACE:-../..}\" --hostname 127.0.0.1 --port ${THEIA_PORT:-3100} --plugins=local-dir:plugins",
+    "start:headless-renderer": "node scripts/headless-renderer.mjs",
     "package:mac": "pnpm build:desktop:production && node scripts/package-macos.mjs --signed",
     "package:mac:developer-id": "pnpm build:desktop:production && node scripts/package-macos.mjs --developer-id",
     "package:mac:adhoc": "pnpm build:desktop:production && node scripts/package-macos.mjs --adhoc",
