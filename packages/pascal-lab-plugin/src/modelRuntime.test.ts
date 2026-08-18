@@ -1,9 +1,10 @@
-import { Mesh, type Material } from 'three'
+import { Euler, Matrix4, Mesh, type Material, Vector3 } from 'three'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
   buildDeviceXacro,
   loadLabDeviceModel,
+  resolveModelFrameRotation,
   resolveModelDirectory,
   shouldInstantiateXacro
 } from './modelRuntime'
@@ -13,6 +14,38 @@ describe('Pascal model runtime', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
   })
+
+  /** 验证挂到父 URDF 命名连杆的机械臂不会重复执行 Z-up 轴转换。 */
+  function assertNestedUrdfKeepsParentFrame(): void {
+    const childRotation = resolveModelFrameRotation(
+      'urdf',
+      'rail',
+      'rail_rail_carriage'
+    )
+    expect(childRotation).toBeUndefined()
+    expect(resolveModelFrameRotation('urdf', null, null)).toEqual([
+      -Math.PI / 2,
+      0,
+      0
+    ])
+
+    // 父地轨已经把 URDF Z-up 转为场景 Y-up；子机械臂不得再转一次。
+    const parentFrame = new Matrix4().makeRotationX(-Math.PI / 2)
+    const childFrame = new Matrix4().makeRotationFromEuler(
+      new Euler(...(childRotation ?? [0, 0, 0]), 'XYZ')
+    )
+    const worldUp = new Vector3(0, 0, 1)
+      .applyMatrix4(childFrame)
+      .applyMatrix4(parentFrame)
+    expect(worldUp.x).toBeCloseTo(0)
+    expect(worldUp.y).toBeCloseTo(1)
+    expect(worldUp.z).toBeCloseTo(0)
+  }
+
+  it(
+    'keeps a URDF child upright when mounted to a parent URDF link',
+    assertNestedUrdfKeepsParentFrame
+  )
 
   it('keeps a single STL material renderable when applying a tint', async () => {
     vi.stubGlobal(

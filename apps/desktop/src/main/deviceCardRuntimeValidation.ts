@@ -98,6 +98,29 @@ export function normalizeBounds(bounds: DeviceCardBounds): DeviceCardBounds {
   }
 }
 
+/**
+ * 把主渲染器的 CSS 边界换算成 Electron 原生子视图边界。
+ *
+ * @param bounds 主渲染器以 CSS 像素测得的设备卡片占位框。
+ * @param zoomFactor 主窗口 WebContents 当前缩放系数。
+ * @returns 可直接传给 WebContentsView.setBounds 的整数原生边界。
+ * @throws 缩放系数不是有限正数时抛出错误。
+ */
+export function normalizeBoundsForZoom(
+  bounds: DeviceCardBounds,
+  zoomFactor: number
+): DeviceCardBounds {
+  if (!Number.isFinite(zoomFactor) || zoomFactor <= 0) {
+    throw new Error('设备卡片视图 zoom factor 无效。')
+  }
+  return normalizeBounds({
+    x: bounds.x * zoomFactor,
+    y: bounds.y * zoomFactor,
+    width: bounds.width * zoomFactor,
+    height: bounds.height * zoomFactor
+  })
+}
+
 export function filterAllowedState(
   state: Record<string, unknown>,
   allowedKeys: string[]

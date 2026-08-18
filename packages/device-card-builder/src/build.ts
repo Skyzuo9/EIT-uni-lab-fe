@@ -9,7 +9,7 @@ import {
   rm,
   writeFile
 } from 'node:fs/promises'
-import { dirname, extname, relative, resolve } from 'node:path'
+import { dirname, extname, isAbsolute, relative, resolve } from 'node:path'
 
 import {
   build as esbuild,
@@ -250,10 +250,19 @@ function wrapperSource(manifest: DeviceCardManifest, entry: string): string {
   `
 }
 
+/**
+ * 创建卡片源码导入边界插件。
+ *
+ * @param projectDir 已解析为真实路径的卡片项目根目录。
+ * @returns 仅允许项目内文件和固定依赖的 esbuild 插件。
+ */
 function importPolicyPlugin(projectDir: string): Plugin {
   return {
     name: 'unilab-import-policy',
     setup(build) {
+      /**
+       * 校验并解析单个导入；参数由 esbuild 提供，返回规范路径、诊断或交回默认解析。
+       */
       build.onResolve({ filter: /.*/ }, (args) => {
         if (
           args.importer &&
@@ -262,10 +271,11 @@ function importPolicyPlugin(projectDir: string): Plugin {
         ) {
           return undefined
         }
-        if (args.path.startsWith('.') || args.path.startsWith('/')) {
+        const absoluteImport = isAbsolute(args.path)
+        if (args.path.startsWith('.') || absoluteImport) {
           const resolved = resolve(args.resolveDir || projectDir, args.path)
           assertInside(projectDir, relative(projectDir, resolved))
-          return undefined
+          return absoluteImport ? { path: resolved } : undefined
         }
         if (IMPORT_ALLOWLIST.has(args.path)) {
           return { path: unpackedAsarPath(runtimeRequire.resolve(args.path)) }

@@ -28,7 +28,8 @@ import {
 
 import {
   disposeLabModel,
-  loadLabDeviceModel
+  loadLabDeviceModel,
+  resolveModelFrameRotation
 } from '../modelRuntime'
 import { findLinkObject } from '../mounting'
 import {
@@ -233,8 +234,11 @@ export default function LabDeviceRenderer({
   const isSelected = useViewer((state) =>
     state.selection.selectedIds.includes(node.id as never)
   )
-  const isZUp =
-    node.model.format === 'xacro' || node.model.format === 'urdf'
+  const modelFrameRotation = resolveModelFrameRotation(
+    node.model.format,
+    node.attach.parentDeviceId,
+    node.attach.parentLinkName
+  )
   const isDeck = node.deviceType.includes('deck')
   const deckSurfaceProvidedByParent =
     isDeck && Boolean(node.attach.parentDeviceId)
@@ -432,7 +436,7 @@ export default function LabDeviceRenderer({
       {node.renderBody && object && (
         <group
           ref={modelGroupRef}
-          rotation={isZUp ? [-Math.PI / 2, 0, 0] : undefined}
+          rotation={modelFrameRotation}
         >
           {/* model.position/rotation is the explicit model-to-resource datum;
               the Material group and its Sites remain in resource space. */}

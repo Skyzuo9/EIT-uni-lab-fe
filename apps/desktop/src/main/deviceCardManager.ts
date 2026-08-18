@@ -48,7 +48,7 @@ import {
   isOpenRequest,
   isOpenWorkspaceRequest,
   isPlainRecord,
-  normalizeBounds,
+  normalizeBoundsForZoom,
   publicRecord,
   workspaceRuntimeRecord,
   type RuntimeCardRecord
@@ -285,7 +285,8 @@ export class DeviceCardManager {
       'device-cards:updateBounds',
       (event, bounds: DeviceCardBounds) => {
         this.assertMainRenderer(event)
-        this.activeView?.setBounds(normalizeBounds(bounds))
+        const view = this.activeView
+        if (view) this.applyRendererGeometry(view, bounds)
       }
     )
     ipcMain.handle(
@@ -433,11 +434,13 @@ export class DeviceCardManager {
     assertDeviceCardRuntimeCapabilities(record, request)
     this.closeActive()
     const window = this.requireMainWindow()
+    const zoomFactor = this.mainWindowZoomFactor()
     const partition = `unilab-card-${record.metadata.sourceHash.slice(0, 24)}`
     const view = new WebContentsView({
       webPreferences: {
         preload: resolve(this.options.preloadPath),
         partition,
+        zoomFactor,
         sandbox: true,
         contextIsolation: true,
         nodeIntegration: false,
@@ -485,7 +488,7 @@ export class DeviceCardManager {
     })
     window.contentView.addChildView(view)
     this.visibility.attach(view)
-    view.setBounds(normalizeBounds(request.bounds))
+    view.setBounds(normalizeBoundsForZoom(request.bounds, zoomFactor))
     await view.webContents.loadFile(join(record.artifactDir, 'index.html'))
   }
 
@@ -543,6 +546,31 @@ export class DeviceCardManager {
       window.contentView.removeChildView(view)
     }
     if (!view.webContents.isDestroyed()) view.webContents.close()
+  }
+
+  /**
+   * 让设备卡片原生视图与主渲染器的缩放和占位框保持同一物理边界。
+   *
+   * @param view 当前活动的设备卡片原生视图。
+   * @param bounds 主渲染器以 CSS 像素测得的占位框。
+   * @returns 无。
+   */
+  private applyRendererGeometry(
+    view: WebContentsView,
+    bounds: DeviceCardBounds
+  ): void {
+    const zoomFactor = this.mainWindowZoomFactor()
+    view.webContents.setZoomFactor(zoomFactor)
+    view.setBounds(normalizeBoundsForZoom(bounds, zoomFactor))
+  }
+
+  /**
+   * 读取主渲染器的当前缩放系数，作为设备卡片原生视图的坐标换算依据。
+   *
+   * @returns 主窗口 WebContents 的缩放系数。
+   */
+  private mainWindowZoomFactor(): number {
+    return this.requireMainWindow().webContents.getZoomFactor()
   }
 
   private updateState(state: Record<string, unknown>): void {
