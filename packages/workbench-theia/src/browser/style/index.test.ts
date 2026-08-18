@@ -149,6 +149,12 @@ describe('environment manager layering and responsive layout', () => {
     expect(domainNavigationStylesheet).toMatch(
       /\.theia-app-right\s*\{[^}]*display:\s*none !important/u
     )
+    expect(domainNavigationStylesheet).toMatch(
+      /body\.unilab-agent-panel-visible[\s\S]*?#theia-right-content-panel\s*> \.theia-app-sidebar-container\s*\{[^}]*display:\s*none !important;[^}]*width:\s*0 !important;[^}]*min-width:\s*0 !important;[^}]*max-width:\s*0 !important/u
+    )
+    expect(domainNavigationStylesheet).toMatch(
+      /body\.unilab-agent-panel-visible[\s\S]*?#theia-right-content-panel\s*> \.lm-BoxPanel-child:not\(\.theia-app-sidebar-container\)\s*\{[^}]*left:\s*0 !important;[^}]*right:\s*0 !important;[^}]*width:\s*100% !important/u
+    )
     expect(domainNavigationStylesheet).not.toMatch(
       /#theia-left-right-split-panel\s*> #theia-right-content-panel,\s*\.theia-app-right/u
     )
