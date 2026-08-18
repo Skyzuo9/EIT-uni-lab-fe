@@ -127,6 +127,15 @@ export function UnifiedMaterialViewport({
           {renderView(mode, { showSites, showMaterialTransfers })}
         </MaterialViewErrorBoundary>
       </div>
+      {mode === '3d' || mode === 'split' ? (
+        <aside className="lab-3d-operation-guide" aria-label="3D 操作说明">
+          <strong>3D 操作</strong>
+          <span>左键选择物料</span>
+          <span>拖拽旋转视角</span>
+          <span>滚轮缩放</span>
+          <span>右键拖拽平移</span>
+        </aside>
+      ) : null}
       <div className="lab-viewport-controls">
         <div
           aria-label="实验室视图"
