@@ -1,7 +1,7 @@
 .lab-3d-operation-guide {
   position: absolute;
   z-index: 70;
-  top: 14px;
+  top: calc(40px + 14px);
   right: 14px;
   display: flex;
   max-width: min(620px, calc(100% - 28px));
@@ -319,7 +319,7 @@
 
 @media (max-width: 720px) {
   .lab-3d-operation-guide {
-    top: 10px;
+    top: calc(40px + 10px);
     right: 10px;
     left: 10px;
     max-width: none;

@@ -72,6 +72,27 @@ describe('UnifiedMaterialViewport', () => {
     expect(twoDimensionalMarkup).not.toContain('aria-label="3D 操作说明"')
   })
 
+  /**
+   * 证明 3D 操作说明避开 Pascal 顶部工具栏及其视图按钮。
+   *
+   * @returns 无返回值；断言桌面与窄视口均在 40px 工具栏下方留出间距。
+   * @throws 操作说明重新覆盖顶部按钮时由 Vitest 抛出。
+   * @safety 仅检查样式合同，不触发 3D 场景或物料（Material）选择。
+   */
+  it('keeps the 3D guide below the Pascal toolbar', () => {
+    const styles = readFileSync(
+      new URL('./UnifiedMaterialViewport.css', import.meta.url),
+      'utf8'
+    )
+
+    expect(styles).toMatch(
+      /\.lab-3d-operation-guide\s*\{[^}]*top:\s*calc\(40px \+ 14px\);/s
+    )
+    expect(styles).toMatch(
+      /@media \(max-width: 720px\)[\s\S]*\.lab-3d-operation-guide\s*\{[^}]*top:\s*calc\(40px \+ 10px\);/s
+    )
+  })
+
   it('renders independently selectable material roles from the shared package', () => {
     const markup = renderToStaticMarkup(
       <UnifiedMaterialViewport
