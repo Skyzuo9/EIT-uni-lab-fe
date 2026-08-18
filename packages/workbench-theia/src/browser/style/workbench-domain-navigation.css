@@ -212,6 +212,29 @@
 }
 
 /*
+ * Lumino keeps the hidden right activity bar's 48px BoxPanel child in its
+ * geometry even when the tab bar itself is display:none. Without reclaiming
+ * that child, the 420px Agent Dock is laid out from -48px and overlaps the
+ * material canvas, where high-z-index scene controls can cover the Agent.
+ */
+body.unilab-agent-panel-visible
+  #theia-right-content-panel
+  > .theia-app-sidebar-container {
+  display: none !important;
+  width: 0 !important;
+  min-width: 0 !important;
+  max-width: 0 !important;
+}
+
+body.unilab-agent-panel-visible
+  #theia-right-content-panel
+  > .lm-BoxPanel-child:not(.theia-app-sidebar-container) {
+  left: 0 !important;
+  right: 0 !important;
+  width: 100% !important;
+}
+
+/*
  * 布局恢复可能在启动时重新展开空的右面板。只有用户真正打开
  * Agent 时才让它参与布局，其余时候完全不占用工作区宽度。
  */
