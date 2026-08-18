@@ -17,7 +17,8 @@ import {
   PORTABLE_NODE_ARCHIVES,
   PORTABLE_NODE_VERSION,
   removeDesktopDeploymentSelfLink,
-  resolveEsbuildBinary
+  resolveEsbuildBinary,
+  validateWindowsInstallerListing
 } from './package-portable.mjs'
 import {
   MAX_PRODUCTION_LIB_BYTES,
@@ -38,6 +39,30 @@ describe('portable Workbench packaging contract', () => {
       assert.equal(descriptor.hostArchitecture, 'x64')
     }
     assert.equal(MAX_PORTABLE_INSTALLER_BYTES, 850 * 1024 * 1024)
+  })
+
+  /** 验证最终 NSIS 技术清单必须包含安装根目录的桌面主程序。 */
+  it('rejects a Windows installer without its desktop executable', () => {
+    assert.doesNotThrow(() => validateWindowsInstallerListing([
+      'Path = C:\\build\\UniLab.Workbench-setup.exe',
+      'Type = Nsis',
+      'Path = resources',
+      'Path = UniLab Workbench.exe'
+    ].join('\r\n')))
+    assert.throws(
+      () => validateWindowsInstallerListing([
+        'Path = C:\\build\\UniLab.Workbench-setup.exe',
+        'Type = Nsis',
+        'Path = resources\\app.asar'
+      ].join('\r\n')),
+      /Windows 安装包缺少桌面主程序/u
+    )
+    assert.throws(
+      () => validateWindowsInstallerListing(
+        'Path = resources\\UniLab Workbench.exe'
+      ),
+      /Windows 安装包缺少桌面主程序/u
+    )
   })
 
   it('extracts the Windows Node runtime without PowerShell argument binding', async () => {
@@ -379,6 +404,10 @@ describe('portable Workbench packaging contract', () => {
       new URL('../../../.github/workflows/package-windows.yml', import.meta.url),
       'utf8'
     )
+    const packagingScript = await readFile(
+      new URL('./package-portable.mjs', import.meta.url),
+      'utf8'
+    )
 
     assert.match(workflow, /runs-on: windows-2022/u)
     assert.match(workflow, /build\/Release\/crypt32\.node/u)
@@ -411,6 +440,10 @@ describe('portable Workbench packaging contract', () => {
       /conda run -n constructor-build constructor/u
     )
     assert.match(workflow, /pnpm --filter @unilab\/workbench package:win/u)
+    assert.match(
+      packagingScript,
+      /validateWindowsInstallerArchive\(installer\.path\)/u
+    )
     assert.match(workflow, /UNILAB_RUNTIME_INSTALLER=/u)
     assert.match(workflow, /UNILAB_AGENT_DISTRIBUTION=/u)
     assert.match(workflow, /Filter 'aioncore\.exe'/u)
