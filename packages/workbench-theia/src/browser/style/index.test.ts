@@ -6,6 +6,7 @@ import { beforeAll, describe, expect, it } from 'vitest'
 let stylesheet = ''
 let domainNavigationStylesheet = ''
 let navigatorSource = ''
+let agentNavigatorSource = ''
 
 /** 读取 Workbench 主样式与领域导航样式，供结构性回归断言复用。 */
 beforeAll(async () => {
@@ -17,7 +18,8 @@ beforeAll(async () => {
     surfaces,
     aionui,
     navigation,
-    navigator
+    navigator,
+    agentNavigator
   ] = await Promise.all([
     readFile(fileURLToPath(new URL('./workbench-shell.css', import.meta.url)), 'utf8'),
     readFile(
@@ -38,6 +40,10 @@ beforeAll(async () => {
     readFile(
       fileURLToPath(new URL('../unilab-workbench-navigator-widget.tsx', import.meta.url)),
       'utf8'
+    ),
+    readFile(
+      fileURLToPath(new URL('../unilab-agent-navigator-widget.tsx', import.meta.url)),
+      'utf8'
     )
   ])
   stylesheet = [
@@ -50,6 +56,7 @@ beforeAll(async () => {
   ].join('\n')
   domainNavigationStylesheet = navigation
   navigatorSource = navigator
+  agentNavigatorSource = agentNavigator
 })
 
 describe('environment manager layering and responsive layout', () => {
@@ -152,8 +159,11 @@ describe('environment manager layering and responsive layout', () => {
       /body\.unilab-agent-panel-visible[\s\S]*?#theia-right-content-panel\s*\{[^}]*display:\s*flex !important;[^}]*min-width:\s*420px !important/u
     )
     expect(domainNavigationStylesheet).toMatch(
-      /body\.unilab-agent-panel-visible[\s\S]*?#theia-bottom-split-panel\s*\{[^}]*right:\s*420px !important/u
+      /body\.unilab-agent-panel-visible[\s\S]*?#theia-bottom-split-panel\s*\{[^}]*right:\s*var\(--unilab-agent-panel-width, 420px\) !important/u
     )
+    expect(agentNavigatorSource).toContain('new ResizeObserver(publishWidth)')
+    expect(agentNavigatorSource).toContain("getBoundingClientRect().width")
+    expect(agentNavigatorSource).toContain("'--unilab-agent-panel-width'")
     expect(domainNavigationStylesheet).toMatch(
       /@media \(max-width:\s*720px\)[\s\S]*?body\.unilab-agent-panel-visible[\s\S]*?#theia-right-content-panel\s*\{[^}]*position:\s*absolute !important;[^}]*inset:\s*0 !important;[^}]*width:\s*100% !important;/u
     )
@@ -174,6 +184,16 @@ describe('environment manager layering and responsive layout', () => {
     )
     expect(domainNavigationStylesheet).toMatch(
       /#theia-main-content-panel[\s\S]*?> \.lm-TabBar\.theia-app-centers\.theia-app-main:not\([\s\S]*?:has\(\.lm-TabBar-tab\.lm-mod-closable\)[\s\S]*?\)\s*\{[^}]*display:\s*none !important/u
+    )
+  })
+
+  /** 设备与物料分栏必须占据同一网格行，避免设备被自动排到第二行。 */
+  it('keeps instrument and material split surfaces on one row', () => {
+    expect(domainNavigationStylesheet).toMatch(
+      /is-device-material \.is-device\s*\{[^}]*grid-column:\s*1;[^}]*grid-row:\s*1;/u
+    )
+    expect(domainNavigationStylesheet).toMatch(
+      /is-device-material \.is-material\s*\{[^}]*grid-column:\s*3;[^}]*grid-row:\s*1;/u
     )
   })
 

@@ -9,14 +9,17 @@
 }
 
 .unilab-workbench__domain-layout {
+  position: relative;
   display: flex;
-  min-width: 0;
-  min-height: 0;
+  /* React Flow 在 Theia 恢复布局的首帧会读取这里的尺寸。 */
+  min-width: 1px;
+  min-height: 1px;
   flex: 1 1 auto;
   overflow: hidden;
 }
 
-.unilab-workbench__domain-layout.is-split {
+.unilab-workbench__domain-layout.is-split,
+.unilab-workbench__domain-layout.is-device-material {
   display: grid;
   align-items: stretch;
 }
@@ -29,9 +32,23 @@
   overflow: hidden;
 }
 
-.unilab-workbench__domain-slot[hidden],
 .unilab-workbench__splitter[hidden] {
   display: none !important;
+}
+
+/*
+ * 已访问的领域保持完整尺寸，避免 React Flow、3D 场景和设备面板在
+ * display:none 与可见之间切换时先读到 0×0 容器，造成一帧或多帧白屏。
+ * inert + aria-hidden 负责隔离焦点与辅助技术，绝对定位则不参与当前布局。
+ */
+.unilab-workbench__domain-slot.is-inactive {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  min-width: 1px;
+  min-height: 1px;
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .unilab-workbench__domain-slot > .unilab-workbench__surface {
@@ -39,14 +56,60 @@
   height: 100%;
 }
 
+.unilab-workbench__domain-layout.is-split .is-workflow,
+.unilab-workbench__domain-layout.is-device-material .is-device {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.unilab-workbench__domain-layout.is-split .unilab-workbench__splitter,
+.unilab-workbench__domain-layout.is-device-material
+  .unilab-workbench__splitter {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.unilab-workbench__domain-layout.is-split .is-material,
+.unilab-workbench__domain-layout.is-device-material .is-material {
+  grid-column: 3;
+  grid-row: 1;
+}
+
 .unilab-workbench__domain-layout.is-split
-  .unilab-workbench__surface--workflow {
+  .unilab-workbench__surface--workflow,
+.unilab-workbench__domain-layout.is-device-material
+  .unilab-workbench__surface--device {
   box-shadow: inset -1px 0 var(--unilab-color-border);
 }
 
 .unilab-workbench__domain-layout.is-split
+  .unilab-workbench__surface--material,
+.unilab-workbench__domain-layout.is-device-material
   .unilab-workbench__surface--material {
   box-shadow: inset 1px 0 var(--unilab-color-border);
+}
+
+/*
+ * 被文件栏或 Agent 压窄后，双领域分栏已经没有足够空间容纳各自的
+ * 工具栏和画布。保留用户最后打开的主领域（工作流或设备），把物料
+ * 伴随视图收起；恢复宽度后自动回到原分栏，不改动领域选择状态。
+ */
+@container unilab-workbench (max-width: 900px) {
+  .unilab-workbench__domain-layout.is-split,
+  .unilab-workbench__domain-layout.is-device-material {
+    display: flex;
+  }
+
+  .unilab-workbench__domain-layout.is-split
+    > .unilab-workbench__splitter,
+  .unilab-workbench__domain-layout.is-device-material
+    > .unilab-workbench__splitter,
+  .unilab-workbench__domain-layout.is-split
+    > .unilab-workbench__domain-slot.is-material,
+  .unilab-workbench__domain-layout.is-device-material
+    > .unilab-workbench__domain-slot.is-material {
+    display: none;
+  }
 }
 
 .unilab-workbench__splitter {
@@ -176,7 +239,7 @@ body.unilab-agent-panel-visible
 body.unilab-agent-panel-visible
   #theia-left-right-split-panel
   > #theia-bottom-split-panel {
-  right: 420px !important;
+  right: var(--unilab-agent-panel-width, 420px) !important;
 }
 
 /*

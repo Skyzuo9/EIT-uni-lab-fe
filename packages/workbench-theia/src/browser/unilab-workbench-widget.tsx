@@ -20,8 +20,7 @@ import {
 import { inject, injectable, postConstruct } from '@theia/core/shared/inversify'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
-  DeviceManagementPanel,
-  type DeviceManagementConnection
+  DeviceManagementPanel
 } from '@unilab/device-management'
 import {
   MaterialStoreProvider,
@@ -76,6 +75,7 @@ import {
 } from '../common/workbench-session-protocol'
 import { WorkbenchSessionClientImpl } from './workbench-session-client'
 import { desktopWorkflowTraceRuntime } from './desktop-workflow-trace-runtime'
+import { desktopWorkspaceApi } from './desktop-workspace'
 import { DesktopWorkspaceSwitchButton } from './desktop-workspace-switch'
 import { EnvironmentManager } from './environment-manager'
 import { createTheiaWorkflowIdeAdapter } from './theia-workflow-ide-adapter'
@@ -100,6 +100,7 @@ import {
 import { useRobotWorkstationData } from './robot-workstation-data'
 import { WorkbenchDomainLayout } from './workbench-domain-layout'
 import { WorkbenchMaterialViewport } from './workbench-material-viewport'
+import { workbenchDeviceConnection } from './workbench-device-connection'
 import { workflowExecutionStatusForConnection } from './workbench-execution-readiness'
 import {
   WorkbenchRuntimeLogLauncher,
@@ -1025,16 +1026,22 @@ function WorkbenchSurface({
     () => createWorkbenchServices(selectedTarget),
     [selectedTarget.cacheKey]
   )
+  const backendProbeServices = useMemo(
+    () => connectionMode === 'backend'
+      ? services
+      : createWorkbenchServices(connectionTargets.backend),
+    [connectionMode, connectionTargets.backend.cacheKey, services]
+  )
   const [connectionProbeRevision, setConnectionProbeRevision] = useState(0)
-  const backendConnection = useBackendConnectionState(
-    connectionMode,
-    services,
+  const backendTargetConnection = useBackendConnectionState(
+    'backend',
+    backendProbeServices,
     connectionProbeRevision
   )
   const connection = workbenchConnectionState(
     connectionMode,
     session.phase,
-    backendConnection
+    backendTargetConnection
   )
   /** 重新执行当前 Backend 健康探测，不创建或推进任何工作流任务。 */
   const retryConnection = useCallback((): void => {
@@ -1064,7 +1071,11 @@ function WorkbenchSurface({
     () => createWorkflowResourceSlotOptionsPort(services.materials, scope),
     [scope, services.materials]
   )
-  const deviceConnection: DeviceManagementConnection = connection
+  const deviceConnection = workbenchDeviceConnection(
+    connectionMode,
+    connection,
+    session.edgeRuntime.phase
+  )
   const deviceBackend = selectedTarget.backend
 
   useEffect(() => () => materialStore.getState().reset(), [materialStore])
@@ -1084,6 +1095,10 @@ function WorkbenchSurface({
     queryClient.clear()
     services.dispose()
   }, [queryClient, services])
+
+  useEffect(() => () => {
+    if (backendProbeServices !== services) backendProbeServices.dispose()
+  }, [backendProbeServices, services])
 
   const synchronizeSavedSource = useCallback(async (pythonSource: string) => {
     if (!workflowUuid) return
@@ -1159,7 +1174,9 @@ function WorkbenchSurface({
         }.v1`}
         allowWorkflowSelection
         recoveryRevision={recoveryRevision}
-        hideEmbeddedCodeEditor={connectionMode === 'local'}
+        hideEmbeddedCodeEditor={
+          connectionMode === 'local' && desktopWorkspaceApi() !== null
+        }
         ideBridge={ideBridge}
         onUnsavedChangesChange={(hasUnsavedChanges) => {
           onUnsavedChangesChange(hasUnsavedChanges)
@@ -1298,6 +1315,10 @@ function WorkbenchSurface({
               targets={connectionTargets}
               selectedMode={connectionMode}
               connection={connection}
+              targetConnections={{
+                local: sessionConnectionState(session.phase),
+                backend: backendTargetConnection
+              }}
               switchBlockedReason={switchBlockedReason}
               onRetry={connectionRetry}
               onSelect={onConnectionModeChange}
@@ -1391,8 +1412,12 @@ function recordMountedWorkbenchDomains(
   mode: WorkbenchViewMode
 ): void {
   if (isWorkflowWorkbenchView(mode)) mountedDomains.add('workflow')
-  if (mode === 'material' || mode === 'split') mountedDomains.add('material')
-  if (mode === 'device') mountedDomains.add('device')
+  if (
+    mode === 'material' || mode === 'split' || mode === 'device-material'
+  ) mountedDomains.add('material')
+  if (mode === 'device' || mode === 'device-material') {
+    mountedDomains.add('device')
+  }
   if (isRobotWorkbenchViewMode(mode)) mountedDomains.add('robot-workstation')
 }
 
@@ -1424,6 +1449,7 @@ function mountedSurface(
 /** 返回 Workbench 标题栏使用的当前领域短名称。 */
 function workbenchViewLabel(mode: WorkbenchViewMode): string {
   if (mode === 'split') return '工作流 + 物料'
+  if (mode === 'device-material') return '仪器设备 + 物料'
   if (mode === 'workflow') return '工作流'
   if (mode === 'material') return '物料'
   if (mode === 'device') return '仪器设备'
