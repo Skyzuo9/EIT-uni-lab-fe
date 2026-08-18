@@ -131,7 +131,9 @@ export function PersistentWorkflowAuthoringView({
     nonce: number
   } | null>(null)
   const authoringViewRef = useRef<HTMLDivElement | null>(null)
+  const graphStageRef = useRef<HTMLDivElement | null>(null)
   const [compactCanvas, setCompactCanvas] = useState(false)
+  const [graphStageReady, setGraphStageReady] = useState(false)
 
   useEffect(() => {
     const element = authoringViewRef.current
@@ -144,6 +146,25 @@ export function PersistentWorkflowAuthoringView({
     observer.observe(element)
     return () => observer.disconnect()
   }, [setNodePaletteOpen])
+  useEffect(() => {
+    const element = graphStageRef.current
+    if (!graph || !element) {
+      setGraphStageReady(false)
+      return
+    }
+    const reconcile = (): void => {
+      const bounds = element.getBoundingClientRect()
+      setGraphStageReady(bounds.width > 0 && bounds.height > 0)
+    }
+    reconcile()
+    if (typeof globalThis.ResizeObserver !== 'function') {
+      setGraphStageReady(true)
+      return
+    }
+    const observer = new globalThis.ResizeObserver(reconcile)
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [graph])
   const handleCanvasNodeSelect = useCallback((nodeId: string): void => {
     // React Flow may report the focused node again while its viewport settles.
     // Keep the external highlight for that same node; a deliberate click on a
@@ -445,8 +466,13 @@ export function PersistentWorkflowAuthoringView({
                     }
                   />
                 )}
-                <div className="persistent-authoring__graph-stage">
-                  <WorkflowDag
+                <div
+                  ref={graphStageRef}
+                  className="persistent-authoring__graph-stage"
+                >
+                  {(graphStageReady ||
+                    typeof globalThis.ResizeObserver !== 'function') && (
+                    <WorkflowDag
                     nodes={structure.nodes}
                     links={structure.links}
                     onNodeSelect={handleCanvasNodeSelect}
@@ -484,7 +510,8 @@ export function PersistentWorkflowAuthoringView({
                     onVisibleMaterialRolesChange={
                       onVisibleMaterialRolesChange
                     }
-                  />
+                    />
+                  )}
                 </div>
                 {mode === 'canvas' && selectedNodeUuid && !compactCanvas && (
                   <aside

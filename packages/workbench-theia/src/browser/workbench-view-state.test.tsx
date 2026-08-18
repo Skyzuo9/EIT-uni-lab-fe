@@ -1,4 +1,5 @@
 import { renderToStaticMarkup } from 'react-dom/server'
+import { readFileSync } from 'node:fs'
 import { describe, expect, it, vi } from 'vitest'
 
 import { DomainEntryPanel } from './domain-entry-panel'
@@ -208,6 +209,20 @@ describe('Workbench domain view presentation', () => {
     expect(markup).toContain('data-testid="material-surface"')
     expect(markup).toContain('aria-label="调整仪器设备与物料窗口宽度"')
     expect(markup).toContain('aria-valuenow="55"')
+  })
+
+  it('keeps graph hosts measurable and collapses the secondary pane when narrow', () => {
+    const stylesheet = readFileSync(
+      new URL('./style/workbench-domain-navigation.css', import.meta.url),
+      'utf8'
+    )
+
+    expect(stylesheet).toMatch(
+      /\.unilab-workbench__domain-layout\s*\{[^}]*min-width:\s*1px;[^}]*min-height:\s*1px;/s
+    )
+    expect(stylesheet).toMatch(
+      /@container unilab-workbench \(max-width: 900px\)[\s\S]*\.unilab-workbench__domain-slot\.is-material[\s\S]*display:\s*none;/
+    )
   })
 
   it('mounts the mechanical-arm modules inside the Workbench main area', () => {

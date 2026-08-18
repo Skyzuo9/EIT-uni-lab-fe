@@ -66,6 +66,7 @@ export function PersistentWorkflowToolbar({
     sourceEditingDisabledReason,
     startWorkflow,
     task,
+    taskHistorical,
     taskControls,
     taskInputForm,
     taskRunMode,
@@ -85,10 +86,10 @@ export function PersistentWorkflowToolbar({
   const modeSwitchDisabledReason = busy
     ? '正在读取或处理工作流，请稍后切换编辑模式'
     : '工作流尚未加载完成'
-  const liveTask = workflowTaskIsLive(task)
+  const liveTask = workflowTaskIsLive(task) && !taskHistorical
   const compactTaskControls = useMemo(
-    () => workflowTaskToolbarControls(task, taskControls),
-    [task, taskControls]
+    () => workflowTaskToolbarControls(taskHistorical ? null : task, taskControls),
+    [task, taskControls, taskHistorical]
   )
   const saveDisabled = Boolean(
     !dirty ||
@@ -134,6 +135,7 @@ export function PersistentWorkflowToolbar({
   return (
     <WorkflowWorkspaceToolbar
       task={task}
+      historicalTask={taskHistorical}
       message={message}
       onChooseWorkflow={onChooseWorkflow}
       navigationDisabled={busy || dirty}

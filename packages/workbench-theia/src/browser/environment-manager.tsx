@@ -537,9 +537,16 @@ export function EnvironmentManager({
               <button
                 type="button"
                 className="is-port-action"
+                aria-busy={busyAction === 'restart-os'}
                 disabled={Boolean(busyAction)}
                 onClick={() => void run('restart-os', onRestartSession)}
-              >{edgeRuntime.phase === 'ready' ? '重启 OS' : '启动 OS'}</button>
+              >{busyAction === 'restart-os'
+                  ? edgeRuntime.phase === 'ready'
+                    ? '正在重启 OS…'
+                    : '正在启动 OS…'
+                  : edgeRuntime.phase === 'ready'
+                    ? '重启 OS'
+                    : '启动 OS'}</button>
               <button
                 type="button"
                 className="is-danger"
@@ -991,9 +998,9 @@ export function RuntimeModeControl({
   const select = (next: WorkbenchRuntimeMode): void => {
     if (mode === next) return
     const confirmed = next === 'normal'
-      ? globalThis.confirm('关闭 Dry-run 并以正常动作路径重启 OS？')
+      ? globalThis.confirm('关闭 Dry-run？新模式将在下次启动 OS 时生效，当前 OS 不会重启。')
       : globalThis.confirm(
-          '启用 Dry-run 将以 --action_mode simulate 重启 OS，动作不会发送给设备。确认继续？'
+          '启用 Dry-run？新模式将在下次启动 OS 时生效，当前 OS 不会重启。'
         )
     if (confirmed) void onSetRuntimeMode(next)
   }
@@ -1030,8 +1037,8 @@ export function RuntimeModeControl({
       {button(
         'dry-run',
         'Dry-run',
-        '仅模拟，不下发设备',
-        '动作返回模拟成功；每次 OS 重启使用新的隔离运行数据库'
+        '仅模拟，不下发设备；下次启动生效',
+        '动作返回模拟成功；切换模式不会重启 OS 或重建本地数据'
       )}
     </div>
   )

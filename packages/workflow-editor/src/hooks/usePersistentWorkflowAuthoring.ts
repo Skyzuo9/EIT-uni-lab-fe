@@ -71,6 +71,7 @@ import { usePersistentWorkflowStartFlow } from './usePersistentWorkflowStartFlow
 import { usePersistentWorkflowTaskPanel } from './usePersistentWorkflowTaskPanel'
 import { useWorkflowIdeSourceProjection } from './useWorkflowIdeSourceProjection'
 import { useWorkflowPanelRuntimeProjection } from './useWorkflowPanelRuntimeProjection'
+import { workflowTaskIsLive } from '../utils/workflowTaskPresentation'
 
 export type { PersistentWorkflowAuthoringOptions } from './persistentWorkflowAuthoringTypes'
 
@@ -365,6 +366,9 @@ export function usePersistentWorkflowAuthoring({
   const dirty = mode === 'code'
     ? editor.isDirty
     : canvasDirty || selectedNodeNameDirty
+  const executionBlockedReason = executionStatus?.available === false
+    ? executionStatus.reason || 'OS 未就绪；请先在环境管理中启动 OS'
+    : null
   const taskPanel = usePersistentWorkflowTaskPanel({
     runtime,
     definitionPort,
@@ -378,6 +382,9 @@ export function usePersistentWorkflowAuthoring({
     setMessage,
     setError
   })
+  const taskHistorical = Boolean(
+    executionBlockedReason && workflowTaskIsLive(taskPanel.task)
+  )
   useWorkflowPanelRuntimeProjection({
     aggregate,
     runtimeSnapshot: taskPanel.taskRuntime.snapshot,
@@ -1187,9 +1194,6 @@ export function usePersistentWorkflowAuthoring({
     taskPanel.refreshResourceSlotOptions
   ])
 
-  const executionBlockedReason = executionStatus?.available === false
-    ? executionStatus.reason || 'OS 未就绪；请先在环境管理中启动 OS'
-    : null
   const workflowStart = usePersistentWorkflowStartFlow({
     context: {
       aggregate,
@@ -1349,7 +1353,7 @@ export function usePersistentWorkflowAuthoring({
     debugLaunchAvailable: definitionPort.capabilities.debugLaunch,
     definitionEditingAvailable: definitionEditingStatus?.available !== false,
     definitionEditingDisabledReason: definitionEditingStatus?.reason ?? null,
-    executionBlockedReason,
+    executionBlockedReason, taskHistorical,
     dirty, discardAndSwitch, editor, effectiveMaterialSourceCatalog, error,
     fileUpload, fullSourceDiff, graph, jsonProjectionEditor,
     materialSourceAuthorityBlocked, materialSourceCatalogError,

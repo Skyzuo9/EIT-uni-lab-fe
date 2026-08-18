@@ -391,6 +391,14 @@ describe('WorkflowDag host sizing', () => {
     expect(stylesheet).not.toMatch(
       /persistent-authoring__graph-stage[\s\S]{0,160}\n\s+height:\s*260px/
     )
+
+    const foundations = readFileSync(
+      new URL('./_workflow-foundations.scss', import.meta.url),
+      'utf8'
+    )
+    expect(foundations).toMatch(
+      /\.dag\s*\{[^}]*min-width:\s*1px;[^}]*min-height:\s*1px;/s
+    )
   })
 })
 
