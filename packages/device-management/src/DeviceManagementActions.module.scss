@@ -16,6 +16,12 @@
   box-shadow: 0 1px 2px rgb(15 23 42 / 3%);
 }
 
+.edge-device__debug-section {
+  position: sticky;
+  top: 0;
+  align-self: start;
+}
+
 .edge-device__section-heading {
   display: flex;
   align-items: flex-start;
@@ -45,8 +51,14 @@
 
 .edge-device__action-list {
   display: flex;
+  min-height: 0;
+  max-height: clamp(220px, calc(100vh - 360px), 560px);
   flex-direction: column;
   gap: 7px;
+  padding-right: 4px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 .edge-device__action-node {
@@ -453,6 +465,10 @@
 @media (max-width: 1080px) {
   .edge-device__content {
     grid-template-columns: 1fr;
+  }
+
+  .edge-device__debug-section {
+    position: static;
   }
 }
 

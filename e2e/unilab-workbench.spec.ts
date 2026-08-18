@@ -345,6 +345,144 @@ test.describe('UniLab Workbench real-system contract', () => {
     await expect(separator).toHaveAttribute('aria-valuenow', '60')
   })
 
+  test('keeps material overlays behind the Agent panel', async ({ page }) => {
+    await page.setViewportSize({ width: 1630, height: 1090 })
+    await page.goto(workbenchUrl!)
+    await expect(page.locator('[id="unilab:authoring-workbench"]')).toBeVisible()
+
+    const materialNavigation = page.locator(
+      '[id="shell-tab-unilab:material-navigation"]'
+    )
+    const agentNavigation = page.locator(
+      '[id="shell-tab-unilab:agent-navigation"]'
+    )
+    const agentPanel = page.locator('[id="unilab:agent"]')
+    const materialLauncher = page.locator(
+      'button[title="浏览仪器设备模板"]'
+    )
+
+    if (!await materialLauncher.isVisible()) await materialNavigation.click()
+    if (!await agentPanel.isVisible()) await agentNavigation.click()
+    await expect(materialLauncher).toBeVisible()
+    await expect(agentPanel).toBeVisible()
+
+    const layering = await page.evaluate(() => {
+      const launcher = document.querySelector<HTMLElement>(
+        'button[title="浏览仪器设备模板"]'
+      )
+      const agent = document.getElementById('unilab:agent')
+      if (!launcher || !agent) throw new Error('layout probe is not ready')
+
+      const launcherRect = launcher.getBoundingClientRect()
+      const agentRect = agent.getBoundingClientRect()
+      const overlap = launcherRect.right > agentRect.left
+      const probeX = overlap
+        ? Math.max(launcherRect.left, agentRect.left) + 1
+        : agentRect.left + 1
+      const probeY = launcherRect.top + launcherRect.height / 2
+      const topElement = document.elementsFromPoint(probeX, probeY)[0]
+
+      return {
+        overlap,
+        topElementOwnedByAgent: Boolean(topElement?.closest('#unilab\\:agent'))
+      }
+    })
+
+    expect(layering.topElementOwnedByAgent).toBe(true)
+  })
+
+  test('expands the workflow source editor after closing Agent', async ({
+    page
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await page.goto(workbenchUrl!)
+    await page.locator(
+      'button.workflow-runtime__catalog-card-main'
+    ).first().click()
+
+    const codeMode = page.getByRole('button', {
+      name: '代码模式',
+      exact: true
+    })
+    await expect(codeMode).toBeVisible({ timeout: 30_000 })
+    if (await codeMode.getAttribute('aria-pressed') !== 'true') {
+      await codeMode.click()
+    }
+    const workflowNode = page.locator('.react-flow__node').first()
+    if (await workflowNode.isVisible()) await workflowNode.click()
+
+    const editor = page.locator(
+      '.monaco-editor:visible, .cm-editor:visible'
+    ).first()
+    const agentNavigation = page.locator(
+      '[id="shell-tab-unilab:agent-navigation"]'
+    )
+    await expect(editor).toBeVisible()
+    await agentNavigation.click()
+    await expect(page.locator('body')).toHaveClass(
+      /unilab-agent-panel-visible/
+    )
+    await agentNavigation.click()
+    await expect(page.locator('body')).not.toHaveClass(
+      /unilab-agent-panel-visible/
+    )
+
+    await expect.poll(async () => page.evaluate(() => {
+      const outer = document.getElementById('theia-left-right-split-panel')
+        ?.getBoundingClientRect()
+      const layoutTarget = Array.from(document.querySelectorAll(
+        '.monaco-editor'
+      )).find((element) => {
+        const bounds = element.getBoundingClientRect()
+        return bounds.width > 0 && bounds.height > 0
+      })?.getBoundingClientRect() ?? document.getElementById(
+        'theia-bottom-split-panel'
+      )?.getBoundingClientRect()
+      return outer && layoutTarget
+        ? Math.abs(Math.round(outer.right - layoutTarget.right))
+        : 10_000
+    })).toBeLessThanOrEqual(2)
+  })
+
+  test('keeps the material workspace visible after cancelling workflow with Agent open', async ({
+    page
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 820 })
+    await page.goto(workbenchUrl!)
+    await expect(page.locator('[id="unilab:authoring-workbench"]')).toBeVisible()
+
+    const workflowNavigation = page.locator(
+      '[id="shell-tab-unilab:workbench-navigator"]'
+    )
+    const materialNavigation = page.locator(
+      '[id="shell-tab-unilab:material-navigation"]'
+    )
+    const agentNavigation = page.locator(
+      '[id="shell-tab-unilab:agent-navigation"]'
+    )
+    const agentPanel = page.locator('[id="unilab:agent"]')
+    const main = page.locator('main[data-workbench-view]')
+
+    await expect(main).toHaveAttribute('data-workbench-view', 'workflow')
+    await agentNavigation.click()
+    await expect(agentPanel).toBeVisible()
+    await expect(agentNavigation).toHaveAttribute('data-unilabactive', 'true')
+
+    await materialNavigation.click()
+    await expect(main).toHaveAttribute('data-workbench-view', 'split')
+    await workflowNavigation.click()
+    await expect(main).toHaveAttribute('data-workbench-view', 'material')
+
+    // 单视图下再次点击物料只恢复焦点，不能把唯一主区关闭成白屏。
+    await materialNavigation.click()
+    await expect(main).toHaveAttribute('data-workbench-view', 'material')
+    await expect(page.getByRole('region', { name: '物料窗口' })).toBeVisible()
+    await expect(page.getByRole('region', { name: '工作流窗口' })).toBeHidden()
+    await expect(main.locator('.unilab-workbench__domain-slot:visible'))
+      .toHaveCount(1)
+    await expect(agentPanel).toBeVisible()
+  })
+
   test('hides workflow output while the terminal panel is open', async ({
     page
   }) => {

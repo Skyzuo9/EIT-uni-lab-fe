@@ -11,8 +11,9 @@
 .unilab-workbench__domain-layout {
   position: relative;
   display: flex;
-  min-width: 0;
-  min-height: 0;
+  /* React Flow 在 Theia 恢复布局的首帧会读取这里的尺寸。 */
+  min-width: 1px;
+  min-height: 1px;
   flex: 1 1 auto;
   overflow: hidden;
 }
@@ -101,6 +102,8 @@
   position: absolute;
   inset: 0;
   z-index: -1;
+  min-width: 1px;
+  min-height: 1px;
   visibility: hidden;
   pointer-events: none;
 }
@@ -149,6 +152,29 @@
 .unilab-workbench__domain-layout.is-device-material
   .unilab-workbench__surface--material {
   box-shadow: inset 1px 0 var(--unilab-color-border);
+}
+
+/*
+ * 被文件栏或 Agent 压窄后，双领域分栏已经没有足够空间容纳各自的
+ * 工具栏和画布。保留用户最后打开的主领域（工作流或设备），把物料
+ * 伴随视图收起；恢复宽度后自动回到原分栏，不改动领域选择状态。
+ */
+@container unilab-workbench (max-width: 900px) {
+  .unilab-workbench__domain-layout.is-split,
+  .unilab-workbench__domain-layout.is-device-material {
+    display: flex;
+  }
+
+  .unilab-workbench__domain-layout.is-split
+    > .unilab-workbench__splitter,
+  .unilab-workbench__domain-layout.is-device-material
+    > .unilab-workbench__splitter,
+  .unilab-workbench__domain-layout.is-split
+    > .unilab-workbench__domain-slot.is-material,
+  .unilab-workbench__domain-layout.is-device-material
+    > .unilab-workbench__domain-slot.is-material {
+    display: none;
+  }
 }
 
 .unilab-workbench__splitter {
@@ -248,6 +274,29 @@
 
 .theia-app-right {
   display: none !important;
+}
+
+/*
+ * Lumino keeps the hidden right activity bar's 48px BoxPanel child in its
+ * geometry even when the tab bar itself is display:none. Without reclaiming
+ * that child, the 420px Agent Dock is laid out from -48px and overlaps the
+ * material canvas, where high-z-index scene controls can cover the Agent.
+ */
+body.unilab-agent-panel-visible
+  #theia-right-content-panel
+  > .theia-app-sidebar-container {
+  display: none !important;
+  width: 0 !important;
+  min-width: 0 !important;
+  max-width: 0 !important;
+}
+
+body.unilab-agent-panel-visible
+  #theia-right-content-panel
+  > .lm-BoxPanel-child:not(.theia-app-sidebar-container) {
+  left: 0 !important;
+  right: 0 !important;
+  width: 100% !important;
 }
 
 /*

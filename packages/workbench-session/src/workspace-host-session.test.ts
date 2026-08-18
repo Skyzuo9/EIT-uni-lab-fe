@@ -185,6 +185,16 @@ describe('Workspace Host Workbench adapter', () => {
     expect(allDevices.configuredExternalDevicesOnly).toBe(false)
     expect(snapshot.configuration.externalDevicesOnly).toBe(false)
 
+    const commandsBeforeRuntimeModeChange = receivedCommands.length
+    const dryRun = await session.setRuntimeMode('dry-run')
+    expect(receivedCommands.slice(commandsBeforeRuntimeModeChange)).toEqual([
+      'configuration.update'
+    ])
+    expect(receivedParameters.get('configuration.update')).toEqual({
+      runtimeMode: 'dry-run'
+    })
+    expect(dryRun.configuredRuntimeMode).toBe('dry-run')
+
     await expect(session.inspectReleaseTarget('http://192.168.1.20:9000'))
       .resolves.toEqual({
         targetAddress: 'http://192.168.1.20:9000',

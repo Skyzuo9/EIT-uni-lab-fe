@@ -10,6 +10,9 @@ describe('Workbench preload shell', () => {
 
     assert.match(result, /id="unilab-workbench-preload-style"/)
     assert.match(result, /\.theia-preload\.theia-hidden/)
+    assert.match(result, /content: "" !important/)
+    assert.match(result, /font: 0\/0 sans-serif !important/)
+    assert.match(result, /prefers-reduced-motion/)
     assert.match(result, /<script type="module" src="\.\/bundle\.js" charset="utf-8"><\/script>/)
     assert.doesNotMatch(result, /type="text\/javascript"/)
     assert.ok(result.indexOf('bundle.css') < result.indexOf('unilab-workbench-preload-style'))

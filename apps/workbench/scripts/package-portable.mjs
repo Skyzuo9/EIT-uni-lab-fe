@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
+import { createRequire } from 'node:module'
 import {
   closeSync,
   chmodSync,
@@ -11,6 +12,7 @@ import {
   openSync,
   readFileSync,
   readSync,
+  realpathSync,
   readdirSync,
   rmSync,
   statSync
@@ -32,6 +34,7 @@ const MEBIBYTE = 1024 * 1024
 const MIN_INSTALLER_BYTES = 50 * MEBIBYTE
 export const MAX_PORTABLE_INSTALLER_BYTES = 850 * MEBIBYTE
 export const PORTABLE_NODE_VERSION = '24.14.0'
+export const WINDOWS_MAIN_EXECUTABLE = 'UniLab Workbench.exe'
 export const PORTABLE_NODE_ARCHIVES = Object.freeze({
   'linux-64': {
     hostPlatform: 'linux',
@@ -161,6 +164,9 @@ export function packagePortableWorkbench(targetPlatform) {
       descriptor.hostArchitecture
     )
     const installer = findInstaller(outputDirectory, targetPlatform)
+    if (targetPlatform === 'win-64') {
+      validateWindowsInstallerArchive(installer.path)
+    }
     rmSync(releaseDirectory, { recursive: true, force: true })
     mkdirSync(releaseDirectory, { recursive: true })
     for (const name of artifactNames(outputDirectory, targetPlatform)) {
@@ -388,6 +394,69 @@ function findInstaller(outputDirectory, targetPlatform) {
   }
   if (!actual.equals(expected)) throw new Error(`安装包文件头无效：${path}`)
   return { path, size }
+}
+
+/**
+ * 校验 7-Zip 技术清单包含安装根目录的 Workbench 主程序。
+ * @param {string} listing `7z l -slt` 输出。
+ * @throws {Error} 清单缺少桌面主程序时抛出。
+ */
+export function validateWindowsInstallerListing(listing) {
+  const paths = String(listing)
+    .split(/\r?\n/u)
+    .filter(line => line.startsWith('Path = '))
+    .map(line => line.slice('Path = '.length))
+  if (!paths.includes(WINDOWS_MAIN_EXECUTABLE)) {
+    throw new Error(
+      `Windows 安装包缺少桌面主程序：${WINDOWS_MAIN_EXECUTABLE}`
+    )
+  }
+}
+
+/** 生成只查询桌面主程序的 7-Zip 参数，避免完整清单超过进程缓冲区。 */
+export function createWindowsInstallerAuditArguments(installerPath) {
+  return ['l', '-slt', installerPath, WINDOWS_MAIN_EXECUTABLE]
+}
+
+/** 解析 Electron Builder 实际使用的 7za，避免系统 7-Zip 误读 NSIS。 */
+export function resolveElectronBuilderSevenZipCommand() {
+  const requireFromElectronBuilder = createRequire(realpathSync(join(
+    workbenchDirectory,
+    'node_modules',
+    'electron-builder',
+    'package.json'
+  )))
+  const builderUtilEntry = requireFromElectronBuilder.resolve('builder-util')
+  const requireFromBuilderUtil = createRequire(builderUtilEntry)
+  return requireFromBuilderUtil('7zip-bin').path7za
+}
+
+/**
+ * 列出最终 NSIS 安装器内容，防止外层文件有效但内层主程序缺失。
+ * @param {string} installerPath NSIS 安装器路径。
+ * @throws {Error} 7-Zip 无法读取安装器或主程序缺失时抛出。
+ */
+export function validateWindowsInstallerArchive(installerPath) {
+  const sevenZipCommand = resolveElectronBuilderSevenZipCommand()
+  const result = spawnSync(
+    sevenZipCommand,
+    createWindowsInstallerAuditArguments(installerPath),
+    {
+      encoding: 'utf8',
+      maxBuffer: 16 * MEBIBYTE,
+      windowsHide: true
+    }
+  )
+  if (result.error) {
+    throw new Error(`无法读取 Windows 安装包内容：${result.error.message}`)
+  }
+  if (result.status !== 0) {
+    throw new Error(
+      `无法读取 Windows 安装包内容：7-Zip 退出码 ${result.status}\n${result.stderr}`
+    )
+  }
+  validateWindowsInstallerListing(result.stdout)
+  console.log(`Windows 安装包主程序检查通过：${WINDOWS_MAIN_EXECUTABLE}`)
 }
 
 function artifactNames(outputDirectory, targetPlatform) {
