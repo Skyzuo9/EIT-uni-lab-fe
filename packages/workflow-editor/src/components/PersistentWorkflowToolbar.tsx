@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useDismissibleDetails } from '@unilab/design-system/hooks'
+import { useEffect, useMemo } from 'react'
 
 import {
   workflowTaskIsLive,
@@ -30,6 +31,8 @@ const RUN_MODE_LABELS = {
  *
  * @param props 当前工作流定义权威来源的统一编写模型。
  * @returns 根据加载、编辑和任务状态统一约束的工具栏。
+ * @throws 不主动抛错；工作流命令异常由上层编写模型处理。
+ * @safety 仅通过注入命令修改工作流；菜单关闭不改变运行模式。
  */
 export function PersistentWorkflowToolbar({
   model,
@@ -71,7 +74,7 @@ export function PersistentWorkflowToolbar({
     workflowStartBusy,
     workflowStartPresentation
   } = model
-  const runModeMenuRef = useRef<HTMLDetailsElement | null>(null)
+  const runModeMenuRef = useDismissibleDetails()
   const currentAuthorityLabel = authorityLabel ?? 'OS'
   const canEditDefinition = definitionEditingAvailable !== false
   const canViewCode = codeViewingAvailable !== false
