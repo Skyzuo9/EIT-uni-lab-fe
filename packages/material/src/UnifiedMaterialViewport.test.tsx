@@ -73,23 +73,32 @@ describe('UnifiedMaterialViewport', () => {
   })
 
   /**
-   * 证明 3D 操作说明避开 Pascal 顶部工具栏及其视图按钮。
+   * 证明 3D 操作说明位于画布左上角，并在窄画布中换行而不横向溢出。
    *
-   * @returns 无返回值；断言桌面与窄视口均在 40px 工具栏下方留出间距。
-   * @throws 操作说明重新覆盖顶部按钮时由 Vitest 抛出。
+   * @returns 无返回值；断言桌面端左对齐，窄画布由左右边界约束且保留换行。
+   * @throws 操作说明回到右侧或窄画布不再换行时由 Vitest 抛出。
    * @safety 仅检查样式合同，不触发 3D 场景或物料（Material）选择。
    */
-  it('keeps the 3D guide below the Pascal toolbar', () => {
+  it('anchors the 3D guide at the canvas top-left and wraps on narrow canvases', () => {
     const styles = readFileSync(
       new URL('./UnifiedMaterialViewport.css', import.meta.url),
       'utf8'
     )
 
     expect(styles).toMatch(
-      /\.lab-3d-operation-guide\s*\{[^}]*top:\s*calc\(40px \+ 14px\);/s
+      /\.lab-unified-viewport\s*\{[^}]*container-name:\s*material-viewport;[^}]*container-type:\s*inline-size;/s
     )
     expect(styles).toMatch(
-      /@media \(max-width: 720px\)[\s\S]*\.lab-3d-operation-guide\s*\{[^}]*top:\s*calc\(40px \+ 10px\);/s
+      /\.lab-3d-operation-guide\s*\{[^}]*top:\s*calc\(40px \+ 14px\);[^}]*left:\s*14px;[^}]*flex-wrap:\s*wrap;/s
+    )
+    expect(styles).not.toMatch(
+      /\.lab-3d-operation-guide\s*\{[^}]*right:\s*14px;/s
+    )
+    expect(styles).toMatch(
+      /@container material-viewport \(max-width: 720px\)[\s\S]*\.lab-3d-operation-guide\s*\{[^}]*top:\s*calc\(40px \+ 10px\);[^}]*right:\s*10px;[^}]*left:\s*10px;[^}]*max-width:\s*none;/s
+    )
+    expect(styles).toMatch(
+      /@container material-viewport \(max-width: 720px\)[\s\S]*\.lab-3d-operation-guide span\s*\{[^}]*white-space:\s*normal;/s
     )
   })
 
