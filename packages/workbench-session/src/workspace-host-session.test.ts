@@ -164,6 +164,7 @@ describe('Workspace Host Workbench adapter', () => {
     expect(backend).toMatchObject({
       phase: 'ready',
       configuredExternalDevicesOnly: true,
+      workflowLoadingProgress: { loaded: 19, total: 19 },
       identity: {
         workspacePath,
         pid: 4101,
@@ -481,13 +482,24 @@ describe('Workspace Host Workbench adapter', () => {
       await writeFile(join(runtime, 'session.json'), JSON.stringify(replacement))
     })
 
-    const session = createWorkspaceHostWorkbenchSession({ workspacePath })
+    const session = createWorkspaceHostWorkbenchSession({
+      workspacePath,
+      readinessTimeoutMs: 12_345
+    })
     const snapshots = await Promise.all([
       session.startWorkspaceBackend(),
       session.startWorkspaceBackend()
     ])
 
     expect(launchWorkspaceHostProcess).toHaveBeenCalledOnce()
+    expect(launchWorkspaceHostProcess).toHaveBeenCalledWith(
+      expect.objectContaining({
+        args: expect.arrayContaining([
+          '--readiness-timeout',
+          '12.345'
+        ])
+      })
+    )
     expect(snapshots).toHaveLength(2)
     for (const snapshot of snapshots) {
       expect(snapshot).toMatchObject({
@@ -613,7 +625,8 @@ function applyCommand(
       capabilities: ['authoring', 'inventory', 'workflow-run'],
       metadata: {
         graphPath: 'deployment/graphs/fixture.json',
-        graphFingerprint: 'fixture-fingerprint'
+        graphFingerprint: 'fixture-fingerprint',
+        workflowProgress: { loaded: 19, total: 19 }
       }
     })
   } else if (command === 'renderer.attach') {

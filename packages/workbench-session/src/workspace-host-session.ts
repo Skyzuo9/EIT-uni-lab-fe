@@ -35,12 +35,16 @@ import type {
   WorkbenchSessionDiagnostic,
   WorkbenchSessionPhase,
   WorkbenchSessionSnapshot,
+  WorkbenchWorkflowLoadingProgress,
   WorkspacePackageMountProjection
 } from './index'
 
 const HOST_SCHEMA = 'unilab-workspace-host/v1'
 const HOST_START_TIMEOUT_MS = 15_000
-const OPERATION_TIMEOUT_MS = 120_000
+const HOST_READINESS_TIMEOUT_MS = 600_000
+// Workspace Host owns the readiness deadline. The renderer only adds transport
+// grace so it can always receive the Host's terminal success/failure result.
+const OPERATION_COMPLETION_GRACE_MS = 30_000
 const POLL_INTERVAL_MS = 500
 
 type HostPhase = WorkbenchSessionPhase | 'interrupted' | 'unknown'
@@ -524,8 +528,8 @@ export class WorkspaceHostWorkbenchSession implements WorkbenchSession {
     connection: HostConnection,
     operationId: string
   ): Promise<WorkspaceHostOperation> {
-    const deadline = Date.now() + (this.options.readinessTimeoutMs
-      ?? OPERATION_TIMEOUT_MS)
+    const deadline = Date.now() + readinessTimeoutMs(this.options)
+      + OPERATION_COMPLETION_GRACE_MS
     while (Date.now() < deadline) {
       const operation = await hostRequest<WorkspaceHostOperation>(
         connection,
@@ -817,7 +821,9 @@ async function startWorkspaceHost(
       '--workspace',
       workspacePath,
       '--port',
-      '0'
+      '0',
+      '--readiness-timeout',
+      String(readinessTimeoutMs(options) / 1000)
     ],
     cwd: workspacePath,
     environment: {
@@ -828,6 +834,17 @@ async function startWorkspaceHost(
     detached: platform !== 'win32',
     logPath
   })
+}
+
+function readinessTimeoutMs(
+  options: ManagedLocalWorkbenchSessionOptions
+): number {
+  const configured = options.readinessTimeoutMs
+  return typeof configured === 'number'
+    && Number.isFinite(configured)
+    && configured > 0
+    ? configured
+    : HOST_READINESS_TIMEOUT_MS
 }
 
 async function hostRequest<T>(
@@ -944,6 +961,9 @@ function projectSnapshot(
     identity,
     agent: previous.agent,
     diagnostic: componentDiagnostic(backend),
+    workflowLoadingProgress: workflowLoadingProgress(
+      backend.metadata?.['workflowProgress']
+    ),
     edgeRuntime: {
       phase: workbenchPhase(edge.phase),
       message: componentMessage('OS', edge),
@@ -1003,6 +1023,7 @@ function initialSnapshot(
     identity: null,
     agent: null,
     diagnostic: null,
+    workflowLoadingProgress: null,
     edgeRuntime: {
       phase: 'idle',
       message: 'OS 尚未启动',
@@ -1065,6 +1086,24 @@ function packageMounts(value: unknown): WorkspacePackageMountProjection | null {
     return null
   }
   return value as unknown as WorkspacePackageMountProjection
+}
+
+function workflowLoadingProgress(
+  value: unknown
+): WorkbenchWorkflowLoadingProgress | null {
+  if (!isRecord(value)) return null
+  const loaded = value['loaded']
+  const total = value['total']
+  if (
+    typeof loaded !== 'number'
+    || !Number.isInteger(loaded)
+    || typeof total !== 'number'
+    || !Number.isInteger(total)
+    || loaded < 0
+    || total < 0
+    || loaded > total
+  ) return null
+  return { loaded, total }
 }
 
 function runtimeMode(value: unknown): WorkbenchRuntimeMode | null {
