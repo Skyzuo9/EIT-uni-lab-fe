@@ -136,6 +136,17 @@ describe('WorkflowDag composite detail copy', () => {
     expect(source).not.toContain('内部连线止于')
     expect(source).not.toContain('composite-boundary-note')
   })
+
+  it('leaves keyboard activation of nested interactive controls intact', () => {
+    const source = readFileSync(
+      new URL('./WorkflowDag.tsx', import.meta.url),
+      'utf8'
+    )
+
+    expect(source).toMatch(
+      /target\.closest\([\s\S]*button, input, select, textarea, a, \[role="button"\][\s\S]*\)\) return/
+    )
+  })
 })
 
 describe('WorkflowDag reserved canvas toolbar', () => {

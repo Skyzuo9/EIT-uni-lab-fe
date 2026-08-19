@@ -1,9 +1,10 @@
 import { Handle, Position } from 'reactflow'
 import type { CSSProperties, ReactNode } from 'react'
 import type { WorkflowHandlePort } from '../utils/parseWorkflow'
-import type {
-  WorkflowMaterialPortCard,
-  WorkflowNodeData
+import {
+  workflowSubworkflowNodeCountLabel,
+  type WorkflowMaterialPortCard,
+  type WorkflowNodeData
 } from './WorkflowNodeCard'
 import styles from './workflow.module.scss'
 
@@ -139,7 +140,7 @@ export default function WorkflowTransferNode({
             }}
           >
             <span aria-hidden="true">{data.groupExpanded ? '▾' : '▸'}</span>
-            {data.descendantCount || 0} 个内部节点
+            {workflowSubworkflowNodeCountLabel(data)}
           </button>
         )}
         {stateVisible && (

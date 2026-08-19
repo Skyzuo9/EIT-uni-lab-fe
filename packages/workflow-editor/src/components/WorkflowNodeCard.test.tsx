@@ -10,7 +10,8 @@ import {
   workflowNodeKindLabel,
   workflowNodeShowsMarkerActions,
   workflowNodeShowsState,
-  workflowNodeStateLabel
+  workflowNodeStateLabel,
+  workflowSubworkflowNodeCountLabel
 } from './WorkflowNodeCard'
 import type { WorkflowHandlePort } from '../utils/parseWorkflow'
 
@@ -28,6 +29,15 @@ describe('MaterialSource node semantics', () => {
 })
 
 describe('Action node presentation', () => {
+  it('describes one expansion level instead of all recursive descendants', () => {
+    expect(workflowSubworkflowNodeCountLabel({
+      childCount: 6,
+      descendantCount: 531
+    })).toBe('6 个本层节点')
+    expect(workflowSubworkflowNodeCountLabel({ descendantCount: 9 }))
+      .toBe('9 个本层节点')
+  })
+
   it('shows Backend node actions when disable is the only available edit', () => {
     expect(workflowNodeShowsMarkerActions({
       kind: 'action',

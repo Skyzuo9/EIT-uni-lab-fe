@@ -418,6 +418,7 @@ function buildFlowElements(
         kind: node.type,
         visualKind: node.visualKind,
         groupKind: node.groupKind,
+        childCount: node.childNodeIds?.length,
         descendantCount: node.descendantNodeIds?.length,
         handles: node.handles,
         materialSource: node.materialSource,

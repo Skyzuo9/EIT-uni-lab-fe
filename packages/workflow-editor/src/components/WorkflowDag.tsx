@@ -686,6 +686,11 @@ export default function WorkflowDag({
         if (event.key !== 'Enter' && event.key !== ' ') return
         const target = event.target
         if (!(target instanceof Element)) return
+        // 组合工作流的展开按钮必须先处理自己的键盘激活；否则这里的
+        // preventDefault 会取消浏览器随后派发的 button click。
+        if (target.closest(
+          'button, input, select, textarea, a, [role="button"]'
+        )) return
         const node = target.closest('.react-flow__node[data-id]')
         const nodeId = node?.getAttribute('data-id')
         if (!nodeId) return

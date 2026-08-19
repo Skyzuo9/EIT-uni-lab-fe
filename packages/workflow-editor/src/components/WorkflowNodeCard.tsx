@@ -59,6 +59,9 @@ export interface WorkflowNodeData {
   sourceSelected?: boolean
   groupKind?: 'group' | 'subworkflow'
   groupExpanded?: boolean
+  /** 当前组合工作流边界内的直接子节点数，用于逐层展开提示。 */
+  childCount?: number
+  /** 当前组合工作流的全部递归后代数，仅用于诊断与兼容旧数据。 */
   descendantCount?: number
   /** 当前可见投影中的直接组合工作流父节点，由真实 parent_uuid 链得到。 */
   parentContainerId?: string
@@ -249,7 +252,7 @@ export default function WorkflowNodeCard({
             }}
           >
             <span aria-hidden="true">{data.groupExpanded ? '▾' : '▸'}</span>
-            {data.descendantCount || 0} 个内部节点
+            {workflowSubworkflowNodeCountLabel(data)}
           </button>
         )}
         {workflowNodeShowsState(data.kind, data.status) && (
@@ -317,6 +320,18 @@ export default function WorkflowNodeCard({
       )}
     </div>
   )
+}
+
+/**
+ * 返回组合工作流逐层展开按钮的人类可读计数。
+ *
+ * `descendantCount` 会把深层 operation/run_script 的所有后代相加，容易把
+ * “当前点击只展开一层”误写成一次展开数百节点；因此优先展示直接子节点数。
+ */
+export function workflowSubworkflowNodeCountLabel(
+  data: Pick<WorkflowNodeData, 'childCount' | 'descendantCount'>
+): string {
+  return `${data.childCount ?? data.descendantCount ?? 0} 个本层节点`
 }
 
 /** 返回节点 hover 的人类说明；缺少说明时才回退展示名称。 */

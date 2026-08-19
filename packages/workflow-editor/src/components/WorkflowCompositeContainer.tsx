@@ -11,6 +11,7 @@ import {
   workflowMaterialPortCards,
   workflowNodeShowsState,
   workflowNodeStateLabel,
+  workflowSubworkflowNodeCountLabel,
   type WorkflowMaterialPortCard,
   type WorkflowNodeData
 } from './WorkflowNodeCard'
@@ -49,6 +50,7 @@ export default function WorkflowCompositeContainer({
       data-workflow-node-kind={data.kind || 'workflow'}
       data-workflow-parent-container-uuid={data.parentContainerId}
       data-workflow-composite-expanded="true"
+      data-workflow-composite-child-count={data.childCount || 0}
       data-workflow-composite-descendant-count={data.descendantCount || 0}
       aria-label={`已展开的组合工作流 ${data.name || data.id}`}
     >
@@ -75,7 +77,7 @@ export default function WorkflowCompositeContainer({
           <strong title={data.description?.trim() || data.name || data.id}>
             {data.name || data.id}
           </strong>
-          <small>组合工作流 · {data.descendantCount || 0} 个内部节点</small>
+          <small>组合工作流 · {workflowSubworkflowNodeCountLabel(data)}</small>
         </span>
         {workflowNodeShowsState(data.kind, status) && (
           <span className={`wf-node__state wf-node__state--${status}`}>
