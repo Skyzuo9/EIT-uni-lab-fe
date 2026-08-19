@@ -1035,6 +1035,9 @@ function WorkbenchSurface({
   recordMountedWorkbenchDomains(mountedDomains.current, viewMode)
   const query = new URLSearchParams(globalThis.location.search)
   const workflowUuid = query.get('workflowUuid') ?? undefined
+  const [activeWorkflowUuid, setActiveWorkflowUuid] = useState<string | null>(
+    workflowUuid ?? null
+  )
   const selectedTarget = connectionTargets[connectionMode]
   const services = useMemo(
     () => createWorkbenchServices(selectedTarget),
@@ -1101,17 +1104,17 @@ function WorkbenchSurface({
   }, [queryClient, services])
 
   const synchronizeSavedSource = useCallback(async (pythonSource: string) => {
-    if (!workflowUuid) return
+    if (!activeWorkflowUuid) return
     try {
       await synchronizeSavedWorkflowSource(
         services.workflow,
-        workflowUuid,
+        activeWorkflowUuid,
         pythonSource
       )
     } catch (error) {
       throw error
     }
-  }, [services, workflowUuid])
+  }, [activeWorkflowUuid, services])
 
   useEffect(() => {
     onSourceSaveHandlerChange(
@@ -1169,6 +1172,7 @@ function WorkbenchSurface({
         resourceSlotOptionsPort={resourceSlotOptionsPort}
         active={isWorkflowWorkbenchView(viewMode)}
         workflowUuid={workflowUuid}
+        onActiveWorkflowChange={setActiveWorkflowUuid}
         activeWorkflowStorageKey={`unilab.workflow.active.${
           encodeURIComponent(selectedTarget.sourceId)
         }.v1`}
