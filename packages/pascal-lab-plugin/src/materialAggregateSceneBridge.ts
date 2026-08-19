@@ -229,6 +229,7 @@ export function materialAggregatesToSceneGraph(
           version: rendering.model.version,
           type: rendering.model.type,
           color: rendering.model.color,
+          selector: rendering.model.selector,
           position: rendering.model.position,
           rotation: rendering.model.rotation,
           attachPoints: rendering.model.attachPoints,

@@ -53,6 +53,39 @@ describe('Material Aggregate / Pascal bridge', () => {
     ])
   })
 
+  it('projects a format-specific GLB selector without exposing backend casing', () => {
+    const station = aggregate('station', {
+      config: {
+        rendering: {
+          model: {
+            path: '/assets/factory.glb',
+            format: 'glb',
+            selector: {
+              kind: 'gltf_subtree',
+              node_index: 91,
+              node_path: 'CELL/STATION_A',
+              root_transform: 'reset_translation',
+              exclude_node_paths: ['CELL/STATION_A/MOVABLE_ITEM']
+            }
+          }
+        }
+      }
+    })
+
+    const rendering = readMaterialRendering(station)
+    expect(rendering.model.selector).toEqual({
+      kind: 'gltf_subtree',
+      nodeIndex: 91,
+      nodePath: 'CELL/STATION_A',
+      rootTransform: 'reset_translation',
+      excludeNodePaths: ['CELL/STATION_A/MOVABLE_ITEM']
+    })
+    const scene = materialAggregatesToSceneGraph([station])
+    const node = scene.nodes['lab-station']
+    if (!isLabDeviceNode(node)) throw new Error('Expected lab device')
+    expect(node.model.selector).toEqual(rendering.model.selector)
+  })
+
   /** 验证八槽展开缸的世界偏航同时进入场景节点与碰撞视图快照。 */
   it('preserves the develop station Z quarter-turn in scene projection', () => {
     const develop = aggregate('develop', {

@@ -100,6 +100,10 @@ function useLabModel(node: LabDeviceNode): {
     node.model.meshDir,
     node.model.ossDir,
     node.model.path,
+    node.model.selector?.nodeIndex,
+    node.model.selector?.nodePath,
+    node.model.selector?.rootTransform,
+    node.model.selector?.excludeNodePaths,
     node.model.version
   ])
 

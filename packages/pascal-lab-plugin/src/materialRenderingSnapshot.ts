@@ -63,11 +63,52 @@ export function readMaterialRendering(
       version: optionalString(model.version),
       type: optionalString(model.type),
       color: optionalString(model.color),
+      selector: readGltfSelector(recordValue(model.selector)),
       position: vectorTuple(model.position) ?? [0, 0, 0],
       rotation: vectorTuple(model.rotation) ?? [0, 0, 0],
       attachPoints: readAttachPoints(model, aggregate),
       instances: readModelInstances(model, aggregate)
     }
+  }
+}
+
+function readGltfSelector(
+  source: Record<string, unknown> | undefined
+): MaterialRenderingSnapshot['model']['selector'] {
+  if (!source || source.kind !== 'gltf_subtree') return undefined
+  const nodeIndex = optionalNumber(source.nodeIndex ?? source.node_index)
+  const nodePath = optionalString(source.nodePath ?? source.node_path)
+  const rootTransform = optionalString(
+    source.rootTransform ?? source.root_transform
+  )
+  const excludeNodePaths = stringArray(
+    source.excludeNodePaths ?? source.exclude_node_paths
+  ) ?? []
+  if (
+    nodeIndex == null ||
+    !Number.isInteger(nodeIndex) ||
+    nodeIndex < 0 ||
+    !nodePath ||
+    new Set(excludeNodePaths).size !== excludeNodePaths.length ||
+    excludeNodePaths.some(
+      (candidate) =>
+        candidate === nodePath || !candidate.startsWith(`${nodePath}/`)
+    ) ||
+    !['preserve', 'reset_translation', 'identity'].includes(
+      rootTransform ?? 'reset_translation'
+    )
+  ) {
+    return undefined
+  }
+  return {
+    kind: 'gltf_subtree',
+    nodeIndex,
+    nodePath,
+    rootTransform: (rootTransform ?? 'reset_translation') as
+      | 'preserve'
+      | 'reset_translation'
+      | 'identity',
+    excludeNodePaths
   }
 }
 

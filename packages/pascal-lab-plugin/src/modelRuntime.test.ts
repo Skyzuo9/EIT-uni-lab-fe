@@ -1,8 +1,19 @@
-import { Euler, Matrix4, Mesh, type Material, Vector3 } from 'three'
+import {
+  BoxGeometry,
+  Euler,
+  Group,
+  Matrix4,
+  Mesh,
+  MeshStandardMaterial,
+  type Material,
+  Vector3
+} from 'three'
+import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
   buildDeviceXacro,
+  cloneGltfSubtree,
   loadLabDeviceModel,
   resolveModelFrameRotation,
   resolveModelDirectory,
@@ -71,6 +82,65 @@ describe('Pascal model runtime', () => {
       (material as Material & { color: { getHexString(): string } }).color
         .getHexString()
     ).toBe('22c55e')
+  })
+
+  it('clones only the selected GLB subtree and normalizes its root translation', () => {
+    const scene = new Group()
+    const cell = new Group()
+    cell.name = 'CELL'
+    cell.userData.name = 'CELL'
+    const station = new Group()
+    station.name = 'STATION_A'
+    station.userData.name = 'STATION_A'
+    station.position.set(4, 5, 6)
+    station.rotation.set(0.1, 0.2, 0.3)
+    const selectedMesh = new Mesh(
+      new BoxGeometry(1, 1, 1),
+      new MeshStandardMaterial()
+    )
+    selectedMesh.name = 'selected-mesh'
+    station.add(selectedMesh)
+    const movableItem = new Group()
+    movableItem.name = 'MOVABLE_ITEM'
+    movableItem.userData.name = 'MOVABLE_ITEM'
+    movableItem.add(
+      new Mesh(new BoxGeometry(0.2, 0.2, 0.2), new MeshStandardMaterial())
+    )
+    station.add(movableItem)
+    cell.add(station)
+    scene.add(cell)
+    const sibling = new Mesh(
+      new BoxGeometry(2, 2, 2),
+      new MeshStandardMaterial()
+    )
+    sibling.name = 'whole-machine-sibling'
+    scene.add(sibling)
+    const associations = new Map([[station, { nodes: 7 }]])
+    const gltf = {
+      scene,
+      parser: { associations }
+    } as unknown as GLTF
+
+    const clone = cloneGltfSubtree(gltf, {
+      kind: 'gltf_subtree',
+      nodeIndex: 7,
+      nodePath: 'CELL/STATION_A',
+      rootTransform: 'reset_translation',
+      excludeNodePaths: ['CELL/STATION_A/MOVABLE_ITEM']
+    })
+
+    expect(clone.name).toBe('STATION_A')
+    expect(clone.position.toArray()).toEqual([0, 0, 0])
+    expect(clone.rotation.x).toBeCloseTo(station.rotation.x, 12)
+    expect(clone.rotation.y).toBeCloseTo(station.rotation.y, 12)
+    expect(clone.rotation.z).toBeCloseTo(station.rotation.z, 12)
+    expect(clone.getObjectByName('selected-mesh')).toBeTruthy()
+    expect(clone.getObjectByName('whole-machine-sibling')).toBeUndefined()
+    expect(clone.getObjectByName('MOVABLE_ITEM')).toBeUndefined()
+    expect(station.getObjectByName('MOVABLE_ITEM')).toBe(movableItem)
+    const clonedMesh = clone.getObjectByName('selected-mesh') as Mesh
+    expect(clonedMesh.geometry).not.toBe(selectedMesh.geometry)
+    expect(clonedMesh.material).not.toBe(selectedMesh.material)
   })
 
   it('uses the projected macro and model directory for packaged Xacro', () => {

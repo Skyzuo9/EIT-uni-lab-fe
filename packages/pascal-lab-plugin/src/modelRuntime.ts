@@ -11,7 +11,11 @@ import {
 import jsYaml from 'js-yaml'
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js'
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js'
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
+import {
+  GLTFLoader,
+  type GLTF
+} from 'three/examples/jsm/loaders/GLTFLoader.js'
+import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js'
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js'
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js'
 import URDFLoader from 'urdf-loader'
@@ -49,6 +53,7 @@ export function resolveModelFrameRotation(
 }
 
 let runtime: LabModelRuntime = {}
+const gltfAssetCache = new Map<string, Promise<GLTF>>()
 
 export function configureLabModelRuntime(next: LabModelRuntime): void {
   runtime = { ...runtime, ...next }
@@ -413,18 +418,135 @@ async function loadUrdf(url: string, nodeId: string): Promise<Object3D> {
   return parseUrdf(document, LoaderUtils.extractUrlBase(url), nodeId)
 }
 
-async function loadGltf(url: string, nodeId: string): Promise<Object3D> {
+async function loadGltfAsset(url: string): Promise<GLTF> {
+  const cached = gltfAssetCache.get(url)
+  if (cached) return cached
+
   const loader = new GLTFLoader(new LoadingManager())
   const draco = new DRACOLoader()
   loader.setDRACOLoader(draco)
+  loader.setMeshoptDecoder(MeshoptDecoder)
+  const pending = loader.loadAsync(url).finally(() => draco.dispose())
+  gltfAssetCache.set(url, pending)
+  void pending.catch(() => {
+    if (gltfAssetCache.get(url) === pending) gltfAssetCache.delete(url)
+  })
+  return pending
+}
 
-  try {
-    const result = await loader.loadAsync(url)
-    markModel(result.scene, nodeId)
-    return result.scene
-  } finally {
-    draco.dispose()
+export function cloneGltfSubtree(
+  result: GLTF,
+  selector: NonNullable<LabDeviceNode['model']['selector']>
+): Object3D {
+  let source: Object3D | undefined
+  for (const [object, association] of result.parser.associations) {
+    if (object instanceof Object3D && association.nodes === selector.nodeIndex) {
+      source = object
+      break
+    }
   }
+  if (!source) {
+    throw new Error(
+      `GLB subtree node index not found: ${selector.nodeIndex} (${selector.nodePath})`
+    )
+  }
+  const actualPath = gltfObjectPath(source, result.scene)
+  if (actualPath !== selector.nodePath) {
+    throw new Error(
+      `GLB subtree selector drift: expected ${selector.nodePath}, got ${actualPath}`
+    )
+  }
+
+  const excludedPaths = new Set(selector.excludeNodePaths)
+  if (excludedPaths.size > 0) {
+    const matched = new Set<string>()
+    source.traverse((child) => {
+      const path = gltfObjectPath(child, result.scene)
+      if (excludedPaths.has(path)) matched.add(path)
+    })
+    const missing = selector.excludeNodePaths.filter(
+      (path) => !matched.has(path)
+    )
+    if (missing.length > 0) {
+      throw new Error(`GLB subtree exclusions not found: ${missing.join(', ')}`)
+    }
+  }
+
+  const clone = source.clone(true)
+  clone.traverse((child) => {
+    const mesh = child as Mesh
+    if (!mesh.isMesh) return
+    if (mesh.geometry) mesh.geometry = mesh.geometry.clone()
+    if (Array.isArray(mesh.material)) {
+      mesh.material = mesh.material.map((material) => material.clone())
+    } else if (mesh.material) {
+      mesh.material = mesh.material.clone()
+    }
+  })
+  if (excludedPaths.size > 0) {
+    const removals: Object3D[] = []
+    clone.traverse((child) => {
+      const path = clonedSubtreeObjectPath(child, clone, selector.nodePath)
+      if (excludedPaths.has(path)) removals.push(child)
+    })
+    removals.forEach((child) => child.removeFromParent())
+  }
+  if (selector.rootTransform !== 'preserve') {
+    clone.position.set(0, 0, 0)
+  }
+  if (selector.rootTransform === 'identity') {
+    clone.rotation.set(0, 0, 0)
+    clone.scale.set(1, 1, 1)
+  }
+  clone.updateMatrix()
+  clone.updateMatrixWorld(true)
+  return clone
+}
+
+function clonedSubtreeObjectPath(
+  object: Object3D,
+  root: Object3D,
+  rootPath: string
+): string {
+  if (object === root) return rootPath
+  const segments: string[] = []
+  let current: Object3D | null = object
+  while (current && current !== root) {
+    const originalName =
+      typeof current.userData.name === 'string'
+        ? current.userData.name
+        : current.name
+    if (originalName) segments.unshift(originalName)
+    current = current.parent
+  }
+  if (current !== root) return ''
+  return `${rootPath}/${segments.join('/')}`
+}
+
+function gltfObjectPath(object: Object3D, scene: Object3D): string {
+  const segments: string[] = []
+  let current: Object3D | null = object
+  while (current && current !== scene) {
+    const originalName =
+      typeof current.userData.name === 'string'
+        ? current.userData.name
+        : current.name
+    if (originalName) segments.unshift(originalName)
+    current = current.parent
+  }
+  return segments.join('/')
+}
+
+async function loadGltf(
+  url: string,
+  node: LabDeviceNode
+): Promise<Object3D> {
+  const result = await loadGltfAsset(url)
+  const object = node.model.selector
+    ? cloneGltfSubtree(result, node.model.selector)
+    : result.scene.clone(true)
+  markModel(object, node.id)
+  return object
 }
 
 async function loadStl(url: string, nodeId: string): Promise<Object3D> {
@@ -467,7 +589,7 @@ export async function loadLabDeviceModel(
       object = await loadUrdf(url, node.id)
       break
     case 'gltf':
-      object = await loadGltf(url, node.id)
+      object = await loadGltf(url, node)
       break
     case 'stl':
       object = await loadStl(url, node.id)

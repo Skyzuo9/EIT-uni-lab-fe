@@ -97,6 +97,16 @@ export const LabKinematicsSchema = z.object({
   staleAfterSeconds: z.number().positive()
 })
 
+export const LabGltfSelectorSchema = z.object({
+  kind: z.literal('gltf_subtree'),
+  nodeIndex: z.number().int().nonnegative(),
+  nodePath: z.string().min(1),
+  rootTransform: z
+    .enum(['preserve', 'reset_translation', 'identity'])
+    .default('reset_translation'),
+  excludeNodePaths: z.array(z.string().min(1)).default([])
+})
+
 export const LabDeviceNodeSchema = BaseNode.extend({
   type: z.literal('lab-device'),
   materialNodeId: z.string(),
@@ -123,6 +133,7 @@ export const LabDeviceNodeSchema = BaseNode.extend({
       version: z.string().optional(),
       type: z.string().optional(),
       color: z.string().optional(),
+      selector: LabGltfSelectorSchema.optional(),
       position: Vector3Schema.default([0, 0, 0]),
       rotation: Vector3Schema.default([0, 0, 0]),
       attachPoints: z.array(LabAttachPointSchema).default([]),

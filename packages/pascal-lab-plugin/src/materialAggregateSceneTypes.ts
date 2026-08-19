@@ -67,6 +67,13 @@ export interface MaterialRenderingSnapshot {
     version?: string
     type?: string
     color?: string
+    selector?: {
+      kind: 'gltf_subtree'
+      nodeIndex: number
+      nodePath: string
+      rootTransform: 'preserve' | 'reset_translation' | 'identity'
+      excludeNodePaths: readonly string[]
+    }
     position: Vector3Tuple
     rotation: Vector3Tuple
     attachPoints: readonly LabAttachPoint[]
