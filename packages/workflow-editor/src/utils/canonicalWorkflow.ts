@@ -4,7 +4,9 @@ import type {
   WorkflowNode,
   WorkflowStructure
 } from './parseWorkflow'
-import { workflowCompositeConnectionAllowed } from './workflowCompositeContainment'
+import {
+  workflowCompositeConnectionAllowedFromIndex
+} from './workflowCompositeContainment'
 import { isResourceSlotHandle } from './workflowMaterialTrace'
 
 export interface CanonicalWorkflowParseResult extends WorkflowStructure {
@@ -161,6 +163,19 @@ export function visibleNestedWorkflowNodeId(
   nodeId: string
 ): string {
   const nodeById = new Map(nodes.map((node) => [node.id, node]))
+  return visibleNestedWorkflowNodeIdFromIndex(
+    nodeById,
+    collapsedGroupIds,
+    nodeId
+  )
+}
+
+/** Resolve one node against a hierarchy index shared by a whole projection. */
+function visibleNestedWorkflowNodeIdFromIndex(
+  nodeById: ReadonlyMap<string, WorkflowNode>,
+  collapsedGroupIds: ReadonlySet<string>,
+  nodeId: string
+): string {
   let result = nodeId
   let current = nodeById.get(nodeId)
   const visited = new Set<string>()
@@ -207,7 +222,11 @@ export function projectNestedWorkflow(
       .map((node) => node.id)
   )
   const representative = (nodeId: string): string =>
-    visibleNestedWorkflowNodeId(nodes, collapsedGroupIds, nodeId)
+    visibleNestedWorkflowNodeIdFromIndex(
+      nodeById,
+      collapsedGroupIds,
+      nodeId
+    )
   const hiddenNodeIds = new Set(
     nodes
       .filter((node) => representative(node.id) !== node.id)
@@ -258,7 +277,10 @@ export function projectNestedWorkflow(
     remapped: boolean
   ): void => {
     if (source === target) return
-    if (!remapped && !workflowCompositeConnectionAllowed(nodes, source, target)) {
+    if (
+      !remapped &&
+      !workflowCompositeConnectionAllowedFromIndex(nodeById, source, target)
+    ) {
       rejectedBoundaryLinkIds.add(
         link.id ?? JSON.stringify([
           link.source,
@@ -304,7 +326,11 @@ export function projectNestedWorkflow(
       node.descendantNodeIds?.includes(mapping.nodeUuid) &&
       representative(mapping.nodeUuid) === mapping.nodeUuid &&
       Boolean(resourceSlotHandle(mapping.nodeUuid, mapping.handleUuid, ioType)) &&
-      workflowCompositeConnectionAllowed(nodes, nodeId, mapping.nodeUuid)
+      workflowCompositeConnectionAllowedFromIndex(
+        nodeById,
+        nodeId,
+        mapping.nodeUuid
+      )
     )
   }
   const appendTargetBoundarySegments = (

@@ -154,6 +154,82 @@ describe('Canonical workflow projection', () => {
     )).toBe('dose')
   })
 
+  it('collapses a PTLC-sized published hierarchy within the interaction budget', () => {
+    const descendantCount = 7_400
+    const descendantIds = Array.from(
+      { length: descendantCount },
+      (_, index) => `operation-node-${index}`
+    )
+    const nodes: WorkflowNode[] = [
+      workflowNode('runtime-segment', {
+        groupKind: 'subworkflow',
+        collapsedByDefault: true,
+        childNodeIds: descendantIds,
+        descendantNodeIds: descendantIds
+      }),
+      ...descendantIds.map((id) => workflowNode(id, {
+        parentGroupId: 'runtime-segment'
+      }))
+    ]
+    const links: WorkflowLink[] = descendantIds.slice(1).map((id, index) => ({
+      ...workflowLink(
+        `operation-edge-${index}`,
+        `operation-output-${index}`,
+        `operation-input-${index + 1}`,
+        descendantIds[index],
+        id
+      )
+    }))
+
+    const startedAt = performance.now()
+    const projected = projectNestedWorkflow(nodes, links, new Set())
+    const elapsedMs = performance.now() - startedAt
+
+    expect(projected.nodes.map((node) => node.id)).toEqual(['runtime-segment'])
+    expect(projected.hiddenNodeIds).toHaveLength(descendantCount)
+    expect(elapsedMs).toBeLessThan(750)
+  }, 15_000)
+
+  it('expands a PTLC-sized published hierarchy within the interaction budget', () => {
+    const descendantCount = 7_400
+    const descendantIds = Array.from(
+      { length: descendantCount },
+      (_, index) => `expanded-operation-node-${index}`
+    )
+    const nodes: WorkflowNode[] = [
+      workflowNode('expanded-runtime-segment', {
+        groupKind: 'subworkflow',
+        collapsedByDefault: true,
+        childNodeIds: descendantIds,
+        descendantNodeIds: descendantIds
+      }),
+      ...descendantIds.map((id) => workflowNode(id, {
+        parentGroupId: 'expanded-runtime-segment'
+      }))
+    ]
+    const links: WorkflowLink[] = descendantIds.slice(1).map((id, index) => ({
+      ...workflowLink(
+        `expanded-operation-edge-${index}`,
+        `expanded-operation-output-${index}`,
+        `expanded-operation-input-${index + 1}`,
+        descendantIds[index],
+        id
+      )
+    }))
+
+    const startedAt = performance.now()
+    const projected = projectNestedWorkflow(
+      nodes,
+      links,
+      new Set(['expanded-runtime-segment'])
+    )
+    const elapsedMs = performance.now() - startedAt
+
+    expect(projected.nodes).toHaveLength(descendantCount + 1)
+    expect(projected.links).toHaveLength(descendantCount - 1)
+    expect(elapsedMs).toBeLessThan(750)
+  }, 15_000)
+
   it('preserves authoritative parallel edges when no endpoint is remapped', () => {
     const nodes = [workflowNode('source'), workflowNode('target')]
     const links: WorkflowLink[] = [

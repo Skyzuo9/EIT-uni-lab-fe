@@ -204,6 +204,25 @@ export function workflowCompositeConnectionAllowed(
   targetNodeId: string
 ): boolean {
   const nodeById = new Map(nodes.map((node) => [node.id, node]))
+  return workflowCompositeConnectionAllowedFromIndex(
+    nodeById,
+    sourceNodeId,
+    targetNodeId
+  )
+}
+
+/**
+ * Index-aware form for bulk graph projection. Callers processing every edge
+ * must share one node index instead of rebuilding it once per connection.
+ */
+export function workflowCompositeConnectionAllowedFromIndex(
+  nodeById: ReadonlyMap<
+    string,
+    Pick<WorkflowNode, 'id' | 'parentGroupId' | 'groupKind'>
+  >,
+  sourceNodeId: string,
+  targetNodeId: string
+): boolean {
   const source = nodeById.get(sourceNodeId)
   const target = nodeById.get(targetNodeId)
   if (!source || !target || sourceNodeId === targetNodeId) return false
