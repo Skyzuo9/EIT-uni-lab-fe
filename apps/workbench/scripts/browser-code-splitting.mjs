@@ -1,5 +1,10 @@
+import { readFile } from 'node:fs/promises'
+
 const APPLICATION_ENTRY_NAMES = ['bundle', 'secondary-window']
 const WORKER_ENTRY_NAMES = ['editor.worker', 'plugin-worker']
+const THEIA_FRONTEND_MODULE_LOAD = 'container.load(containerModule.default)'
+const SPLIT_FRONTEND_MODULE_LOAD =
+  'container.load(containerModule.default?.default ?? containerModule.default)'
 const APPLICATION_ONLY_PLUGIN_NAMES = new Set([
   'plugin:copy',
   'sass-plugin',
@@ -9,6 +14,28 @@ const APPLICATION_ONLY_PLUGIN_NAMES = new Set([
 
 function selectEntries(entryPoints, names) {
   return Object.fromEntries(names.map(name => [name, entryPoints[name]]))
+}
+
+export function normalizeTheiaFrontendModuleLoad(source) {
+  if (!source.includes(THEIA_FRONTEND_MODULE_LOAD)) {
+    throw new Error('Theia frontend module loader contract is unavailable')
+  }
+  return source.replaceAll(THEIA_FRONTEND_MODULE_LOAD, SPLIT_FRONTEND_MODULE_LOAD)
+}
+
+function commonJsDynamicImportInteropPlugin() {
+  return {
+    name: 'unilab-theia-split-module-interop',
+    setup(build) {
+      build.onLoad(
+        { filter: /src-gen[\\/]frontend[\\/]index\.js$/ },
+        async ({ path }) => ({
+          contents: normalizeTheiaFrontendModuleLoad(await readFile(path, 'utf8')),
+          loader: 'js',
+        }),
+      )
+    },
+  }
 }
 
 /**
@@ -36,6 +63,7 @@ export function createBrowserBuildOptions(baseOptions) {
       format: 'esm',
       splitting: true,
       chunkNames: 'chunks/[name]-[hash]',
+      plugins: [...plugins, commonJsDynamicImportInteropPlugin()],
     },
     workerOptions: {
       ...baseOptions,

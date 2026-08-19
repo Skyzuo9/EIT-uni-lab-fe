@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
-import { createBrowserBuildOptions } from './browser-code-splitting.mjs'
+import {
+  createBrowserBuildOptions,
+  normalizeTheiaFrontendModuleLoad,
+} from './browser-code-splitting.mjs'
 
 describe('Workbench browser code splitting', () => {
   it('splits application entries while preserving classic worker bundles', () => {
@@ -49,6 +52,18 @@ describe('Workbench browser code splitting', () => {
         plugins: [],
       }),
       /required browser entry/i,
+    )
+  })
+
+  it('unwraps CommonJS default exports loaded through split ESM chunks', () => {
+    const source = `function load(container, jsModule) {
+      return Promise.resolve(jsModule)
+        .then(containerModule => container.load(containerModule.default));
+    }`
+
+    assert.match(
+      normalizeTheiaFrontendModuleLoad(source),
+      /containerModule\.default\?\.default \?\? containerModule\.default/,
     )
   })
 })
