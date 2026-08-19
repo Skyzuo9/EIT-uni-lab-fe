@@ -122,10 +122,59 @@ function projectPersistentAuthoringNode(
     ...projectNodeParent(node, context.nodeByUuid),
     ...projectNodeReadOnlyState(node, context.nodeByUuid),
     ...projectCompositeState(nodeUuid, context),
+    ...projectCompositeBoundaryMappings(node),
     ...projectMaterialSourceState(node, type, context.resourceTemplateByUuid),
     ...projectMaterialTransferSafety(node),
     ...nodePosition(node.pose)
   }
+}
+
+/**
+ * Preserve OS-owned Composite handle mappings for the expanded read-only view.
+ * Malformed or non-node-output source mappings fail closed at the boundary.
+ */
+function projectCompositeBoundaryMappings(
+  node: AuthoringNode
+): Pick<WorkflowNode, 'compositeBoundaryMappings'> {
+  const metaData = isRecord(node.meta_data) ? node.meta_data : {}
+  const unilab = isRecord(metaData.unilab) ? metaData.unilab : {}
+  const composite = isRecord(unilab.composite) ? unilab.composite : {}
+  const rawTargets = isRecord(composite.target_mappings)
+    ? composite.target_mappings
+    : {}
+  const rawSources = isRecord(composite.source_mappings)
+    ? composite.source_mappings
+    : {}
+  const targets: NonNullable<
+    WorkflowNode['compositeBoundaryMappings']
+  >['targets'] = {}
+  const sources: NonNullable<
+    WorkflowNode['compositeBoundaryMappings']
+  >['sources'] = {}
+
+  for (const [boundaryHandleUuid, rawMappings] of Object.entries(rawTargets)) {
+    if (!Array.isArray(rawMappings)) continue
+    const mappings = rawMappings.flatMap((rawMapping) => {
+      if (!isRecord(rawMapping)) return []
+      const nodeUuid = nullableString(rawMapping.workflow_node_uuid)
+      const handleUuid = nullableString(rawMapping.target_handle_uuid)
+      return nodeUuid && handleUuid ? [{ nodeUuid, handleUuid }] : []
+    })
+    if (mappings.length > 0) targets[boundaryHandleUuid] = mappings
+  }
+
+  for (const [boundaryHandleUuid, rawMapping] of Object.entries(rawSources)) {
+    if (!isRecord(rawMapping) || rawMapping.kind !== 'node_output') continue
+    const nodeUuid = nullableString(rawMapping.workflow_node_uuid)
+    const handleUuid = nullableString(rawMapping.source_handle_uuid)
+    if (nodeUuid && handleUuid) {
+      sources[boundaryHandleUuid] = { nodeUuid, handleUuid }
+    }
+  }
+
+  return Object.keys(targets).length > 0 || Object.keys(sources).length > 0
+    ? { compositeBoundaryMappings: { targets, sources } }
+    : {}
 }
 
 function projectNodeIdentity(

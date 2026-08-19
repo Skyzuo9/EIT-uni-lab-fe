@@ -5,6 +5,7 @@ import type {
   WorkflowStructure
 } from './parseWorkflow'
 import { workflowCompositeConnectionAllowed } from './workflowCompositeContainment'
+import { isResourceSlotHandle } from './workflowMaterialTrace'
 
 export interface CanonicalWorkflowParseResult extends WorkflowStructure {
   revision: WorkflowRevision | null
@@ -212,23 +213,52 @@ export function projectNestedWorkflow(
       .filter((node) => representative(node.id) !== node.id)
       .map((node) => node.id)
   )
+  const resourceSlotHandle = (
+    nodeId: string,
+    handleUuid: string | undefined,
+    ioType: 'source' | 'target'
+  ) => nodeById.get(nodeId)?.handles?.find((handle) =>
+    handle.uuid === handleUuid &&
+    handle.ioType === ioType &&
+    isResourceSlotHandle(handle)
+  )
   const linkProjections: Array<{
     link: WorkflowLink
     source: string
     target: string
+    sourceHandleUuid?: string
+    targetHandleUuid?: string
     key: string
     remapped: boolean
   }> = []
   const rejectedBoundaryLinkIds = new Set<string>()
-  for (const link of links) {
-    if (!nodeById.has(link.source) || !nodeById.has(link.target)) continue
-    if (nativeGroupIds.has(link.source) || nativeGroupIds.has(link.target)) {
-      continue
-    }
-    const source = representative(link.source)
-    const target = representative(link.target)
-    if (source === target) continue
-    if (!workflowCompositeConnectionAllowed(nodes, source, target)) {
+  const projectedLinkKey = (
+    source: string,
+    target: string,
+    link: WorkflowLink,
+    sourceHandleUuid: string | undefined,
+    targetHandleUuid: string | undefined
+  ): string => link.compositeBoundaryBridge
+    ? JSON.stringify([
+        source,
+        sourceHandleUuid ?? null,
+        target,
+        targetHandleUuid ?? null,
+        link.type,
+        link.branch ?? null,
+        link.compositeBoundaryBridge
+      ])
+    : JSON.stringify([source, target, link.type, link.branch ?? null])
+  const pushProjection = (
+    link: WorkflowLink,
+    source: string,
+    target: string,
+    sourceHandleUuid: string | undefined,
+    targetHandleUuid: string | undefined,
+    remapped: boolean
+  ): void => {
+    if (source === target) return
+    if (!remapped && !workflowCompositeConnectionAllowed(nodes, source, target)) {
       rejectedBoundaryLinkIds.add(
         link.id ?? JSON.stringify([
           link.source,
@@ -237,16 +267,149 @@ export function projectNestedWorkflow(
           link.targetHandleUuid ?? null
         ])
       )
-      continue
+      return
     }
-    const key = JSON.stringify([source, target, link.type, link.branch ?? null])
     linkProjections.push({
       link,
       source,
       target,
-      key,
-      remapped: source !== link.source || target !== link.target
+      sourceHandleUuid,
+      targetHandleUuid,
+      key: projectedLinkKey(
+        source,
+        target,
+        link,
+        sourceHandleUuid,
+        targetHandleUuid
+      ),
+      remapped
     })
+  }
+  const validBoundaryMappings = (
+    nodeId: string,
+    handleUuid: string,
+    ioType: 'source' | 'target'
+  ) => {
+    const node = nodeById.get(nodeId)
+    if (
+      collapsedGroupIds.has(nodeId) ||
+      node?.groupKind !== 'subworkflow'
+    ) return []
+    const mappings = ioType === 'target'
+      ? node.compositeBoundaryMappings?.targets[handleUuid] ?? []
+      : node.compositeBoundaryMappings?.sources[handleUuid]
+        ? [node.compositeBoundaryMappings.sources[handleUuid]!]
+        : []
+    return mappings.filter((mapping) =>
+      node.descendantNodeIds?.includes(mapping.nodeUuid) &&
+      representative(mapping.nodeUuid) === mapping.nodeUuid &&
+      Boolean(resourceSlotHandle(mapping.nodeUuid, mapping.handleUuid, ioType)) &&
+      workflowCompositeConnectionAllowed(nodes, nodeId, mapping.nodeUuid)
+    )
+  }
+  const appendTargetBoundarySegments = (
+    link: WorkflowLink,
+    nodeId: string,
+    handleUuid: string,
+    visited = new Set<string>()
+  ): void => {
+    const visitKey = `target:${nodeId}:${handleUuid}`
+    if (visited.has(visitKey)) return
+    const nextVisited = new Set(visited).add(visitKey)
+    for (const mapping of validBoundaryMappings(nodeId, handleUuid, 'target')) {
+      const bridge: WorkflowLink = {
+        ...link,
+        id: `${link.id ?? 'material'}:composite-target:${nodeId}:${handleUuid}:${mapping.nodeUuid}:${mapping.handleUuid}`,
+        compositeBoundaryBridge: 'target'
+      }
+      pushProjection(
+        bridge,
+        nodeId,
+        mapping.nodeUuid,
+        handleUuid,
+        mapping.handleUuid,
+        true
+      )
+      appendTargetBoundarySegments(
+        link,
+        mapping.nodeUuid,
+        mapping.handleUuid,
+        nextVisited
+      )
+    }
+  }
+  const appendSourceBoundarySegments = (
+    link: WorkflowLink,
+    nodeId: string,
+    handleUuid: string,
+    visited = new Set<string>()
+  ): void => {
+    const visitKey = `source:${nodeId}:${handleUuid}`
+    if (visited.has(visitKey)) return
+    const nextVisited = new Set(visited).add(visitKey)
+    for (const mapping of validBoundaryMappings(nodeId, handleUuid, 'source')) {
+      appendSourceBoundarySegments(
+        link,
+        mapping.nodeUuid,
+        mapping.handleUuid,
+        nextVisited
+      )
+      const bridge: WorkflowLink = {
+        ...link,
+        id: `${link.id ?? 'material'}:composite-source:${mapping.nodeUuid}:${mapping.handleUuid}:${nodeId}:${handleUuid}`,
+        compositeBoundaryBridge: 'source'
+      }
+      pushProjection(
+        bridge,
+        mapping.nodeUuid,
+        nodeId,
+        mapping.handleUuid,
+        handleUuid,
+        true
+      )
+    }
+  }
+  for (const link of links) {
+    if (!nodeById.has(link.source) || !nodeById.has(link.target)) continue
+    if (nativeGroupIds.has(link.source) || nativeGroupIds.has(link.target)) {
+      continue
+    }
+    const sourceRepresentative = representative(link.source)
+    const targetRepresentative = representative(link.target)
+    const materialLink = Boolean(
+      resourceSlotHandle(link.source, link.sourceHandleUuid, 'source') &&
+      resourceSlotHandle(link.target, link.targetHandleUuid, 'target')
+    )
+    if (
+      materialLink &&
+      sourceRepresentative === link.source &&
+      link.sourceHandleUuid
+    ) {
+      appendSourceBoundarySegments(
+        link,
+        sourceRepresentative,
+        link.sourceHandleUuid
+      )
+    }
+    pushProjection(
+      link,
+      sourceRepresentative,
+      targetRepresentative,
+      link.sourceHandleUuid,
+      link.targetHandleUuid,
+      sourceRepresentative !== link.source || targetRepresentative !== link.target
+    )
+    if (
+      materialLink &&
+      targetRepresentative === link.target &&
+      link.targetHandleUuid
+    ) {
+      appendTargetBoundarySegments(
+        link,
+        targetRepresentative,
+        link.targetHandleUuid
+      )
+    }
   }
   // Parallel authoritative edges keep their edge/handle identities. Only edges
   // whose endpoints were collapsed are visual aggregates; a real boundary edge
@@ -269,7 +432,9 @@ export function projectNestedWorkflow(
     projectedLinks.push({
       ...projection.link,
       source: projection.source,
-      target: projection.target
+      target: projection.target,
+      sourceHandleUuid: projection.sourceHandleUuid,
+      targetHandleUuid: projection.targetHandleUuid
     })
   }
   return {

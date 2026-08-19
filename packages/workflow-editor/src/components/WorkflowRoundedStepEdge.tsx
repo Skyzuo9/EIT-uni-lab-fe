@@ -22,6 +22,7 @@ export interface WorkflowRoundedStepEdgeData {
   targetHandleUuid: string
   materialRole?: string
   materialEmphasis?: 'primary' | 'supporting'
+  compositeBoundaryBridge?: 'target' | 'source'
 }
 
 /**
@@ -88,6 +89,7 @@ export default function WorkflowRoundedStepEdge({
       data-workflow-edge-target-handle-uuid={data?.targetHandleUuid}
       data-workflow-material-role={data?.materialRole}
       data-workflow-material-emphasis={data?.materialEmphasis}
+      data-workflow-composite-boundary-bridge={data?.compositeBoundaryBridge}
       data-workflow-edge-kind={data?.sequence
         ? 'sequence'
         : data?.materialRole ? 'material' : 'structural'}

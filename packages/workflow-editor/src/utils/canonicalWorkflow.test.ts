@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { WorkflowLink, WorkflowNode } from './parseWorkflow'
+import { projectMaterialTraces } from './workflowMaterialTrace'
 import {
   CONTROL_DAG_JSON,
   CONTROL_DAG_REVISION,
@@ -234,6 +235,203 @@ describe('Canonical workflow projection', () => {
         sourceHandleUuid: 'boundary-source'
       })
     ])
+  })
+
+  it('keeps one material lineage through authoritative expanded composite boundaries', () => {
+    const slot = (
+      uuid: string,
+      dataKey: string,
+      ioType: 'source' | 'target'
+    ) => ({
+      uuid,
+      handleKey: dataKey,
+      displayName: dataKey,
+      dataKey,
+      ioType,
+      valueType: 'ResourceSlot',
+      valueSchema: { $slot: 'ResourceSlot' }
+    } as const)
+    const nodes: WorkflowNode[] = [
+      workflowNode('plate-source', {
+        type: 'material_source',
+        handles: [slot('plate-source-output', 'plate', 'source')],
+        materialSource: {
+          mode: 'existing',
+          flowRole: 'aliquot_sample',
+          mountUuid: 'plate-mount',
+          resourceTemplateUuid: 'plate-template'
+        }
+      }),
+      workflowNode('outer', {
+        type: 'workflow',
+        groupKind: 'subworkflow',
+        collapsedByDefault: true,
+        childNodeIds: ['transport', 'execute'],
+        descendantNodeIds: ['transport', 'execute', 'complete'],
+        handles: [
+          slot('outer-plate-input', 'plate', 'target'),
+          slot('outer-plate-output', 'plate', 'source')
+        ],
+        compositeBoundaryMappings: {
+          targets: {
+            'outer-plate-input': [{
+              nodeUuid: 'transport',
+              handleUuid: 'transport-resource-input'
+            }]
+          },
+          sources: {
+            'outer-plate-output': {
+              nodeUuid: 'execute',
+              handleUuid: 'execute-plate-output'
+            }
+          }
+        }
+      }),
+      workflowNode('transport', {
+        parentGroupId: 'outer',
+        handles: [
+          slot('transport-resource-input', 'resource', 'target'),
+          slot('transport-resource-output', 'resource', 'source')
+        ]
+      }),
+      workflowNode('execute', {
+        type: 'workflow',
+        groupKind: 'subworkflow',
+        parentGroupId: 'outer',
+        collapsedByDefault: true,
+        childNodeIds: ['complete'],
+        descendantNodeIds: ['complete'],
+        handles: [
+          slot('execute-plate-input', 'plate', 'target'),
+          slot('execute-plate-output', 'plate', 'source')
+        ],
+        compositeBoundaryMappings: {
+          targets: {
+            'execute-plate-input': [{
+              nodeUuid: 'complete',
+              handleUuid: 'complete-plate-input'
+            }]
+          },
+          sources: {
+            'execute-plate-output': {
+              nodeUuid: 'complete',
+              handleUuid: 'complete-plate-output'
+            }
+          }
+        }
+      }),
+      workflowNode('complete', {
+        parentGroupId: 'execute',
+        handles: [
+          slot('complete-plate-input', 'plate', 'target'),
+          slot('complete-plate-output', 'plate', 'source')
+        ]
+      }),
+      workflowNode('downstream', {
+        handles: [slot('downstream-plate-input', 'plate', 'target')]
+      })
+    ]
+    const links: WorkflowLink[] = [
+      {
+        ...workflowLink(
+          'plate-into-outer',
+          'plate-source-output',
+          'outer-plate-input',
+          'plate-source',
+          'outer'
+        )
+      },
+      {
+        ...workflowLink(
+          'transport-into-execute',
+          'transport-resource-output',
+          'execute-plate-input',
+          'transport',
+          'execute'
+        )
+      },
+      {
+        ...workflowLink(
+          'outer-into-downstream',
+          'outer-plate-output',
+          'downstream-plate-input',
+          'outer',
+          'downstream'
+        )
+      }
+    ]
+
+    const projected = projectNestedWorkflow(
+      nodes,
+      links,
+      new Set(['outer', 'execute'])
+    )
+
+    expect(projected.links.map((link) => ({
+      source: link.source,
+      sourceHandleUuid: link.sourceHandleUuid,
+      target: link.target,
+      targetHandleUuid: link.targetHandleUuid,
+      bridge: link.compositeBoundaryBridge
+    }))).toEqual([
+      {
+        source: 'plate-source',
+        sourceHandleUuid: 'plate-source-output',
+        target: 'outer',
+        targetHandleUuid: 'outer-plate-input',
+        bridge: undefined
+      },
+      {
+        source: 'outer',
+        sourceHandleUuid: 'outer-plate-input',
+        target: 'transport',
+        targetHandleUuid: 'transport-resource-input',
+        bridge: 'target'
+      },
+      {
+        source: 'transport',
+        sourceHandleUuid: 'transport-resource-output',
+        target: 'execute',
+        targetHandleUuid: 'execute-plate-input',
+        bridge: undefined
+      },
+      {
+        source: 'execute',
+        sourceHandleUuid: 'execute-plate-input',
+        target: 'complete',
+        targetHandleUuid: 'complete-plate-input',
+        bridge: 'target'
+      },
+      {
+        source: 'complete',
+        sourceHandleUuid: 'complete-plate-output',
+        target: 'execute',
+        targetHandleUuid: 'execute-plate-output',
+        bridge: 'source'
+      },
+      {
+        source: 'execute',
+        sourceHandleUuid: 'execute-plate-output',
+        target: 'outer',
+        targetHandleUuid: 'outer-plate-output',
+        bridge: 'source'
+      },
+      {
+        source: 'outer',
+        sourceHandleUuid: 'outer-plate-output',
+        target: 'downstream',
+        targetHandleUuid: 'downstream-plate-input',
+        bridge: undefined
+      }
+    ])
+    expect(projected.rejectedBoundaryLinkIds).toEqual(new Set())
+
+    const traces = projectMaterialTraces(projected.nodes, projected.links)
+    expect(traces.lineages).toHaveLength(1)
+    expect(traces.lineages[0]?.materialRole).toBe('aliquot_sample')
+    expect(new Set(traces.edgeLineages.values())).toEqual(
+      new Set(['plate-source'])
+    )
   })
 
   /**

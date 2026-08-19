@@ -1,6 +1,12 @@
-import { useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { CSSProperties } from 'react'
-import type { Edge, Node, OnNodesChange, OnEdgesChange } from 'reactflow'
+import type {
+  Edge,
+  Node,
+  NodeChange,
+  OnNodesChange,
+  OnEdgesChange
+} from 'reactflow'
 import { MarkerType, Position, useNodesState, useEdgesState } from 'reactflow'
 
 import type { WorkflowNodeData } from '../components/WorkflowNodeCard'
@@ -23,6 +29,7 @@ import { layoutWorkflowMaterialSwimlanes } from '../utils/workflowMaterialSwimla
 import { layoutWorkflowPrimarySampleFlow } from '../utils/workflowPrimarySampleLayout'
 import { reconcileReactFlowNodeMeasurements } from '../utils/reactFlowNodeMeasurement'
 import { projectWorkflowCompositeContainment } from '../utils/workflowCompositeContainment'
+import type { WorkflowCanvasNodeSize } from '../utils/workflowCompositeContainment'
 import { materialTraceAccent, projectMaterialTraces } from '../utils/workflowMaterialTrace'
 import type { WorkflowMaterialTraceProjection } from '../utils/workflowMaterialTrace'
 import {
@@ -60,6 +67,9 @@ const REACTION_MATERIAL_NODE_WIDTH = 152
 const PRIMARY_SAMPLE_NODE_WIDTH = 184
 const REACTION_MATERIAL_NODE_GAP = 12
 const REACTION_MATERIAL_ITEM_HEIGHT = 22
+const WORKFLOW_CONTAINER_Z_INDEX = 0
+const WORKFLOW_EDGE_Z_INDEX = 1
+const WORKFLOW_NODE_Z_INDEX = 2
 
 /**
  * 将当前可见工作流（Workflow）投影为可交互的 ReactFlow 节点和正交边。
@@ -79,31 +89,40 @@ export function useWorkflowDag(
   swimlaneDirection: WorkflowMaterialSwimlaneDirection =
     DEFAULT_WORKFLOW_MATERIAL_SWIMLANE_DIRECTION,
   supportingMaterialPresentation: WorkflowSupportingMaterialPresentation =
-    'full-branches'
+    'full-branches',
+  panelInlineSize?: number
 ): UseWorkflowDagResult {
+  const [measuredNodeSizes, setMeasuredNodeSizes] = useState<
+    ReadonlyMap<string, WorkflowCanvasNodeSize>
+  >(() => new Map())
   const fallback = useMemo(
     () => buildFlowElements(
       strategy === 'material-swimlanes'
         ? layoutWorkflowMaterialSwimlanes(nodes, links, swimlaneDirection)
         : strategy === 'primary-sample-serpentine'
           ? layoutWorkflowPrimarySampleFlow(nodes, links, {
-              supportingMaterialPresentation
+              supportingMaterialPresentation,
+              panelInlineSize
             })
         : layoutDag(nodes, links, { preserveExistingPositions: false }),
       nodes,
       links,
       strategy,
-      supportingMaterialPresentation
+      supportingMaterialPresentation,
+      panelInlineSize,
+      measuredNodeSizes
     ),
     [
       nodes,
       links,
       strategy,
       supportingMaterialPresentation,
-      swimlaneDirection
+      swimlaneDirection,
+      panelInlineSize,
+      measuredNodeSizes
     ]
   )
-  const [flowNodes, setNodes, onNodesChange] = useNodesState(
+  const [flowNodes, setNodes, applyNodesChange] = useNodesState(
     fallback.flowNodes
   )
   const [flowEdges, setEdges, onEdgesChange] = useEdgesState(
@@ -148,7 +167,8 @@ export function useWorkflowDag(
     let cancelled = false
     const layoutPromise = strategy === 'primary-sample-serpentine'
       ? Promise.resolve(layoutWorkflowPrimarySampleFlow(nodes, links, {
-          supportingMaterialPresentation
+          supportingMaterialPresentation,
+          panelInlineSize
         }))
       : layoutVisibleWorkflowDag(
           nodes,
@@ -171,7 +191,9 @@ export function useWorkflowDag(
         nodes,
         links,
         strategy,
-        supportingMaterialPresentation
+        supportingMaterialPresentation,
+        panelInlineSize,
+        measuredNodeSizes
       )
       // `currentNodes` 是异步布局完成时仍有效的最新节点与测量集合。
       setNodes(
@@ -218,9 +240,52 @@ export function useWorkflowDag(
       setNodes,
       strategy,
       supportingMaterialPresentation,
-      swimlaneDirection
+      swimlaneDirection,
+      panelInlineSize,
+      measuredNodeSizes
     ]
   )
+
+  const groupNodeIds = useMemo(
+    () => new Set(
+      nodes
+        .filter((node) => node.groupKind === 'subworkflow')
+        .map((node) => node.id)
+    ),
+    [nodes]
+  )
+  const onNodesChange = useCallback((changes: NodeChange[]) => {
+    const measuredChanges = changes.flatMap((change) => {
+      if (
+        change.type !== 'dimensions' ||
+        !change.dimensions ||
+        groupNodeIds.has(change.id)
+      ) return []
+      const { width, height } = change.dimensions
+      return Number.isFinite(width) && width > 0 &&
+        Number.isFinite(height) && height > 0
+        ? [[change.id, { width, height }] as const]
+        : []
+    })
+    if (measuredChanges.length > 0) {
+      setMeasuredNodeSizes((current) => {
+        const next = new Map(current)
+        let changed = false
+        for (const [nodeId, size] of measuredChanges) {
+          const previous = current.get(nodeId)
+          if (
+            previous &&
+            Math.abs(previous.width - size.width) < 0.5 &&
+            Math.abs(previous.height - size.height) < 0.5
+          ) continue
+          next.set(nodeId, size)
+          changed = true
+        }
+        return changed ? next : current
+      })
+    }
+    applyNodesChange(changes)
+  }, [applyNodesChange, groupNodeIds])
 
   return {
     nodes: flowNodes,
@@ -245,7 +310,9 @@ function buildFlowElements(
   sourceNodes: readonly WorkflowNode[],
   sourceLinks: readonly WorkflowLink[],
   strategy: WorkflowDagLayoutStrategy,
-  supportingMaterialPresentation: WorkflowSupportingMaterialPresentation
+  supportingMaterialPresentation: WorkflowSupportingMaterialPresentation,
+  panelInlineSize?: number,
+  measuredNodeSizes: ReadonlyMap<string, WorkflowCanvasNodeSize> = new Map()
 ): WorkflowFlowElements {
   const materialTraces = projectMaterialTraces(sourceNodes, sourceLinks)
   const nodeNames = new Map(sourceNodes.map((node) => [node.id, node.name]))
@@ -277,7 +344,10 @@ function buildFlowElements(
   const visibleLayoutNodes = reactionFormulaPresentation
     ? layout.nodes.filter((node) => reactionFormulaVisibleNodeIds?.has(node.id))
     : layout.nodes
-  const measuredSizes = new Map(
+  const measuredSizes = new Map<string, WorkflowCanvasNodeSize>(
+    measuredNodeSizes
+  )
+  for (const [nodeId, size] of (
     visibleLayoutNodes.flatMap((node) => {
       const laneLayout = layout.swimlanes?.nodeLayouts.get(node.id)
       return laneLayout && !compactPrimarySampleLayout
@@ -287,10 +357,12 @@ function buildFlowElements(
           }] as const]
         : []
     })
-  )
+  )) measuredSizes.set(nodeId, size)
   const containedLayoutNodes = projectWorkflowCompositeContainment(
     visibleLayoutNodes,
-    measuredSizes
+    measuredSizes,
+    layout.links,
+    layout.direction
   )
   const flowNodes: Node<WorkflowNodeData>[] = containedLayoutNodes.map((node) => {
     const laneLayout = layout.swimlanes?.nodeLayouts.get(node.id)
@@ -304,6 +376,9 @@ function buildFlowElements(
       position: node.renderPosition,
       width: node.renderSize.width,
       height: node.renderSize.height,
+      zIndex: containerSize
+        ? WORKFLOW_CONTAINER_Z_INDEX
+        : WORKFLOW_NODE_Z_INDEX,
       targetPosition: nodePorts
         ? reactFlowPosition(nodePorts.target)
         : layout.direction === 'horizontal'
@@ -329,7 +404,6 @@ function buildFlowElements(
             parentId: node.parentContainerId,
             extent: 'parent' as const,
             expandParent: false,
-            zIndex: 1,
             draggable: false,
             connectable: false,
             deletable: false
@@ -370,7 +444,8 @@ function buildFlowElements(
           : undefined,
         materialLaneByHandle: handleLanes && !compactPrimarySampleLayout
           ? Object.fromEntries(handleLanes)
-          : undefined
+          : undefined,
+        parentContainerId: node.parentContainerId
       }
     }
   })
@@ -416,16 +491,28 @@ function visibleReactionFormulaNodes(
   backboneNodeIds: ReadonlySet<string>
 ): Set<string> {
   const sourceNodeIds = new Set(sourceNodes.map((node) => node.id))
+  const sourceNodeById = new Map(sourceNodes.map((node) => [node.id, node]))
   const visibleNodeIds = new Set(backboneNodeIds)
+  const includeAncestors = (nodeId: string): void => {
+    const visited = new Set<string>()
+    let parentId = sourceNodeById.get(nodeId)?.parentGroupId
+    while (parentId && !visited.has(parentId)) {
+      visited.add(parentId)
+      if (sourceNodeIds.has(parentId)) visibleNodeIds.add(parentId)
+      parentId = sourceNodeById.get(parentId)?.parentGroupId
+    }
+  }
+  for (const nodeId of [...visibleNodeIds]) includeAncestors(nodeId)
   for (const node of sourceNodes) {
     if (
       node.groupKind !== 'subworkflow' ||
-      !backboneNodeIds.has(node.id)
+      !visibleNodeIds.has(node.id)
     ) continue
     for (const descendantId of node.descendantNodeIds ?? []) {
       if (sourceNodeIds.has(descendantId)) visibleNodeIds.add(descendantId)
     }
   }
+  for (const nodeId of [...visibleNodeIds]) includeAncestors(nodeId)
   return visibleNodeIds
 }
 
@@ -467,6 +554,7 @@ function buildReactionMaterialNodes(
       },
       width: REACTION_MATERIAL_NODE_WIDTH,
       height: annotationHeight,
+      zIndex: WORKFLOW_NODE_Z_INDEX,
       selectable: false,
       draggable: false,
       focusable: false,
@@ -522,6 +610,7 @@ function buildWorkflowFlowEdge({
       fontWeight: 700
     },
     type: 'workflowRoundedStep',
+    zIndex: WORKFLOW_EDGE_Z_INDEX,
     data: {
       direction: workflowEdgeDirection(layout, index),
       borderRadius: 8,
@@ -534,7 +623,8 @@ function buildWorkflowFlowEdge({
       materialEmphasis: workflowMaterialEmphasis(
         materialAccent,
         supportingMaterial
-      )
+      ),
+      compositeBoundaryBridge: link.compositeBoundaryBridge
     },
     animated: workflowEdgeAnimated(
       communication,

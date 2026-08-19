@@ -2,9 +2,12 @@
   z-index: 0 !important;
 }
 
-.workflow :global(.wf-node--composite-container) {
+/* 覆盖运行态通用 `.wf-node` 的 202/240px 宽度夹取，容器必须填满 RF 父节点。 */
+.workflow:global(.workflow-runtime) :global(.wf-node--composite-container) {
   position: relative;
   width: 100%;
+  min-width: 0;
+  max-width: none;
   height: 100%;
   box-sizing: border-box;
   overflow: visible;
@@ -120,11 +123,51 @@
 }
 
 .workflow :global(.wf-node__composite-handle--bridge) {
+  z-index: 5;
+  width: 1px !important;
+  height: 1px !important;
+  border: 0 !important;
   opacity: 0;
+  pointer-events: none;
 }
 
 .workflow :global(.wf-node__handle--material.wf-node__composite-handle) {
-  background: var(--unilab-color-material);
+  display: grid;
+  width: 34px;
+  height: 28px;
+  box-sizing: border-box;
+  place-items: center;
+  border: 1px solid color-mix(
+    in srgb,
+    var(--wf-material-accent) 72%,
+    var(--unilab-color-border-strong)
+  );
+  border-radius: 7px;
+  background: color-mix(
+    in srgb,
+    var(--wf-material-accent) 10%,
+    var(--unilab-color-surface)
+  );
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--wf-material-accent) 14%, transparent);
+  pointer-events: all;
+}
+
+.workflow :global(.wf-node__composite-material-shape) {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  color: var(--wf-material-accent);
+}
+
+.workflow :global(.wf-node__composite-material-shape) svg {
+  width: 20px;
+  height: 20px;
+  fill: color-mix(in srgb, var(--wf-material-accent) 12%, var(--unilab-color-surface));
+  stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.5;
 }
 
 .workflow :global(.react-flow__node-wfCompositeContainer.selected)

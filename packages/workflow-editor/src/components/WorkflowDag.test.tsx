@@ -320,7 +320,7 @@ describe('WorkflowDag IDE source selection', () => {
 })
 
 describe('WorkflowDag material handles and execution signals', () => {
-  /** 蛇形返程必须服从 React Flow 的实际侧边，不能再按输入输出语义写死。 */
+  /** 横向换行布局必须服从 React Flow 的实际侧边，不能按输入输出语义写死。 */
   it('anchors horizontal material handles by their rendered side', () => {
     const stylesheet = readFileSync(
       new URL('./_workflow-primary-sample.scss', import.meta.url),

@@ -1,5 +1,5 @@
-import type { LayoutNode } from './dagLayout'
-import type { WorkflowNode } from './parseWorkflow'
+import type { DagLayoutDirection, LayoutNode } from './dagLayout'
+import type { WorkflowLink, WorkflowNode } from './parseWorkflow'
 
 export interface WorkflowCanvasNodeSize {
   width: number
@@ -34,9 +34,11 @@ const CONTAINER_INLINE_PADDING = 32
 const CONTAINER_HEADER_HEIGHT = 64
 const CONTAINER_BOTTOM_PADDING = 32
 const SCOPE_COLLISION_GAP = 32
-const CONTAINER_CONTENT_MAX_WIDTH = 920
 const CONTAINER_COLUMN_GAP = 48
 const CONTAINER_ROW_GAP = 40
+const CONTAINER_LAYER_TOLERANCE = 96
+const CONTAINER_MIN_INLINE_SPAN = 640
+const CONTAINER_MAX_INLINE_SPAN = 1280
 
 /**
  * 将已经展开的组合工作流调用（CompositeWorkflowInvocation）投影为真正的
@@ -49,7 +51,9 @@ const CONTAINER_ROW_GAP = 40
  */
 export function projectWorkflowCompositeContainment(
   nodes: readonly LayoutNode[],
-  measuredSizes: ReadonlyMap<string, WorkflowCanvasNodeSize> = new Map()
+  measuredSizes: ReadonlyMap<string, WorkflowCanvasNodeSize> = new Map(),
+  links: readonly WorkflowLink[] = [],
+  direction: DagLayoutDirection = 'vertical'
 ): ContainedWorkflowLayoutNode[] {
   if (nodes.length === 0) return []
 
@@ -109,7 +113,12 @@ export function projectWorkflowCompositeContainment(
       childIds,
       anchorById.get(containerId) ?? { x: 0, y: 0 },
       rectById,
-      childIdsByParent
+      childIdsByParent,
+      anchorById,
+      links,
+      visibleParentById,
+      containerId,
+      direction
     )
     const childRects = childIds.flatMap((childId) => {
       const rect = rectById.get(childId)
@@ -345,42 +354,241 @@ function packContainerChildren(
   nodeIds: readonly string[],
   anchor: { x: number; y: number },
   rectById: Map<string, NodeRect>,
-  childIdsByParent: ReadonlyMap<string, readonly string[]>
+  childIdsByParent: ReadonlyMap<string, readonly string[]>,
+  anchorById: ReadonlyMap<string, { x: number; y: number }>,
+  links: readonly WorkflowLink[],
+  visibleParentById: ReadonlyMap<string, string>,
+  containerId: string,
+  direction: DagLayoutDirection
 ): void {
-  const ordered = [...nodeIds].sort((left, right) => {
-    const leftRect = rectById.get(left)
-    const rightRect = rectById.get(right)
-    return (leftRect?.y ?? 0) - (rightRect?.y ?? 0) ||
-      (leftRect?.x ?? 0) - (rightRect?.x ?? 0)
-  })
-  const originX = anchor.x + CONTAINER_INLINE_PADDING
-  let nextX = originX
-  let nextY = anchor.y + CONTAINER_HEADER_HEIGHT
-  let rowHeight = 0
-  let rowHasNode = false
-  for (const nodeId of ordered) {
-    const rect = rectById.get(nodeId)
-    if (!rect) continue
-    if (
-      rowHasNode &&
-      nextX + rect.width > originX + CONTAINER_CONTENT_MAX_WIDTH
-    ) {
-      nextX = originX
-      nextY += rowHeight + CONTAINER_ROW_GAP
-      rowHeight = 0
-      rowHasNode = false
-    }
-    shiftSubtree(
-      nodeId,
-      nextX - rect.x,
-      nextY - rect.y,
-      rectById,
-      childIdsByParent
-    )
-    nextX += rect.width + CONTAINER_COLUMN_GAP
-    rowHeight = Math.max(rowHeight, rect.height)
-    rowHasNode = true
+  const layerById = containerChildLayers(
+    nodeIds,
+    anchorById,
+    links,
+    visibleParentById,
+    containerId,
+    direction
+  )
+  const rows = new Map<number, string[]>()
+  for (const nodeId of nodeIds) {
+    const layer = layerById.get(nodeId) ?? 0
+    rows.set(layer, [...(rows.get(layer) ?? []), nodeId])
   }
+  const orderedLayers = [...rows.entries()].sort(
+    ([left], [right]) => left - right
+  )
+  const inlineLimit = adaptiveContainerInlineSpan(nodeIds, rectById)
+  if (direction === 'horizontal') {
+    const originX = anchor.x + CONTAINER_INLINE_PADDING
+    let nextX = originX
+    let bandY = anchor.y + CONTAINER_HEADER_HEIGHT
+    let bandHeight = 0
+    for (const [, columnNodeIds] of orderedLayers) {
+      const ordered = [...columnNodeIds].sort((left, right) =>
+        (anchorById.get(left)?.y ?? rectById.get(left)?.y ?? 0) -
+        (anchorById.get(right)?.y ?? rectById.get(right)?.y ?? 0)
+      )
+      const columnRects = ordered.flatMap((nodeId) => {
+        const rect = rectById.get(nodeId)
+        return rect ? [rect] : []
+      })
+      const columnWidth = Math.max(
+        0,
+        ...columnRects.map((rect) => rect.width)
+      )
+      const columnHeight = columnRects.reduce(
+        (height, rect, index) =>
+          height + rect.height + (index === 0 ? 0 : CONTAINER_ROW_GAP),
+        0
+      )
+      if (
+        nextX > originX &&
+        nextX + columnWidth > originX + inlineLimit
+      ) {
+        nextX = originX
+        bandY += bandHeight + CONTAINER_ROW_GAP
+        bandHeight = 0
+      }
+      let nextY = bandY
+      for (const nodeId of ordered) {
+        const rect = rectById.get(nodeId)
+        if (!rect) continue
+        shiftSubtree(
+          nodeId,
+          nextX - rect.x,
+          nextY - rect.y,
+          rectById,
+          childIdsByParent
+        )
+        nextY += rect.height + CONTAINER_ROW_GAP
+      }
+      bandHeight = Math.max(bandHeight, columnHeight)
+      nextX += columnWidth + CONTAINER_COLUMN_GAP
+    }
+    return
+  }
+
+  const originX = anchor.x + CONTAINER_INLINE_PADDING
+  let nextY = anchor.y + CONTAINER_HEADER_HEIGHT
+  for (const [, rowNodeIds] of orderedLayers) {
+    const ordered = [...rowNodeIds].sort((left, right) =>
+      (anchorById.get(left)?.x ?? rectById.get(left)?.x ?? 0) -
+      (anchorById.get(right)?.x ?? rectById.get(right)?.x ?? 0)
+    )
+    let nextX = originX
+    let rowHeight = 0
+    for (const nodeId of ordered) {
+      const rect = rectById.get(nodeId)
+      if (!rect) continue
+      if (
+        nextX > originX &&
+        nextX + rect.width > originX + inlineLimit
+      ) {
+        nextX = originX
+        nextY += rowHeight + CONTAINER_ROW_GAP
+        rowHeight = 0
+      }
+      shiftSubtree(
+        nodeId,
+        nextX - rect.x,
+        nextY - rect.y,
+        rectById,
+        childIdsByParent
+      )
+      nextX += rect.width + CONTAINER_COLUMN_GAP
+      rowHeight = Math.max(rowHeight, rect.height)
+    }
+    nextY += rowHeight + CONTAINER_ROW_GAP
+  }
+}
+
+/**
+ * Derive a compact wrapping span from the real child footprints. The square-root
+ * target keeps small composites on one line while preventing a wide dependency
+ * layer from multiplying the width of every expanded ancestor.
+ */
+function adaptiveContainerInlineSpan(
+  nodeIds: readonly string[],
+  rectById: ReadonlyMap<string, NodeRect>
+): number {
+  const rects = nodeIds.flatMap((nodeId) => {
+    const rect = rectById.get(nodeId)
+    return rect ? [rect] : []
+  })
+  if (rects.length === 0) return CONTAINER_MIN_INLINE_SPAN
+
+  const totalFootprint = rects.reduce((total, rect) => (
+    total +
+    (rect.width + CONTAINER_COLUMN_GAP) *
+    (rect.height + CONTAINER_ROW_GAP)
+  ), 0)
+  const longestChild = Math.max(...rects.map((rect) => rect.width))
+  return Math.max(
+    longestChild,
+    Math.min(
+      CONTAINER_MAX_INLINE_SPAN,
+      Math.max(CONTAINER_MIN_INLINE_SPAN, Math.ceil(Math.sqrt(totalFootprint * 2)))
+    )
+  )
+}
+
+/**
+ * 将一个组合容器的直接子节点按真实依赖分层；无边节点沿用原布局的纵向层。
+ * 嵌套后代的跨边先投影到其直接子容器，因此内层展开不会把外层顺序压平。
+ */
+function containerChildLayers(
+  nodeIds: readonly string[],
+  anchorById: ReadonlyMap<string, { x: number; y: number }>,
+  links: readonly WorkflowLink[],
+  visibleParentById: ReadonlyMap<string, string>,
+  containerId: string,
+  direction: DagLayoutDirection
+): Map<string, number> {
+  const nodeIdSet = new Set(nodeIds)
+  const incoming = new Map(nodeIds.map((nodeId) => [nodeId, new Set<string>()]))
+  for (const link of links) {
+    const source = directChildInContainer(
+      link.source,
+      containerId,
+      visibleParentById
+    )
+    const target = directChildInContainer(
+      link.target,
+      containerId,
+      visibleParentById
+    )
+    if (
+      source && target && source !== target &&
+      nodeIdSet.has(source) && nodeIdSet.has(target)
+    ) {
+      incoming.get(target)?.add(source)
+    }
+  }
+
+  const layers = new Map<string, number>()
+  const visiting = new Set<string>()
+  const resolve = (nodeId: string): number => {
+    const cached = layers.get(nodeId)
+    if (cached !== undefined) return cached
+    if (visiting.has(nodeId)) return 0
+    visiting.add(nodeId)
+    const predecessors = [...(incoming.get(nodeId) ?? [])]
+    const dependencyLayer = predecessors.length === 0
+      ? 0
+      : Math.max(...predecessors.map(resolve)) + 1
+    visiting.delete(nodeId)
+    layers.set(nodeId, dependencyLayer)
+    return dependencyLayer
+  }
+  nodeIds.forEach(resolve)
+
+  if ([...incoming.values()].some((predecessors) => predecessors.size > 0)) {
+    return layers
+  }
+  const orderedAxis = [...new Set(nodeIds.map(
+    (nodeId) => direction === 'horizontal'
+      ? anchorById.get(nodeId)?.x ?? 0
+      : anchorById.get(nodeId)?.y ?? 0
+  ))].sort((left, right) => left - right)
+  const axisLayers: number[] = []
+  for (const axis of orderedAxis) {
+    if (
+      axisLayers.length === 0 ||
+      axis - axisLayers[axisLayers.length - 1]! > CONTAINER_LAYER_TOLERANCE
+    ) {
+      axisLayers.push(axis)
+    }
+  }
+  return new Map(nodeIds.map((nodeId) => {
+    const axis = direction === 'horizontal'
+      ? anchorById.get(nodeId)?.x ?? 0
+      : anchorById.get(nodeId)?.y ?? 0
+    const layer = Math.max(
+      0,
+      axisLayers.findIndex((layerAxis, index) =>
+        axis <= layerAxis + CONTAINER_LAYER_TOLERANCE ||
+        index === axisLayers.length - 1
+      )
+    )
+    return [nodeId, layer]
+  }))
+}
+
+function directChildInContainer(
+  nodeId: string,
+  containerId: string,
+  visibleParentById: ReadonlyMap<string, string>
+): string | undefined {
+  let candidate = nodeId
+  const visited = new Set<string>()
+  while (!visited.has(candidate)) {
+    visited.add(candidate)
+    const parentId = visibleParentById.get(candidate)
+    if (!parentId) return undefined
+    if (parentId === containerId) return candidate
+    candidate = parentId
+  }
+  return undefined
 }
 
 function shiftSubtree(

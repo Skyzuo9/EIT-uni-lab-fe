@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { workflowNodeVisualKind } from './workflowNodeVisualKind'
 
-describe('workflowNodeVisualKind', () => {
+describe('workflow node visual kind', () => {
   it.each([
     { symbol: 's_z_lab_标准物料转运' },
     { symbol: 'material_transfer' },
@@ -55,5 +55,14 @@ describe('workflowNodeVisualKind', () => {
       symbol: 'move_material_for_assay',
       definitionFqid: 'example.workflows.prepare_sample'
     })).toBeUndefined()
+  })
+
+  it('uses the robot transfer visual for pTLC general transport v3', () => {
+    expect(workflowNodeVisualKind({
+      symbol: 'transport_resource_v3',
+      definitionFqid:
+        'ptlc_station.workflows.operations.物料转运.transport_resource_v3.' +
+        'transport_resource_v3'
+    })).toBe('robot-transfer')
   })
 })

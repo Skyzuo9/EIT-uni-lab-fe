@@ -3,6 +3,7 @@ import type {
   WorkflowLink,
   WorkflowNode
 } from './parseWorkflow'
+import type { MaterialShapeSpec } from '@unilab/material'
 
 export interface WorkflowMaterialChip {
   handleUuid: string
@@ -10,6 +11,7 @@ export interface WorkflowMaterialChip {
   sourceNodeName: string
   sourceHandleName: string
   accent: string
+  shape?: MaterialShapeSpec
 }
 
 export interface WorkflowMaterialTraceProjection {
@@ -30,6 +32,7 @@ export interface WorkflowMaterialLineage {
   sourceHandleName: string
   materialRole: string
   accent: string
+  shape?: MaterialShapeSpec
 }
 
 export interface WorkflowMaterialRoleOption {
@@ -211,13 +214,19 @@ export function projectMaterialTraces(
     const targetHandle = link.targetHandleUuid
       ? handleByNode.get(link.target)?.get(link.targetHandleUuid)
       : undefined
+    const sourceIoType = link.compositeBoundaryBridge === 'target'
+      ? 'target'
+      : 'source'
+    const targetIoType = link.compositeBoundaryBridge === 'source'
+      ? 'source'
+      : 'target'
     if (
       !sourceNode ||
       !targetNode ||
       !sourceHandle ||
       !targetHandle ||
-      sourceHandle.ioType !== 'source' ||
-      targetHandle.ioType !== 'target' ||
+      sourceHandle.ioType !== sourceIoType ||
+      targetHandle.ioType !== targetIoType ||
       !isResourceSlotHandle(sourceHandle) ||
       !isResourceSlotHandle(targetHandle)
     ) return []
@@ -330,12 +339,18 @@ export function projectMaterialTraces(
           sourceNodeName: lineage.sourceNodeName,
           sourceHandleName: lineage.sourceHandleName,
           accent: lineage.accent,
+          ...(lineage.shape ? { shape: lineage.shape } : {})
         })
 
-        for (const nextHandle of passThroughHandles(
-          edge.targetNode,
-          edge.targetHandle
-        )) {
+        // Boundary bridge segments reuse the declared parent Handle through a
+        // transparent reverse React Flow Handle. Re-enqueueing that identity
+        // makes the next segment explicit instead of visually jumping across
+        // the expanded Composite.
+        queue.push({ node: edge.targetNode, handle: edge.targetHandle })
+        const passThrough = edge.targetHandle.ioType === 'target'
+          ? passThroughHandles(edge.targetNode, edge.targetHandle)
+          : []
+        for (const nextHandle of passThrough) {
           setHandleAccent(
             handleAccentsByNode,
             edge.targetNode.id,
@@ -473,6 +488,9 @@ function rootLineage(
       ? node.materialSource?.flowRole || 'unclassified'
       : 'derived',
     accent: accentFor(key),
+    ...(materialSource && node.materialSource?.shape
+      ? { shape: node.materialSource.shape }
+      : {})
   }
 }
 

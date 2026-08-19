@@ -60,6 +60,8 @@ export interface WorkflowNodeData {
   groupKind?: 'group' | 'subworkflow'
   groupExpanded?: boolean
   descendantCount?: number
+  /** 当前可见投影中的直接组合工作流父节点，由真实 parent_uuid 链得到。 */
+  parentContainerId?: string
   handles?: WorkflowHandlePort[]
   traceAccent?: string
   materialHandleAccents?: Record<string, string>

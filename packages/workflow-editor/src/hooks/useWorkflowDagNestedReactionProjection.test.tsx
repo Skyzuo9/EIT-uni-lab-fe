@@ -67,6 +67,12 @@ describe('useWorkflowDag nested reaction-formula projection', () => {
       .toContain('put-resource>outer')
     expect(projectionAttribute(expandedMarkup, 'data-node-policies'))
       .toContain('get-resource@false:false:false')
+    expect(projectionAttribute(expandedMarkup, 'data-node-layers'))
+      .toContain('outer@0')
+    expect(projectionAttribute(expandedMarkup, 'data-node-layers'))
+      .toContain('get-resource@2')
+    expect(projectionAttribute(expandedMarkup, 'data-edge-layers'))
+      .toContain('inner-get-host@1')
 
     const edgeRoutes = projectionEdgeRoutes(expandedMarkup)
     for (const edgeId of ['inner-get-host', 'inner-host-put']) {
@@ -108,6 +114,7 @@ describe('useWorkflowDag nested reaction-formula projection', () => {
       .get('inner-nested-host')
     expect(nestedRoute).toBeDefined()
     expect(nestedRoute?.direction).toBe('LR')
+    expectProjectionChildrenInsideParents(expandedMarkup)
   })
 })
 
@@ -196,6 +203,14 @@ function ProjectionHarness({
         ))
         .sort()
         .join('|')}
+      data-node-layers={projection.nodes
+        .map((node) => `${node.id}@${node.zIndex ?? 0}`)
+        .sort()
+        .join('|')}
+      data-edge-layers={projection.edges
+        .map((edge) => `${edge.id}@${edge.zIndex ?? 0}`)
+        .sort()
+        .join('|')}
       data-edge-routes={projection.edges
         .map((edge) => {
           const source = projection.nodes.find((node) => node.id === edge.source)
@@ -260,6 +275,46 @@ function projectionEdgeRoutes(markup: string): Map<string, ProjectionEdgeRoute> 
   )
 }
 
+function expectProjectionChildrenInsideParents(markup: string): void {
+  const positions = new Map(
+    projectionAttribute(markup, 'data-node-layout')
+      .split('|')
+      .map((entry) => {
+        const [nodeId, coordinates] = entry.split('@')
+        const [x, y] = coordinates?.split(':').map(Number) ?? []
+        return [nodeId, { x, y }] as const
+      })
+  )
+  const sizes = new Map(
+    projectionAttribute(markup, 'data-node-sizes')
+      .split('|')
+      .map((entry) => {
+        const [nodeId, dimensions] = entry.split('@')
+        const [width, height] = dimensions?.split('x').map(Number) ?? []
+        return [nodeId, { width, height }] as const
+      })
+  )
+  const parentEntries = projectionAttribute(markup, 'data-node-parents')
+    .split('|')
+    .filter(Boolean)
+    .map((entry) => entry.split('>') as [string, string])
+
+  for (const [childId, parentId] of parentEntries) {
+    const position = positions.get(childId)
+    const childSize = sizes.get(childId)
+    const parentSize = sizes.get(parentId)
+    expect(position, `${childId} should have a relative position`).toBeDefined()
+    expect(childSize, `${childId} should have a rendered size`).toBeDefined()
+    expect(parentSize, `${parentId} should have a container size`).toBeDefined()
+    expect(position!.x).toBeGreaterThanOrEqual(0)
+    expect(position!.y).toBeGreaterThanOrEqual(0)
+    expect(position!.x + childSize!.width)
+      .toBeLessThanOrEqual(parentSize!.width)
+    expect(position!.y + childSize!.height)
+      .toBeLessThanOrEqual(parentSize!.height)
+  }
+}
+
 function projectionAttribute(markup: string, name: string): string {
   const value = markup.match(new RegExp(`${name}="([^"]*)"`))?.[1]
   expect(value, `${name} should be rendered`).toBeDefined()
@@ -291,11 +346,34 @@ function workflowNodes(): WorkflowNode[] {
       groupKind: 'subworkflow',
       collapsedByDefault: true,
       childNodeIds: ['get-resource', 'host-transfer', 'put-resource'],
-      descendantNodeIds: ['get-resource', 'host-transfer', 'put-resource']
+      descendantNodeIds: ['get-resource', 'host-transfer', 'put-resource'],
+      compositeBoundaryMappings: {
+        targets: {
+          'outer-input': [{
+            nodeUuid: 'get-resource',
+            handleUuid: 'get-resource-input'
+          }]
+        },
+        sources: {
+          'outer-output': {
+            nodeUuid: 'put-resource',
+            handleUuid: 'put-resource-output'
+          }
+        }
+      }
     },
-    action('get-resource', [], 'outer'),
-    action('host-transfer', [], 'outer'),
-    action('put-resource', [], 'outer'),
+    action('get-resource', [
+      resourceSlot('get-resource-input', 'sample', 'target'),
+      resourceSlot('get-resource-output', 'sample', 'source')
+    ], 'outer'),
+    action('host-transfer', [
+      resourceSlot('host-transfer-input', 'sample', 'target'),
+      resourceSlot('host-transfer-output', 'sample', 'source')
+    ], 'outer'),
+    action('put-resource', [
+      resourceSlot('put-resource-input', 'sample', 'target'),
+      resourceSlot('put-resource-output', 'sample', 'source')
+    ], 'outer'),
     action('prepare-reagent', [
       resourceSlot('prepare-reagent-input', 'reagent', 'target'),
       resourceSlot('prepare-reagent-output', 'reagent', 'source')
@@ -323,8 +401,20 @@ function workflowLinks(): WorkflowLink[] {
       'seal-sample-input',
       'outer-seal'
     ),
-    readyLink('get-resource', 'host-transfer', 'inner-get-host'),
-    readyLink('host-transfer', 'put-resource', 'inner-host-put'),
+    materialLink(
+      'get-resource',
+      'get-resource-output',
+      'host-transfer',
+      'host-transfer-input',
+      'inner-get-host'
+    ),
+    materialLink(
+      'host-transfer',
+      'host-transfer-output',
+      'put-resource',
+      'put-resource-input',
+      'inner-host-put'
+    ),
     materialLink(
       'reagent-source',
       'reagent-output',

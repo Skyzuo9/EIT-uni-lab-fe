@@ -148,8 +148,8 @@
 }
 
 /*
- * 覆盖物料泳道（Material Swimlane）的输入/输出写死定位。蛇形在返程会交换
- * source/target 的实际侧边，因此必须以 React Flow 的 Left/Right 类为权威。
+ * 覆盖物料泳道（Material Swimlane）的输入/输出写死定位。换行布局统一向右，
+ * 仍以 React Flow 的 Left/Right 类作为实际端口侧边权威。
  */
 .workflow
   :global(.wf-node--action-strip[data-workflow-layout-strategy='primary-sample-serpentine'][data-workflow-layout-direction='horizontal'])

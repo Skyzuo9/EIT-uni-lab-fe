@@ -167,6 +167,107 @@ describe('Material trace projection', () => {
     expect(filtered.links).toEqual([links[0]])
   })
 
+  /** 展开 Composite 后，物料必须逐段经过父边界再进入真实内部端口。 */
+  it('traces material through segmented expanded-composite boundary links', () => {
+    const sampleOutput = resourceSlotHandle(
+      'sample-output',
+      'sample_vial',
+      'source'
+    )
+    const plateOutput = resourceSlotHandle('plate-output', 'plate', 'source')
+    const sampleBoundary = resourceSlotHandle(
+      'execute-sample-input',
+      'sample_vial',
+      'target'
+    )
+    const plateBoundary = resourceSlotHandle(
+      'execute-plate-input',
+      'plate',
+      'target'
+    )
+    const sampleBoundaryOutput = resourceSlotHandle(
+      'execute-sample-output',
+      'sample_vial',
+      'source'
+    )
+    const sampleChild = resourceSlotHandle(
+      'complete-sample-input',
+      'sample_vial',
+      'target'
+    )
+    const plateChild = resourceSlotHandle(
+      'complete-plate-input',
+      'plate',
+      'target'
+    )
+    const nodes: WorkflowNode[] = [
+      workflowNode('sample-source', '主样品', 'material_source', [sampleOutput]),
+      workflowNode(
+        'plate-source',
+        '硅胶板',
+        'material_source',
+        [plateOutput],
+        'aliquot_sample'
+      ),
+      {
+        ...workflowNode('execute', '上样-执行 v3', 'workflow', [
+          sampleBoundary,
+          plateBoundary,
+          sampleBoundaryOutput
+        ]),
+        groupKind: 'subworkflow',
+        descendantNodeIds: ['complete'],
+        compositeBoundaryMappings: {
+          targets: {
+            [sampleBoundary.uuid]: [{
+              nodeUuid: 'complete',
+              handleUuid: sampleChild.uuid
+            }],
+            [plateBoundary.uuid]: [{
+              nodeUuid: 'complete',
+              handleUuid: plateChild.uuid
+            }]
+          },
+          sources: {}
+        }
+      },
+      workflowNode('complete', 'complete_sample_to_plate', 'action', [
+        sampleChild,
+        plateChild
+      ])
+    ]
+
+    const projection = projectMaterialTraces(nodes, [
+      link('sample-source', sampleOutput.uuid, 'execute', sampleBoundary.uuid),
+      {
+        ...link('execute', sampleBoundary.uuid, 'complete', sampleChild.uuid),
+        compositeBoundaryBridge: 'target'
+      },
+      link('plate-source', plateOutput.uuid, 'execute', plateBoundary.uuid),
+      {
+        ...link('execute', plateBoundary.uuid, 'complete', plateChild.uuid),
+        compositeBoundaryBridge: 'target'
+      }
+    ])
+
+    expect(projection.handleAccentsByNode.get('execute')).toEqual(new Map([
+      [sampleBoundary.uuid, materialTraceAccent('sample-source')],
+      [plateBoundary.uuid, materialTraceAccent('plate-source')],
+      [sampleBoundaryOutput.uuid, materialTraceAccent('sample-source')]
+    ]))
+    expect(projection.handleRolesByNode.get('execute')).toEqual(new Map([
+      [sampleBoundary.uuid, 'primary_sample'],
+      [plateBoundary.uuid, 'aliquot_sample'],
+      [sampleBoundaryOutput.uuid, 'primary_sample']
+    ]))
+    expect([...projection.edgeLineages.values()]).toEqual([
+      'sample-source',
+      'sample-source',
+      'plate-source',
+      'plate-source'
+    ])
+  })
+
   it('starts a new material trace at an explicit ResourceSlot producer', () => {
     const producedOutput = resourceSlotHandle(
       'produced-output',

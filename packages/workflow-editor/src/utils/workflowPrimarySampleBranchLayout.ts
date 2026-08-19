@@ -29,7 +29,7 @@ export interface WorkflowSupportingBranchPlacement {
 }
 
 /**
- * 把主样品主干序号转换为蛇形行内的实际画布列。
+ * 把主样品主干序号转换为换行布局内的实际画布列。
  *
  * @param nodeIndex 节点在主样品主干中的零基序号。
  * @param nodesPerRow 每条蛇形行允许的节点数。
@@ -39,11 +39,7 @@ export function workflowBackboneColumnForIndex(
   nodeIndex: number,
   nodesPerRow: number
 ): number {
-  const row = Math.floor(nodeIndex / nodesPerRow)
-  const indexInRow = nodeIndex % nodesPerRow
-  return row % 2 === 0
-    ? indexInRow
-    : nodesPerRow - 1 - indexInRow
+  return nodeIndex % nodesPerRow
 }
 
 /**
@@ -136,14 +132,12 @@ function compactSiblingMaterialSources(
       original[0]! +
         index * WORKFLOW_SUPPORTING_BRANCH_MATERIAL_SOURCE_PITCH
     )
-    const flowRunsEast = Math.floor(anchorIndex / mainColumnCount) % 2 === 0
-    const correction = flowRunsEast
-      ? Math.max(0, ...compact.map((x, index) => x - original[index]!))
-      : Math.max(0, ...original.map((x, index) => x - compact[index]!))
+    const correction = Math.max(
+      0,
+      ...compact.map((x, index) => x - original[index]!)
+    )
     ordered.forEach(({ placements }, index) => {
-      placements[0]!.x = compact[index]! + (flowRunsEast
-        ? -correction
-        : correction)
+      placements[0]!.x = compact[index]! - correction
     })
   }
 }
@@ -165,12 +159,11 @@ function layoutSupportingBranch(
 ): WorkflowSupportingBranchPlacement[] {
   const anchorX = branch.anchorX ??
     originX + branch.anchorColumn * mainColumnGap
-  const row = Math.floor(branch.anchorIndex / mainColumnCount)
-  const flowRunsEast = row % 2 === 0
-  const flowSign = flowRunsEast ? 1 : -1
-  const internalPorts: WorkflowNodePortLayout = flowRunsEast
-    ? { target: 'left', source: 'right' }
-    : { target: 'right', source: 'left' }
+  const flowSign = 1
+  const internalPorts: WorkflowNodePortLayout = {
+    target: 'left',
+    source: 'right'
+  }
   const terminalIndex = Math.max(0, branch.nodes.length - 1)
   const attachmentIndex = branch.flowDirection === 'into-primary'
     ? terminalIndex

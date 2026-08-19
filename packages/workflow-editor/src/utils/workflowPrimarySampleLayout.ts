@@ -21,9 +21,12 @@ import type {
 export const WORKFLOW_PRIMARY_SAMPLE_NODES_PER_ROW = 4
 export const WORKFLOW_PRIMARY_SAMPLE_COLUMN_GAP = 328
 export const WORKFLOW_PRIMARY_SAMPLE_MIN_ROW_GAP = 300
+export const WORKFLOW_PRIMARY_SAMPLE_REFERENCE_ZOOM = 0.72
 
 const ORIGIN_X = 72
 const ORIGIN_Y = 72
+const PANEL_INLINE_INSET = 96
+const MAX_NODES_PER_ROW = 8
 const SUPPORTING_BRANCH_VERTICAL_GAP = 44
 const ROW_CLEARANCE = 112
 const COMPACT_NODE_BASE_HEIGHT = 48
@@ -39,6 +42,8 @@ const PRIMARY_SAMPLE_TRANSFER_HANDLE_AXIS = 90
 
 export interface WorkflowPrimarySampleLayoutOptions {
   supportingMaterialPresentation?: WorkflowSupportingMaterialPresentation
+  /** 当前 React Flow 面板 CSS 像素宽度；布局按固定参考缩放换算换行容量。 */
+  panelInlineSize?: number
 }
 
 /*
@@ -51,9 +56,9 @@ export interface WorkflowPrimarySampleLayoutOptions {
 /**
  * 以主样品及其在样品交汇后的新产物物料链为主干生成蛇形布局。
  *
- * 主干每行最多放置四个节点，奇数行反向排列；其它物料（Material）支线按
- * 最近主干节点归入同一行的辅助区。返回结果只改变前端画布投影坐标与端口方向，
- * 不修改权威工作流图（Workflow Graph）或其执行顺序。
+ * 主干每一行都从左到右排列；每行容量由当前面板宽度在固定参考缩放下换算。
+ * 其它物料（Material）支线按最近主干节点归入同一行的辅助区。返回结果只改变
+ * 前端画布投影坐标与端口方向，不修改权威工作流图或其执行顺序。
  *
  * @param nodes 已完成组合工作流折叠与物料可见性投影的节点。
  * @param links 端点均可能出现在当前投影中的控制边与物料边。
@@ -89,6 +94,7 @@ export function layoutWorkflowPrimarySampleFlow(
     traces
   )
   const nodeOrder = new Map(nodes.map((node, index) => [node.id, index]))
+  const nodesPerRow = workflowPrimarySampleNodesPerRow(options.panelInlineSize)
   const layerByNode = workflowLayers(nodes, visibleLinks)
   const backboneNodeIds = sampleBackbone.hasPrimarySample
     ? sampleBackbone.nodeIds
@@ -113,7 +119,8 @@ export function layoutWorkflowPrimarySampleFlow(
       nodes,
       backboneIndexes,
       layerByNode,
-      nodeOrder
+      nodeOrder,
+      nodesPerRow
     )
   const expandedDescendantIds = new Set(
     [...expandedDescendantBranchesByRow.values()]
@@ -127,25 +134,25 @@ export function layoutWorkflowPrimarySampleFlow(
     backboneIndexes,
     layerByNode,
     nodeOrder,
-    expandedDescendantIds
+    expandedDescendantIds,
+    nodesPerRow
   )
   const showSupportingBranches =
     options.supportingMaterialPresentation !== 'reaction-formula'
   const rowCount = Math.max(
     1,
-    Math.ceil(backboneNodeIds.length / WORKFLOW_PRIMARY_SAMPLE_NODES_PER_ROW)
+    Math.ceil(backboneNodeIds.length / nodesPerRow)
   )
   const positionByNode = new Map<string, { x: number; y: number }>()
   const nodePorts = new Map<string, WorkflowNodePortLayout>()
   const nodeById = new Map(nodes.map((node) => [node.id, node]))
   let mainRowY = ORIGIN_Y
-  let previousRowEndX = ORIGIN_X
 
   for (let row = 0; row < rowCount; row += 1) {
-    const rowStart = row * WORKFLOW_PRIMARY_SAMPLE_NODES_PER_ROW
+    const rowStart = row * nodesPerRow
     const rowNodeIds = backboneNodeIds.slice(
       rowStart,
-      rowStart + WORKFLOW_PRIMARY_SAMPLE_NODES_PER_ROW
+      rowStart + nodesPerRow
     )
     const primaryHandleAxes = new Map(rowNodeIds.map((nodeId) => [
       nodeId,
@@ -162,26 +169,22 @@ export function layoutWorkflowPrimarySampleFlow(
           estimatedHorizontalNodeHeight(nodeById.get(nodeId))
       )
     )
-    const flowSign = row % 2 === 0 ? 1 : -1
-    let rowX = row === 0 ? ORIGIN_X : previousRowEndX
+    let rowX = ORIGIN_X
     for (const [rowIndex, nodeId] of rowNodeIds.entries()) {
       positionByNode.set(nodeId, {
         x: rowX,
         y: 0
       })
       rowByNode.set(nodeId, row)
-      const absoluteIndex = rowStart + rowIndex
-      nodePorts.set(nodeId, backboneHorizontalPortLayout(absoluteIndex))
+      nodePorts.set(nodeId, backboneHorizontalPortLayout())
       const nextNodeId = rowNodeIds[rowIndex + 1]
       if (nextNodeId) {
-        rowX += flowSign * primarySampleNodeGap(
+        rowX += primarySampleNodeGap(
           nodeById.get(nodeId),
           nodeById.get(nextNodeId)
         )
       }
     }
-    previousRowEndX = rowX
-
     const secondaryBands = showSupportingBranches
       ? packWorkflowSupportingBranches(
           (secondaryBranchesByRow.get(row) ?? []).map((branch) => ({
@@ -192,7 +195,7 @@ export function layoutWorkflowPrimarySampleFlow(
           })),
           ORIGIN_X,
           WORKFLOW_PRIMARY_SAMPLE_COLUMN_GAP,
-          WORKFLOW_PRIMARY_SAMPLE_NODES_PER_ROW
+          nodesPerRow
         )
       : []
     const expandedDescendantBands = packWorkflowSupportingBranches(
@@ -204,7 +207,7 @@ export function layoutWorkflowPrimarySampleFlow(
       })),
       ORIGIN_X,
       WORKFLOW_PRIMARY_SAMPLE_COLUMN_GAP,
-      WORKFLOW_PRIMARY_SAMPLE_NODES_PER_ROW
+      nodesPerRow
     )
     const auxiliaryBands = [
       ...secondaryBands,
@@ -286,7 +289,8 @@ function groupExpandedBackboneDescendantsByRow(
   nodes: readonly WorkflowNode[],
   backboneIndexes: ReadonlyMap<string, number>,
   layerByNode: ReadonlyMap<string, number>,
-  nodeOrder: ReadonlyMap<string, number>
+  nodeOrder: ReadonlyMap<string, number>,
+  nodesPerRow: number
 ): Map<number, WorkflowSupportingBranch[]> {
   const visibleNodeIds = new Set(nodes.map((node) => node.id))
   const nodeById = new Map(nodes.map((node) => [node.id, node]))
@@ -322,7 +326,7 @@ function groupExpandedBackboneDescendantsByRow(
     if (descendants.length === 0) continue
     descendants.forEach((node) => assignedDescendants.add(node.id))
     const row = Math.floor(
-      anchorIndex / WORKFLOW_PRIMARY_SAMPLE_NODES_PER_ROW
+      anchorIndex / nodesPerRow
     )
     assigned.set(row, [
       ...(assigned.get(row) ?? []),
@@ -331,7 +335,7 @@ function groupExpandedBackboneDescendantsByRow(
         anchorIndex,
         anchorColumn: workflowBackboneColumnForIndex(
           anchorIndex,
-          WORKFLOW_PRIMARY_SAMPLE_NODES_PER_ROW
+          nodesPerRow
         ),
         order: Math.min(...descendants.map(
           (node) => nodeOrder.get(node.id) ?? Number.MAX_SAFE_INTEGER
@@ -363,7 +367,8 @@ function groupSecondaryBranchesByBackboneRow(
   backboneIndexes: ReadonlyMap<string, number>,
   layerByNode: ReadonlyMap<string, number>,
   nodeOrder: ReadonlyMap<string, number>,
-  excludedNodeIds: ReadonlySet<string> = new Set()
+  excludedNodeIds: ReadonlySet<string> = new Set(),
+  nodesPerRow = WORKFLOW_PRIMARY_SAMPLE_NODES_PER_ROW
 ): Map<number, WorkflowSupportingBranch[]> {
   const adjacency = new Map(nodes.map((node) => [node.id, [] as string[]]))
   links.forEach((link, index) => {
@@ -408,7 +413,7 @@ function groupSecondaryBranchesByBackboneRow(
       backboneIndexes
     )
     const row = Math.floor(
-      attachment.anchorIndex / WORKFLOW_PRIMARY_SAMPLE_NODES_PER_ROW
+      attachment.anchorIndex / nodesPerRow
     )
     assigned.set(row, [
       ...(assigned.get(row) ?? []),
@@ -417,7 +422,7 @@ function groupSecondaryBranchesByBackboneRow(
         anchorIndex: attachment.anchorIndex,
         anchorColumn: workflowBackboneColumnForIndex(
           attachment.anchorIndex,
-          WORKFLOW_PRIMARY_SAMPLE_NODES_PER_ROW
+          nodesPerRow
         ),
         order: Math.min(...componentNodes.map(
           (node) => nodeOrder.get(node.id) ?? Number.MAX_SAFE_INTEGER
@@ -631,27 +636,20 @@ function placePrimarySupportingSources(
     const anchorId = backboneIdByIndex.get(anchorIndex)
     const anchorPosition = anchorId ? positionByNode.get(anchorId) : undefined
     if (!sourcePosition || !anchorPosition) continue
-    const flowRunsEast = Math.floor(
-      anchorIndex / WORKFLOW_PRIMARY_SAMPLE_NODES_PER_ROW
-    ) % 2 === 0
     const anchorNode = anchorId ? nodeById.get(anchorId) : undefined
     const frontGap = anchorNode?.visualKind === 'robot-transfer'
       ? (WORKFLOW_SUPPORTING_BRANCH_NODE_GAP +
           HORIZONTAL_MATERIAL_SOURCE_WIDTH) / 2
       : WORKFLOW_SUPPORTING_BRANCH_NODE_GAP
     positionByNode.set(sourceId, {
-      x: flowRunsEast
-        ? Math.min(sourcePosition.x, anchorPosition.x - frontGap)
-        : Math.max(sourcePosition.x, anchorPosition.x + frontGap),
+      x: Math.min(sourcePosition.x, anchorPosition.x - frontGap),
       y: Math.min(
         sourcePosition.y,
         anchorPosition.y - SPECIAL_NODE_HEIGHT -
           SUPPORTING_BRANCH_VERTICAL_GAP
       )
     })
-    nodePorts.set(sourceId, flowRunsEast
-      ? { target: 'left', source: 'right' }
-      : { target: 'right', source: 'left' })
+    nodePorts.set(sourceId, { target: 'left', source: 'right' })
   }
 }
 
@@ -742,20 +740,35 @@ function primarySampleHandleAxis(
 /**
  * 返回横向主样品蛇形路径中一个节点的输入、输出端口方向。
  *
- * @param nodeIndex 节点在主样品主干中的零基序号。
- * @returns 偶数行由西向东、奇数行由东向西的端口布局。
+ * @returns 所有行统一由西向东的端口布局。
  */
-function backboneHorizontalPortLayout(
-  nodeIndex: number
-): WorkflowNodePortLayout {
-  const row = Math.floor(
-    nodeIndex / WORKFLOW_PRIMARY_SAMPLE_NODES_PER_ROW
-  )
-  const leftToRight = row % 2 === 0
+function backboneHorizontalPortLayout(): WorkflowNodePortLayout {
   return {
-    target: leftToRight ? 'left' : 'right',
-    source: leftToRight ? 'right' : 'left'
+    target: 'left',
+    source: 'right'
   }
+}
+
+/**
+ * 把当前面板宽度按固定参考缩放换算为主样品每行容量。
+ *
+ * 仅改变布局换行，不读写 React Flow 当前 viewport，因此面板伸缩不会覆盖
+ * 用户的手动缩放。未提供面板宽度的持久化美化流程继续使用兼容默认值。
+ */
+function workflowPrimarySampleNodesPerRow(panelInlineSize?: number): number {
+  if (!Number.isFinite(panelInlineSize) || (panelInlineSize ?? 0) <= 0) {
+    return WORKFLOW_PRIMARY_SAMPLE_NODES_PER_ROW
+  }
+  const canvasInlineSize = Math.max(
+    0,
+    (panelInlineSize! - PANEL_INLINE_INSET) /
+      WORKFLOW_PRIMARY_SAMPLE_REFERENCE_ZOOM
+  )
+  const capacity = Math.floor(
+    (canvasInlineSize - COMPACT_ACTION_NODE_WIDTH) /
+      WORKFLOW_PRIMARY_SAMPLE_COLUMN_GAP
+  ) + 1
+  return Math.min(MAX_NODES_PER_ROW, Math.max(1, capacity))
 }
 
 /** 只要相邻一端为机械臂转运节点，就把该段主干间距压缩为普通列距的一半。 */

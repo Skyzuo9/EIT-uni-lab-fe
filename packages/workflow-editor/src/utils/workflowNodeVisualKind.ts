@@ -7,6 +7,7 @@ export interface PublishedWorkflowSourceIdentity {
 
 const MATERIAL_TRANSFER_SYMBOLS = new Set([
   'material_transfer',
+  'transport_resource_v3',
   's_z_lab_标准物料转运',
   'robot_a_material_transfer',
   'robot_b_material_transfer',
@@ -14,6 +15,8 @@ const MATERIAL_TRANSFER_SYMBOLS = new Set([
 ])
 
 const MATERIAL_TRANSFER_DEFINITION_FQIDS = new Set([
+  'ptlc_station.workflows.operations.物料转运.transport_resource_v3.' +
+    'transport_resource_v3',
   'szlab_poly_studio.workflows.material_transfer.s_z_lab_标准物料转运',
   'pylabrobot_unilab.workflows.material_transfer_robot_a.' +
     'robot_a_material_transfer',

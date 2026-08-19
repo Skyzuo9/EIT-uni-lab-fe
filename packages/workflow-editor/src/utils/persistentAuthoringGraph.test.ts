@@ -560,6 +560,56 @@ describe('C1 persistent Composite hierarchy', () => {
       projectionField(firstOuter, 'compositeSignature')
     )
   })
+
+  it('preserves authoritative Composite material boundary mappings', () => {
+    const graph = compositeGraph()
+    graph.nodes = graph.nodes.map((item) => item.uuid === 'outer'
+      ? {
+          ...item,
+          meta_data: {
+            unilab: {
+              composite: {
+                target_mappings: {
+                  'outer-input': [{
+                    workflow_node_uuid: 'inner',
+                    target_handle_uuid: 'inner-input'
+                  }]
+                },
+                source_mappings: {
+                  'outer-output': {
+                    kind: 'node_output',
+                    workflow_node_uuid: 'inner',
+                    source_handle_uuid: 'inner-output'
+                  },
+                  'implicit-output': {
+                    kind: 'workflow_input',
+                    parameter: 'sample'
+                  }
+                }
+              }
+            }
+          }
+        }
+      : item)
+
+    const projected = projectPersistentAuthoringGraph(graph)
+
+    expect(projected.nodes.find((item) => item.id === 'outer')
+      ?.compositeBoundaryMappings).toEqual({
+      targets: {
+        'outer-input': [{
+          nodeUuid: 'inner',
+          handleUuid: 'inner-input'
+        }]
+      },
+      sources: {
+        'outer-output': {
+          nodeUuid: 'inner',
+          handleUuid: 'inner-output'
+        }
+      }
+    })
+  })
 })
 
 describe('persistent Authoring Graph file import', () => {

@@ -13,8 +13,8 @@ import {
 import { WORKFLOW_SUPPORTING_BRANCH_NODE_GAP } from './workflowPrimarySampleBranchLayout'
 
 describe('layoutWorkflowPrimarySampleFlow', () => {
-  /** 验证主样品路径优先于声明顺序，并在第四个节点后反向换行。 */
-  it('uses the primary sample as a serpentine backbone', () => {
+  /** 验证主样品路径优先于声明顺序，并让每一行都保持从左到右阅读。 */
+  it('uses the primary sample as a forward-reading wrapped backbone', () => {
     const reagentOutput = resourceSlotHandle(
       'reagent-output',
       'reagent',
@@ -64,7 +64,9 @@ describe('layoutWorkflowPrimarySampleFlow', () => {
       )
     ]
 
-    const result = layoutWorkflowPrimarySampleFlow(nodes, links)
+    const result = layoutWorkflowPrimarySampleFlow(nodes, links, {
+      panelInlineSize: 1116
+    })
     const positions = new Map(
       result.nodes.map((node) => [node.id, { x: node.x, y: node.y }])
     )
@@ -85,11 +87,10 @@ describe('layoutWorkflowPrimarySampleFlow', () => {
       .toBeLessThan(positions.get('step-1')?.x ?? 0)
     expect(positions.get('step-1')?.x)
       .toBeLessThan(positions.get('step-2')?.x ?? 0)
-    expect(positions.get('step-3')?.x).toBe(
-      positions.get('step-4')?.x
-    )
+    expect(positions.get('step-3')?.x)
+      .toBeGreaterThan(positions.get('step-2')?.x ?? 0)
     expect(positions.get('step-4')?.x)
-      .toBeGreaterThan(positions.get('step-5')?.x ?? 0)
+      .toBeLessThan(positions.get('step-5')?.x ?? 0)
     expect(positions.get('step-3')?.y)
       .toBeLessThan(positions.get('step-4')?.y ?? 0)
     expect(result.nodePorts?.get('step-3')).toEqual({
@@ -97,8 +98,8 @@ describe('layoutWorkflowPrimarySampleFlow', () => {
       source: 'right'
     })
     expect(result.nodePorts?.get('step-4')).toMatchObject({
-      target: 'right',
-      source: 'left'
+      target: 'left',
+      source: 'right'
     })
     expect(result.edgeDirections?.get(2)).toBe('LR')
     expect(result.edgeDirections?.get(3)).toBe('LR')
@@ -114,7 +115,71 @@ describe('layoutWorkflowPrimarySampleFlow', () => {
       .toBeLessThan(positions.get('step-3')?.x ?? 0)
   })
 
-  /** 验证反向蛇形行的辅助物料按实际接入列排列，避免来源连线互相穿越。 */
+  /** 当前面板宽度按固定验收缩放换算成画布宽度，并据此决定换行容量。 */
+  it('adapts row capacity to the current panel at a fixed reference zoom', () => {
+    const primaryOutput = resourceSlotHandle(
+      'primary-output',
+      'sample',
+      'source'
+    )
+    const actions = Array.from({ length: 8 }, (_, index) =>
+      sampleAction(`step-${index + 1}`, index < 7)
+    )
+    const nodes = [
+      materialSource(
+        'primary-source',
+        '主样品',
+        'primary_sample',
+        primaryOutput
+      ),
+      ...actions
+    ]
+    const links = [
+      materialLink(
+        'primary-source',
+        primaryOutput.uuid,
+        'step-1',
+        'step-1-input'
+      ),
+      ...Array.from({ length: 7 }, (_, index) => materialLink(
+        `step-${index + 1}`,
+        `step-${index + 1}-output`,
+        `step-${index + 2}`,
+        `step-${index + 2}-input`
+      ))
+    ]
+
+    const narrow = layoutWorkflowPrimarySampleFlow(nodes, links, {
+      panelInlineSize: 800
+    })
+    const wide = layoutWorkflowPrimarySampleFlow(nodes, links, {
+      panelInlineSize: 1600
+    })
+
+    expect(narrow.primarySample?.rowByNode.get('step-3')).toBe(1)
+    expect(wide.primarySample?.rowByNode.get('step-3')).toBe(0)
+    for (const layout of [narrow, wide]) {
+      const rows = new Map<number, Array<{ index: number; x: number }>>()
+      const backbone = layout.primarySample?.backboneNodeIds ?? []
+      layout.nodes.forEach((node) => {
+        const row = layout.primarySample?.rowByNode.get(node.id)
+        const index = backbone.indexOf(node.id)
+        if (row === undefined || index < 0) return
+        rows.set(row, [
+          ...(rows.get(row) ?? []),
+          { index, x: node.x ?? 0 }
+        ])
+      })
+      for (const entries of rows.values()) {
+        entries.sort((left, right) => left.index - right.index)
+        expect(entries.every((entry, index) =>
+          index === 0 || entry.x > entries[index - 1]!.x
+        )).toBe(true)
+      }
+    }
+  })
+
+  /** 验证后续正向行的辅助物料按实际接入列排列，避免来源连线互相穿越。 */
   it('orders supporting materials by physical anchor column', () => {
     const primaryOutput = resourceSlotHandle(
       'primary-output',
@@ -212,14 +277,14 @@ describe('layoutWorkflowPrimarySampleFlow', () => {
 
     expect(declarationOrderCrossings).toBe(1)
     expect(optimizedCrossings).toBe(0)
-    expect(positions.get('west-reagent-source')?.x)
-      .toBeLessThan(positions.get('east-reagent-source')?.x ?? 0)
-    expect(positions.get('step-6')?.x)
-      .toBeLessThan(positions.get('step-4')?.x ?? 0)
-    expect(positions.get('west-reagent-source')?.x)
-      .toBeGreaterThan(positions.get('step-6')?.x ?? 0)
     expect(positions.get('east-reagent-source')?.x)
-      .toBeGreaterThan(positions.get('step-4')?.x ?? 0)
+      .toBeLessThan(positions.get('west-reagent-source')?.x ?? 0)
+    expect(positions.get('step-4')?.x)
+      .toBeLessThan(positions.get('step-6')?.x ?? 0)
+    expect(positions.get('west-reagent-source')?.x)
+      .toBeLessThan(positions.get('step-6')?.x ?? 0)
+    expect(positions.get('east-reagent-source')?.x)
+      .toBeLessThan(positions.get('step-4')?.x ?? 0)
     expect(Math.abs(
       (positions.get('west-reagent-source')?.x ?? 0) -
       (positions.get('step-6')?.x ?? 0)

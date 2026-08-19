@@ -34,6 +34,7 @@ import { WorkflowButton } from './WorkflowButton'
 import WorkflowMaterialVisibilityControl from './WorkflowMaterialVisibilityControl'
 import WorkflowSupportingMaterialPresentationControl from './WorkflowSupportingMaterialPresentationControl'
 import { WORKFLOW_DAG_NODE_TYPES } from './workflowDagNodeTypes'
+import { useWorkflowPanelInlineSize } from './useWorkflowPanelInlineSize'
 import type { WorkflowNodeData } from './WorkflowNodeCard'
 import type { WorkflowLink, WorkflowNode } from '../utils/parseWorkflow'
 import { workflowCompositeConnectionEditable } from '../utils/workflowCompositeContainment'
@@ -183,6 +184,10 @@ export default function WorkflowDag({
     ? localVisibleMaterialRoles
     : visibleMaterialRoles
   const flowInstanceRef = useRef<ReactFlowInstance | null>(null)
+  const {
+    ref: workflowPanelRef,
+    inlineSize: workflowPanelInlineSize
+  } = useWorkflowPanelInlineSize<HTMLDivElement>()
   const nodeDragOriginRef = useRef<{
     id: string
     x: number
@@ -215,9 +220,18 @@ export default function WorkflowDag({
     },
     []
   )
+  const nestedProjection = useMemo(
+    () => projectNestedWorkflow(nodes, links, expandedGroupIds),
+    [expandedGroupIds, links, nodes]
+  )
+  // Trace the currently visible projection so authoritative Composite boundary
+  // mappings keep one material identity across every expanded child level.
   const materialTraceProjection = useMemo(
-    () => projectMaterialTraces(nodes, links),
-    [links, nodes]
+    () => projectMaterialTraces(
+      nestedProjection.nodes,
+      nestedProjection.links
+    ),
+    [nestedProjection]
   )
   const materialRoleOptions = useMemo(
     () => workflowMaterialRoleOptions(materialTraceProjection),
@@ -233,8 +247,8 @@ export default function WorkflowDag({
   }, [materialRoleOptions])
   const materialRoleProjection = useMemo(
     () => filterWorkflowByMaterialRoles(
-      nodes,
-      links,
+      nestedProjection.nodes,
+      nestedProjection.links,
       activeVisibleMaterialRoles
         ? new Set(activeVisibleMaterialRoles)
         : null,
@@ -242,39 +256,30 @@ export default function WorkflowDag({
     ),
     [
       activeVisibleMaterialRoles,
-      links,
       materialTraceProjection,
-      nodes
+      nestedProjection
     ]
-  )
-  const nestedProjection = useMemo(
-    () => projectNestedWorkflow(
-      materialRoleProjection.nodes,
-      materialRoleProjection.links,
-      expandedGroupIds
-    ),
-    [expandedGroupIds, materialRoleProjection]
   )
   const isValidCompositeConnection = useCallback((connection: Connection) => {
     if (!connection.source || !connection.target) return false
     return workflowCompositeConnectionEditable(
-      materialRoleProjection.nodes,
+      nodes,
       connection.source,
       connection.target
     )
-  }, [materialRoleProjection.nodes])
+  }, [nodes])
   const visibleSelectedNodeId = selectedNodeId === undefined
     ? undefined
     : selectedNodeId === null
       ? null
       : visibleNestedWorkflowNodeId(
-          materialRoleProjection.nodes,
+          nodes,
           nestedProjection.collapsedGroupIds,
           selectedNodeId
         )
   const visibleRevealNodeId = revealNodeRequest
     ? visibleNestedWorkflowNodeId(
-        materialRoleProjection.nodes,
+        nodes,
         nestedProjection.collapsedGroupIds,
         revealNodeRequest.nodeId
       )
@@ -330,11 +335,12 @@ export default function WorkflowDag({
     })
   }, [])
   const { nodes: flowNodes, edges: flowEdges, onNodesChange, onEdgesChange } = useWorkflowDag(
-    nestedProjection.nodes,
-    nestedProjection.links,
+    materialRoleProjection.nodes,
+    materialRoleProjection.links,
     layoutStrategy,
     swimlaneDirection,
-    supportingMaterialPresentation
+    supportingMaterialPresentation,
+    workflowPanelInlineSize
   )
   const renderedWorkflowNodeIds = useMemo(
     () => flowNodes
@@ -657,6 +663,7 @@ export default function WorkflowDag({
   }
   return (
     <div
+      ref={workflowPanelRef}
       className={styles.dag}
       data-workflow-layout-strategy={layoutStrategy}
       data-workflow-layout-direction={canvasLayoutDirection}

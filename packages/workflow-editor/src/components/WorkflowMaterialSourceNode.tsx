@@ -1,12 +1,12 @@
 import { Handle, Position } from 'reactflow'
 import type { CSSProperties, ReactNode } from 'react'
-import { MaterialShapeThumbnail } from '@unilab/material'
 import type { WorkflowHandlePort } from '../utils/parseWorkflow'
 import type {
   WorkflowMaterialPortCard,
   WorkflowNodeData
 } from './WorkflowNodeCard'
 import styles from './workflow.module.scss'
+import WorkflowMaterialShapeGlyph from './WorkflowMaterialShapeGlyph'
 
 interface WorkflowMaterialSourceNodeProps {
   data: WorkflowNodeData
@@ -99,21 +99,7 @@ export default function WorkflowMaterialSourceNode({
           className="wf-node__material-source-visual"
           data-workflow-material-source-visual
         >
-          {data.materialSource?.shape ? (
-            <MaterialShapeThumbnail shape={data.materialSource.shape} />
-          ) : (
-            <svg
-              aria-hidden="true"
-              data-material-shape-source="default"
-              focusable="false"
-              viewBox="0 0 48 48"
-            >
-              <path d="m12 20 12-6 12 6-12 6-12-6Z" />
-              <path d="m12 20v8l12 6 12-6v-8" />
-              <path d="m17 17.5 12 6" />
-              <path d="m31 17.5-12 6" />
-            </svg>
-          )}
+          <WorkflowMaterialShapeGlyph shape={data.materialSource?.shape} />
         </span>
         {renderMaterialSourceHandles(
           materialPorts,

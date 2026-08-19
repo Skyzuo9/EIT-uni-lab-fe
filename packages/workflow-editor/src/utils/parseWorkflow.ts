@@ -31,6 +31,22 @@ export interface WorkflowMaterialTransferSafety {
   target?: WorkflowMaterialTransferEndpoint
 }
 
+/** OS-authored endpoint behind one expanded composite boundary handle. */
+export interface WorkflowCompositeBoundaryEndpoint {
+  nodeUuid: string
+  handleUuid: string
+}
+
+/**
+ * Read-only projection of authoritative Composite target/source mappings.
+ * These mappings let the canvas expose real material continuity while a
+ * published child workflow is expanded; they never become authoring edges.
+ */
+export interface WorkflowCompositeBoundaryMappings {
+  targets: Record<string, WorkflowCompositeBoundaryEndpoint[]>
+  sources: Record<string, WorkflowCompositeBoundaryEndpoint>
+}
+
 export interface WorkflowNode {
   id: string
   /** OS Authoring 图中的静态禁用；保存后 Planner 不为它创建 Job。 */
@@ -59,6 +75,7 @@ export interface WorkflowNode {
   openChildWorkflowUuid?: string
   // Resets session-only expansion when the authoritative OS graph changes.
   compositeSignature?: string
+  compositeBoundaryMappings?: WorkflowCompositeBoundaryMappings
   // OS 已发布工作流来源元数据派生的专用画布视觉。
   visualKind?: WorkflowNodeVisualKind
   handles?: WorkflowHandlePort[]
@@ -95,6 +112,12 @@ export interface WorkflowLink {
   branch?: string | null
   sourceHandleUuid?: string
   targetHandleUuid?: string
+  /**
+   * Read-only canvas segment that connects an expanded Composite boundary to
+   * its authoritative child endpoint. The boundary Handle keeps its declared
+   * I/O type; the renderer's transparent reverse Handle carries this segment.
+   */
+  compositeBoundaryBridge?: 'target' | 'source'
 }
 
 export interface WorkflowStep {

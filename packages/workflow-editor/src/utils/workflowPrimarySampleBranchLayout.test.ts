@@ -35,20 +35,20 @@ describe('packWorkflowSupportingBranches', () => {
     expect(bands.flat()).toHaveLength(3)
   })
 
-  /** 反向蛇形行的来源簇仍应位于接入点右侧，并保持相同紧凑节距。 */
-  it('keeps a compact source cluster in front of a reverse row attachment', () => {
+  /** 换行后的来源簇仍应位于从左到右主线的接入点前侧。 */
+  it('keeps a compact source cluster before a later forward row', () => {
     const branches: WorkflowSupportingBranch[] = [
-      supportingBranch('consumable-a', 0, 4, 3),
-      supportingBranch('consumable-b', 1, 4, 3),
-      supportingBranch('consumable-c', 2, 4, 3)
+      supportingBranch('consumable-a', 0, 4, 0),
+      supportingBranch('consumable-b', 1, 4, 0),
+      supportingBranch('consumable-c', 2, 4, 0)
     ]
-    const anchorX = 72 + 3 * 328
+    const anchorX = 72
 
     const bands = packWorkflowSupportingBranches(branches, 72, 328, 4)
     const positions = bands[0]?.map(({ x }) => x) ?? []
 
     expect(bands).toHaveLength(1)
-    expect(positions.every((x) => x > anchorX)).toBe(true)
+    expect(positions.every((x) => x < anchorX)).toBe(true)
     expect(positions[1]! - positions[0]!)
       .toBe(WORKFLOW_SUPPORTING_BRANCH_MATERIAL_SOURCE_PITCH)
     expect(positions[2]! - positions[1]!)
