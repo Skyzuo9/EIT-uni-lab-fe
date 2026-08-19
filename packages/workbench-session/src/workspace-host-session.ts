@@ -46,6 +46,10 @@ const HOST_READINESS_TIMEOUT_MS = 600_000
 // grace so it can always receive the Host's terminal success/failure result.
 const OPERATION_COMPLETION_GRACE_MS = 30_000
 const POLL_INTERVAL_MS = 500
+const HOST_REQUEST_TIMEOUT_MS = 2_000
+const OPERATION_REQUEST_TIMEOUT_MS = 10_000
+const OPERATION_TRANSPORT_GRACE_MS = 30_000
+const OPERATION_POLL_INTERVAL_MS = 500
 
 type HostPhase = WorkbenchSessionPhase | 'interrupted' | 'unknown'
 
@@ -93,6 +97,8 @@ interface HostConnection {
   endpoint: string
   token: string
 }
+
+class WorkspaceHostTransportError extends Error {}
 
 /**
  * Workbench adapter for the OS-owned Workspace Host.
@@ -530,16 +536,32 @@ export class WorkspaceHostWorkbenchSession implements WorkbenchSession {
   ): Promise<WorkspaceHostOperation> {
     const deadline = Date.now() + readinessTimeoutMs(this.options)
       + OPERATION_COMPLETION_GRACE_MS
+    let transportFailureStartedAt: number | null = null
     while (Date.now() < deadline) {
-      const operation = await hostRequest<WorkspaceHostOperation>(
-        connection,
-        'GET',
-        `/v1/operations/${encodeURIComponent(operationId)}`
-      )
+      let operation: WorkspaceHostOperation
+      try {
+        operation = await hostRequest<WorkspaceHostOperation>(
+          connection,
+          'GET',
+          `/v1/operations/${encodeURIComponent(operationId)}`,
+          undefined,
+          OPERATION_REQUEST_TIMEOUT_MS
+        )
+      } catch (error) {
+        if (!(error instanceof WorkspaceHostTransportError)) throw error
+        transportFailureStartedAt ??= Date.now()
+        if (
+          Date.now() - transportFailureStartedAt
+          >= OPERATION_TRANSPORT_GRACE_MS
+        ) throw error
+        await delay(OPERATION_POLL_INTERVAL_MS)
+        continue
+      }
+      transportFailureStartedAt = null
       if (operation.phase === 'succeeded' || operation.phase === 'failed') {
         return operation
       }
-      await delay(100)
+      await delay(OPERATION_POLL_INTERVAL_MS)
     }
     throw new Error(`等待 Workspace Host 操作超时：${operationId}`)
   }
@@ -851,7 +873,8 @@ async function hostRequest<T>(
   connection: HostConnection,
   method: 'GET' | 'POST',
   path: string,
-  body?: unknown
+  body?: unknown,
+  timeoutMs: number = HOST_REQUEST_TIMEOUT_MS
 ): Promise<T> {
   let response: Response
   try {
@@ -862,10 +885,10 @@ async function hostRequest<T>(
         'content-type': 'application/json'
       },
       body: body === undefined ? undefined : JSON.stringify(body),
-      signal: AbortSignal.timeout(2_000)
+      signal: AbortSignal.timeout(timeoutMs)
     })
   } catch (error) {
-    throw new Error(
+    throw new WorkspaceHostTransportError(
       `Workspace Host 不可达：${connection.endpoint}；请重试，` +
       '若持续失败请查看 workspace-host.log',
       { cause: error }
