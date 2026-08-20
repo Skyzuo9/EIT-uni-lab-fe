@@ -300,7 +300,8 @@ export class WorkflowTaskController {
         const page = await this.runtime.listWorkflowTasks({
           workflow_uuid: this.workflowUuid,
           page: 1,
-          page_size: 1
+          page_size: 1,
+          projection: 'summary'
         })
         if (!this.active) return
         discoveredTask = page.items[0] ?? null

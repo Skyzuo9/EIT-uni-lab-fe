@@ -31,6 +31,28 @@ import {
   resourceTemplateIndex
 } from './persistentAuthoringProjectionIndexes'
 
+/**
+ * 首次安装时允许同步建立本地坐标的最大节点数。
+ *
+ * 大型受管工作流会在画布层先折叠成有界投影；为整张权威图复制节点并写回
+ * 顶层坐标既不会改善首屏布局，也会在浏览器主线程制造显著的 GC 压力。
+ */
+export const EAGER_AUTHORING_GRAPH_BEAUTIFY_NODE_LIMIT = 1_000
+
+/**
+ * 为首次编写会话安装选择权威图或本地美化副本。
+ *
+ * @param graph OS 返回的工作流编写图。
+ * @returns 小图的本地布局副本；大图保持原引用，由可见画布投影负责布局。
+ */
+export function preparePersistentAuthoringGraphForInstall(
+  graph: WorkflowAuthoringGraph
+): WorkflowAuthoringGraph {
+  return graph.nodes.length > EAGER_AUTHORING_GRAPH_BEAUTIFY_NODE_LIMIT
+    ? graph
+    : beautifyPersistentAuthoringGraph(graph)
+}
+
 export function projectPersistentAuthoringGraph(
   graph: WorkflowAuthoringGraph,
   materialSourceCatalog?: Pick<

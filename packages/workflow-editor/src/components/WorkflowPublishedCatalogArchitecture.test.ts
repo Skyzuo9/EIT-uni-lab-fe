@@ -104,6 +104,17 @@ describe('Published Workflow Catalog in the Authoring module', () => {
     )
   })
 
+  it('does not prebuild closed heavy authoring drawers', () => {
+    const source = readFileSync(overlaysPath, 'utf8')
+
+    expect(source).toMatch(/\{traceViewerOpen && traceRuntime && \(/)
+    expect(source).toMatch(
+      /\{actionParametersOpen && selectedActionEditor && \(/
+    )
+    expect(source).toMatch(/\{workflowIoOpen && \(/)
+    expect(source).toMatch(/\{taskInputAuthority && taskInputForm && \(/)
+  })
+
   it('keeps Catalog loading behind the runtime without a Published-specific loader', () => {
     const source = authoringSource()
     const catalogMethods = [...source.matchAll(

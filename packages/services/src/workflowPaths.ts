@@ -22,7 +22,8 @@ export function workflowTaskListPath(query: WorkflowTaskListQuery): string {
     'page_size',
     'workflow_uuid',
     'status',
-    'cleanup_status'
+    'cleanup_status',
+    'projection'
   ] as const) {
     const value = query[key]
     if (value !== undefined && value !== '') search.set(key, String(value))

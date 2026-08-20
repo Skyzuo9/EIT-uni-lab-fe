@@ -289,6 +289,7 @@ export interface WorkflowTaskListQuery {
   workflow_uuid?: string
   status?: WorkflowTaskStatus
   cleanup_status?: WorkflowTaskCleanupStatus
+  projection?: 'full' | 'summary'
 }
 
 export interface WorkflowTask {

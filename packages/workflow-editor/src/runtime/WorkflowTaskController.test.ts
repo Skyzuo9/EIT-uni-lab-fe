@@ -40,6 +40,12 @@ function registerWorkflowTaskControllerTests(): void {
     await controller.start()
 
     expect(order).toEqual(['subscribe', 'list'])
+    expect(runtime.listWorkflowTasks).toHaveBeenCalledWith({
+      workflow_uuid: task.workflow_uuid,
+      page: 1,
+      page_size: 1,
+      projection: 'summary'
+    })
     expect(runtime.getWorkflowTask).not.toHaveBeenCalled()
     expect(controller.getSnapshot()).toMatchObject({
       loading: false,

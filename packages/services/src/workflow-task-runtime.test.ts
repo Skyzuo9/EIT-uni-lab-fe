@@ -161,7 +161,8 @@ describe('WorkflowTask runtime port', () => {
       page_size: 5,
       workflow_uuid: WORKFLOW_UUID,
       status: 'running',
-      cleanup_status: 'requires_attention'
+      cleanup_status: 'requires_attention',
+      projection: 'summary'
     })).resolves.toEqual(page)
 
     expect(request).toHaveBeenCalledWith(
@@ -170,7 +171,8 @@ describe('WorkflowTask runtime port', () => {
         page_size: '5',
         workflow_uuid: WORKFLOW_UUID,
         status: 'running',
-        cleanup_status: 'requires_attention'
+        cleanup_status: 'requires_attention',
+        projection: 'summary'
       })}`,
       undefined
     )

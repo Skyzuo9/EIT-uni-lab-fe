@@ -73,125 +73,129 @@ export function PersistentWorkflowOverlays({
 
   return (
     <>
-      {traceRuntime && (
+      {traceViewerOpen && traceRuntime && (
         <WorkflowTraceViewer
-          open={traceViewerOpen}
+          open
           currentRunId={task?.uuid ?? null}
           runtime={traceRuntime}
           onClose={() => setTraceViewerOpen(false)}
         />
       )}
 
-      <WorkflowActionParameterDrawer
-        open={Boolean(actionParametersOpen && selectedActionEditor)}
-        nodeName={selectedNodeName}
-        templateName={selectedActionTemplate?.displayName ?? ''}
-        editor={selectedActionEditor}
-        outputHandles={selectedActionTemplate?.handles.filter(
-          (handle) => handle.ioType === 'source'
-        ) ?? []}
-        graph={graph}
-        editable={!busy && policy.canvasMutationEnabled}
-        resourceSlotOptions={resourceSlotOptions}
-        onClose={() => setActionParametersOpen(false)}
-        onProviderChange={(field, provider) => {
-          if (provider.startsWith('workflow:')) {
-            bindTypedFieldToWorkflowInput(
-              field.handleUuid,
-              provider.slice('workflow:'.length)
-            )
-          } else if (provider === 'literal' || provider === 'missing') {
-            updateTypedField(field.handleUuid, undefined)
-          }
-        }}
-        onLiteralBlur={updateTypedFieldFromRaw}
-        onResourceChange={(field, materialUuid) => updateTypedField(
-          field.handleUuid,
-          materialUuid ? { uuid: materialUuid } : undefined
-        )}
-        onClear={(handleUuid) => updateTypedField(handleUuid, undefined)}
-        onNull={(handleUuid) => updateTypedField(handleUuid, null)}
-      />
+      {actionParametersOpen && selectedActionEditor && (
+        <WorkflowActionParameterDrawer
+          open
+          nodeName={selectedNodeName}
+          templateName={selectedActionTemplate?.displayName ?? ''}
+          editor={selectedActionEditor}
+          outputHandles={selectedActionTemplate?.handles.filter(
+            (handle) => handle.ioType === 'source'
+          ) ?? []}
+          graph={graph}
+          editable={!busy && policy.canvasMutationEnabled}
+          resourceSlotOptions={resourceSlotOptions}
+          onClose={() => setActionParametersOpen(false)}
+          onProviderChange={(field, provider) => {
+            if (provider.startsWith('workflow:')) {
+              bindTypedFieldToWorkflowInput(
+                field.handleUuid,
+                provider.slice('workflow:'.length)
+              )
+            } else if (provider === 'literal' || provider === 'missing') {
+              updateTypedField(field.handleUuid, undefined)
+            }
+          }}
+          onLiteralBlur={updateTypedFieldFromRaw}
+          onResourceChange={(field, materialUuid) => updateTypedField(
+            field.handleUuid,
+            materialUuid ? { uuid: materialUuid } : undefined
+          )}
+          onClear={(handleUuid) => updateTypedField(handleUuid, undefined)}
+          onNull={(handleUuid) => updateTypedField(handleUuid, null)}
+        />
+      )}
 
-      <SlideOverDrawer
-        open={workflowIoOpen}
-        size="medium"
-        ariaLabel="工作流输入与输出配置"
-        title={(
-          <span className="persistent-authoring__drawer-title">
-            <span>工作流设置</span>
-            <strong>设置工作流输入与输出</strong>
-          </span>
-        )}
-        onClose={() => setWorkflowIoOpen(false)}
-        footer={(
-          <div className="persistent-authoring__drawer-footer">
-            <span>
-              {mode === 'canvas'
-                ? '修改暂存在画布编辑区，保存草稿后生效。'
-                : '代码模式下仅预览；切换到画布模式后可配置。'}
+      {workflowIoOpen && (
+        <SlideOverDrawer
+          open
+          size="medium"
+          ariaLabel="工作流输入与输出配置"
+          title={(
+            <span className="persistent-authoring__drawer-title">
+              <span>工作流设置</span>
+              <strong>设置工作流输入与输出</strong>
             </span>
-            <button type="button" onClick={() => setWorkflowIoOpen(false)}>
-              完成
-            </button>
+          )}
+          onClose={() => setWorkflowIoOpen(false)}
+          footer={(
+            <div className="persistent-authoring__drawer-footer">
+              <span>
+                {mode === 'canvas'
+                  ? '修改暂存在画布编辑区，保存草稿后生效。'
+                  : '代码模式下仅预览；切换到画布模式后可配置。'}
+              </span>
+              <button type="button" onClick={() => setWorkflowIoOpen(false)}>
+                完成
+              </button>
+            </div>
+          )}
+        >
+          <div className="persistent-authoring__io-drawer">
+            <header>
+              <strong>整个工作流的输入与输出</strong>
+              <p>
+                输入可提供给任意节点；输出可连接节点结果，也可直接返回输入值。
+              </p>
+            </header>
+            {appliedIo && (
+              <details className="persistent-authoring__applied-io">
+                <summary>
+                  已应用版本 {aggregate?.workflow_revision}
+                  <span>
+                    输入 {appliedIo.input_contract.parameters.length}
+                    {' · '}输出 {appliedIo.output_contract.outputs.length}
+                  </span>
+                </summary>
+                <WorkflowIoSummary io={appliedIo} />
+              </details>
+            )}
+            {graph ? (
+              <WorkflowIoEditor
+                graph={graph}
+                editable={!busy && policy.canvasMutationEnabled}
+                onGraphChange={(nextGraph) => {
+                  setGraph(nextGraph)
+                  setCanvasDirty(true)
+                  setError(null)
+                  setMessage(
+                    '工作流输入与输出已修改；保存前将由 OS 生成规范 Python'
+                  )
+                }}
+              />
+            ) : (
+              <p className="persistent-authoring__parameter-empty">
+                正在读取 OS 工作流编辑数据…
+              </p>
+            )}
           </div>
-        )}
-      >
-        <div className="persistent-authoring__io-drawer">
-          <header>
-            <strong>整个工作流的输入与输出</strong>
-            <p>
-              输入可提供给任意节点；输出可连接节点结果，也可直接返回输入值。
-            </p>
-          </header>
-          {appliedIo && (
-            <details className="persistent-authoring__applied-io">
-              <summary>
-                已应用版本 {aggregate?.workflow_revision}
-                <span>
-                  输入 {appliedIo.input_contract.parameters.length}
-                  {' · '}输出 {appliedIo.output_contract.outputs.length}
-                </span>
-              </summary>
-              <WorkflowIoSummary io={appliedIo} />
-            </details>
-          )}
-          {graph ? (
-            <WorkflowIoEditor
-              graph={graph}
-              editable={!busy && policy.canvasMutationEnabled}
-              onGraphChange={(nextGraph) => {
-                setGraph(nextGraph)
-                setCanvasDirty(true)
-                setError(null)
-                setMessage(
-                  '工作流输入与输出已修改；保存前将由 OS 生成规范 Python'
-                )
-              }}
-            />
-          ) : (
-            <p className="persistent-authoring__parameter-empty">
-              正在读取 OS 工作流编辑数据…
-            </p>
-          )}
-        </div>
-      </SlideOverDrawer>
+        </SlideOverDrawer>
+      )}
 
-      <SlideOverDrawer
-        open={Boolean(taskInputAuthority && taskInputForm)}
-        size="medium"
-        ariaLabel="本次工作流运行参数"
-        title={(
-          <span className="persistent-authoring__drawer-title">
-            <span>本次运行</span>
-            <strong>
-              {debugLaunchForm ? '补充调试输入' : '确认运行参数'}
-            </strong>
-          </span>
-        )}
-        onClose={closeTaskInputForm}
-      >
-        {taskInputAuthority && taskInputForm && (
+      {taskInputAuthority && taskInputForm && (
+        <SlideOverDrawer
+          open
+          size="medium"
+          ariaLabel="本次工作流运行参数"
+          title={(
+            <span className="persistent-authoring__drawer-title">
+              <span>本次运行</span>
+              <strong>
+                {debugLaunchForm ? '补充调试输入' : '确认运行参数'}
+              </strong>
+            </span>
+          )}
+          onClose={closeTaskInputForm}
+        >
           <div className="persistent-authoring__task-input-drawer">
             {workflowIoMetadata(taskInputAuthority.applied_graph) && (
               <details className="persistent-authoring__task-io-summary">
@@ -233,8 +237,8 @@ export function PersistentWorkflowOverlays({
               />
             )}
           </div>
-        )}
-      </SlideOverDrawer>
+        </SlideOverDrawer>
+      )}
 
       {pendingMode && (
         <div className="workflow-save-prompt">

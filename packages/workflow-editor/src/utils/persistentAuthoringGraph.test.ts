@@ -5,6 +5,7 @@ import type { WorkflowAuthoringGraph } from '@unilab/services'
 import {
   beautifyPersistentAuthoringGraph,
   parseWorkflowAuthoringGraphImport,
+  preparePersistentAuthoringGraphForInstall,
   projectPersistentAuthoringGraph,
   updatePersistentAuthoringNodeDisabled,
   updatePersistentAuthoringNodeName
@@ -21,6 +22,29 @@ const graph: WorkflowAuthoringGraph = {
   node_templates: [],
   handle_templates: []
 }
+
+describe('preparePersistentAuthoringGraphForInstall', () => {
+  it('keeps a large authoritative graph by reference instead of eagerly beautifying it', () => {
+    const largeGraph: WorkflowAuthoringGraph = {
+      ...graph,
+      nodes: Array.from({ length: 1_001 }, (_, index) => ({
+        uuid: `node-${index}`,
+        name: `node-${index}`,
+        param: {}
+      }))
+    }
+
+    expect(preparePersistentAuthoringGraphForInstall(largeGraph)).toBe(
+      largeGraph
+    )
+  })
+
+  it('still establishes the initial local layout for a bounded graph', () => {
+    expect(preparePersistentAuthoringGraphForInstall(graph)).toEqual(
+      beautifyPersistentAuthoringGraph(graph)
+    )
+  })
+})
 
 describe('persistent Authoring canvas graph edits', () => {
   it('projects explicit material-transfer safety without inferring it for ordinary nodes', () => {

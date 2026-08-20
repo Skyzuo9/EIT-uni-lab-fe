@@ -27,6 +27,7 @@ import {
 import {
   beautifyPersistentAuthoringGraph,
   parseWorkflowAuthoringGraphImport,
+  preparePersistentAuthoringGraphForInstall,
   projectPersistentAuthoringGraph,
   updatePersistentAuthoringNodeName
 } from '../utils/persistentAuthoringGraph'
@@ -462,7 +463,9 @@ export function usePersistentWorkflowAuthoring({
     nextMessage: string
   ): void => {
     const projection = authoringProjection(next)
-    const beautifiedGraph = beautifyPersistentAuthoringGraph(projection.graph)
+    const beautifiedGraph = preparePersistentAuthoringGraphForInstall(
+      projection.graph
+    )
     const python = authoritativePython(next)
     setAggregate(next)
     setGraph(beautifiedGraph)
