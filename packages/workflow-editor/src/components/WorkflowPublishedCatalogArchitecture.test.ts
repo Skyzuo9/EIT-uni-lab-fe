@@ -137,13 +137,13 @@ describe('Published Workflow Catalog in the Authoring module', () => {
     )
   })
 
-  it('defers the full action catalog until the canvas editing surface needs it', () => {
+  it('defers the full action catalog until the palette or node inspector needs it', () => {
     const authoring = readFileSync(authoringHookPath, 'utf8')
     const catalogs = readFileSync(catalogHookPath, 'utf8')
 
-    expect(authoring).toContain(
-      "loadActionCatalog: nodePaletteOpen || mode === 'canvas'"
-    )
+    expect(authoring).toContain('loadActionCatalog: workflowActionCatalogLoadDecision({')
+    expect(authoring).toContain('nodePaletteOpen,')
+    expect(authoring).toContain('selectedNodeUuid')
     expect(catalogs).toContain('loadActionCatalog: boolean')
     expect(catalogs).toContain('if (!loadActionCatalog)')
   })

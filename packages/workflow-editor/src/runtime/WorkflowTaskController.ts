@@ -90,7 +90,12 @@ export class WorkflowTaskController {
       this.subscription = this.runtime.subscribeWorkflowRuntime(
         (event) => {
           if (event.event !== 'workflow.runtime.changed') return
-          void this.requestRefresh(event.data.workflow_task_uuid)
+          const activeTaskUuid = this.snapshot.task?.uuid
+          if (
+            activeTaskUuid === undefined ||
+            event.data.workflow_task_uuid !== activeTaskUuid
+          ) return
+          void this.requestRefresh(activeTaskUuid)
         },
         {
           onOpen: () => {
@@ -290,6 +295,7 @@ export class WorkflowTaskController {
   private async hydrate(requestedTaskUuid: string | null): Promise<void> {
     try {
       let taskUuid = requestedTaskUuid
+      let discoveredTask: WorkflowTask | null = null
       if (taskUuid === null) {
         const page = await this.runtime.listWorkflowTasks({
           workflow_uuid: this.workflowUuid,
@@ -297,7 +303,8 @@ export class WorkflowTaskController {
           page_size: 1
         })
         if (!this.active) return
-        taskUuid = page.items[0]?.uuid ?? null
+        discoveredTask = page.items[0] ?? null
+        taskUuid = discoveredTask?.uuid ?? null
         if (taskUuid === null) {
           this.install({
             loading: false,
@@ -315,7 +322,9 @@ export class WorkflowTaskController {
         }
       }
       const [task, jobs] = await Promise.all([
-        this.runtime.getWorkflowTask(taskUuid),
+        discoveredTask === null
+          ? this.runtime.getWorkflowTask(taskUuid)
+          : Promise.resolve(discoveredTask),
         this.runtime.listWorkflowTaskJobs(taskUuid)
       ])
       if (!this.active || task.workflow_uuid !== this.workflowUuid) return

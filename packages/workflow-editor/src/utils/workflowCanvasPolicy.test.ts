@@ -12,6 +12,10 @@ import * as workflowCanvasPolicy from './workflowCanvasPolicy'
 type EditMode = 'code' | 'canvas'
 
 interface D117PolicyModule {
+  workflowActionCatalogLoadDecision: (input: {
+    nodePaletteOpen: boolean
+    selectedNodeUuid: string | null
+  }) => boolean
   workflowAuthoringSurfacePolicy: (
     mode: EditMode,
     topologyAuthoring: {
@@ -111,6 +115,21 @@ describe('editable workflow canvas deletion policy', () => {
 })
 
 describe('D-117 single edit authority policy', () => {
+  it('defers the action catalog until a palette or node inspector needs it', () => {
+    expect(d117.workflowActionCatalogLoadDecision({
+      nodePaletteOpen: false,
+      selectedNodeUuid: null
+    })).toBe(false)
+    expect(d117.workflowActionCatalogLoadDecision({
+      nodePaletteOpen: true,
+      selectedNodeUuid: null
+    })).toBe(true)
+    expect(d117.workflowActionCatalogLoadDecision({
+      nodePaletteOpen: false,
+      selectedNodeUuid: 'node-1'
+    })).toBe(true)
+  })
+
   it('makes exactly one representation writable per Workflow session', () => {
     const readWrite = {
       authority: 'python_source' as const,

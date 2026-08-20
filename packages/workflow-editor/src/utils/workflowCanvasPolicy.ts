@@ -20,6 +20,16 @@ export interface WorkflowAuthoringSurfacePolicy {
   authoringMutationEnabled: boolean
 }
 
+/**
+ * 动作目录包含每个模板的完整参数合同，只在节点库或节点检查器需要时读取。
+ */
+export function workflowActionCatalogLoadDecision(input: {
+  nodePaletteOpen: boolean
+  selectedNodeUuid: string | null
+}): boolean {
+  return input.nodePaletteOpen || input.selectedNodeUuid !== null
+}
+
 export const READ_ONLY_WORKFLOW_CANVAS = {
   nodesDraggable: false,
   nodesConnectable: false,

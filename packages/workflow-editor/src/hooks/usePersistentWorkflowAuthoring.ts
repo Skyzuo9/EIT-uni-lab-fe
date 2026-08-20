@@ -19,6 +19,7 @@ import { useWorkflowFileUpload } from '../hooks/useWorkflowFileUpload'
 import {
   workflowAuthoringModeSwitchDecision,
   workflowAuthoringSurfacePolicy,
+  workflowActionCatalogLoadDecision,
   workflowCandidateMaterializationDecision,
   workflowCanvasDraftSaveDecision,
   type WorkflowEditMode
@@ -169,7 +170,10 @@ export function usePersistentWorkflowAuthoring({
   } = usePersistentWorkflowCatalogs({
     runtime,
     graph,
-    loadActionCatalog: nodePaletteOpen || mode === 'canvas'
+    loadActionCatalog: workflowActionCatalogLoadDecision({
+      nodePaletteOpen,
+      selectedNodeUuid
+    })
   })
   // Resource-template source navigation uses the same exact package identity
   // as Workflow navigation. Re-entering that source deterministically selects

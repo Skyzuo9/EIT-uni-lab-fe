@@ -40,6 +40,7 @@ function registerWorkflowTaskControllerTests(): void {
     await controller.start()
 
     expect(order).toEqual(['subscribe', 'list'])
+    expect(runtime.getWorkflowTask).not.toHaveBeenCalled()
     expect(controller.getSnapshot()).toMatchObject({
       loading: false,
       task,
@@ -47,6 +48,40 @@ function registerWorkflowTaskControllerTests(): void {
       error: null,
       generation: 1
     })
+  })
+
+  it('ignores global runtime invalidations for unrelated workflow tasks', async () => {
+    const task = workflowTask()
+    let onInvalidate: ((event: WorkflowRuntimeChangedEvent) => void) | null = null
+    const runtime = runtimePort({
+      subscribeWorkflowRuntime: vi.fn((listener) => {
+        onInvalidate = listener
+        return { dispose: vi.fn() }
+      }),
+      listWorkflowTasks: vi.fn(async () => ({
+        items: [task], total: 1, page: 1, page_size: 1
+      })),
+      getWorkflowTask: vi.fn(async () => task),
+      listWorkflowTaskJobs: vi.fn(async () => [workflowJob()])
+    })
+    const controller = new WorkflowTaskController(runtime, task.workflow_uuid)
+    await controller.start()
+
+    expect(onInvalidate).not.toBeNull()
+    ;(onInvalidate as unknown as (
+      event: WorkflowRuntimeChangedEvent
+    ) => void)({
+      id: 'runtime-unrelated-task',
+      event: 'workflow.runtime.changed',
+      data: {
+        workflow_task_uuid: '30000000-0000-4000-8000-000000000099'
+      }
+    })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(runtime.getWorkflowTask).not.toHaveBeenCalled()
+    expect(runtime.listWorkflowTaskJobs).toHaveBeenCalledOnce()
+    expect(controller.getSnapshot().task).toEqual(task)
   })
 
   it('keeps active task status updated when runtime SSE is unavailable', async () => {
@@ -58,7 +93,7 @@ function registerWorkflowTaskControllerTests(): void {
         throw new Error('workflow.subscribeEvents is unavailable')
       }),
       listWorkflowTasks: vi.fn(async () => ({
-        items: [task], total: 1, page: 1, page_size: 1
+        items: [{ ...task, status }], total: 1, page: 1, page_size: 1
       })),
       getWorkflowTask: vi.fn(async () => ({ ...task, status })),
       listWorkflowTaskJobs: vi.fn(async () => [])
@@ -78,11 +113,11 @@ function registerWorkflowTaskControllerTests(): void {
     status = 'succeeded'
     await vi.advanceTimersByTimeAsync(2_000)
 
-    expect(runtime.getWorkflowTask).toHaveBeenCalledTimes(2)
+    expect(runtime.getWorkflowTask).toHaveBeenCalledOnce()
     expect(controller.getSnapshot().task?.status).toBe('succeeded')
 
     await vi.advanceTimersByTimeAsync(4_000)
-    expect(runtime.getWorkflowTask).toHaveBeenCalledTimes(2)
+    expect(runtime.getWorkflowTask).toHaveBeenCalledOnce()
 
     controller.dispose()
     vi.useRealTimers()
@@ -367,7 +402,7 @@ function registerWorkflowTaskControllerTests(): void {
       lastCommand: accepted,
       task: { control_status: 'active' }
     })
-    expect(runtime.getWorkflowTask).toHaveBeenCalledTimes(2)
+    expect(runtime.getWorkflowTask).toHaveBeenCalledOnce()
 
     authoritative = { ...initial, control_status: 'paused' }
     expect(onInvalidate).not.toBeNull()
@@ -384,7 +419,7 @@ function registerWorkflowTaskControllerTests(): void {
     })
   })
 
-  it('does not replace a newer Task with a delayed invalidation for an older Task', async () => {
+  it('ignores a delayed invalidation for an older Task after creating a newer Task', async () => {
     const olderTask = workflowTask()
     const newerTask: WorkflowTask = {
       ...olderTask,
@@ -429,11 +464,10 @@ function registerWorkflowTaskControllerTests(): void {
       event: 'workflow.runtime.changed',
       data: { workflow_task_uuid: olderTask.uuid }
     })
-    await vi.waitFor(() => {
-      expect(runtime.getWorkflowTask).toHaveBeenLastCalledWith(olderTask.uuid)
-    })
     await new Promise((resolve) => setTimeout(resolve, 0))
 
+    expect(runtime.getWorkflowTask).toHaveBeenCalledOnce()
+    expect(runtime.getWorkflowTask).toHaveBeenLastCalledWith(newerTask.uuid)
     expect(controller.getSnapshot().task).toEqual(newerTask)
   })
 
@@ -722,9 +756,9 @@ function registerWorkflowTaskControllerTests(): void {
   it('disposes the global subscription and ignores late REST completion', async () => {
     const task = workflowTask()
     const dispose = vi.fn()
-    let resolveTask: ((value: WorkflowTask) => void) | null = null
-    const taskRead = new Promise<WorkflowTask>((resolve) => {
-      resolveTask = resolve
+    let resolveJobs: ((value: WorkflowNodeJob[]) => void) | null = null
+    const jobsRead = new Promise<WorkflowNodeJob[]>((resolve) => {
+      resolveJobs = resolve
     })
     const listener = vi.fn()
     const runtime = runtimePort({
@@ -732,17 +766,21 @@ function registerWorkflowTaskControllerTests(): void {
       listWorkflowTasks: vi.fn(async () => ({
         items: [task], total: 1, page: 1, page_size: 1
       })),
-      getWorkflowTask: vi.fn(() => taskRead),
-      listWorkflowTaskJobs: vi.fn(async () => [workflowJob()])
+      getWorkflowTask: vi.fn(async () => task),
+      listWorkflowTaskJobs: vi.fn(() => jobsRead)
     })
     const controller = new WorkflowTaskController(runtime, task.workflow_uuid)
     controller.subscribe(listener)
     const start = controller.start()
-    await vi.waitFor(() => expect(runtime.getWorkflowTask).toHaveBeenCalled())
+    await vi.waitFor(() => {
+      expect(runtime.listWorkflowTaskJobs).toHaveBeenCalled()
+    })
 
     controller.dispose()
-    expect(resolveTask).not.toBeNull()
-    ;(resolveTask as unknown as (value: WorkflowTask) => void)(task)
+    expect(resolveJobs).not.toBeNull()
+    ;(resolveJobs as unknown as (value: WorkflowNodeJob[]) => void)([
+      workflowJob()
+    ])
     await start
 
     expect(dispose).toHaveBeenCalledOnce()
