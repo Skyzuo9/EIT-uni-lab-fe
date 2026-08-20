@@ -61,6 +61,7 @@ import {
   errorMessage,
   rebaseGraphIdentity,
   workflowGraphJsonProjection,
+  workflowGraphJsonProjectionVisible,
   workflowIoMetadata
 } from '../utils/persistentAuthoringProjection'
 import {
@@ -336,11 +337,18 @@ export function usePersistentWorkflowAuthoring({
       : { nodes: [], links: [], steps: [], error: null },
     [graph, materialSourceCatalog]
   )
+  const jsonProjectionVisible = workflowGraphJsonProjectionVisible({
+    mode,
+    codeProjection,
+    hideEmbeddedCodeEditor
+  })
   useEffect(() => {
     jsonProjectionEditor.replaceContent(
-      graph ? workflowGraphJsonProjection(graph) : '{}'
+      jsonProjectionVisible && graph
+        ? workflowGraphJsonProjection(graph)
+        : '{}'
     )
-  }, [graph, jsonProjectionEditor.replaceContent])
+  }, [graph, jsonProjectionEditor.replaceContent, jsonProjectionVisible])
 
   /**
    * 按选定策略重排当前候选图，并把坐标结果留在画布草稿中。

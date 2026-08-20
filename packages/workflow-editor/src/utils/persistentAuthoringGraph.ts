@@ -17,6 +17,7 @@ import {
   type WorkflowDagLayoutStrategy,
   type WorkflowMaterialSwimlaneDirection
 } from './workflowDagLayoutStrategy'
+import { projectNestedWorkflow } from './canonicalWorkflow'
 import { layoutWorkflowMaterialSwimlanes } from './workflowMaterialSwimlaneLayout'
 import { layoutWorkflowPrimarySampleFlow } from './workflowPrimarySampleLayout'
 import {
@@ -436,21 +437,36 @@ export function beautifyPersistentAuthoringGraph(
       .filter((node) => !node.authoringReadOnly)
       .map((node) => node.id)
   )
+  // Composite 私有节点只用于展开审阅，布局结果从不允许写回。先按默认折叠
+  // 投影收敛到作者可编辑边界，避免大型分层工作流为数千个只读节点执行一轮
+  // 随后会被丢弃的全图布局。
+  const collapsed = projectNestedWorkflow(
+    structure.nodes,
+    structure.links,
+    new Set()
+  )
+  const layoutNodes = collapsed.nodes.filter((node) =>
+    editableNodeUuids.has(node.id)
+  )
+  const layoutNodeUuids = new Set(layoutNodes.map((node) => node.id))
+  const layoutLinks = collapsed.links.filter((link) =>
+    layoutNodeUuids.has(link.source) && layoutNodeUuids.has(link.target)
+  )
   // 六边形物料来源比动作条更高；上移一小段可保证第一条物料流明确向下。
   const materialSourceNodeIds = new Set(
-    structure.nodes
+    layoutNodes
       .filter((node) => node.type === 'material_source')
       .map((node) => node.id)
   )
   const layout = strategy === 'material-swimlanes'
     ? layoutWorkflowMaterialSwimlanes(
-        structure.nodes,
-        structure.links,
+        layoutNodes,
+        layoutLinks,
         swimlaneDirection
       )
     : strategy === 'primary-sample-serpentine'
-      ? layoutWorkflowPrimarySampleFlow(structure.nodes, structure.links)
-      : layoutDag(structure.nodes, structure.links, {
+      ? layoutWorkflowPrimarySampleFlow(layoutNodes, layoutLinks)
+      : layoutDag(layoutNodes, layoutLinks, {
           preserveExistingPositions: false
         })
   const positionByNodeUuid = new Map(

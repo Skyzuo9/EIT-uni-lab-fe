@@ -220,6 +220,58 @@ describe('persistent Authoring canvas graph edits', () => {
     expect(updated.nodes[2]?.pose).toEqual(source.nodes[2]?.pose)
   })
 
+  /** 大型分层图只布局可编辑调用边界，不能为私有审阅节点执行全图布局。 */
+  it('beautifies a 7,400-node composite graph within the interactive budget', () => {
+    const rootCount = 12
+    const childrenPerRoot = 616
+    const roots = Array.from({ length: rootCount }, (_, rootIndex) => ({
+      uuid: `root-${rootIndex}`,
+      name: `segment_${rootIndex}`,
+      type: 'workflow',
+      workflow_node_template_uuid: 'composite-template',
+      param: {}
+    }))
+    const children = roots.flatMap((root, rootIndex) =>
+      Array.from({ length: childrenPerRoot }, (_, childIndex) => ({
+        uuid: `child-${rootIndex}-${childIndex}`,
+        name: `operation_${rootIndex}_${childIndex}`,
+        parent_uuid: root.uuid,
+        workflow_node_template_uuid: 'action-template',
+        param: {},
+        pose: { position: { x: childIndex * 8, y: rootIndex * 12 } }
+      }))
+    )
+    const source: WorkflowAuthoringGraph = {
+      workflow: { uuid: 'large-composite', revision: 1 },
+      nodes: [...roots, ...children],
+      edges: roots.slice(1).map((root, index) => ({
+        uuid: `root-edge-${index}`,
+        source_node_uuid: roots[index]!.uuid,
+        target_node_uuid: root.uuid,
+        source_handle_uuid: '',
+        target_handle_uuid: ''
+      })),
+      node_templates: [
+        publishedTemplate(
+          'composite-template',
+          'child-workflow',
+          'sha256:large-composite'
+        ),
+        { uuid: 'action-template', type: 'action', name: 'operation' }
+      ],
+      handle_templates: []
+    }
+
+    const startedAt = performance.now()
+    const updated = beautifyPersistentAuthoringGraph(source)
+    const elapsedMs = performance.now() - startedAt
+
+    expect(updated.nodes).toHaveLength(7_404)
+    expect(updated.nodes[0]?.pose).not.toEqual(source.nodes[0]?.pose)
+    expect(updated.nodes.at(-1)?.pose).toEqual(source.nodes.at(-1)?.pose)
+    expect(elapsedMs).toBeLessThan(750)
+  })
+
   it('projects real Handle UUIDs into ReactFlow nodes and edges', () => {
     const projected = projectPersistentAuthoringGraph({
       ...graph,

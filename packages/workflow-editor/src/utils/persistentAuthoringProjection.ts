@@ -89,6 +89,17 @@ export function workflowGraphJsonProjection(
   }, null, 2)
 }
 
+/** 仅在内嵌 JSON 代码面板实际可见时构造可能很大的完整图文本。 */
+export function workflowGraphJsonProjectionVisible(options: {
+  mode: 'code' | 'canvas'
+  codeProjection: 'python' | 'json'
+  hideEmbeddedCodeEditor: boolean
+}): boolean {
+  return !options.hideEmbeddedCodeEditor &&
+    options.mode === 'code' &&
+    options.codeProjection === 'json'
+}
+
 /** 把未知异常转换为可展示消息。 */
 export function errorMessage(value: unknown): string {
   const message = value instanceof Error ? value.message : String(value)
