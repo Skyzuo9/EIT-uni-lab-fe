@@ -14,6 +14,7 @@ describe('WorkflowDag viewport authority', () => {
     expect(source).toContain('showFitView={false}')
     expect(source).toContain('onClick={fitWorkflowView}')
     expect(source).toContain('适应视图')
+    expect(source).not.toContain('scheduleWorkflowCompositeFitView')
     expect(source).not.toContain('ResizeObserver')
     expect(source).not.toContain('graphSignature')
   })
