@@ -20,13 +20,15 @@ export function WorkbenchDomainLayout({
   workflow,
   material,
   device,
-  robotWorkstation
+  robotWorkstation,
+  spatialDiagnostics
 }: {
   mode: WorkbenchViewMode
   workflow: React.ReactNode
   material: React.ReactNode
   device: React.ReactNode
   robotWorkstation: React.ReactNode
+  spatialDiagnostics?: React.ReactNode
 }): React.JSX.Element {
   const layoutRef = useRef<HTMLDivElement>(null)
   const [primaryPercent, setPrimaryPercent] = useState(55)
@@ -76,6 +78,7 @@ export function WorkbenchDomainLayout({
     || mode === 'material-device'
   const robotWorkstationVisible = isRobotWorkbenchViewMode(mode)
     || mode === 'material-robot-debug'
+  const spatialDiagnosticsVisible = mode === 'spatial-shadow'
 
   return (
     <main
@@ -92,6 +95,15 @@ export function WorkbenchDomainLayout({
         inert={!robotWorkstationVisible}
       >
         {robotWorkstation}
+      </div>
+      <div
+        className={`unilab-workbench__domain-slot is-spatial-diagnostics${
+          spatialDiagnosticsVisible ? '' : ' is-inactive'
+        }`}
+        aria-hidden={!spatialDiagnosticsVisible}
+        inert={!spatialDiagnosticsVisible}
+      >
+        {spatialDiagnostics}
       </div>
       <div
         className={`unilab-workbench__domain-slot is-workflow${

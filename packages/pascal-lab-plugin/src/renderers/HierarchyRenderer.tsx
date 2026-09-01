@@ -13,8 +13,10 @@ import MaterialTransferLayerRenderer from './MaterialTransferLayerRenderer'
 import type { LabMaterialTransferLayerNode } from '../schema'
 import {
   applySceneCameraRequest,
+  frameSceneCaptureCamera,
   insetSceneBounds,
   outsetSceneBounds,
+  PASCAL_CAPTURE_FIT_EVENT,
   type SceneCameraControls,
   type SceneCameraView
 } from '../sceneCameraRequest'
@@ -48,6 +50,7 @@ export default function HierarchyRenderer({
   const viewportWidth = useThree((state) => state.size.width)
   const viewportHeight = useThree((state) => state.size.height)
   const invalidate = useThree((state) => state.invalidate)
+  const camera = useThree((state) => state.camera)
   useRegistry(node.id, node.type, groupRef)
 
   const rotation =
@@ -149,7 +152,10 @@ export default function HierarchyRenderer({
     fitSceneRevisionRef.current = node.fitSceneRevision
     if (previousRevision === node.fitSceneRevision) return
     const timer = window.setTimeout(
-      () => fitScene(true, node.fitSceneView),
+      // 显式相机请求也必须能在无 CVDisplayLink 的 managed renderer 中完成。
+      // CameraControls 的平滑过渡依赖逐帧推进；这里采用确定性瞬时适配，
+      // 避免正式截图只捕获到尚未移动的背景相机。
+      () => fitScene(false, node.fitSceneView),
       0
     )
     return () => window.clearTimeout(timer)
@@ -173,6 +179,26 @@ export default function HierarchyRenderer({
       window.removeEventListener(MODEL_READY_EVENT, handleModelReady)
     }
   }, [fitScene, node.type])
+
+  useEffect(() => {
+    if (node.type !== 'site') return
+    const handleCaptureFit = (event: Event): void => {
+      const detail = (event as CustomEvent<{ view?: SceneCameraView }>).detail
+      const root = groupRef.current
+      root.updateWorldMatrix(true, true)
+      const bounds = new Box3().setFromObject(root)
+      if (frameSceneCaptureCamera(
+        bounds,
+        camera,
+        detail?.view ?? 'default'
+      )) invalidate()
+    }
+    window.addEventListener(PASCAL_CAPTURE_FIT_EVENT, handleCaptureFit)
+    return () => window.removeEventListener(
+      PASCAL_CAPTURE_FIT_EVENT,
+      handleCaptureFit
+    )
+  }, [camera, invalidate, node.type])
 
   return (
     <group

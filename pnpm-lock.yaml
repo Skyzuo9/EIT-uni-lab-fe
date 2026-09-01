@@ -6,7 +6,7 @@ settings:
 
 patchedDependencies:
   '@pascal-app/editor@0.9.2':
-    hash: d0f42eb15315e99ecc37f1a9123bed407fa888fa02db58bf26bac17ae50c1e24
+    hash: 73a51851807f4caf8790f5a00089febf75d4aa524a50f65271734307908062fd
     path: patches/@pascal-app__editor@0.9.2.patch
 
 importers:
@@ -768,7 +768,7 @@ importers:
         version: 0.9.2(@react-three/drei@10.7.7(@react-three/fiber@9.4.0(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(three@0.185.0))(@types/react@19.2.17)(@types/three@0.184.1)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(three@0.185.0))(@react-three/fiber@9.4.0(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(three@0.185.0))(@types/react@19.2.17)(react@19.2.8)(three@0.185.0)(use-sync-external-store@1.6.0(react@19.2.8))
       '@pascal-app/editor':
         specifier: 0.9.2
-        version: 0.9.2(patch_hash=d0f42eb15315e99ecc37f1a9123bed407fa888fa02db58bf26bac17ae50c1e24)(f5c76975d52fbc77d04d924597e522d7)
+        version: 0.9.2(patch_hash=73a51851807f4caf8790f5a00089febf75d4aa524a50f65271734307908062fd)(f5c76975d52fbc77d04d924597e522d7)
       '@pascal-app/viewer':
         specifier: 0.9.2
         version: 0.9.2(@pascal-app/core@0.9.2(@react-three/drei@10.7.7(@react-three/fiber@9.4.0(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(three@0.185.0))(@types/react@19.2.17)(@types/three@0.184.1)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(three@0.185.0))(@react-three/fiber@9.4.0(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(three@0.185.0))(@types/react@19.2.17)(react@19.2.8)(three@0.185.0)(use-sync-external-store@1.6.0(react@19.2.8)))(@react-three/drei@10.7.7(@react-three/fiber@9.4.0(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(three@0.185.0))(@types/react@19.2.17)(@types/three@0.184.1)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(three@0.185.0))(@react-three/fiber@9.4.0(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(three@0.185.0))(@types/react@19.2.17)(react@19.2.8)(three@0.185.0)(use-sync-external-store@1.6.0(react@19.2.8))
@@ -952,6 +952,27 @@ importers:
         specifier: ^2.1.9
         version: 2.1.9(@types/node@22.20.1)(less@3.13.1)(lightningcss@1.30.1)(sass-embedded@1.97.3)(sass@1.102.0)(terser@5.49.2)
 
+  packages/spatial-diagnostics:
+    devDependencies:
+      '@types/react':
+        specifier: ^19.2.7
+        version: 19.2.17
+      '@types/react-dom':
+        specifier: ^19.2.3
+        version: 19.2.3(@types/react@19.2.17)
+      react:
+        specifier: ^19.2.1
+        version: 19.2.8
+      react-dom:
+        specifier: ^19.2.1
+        version: 19.2.8(react@19.2.8)
+      typescript:
+        specifier: ^5.6.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.9
+        version: 2.1.9(@types/node@22.20.1)(less@3.13.1)(lightningcss@1.30.1)(sass-embedded@1.97.3)(sass@1.102.0)(terser@5.49.2)
+
   packages/testing:
     dependencies:
       '@unilab/services':
@@ -1058,6 +1079,9 @@ importers:
       '@unilab/services':
         specifier: workspace:*
         version: link:../services
+      '@unilab/spatial-diagnostics':
+        specifier: workspace:*
+        version: link:../spatial-diagnostics
       '@unilab/workbench-session':
         specifier: workspace:*
         version: link:../workbench-session
@@ -10891,7 +10915,7 @@ snapshots:
       - immer
       - use-sync-external-store
 
-  '@pascal-app/editor@0.9.2(patch_hash=d0f42eb15315e99ecc37f1a9123bed407fa888fa02db58bf26bac17ae50c1e24)(f5c76975d52fbc77d04d924597e522d7)':
+  '@pascal-app/editor@0.9.2(patch_hash=73a51851807f4caf8790f5a00089febf75d4aa524a50f65271734307908062fd)(f5c76975d52fbc77d04d924597e522d7)':
     dependencies:
       '@dnd-kit/core': 6.3.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@dnd-kit/sortable': 10.0.0(@dnd-kit/core@6.3.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react@19.2.8)

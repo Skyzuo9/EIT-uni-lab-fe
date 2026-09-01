@@ -16,6 +16,44 @@ export interface MaterialSceneProjectionOptions {
   showMaterialLabels?: boolean
   showMaterialTransfers?: boolean
   materialTransferRoutes?: readonly MaterialTransferSceneRoute[]
+  spatialShadowOverlay?: PascalSpatialShadowOverlay | null
+}
+
+export interface PascalSpatialShadowBox {
+  id: string
+  label: string
+  role: 'environment' | 'corridor' | 'robot-link' | 'tool' | 'payload'
+  matrix: readonly number[]
+  size: readonly [number, number, number]
+}
+
+export interface PascalSpatialShadowContact {
+  id: string
+  role: 'first-contact' | 'current-contact'
+  label: string
+  position: readonly [number, number, number]
+}
+
+export interface PascalSpatialShadowOverlay {
+  sampleId: string
+  registrationStatus: 'candidate-relative-layout'
+  registrationQualified: false
+  decision: 'unknown'
+  effect: 'none'
+  currentTimeS: number
+  durationS: number
+  segmentIndex: number
+  frameIndex: number
+  collisionStatus:
+    | 'separated-at-sampled-frame'
+    | 'broad-phase-overlap-unresolved'
+    | 'proxy-mesh-contact'
+  minimumClearanceM: number
+  firstContactTimeS: number | null
+  firstContactTargetPositionM: readonly [number, number, number] | null
+  boxes: readonly PascalSpatialShadowBox[]
+  trajectory: readonly (readonly [number, number, number])[]
+  contacts: readonly PascalSpatialShadowContact[]
 }
 
 export interface MaterialTransferSceneEndpoint {
@@ -58,6 +96,18 @@ export interface MaterialRenderingSnapshot {
     qualifiedJointNames: readonly string[]
     staleAfterSeconds: number
   }
+  sceneContext?: {
+    id: string
+    coordinateAuthority: string
+    mode: 'static-read-only'
+    models: readonly {
+      path: string
+      format: 'gltf'
+      selector: MaterialGltfSelector
+      position: Vector3Tuple
+      rotation: Vector3Tuple
+    }[]
+  }
   model: {
     path: string
     format?: string
@@ -67,13 +117,7 @@ export interface MaterialRenderingSnapshot {
     version?: string
     type?: string
     color?: string
-    selector?: {
-      kind: 'gltf_subtree'
-      nodeIndex: number
-      nodePath: string
-      rootTransform: 'preserve' | 'reset_translation' | 'identity'
-      excludeNodePaths: readonly string[]
-    }
+    selector?: MaterialGltfSelector
     position: Vector3Tuple
     rotation: Vector3Tuple
     attachPoints: readonly LabAttachPoint[]
@@ -90,4 +134,12 @@ export interface MaterialRenderingSnapshot {
       }[]
     }
   }
+}
+
+export interface MaterialGltfSelector {
+  kind: 'gltf_subtree'
+  nodeIndex: number
+  nodePath: string
+  rootTransform: 'preserve' | 'reset_translation' | 'identity'
+  excludeNodePaths: readonly string[]
 }

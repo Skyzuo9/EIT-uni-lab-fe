@@ -17,8 +17,16 @@ import type {
 } from '@unilab/pascal-lab-plugin'
 import { ensurePascalRendererDefaults } from '@unilab/pascal-host'
 import {
+  projectSpatialShadowToPascal,
+  type SpatialDiagnosticsStatus,
+  type SpatialShadowSnapshot,
+  useSpatialShadowPlayback
+} from '@unilab/spatial-diagnostics'
+import {
   activateSceneRuntimeScope,
+  clearSpatialJointStateFrame,
   publishJointStateFrame,
+  publishSpatialJointStateFrame,
   replaceJointStateSnapshot,
   type JointStateFrameInput
 } from '@unilab/scene-runtime'
@@ -45,6 +53,7 @@ import {
   type MaterialRendererRequest,
   type MaterialRendererResponse
 } from '../common/workbench-session-protocol'
+import { currentInitialSpatialShadowState } from './workbench-material-projection'
 import type { WorkbenchSessionClientImpl } from './workbench-session-client'
 import { useWorkbenchMaterialGraphLoad } from './workbench-material-graph-load'
 import { resolveWorkbenchModelUrl } from './workbench-model-url'
@@ -52,6 +61,11 @@ import {
   WorkbenchMaterialSceneState,
   WorkbenchMaterialShapeFallbackNotice
 } from './workbench-material-scene-state'
+import {
+  alignSpatialShadowRobotBase,
+  resolveSpatialShadowRobotBinding,
+  spatialShadowFrameSequence
+} from './workbench-spatial-shadow-runtime'
 
 ensurePascalRendererDefaults()
 
@@ -75,7 +89,8 @@ export function WorkbenchMaterialViewport({
   moveStatus,
   selectedMaterialIds,
   highlightedMaterialIds,
-  onSelectionChange
+  onSelectionChange,
+  spatialShadow
 }: MaterialWorkbenchViewportProps & {
   backendUrl: string
   realtime: RealtimeService
@@ -86,6 +101,11 @@ export function WorkbenchMaterialViewport({
   runtimeProjection: WorkflowPanelRuntimeProjection | null
   selectedWorkflowNode: string | null
   cameraFocus?: 'scene' | 'kinematics'
+  spatialShadow: {
+    snapshot: SpatialShadowSnapshot | null
+    status: SpatialDiagnosticsStatus
+    onReload: () => void
+  }
 }): React.JSX.Element {
   const rootRef = useRef<HTMLDivElement>(null)
   const captureActive = useRef(false)
@@ -93,7 +113,12 @@ export function WorkbenchMaterialViewport({
     resolve(blob: Blob): void
     reject(error: Error): void
     timeout: ReturnType<typeof setTimeout>
+    width: number
+    height: number
+    validating: boolean
+    lastError: string | null
   } | null>(null)
+  const shadowRobotMaterialId = useRef<string | null>(null)
   const [viewState, setViewState] = useState<MaterialViewportState>(
     readStoredMaterialViewportState
   )
@@ -105,6 +130,10 @@ export function WorkbenchMaterialViewport({
     width: number
     height: number
   } | null>(null)
+  const [spatialShadowEnabled, setSpatialShadowEnabled] = useState(
+    () => currentInitialSpatialShadowState().enabled
+  )
+  const spatialPlayback = useSpatialShadowPlayback()
   const store = useMaterialStoreApi()
   const aggregatesById = useMaterialStore((state) => state.aggregatesById)
   const shapeLibrary = useMaterialStore((state) => state.shapeLibrary)
@@ -152,6 +181,19 @@ export function WorkbenchMaterialViewport({
     resolveUrl: (model: { path: string }) =>
       resolveWorkbenchModelUrl(backendUrl, model.path)
   }), [backendUrl])
+  const displayedSpatialShadowTimeS =
+    automationOptions?.spatialShadowTimeS ?? spatialPlayback.timeS
+  const displayedSpatialShadowEnabled =
+    automationOptions?.showSpatialShadow ?? spatialShadowEnabled
+  const spatialShadowOverlay = useMemo(
+    () => spatialShadow.snapshot
+      ? projectSpatialShadowToPascal(
+          spatialShadow.snapshot,
+          displayedSpatialShadowTimeS
+        )
+      : null,
+    [displayedSpatialShadowTimeS, spatialShadow.snapshot]
+  )
 
   useEffect(() => {
     activateSceneRuntimeScope(runtimeScopeId)
@@ -166,14 +208,104 @@ export function WorkbenchMaterialViewport({
     })
   }, [realtime, realtimeEnabled, runtimeScopeId])
 
+  const shadowRobot = useMemo(
+    () => resolveSpatialShadowRobotBinding(displayedAggregates),
+    [displayedAggregates]
+  )
+  const shadowPlaybackFrame = useMemo(() => {
+    if (!spatialShadow.snapshot || !spatialShadowOverlay) return null
+    return spatialShadow.snapshot.playback.segments
+      .find(segment => segment.segment_index === spatialShadowOverlay.segmentIndex)
+      ?.frames.find(frame => frame.frame_index === spatialShadowOverlay.frameIndex) ?? null
+  }, [spatialShadow.snapshot, spatialShadowOverlay])
+  const spatialSceneAggregates = useMemo(
+    () => displayedSpatialShadowEnabled && spatialShadow.snapshot && shadowRobot
+      ? alignSpatialShadowRobotBase(
+          displayedAggregates,
+          shadowRobot.materialId,
+          spatialShadow.snapshot
+        )
+      : displayedAggregates,
+    [
+      displayedAggregates,
+      displayedSpatialShadowEnabled,
+      shadowRobot,
+      spatialShadow.snapshot
+    ]
+  )
+
+  useEffect(() => {
+    const previousMaterialId = shadowRobotMaterialId.current
+    if (
+      !displayedSpatialShadowEnabled ||
+      !spatialShadow.snapshot ||
+      !spatialShadowOverlay ||
+      !shadowRobot ||
+      !shadowPlaybackFrame
+    ) {
+      if (previousMaterialId) clearSpatialJointStateFrame(previousMaterialId)
+      shadowRobotMaterialId.current = null
+      return
+    }
+    if (
+      previousMaterialId &&
+      previousMaterialId !== shadowRobot.materialId
+    ) clearSpatialJointStateFrame(previousMaterialId)
+    const jointStates = Object.fromEntries(
+      shadowRobot.qualifiedJointNames.map((jointName, index) => [
+        jointName,
+        shadowPlaybackFrame.joint_positions_rad[index]
+      ])
+    )
+    publishSpatialJointStateFrame({
+      materialId: shadowRobot.materialId,
+      deviceId: shadowRobot.deviceId,
+      topologyDigest: shadowRobot.topologyDigest,
+      bootId: `spatial-shadow:${spatialShadow.snapshot.snapshot_digest.slice(0, 24)}`,
+      sequence: spatialShadowFrameSequence(
+        spatialShadow.snapshot,
+        spatialShadowOverlay.segmentIndex,
+        spatialShadowOverlay.frameIndex
+      ),
+      acceptedRef: `spatial-shadow:${spatialShadow.snapshot.snapshot_digest}:${spatialShadowOverlay.segmentIndex}:${spatialShadowOverlay.frameIndex}`,
+      observedAt: shadowPlaybackFrame.time_s,
+      staleAfterSeconds: shadowRobot.staleAfterSeconds,
+      stale: false,
+      jointStates,
+      source: 'shadow'
+    })
+    shadowRobotMaterialId.current = shadowRobot.materialId
+  }, [
+    displayedSpatialShadowEnabled,
+    runtimeScopeId,
+    shadowPlaybackFrame,
+    shadowRobot,
+    spatialShadow.snapshot,
+    spatialShadowOverlay
+  ])
+
+  useEffect(() => () => {
+    if (shadowRobotMaterialId.current) {
+      clearSpatialJointStateFrame(shadowRobotMaterialId.current)
+    }
+  }, [])
+
   const inspectScene = useCallback(async (
     options: MaterialRendererOptions
   ) => {
     const module = await import('@unilab/pascal-lab-plugin')
-    const adjusted = applyLayoutOverrides(
+    const layoutAdjusted = applyLayoutOverrides(
       aggregates,
       options.layoutOverrides ?? []
     )
+    const binding = resolveSpatialShadowRobotBinding(layoutAdjusted)
+    const adjusted = options.showSpatialShadow && spatialShadow.snapshot && binding
+      ? alignSpatialShadowRobotBase(
+          layoutAdjusted,
+          binding.materialId,
+          spatialShadow.snapshot
+        )
+      : layoutAdjusted
     return module.inspectMaterialAggregateScene(adjusted, {
       viewMode: options.view ?? viewState.mode,
       showSites: options.showSites ?? viewState.showSites,
@@ -183,7 +315,13 @@ export function WorkbenchMaterialViewport({
       hiddenMaterialIds: options.hiddenMaterialIds ?? [],
       sourceIdentity
     })
-  }, [aggregates, selectedMaterialIds, sourceIdentity, viewState])
+  }, [
+    aggregates,
+    selectedMaterialIds,
+    sourceIdentity,
+    spatialShadow.snapshot,
+    viewState
+  ])
 
   const capturePascalScene = useCallback((
     width: number,
@@ -197,10 +335,22 @@ export function WorkbenchMaterialViewport({
       clearTimeout(pendingPascalCapture.current.timeout)
     }
     const timeout = setTimeout(() => {
+      const lastError = pendingPascalCapture.current?.lastError
       pendingPascalCapture.current = null
-      reject(new Error(`Pascal 3D 截图在 ${timeoutMs}ms 内未完成`))
+      setPascalCaptureRequest(null)
+      reject(new Error(
+        `Pascal 3D 截图在 ${timeoutMs}ms 内未完成${lastError ? `：${lastError}` : ''}`
+      ))
     }, timeoutMs)
-    pendingPascalCapture.current = { resolve, reject, timeout }
+    pendingPascalCapture.current = {
+      resolve,
+      reject,
+      timeout,
+      width,
+      height,
+      validating: false,
+      lastError: null
+    }
     setPascalCaptureRequest(current => ({
       revision: (current?.revision ?? 0) + 1,
       width,
@@ -208,12 +358,32 @@ export function WorkbenchMaterialViewport({
     }))
   }), [])
 
-  const handlePascalCaptureReady = useCallback((blob: Blob): void => {
+  const handlePascalCaptureReady = useCallback((
+    blob: Blob,
+    cameraData: {
+      position: [number, number, number]
+      target: [number, number, number] | null
+      type?: 'perspective' | 'orthographic'
+      zoom?: number
+    }
+  ): void => {
     const pending = pendingPascalCapture.current
-    if (!pending) return
-    pendingPascalCapture.current = null
-    clearTimeout(pending.timeout)
-    pending.resolve(blob)
+    if (!pending || pending.validating) return
+    pending.validating = true
+    void assertVisiblePngCapture(blob, pending.width, pending.height)
+      .then(() => {
+        if (pendingPascalCapture.current !== pending) return
+        pendingPascalCapture.current = null
+        clearTimeout(pending.timeout)
+        setPascalCaptureRequest(null)
+        pending.resolve(blob)
+      })
+      .catch(error => {
+        if (pendingPascalCapture.current !== pending) return
+        pending.validating = false
+        const message = error instanceof Error ? error.message : String(error)
+        pending.lastError = `${message}；相机=${JSON.stringify(cameraData)}`
+      })
   }, [])
 
   const handleRendererRequest = useCallback(async (
@@ -278,16 +448,19 @@ export function WorkbenchMaterialViewport({
           ? await capturePascalScene(
               requestedWidth,
               requestedHeight,
-              Math.min(request.options.timeoutMs ?? 30_000, 8_000)
-            ).catch(() => capturePascalCanvas(
-              root,
-              requestedWidth,
-              requestedHeight
-            )).then(async blob => ({
-              base64: arrayBufferToBase64(await blob.arrayBuffer()),
-              width: requestedWidth,
-              height: requestedHeight
-            }))
+              Math.max(1_000, (request.options.timeoutMs ?? 30_000) - 1_000)
+            ).then(async blob => {
+              await assertVisiblePngCapture(
+                blob,
+                requestedWidth,
+                requestedHeight
+              )
+              return {
+                base64: arrayBufferToBase64(await blob.arrayBuffer()),
+                width: requestedWidth,
+                height: requestedHeight
+              }
+            })
           : await captureMaterialDom(root, view, request.options).then(canvas => ({
               base64: canvas.toDataURL('image/png').split(',', 2)[1] ?? '',
               width: canvas.width,
@@ -409,7 +582,7 @@ export function WorkbenchMaterialViewport({
             )}
           >
             <PascalLabWorkbench
-              aggregates={displayedAggregates}
+              aggregates={spatialSceneAggregates}
               shapes={shapeLibrary}
               showSites={showSites}
               showMaterialLabels={showMaterialLabels}
@@ -429,6 +602,25 @@ export function WorkbenchMaterialViewport({
               modelRuntime={modelRuntime}
               onMaterialMoves={(moves) => void applyMoves(moves)}
               onSelectionChange={(materialIds) => onSelectionChange?.(materialIds)}
+              spatialShadow={{
+                phase: spatialShadow.status.phase,
+                message: spatialShadow.status.message,
+                enabled: displayedSpatialShadowEnabled,
+                playing: spatialPlayback.playing,
+                overlay: spatialShadowOverlay,
+                onToggle: () => {
+                  setSpatialShadowEnabled(current => {
+                    if (current && spatialPlayback.playing) spatialPlayback.toggle()
+                    return !current
+                  })
+                },
+                onPlaybackToggle: spatialPlayback.toggle,
+                onTimeChange: timeS => {
+                  if (spatialPlayback.playing) spatialPlayback.toggle()
+                  spatialPlayback.seek(timeS)
+                },
+                onReload: spatialShadow.onReload
+              }}
             />
           </Suspense>
         )}
@@ -555,15 +747,25 @@ async function waitForImages(root: HTMLElement, deadline: number): Promise<void>
 }
 
 function stableAnimationFrames(count: number): Promise<void> {
+  return Array.from({ length: count }).reduce<Promise<void>>(
+    chain => chain.then(nextVisualTick),
+    Promise.resolve()
+  )
+}
+
+function nextVisualTick(): Promise<void> {
   return new Promise(resolve => {
-    const next = (remaining: number): void => {
-      if (remaining <= 0) {
-        resolve()
-        return
-      }
-      requestAnimationFrame(() => next(remaining - 1))
+    let settled = false
+    let frame = 0
+    const complete = (): void => {
+      if (settled) return
+      settled = true
+      if (frame) cancelAnimationFrame(frame)
+      clearTimeout(timeout)
+      resolve()
     }
-    next(count)
+    const timeout = setTimeout(complete, 34)
+    frame = requestAnimationFrame(complete)
   })
 }
 
@@ -600,26 +802,76 @@ async function captureMaterialDom(
   }
 }
 
-async function capturePascalCanvas(
-  root: HTMLElement,
-  width: number,
-  height: number
-): Promise<Blob> {
-  await stableAnimationFrames(5)
-  const source = root.querySelector<HTMLCanvasElement>('canvas')
-  if (!source) throw new Error('Pascal 3D renderer 未提供可截图画布')
-  const output = document.createElement('canvas')
-  output.width = width
-  output.height = height
-  const context = output.getContext('2d')
-  if (!context) throw new Error('浏览器不支持 3D 画布截图')
-  context.drawImage(source, 0, 0, width, height)
-  return new Promise((resolve, reject) => {
-    output.toBlob(blob => {
-      if (blob) resolve(blob)
-      else reject(new Error('Pascal 3D 画布未生成 PNG'))
-    }, 'image/png')
-  })
+async function assertVisiblePngCapture(
+  blob: Blob,
+  expectedWidth: number,
+  expectedHeight: number
+): Promise<void> {
+  if (blob.type && blob.type !== 'image/png') {
+    throw new Error(`Pascal 3D 截图格式非法：${blob.type}`)
+  }
+  if (blob.size < 256) throw new Error('Pascal 3D 截图为空或过小')
+  const bitmap = await createImageBitmap(blob)
+  try {
+    if (bitmap.width !== expectedWidth || bitmap.height !== expectedHeight) {
+      throw new Error(
+        `Pascal 3D 截图尺寸错误：${bitmap.width}x${bitmap.height}`
+      )
+    }
+    const sampleWidth = Math.min(bitmap.width, 96)
+    const sampleHeight = Math.min(bitmap.height, 96)
+    const canvas = document.createElement('canvas')
+    canvas.width = sampleWidth
+    canvas.height = sampleHeight
+    const context = canvas.getContext('2d', { willReadFrequently: true })
+    if (!context) throw new Error('浏览器不支持 3D 截图像素验收')
+    context.drawImage(bitmap, 0, 0, sampleWidth, sampleHeight)
+    const pixels = context.getImageData(0, 0, sampleWidth, sampleHeight).data
+    let visible = 0
+    let nonBlack = 0
+    let minimumLuminance = Number.POSITIVE_INFINITY
+    let maximumLuminance = Number.NEGATIVE_INFINITY
+    let minimumRed = 255
+    let maximumRed = 0
+    let minimumGreen = 255
+    let maximumGreen = 0
+    let minimumBlue = 255
+    let maximumBlue = 0
+    for (let index = 0; index < pixels.length; index += 4) {
+      if (pixels[index + 3] < 16) continue
+      visible += 1
+      if (pixels[index] + pixels[index + 1] + pixels[index + 2] > 24) {
+        nonBlack += 1
+      }
+      const red = pixels[index]
+      const green = pixels[index + 1]
+      const blue = pixels[index + 2]
+      const luminance = red * 0.2126 + green * 0.7152 + blue * 0.0722
+      minimumLuminance = Math.min(minimumLuminance, luminance)
+      maximumLuminance = Math.max(maximumLuminance, luminance)
+      minimumRed = Math.min(minimumRed, red)
+      maximumRed = Math.max(maximumRed, red)
+      minimumGreen = Math.min(minimumGreen, green)
+      maximumGreen = Math.max(maximumGreen, green)
+      minimumBlue = Math.min(minimumBlue, blue)
+      maximumBlue = Math.max(maximumBlue, blue)
+    }
+    const total = sampleWidth * sampleHeight
+    if (visible / total < 0.05 || nonBlack / total < 0.01) {
+      throw new Error('Pascal 3D 截图像素为空或全黑，已拒绝验收')
+    }
+    const luminanceRange = maximumLuminance - minimumLuminance
+    const channelRange = Math.max(
+      maximumRed - minimumRed,
+      maximumGreen - minimumGreen,
+      maximumBlue - minimumBlue
+    )
+    if (luminanceRange < 8 && channelRange < 8) {
+      throw new Error('Pascal 3D 截图只有单色背景，未发现可验收场景')
+    }
+  } finally {
+    bitmap.close()
+  }
 }
 
 const SVG_PRESENTATION_PROPERTIES = [

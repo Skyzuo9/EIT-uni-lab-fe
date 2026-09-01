@@ -161,6 +161,15 @@ export function decodeMaterialRendererOptions(value: unknown): MaterialRendererO
   const timeoutMs = timeoutValue == null
     ? undefined
     : boundedNumber(timeoutValue, 'timeoutMs', 100, 120_000)
+  const spatialShadowTimeValue = input.spatialShadowTimeS
+  const spatialShadowTimeS = spatialShadowTimeValue == null
+    ? undefined
+    : boundedNumber(
+        spatialShadowTimeValue,
+        'spatialShadowTimeS',
+        0,
+        86_400
+      )
   const layoutOverrides = input.layoutOverrides == null
     ? undefined
     : decodeLayoutOverrides(input.layoutOverrides)
@@ -171,6 +180,8 @@ export function decodeMaterialRendererOptions(value: unknown): MaterialRendererO
       input.showMaterialTransfers,
       'showMaterialTransfers'
     ),
+    ...optionalBoolean(input.showSpatialShadow, 'showSpatialShadow'),
+    ...(spatialShadowTimeS == null ? {} : { spatialShadowTimeS }),
     ...stringList(input.selectedMaterialIds ?? input.selected, 'selectedMaterialIds'),
     ...stringList(input.hiddenMaterialIds ?? input.hidden, 'hiddenMaterialIds'),
     ...(normalizedCameraPreset
@@ -272,7 +283,7 @@ function isViewMode(value: string): value is MaterialRendererViewMode {
 
 function optionalBoolean(
   value: unknown,
-  field: 'showSites' | 'showMaterialTransfers'
+  field: 'showSites' | 'showMaterialTransfers' | 'showSpatialShadow'
 ): Pick<MaterialRendererOptions, typeof field> | {} {
   if (value == null || value === '') return {}
   if (value === true || value === 'true') return { [field]: true }

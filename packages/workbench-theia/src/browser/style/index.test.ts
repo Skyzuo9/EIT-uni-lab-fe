@@ -230,6 +230,18 @@ describe('environment manager layering and responsive layout', () => {
     expect(domainNavigationStylesheet).not.toMatch(
       /data-unilabdomain='robot-reagents'\]\s*\{\s*display:\s*none/u
     )
+    expect(domainNavigationStylesheet).not.toMatch(
+      /data-unilabdomain='spatial-shadow'\]\s*\{\s*display:\s*none/u
+    )
+  })
+
+  it('exposes the spatial shadow reviewer as a formal Workbench entry', () => {
+    expect(navigatorSource).toMatch(
+      /mode:\s*'spatial-shadow',[\s\S]*?label:\s*'空间约束'/u
+    )
+    expect(domainNavigationStylesheet).toMatch(
+      /\.unilab-activity-icon--spatial-shadow\s*\{/u
+    )
   })
 
   /** UniLab 领域入口不得叠加 Lumino 遗留的 current 高亮。 */

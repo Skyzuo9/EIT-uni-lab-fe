@@ -15,6 +15,9 @@ export {
   sceneGraphToMaterialMoves,
   type MaterialRenderingSnapshot,
   type MaterialSceneMove,
+  type PascalSpatialShadowBox,
+  type PascalSpatialShadowContact,
+  type PascalSpatialShadowOverlay,
   type MaterialTransferSceneEndpoint,
   type MaterialTransferSceneRoute
 } from './materialAggregateSceneBridge'
@@ -49,6 +52,8 @@ export {
 export {
   LabAttachPointSchema,
   LabDeviceNodeSchema,
+  LabSceneContextNodeSchema,
+  LabSpatialShadowNodeSchema,
   LabMaterialTransferLayerNodeSchema,
   LabMaterialTransferRouteSchema,
   LabMaterialTransferStatusSchema,
@@ -58,10 +63,14 @@ export {
   LabKinematicsSchema,
   LabTableNodeSchema,
   isLabDeviceNode,
+  isLabSceneContextNode,
+  isLabSpatialShadowNode,
   isLabMaterialTransferLayerNode,
   isLabTableNode,
   type LabAttachPoint,
   type LabDeviceNode,
+  type LabSceneContextNode,
+  type LabSpatialShadowNode,
   type LabFloorplanSite,
   type LabFloorplanSnapshot,
   type LabPlacementRef,

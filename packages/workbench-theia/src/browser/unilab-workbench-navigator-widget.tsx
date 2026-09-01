@@ -113,6 +113,20 @@ export class DeviceDomainEntryWidget extends UniLabDomainEntryWidget {
 }
 
 @injectable()
+export class SpatialShadowDomainEntryWidget extends UniLabDomainEntryWidget {
+  static readonly ID = 'unilab:spatial-shadow-navigation'
+  protected readonly widgetId = SpatialShadowDomainEntryWidget.ID
+  protected readonly entry: DomainEntryDefinition = {
+    mode: 'spatial-shadow',
+    label: '空间约束',
+    caption: '空间约束 · 离线 Shadow 审阅',
+    description: '查看 EIT 编译产物中的连杆占用、候选走廊与未覆盖运动段；不改变调度许可。',
+    iconClass: 'unilab-activity-icon--spatial-shadow',
+    eyebrow: 'SPATIAL SHADOW'
+  }
+}
+
+@injectable()
 export class RobotDebugDomainEntryWidget extends UniLabDomainEntryWidget {
   static readonly ID = 'unilab:robot-debug-navigation'
   protected readonly widgetId = RobotDebugDomainEntryWidget.ID

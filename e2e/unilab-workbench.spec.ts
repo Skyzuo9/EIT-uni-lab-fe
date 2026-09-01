@@ -105,7 +105,7 @@ test.describe('UniLab Workbench real-system contract', () => {
     const unilabActivityTabs = page.locator(
       '.theia-app-left .lm-TabBar-tab[data-unilabgroup="true"]:not([id$="-hidden"])'
     )
-    await expect(unilabActivityTabs).toHaveCount(8)
+    await expect(unilabActivityTabs).toHaveCount(9)
     await expect.poll(async () => unilabActivityTabs.evaluateAll(tabs =>
       tabs.map(tab => tab.id)
     )).toEqual([
@@ -114,6 +114,7 @@ test.describe('UniLab Workbench real-system contract', () => {
       'shell-tab-unilab:robot-points-navigation',
       'shell-tab-unilab:robot-bench-navigation',
       'shell-tab-unilab:robot-reagents-navigation',
+      'shell-tab-unilab:spatial-shadow-navigation',
       'shell-tab-unilab:material-navigation',
       'shell-tab-unilab:workbench-navigator',
       'shell-tab-unilab:agent-navigation'
@@ -250,6 +251,65 @@ test.describe('UniLab Workbench real-system contract', () => {
     expect(layout.inspectorWithinWorkflow).toBe(true)
     expect(layout.overlaps).toBe(0)
     expect(layout.zoom).toBeGreaterThanOrEqual(0.8)
+  })
+
+  test('renders the EIT spatial-shadow calculation without granting motion authority', async ({
+    page
+  }) => {
+    await page.goto(workbenchUrl!)
+    await expect(page.locator('[data-package-mount-count="1"]')).toBeVisible()
+
+    await page.locator(
+      '[id="shell-tab-unilab:spatial-shadow-navigation"]'
+    ).click()
+
+    const diagnostics = page.getByTestId('spatial-shadow-diagnostics')
+    await expect(diagnostics).toBeVisible()
+    await expect(diagnostics).toHaveAttribute('data-phase', 'ready')
+    await expect(diagnostics).toHaveAttribute('data-spatial-decision', 'unknown')
+    await expect(diagnostics).toHaveAttribute('data-spatial-mode', 'shadow')
+    await expect(diagnostics).toHaveAttribute('data-spatial-effect', 'none')
+    await expect(diagnostics.getByText('结论未知：禁止据此放行')).toBeVisible()
+    await expect(diagnostics.getByText(/522 帧离线轨迹已检查/)).toBeVisible()
+    await expect(diagnostics.getByText(/204 个代理接触帧/)).toBeVisible()
+    await expect(diagnostics.getByText(/连续包络段/)).toBeVisible()
+    await expect(diagnostics.getByText(/robot\.tank\.pick/)).toBeVisible()
+    await expect(diagnostics.getByRole('img', { name: /俯视图 XY AABB 投影/ })).toBeVisible()
+    await expect(diagnostics.getByRole('img', { name: /侧视图 XZ AABB 投影/ })).toBeVisible()
+    await expect(diagnostics.locator('[data-spatial-link]')).toHaveCount(14)
+
+    const segments = diagnostics.locator('.spatial-diagnostics__segment')
+    await expect(segments).toHaveCount(14)
+    const timeline = diagnostics.getByRole('slider', { name: '轨迹时间' })
+    await diagnostics.getByRole('button', { name: '播放' }).click()
+    await expect.poll(async () => Number(await timeline.inputValue())).toBeGreaterThan(0)
+    await diagnostics.getByRole('button', { name: '暂停' }).click()
+
+    await segments.nth(3).click()
+    await expect(diagnostics.getByText(/compiled-move-l-joint-trajectory/)).toBeVisible()
+
+    await segments.nth(7).click()
+    await expect(
+      diagnostics.locator('[data-spatial-attachment="payload:plate"]')
+    ).toHaveCount(2)
+    const payloadScreenshotPath =
+      process.env.UNILAB_SPATIAL_E2E_PAYLOAD_SCREENSHOT
+    if (payloadScreenshotPath) {
+      await page.screenshot({ path: payloadScreenshotPath, fullPage: true })
+    }
+
+    await timeline.fill('6.77')
+    await expect(
+      diagnostics.locator('[data-spatial-collision-status="proxy-mesh-contact"]')
+    ).toBeVisible()
+    await expect(diagnostics.getByText(/接触候选位置/)).toBeVisible()
+    await expect(diagnostics.locator('[data-spatial-contact]').first()).toBeVisible()
+    const screenshotPath = process.env.UNILAB_SPATIAL_E2E_SCREENSHOT
+    if (screenshotPath) {
+      await page.screenshot({ path: screenshotPath, fullPage: true })
+    }
+    await segments.nth(4).click()
+    await expect(diagnostics.getByText(/安全连续包络尚未覆盖/)).toBeVisible()
   })
 
   test('toggles Workbench panels without opening the native IDE sidebar', async ({

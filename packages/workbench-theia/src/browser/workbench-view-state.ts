@@ -5,6 +5,7 @@ export type WorkbenchDomain =
   | 'workflow'
   | 'material'
   | 'device'
+  | 'spatial-shadow'
   | 'robot-debug'
   | 'robot-points'
   | 'robot-bench'
@@ -14,6 +15,7 @@ export type WorkbenchViewMode =
   | 'workflow'
   | 'material'
   | 'device'
+  | 'spatial-shadow'
   | 'robot-debug'
   | 'robot-points'
   | 'robot-bench'
@@ -187,6 +189,7 @@ export function parseWorkbenchViewMode(
     'workflow',
     'material',
     'device',
+    'spatial-shadow',
     'robot-debug',
     'robot-points',
     'robot-bench',

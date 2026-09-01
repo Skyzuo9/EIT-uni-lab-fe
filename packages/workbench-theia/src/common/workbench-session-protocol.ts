@@ -21,6 +21,8 @@ export interface MaterialRendererOptions {
   view?: MaterialRendererViewMode
   showSites?: boolean
   showMaterialTransfers?: boolean
+  showSpatialShadow?: boolean
+  spatialShadowTimeS?: number
   selectedMaterialIds?: readonly string[]
   hiddenMaterialIds?: readonly string[]
   cameraPreset?: 'default' | 'top'

@@ -46,6 +46,17 @@ export function readMaterialRendering(
   const footprintMm =
     pairTuple(source.footprintMm) ??
     [dimensionsMm[0], dimensionsMm[2]]
+  const modelPath = stringValue(model.path ?? model.mesh)
+  const modelFormat = optionalString(model.format ?? model.model_type)
+  const modelPosition = vectorTuple(model.position) ?? [0, 0, 0]
+  const modelRotation = vectorTuple(model.rotation) ?? [0, 0, 0]
+  const sceneContext = readSceneContext(
+    model,
+    modelPath,
+    modelFormat,
+    modelPosition,
+    modelRotation
+  )
 
   return {
     kind: kind === 'lab-table' || kind === 'workbench' ? 'table' : kind,
@@ -54,9 +65,10 @@ export function readMaterialRendering(
     footprintMm,
     scale: vectorTuple(source.scale) ?? [1, 1, 1],
     ...(kinematics ? { kinematics } : {}),
+    ...(sceneContext ? { sceneContext } : {}),
     model: {
-      path: stringValue(model.path ?? model.mesh),
-      format: optionalString(model.format ?? model.model_type),
+      path: modelPath,
+      format: modelFormat,
       meshDir: optionalString(model.meshDir ?? model.mesh),
       macro: optionalString(model.macro),
       ossDir: optionalString(model.ossDir ?? model.oss_dir),
@@ -64,11 +76,53 @@ export function readMaterialRendering(
       type: optionalString(model.type),
       color: optionalString(model.color),
       selector: readGltfSelector(recordValue(model.selector)),
-      position: vectorTuple(model.position) ?? [0, 0, 0],
-      rotation: vectorTuple(model.rotation) ?? [0, 0, 0],
+      position: modelPosition,
+      rotation: modelRotation,
       attachPoints: readAttachPoints(model, aggregate),
       instances: readModelInstances(model, aggregate)
     }
+  }
+}
+
+/** 读取共享 GLB 声明中的只读场景上下文；非法或非 GLB 描述关闭式忽略。 */
+function readSceneContext(
+  model: Record<string, unknown>,
+  path: string,
+  format: string | undefined,
+  position: MaterialRenderingSnapshot['model']['position'],
+  rotation: MaterialRenderingSnapshot['model']['rotation']
+): MaterialRenderingSnapshot['sceneContext'] {
+  const origin = recordValue(model.modelOrigin ?? model.model_origin)
+  const source = recordValue(origin?.sceneContext ?? origin?.scene_context)
+  if (!source || !path || format?.toLowerCase() !== 'glb') return undefined
+  const id = optionalString(source.id)
+  const coordinateAuthority = optionalString(
+    source.coordinateAuthority ?? source.coordinate_authority
+  )
+  const mode = optionalString(source.mode)
+  const rawSelectors = Array.isArray(source.selectors) ? source.selectors : []
+  const selectors = rawSelectors
+    .map(value => readGltfSelector(recordValue(value)))
+    .filter((value): value is NonNullable<typeof value> => Boolean(value))
+  if (
+    !id ||
+    !coordinateAuthority ||
+    mode !== 'static-read-only' ||
+    selectors.length !== rawSelectors.length ||
+    selectors.length === 0 ||
+    new Set(selectors.map(selector => selector.nodePath)).size !== selectors.length
+  ) return undefined
+  return {
+    id,
+    coordinateAuthority,
+    mode,
+    models: selectors.map(selector => ({
+      path,
+      format: 'gltf',
+      selector,
+      position,
+      rotation
+    }))
   }
 }
 

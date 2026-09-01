@@ -1,8 +1,9 @@
-import { Box3 } from 'three'
+import { Box3, PerspectiveCamera, Vector3 } from 'three'
 import { describe, expect, it, vi } from 'vitest'
 
 import {
   applySceneCameraRequest,
+  frameSceneCaptureCamera,
   insetSceneBounds,
   outsetSceneBounds
 } from './sceneCameraRequest'
@@ -56,6 +57,28 @@ describe('Pascal 场景相机请求', () => {
     expect(rotateAzimuthTo).not.toHaveBeenCalled()
     expect(rotatePolarTo).not.toHaveBeenCalled()
     expect(fitToBox).toHaveBeenCalledOnce()
+  })
+
+  it('无显示时钟时同步提交非平滑适配且不等待逐帧 Promise', async () => {
+    const neverSettles = new Promise<void>(() => {})
+    const update = vi.fn()
+    const fitToBox = vi.fn(() => neverSettles)
+
+    await applySceneCameraRequest({
+      bounds: new Box3(),
+      controls: {
+        fitToBox,
+        rotateAzimuthTo: vi.fn(),
+        rotatePolarTo: vi.fn(),
+        update
+      },
+      padding: 0.1,
+      smooth: false,
+      view: 'default'
+    })
+
+    expect(fitToBox).toHaveBeenCalledOnce()
+    expect(update).toHaveBeenCalledWith(0)
   })
 
   it('运动学设备调试预设先转到俯视斜角再局部适配', async () => {
@@ -116,5 +139,24 @@ describe('Pascal 场景相机请求', () => {
       expect.closeTo(0.43)
     ]))
     expect(bounds.min.toArray()).toEqual([-0.5, 0, -0.25])
+  })
+
+  it('截图相机无需逐帧循环即可直接框住当前场景', () => {
+    const bounds = new Box3().setFromArray([
+      -2, -1, -1,
+      2, 1, 1
+    ])
+    const camera = new PerspectiveCamera(60, 16 / 9, 0.1, 1000)
+    camera.position.set(10, 10, 10)
+
+    expect(frameSceneCaptureCamera(bounds, camera, 'default')).toBe(true)
+    expect(camera.position.toArray()).not.toEqual([10, 10, 10])
+    const forward = new Vector3(0, 0, -1)
+      .applyQuaternion(camera.quaternion)
+      .normalize()
+    const toCenter = bounds.getCenter(new Vector3())
+      .sub(camera.position)
+      .normalize()
+    expect(forward.dot(toCenter)).toBeGreaterThan(0.999)
   })
 })

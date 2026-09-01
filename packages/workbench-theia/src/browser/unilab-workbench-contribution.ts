@@ -15,6 +15,7 @@ import {
   RobotDebugDomainEntryWidget,
   RobotPointsDomainEntryWidget,
   RobotReagentsDomainEntryWidget,
+  SpatialShadowDomainEntryWidget,
   WorkflowDomainEntryWidget
 } from './unilab-workbench-navigator-widget'
 import { UniLabWorkbenchWidget } from './unilab-workbench-widget'
@@ -38,6 +39,11 @@ export const OpenUniLabMaterialView: Command = {
 export const OpenUniLabDeviceView: Command = {
   id: 'unilab.workbench.device-management.open',
   label: '打开仪器设备'
+}
+
+export const OpenSpatialShadowView: Command = {
+  id: 'unilab.workbench.spatial-shadow.open',
+  label: '打开空间约束 Shadow 审阅器'
 }
 
 export const OpenRobotDebugView: Command = {
@@ -126,6 +132,19 @@ export class DeviceDomainEntryContribution
 }
 
 @injectable()
+export class SpatialShadowDomainEntryContribution
+  extends AbstractViewContribution<SpatialShadowDomainEntryWidget> {
+  constructor() {
+    super({
+      widgetId: SpatialShadowDomainEntryWidget.ID,
+      widgetName: '空间约束',
+      defaultWidgetOptions: { area: 'left', rank: 76 },
+      toggleCommandId: OpenSpatialShadowView.id
+    })
+  }
+}
+
+@injectable()
 export class RobotDebugDomainEntryContribution
   extends AbstractViewContribution<RobotDebugDomainEntryWidget> {
   constructor() {
@@ -201,6 +220,9 @@ implements FrontendApplicationContribution {
   @inject(DeviceDomainEntryContribution)
   protected readonly device!: DeviceDomainEntryContribution
 
+  @inject(SpatialShadowDomainEntryContribution)
+  protected readonly spatialShadow!: SpatialShadowDomainEntryContribution
+
   @inject(UniLabAgentNavigationContribution)
   protected readonly agent!: UniLabAgentNavigationContribution
 
@@ -227,6 +249,10 @@ implements FrontendApplicationContribution {
       activate: false,
       reveal: false
     })
+    const spatialShadow = await this.spatialShadow.openView({
+      activate: false,
+      reveal: false
+    })
     const material = await this.material.openView({
       activate: false,
       reveal: false
@@ -244,9 +270,10 @@ implements FrontendApplicationContribution {
     await app.shell.addWidget(robotPoints, { area: 'left', rank: 73 })
     await app.shell.addWidget(robotBench, { area: 'left', rank: 74 })
     await app.shell.addWidget(robotReagents, { area: 'left', rank: 75 })
-    await app.shell.addWidget(material, { area: 'left', rank: 76 })
-    await app.shell.addWidget(workflow, { area: 'left', rank: 77 })
-    await app.shell.addWidget(agent, { area: 'left', rank: 78 })
+    await app.shell.addWidget(spatialShadow, { area: 'left', rank: 76 })
+    await app.shell.addWidget(material, { area: 'left', rank: 77 })
+    await app.shell.addWidget(workflow, { area: 'left', rank: 78 })
+    await app.shell.addWidget(agent, { area: 'left', rank: 79 })
     const activityBar = app.shell.getTabBarFor(device)
     for (const [index, widget] of [
       device,
@@ -254,6 +281,7 @@ implements FrontendApplicationContribution {
       robotPoints,
       robotBench,
       robotReagents,
+      spatialShadow,
       material,
       workflow,
       agent

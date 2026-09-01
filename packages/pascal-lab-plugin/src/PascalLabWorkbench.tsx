@@ -24,6 +24,7 @@ import {
 import {
   type MaterialSceneMove,
   type MaterialTransferSceneRoute,
+  type PascalSpatialShadowOverlay,
   materialAggregatesToSceneGraph,
   sceneGraphToMaterialMoves
 } from './materialAggregateSceneBridge'
@@ -43,6 +44,7 @@ import {
   isLabTableNode
 } from './schema'
 import type { SceneCameraView } from './sceneCameraRequest'
+import { PASCAL_CAPTURE_FIT_EVENT } from './sceneCameraRequest'
 import { pascalPoseToLab } from './units'
 
 export interface PascalLabWorkbenchProps {
@@ -69,7 +71,17 @@ export interface PascalLabWorkbenchProps {
     width: number
     height: number
   } | null
-  onCaptureReady?: (blob: Blob) => void
+  onCaptureReady?: (
+    blob: Blob,
+    cameraData: {
+      position: [number, number, number]
+      target: [number, number, number] | null
+      type?: 'perspective' | 'orthographic'
+      zoom?: number
+      captureMode?: 'standard' | 'viewport' | 'area'
+      resolution?: { w: number; h: number }
+    }
+  ) => void
   projectId?: string
   modelRuntime?: LabModelRuntime
   editable?: boolean
@@ -80,6 +92,17 @@ export interface PascalLabWorkbenchProps {
     materialIds: readonly string[],
     sceneObjectIds: readonly string[]
   ) => void
+  spatialShadow?: {
+    phase: 'loading' | 'ready' | 'error' | 'unavailable'
+    message: string
+    enabled: boolean
+    playing: boolean
+    overlay: PascalSpatialShadowOverlay | null
+    onToggle: () => void
+    onPlaybackToggle: () => void
+    onTimeChange: (timeS: number) => void
+    onReload?: () => void
+  }
 }
 
 /**
@@ -110,7 +133,8 @@ export function PascalLabWorkbench({
   selectedMaterialIds = [],
   highlightedMaterialIds = [],
   onMaterialMoves,
-  onSelectionChange
+  onSelectionChange,
+  spatialShadow
 }: PascalLabWorkbenchProps): React.JSX.Element {
   const [cameraRequest, setCameraRequest] = useState<{
     revision: number
@@ -134,18 +158,35 @@ export function PascalLabWorkbench({
   }, [cameraFocus])
   useEffect(() => {
     if (!captureRequest || !onCaptureReady) return
-    const frame = requestAnimationFrame(() => {
-      emitter.emit('camera-controls:generate-thumbnail', {
-        projectId,
-        captureMode: 'standard',
-        standardSize: {
-          w: captureRequest.width,
-          h: captureRequest.height
-        }
-      })
-    })
-    return () => cancelAnimationFrame(frame)
-  }, [captureRequest, onCaptureReady, projectId])
+    // macOS 无显示器的 managed renderer 可能没有 CVDisplayLink，rAF 不会推进。
+    // 初始化早期的请求可能先于 ThumbnailGenerator 的离屏管线；有界宿主请求
+    // 生命周期内重试，生成器会在 busy 时自行去重，成功后父组件会清除 request。
+    const thumbnailTimers = new Set<number>()
+    const emitCapture = (): void => {
+      window.dispatchEvent(new CustomEvent(PASCAL_CAPTURE_FIT_EVENT, {
+        detail: { view: cameraPreset ?? 'default' }
+      }))
+      const thumbnailTimer = window.setTimeout(() => {
+        thumbnailTimers.delete(thumbnailTimer)
+        emitter.emit('camera-controls:generate-thumbnail', {
+          projectId,
+          captureMode: 'standard',
+          standardSize: {
+            w: captureRequest.width,
+            h: captureRequest.height
+          }
+        })
+      }, 50)
+      thumbnailTimers.add(thumbnailTimer)
+    }
+    const timeout = setTimeout(emitCapture, 100)
+    const interval = setInterval(emitCapture, 500)
+    return () => {
+      clearTimeout(timeout)
+      clearInterval(interval)
+      thumbnailTimers.forEach(timer => window.clearTimeout(timer))
+    }
+  }, [cameraPreset, captureRequest, onCaptureReady, projectId])
   const scene = useMemo(
     () =>
       materialAggregatesToSceneGraph(aggregates, {
@@ -155,7 +196,12 @@ export function PascalLabWorkbench({
         showSites,
         showMaterialLabels,
         showMaterialTransfers,
-        materialTransferRoutes
+        materialTransferRoutes,
+        spatialShadowOverlay:
+          spatialShadow?.enabled &&
+          (viewMode === '3d' || viewMode === 'split')
+            ? spatialShadow.overlay
+            : null
       }),
     [
       aggregates,
@@ -164,7 +210,10 @@ export function PascalLabWorkbench({
       materialTransferRoutes,
       showMaterialTransfers,
       showMaterialLabels,
-      showSites
+      showSites,
+      spatialShadow?.enabled,
+      spatialShadow?.overlay,
+      viewMode
     ]
   )
   const [saveStatus, setSaveStatus] = useState<
@@ -319,6 +368,19 @@ export function PascalLabWorkbench({
       )}
       {viewMode !== '2d' && (
         <div className="pascal-lab-toolbar__actions">
+          {spatialShadow ? (
+            <button
+              type="button"
+              className="pascal-lab-toolbar__button pascal-lab-toolbar__button--spatial-shadow"
+              aria-pressed={spatialShadow.enabled}
+              data-testid="spatial-shadow-toggle"
+              disabled={spatialShadow.phase !== 'ready' || !spatialShadow.overlay}
+              title={spatialShadow.message}
+              onClick={spatialShadow.onToggle}
+            >
+              空间约束 Shadow
+            </button>
+          ) : null}
           <button
             type="button"
             className="pascal-lab-toolbar__button"
@@ -404,7 +466,8 @@ export function PascalLabWorkbench({
           }
           toolbar={toolbar}
           editorProps={{
-            onThumbnailCapture: (blob) => onCaptureReady?.(blob)
+            onThumbnailCapture: (blob, cameraData) =>
+              onCaptureReady?.(blob, cameraData)
           }}
           onDirty={() => {
             if (editable) setSaveStatus('dirty')
@@ -416,6 +479,10 @@ export function PascalLabWorkbench({
           }
         />
       </div>
+      {spatialShadow?.enabled && spatialShadow.overlay &&
+        (viewMode === '3d' || viewMode === 'split') ? (
+          <SpatialShadowHud spatialShadow={spatialShadow} />
+        ) : null}
       {viewMode === '2.5d' && (
         <div className="pascal-lab-workbench__oblique">
           <MaterialObliqueCanvas
@@ -441,6 +508,77 @@ export function PascalLabWorkbench({
         </div>
       )}
     </div>
+  )
+}
+
+function SpatialShadowHud({
+  spatialShadow
+}: {
+  spatialShadow: NonNullable<PascalLabWorkbenchProps['spatialShadow']>
+}): React.JSX.Element | null {
+  const overlay = spatialShadow.overlay
+  if (!overlay) return null
+  const collisionLabel = overlay.collisionStatus === 'proxy-mesh-contact'
+    ? '当前帧：代理网格接触'
+    : overlay.collisionStatus === 'broad-phase-overlap-unresolved'
+      ? '当前帧：宽相重叠，待精检'
+      : '当前帧：采样分离'
+  return (
+    <aside
+      className="pascal-spatial-shadow-hud"
+      aria-label="空间约束 Shadow 播放与证据"
+      data-testid="spatial-shadow-hud"
+      data-spatial-registration-qualified={String(
+        overlay.registrationQualified
+      )}
+      data-spatial-decision={overlay.decision}
+      data-spatial-effect={overlay.effect}
+      data-spatial-collision-status={overlay.collisionStatus}
+    >
+      <div className="pascal-spatial-shadow-hud__boundary" role="alert">
+        <strong>候选配准 · 未获得刚体资格</strong>
+        <span>仅作 Shadow 查看；decision=unknown · effect=none</span>
+      </div>
+      <div className="pascal-spatial-shadow-hud__readout">
+        <strong>{collisionLabel}</strong>
+        <span>
+          最近 AABB 距离下界 {overlay.minimumClearanceM.toFixed(4)} m
+          {' · '}Segment #{overlay.segmentIndex + 1} / Frame #{overlay.frameIndex}
+        </span>
+        {overlay.firstContactTimeS != null && overlay.firstContactTargetPositionM ? (
+          <code>
+            首次代理接触 {overlay.firstContactTimeS.toFixed(3)} s · 约束坐标 [
+            {overlay.firstContactTargetPositionM.map(value => value.toFixed(3)).join(', ')}] m
+          </code>
+        ) : null}
+      </div>
+      <div className="pascal-spatial-shadow-hud__controls">
+        <button
+          type="button"
+          onClick={spatialShadow.onPlaybackToggle}
+          aria-pressed={spatialShadow.playing}
+        >
+          {spatialShadow.playing ? '暂停' : '播放'}
+        </button>
+        <input
+          type="range"
+          min="0"
+          max={overlay.durationS}
+          step="0.01"
+          value={overlay.currentTimeS}
+          aria-label="3D 空间约束轨迹时间"
+          onChange={event => spatialShadow.onTimeChange(
+            Number(event.currentTarget.value)
+          )}
+        />
+        <span>
+          {overlay.currentTimeS.toFixed(2)} / {overlay.durationS.toFixed(2)} s
+        </span>
+        {spatialShadow.onReload ? (
+          <button type="button" onClick={spatialShadow.onReload}>重新读取</button>
+        ) : null}
+      </div>
+    </aside>
   )
 }
 

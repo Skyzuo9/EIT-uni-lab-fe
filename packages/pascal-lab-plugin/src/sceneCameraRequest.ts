@@ -1,6 +1,44 @@
-import { Vector3, type Box3, type Object3D } from 'three'
+import {
+  type Camera,
+  Vector3,
+  type Box3,
+  type Object3D
+} from 'three'
 
 export type SceneCameraView = 'default' | 'top' | 'kinematics'
+
+export const PASCAL_CAPTURE_FIT_EVENT = 'unilab:pascal-capture-fit-scene'
+
+/**
+ * 不依赖 CameraControls 动画循环，直接把截图相机框到当前 Three 场景边界。
+ */
+export function frameSceneCaptureCamera(
+  bounds: Box3,
+  camera: Camera,
+  view: SceneCameraView
+): boolean {
+  if (bounds.isEmpty()) return false
+  const center = bounds.getCenter(new Vector3())
+  const size = bounds.getSize(new Vector3())
+  const longest = Math.max(size.x, size.y, size.z)
+  if (!Number.isFinite(longest) || longest <= 0) return false
+  const direction = view === 'top'
+    ? new Vector3(0, 1, 0.001)
+    : view === 'kinematics'
+      ? new Vector3(-1, 0.8, 1)
+      : new Vector3(1, 0.8, 1)
+  direction.normalize()
+  camera.position.copy(center).addScaledVector(direction, longest * 2.1)
+  camera.up.set(0, 1, 0)
+  if (view === 'top') camera.up.set(0, 0, -1)
+  camera.lookAt(center)
+  camera.updateMatrixWorld(true)
+  if ('updateProjectionMatrix' in camera) {
+    ;(camera as Camera & { updateProjectionMatrix(): void })
+      .updateProjectionMatrix()
+  }
+  return true
+}
 
 export interface SceneCameraControls {
   fitToBox: (
@@ -21,6 +59,8 @@ export interface SceneCameraControls {
     polarAngle: number,
     smooth: boolean
   ) => Promise<void> | void
+  /** 无显示时钟时把非平滑相机命令立即提交到 Three camera。 */
+  update?: (deltaSeconds: number) => boolean | void
 }
 
 /**
@@ -83,16 +123,27 @@ export async function applySceneCameraRequest(request: {
     smooth,
     view
   } = request
-  if (view === 'top') {
-    await controls.rotatePolarTo(0, false)
-  } else if (view === 'kinematics') {
-    await controls.rotateAzimuthTo(-Math.PI / 4, false)
-    await controls.rotatePolarTo(Math.PI / 3, false)
+  const commit = async (command: () => Promise<void> | void): Promise<void> => {
+    const completion = command()
+    if (!smooth) {
+      // CameraControls 即使在 transition=false 时也可能把 Promise 的完成
+      // 留到下一次 update。无显示时钟的 renderer 没有下一帧，因此先同步
+      // 提交 current/end 状态，且不等待这个逐帧 Promise。
+      controls.update?.(0)
+      return
+    }
+    await completion
   }
-  await controls.fitToBox(bounds, smooth, {
+  if (view === 'top') {
+    await commit(() => controls.rotatePolarTo(0, false))
+  } else if (view === 'kinematics') {
+    await commit(() => controls.rotateAzimuthTo(-Math.PI / 4, false))
+    await commit(() => controls.rotatePolarTo(Math.PI / 3, false))
+  }
+  await commit(() => controls.fitToBox(bounds, smooth, {
     paddingBottom: padding,
     paddingLeft: padding,
     paddingRight: padding,
     paddingTop: padding
-  })
+  }))
 }

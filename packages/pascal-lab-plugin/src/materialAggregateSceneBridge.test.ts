@@ -13,7 +13,9 @@ import {
 import { readMaterialRendering } from './materialRenderingSnapshot'
 import {
   isLabDeviceNode,
-  isLabMaterialTransferLayerNode
+  isLabMaterialTransferLayerNode,
+  isLabSceneContextNode,
+  isLabSpatialShadowNode
 } from './schema'
 import { generatedBoundingBoxCenter } from './renderers/generatedBoundingBox'
 
@@ -84,6 +86,108 @@ describe('Material Aggregate / Pascal bridge', () => {
     const node = scene.nodes['lab-station']
     if (!isLabDeviceNode(node)) throw new Error('Expected lab device')
     expect(node.model.selector).toEqual(rendering.model.selector)
+  })
+
+  it('loads shared GLB context once without creating draggable Materials', () => {
+    const context = {
+      id: 'ptlc-official-static-context-v1',
+      coordinate_authority: 'machine.official-cr5.glb#world_matrix',
+      mode: 'static-read-only',
+      selectors: [
+        {
+          kind: 'gltf_subtree',
+          node_index: 558,
+          node_path: 'ST_FRAME',
+          root_transform: 'preserve'
+        },
+        {
+          kind: 'gltf_subtree',
+          node_index: 1078,
+          node_path: 'ST_RACK',
+          root_transform: 'preserve'
+        },
+        {
+          kind: 'gltf_subtree',
+          node_index: 1424,
+          node_path: 'ST_TOOLING',
+          root_transform: 'preserve'
+        }
+      ]
+    }
+    const withContext = (id: string) => aggregate(id, {
+      config: {
+        rendering: {
+          model: {
+            path: '/assets/machine.official-cr5.glb',
+            format: 'glb',
+            model_origin: { scene_context: context }
+          }
+        }
+      }
+    })
+
+    const first = withContext('sampling')
+    const second = withContext('develop')
+    const rendering = readMaterialRendering(first)
+    expect(rendering.sceneContext?.models.map(model => (
+      model.selector.nodePath
+    ))).toEqual(['ST_FRAME', 'ST_RACK', 'ST_TOOLING'])
+
+    const scene = materialAggregatesToSceneGraph([first, second])
+    const contextNodes = Object.values(scene.nodes).filter(
+      isLabSceneContextNode
+    )
+    expect(contextNodes).toHaveLength(3)
+    expect(contextNodes.map(node => node.model.selector?.nodePath)).toEqual([
+      'ST_FRAME',
+      'ST_RACK',
+      'ST_TOOLING'
+    ])
+    expect(contextNodes.every(node => node.materialNodeId === '')).toBe(true)
+    expect(sceneGraphToMaterialMoves(scene, [first, second])).toEqual([])
+  })
+
+  it('adds one read-only spatial layer to the same Pascal scene', () => {
+    const material = aggregate('robot')
+    const scene = materialAggregatesToSceneGraph([material], {
+      spatialShadowOverlay: {
+        sampleId: 'eit-case',
+        registrationStatus: 'candidate-relative-layout',
+        registrationQualified: false,
+        decision: 'unknown',
+        effect: 'none',
+        currentTimeS: 1.25,
+        durationS: 5,
+        segmentIndex: 1,
+        frameIndex: 4,
+        collisionStatus: 'broad-phase-overlap-unresolved',
+        minimumClearanceM: 0,
+        firstContactTimeS: null,
+        firstContactTargetPositionM: null,
+        boxes: [{
+          id: 'link:Link6',
+          label: 'Link6',
+          role: 'robot-link',
+          matrix: [
+            1, 0, 0, 0,
+            0, 1, 0, 0,
+            0, 0, 1, 0,
+            0, 0, 0, 1
+          ],
+          size: [0.1, 0.2, 0.3]
+        }],
+        trajectory: [[0, 0, 0], [1, 1, 1]],
+        contacts: []
+      }
+    })
+    const node = scene.nodes['lab-spatial-shadow-unilab']
+
+    expect(isLabSpatialShadowNode(node)).toBe(true)
+    if (!isLabSpatialShadowNode(node)) return
+    expect(node.registrationQualified).toBe(false)
+    expect(node.decision).toBe('unknown')
+    expect(node.effect).toBe('none')
+    expect(sceneGraphToMaterialMoves(scene, [material])).toEqual([])
   })
 
   /** 验证八槽展开缸的世界偏航同时进入场景节点与碰撞视图快照。 */

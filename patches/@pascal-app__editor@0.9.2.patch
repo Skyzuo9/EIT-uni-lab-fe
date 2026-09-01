@@ -1,5 +1,5 @@
 diff --git a/src/components/editor/grid.tsx b/src/components/editor/grid.tsx
-index 1b07186..52243bf 100644
+index 44c32449193776768217f9c9eb87652b534d6d65..9ac6d5b3aa568fc0c03cfa9721a3455bde6fb443 100644
 --- a/src/components/editor/grid.tsx
 +++ b/src/components/editor/grid.tsx
 @@ -280,20 +280,16 @@ export const Grid = ({
@@ -30,3 +30,162 @@ index 1b07186..52243bf 100644
    })
 
    // Pass the geometry as a prop instead of a JSX child so the mesh
+diff --git a/src/components/editor/thumbnail-generator.tsx b/src/components/editor/thumbnail-generator.tsx
+index 5a50ba5fe6425db5764f38c63d643544446c6073..a0fa10fa064fd02f3d820933d7751057bccc6b8d 100644
+--- a/src/components/editor/thumbnail-generator.tsx
++++ b/src/components/editor/thumbnail-generator.tsx
+@@ -14,7 +14,7 @@ import {
+   useViewer,
+ } from '@pascal-app/viewer'
+ import type { CameraControls } from '@react-three/drei'
+-import { useThree } from '@react-three/fiber'
++import { advance, useThree } from '@react-three/fiber'
+ import { useCallback, useEffect, useRef } from 'react'
+ import * as THREE from 'three'
+ import { UnsignedByteType } from 'three'
+@@ -60,6 +60,10 @@ export const ThumbnailGenerator = ({ onThumbnailCapture }: ThumbnailGeneratorPro
+   const scene = useThree((state) => state.scene)
+   const mainCamera = useThree((state) => state.camera)
+   const controls = useThree((state) => state.controls) as CameraControls | null
++  const simpleCapture = new URLSearchParams(window.location.search)
++    .get('disable')
++    ?.split(',')
++    .includes('postFx') === true
+   const isGenerating = useRef(false)
+   const onThumbnailCaptureRef = useRef(onThumbnailCapture)
+
+@@ -97,6 +101,20 @@ export const ThumbnailGenerator = ({ onThumbnailCapture }: ThumbnailGeneratorPro
+         if ((gl as any).init) await (gl as any).init()
+         if (!mounted) return
+
++        // Managed/headless acceptance explicitly disables post effects. Keep a
++        // real offscreen target (canvas copying is invalid when the drawing
++        // buffer is not preserved), but skip the SSGI pipeline that can stall
++        // indefinitely on software WebGL backends.
++        const { width, height } = gl.domElement
++        renderTargetRef.current = new RenderTarget(width, height, { depthBuffer: true })
++        if (simpleCapture) {
++          const scenePass = pass(scene, cam)
++          const pipeline = new RenderPipeline(gl as unknown as WebGPURenderer)
++          pipeline.outputNode = scenePass.getTextureNode('output')
++          pipelineRef.current = pipeline
++          return
++        }
++
+         // pass() handles MRT internally for all material types, including custom
+         // shaders — unlike renderer.setMRT() which crashes on non-NodeMaterials.
+         // pass() also respects camera.layers, so EDITOR_LAYER + GRID_LAYER objects are filtered.
+@@ -183,10 +201,6 @@ export const ThumbnailGenerator = ({ onThumbnailCapture }: ThumbnailGeneratorPro
+         pipeline.outputNode = aaOutput
+         pipelineRef.current = pipeline
+
+-        // Dedicated render target — pipeline outputs here instead of the canvas,
+-        // so R3F's main render loop can never overwrite our capture.
+-        const { width, height } = gl.domElement
+-        renderTargetRef.current = new RenderTarget(width, height, { depthBuffer: true })
+       } catch (error) {
+         console.error(
+           '[thumbnail] Failed to build post-processing pipeline, will use fallback render.',
+@@ -204,7 +218,7 @@ export const ThumbnailGenerator = ({ onThumbnailCapture }: ThumbnailGeneratorPro
+       renderTargetRef.current?.dispose()
+       renderTargetRef.current = null
+     }
+-  }, [gl, scene])
++  }, [gl, scene, simpleCapture])
+
+   const generate = useCallback(
+     async (
+@@ -222,6 +236,12 @@ export const ThumbnailGenerator = ({ onThumbnailCapture }: ThumbnailGeneratorPro
+       isGenerating.current = true
+
+       try {
++        if (simpleCapture) {
++          // Headless macOS may not provide CVDisplayLink, so R3F's normal loop
++          // never invokes useFrame subscribers. Advance the mounted root once
++          // before capture to apply imperative joint-state/runtime updates.
++          advance(performance.now(), true)
++        }
+         const thumbnailCamera = thumbnailCameraRef.current
+         if (!thumbnailCamera) return
+
+@@ -237,6 +257,33 @@ export const ThumbnailGenerator = ({ onThumbnailCapture }: ThumbnailGeneratorPro
+         const { width, height } = gl.domElement
+         thumbnailCamera.aspect = width / height
+         thumbnailCamera.updateProjectionMatrix()
++        let simpleCaptureTarget: THREE.Vector3 | null = null
++        if (simpleCapture) {
++          // CameraControls may restore its persisted pose between the host's
++          // fit request and this offscreen render. Frame the registered site
++          // roots directly on the capture camera so headless output remains
++          // deterministic without mutating the interactive camera.
++          const bounds = new THREE.Box3()
++          for (const id of sceneRegistry.byType.site ?? []) {
++            const root = sceneRegistry.nodes.get(id)
++            if (root) bounds.expandByObject(root)
++          }
++          if (!bounds.isEmpty()) {
++            const center = bounds.getCenter(new THREE.Vector3())
++            simpleCaptureTarget = center
++            const size = bounds.getSize(new THREE.Vector3())
++            const longest = Math.max(size.x, size.y, size.z)
++            const direction = new THREE.Vector3(1, 0.8, 1).normalize()
++            thumbnailCamera.position
++              .copy(center)
++              .addScaledVector(direction, longest * 2.1)
++            thumbnailCamera.up.set(0, 1, 0)
++            thumbnailCamera.lookAt(center)
++            thumbnailCamera.near = 0.01
++            thumbnailCamera.far = 1000
++            thumbnailCamera.updateProjectionMatrix()
++          }
++        }
+         // The capture camera never joins the scene graph, so its matrixWorld
+         // is only refreshed by the render itself — too late for the backdrop
+         // uniforms below.
+@@ -254,9 +301,11 @@ export const ThumbnailGenerator = ({ onThumbnailCapture }: ThumbnailGeneratorPro
+         bgMixUniform.current.value = transparent ? 0 : 1
+
+         // Capture camera data for snapshot storage
+-        const pos = mainCamera.position
++        const pos = simpleCapture ? thumbnailCamera.position : mainCamera.position
+         let tgt: [number, number, number] | null = null
+-        if (controls && 'getTarget' in controls) {
++        if (simpleCaptureTarget) {
++          tgt = simpleCaptureTarget.toArray() as [number, number, number]
++        } else if (controls && 'getTarget' in controls) {
+           const v = new THREE.Vector3()
+           ;(controls as any).getTarget(v)
+           tgt = [v.x, v.y, v.z]
+@@ -316,12 +365,14 @@ export const ThumbnailGenerator = ({ onThumbnailCapture }: ThumbnailGeneratorPro
+           }
+
+           const renderer = gl as unknown as WebGPURenderer
++          const previousClearColor = (renderer as any).getClearColor(new THREE.Color()) as THREE.Color
++          const previousClearAlpha = renderer.getClearAlpha()
+
+           // Notify other systems (wall cutouts, selection manager) to restore
+           // their overrides before capture and re-apply them after.
+           try {
+             emitter.emit('thumbnail:before-capture', undefined)
+-            ;(renderer as any).setClearAlpha(0)
++            renderer.setClearColor(theme.background, transparent ? 0 : 1)
+             renderer.setRenderTarget(rt)
+             pipelineRef.current.render()
+           } finally {
+@@ -329,6 +380,7 @@ export const ThumbnailGenerator = ({ onThumbnailCapture }: ThumbnailGeneratorPro
+             // after the render — before the async GPU readback. Runs in `finally`
+             // so a render failure can't leave helpers permanently hidden.
+             renderer.setRenderTarget(null)
++            renderer.setClearColor(previousClearColor, previousClearAlpha)
+             emitter.emit('thumbnail:after-capture', undefined)
+             restoreLevels()
+             restoreLevelMode?.()
+@@ -532,7 +584,7 @@ export const ThumbnailGenerator = ({ onThumbnailCapture }: ThumbnailGeneratorPro
+         isGenerating.current = false
+       }
+     },
+-    [gl, scene, mainCamera, controls],
++    [gl, scene, mainCamera, controls, simpleCapture],
+   )
+
+   // Thumbnail request via emitter. Two call shapes:

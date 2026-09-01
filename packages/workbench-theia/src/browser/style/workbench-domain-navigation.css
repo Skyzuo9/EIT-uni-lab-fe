@@ -505,6 +505,10 @@ body.unilab-agent-panel-visible
   mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M7 2.5h6M8 2.5v5l-4 7A2 2 0 0 0 5.7 17.5h8.6a2 2 0 0 0 1.7-3l-4-7v-5'/%3E%3Cpath d='M6.5 12h7'/%3E%3C/svg%3E");
 }
 
+.unilab-activity-icon--spatial-shadow {
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m10 2 7 4v8l-7 4-7-4V6zM3 6l7 4 7-4M10 10v8'/%3E%3Cpath d='M6.5 8v5l3.5 2 3.5-2V8'/%3E%3C/svg%3E");
+}
+
 .unilab-activity-icon--material {
   mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m10 2.5 6.5 3.75v7.5L10 17.5l-6.5-3.75v-7.5L10 2.5Z'/%3E%3Cpath d='m3.8 6.4 6.2 3.5 6.2-3.5M10 9.9v7.2'/%3E%3C/svg%3E");
 }

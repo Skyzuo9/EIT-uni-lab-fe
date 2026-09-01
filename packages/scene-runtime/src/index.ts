@@ -1,6 +1,6 @@
 import { createStore } from 'zustand/vanilla'
 
-export type JointStateSource = 'mock' | 'live'
+export type JointStateSource = 'mock' | 'live' | 'shadow'
 
 export interface JointStateFrame {
   materialId: string
@@ -23,11 +23,13 @@ export type JointStateFrameInput = Omit<JointStateFrame, 'jointStates'> & {
 interface SceneRuntimeState {
   scopeId: string | null
   jointFrames: Readonly<Record<string, JointStateFrame>>
+  spatialJointFrames: Readonly<Record<string, JointStateFrame>>
 }
 
 export const sceneRuntimeStore = createStore<SceneRuntimeState>(() => ({
   scopeId: null,
-  jointFrames: {}
+  jointFrames: {},
+  spatialJointFrames: {}
 }))
 
 /** 切换调度权威或端点时清除全部命令式关节帧，禁止跨环境串姿态。 */
@@ -35,7 +37,11 @@ export function activateSceneRuntimeScope(scopeId: string): void {
   const normalized = scopeId.trim()
   if (!normalized) throw new Error('场景运行时（SceneRuntime）scopeId 不能为空。')
   if (sceneRuntimeStore.getState().scopeId === normalized) return
-  sceneRuntimeStore.setState({ scopeId: normalized, jointFrames: {} })
+  sceneRuntimeStore.setState({
+    scopeId: normalized,
+    jointFrames: {},
+    spatialJointFrames: {}
+  })
 }
 
 /** 发布一台物料设备的完整 latest-value-wins 关节状态（JointState）快照。 */
@@ -74,8 +80,31 @@ export function replaceJointStateSnapshot(
   sceneRuntimeStore.setState(state => ({ ...state, jointFrames: frames }))
 }
 
+/**
+ * 发布只读空间 Shadow 的当前关节帧。它覆盖 3D 显示，但不替换或丢弃实时帧；
+ * 清除 Shadow 后，renderer 会立即回到最新实时状态。
+ */
+export function publishSpatialJointStateFrame(
+  input: JointStateFrameInput
+): JointStateFrame {
+  const frame = normalizeFrame({ ...input, source: 'shadow' })
+  sceneRuntimeStore.setState(state => {
+    const current = state.spatialJointFrames[frame.materialId]
+    if (current?.acceptedRef === frame.acceptedRef) return state
+    return {
+      ...state,
+      spatialJointFrames: {
+        ...state.spatialJointFrames,
+        [frame.materialId]: frame
+      }
+    }
+  })
+  return frame
+}
+
 export function getJointStateFrame(materialId: string): JointStateFrame | null {
-  return sceneRuntimeStore.getState().jointFrames[materialId] ?? null
+  const state = sceneRuntimeStore.getState()
+  return state.spatialJointFrames[materialId] ?? state.jointFrames[materialId] ?? null
 }
 
 export function subscribeJointStateFrame(
@@ -84,10 +113,20 @@ export function subscribeJointStateFrame(
 ): () => void {
   let previous = getJointStateFrame(materialId)
   return sceneRuntimeStore.subscribe(state => {
-    const next = state.jointFrames[materialId] ?? null
+    const next = state.spatialJointFrames[materialId] ??
+      state.jointFrames[materialId] ?? null
     if (next === previous) return
     previous = next
     listener()
+  })
+}
+
+export function clearSpatialJointStateFrame(materialId: string): void {
+  sceneRuntimeStore.setState(state => {
+    if (!(materialId in state.spatialJointFrames)) return state
+    const next = { ...state.spatialJointFrames }
+    delete next[materialId]
+    return { ...state, spatialJointFrames: next }
   })
 }
 
@@ -121,7 +160,11 @@ function normalizeFrame(input: JointStateFrameInput): JointStateFrame {
   if (!Number.isFinite(input.staleAfterSeconds) || input.staleAfterSeconds <= 0) {
     throw new Error('关节状态（JointState）staleAfterSeconds 无效。')
   }
-  if (input.source !== 'mock' && input.source !== 'live') {
+  if (
+    input.source !== 'mock' &&
+    input.source !== 'live' &&
+    input.source !== 'shadow'
+  ) {
     throw new Error('关节状态（JointState）source 无效。')
   }
   const entries = Object.entries(input.jointStates)

@@ -1,0 +1,116 @@
+.page {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  width: 100%;
+  height: 100vh;
+  min-height: 0;
+  background: var(--unilab-color-bg, #f3f4f6);
+  color: var(--unilab-color-text, #1f2329);
+}
+
+.banner,
+.status,
+.error {
+  margin: 0;
+  padding: 10px 16px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.banner {
+  color: #92400e;
+  background: #fff7ed;
+  border-bottom: 1px solid #fdba74;
+}
+
+.status {
+  color: var(--unilab-color-text-muted, #6b7280);
+}
+
+.error {
+  color: #b91c1c;
+  background: #fef2f2;
+}
+
+.body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  min-height: 0;
+}
+
+.viewport {
+  min-width: 0;
+  min-height: 0;
+}
+
+.inspector {
+  overflow: auto;
+  padding: 16px;
+  border-left: 1px solid var(--unilab-color-border, #e5e7eb);
+  background: #fff;
+  font-size: 13px;
+
+  h2,
+  h3 {
+    margin: 16px 0 8px;
+    font-size: 13px;
+  }
+
+  h2:first-child {
+    margin-top: 0;
+  }
+
+  dl {
+    display: grid;
+    gap: 8px;
+    margin: 0;
+  }
+
+  dt {
+    color: var(--unilab-color-text-muted, #6b7280);
+  }
+
+  dd {
+    margin: 2px 0 0;
+    overflow-wrap: anywhere;
+  }
+
+  ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  li {
+    margin: 0 0 8px;
+  }
+
+  button {
+    width: 100%;
+    padding: 6px 8px;
+    text-align: left;
+    border: 1px solid var(--unilab-color-border, #e5e7eb);
+    border-radius: 6px;
+    background: #fff;
+    cursor: pointer;
+  }
+}
+
+.assetSelected {
+  border-color: #4dabf7;
+  background: #edf7ff;
+}
+
+.assetError,
+.hint {
+  margin: 6px 0 0;
+  color: var(--unilab-color-text-muted, #6b7280);
+}
+
+.assetError {
+  color: #b91c1c;
+}
+
+code {
+  font-size: 12px;
+}

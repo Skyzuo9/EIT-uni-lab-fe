@@ -14,7 +14,18 @@ describe('Workbench domain view presentation', () => {
     expect(parseWorkbenchViewMode('split')).toBe('split')
     expect(parseWorkbenchViewMode('device-material')).toBe('device-material')
     expect(parseWorkbenchViewMode('material-device')).toBe('material-device')
+    expect(parseWorkbenchViewMode('spatial-shadow')).toBe('spatial-shadow')
     expect(parseWorkbenchViewMode('legacy-split')).toBeNull()
+  })
+
+  it('opens spatial shadow as an exclusive first-class domain', () => {
+    const state = new WorkbenchViewState()
+    state.toggle('spatial-shadow')
+
+    expect(state.currentMode).toBe('spatial-shadow')
+    expect(state.isVisible('spatial-shadow')).toBe(true)
+    expect(state.isVisible('workflow')).toBe(false)
+    expect(state.isVisible('material')).toBe(false)
   })
 
   it('derives split layout from independent workflow and material toggles', () => {
@@ -292,5 +303,24 @@ describe('Workbench domain view presentation', () => {
     expect(markup).toContain('data-workbench-view="robot-bench"')
     expect(markup).toContain('data-testid="robot-workstation-surface"')
     expect(markup).not.toContain('aria-label="机械臂工作站侧栏"')
+  })
+
+  it('mounts the spatial shadow reviewer inside the Workbench main area', () => {
+    const markup = renderToStaticMarkup(
+      <WorkbenchDomainLayout
+        mode="spatial-shadow"
+        workflow={<section data-testid="workflow-surface" />}
+        material={<section data-testid="material-surface" />}
+        device={<section data-testid="device-surface" />}
+        robotWorkstation={<section data-testid="robot-workstation-surface" />}
+        spatialDiagnostics={<section data-testid="spatial-shadow-surface" />}
+      />
+    )
+
+    expect(markup).toContain('data-workbench-view="spatial-shadow"')
+    expect(markup).toContain('data-testid="spatial-shadow-surface"')
+    expect(markup).toContain(
+      'class="unilab-workbench__domain-slot is-spatial-diagnostics"'
+    )
   })
 })

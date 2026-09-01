@@ -8,11 +8,17 @@ import type { SceneGraph } from '@unilab/pascal-host'
 import {
   LabDeviceNodeSchema,
   LabMaterialTransferLayerNodeSchema,
+  LabSceneContextNodeSchema,
+  LabSpatialShadowNodeSchema,
   LabTableNodeSchema,
   isLabDeviceNode,
   isLabTableNode
 } from './schema'
-import type { MaterialSceneMove, MaterialSceneProjectionOptions } from './materialAggregateSceneTypes'
+import type {
+  MaterialRenderingSnapshot,
+  MaterialSceneMove,
+  MaterialSceneProjectionOptions
+} from './materialAggregateSceneTypes'
 import { inferModelFormat } from './modelFormat'
 import { projectMaterialTransferSceneLayer } from './materialTransferScene'
 import { readMaterialRendering } from './materialRenderingSnapshot'
@@ -30,7 +36,10 @@ export type {
   MaterialSceneMove,
   MaterialSceneProjectionOptions,
   MaterialTransferSceneEndpoint,
-  MaterialTransferSceneRoute
+  MaterialTransferSceneRoute,
+  PascalSpatialShadowBox,
+  PascalSpatialShadowContact,
+  PascalSpatialShadowOverlay
 } from './materialAggregateSceneTypes'
 export { orthogonalTransferPath, projectMaterialTransferSceneLayer } from './materialTransferScene'
 export { readMaterialRendering } from './materialRenderingSnapshot'
@@ -39,6 +48,30 @@ const SITE_ID = 'site_unilab'
 const BUILDING_ID = 'building_unilab'
 const LEVEL_ID = 'level_unilab'
 const MATERIAL_TRANSFER_LAYER_ID = 'lab-material-transfer-layer-unilab'
+const SPATIAL_SHADOW_LAYER_ID = 'lab-spatial-shadow-unilab'
+
+function sceneContextNodeId(contextId: string, index: number): string {
+  const safeId = contextId
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/gu, '-')
+    .replace(/^-|-$/gu, '')
+  return `lab-scene-context-${safeId || 'shared'}-${index}`
+}
+
+/** 对共享模型上下文做确定性去重；同一 id 出现冲突时关闭式不渲染。 */
+function resolveSharedSceneContext(
+  aggregates: readonly MaterialAggregate[]
+): MaterialRenderingSnapshot['sceneContext'] {
+  const contexts = aggregates
+    .map(aggregate => readMaterialRendering(aggregate).sceneContext)
+    .filter((value): value is NonNullable<typeof value> => Boolean(value))
+  if (contexts.length === 0) return undefined
+  const first = contexts[0]
+  const signature = JSON.stringify(first)
+  return contexts.every(context => JSON.stringify(context) === signature)
+    ? first
+    : undefined
+}
 
 /** 比较由 Backend/OS 提供的毫米坐标，容忍序列化产生的微小浮点误差。 */
 function sameMillimeterTuple(
@@ -244,6 +277,75 @@ export function materialAggregatesToSceneGraph(
     }
   }
 
+  const sceneContext = resolveSharedSceneContext(aggregates)
+  const sceneContextNodeIds = sceneContext?.models.map((model, index) => {
+    const id = sceneContextNodeId(sceneContext.id, index)
+    nodes[id] = LabSceneContextNodeSchema.parse({
+      id,
+      type: 'lab-scene-context',
+      object: 'node',
+      name: model.selector.nodePath,
+      parentId: LEVEL_ID,
+      materialNodeId: '',
+      displayName: model.selector.nodePath,
+      showLabel: false,
+      deviceType: 'scene-context',
+      templateUuid: '',
+      rosDeviceName: '',
+      children: [],
+      position: [0, 0, 0],
+      rotation: [0, 0, 0],
+      scale: [1, 1, 1],
+      dimensions: [0.01, 0.01, 0.01],
+      materialKind: 'resource',
+      renderBody: true,
+      model: {
+        path: model.path,
+        format: model.format,
+        selector: model.selector,
+        position: model.position,
+        rotation: model.rotation,
+        attachPoints: []
+      },
+      attach: {
+        parentDeviceId: null,
+        parentLinkName: null,
+        mountPoint: null
+      },
+      placementRef: {
+        kind: 'world',
+        parentMaterialId: null,
+        siteId: null,
+        anchorKind: 'root',
+        anchorLinkName: null
+      },
+      visible: true,
+      graphMeta: {
+        sceneContextId: sceneContext.id,
+        coordinateAuthority: sceneContext.coordinateAuthority,
+        mode: sceneContext.mode
+      }
+    })
+    return id
+  }) ?? []
+  const spatialShadowNodeId = options.spatialShadowOverlay
+    ? SPATIAL_SHADOW_LAYER_ID
+    : null
+  if (options.spatialShadowOverlay) {
+    nodes[SPATIAL_SHADOW_LAYER_ID] = LabSpatialShadowNodeSchema.parse({
+      id: SPATIAL_SHADOW_LAYER_ID,
+      type: 'lab-spatial-shadow',
+      object: 'node',
+      name: '空间约束 Shadow',
+      parentId: LEVEL_ID,
+      visible: true,
+      metadata: {
+        notWorkcellActivation: true
+      },
+      ...options.spatialShadowOverlay
+    })
+  }
+
   nodes[SITE_ID] = {
     id: SITE_ID,
     type: 'site',
@@ -276,7 +378,11 @@ export function materialAggregatesToSceneGraph(
     parentId: BUILDING_ID,
     visible: true,
     level: 0,
-    children: labNodeIds,
+    children: [
+      ...sceneContextNodeIds,
+      ...labNodeIds,
+      ...(spatialShadowNodeId ? [spatialShadowNodeId] : [])
+    ],
     materialTransferLayer:
       transferLayer && (
         transferLayer.routes.length > 0 ||

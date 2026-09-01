@@ -21,6 +21,7 @@ import {
   RobotDebugDomainEntryContribution,
   RobotPointsDomainEntryContribution,
   RobotReagentsDomainEntryContribution,
+  SpatialShadowDomainEntryContribution,
   UniLabDomainNavigationInitializer,
   UniLabWorkbenchContribution,
   WorkflowDomainEntryContribution
@@ -32,6 +33,7 @@ import {
   RobotDebugDomainEntryWidget,
   RobotPointsDomainEntryWidget,
   RobotReagentsDomainEntryWidget,
+  SpatialShadowDomainEntryWidget,
   WorkflowDomainEntryWidget
 } from './unilab-workbench-navigator-widget'
 import { UniLabWorkbenchWidget } from './unilab-workbench-widget'
@@ -153,6 +155,13 @@ export default new ContainerModule((bind) => {
   bind(WidgetFactory).toDynamicValue(context => ({
     id: RobotReagentsDomainEntryWidget.ID,
     createWidget: () => context.container.get(RobotReagentsDomainEntryWidget)
+  })).inSingletonScope()
+
+  bindViewContribution(bind, SpatialShadowDomainEntryContribution)
+  bind(SpatialShadowDomainEntryWidget).toSelf()
+  bind(WidgetFactory).toDynamicValue(context => ({
+    id: SpatialShadowDomainEntryWidget.ID,
+    createWidget: () => context.container.get(SpatialShadowDomainEntryWidget)
   })).inSingletonScope()
 
   bind(UniLabDomainNavigationInitializer).toSelf().inSingletonScope()

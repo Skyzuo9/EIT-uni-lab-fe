@@ -14,6 +14,7 @@ const projectRoot = path.resolve(scriptDirectory, '..')
 const workspace = path.resolve(required('--workspace'))
 const port = Number(required('--port'))
 const readyFile = path.resolve(required('--ready-file'))
+const localOsUrl = optional('--local-os-url')
 const backendMain = path.join(projectRoot, 'lib', 'backend', 'main.js')
 const browser = process.env.UNILAB_HEADLESS_BROWSER ?? defaultBrowser()
 if (!existsSync(backendMain)) throw new Error(`Workbench build missing: ${backendMain}`)
@@ -27,7 +28,12 @@ const sharedEnvironment = {
   THEIA_WORKSPACE: workspace,
   UNILAB_WORKBENCH_RENDERER_URL: address,
   UNILAB_RENDERER_MANAGED_HEADLESS: '1',
-  UNILAB_AGENT_ENABLED: '0'
+  UNILAB_AGENT_ENABLED: '0',
+  ...(localOsUrl
+    ? {
+        UNILAB_BACKEND_PROXY_TARGET: localOsUrl
+      }
+    : {})
 }
 const children = []
 const theia = launch(process.execPath, [
@@ -41,7 +47,20 @@ const theia = launch(process.execPath, [
 ], { cwd: projectRoot, env: sharedEnvironment })
 
 await waitFor(`${address}/`, 90_000)
-const rendererUrl = `${address}/?headlessRenderer=material&disable=postFx#${encodeURI(workspace)}`
+const rendererParameters = new URLSearchParams({
+  headlessRenderer: 'material',
+  disable: 'postFx',
+  workbenchView: 'material'
+})
+if (localOsUrl) {
+  rendererParameters.set('localOsUrl', localOsUrl)
+  rendererParameters.set('workbenchConnection', 'backend')
+  rendererParameters.set('materialProjection', 'read-only')
+  rendererParameters.set('materialWorkspace', workspace)
+  rendererParameters.set('showSpatialShadow', 'true')
+  rendererParameters.set('spatialShadowTimeS', '6.768636363636')
+}
+const rendererUrl = `${address}/?${rendererParameters.toString()}#${encodeURI(workspace)}`
 launch(browser, [
   '--headless=new',
   '--no-first-run',
@@ -49,6 +68,7 @@ launch(browser, [
   '--disable-background-networking',
   '--disable-component-update',
   '--enable-webgl',
+  '--enable-unsafe-swiftshader',
   '--ignore-gpu-blocklist',
   '--use-angle=swiftshader',
   `--user-data-dir=${path.join(runtime, 'chromium-profile')}`,
@@ -124,6 +144,11 @@ function required(name) {
   const value = index >= 0 ? process.argv[index + 1] : ''
   if (!value) throw new Error(`${name} is required`)
   return value
+}
+
+function optional(name) {
+  const index = process.argv.indexOf(name)
+  return index >= 0 ? process.argv[index + 1] ?? '' : ''
 }
 
 function defaultBrowser() {

@@ -10,6 +10,8 @@ import {
 
 import {
   LabDeviceNodeSchema,
+  LabSceneContextNodeSchema,
+  LabSpatialShadowNodeSchema,
   LabTableNodeSchema,
   type LabDeviceNode,
   type LabTableNode
@@ -212,6 +214,96 @@ const labTableDefinition = {
   }
 } as unknown as AnyNodeDefinition
 
+const labSceneContextDefinition = {
+  kind: 'lab-scene-context',
+  schemaVersion: 1,
+  schema: LabSceneContextNodeSchema,
+  category: 'site',
+  defaults: () => ({
+    object: 'node' as const,
+    materialNodeId: '',
+    displayName: '只读场景上下文',
+    showLabel: false,
+    deviceType: 'scene-context',
+    templateUuid: '',
+    rosDeviceName: '',
+    children: [],
+    position: [0, 0, 0],
+    rotation: [0, 0, 0],
+    scale: [1, 1, 1],
+    dimensions: [0.01, 0.01, 0.01],
+    materialKind: 'resource',
+    renderBody: true,
+    model: {
+      path: '',
+      format: 'gltf',
+      position: [0, 0, 0],
+      rotation: [0, 0, 0],
+      attachPoints: []
+    },
+    attach: {
+      parentDeviceId: null,
+      parentLinkName: null,
+      mountPoint: null
+    },
+    placementRef: createWorldPlacementRef(),
+    parentId: null,
+    visible: true,
+    metadata: {}
+  }),
+  capabilities: {},
+  dirtyTracking: false,
+  presentation: {
+    label: '场景上下文',
+    icon: { kind: 'iconify', name: 'lucide:landmark' },
+    hidden: true
+  },
+  renderer: {
+    kind: 'parametric',
+    module: () => import('./renderers/LabSceneContextRenderer')
+  }
+} as unknown as AnyNodeDefinition
+
+const labSpatialShadowDefinition = {
+  kind: 'lab-spatial-shadow',
+  schemaVersion: 1,
+  schema: LabSpatialShadowNodeSchema,
+  category: 'site',
+  defaults: () => ({
+    object: 'node' as const,
+    sampleId: 'unavailable',
+    registrationStatus: 'candidate-relative-layout',
+    registrationQualified: false,
+    decision: 'unknown',
+    effect: 'none',
+    currentTimeS: 0,
+    durationS: 0,
+    segmentIndex: 0,
+    frameIndex: 0,
+    collisionStatus: 'separated-at-sampled-frame',
+    minimumClearanceM: 0,
+    firstContactTimeS: null,
+    firstContactTargetPositionM: null,
+    boxes: [],
+    trajectory: [],
+    contacts: [],
+    parentId: null,
+    visible: true,
+    metadata: {}
+  }),
+  capabilities: {},
+  dirtyTracking: false,
+  presentation: {
+    label: '空间约束 Shadow',
+    icon: { kind: 'iconify', name: 'lucide:scan-search' },
+    hidden: true
+  },
+  renderer: {
+    kind: 'parametric',
+    module: () => import('./renderers/SpatialShadowRenderer')
+  }
+} as unknown as AnyNodeDefinition
+
 let preparation: Promise<void> | null = null
 
 /** 幂等注册 Uni-Lab Pascal 插件及独立编辑器所需的结构节点。 */
@@ -223,7 +315,9 @@ export function preparePascalLabPlugin(): Promise<void> {
 
     const missingLabDefinitions = [
       labDeviceDefinition,
-      labTableDefinition
+      labTableDefinition,
+      labSceneContextDefinition,
+      labSpatialShadowDefinition
     ].filter((definition) => !nodeRegistry.has(definition.kind))
 
     if (missingLabDefinitions.length > 0) {

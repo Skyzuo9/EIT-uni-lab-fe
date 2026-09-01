@@ -1,6 +1,7 @@
 import { resolve } from 'path'
 import { defineConfig } from 'vite'
 import tailwindcss from '@tailwindcss/vite'
+import { assetPipelineE2eFixturePlugin } from './build/assetPipelineE2eFixturePlugin'
 import { webChunkName } from './build/webChunks'
 
 const LOCAL_BACKEND_PROXY_PREFIX = '/__unilab_backend'
@@ -20,7 +21,7 @@ function rewriteLocalBackendProxyPath(path: string): string {
 
 // kernel-web 是浏览器与 Electron 共同使用的唯一 renderer。
 export default defineConfig(({ mode }) => ({
-  plugins: [tailwindcss()],
+  plugins: [tailwindcss(), assetPipelineE2eFixturePlugin()],
   // @pascal-app/* 以 Next.js 目标的 TS 源码分发，模块顶层直接读 process.env.*
   //（NODE_ENV / NEXT_PUBLIC_* 等），假设由 Next 在构建期替换。本 renderer 是纯 Vite，
   // 浏览器/Electron 无 process 全局。明确保留资源 CDN 配置，并让其他
@@ -35,6 +36,15 @@ export default defineConfig(({ mode }) => ({
   server: {
     port: 5173,
     strictPort: true,
+    fs: {
+      allow: [
+        resolve(__dirname, '../..'),
+        resolve(
+          __dirname,
+          '../../../unilab-workbench-e2e-handoff-20260824'
+        )
+      ]
+    },
     proxy: {
       [LOCAL_BACKEND_PROXY_PREFIX]: {
         target: LOCAL_BACKEND_PROXY_TARGET,

@@ -162,6 +162,59 @@ export const LabDeviceNodeSchema = BaseNode.extend({
   graphMeta: z.record(z.string(), z.unknown()).optional()
 })
 
+/** 同一 Pascal scene 中的只读 GLB 背景，不对应可操作 Material。 */
+export const LabSceneContextNodeSchema = LabDeviceNodeSchema.extend({
+  type: z.literal('lab-scene-context'),
+  materialNodeId: z.literal(''),
+  showLabel: z.literal(false).default(false),
+  deviceType: z.literal('scene-context').default('scene-context'),
+  templateUuid: z.literal('').default(''),
+  rosDeviceName: z.literal('').default(''),
+  materialKind: z.literal('resource').default('resource'),
+  renderBody: z.literal(true).default(true),
+  kinematics: z.undefined().optional()
+})
+
+const SpatialShadowBoxSchema = z.object({
+  id: z.string().min(1),
+  label: z.string(),
+  role: z.enum(['environment', 'corridor', 'robot-link', 'tool', 'payload']),
+  matrix: z.array(z.number().finite()).length(16),
+  size: Vector3Schema
+})
+
+const SpatialShadowContactSchema = z.object({
+  id: z.string().min(1),
+  role: z.enum(['first-contact', 'current-contact']),
+  label: z.string(),
+  position: Vector3Schema
+})
+
+/** 已逆配准到正式 GLB/Pascal 坐标的只读 Shadow 绘制节点。 */
+export const LabSpatialShadowNodeSchema = BaseNode.extend({
+  type: z.literal('lab-spatial-shadow'),
+  sampleId: z.string().min(1),
+  registrationStatus: z.literal('candidate-relative-layout'),
+  registrationQualified: z.literal(false),
+  decision: z.literal('unknown'),
+  effect: z.literal('none'),
+  currentTimeS: z.number().nonnegative(),
+  durationS: z.number().nonnegative(),
+  segmentIndex: z.number().int().nonnegative(),
+  frameIndex: z.number().int().nonnegative(),
+  collisionStatus: z.enum([
+    'separated-at-sampled-frame',
+    'broad-phase-overlap-unresolved',
+    'proxy-mesh-contact'
+  ]),
+  minimumClearanceM: z.number(),
+  firstContactTimeS: z.number().nonnegative().nullable(),
+  firstContactTargetPositionM: Vector3Schema.nullable(),
+  boxes: z.array(SpatialShadowBoxSchema),
+  trajectory: z.array(Vector3Schema),
+  contacts: z.array(SpatialShadowContactSchema)
+})
+
 export const LabTableNodeSchema = BaseNode.extend({
   type: z.literal('lab-table'),
   materialNodeId: z.string(),
@@ -226,6 +279,8 @@ export type LabFloorplanSnapshot = z.infer<
 export type LabPlacementRef = z.infer<typeof LabPlacementRefSchema>
 export type LabKinematics = z.infer<typeof LabKinematicsSchema>
 export type LabDeviceNode = z.infer<typeof LabDeviceNodeSchema>
+export type LabSceneContextNode = z.infer<typeof LabSceneContextNodeSchema>
+export type LabSpatialShadowNode = z.infer<typeof LabSpatialShadowNodeSchema>
 export type LabTableNode = z.infer<typeof LabTableNodeSchema>
 export type LabMaterialTransferStatus = z.infer<
   typeof LabMaterialTransferStatusSchema
@@ -237,6 +292,24 @@ export type LabMaterialTransferLayerNode = z.infer<
   typeof LabMaterialTransferLayerNodeSchema
 >
 export type LabSceneNode = LabDeviceNode | LabTableNode
+
+export function isLabSpatialShadowNode(
+  node: unknown
+): node is LabSpatialShadowNode {
+  return Boolean(
+    node && typeof node === 'object' &&
+    (node as { type?: unknown }).type === 'lab-spatial-shadow'
+  )
+}
+
+export function isLabSceneContextNode(
+  node: unknown
+): node is LabSceneContextNode {
+  return Boolean(
+    node && typeof node === 'object' &&
+    (node as { type?: unknown }).type === 'lab-scene-context'
+  )
+}
 
 export function isLabDeviceNode(node: unknown): node is LabDeviceNode {
   return (

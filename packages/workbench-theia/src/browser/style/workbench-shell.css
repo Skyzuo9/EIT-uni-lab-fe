@@ -60,6 +60,11 @@
   white-space: nowrap;
 }
 
+.unilab-workbench__identity > .unilab-workbench__projection-notice {
+  color: var(--unilab-color-warning, #b45309);
+  font-weight: 650;
+}
+
 .unilab-workbench__bar > .unilab-workbench__controls {
   display: flex;
   min-width: 0;

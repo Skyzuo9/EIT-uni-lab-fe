@@ -27,6 +27,8 @@ describe('Workbench renderer automation adapter', () => {
     expect(decodeMaterialRendererOptions({
       view: '2.5d',
       showSites: 'false',
+      showSpatialShadow: 'true',
+      spatialShadowTimeS: '12.5',
       selected: 'material-a,material-b',
       viewport: '1440x960',
       timeout: '15000',
@@ -38,6 +40,8 @@ describe('Workbench renderer automation adapter', () => {
     })).toEqual({
       view: '2.5d',
       showSites: false,
+      showSpatialShadow: true,
+      spatialShadowTimeS: 12.5,
       selectedMaterialIds: ['material-a', 'material-b'],
       viewport: { width: 1440, height: 960 },
       layoutOverrides: [{
@@ -53,5 +57,8 @@ describe('Workbench renderer automation adapter', () => {
     expect(() => decodeMaterialRendererOptions({
       layoutOverrides: [{ sourceNodeId: 'same' }, { sourceNodeId: 'same' }]
     })).toThrow('缺失或重复')
+    expect(() => decodeMaterialRendererOptions({
+      spatialShadowTimeS: -1
+    })).toThrow('spatialShadowTimeS')
   })
 })

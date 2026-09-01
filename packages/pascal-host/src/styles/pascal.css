@@ -254,6 +254,109 @@
   background: var(--unilab-color-scene-soft);
 }
 
+.pascal-lab-toolbar__button--spatial-shadow[aria-pressed='true'] {
+  color: #92400e;
+  border-color: #f59e0b;
+  background: #fffbeb;
+}
+
+.pascal-lab-toolbar__button:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+}
+
+.pascal-spatial-shadow-hud {
+  position: absolute;
+  z-index: 65;
+  left: 14px;
+  bottom: 14px;
+  display: grid;
+  width: min(680px, calc(100% - 28px));
+  overflow: hidden;
+  color: #e2e8f0;
+  font: 11px/1.4 var(--unilab-font-sans);
+  pointer-events: auto;
+  background: rgb(15 23 42 / 92%);
+  border: 1px solid rgb(245 158 11 / 68%);
+  border-radius: 10px;
+  box-shadow: 0 12px 34px rgb(15 23 42 / 34%);
+  backdrop-filter: blur(10px);
+}
+
+.pascal-spatial-shadow-hud__boundary,
+.pascal-spatial-shadow-hud__readout,
+.pascal-spatial-shadow-hud__controls {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 8px;
+  padding: 7px 10px;
+}
+
+.pascal-spatial-shadow-hud__boundary {
+  color: #fef3c7;
+  background: rgb(120 53 15 / 72%);
+  border-bottom: 1px solid rgb(245 158 11 / 38%);
+}
+
+.pascal-spatial-shadow-hud__boundary strong,
+.pascal-spatial-shadow-hud__readout strong {
+  flex: none;
+}
+
+.pascal-spatial-shadow-hud__boundary span,
+.pascal-spatial-shadow-hud__readout span,
+.pascal-spatial-shadow-hud__readout code {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pascal-spatial-shadow-hud__readout {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  border-bottom: 1px solid rgb(148 163 184 / 20%);
+}
+
+.pascal-spatial-shadow-hud__readout code {
+  grid-column: 1 / -1;
+  color: #fca5a5;
+}
+
+.pascal-spatial-shadow-hud__controls button {
+  flex: none;
+  color: #f8fafc;
+  font: inherit;
+  cursor: pointer;
+  background: rgb(51 65 85 / 88%);
+  border: 1px solid rgb(148 163 184 / 38%);
+  border-radius: 6px;
+  padding: 3px 8px;
+}
+
+.pascal-spatial-shadow-hud__controls input[type='range'] {
+  flex: 1 1 240px;
+  min-width: 80px;
+  accent-color: #f59e0b;
+}
+
+.pascal-spatial-shadow-hud__controls span {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+@container (max-width: 620px) {
+  .pascal-spatial-shadow-hud__boundary span,
+  .pascal-spatial-shadow-hud__readout code {
+    display: none;
+  }
+
+  .pascal-spatial-shadow-hud__readout {
+    grid-template-columns: 1fr;
+  }
+}
+
 .pascal-lab-editor {
   position: relative;
   height: calc(100% - 40px);

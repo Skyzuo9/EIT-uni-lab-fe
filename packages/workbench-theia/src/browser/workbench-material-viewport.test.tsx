@@ -2,10 +2,23 @@ import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
+import { resolveInitialSpatialShadowState } from './workbench-material-projection'
 import { shouldLoadWorkbenchMaterialGraph } from './workbench-material-graph-load'
 import { resolveWorkbenchModelUrl } from './workbench-model-url'
 
 describe('Workbench material viewport layer controls', () => {
+  it('accepts only explicit finite spatial Shadow review state', () => {
+    expect(resolveInitialSpatialShadowState(
+      '?showSpatialShadow=true&spatialShadowTimeS=6.768636363636'
+    )).toEqual({ enabled: true, timeS: 6.768636363636 })
+    expect(resolveInitialSpatialShadowState(
+      '?showSpatialShadow=1&spatialShadowTimeS=-2'
+    )).toEqual({ enabled: false, timeS: 0 })
+    expect(resolveInitialSpatialShadowState(
+      '?showSpatialShadow=true&spatialShadowTimeS=not-a-number'
+    )).toEqual({ enabled: true, timeS: 0 })
+  })
+
   it('gives managed graph requests bounded headroom beyond the generic client default', async () => {
     const source = await readFile(
       fileURLToPath(new URL('./workbench-connection-profile.ts', import.meta.url)),
@@ -61,6 +74,25 @@ describe('Workbench material viewport layer controls', () => {
     expect(source).toContain(
       'useWorkbenchMaterialGraphLoad(store, readStatus.available, loadState)'
     )
+  })
+
+  it('projects the validated spatial snapshot into the same Pascal viewport', async () => {
+    const source = await readFile(
+      fileURLToPath(new URL('./workbench-material-viewport.tsx', import.meta.url)),
+      'utf8'
+    )
+    const widget = await readFile(
+      fileURLToPath(new URL('./unilab-workbench-widget.tsx', import.meta.url)),
+      'utf8'
+    )
+
+    expect(source).toContain('projectSpatialShadowToPascal')
+    expect(source).toContain('spatialShadow={{')
+    expect(source).toContain('spatialShadowOverlay')
+    expect(widget).toContain(
+      "active: viewMode === 'spatial-shadow' || isMaterialWorkbenchView(viewMode)"
+    )
+    expect(widget).toContain('snapshot: spatialShadow.snapshot')
   })
 
   it('routes the Workbench surface through the shared viewport adapter', async () => {

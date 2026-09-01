@@ -2,8 +2,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
   activateSceneRuntimeScope,
+  clearSpatialJointStateFrame,
   getJointStateFrame,
   publishJointStateFrame,
+  publishSpatialJointStateFrame,
   replaceJointStateSnapshot,
   subscribeJointStateFrame,
   type JointStateFrameInput
@@ -55,6 +57,39 @@ describe('场景运行时（SceneRuntime）关节帧', () => {
     replaceJointStateSnapshot([frame({ materialId: 'material-other' })])
     expect(getJointStateFrame('material-robot')).toBeNull()
     expect(getJointStateFrame('material-other')).not.toBeNull()
+  })
+
+  it('Shadow 覆盖实时姿态，清除后恢复最新实时帧', () => {
+    publishJointStateFrame(frame({ jointStates: { robot_joint_1: 0.25 } }))
+    publishSpatialJointStateFrame(frame({
+      acceptedRef: 'shadow:frame-8',
+      jointStates: { robot_joint_1: 1.25 },
+      source: 'shadow'
+    }))
+    expect(getJointStateFrame('material-robot')).toMatchObject({
+      source: 'shadow',
+      jointStates: { robot_joint_1: 1.25 }
+    })
+
+    clearSpatialJointStateFrame('material-robot')
+    expect(getJointStateFrame('material-robot')).toMatchObject({
+      source: 'live',
+      jointStates: { robot_joint_1: 0.25 }
+    })
+  })
+
+  it('Shadow seek 允许向前和向后替换帧', () => {
+    publishSpatialJointStateFrame(frame({
+      acceptedRef: 'shadow:frame-20',
+      sequence: 20,
+      source: 'shadow'
+    }))
+    publishSpatialJointStateFrame(frame({
+      acceptedRef: 'shadow:frame-5',
+      sequence: 5,
+      source: 'shadow'
+    }))
+    expect(getJointStateFrame('material-robot')?.acceptedRef).toBe('shadow:frame-5')
   })
 
   it('只通知目标物料订阅者并在 scope 切换时清除', () => {

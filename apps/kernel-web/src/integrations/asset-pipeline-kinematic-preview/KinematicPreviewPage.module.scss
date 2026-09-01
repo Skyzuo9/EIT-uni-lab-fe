@@ -1,0 +1,144 @@
+.page {
+  min-height: 100vh;
+  background: #07111d;
+  color: #e5edf7;
+}
+
+.banner {
+  margin: 0;
+  padding: 10px 18px;
+  border-bottom: 1px solid #36506a;
+  background: #13283d;
+  color: #d8eaff;
+  font-size: 13px;
+}
+
+.body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 330px;
+  min-height: calc(100vh - 42px);
+}
+
+.viewport {
+  min-width: 0;
+  min-height: 680px;
+}
+
+.viewport :global(.pascal-lab-workbench),
+.viewport :global(.pascal-lab-workbench__native) {
+  width: 100%;
+  height: 100%;
+  min-height: 680px;
+}
+
+.inspector {
+  padding: 22px;
+  border-left: 1px solid #2c4258;
+  background: #0d1b29;
+  overflow: auto;
+}
+
+.inspector h2,
+.inspector h3 {
+  margin: 0 0 14px;
+}
+
+.inspector h3 {
+  margin-top: 24px;
+}
+
+.robotPicker {
+  display: grid;
+  gap: 7px;
+  margin: 0 0 20px;
+  color: #91abc3;
+  font-size: 13px;
+}
+
+.robotPicker select {
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid #4d78a5;
+  border-radius: 6px;
+  background: #13283d;
+  color: #e5edf7;
+}
+
+.robotPicker select:disabled {
+  opacity: 0.55;
+}
+
+.inspector dl {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+
+.inspector dl div {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 10px;
+}
+
+.inspector dt {
+  color: #91abc3;
+}
+
+.inspector dd {
+  margin: 0;
+}
+
+.action,
+.stop {
+  width: 100%;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid #4d78a5;
+  border-radius: 6px;
+  background: #174d78;
+  color: white;
+  cursor: pointer;
+}
+
+.stop {
+  border-color: #98616a;
+  background: #6c2935;
+}
+
+.action:disabled,
+.stop:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.reason {
+  margin-top: 24px;
+  color: #bed0e1;
+  line-height: 1.55;
+}
+
+.digest {
+  overflow-wrap: anywhere;
+  color: #8ba5bd;
+  font-size: 12px;
+}
+
+.status,
+.error {
+  margin: 24px;
+}
+
+.error {
+  color: #ff9ca7;
+}
+
+@media (max-width: 900px) {
+  .body {
+    grid-template-columns: 1fr;
+  }
+
+  .inspector {
+    border-top: 1px solid #2c4258;
+    border-left: 0;
+  }
+}

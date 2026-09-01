@@ -32,6 +32,10 @@ import {
   type WorkstationModule
 } from '@unilab/robot-workstation'
 import {
+  SpatialShadowDiagnostics,
+  SpatialShadowPlaybackProvider
+} from '@unilab/spatial-diagnostics'
+import {
   assertCapability
 } from '@unilab/services'
 import {
@@ -98,6 +102,11 @@ import { useRobotWorkstationData } from './robot-workstation-data'
 import { WorkbenchDomainLayout } from './workbench-domain-layout'
 import { WorkbenchDeviceSurface } from './workbench-device-surface'
 import { WorkbenchMaterialViewport } from './workbench-material-viewport'
+import {
+  currentReadOnlyMaterialProjection,
+  type ReadOnlyMaterialProjection
+} from './workbench-material-projection'
+import { useWorkbenchSpatialShadow } from './workbench-spatial-shadow-source'
 import { workflowExecutionStatusForConnection } from './workbench-execution-readiness'
 import {
   WorkbenchRuntimeLogLauncher,
@@ -819,13 +828,17 @@ export class UniLabWorkbenchWidget extends ReactWidget {
   }
 
   protected override render(): React.ReactElement {
+    const readOnlyMaterialProjection = currentReadOnlyMaterialProjection()
     const connectionTargets = createWorkbenchConnectionTargets({
       managedLocalUrl: this.sessionSnapshot.identity?.backendUrl,
       browserOrigin: currentBrowserOrigin()
     })
     if (
-      this.sessionSnapshot.phase !== 'ready'
-      || !this.sessionSnapshot.identity
+      (
+        this.sessionSnapshot.phase !== 'ready'
+        || !this.sessionSnapshot.identity
+      )
+      && !readOnlyMaterialProjection
     ) {
       return (
         <WorkbenchSessionGate
@@ -877,16 +890,23 @@ export class UniLabWorkbenchWidget extends ReactWidget {
         />
       )
     }
+    const connectionMode = readOnlyMaterialProjection
+      ? 'backend'
+      : this.connectionMode
     return (
       <WorkbenchSurface
-        connectionMode={this.connectionMode}
-        connectionSwitchingTo={this.connectionSwitchingTo}
+        connectionMode={connectionMode}
+        connectionSwitchingTo={readOnlyMaterialProjection
+          ? null
+          : this.connectionSwitchingTo}
         connectionTargets={connectionTargets}
         ideBridge={this.ideBridge}
+        fileService={this.fileService}
         session={this.sessionSnapshot}
         sessionClient={this.workbenchSessionClient}
         recoveryRevision={this.recoveryRevision}
         viewMode={this.viewState.currentMode}
+        readOnlyMaterialProjection={readOnlyMaterialProjection}
         switchBlockedReason={this.lastReportedUnsavedChanges
           ? '请先保存当前工作流修改'
           : this.connectionSwitchingTo
@@ -935,10 +955,12 @@ function WorkbenchSurface({
   connectionSwitchingTo,
   connectionTargets,
   ideBridge,
+  fileService,
   session,
   sessionClient,
   recoveryRevision,
   viewMode,
+  readOnlyMaterialProjection,
   switchBlockedReason,
   onConnectionModeChange,
   onSourceSaveHandlerChange,
@@ -968,10 +990,12 @@ function WorkbenchSurface({
   connectionSwitchingTo: WorkbenchConnectionMode | null
   connectionTargets: WorkbenchConnectionTargets
   ideBridge: WorkflowIdeBridge
+  fileService: FileService
   session: WorkbenchSessionSnapshot
   sessionClient: WorkbenchSessionClientImpl
   recoveryRevision: number
   viewMode: WorkbenchViewMode
+  readOnlyMaterialProjection: ReadOnlyMaterialProjection | null
   switchBlockedReason: string | null
   onConnectionModeChange: (mode: WorkbenchConnectionMode) => void
   onSourceSaveHandlerChange: (handler: SourceSaveHandler | null) => void
@@ -1028,7 +1052,11 @@ function WorkbenchSurface({
     []
   )
   const mountedDomains = useRef(new Set<
-    'workflow' | 'material' | 'device' | 'robot-workstation'
+    | 'workflow'
+    | 'material'
+    | 'device'
+    | 'robot-workstation'
+    | 'spatial-diagnostics'
   >([
     'workflow'
   ]))
@@ -1039,6 +1067,9 @@ function WorkbenchSurface({
     workflowUuid ?? null
   )
   const selectedTarget = connectionTargets[connectionMode]
+  const workspacePath = session.identity?.workspacePath
+    ?? readOnlyMaterialProjection?.workspacePath
+    ?? ''
   const services = useMemo(
     () => createWorkbenchServices(selectedTarget),
     [selectedTarget.cacheKey]
@@ -1066,6 +1097,12 @@ function WorkbenchSurface({
     viewMode,
     recoveryRevision
   )
+  const spatialShadow = useWorkbenchSpatialShadow({
+    reader: fileService,
+    workspacePath,
+    active: viewMode === 'spatial-shadow' || isMaterialWorkbenchView(viewMode),
+    recoveryRevision
+  })
   const queryClient = useMemo(
     () => new QueryClient(),
     [selectedTarget.cacheKey]
@@ -1075,9 +1112,12 @@ function WorkbenchSurface({
     scope,
     graph: services.materials,
     requireCapability: (capability) => {
+      if (readOnlyMaterialProjection && capability !== 'material.readGraph') {
+        throw new Error('只读物料投影不允许修改、移动或创建资源')
+      }
       assertCapability(services.getCapabilityStatus(capability), capability)
     }
-  }), [scope, services])
+  }), [readOnlyMaterialProjection, scope, services])
   const resourceSlotOptionsPort = useMemo(
     () => createWorkflowResourceSlotOptionsPort(services.materials, scope),
     [scope, services.materials]
@@ -1206,9 +1246,15 @@ function WorkbenchSurface({
               'material.readTemplates'
             ),
             readGraph: services.getCapabilityStatus('material.readGraph'),
-            create: services.getCapabilityStatus('material.create'),
-            updateConfig: services.getCapabilityStatus('material.updateConfig'),
-            move: services.getCapabilityStatus('material.move')
+            create: readOnlyMaterialProjection
+              ? readOnlyProjectionCapability()
+              : services.getCapabilityStatus('material.create'),
+            updateConfig: readOnlyMaterialProjection
+              ? readOnlyProjectionCapability()
+              : services.getCapabilityStatus('material.updateConfig'),
+            move: readOnlyMaterialProjection
+              ? readOnlyProjectionCapability()
+              : services.getCapabilityStatus('material.move')
           }}
           selectedMaterialIds={selectedMaterialIds}
           highlightedMaterialIds={highlightedMaterialIds}
@@ -1225,7 +1271,7 @@ function WorkbenchSurface({
               sourceIdentity={{
                 sourceId: selectedTarget.sourceId,
                 authority: connectionMode,
-                workspacePath: session.identity?.workspacePath ?? '',
+                workspacePath,
                 backendUrl: selectedTarget.backend.apiUrl,
                 rendererGeneration: `${globalThis.location.origin}:${
                   session.identity?.generation ?? 'unknown'
@@ -1241,6 +1287,11 @@ function WorkbenchSurface({
                   ? 'kinematics'
                   : 'scene'
               }
+              spatialShadow={{
+                snapshot: spatialShadow.snapshot,
+                status: spatialShadow.status,
+                onReload: spatialShadow.reload
+              }}
             />
           )}
         />
@@ -1283,12 +1334,26 @@ function WorkbenchSurface({
       />
     </section>
   )
+  const spatialDiagnosticsSurface = (
+    <section
+      className="unilab-workbench__surface unilab-workbench__surface--spatial-diagnostics"
+      aria-label="空间约束 Shadow 审阅器"
+    >
+      <SpatialShadowDiagnostics
+        snapshot={spatialShadow.snapshot}
+        status={spatialShadow.status}
+        onReload={spatialShadow.reload}
+      />
+    </section>
+  )
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <div
+    <SpatialShadowPlaybackProvider snapshot={spatialShadow.snapshot}>
+      <QueryClientProvider client={queryClient}>
+        <div
         className="unilab-workbench"
-        data-workspace-path={session.identity?.workspacePath ?? ''}
+        data-workspace-path={workspacePath}
+        data-material-projection-mode={readOnlyMaterialProjection?.mode ?? ''}
         data-package-mount-count={
           session.identity?.packageMounts?.items.length ?? 0
         }
@@ -1312,30 +1377,37 @@ function WorkbenchSurface({
           <div className="unilab-workbench__identity">
             <strong>Unilab 调试工作台</strong>
             <span>
-              {session.identity
+              {readOnlyMaterialProjection
+                ? `只读物料投影 · ${readOnlyMaterialProjection.backendUrl}`
+                : session.identity
                 ? `Workspace Backend PID ${session.identity.pid} · ${session.identity.mode} · ${session.identity.backendUrl}`
                 : 'Workspace Backend 尚未启动'}
             </span>
+            {readOnlyMaterialProjection ? (
+              <span className="unilab-workbench__projection-notice">
+                仅用于 3D 与空间约束验收；ROS、动作执行和真机安全准入未启动
+              </span>
+            ) : null}
             <span className="unilab-workbench__view-mode">
               {workbenchViewLabel(viewMode)}
             </span>
           </div>
           <div className="unilab-workbench__controls">
-            <WorkbenchConnectionSelector
+            {readOnlyMaterialProjection ? null : <WorkbenchConnectionSelector
               targets={connectionTargets}
               selectedMode={connectionMode}
               connection={connection}
               switchBlockedReason={switchBlockedReason}
               onRetry={connectionRetry}
               onSelect={onConnectionModeChange}
-            />
+            />}
             <nav aria-label="调试工作台页面">
-              <WorkbenchRuntimeLogLauncher
+              {readOnlyMaterialProjection ? null : <WorkbenchRuntimeLogLauncher
                 onReadLog={onReadEnvironmentLog}
                 logPaths={workbenchRuntimeLogPaths(session)}
                 onOpenLog={onOpenLog}
-              />
-              <button
+              />}
+              {readOnlyMaterialProjection ? null : <button
                 className={environmentOpen ? 'is-active' : ''}
                 aria-expanded={environmentOpen}
                 onClick={() => setEnvironmentOpen(value => !value)}
@@ -1345,12 +1417,12 @@ function WorkbenchSurface({
                   aria-hidden="true"
                 />
                 环境管理
-              </button>
+              </button>}
               <DesktopWorkspaceSwitchButton />
             </nav>
           </div>
         </header>
-        {environmentOpen ? (
+        {environmentOpen && !readOnlyMaterialProjection ? (
           <EnvironmentManager
             session={session}
             onClose={() => setEnvironmentOpen(false)}
@@ -1397,12 +1469,18 @@ function WorkbenchSurface({
             'robot-workstation',
             robotWorkstationSurface
           )}
+          spatialDiagnostics={mountedSurface(
+            mountedDomains.current,
+            'spatial-diagnostics',
+            spatialDiagnosticsSurface
+          )}
         />
         {connectionSwitchingTo ? (
           <WorkbenchAuthorityLoading mode={connectionSwitchingTo} />
         ) : null}
-      </div>
-    </QueryClientProvider>
+        </div>
+      </QueryClientProvider>
+    </SpatialShadowPlaybackProvider>
   )
 }
 
@@ -1411,6 +1489,7 @@ type WorkbenchMountedDomain =
   | 'material'
   | 'device'
   | 'robot-workstation'
+  | 'spatial-diagnostics'
 
 /** 记录已经访问过的领域表面，使切换活动栏时保留面板本地状态。 */
 function recordMountedWorkbenchDomains(
@@ -1418,11 +1497,7 @@ function recordMountedWorkbenchDomains(
   mode: WorkbenchViewMode
 ): void {
   if (isWorkflowWorkbenchView(mode)) mountedDomains.add('workflow')
-  if (
-    mode === 'material' || mode === 'split'
-    || mode === 'device-material' || mode === 'material-device'
-    || mode === 'material-robot-debug'
-  ) mountedDomains.add('material')
+  if (isMaterialWorkbenchView(mode)) mountedDomains.add('material')
   if (
     mode === 'device' || mode === 'device-material'
     || mode === 'material-device'
@@ -1432,11 +1507,19 @@ function recordMountedWorkbenchDomains(
   if (
     isRobotWorkbenchViewMode(mode) || mode === 'material-robot-debug'
   ) mountedDomains.add('robot-workstation')
+  if (mode === 'spatial-shadow') mountedDomains.add('spatial-diagnostics')
 }
 
 /** 返回工作流表面在当前 Workbench 领域模式下是否拥有可见权。 */
 function isWorkflowWorkbenchView(mode: WorkbenchViewMode): boolean {
   return mode === 'workflow' || mode === 'split'
+}
+
+/** 返回物料 Pascal 场景当前是否可见，包括三个受控分栏模式。 */
+function isMaterialWorkbenchView(mode: WorkbenchViewMode): boolean {
+  return mode === 'material' || mode === 'split'
+    || mode === 'device-material' || mode === 'material-device'
+    || mode === 'material-robot-debug'
 }
 
 /** 选择当前调度权威对应的连接事实来源。 */
@@ -1448,6 +1531,17 @@ function workbenchConnectionState(
   return mode === 'local'
     ? sessionConnectionState(sessionPhase)
     : backendConnection
+}
+
+/** 让物料控件明确展示只读原因，并在点击前关闭所有变更入口。 */
+function readOnlyProjectionCapability(): {
+  available: false
+  reason: string
+} {
+  return {
+    available: false,
+    reason: '当前为只读物料投影，不能创建、移动或修改资源'
+  }
 }
 
 /** 只为已经访问过的领域返回表面，避免无关模块抢占运行状态。 */
@@ -1468,6 +1562,7 @@ function workbenchViewLabel(mode: WorkbenchViewMode): string {
   if (mode === 'workflow') return '工作流'
   if (mode === 'material') return '物料'
   if (mode === 'device') return '仪器设备'
+  if (mode === 'spatial-shadow') return '空间约束 · Shadow'
   if (isRobotWorkbenchViewMode(mode)) return workstationViewLabel(mode)
   return '未打开面板'
 }
