@@ -285,6 +285,7 @@ const labSpatialShadowDefinition = {
     firstContactTimeS: null,
     firstContactTargetPositionM: null,
     boxes: [],
+    l1Capsules: [],
     trajectory: [],
     contacts: [],
     parentId: null,

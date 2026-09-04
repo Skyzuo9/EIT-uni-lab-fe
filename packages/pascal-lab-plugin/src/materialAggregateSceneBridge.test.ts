@@ -176,6 +176,14 @@ describe('Material Aggregate / Pascal bridge', () => {
           ],
           size: [0.1, 0.2, 0.3]
         }],
+        l1Capsules: [{
+          id: 'l1:link:Link6:0',
+          label: 'Link6 L1 扫掠包络',
+          role: 'robot-link',
+          start: [0, 0, 0],
+          end: [0.3, 0.2, 0.1],
+          radius: 0.08
+        }],
         trajectory: [[0, 0, 0], [1, 1, 1]],
         contacts: []
       }
@@ -187,6 +195,7 @@ describe('Material Aggregate / Pascal bridge', () => {
     expect(node.registrationQualified).toBe(false)
     expect(node.decision).toBe('unknown')
     expect(node.effect).toBe('none')
+    expect(node.l1Capsules).toHaveLength(1)
     expect(sceneGraphToMaterialMoves(scene, [material])).toEqual([])
   })
 

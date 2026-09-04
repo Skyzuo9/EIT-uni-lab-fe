@@ -34,6 +34,15 @@ export interface PascalSpatialShadowContact {
   position: readonly [number, number, number]
 }
 
+export interface PascalSpatialShadowCapsule {
+  id: string
+  label: string
+  role: 'robot-link' | 'tool' | 'payload'
+  start: readonly [number, number, number]
+  end: readonly [number, number, number]
+  radius: number
+}
+
 export interface PascalSpatialShadowOverlay {
   sampleId: string
   registrationStatus: 'candidate-relative-layout'
@@ -52,6 +61,7 @@ export interface PascalSpatialShadowOverlay {
   firstContactTimeS: number | null
   firstContactTargetPositionM: readonly [number, number, number] | null
   boxes: readonly PascalSpatialShadowBox[]
+  l1Capsules: readonly PascalSpatialShadowCapsule[]
   trajectory: readonly (readonly [number, number, number])[]
   contacts: readonly PascalSpatialShadowContact[]
 }

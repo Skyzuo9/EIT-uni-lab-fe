@@ -18,6 +18,12 @@ const BOX_STYLE = {
   payload: { color: '#059669', opacity: 0.5, renderOrder: 50 }
 } as const
 
+const CAPSULE_STYLE = {
+  'robot-link': { color: '#0284c7', opacity: 0.2, renderOrder: 54 },
+  tool: { color: '#7c3aed', opacity: 0.28, renderOrder: 55 },
+  payload: { color: '#059669', opacity: 0.28, renderOrder: 55 }
+} as const
+
 function ShadowBox({
   box
 }: {
@@ -97,6 +103,62 @@ function ShadowTrajectory({
   )
 }
 
+function ShadowCapsule({
+  capsule
+}: {
+  capsule: LabSpatialShadowNode['l1Capsules'][number]
+}): React.JSX.Element | null {
+  const segment = useMemo(
+    () => polylineStrokeSegments(
+      [
+        [...capsule.start] as [number, number, number],
+        [...capsule.end] as [number, number, number]
+      ],
+      false
+    )[0] ?? null,
+    [capsule.end, capsule.start]
+  )
+  if (!segment) return null
+  const style = CAPSULE_STYLE[capsule.role]
+  return (
+    <group name={capsule.id} raycast={() => undefined}>
+      <mesh
+        position={segment.position}
+        quaternion={segment.quaternion}
+        renderOrder={style.renderOrder}
+      >
+        <cylinderGeometry args={[
+          capsule.radius,
+          capsule.radius,
+          segment.length,
+          14
+        ]} />
+        <meshStandardMaterial
+          color={style.color}
+          depthWrite={false}
+          opacity={style.opacity}
+          transparent
+        />
+      </mesh>
+      {[capsule.start, capsule.end].map((position, index) => (
+        <mesh
+          key={`${capsule.id}:cap:${index}`}
+          position={position}
+          renderOrder={style.renderOrder}
+        >
+          <sphereGeometry args={[capsule.radius, 14, 10]} />
+          <meshStandardMaterial
+            color={style.color}
+            depthWrite={false}
+            opacity={style.opacity}
+            transparent
+          />
+        </mesh>
+      ))}
+    </group>
+  )
+}
+
 /** 在 Pascal 原生场景中绘制轨迹、包络、随动附件和接触候选。 */
 export default function SpatialShadowRenderer({
   node
@@ -108,6 +170,9 @@ export default function SpatialShadowRenderer({
   return (
     <group ref={groupRef} name={node.id} visible={node.visible !== false}>
       {node.boxes.map(box => <ShadowBox key={box.id} box={box} />)}
+      {node.l1Capsules.map(capsule => (
+        <ShadowCapsule key={capsule.id} capsule={capsule} />
+      ))}
       {node.trajectory.length > 1 ? (
         <ShadowTrajectory points={node.trajectory} />
       ) : null}

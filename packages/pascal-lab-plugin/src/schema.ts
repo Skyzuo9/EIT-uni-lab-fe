@@ -190,6 +190,15 @@ const SpatialShadowContactSchema = z.object({
   position: Vector3Schema
 })
 
+const SpatialShadowCapsuleSchema = z.object({
+  id: z.string().min(1),
+  label: z.string(),
+  role: z.enum(['robot-link', 'tool', 'payload']),
+  start: Vector3Schema,
+  end: Vector3Schema,
+  radius: z.number().positive()
+})
+
 /** 已逆配准到正式 GLB/Pascal 坐标的只读 Shadow 绘制节点。 */
 export const LabSpatialShadowNodeSchema = BaseNode.extend({
   type: z.literal('lab-spatial-shadow'),
@@ -211,6 +220,7 @@ export const LabSpatialShadowNodeSchema = BaseNode.extend({
   firstContactTimeS: z.number().nonnegative().nullable(),
   firstContactTargetPositionM: Vector3Schema.nullable(),
   boxes: z.array(SpatialShadowBoxSchema),
+  l1Capsules: z.array(SpatialShadowCapsuleSchema).default([]),
   trajectory: z.array(Vector3Schema),
   contacts: z.array(SpatialShadowContactSchema)
 })

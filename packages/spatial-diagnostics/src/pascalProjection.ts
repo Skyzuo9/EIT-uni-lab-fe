@@ -30,6 +30,15 @@ export interface SpatialPascalContact {
   position: Vector3
 }
 
+export interface SpatialPascalCapsule {
+  id: string
+  label: string
+  role: 'robot-link' | 'tool' | 'payload'
+  start: Vector3
+  end: Vector3
+  radius: number
+}
+
 export interface SpatialShadowPascalOverlay {
   sampleId: string
   registrationStatus: 'candidate-relative-layout'
@@ -48,6 +57,7 @@ export interface SpatialShadowPascalOverlay {
   firstContactTimeS: number | null
   firstContactTargetPositionM: Vector3 | null
   boxes: readonly SpatialPascalBox[]
+  l1Capsules: readonly SpatialPascalCapsule[]
   trajectory: readonly Vector3[]
   contacts: readonly SpatialPascalContact[]
 }
@@ -135,6 +145,11 @@ function boxSize(box: SpatialAabb): Vector3 {
     box.max_m[1] - box.min_m[1],
     box.max_m[2] - box.min_m[2]
   ]
+}
+
+function boxBoundingSphereRadius(box: SpatialAabb): number {
+  const size = boxSize(box)
+  return Math.hypot(size[0], size[1], size[2]) / 2
 }
 
 function boxTransform(matrix: Matrix4, box: SpatialAabb): readonly number[] {
@@ -257,6 +272,71 @@ export function projectSpatialShadowToPascal(
     )
   }))
 
+  const l1Capsules: SpatialPascalCapsule[] = []
+  const appendSweptCapsules = (
+    idPrefix: string,
+    label: string,
+    role: SpatialPascalCapsule['role'],
+    samples: readonly { center: Vector3; radius: number }[]
+  ) => {
+    for (let index = 1; index < samples.length; index += 1) {
+      const previous = samples[index - 1]
+      const current = samples[index]
+      l1Capsules.push({
+        id: `${idPrefix}:${playbackSegment.segment_index}:${index - 1}`,
+        label,
+        role,
+        start: transformSpatialPoint(transform, previous.center),
+        end: transformSpatialPoint(transform, current.center),
+        radius: Math.max(previous.radius, current.radius)
+      })
+    }
+  }
+  const l1LinkId = playbackSegment.frames[0]?.links.some(
+    link => link.link_id === 'Link6'
+  ) ? 'Link6' : playbackSegment.frames[0]?.links.at(-1)?.link_id
+  if (l1LinkId) {
+    appendSweptCapsules(
+      `l1:link:${l1LinkId}`,
+      `${l1LinkId} L1 扫掠包络`,
+      'robot-link',
+      playbackSegment.frames.flatMap(frame => {
+        const link = frame.links.find(candidate => candidate.link_id === l1LinkId)
+        return link ? [{
+          center: boxCenter(link.world_aabb),
+          radius: boxBoundingSphereRadius(link.world_aabb)
+        }] : []
+      })
+    )
+  }
+  const attachmentIds = new Set(
+    playbackSegment.frames.flatMap(frame =>
+      frame.attachments.map(attachment => attachment.attachment_id)
+    )
+  )
+  for (const attachmentId of attachmentIds) {
+    const samples = playbackSegment.frames.flatMap(frame => {
+      const attachment = frame.attachments.find(
+        candidate => candidate.attachment_id === attachmentId
+      )
+      return attachment ? [{
+        center: boxCenter(attachment.world_aabb),
+        radius: boxBoundingSphereRadius(attachment.world_aabb)
+      }] : []
+    })
+    const role = playbackSegment.frames
+      .flatMap(frame => frame.attachments)
+      .find(attachment => attachment.attachment_id === attachmentId)?.kind
+    if (role) {
+      appendSweptCapsules(
+        `l1:attachment:${attachmentId}`,
+        `${attachmentId} L1 扫掠包络`,
+        role,
+        samples
+      )
+    }
+  }
+
   const trajectory = snapshot.playback.segments
     .flatMap(candidate => candidate.frames)
     .map(frame => frame.links.find(link => link.link_id === 'Link6') ?? frame.links.at(-1))
@@ -302,6 +382,7 @@ export function projectSpatialShadowToPascal(
     firstContactTimeS: firstContact?.time_s ?? null,
     firstContactTargetPositionM: firstContact?.position_m ?? null,
     boxes,
+    l1Capsules,
     trajectory,
     contacts
   }

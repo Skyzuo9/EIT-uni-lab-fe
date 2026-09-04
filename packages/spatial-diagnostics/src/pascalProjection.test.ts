@@ -44,6 +44,8 @@ describe('spatial Shadow to Pascal projection', () => {
     expect(overlay.boxes.some(box => box.role === 'environment')).toBe(true)
     expect(overlay.boxes.filter(box => box.role === 'robot-link')).toHaveLength(7)
     expect(overlay.boxes.some(box => box.role === 'tool')).toBe(true)
+    expect(overlay.l1Capsules.length).toBeGreaterThan(0)
+    expect(overlay.l1Capsules.every(capsule => capsule.radius > 0)).toBe(true)
     expect(overlay.trajectory.length).toBeGreaterThan(0)
     expect(overlay.contacts.some(contact => contact.role === 'first-contact')).toBe(true)
     expect(overlay.boxes.every(box => box.matrix.length === 16)).toBe(true)

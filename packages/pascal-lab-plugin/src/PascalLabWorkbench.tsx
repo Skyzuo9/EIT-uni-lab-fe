@@ -542,6 +542,10 @@ function SpatialShadowHud({
       <div className="pascal-spatial-shadow-hud__readout">
         <strong>{collisionLabel}</strong>
         <span>
+          L1 球/胶囊扫掠 {overlay.l1Capsules.length} 段
+          {' · '}L2 环境组件代理作为精检参考
+        </span>
+        <span>
           最近 AABB 距离下界 {overlay.minimumClearanceM.toFixed(4)} m
           {' · '}Segment #{overlay.segmentIndex + 1} / Frame #{overlay.frameIndex}
         </span>
